@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Load balancers that are attached to security groups with no outbound rules, or without explicitly defined egress, may be unable to reach backend targets, perform health checks, or connect to logging and monitoring services. This can cause availability and operational failures.
+Load balancers that are attached to security groups with no outbound rules, or without explicitly defined egress, may be unable to reach backend targets, perform health checks, or connect to logging and monitoring services. This can cause availability and operational failures.
  
  For load balancer resources (`AWS::ElasticLoadBalancing::LoadBalancer` and `AWS::ElasticLoadBalancingV2::LoadBalancer`), examine each security group referenced in the resource’s `SecurityGroups` list and validate the corresponding `AWS::EC2::SecurityGroup` defines the `SecurityGroupEgress` property. Resources missing `SecurityGroupEgress` or with `SecurityGroupEgress` set to an empty list will be flagged. The `SecurityGroupEgress` list must contain at least one egress rule that permits the required outbound traffic and should use narrow CIDRs, ports, or security-group destinations rather than broad `0.0.0.0/0` when possible.
 
@@ -46,7 +46,6 @@ MySecurityGroup:
         ToPort: 443
         CidrIp: 10.0.0.0/16
 ```
-
 
 ## Compliant Code Examples
 ```yaml

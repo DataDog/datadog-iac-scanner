@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should have server access logging enabled to create an audit trail of requests and changes. This helps detect unauthorized access or data exfiltration and supports forensic analysis and compliance.
+S3 buckets should have server access logging enabled to create an audit trail of requests and changes. This helps detect unauthorized access or data exfiltration and supports forensic analysis and compliance.
 
 In CloudFormation, `AWS::S3::Bucket` resources must include the `LoggingConfiguration` property with a valid `DestinationBucketName` (and optional `LogFilePrefix`) pointing to the bucket that will receive access logs. Resources missing `LoggingConfiguration` will be flagged. Ensure the destination bucket exists, is appropriately restricted for log retention, and permits S3 log delivery to prevent log loss or tampering.
 
@@ -43,7 +43,6 @@ MyBucket:
       DestinationBucketName: my-logs-bucket
       LogFilePrefix: access-logs/
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing RDP (TCP port `3389`) from the public internet (`0.0.0.0/0`) exposes hosts to automated scanning, brute-force attacks, and unauthorized remote access. This rule flags `AWS::EC2::SecurityGroup` resources whose `Properties.SecurityGroupIngress` entries have `CidrIp: 0.0.0.0/0` and either `FromPort` or `ToPort` set to `3389`.
+Allowing RDP (TCP port `3389`) from the public internet (`0.0.0.0/0`) exposes hosts to automated scanning, brute-force attacks, and unauthorized remote access. This rule flags `AWS::EC2::SecurityGroup` resources whose `Properties.SecurityGroupIngress` entries have `CidrIp: 0.0.0.0/0` and either `FromPort` or `ToPort` set to `3389`.
 
 To remediate, restrict ingress to specific trusted CIDR ranges or reference a trusted security group (using `SourceSecurityGroupId`), or require access via a bastion host or VPN. Any ingress entry with `CidrIp: "0.0.0.0/0"` for port `3389` will be reported.
 
@@ -57,7 +57,6 @@ MyRdpSg:
         ToPort: 3389
         SourceSecurityGroupId: sg-0123456789abcdef0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

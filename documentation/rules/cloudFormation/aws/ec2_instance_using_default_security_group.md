@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Attaching EC2 instances to the VPC default security group increases risk because the default group is typically shared, often permits broad intra‑VPC traffic, and cannot be tightly scoped, which facilitates lateral movement and unintended access.
+Attaching EC2 instances to the VPC default security group increases risk because the default group is typically shared, often permits broad intra‑VPC traffic, and cannot be tightly scoped, which facilitates lateral movement and unintended access.
  
  This rule checks `AWS::EC2::Instance` resources and inspects the `SecurityGroups` and `SecurityGroupIds` properties. Any entry that references or names the default security group (case‑insensitive match for `default`) will be flagged. The check evaluates both literal values and `Ref` references, so entries containing `default` or pointing to a default security group resource are considered noncompliant.
  
@@ -56,7 +56,6 @@ MyInstance:
     SecurityGroupIds:
       - !Ref MySecurityGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

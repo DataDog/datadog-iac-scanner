@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "All paths should have security scheme, if it is omitted, global security field should be defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/no_global_and_operation_security_defined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/no_global_and_operation_security_defined",
   "platform": "OpenAPI",
   "descriptionID": "8ecf5376",
   "aggregation": 2,

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Bucket policies that grant list actions to all principals (`*`) allow anyone to enumerate a bucket’s contents and metadata. This can expose sensitive filenames and enable targeted data discovery or exfiltration. For CloudFormation, inspect `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries. Ensure no statement has `Effect: "Allow"` with `Principal: "*"` (or including `*`) while `Action` includes list operations such as `s3:ListBucket`. Resources missing the policy document, or containing statements that allow list actions to wildcard principals, will be flagged. Restrict listing permissions to specific AWS account IDs, IAM roles, or ARNs, or remove list permissions for public principals.
+Bucket policies that grant list actions to all principals (`*`) allow anyone to enumerate a bucket’s contents and metadata. This can expose sensitive filenames and enable targeted data discovery or exfiltration. For CloudFormation, inspect `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries. Ensure no statement has `Effect: "Allow"` with `Principal: "*"` (or including `*`) while `Action` includes list operations such as `s3:ListBucket`. Resources missing the policy document, or containing statements that allow list actions to wildcard principals, will be flagged. Restrict listing permissions to specific AWS account IDs, IAM roles, or ARNs, or remove list permissions for public principals.
 
 Secure example restricting list actions to a specific principal:
 
@@ -45,7 +45,6 @@ MyBucketPolicy:
           Action: s3:ListBucket
           Resource: !Sub arn:aws:s3:::${MyBucket}
 ```
-
 
 ## Compliant Code Examples
 ```yaml

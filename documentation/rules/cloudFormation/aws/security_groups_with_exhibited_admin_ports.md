@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups must not allow inbound access from the public internet (`0.0.0.0/0`) to high-risk service ports. Public exposure of these services increases the risk of brute-force attacks, exploitation of known vulnerabilities, and unauthorized access or lateral movement.
+Security groups must not allow inbound access from the public internet (`0.0.0.0/0`) to high-risk service ports. Public exposure of these services increases the risk of brute-force attacks, exploitation of known vulnerabilities, and unauthorized access or lateral movement.
 
 This rule inspects `AWS::EC2::SecurityGroup` resources and flags `SecurityGroupIngress` entries where `CidrIp` is `0.0.0.0/0` and either `FromPort` or `ToPort` equals one of `20`, `21`, `22`, `23`, `115`, `137`, `138`, `139`, `2049`, or `3389`.
 
@@ -49,7 +49,6 @@ MySecurityGroup:
         ToPort: 22
         CidrIp: 203.0.113.0/24
 ```
-
 
 ## Compliant Code Examples
 ```yaml

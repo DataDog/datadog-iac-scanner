@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The `log_duration` parameter must be defined in the `parameters` array of `alicloud_db_instance` resources and set to `ON`.  
+The `log_duration` parameter must be defined in the `parameters` array of `alicloud_db_instance` resources and set to `ON`.  
 If `log_duration` exists and is set to `OFF`, the rule reports an `IncorrectValue` issue and suggests replacing `OFF` with `ON`.  
 If the `parameters` array or the `log_duration` parameter is missing, the rule reports a `MissingAttribute` issue and suggests adding `parameters = [{ name = "log_duration" value = "ON" }]`.
-
 
 ## Compliant Code Examples
 ```terraform
@@ -87,16 +86,18 @@ resource "alicloud_db_instance" "default" {
     engine_version = "5.6"
     db_instance_class = "rds.mysql.t1.small"
     db_instance_storage = "10"
-    parameters = [{
-        name = "innodb_large_prefix"
-        value = "ON"
-    },{
-        name = "connect_timeout"
-        value = "50"
-    },{
-        name = "log_duration"
-        value = "OFF"
-    }]
+    parameters = [
+        {
+            name = "innodb_large_prefix"
+            value = "ON"
+        },{
+            name = "connect_timeout"
+            value = "50"
+        },{
+            name = "log_duration"
+            value = "OFF"
+        }
+    ]
 }
 
 ```

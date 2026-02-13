@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Serverless functions must have AWS X-Ray tracing enabled so execution paths, errors, and latency are observable for incident response and performance troubleshooting. For AWS Serverless Application Model functions (`AWS::Serverless::Function`), the `Properties.Tracing` attribute must be defined and set to `Active`. Resources missing the `Tracing` property or with `Tracing` set to any other value will be flagged.
+Serverless functions must have AWS X-Ray tracing enabled so execution paths, errors, and latency are observable for incident response and performance troubleshooting. For AWS Serverless Application Model functions (`AWS::Serverless::Function`), the `Properties.Tracing` attribute must be defined and set to `Active`. Resources missing the `Tracing` property or with `Tracing` set to any other value will be flagged.
 
 Secure configuration example:
 
@@ -40,7 +40,6 @@ MyFunction:
     Runtime: nodejs14.x
     Tracing: Active
 ```
-
 
 ## Compliant Code Examples
 ```yaml

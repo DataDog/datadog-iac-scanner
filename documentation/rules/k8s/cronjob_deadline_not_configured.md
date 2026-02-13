@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CronJobs must have a configured deadline. The `startingDeadlineSeconds` attribute must be defined. This attribute specifies the time window, in seconds relative to the scheduled start time, within which a missed job may still be started. Omitting `spec.startingDeadlineSeconds` leaves the CronJob without a configured deadline for missed starts, which can result in delayed or unpredictable job executions; define `spec.startingDeadlineSeconds` with an appropriate value to ensure predictable scheduling.
-
+CronJobs must have a configured deadline. The `startingDeadlineSeconds` attribute must be defined. This attribute specifies the time window, in seconds relative to the scheduled start time, within which a missed job may still be started. Omitting `spec.startingDeadlineSeconds` leaves the CronJob without a configured deadline for missed starts, which can result in delayed or unpredictable job executions; define `spec.startingDeadlineSeconds` with an appropriate value to ensure predictable scheduling.
 
 ## Compliant Code Examples
 ```yaml

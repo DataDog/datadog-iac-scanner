@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether Amazon Route53 hosted zones have CloudWatch logging enabled by ensuring an `aws_route53_query_log` resource is associated with the hosted zone and correctly configured. Without query logging, DNS queries to the hosted zone are not captured, making it difficult to detect potential misuse, troubleshoot DNS issues, or comply with audit requirements. Enable logging using the `aws_route53_query_log` resource, and specify the `cloudwatch_log_group_arn` and `zone_id` attributes, as in the following example:
+This check verifies whether Amazon Route53 hosted zones have CloudWatch logging enabled by ensuring an `aws_route53_query_log` resource is associated with the hosted zone and correctly configured. Without query logging, DNS queries to the hosted zone are not captured, making it difficult to detect potential misuse, troubleshoot DNS issues, or comply with audit requirements. Enable logging using the `aws_route53_query_log` resource, and specify the `cloudwatch_log_group_arn` and `zone_id` attributes, as in the following example:
 
 ```
 resource "aws_route53_query_log" "example_com" {
@@ -36,7 +36,6 @@ resource "aws_route53_query_log" "example_com" {
   zone_id                  = aws_route53_zone.example_com.zone_id
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM user console passwords defined in AWS CloudFormation should be strong to reduce the risk of account compromise through brute force, credential stuffing, or simple credential reuse. For `AWS::IAM::User` resources, `Properties.LoginProfile.Password` must be a string with a minimum length of `14` characters. Passwords shorter than `14` characters will be flagged unless they reference a secret via an AWS Secrets Manager dynamic reference. Avoid embedding plaintext passwords in templates. Instead, reference secrets stored in AWS Secrets Manager or SSM Parameter Store, or rely on IAM-managed workflows and password policies. 
+IAM user console passwords defined in AWS CloudFormation should be strong to reduce the risk of account compromise through brute force, credential stuffing, or simple credential reuse. For `AWS::IAM::User` resources, `Properties.LoginProfile.Password` must be a string with a minimum length of `14` characters. Passwords shorter than `14` characters will be flagged unless they reference a secret via an AWS Secrets Manager dynamic reference. Avoid embedding plaintext passwords in templates. Instead, reference secrets stored in AWS Secrets Manager or SSM Parameter Store, or rely on IAM-managed workflows and password policies. 
  
  Secure example with a sufficiently long password (or a secret reference) in CloudFormation:
 
@@ -40,7 +40,6 @@ MyUser:
     LoginProfile:
       Password: "S3cureP@ssw0rd2025"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECS services must define deployment controls so deployments do not reduce the number of healthy tasks to zero and so failed deployments can be rolled back automatically.
+Amazon ECS services must define deployment controls so deployments do not reduce the number of healthy tasks to zero and so failed deployments can be rolled back automatically.
  
  In CloudFormation, the `AWS::ECS::Service` resource must include a non-`null` `Properties.DeploymentConfiguration` object that contains one or more of the deployment control properties: `MinimumHealthyPercent`, `MaximumPercent`, or `DeploymentCircuitBreaker`. Resources missing `DeploymentConfiguration` or lacking all of these properties will be flagged.
  
@@ -50,7 +50,6 @@ MyService:
         Enable: true
         Rollback: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

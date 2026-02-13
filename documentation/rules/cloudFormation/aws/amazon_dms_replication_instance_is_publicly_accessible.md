@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS DMS replication instances must not be publicly accessible because exposing the instance and its endpoints to the internet increases the risk of unauthorized access and data exfiltration. In CloudFormation, the `PubliclyAccessible` property on `AWS::DMS::ReplicationInstance` resources must be defined and set to `false`; resources with `PubliclyAccessible` set to `true` or missing the property will be flagged. Place replication instances in private subnets and ensure associated security groups and subnet groups restrict inbound access to trusted networks or management hosts.  
+AWS DMS replication instances must not be publicly accessible because exposing the instance and its endpoints to the internet increases the risk of unauthorized access and data exfiltration. In CloudFormation, the `PubliclyAccessible` property on `AWS::DMS::ReplicationInstance` resources must be defined and set to `false`; resources with `PubliclyAccessible` set to `true` or missing the property will be flagged. Place replication instances in private subnets and ensure associated security groups and subnet groups restrict inbound access to trusted networks or management hosts.  
 
 Secure CloudFormation example:
 
@@ -41,7 +41,6 @@ MyDmsReplicationInstance:
     PubliclyAccessible: false
     # other required properties...
 ```
-
 
 ## Compliant Code Examples
 ```yaml

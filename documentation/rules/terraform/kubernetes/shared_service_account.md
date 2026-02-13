@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `service_account_name` specified in the workload is set to an existing `kubernetes_service_account`, causing the Service Account token to be shared across workloads. Sharing a `ServiceAccount` token grants identical permissions to multiple workloads and increases the blast radius if a workload is compromised. Distinct `ServiceAccount` resources or scoped credentials limit permission exposure.
-
+The `service_account_name` specified in the workload is set to an existing `kubernetes_service_account`, causing the Service Account token to be shared across workloads. Sharing a `ServiceAccount` token grants identical permissions to multiple workloads and increases the blast radius if a workload is compromised. Distinct `ServiceAccount` resources or scoped credentials limit permission exposure.
 
 ## Compliant Code Examples
 ```terraform

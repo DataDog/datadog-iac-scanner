@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- `resources.requests.cpu` should be set so the sum of CPU requests from scheduled containers does not exceed the node capacity. This rule validates `container` and `init_container` entries and flags missing `resources`, `resources.requests`, or `resources.requests.cpu` attributes. Ensuring `resources.requests.cpu` is present lets the scheduler make placement decisions and prevents node overcommit.
-
+`resources.requests.cpu` should be set so the sum of CPU requests from scheduled containers does not exceed the node capacity. This rule validates `container` and `init_container` entries and flags missing `resources`, `resources.requests`, or `resources.requests.cpu` attributes. Ensuring `resources.requests.cpu` is present lets the scheduler make placement decisions and prevents node overcommit.
 
 ## Compliant Code Examples
 ```terraform

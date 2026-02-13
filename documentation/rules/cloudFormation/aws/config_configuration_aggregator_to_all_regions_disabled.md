@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Configuration Aggregators that do not collect data from all AWS Regions create cross-region blind spots, which can lead to incomplete compliance monitoring and limit forensic investigation during incidents.
+Configuration Aggregators that do not collect data from all AWS Regions create cross-region blind spots, which can lead to incomplete compliance monitoring and limit forensic investigation during incidents.
 
  For resources of type `AWS::Config::ConfigurationAggregator`, each entry in `AccountAggregationSources` and the `OrganizationAggregationSource` property must include the `AllAwsRegions` attribute set to `true`. Resources that omit aggregation sources, omit the `AllAwsRegions` key, or set `AllAwsRegions` to `false` will be flagged. 
  
@@ -45,7 +45,6 @@ MyConfigAggregator:
       RoleArn: arn:aws:iam::111111111111:role/ConfigAggregatorRole
       AllAwsRegions: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

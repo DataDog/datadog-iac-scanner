@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Missing description for DB security group.
+Missing description for DB security group.
 
 Resources of type `nifcloud_db_security_group` should include a `description` attribute for auditing and identification. This rule flags `nifcloud_db_security_group` resources that do not define a `description`.
-
 
 ## Compliant Code Examples
 ```terraform

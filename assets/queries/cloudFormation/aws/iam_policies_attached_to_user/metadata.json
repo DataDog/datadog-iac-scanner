@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Directly attaching IAM policies to individual users increases management complexity and raises the risk of privilege sprawl and inconsistent access control. Centralizing permissions onto groups or roles makes audits and least-privilege enforcement easier. This rule checks AWS CloudFormation `AWS::IAM::User` resources and requires that `Properties.Policies` (inline policies) and `Properties.ManagedPolicyArns` (managed policy ARNs) are undefined or empty. Resources that define non-empty `Policies` or `ManagedPolicyArns` will be flagged; instead attach managed or inline policies to `AWS::IAM::Group` or `AWS::IAM::Role` and assign users to those groups or have them assume roles to receive permissions.\n\nSecure configuration example (attach policies to a group and add the user to the group):\n\n```yaml\nMyUserGroup:\n  Type: AWS::IAM::Group\n  Properties:\n    GroupName: my-group\n    ManagedPolicyArns:\n      - arn:aws:iam::aws:policy/ReadOnlyAccess\n\nMyUser:\n  Type: AWS::IAM::User\n  Properties:\n    UserName: my-user\n    Groups:\n      - !Ref MyUserGroup\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_policies_attached_to_user",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/iam_policies_attached_to_user",
   "platform": "CloudFormation",
   "descriptionID": "c1857bae",
   "cloudProvider": "aws",

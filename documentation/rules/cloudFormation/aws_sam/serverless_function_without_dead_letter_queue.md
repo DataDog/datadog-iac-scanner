@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Serverless functions without a dead-letter queue (DLQ) can lose events from failed asynchronous invocations and make failure diagnosis and recovery difficult. For `AWS::Serverless::Function` resources, the `DeadLetterConfig` property must be defined and not `null`. The `DeadLetterConfig` should include a valid `TargetArn` that points to a durable target such as an Amazon SQS queue or an Amazon SNS topic; resources missing `DeadLetterConfig` or with it set to `null` will be flagged.
+Serverless functions without a dead-letter queue (DLQ) can lose events from failed asynchronous invocations and make failure diagnosis and recovery difficult. For `AWS::Serverless::Function` resources, the `DeadLetterConfig` property must be defined and not `null`. The `DeadLetterConfig` should include a valid `TargetArn` that points to a durable target such as an Amazon SQS queue or an Amazon SNS topic; resources missing `DeadLetterConfig` or with it set to `null` will be flagged.
 
 Secure configuration example:
 
@@ -44,7 +44,6 @@ MyFunction:
     DeadLetterConfig:
       TargetArn: !GetAtt MyDeadLetterQueue.Arn
 ```
-
 
 ## Compliant Code Examples
 ```yaml

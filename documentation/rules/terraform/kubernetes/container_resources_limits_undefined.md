@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes containers must include resource limits and requests for CPU and memory. This rule checks the `containers` and `init_container` entries in the pod `spec` and requires the `resources` field to be present. When `containers` is an array, each element must include `resources`; when `containers` is an object, the `resources` field must exist. The rule also requires the `limits` and `requests` keys to be set under `resources`.
-
+Kubernetes containers must include resource limits and requests for CPU and memory. This rule checks the `containers` and `init_container` entries in the pod `spec` and requires the `resources` field to be present. When `containers` is an array, each element must include `resources`; when `containers` is an object, the `resources` field must exist. The rule also requires the `limits` and `requests` keys to be set under `resources`.
 
 ## Compliant Code Examples
 ```terraform

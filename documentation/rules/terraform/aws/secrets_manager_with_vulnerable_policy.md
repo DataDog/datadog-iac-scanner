@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- AWS Secrets Manager policies with wildcards in `Principal` or `Action` fields create significant security risks by potentially granting excessive permissions to unintended entities. When `*` is used in the Principal field, any AWS identity can access your secrets, and when used in the `Action` field, it allows all possible operations on those secrets. This overly permissive access violates the principle of least privilege and could lead to unauthorized access or manipulation of sensitive information. Instead of using wildcards, specify exact identities and permissions, as shown in the secure example: `"Principal": {"AWS": "arn:aws:iam::var.account_id:saml-provider/var.provider_name"}` and `"Action": "secretsmanager:GetSecretValue"`.
-
+AWS Secrets Manager policies with wildcards in `Principal` or `Action` fields create significant security risks by potentially granting excessive permissions to unintended entities. When `*` is used in the Principal field, any AWS identity can access your secrets, and when used in the `Action` field, it allows all possible operations on those secrets. This overly permissive access violates the principle of least privilege and could lead to unauthorized access or manipulation of sensitive information. Instead of using wildcards, specify exact identities and permissions, as shown in the secure example: `"Principal": {"AWS": "arn:aws:iam::var.account_id:saml-provider/var.provider_name"}` and `"Action": "secretsmanager:GetSecretValue"`.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Service account keys provide access to GCP resources. Manually created keys pose significant security risks because they can be leaked, shared inappropriately, or remain active indefinitely without rotation. GCP-managed service account keys follow security best practices by default, including automatic key rotation and secure storage managed by Google. To ensure security, avoid manually specifying key data in Terraform, such as `public_key_data = "dummy-key"`. Instead, rely on GCP's managed keys by omitting this attribute.
-
+Service account keys provide access to GCP resources. Manually created keys pose significant security risks because they can be leaked, shared inappropriately, or remain active indefinitely without rotation. GCP-managed service account keys follow security best practices by default, including automatic key rotation and secure storage managed by Google. To ensure security, avoid manually specifying key data in Terraform, such as `public_key_data = "dummy-key"`. Instead, rely on GCP's managed keys by omitting this attribute.
 
 ## Compliant Code Examples
 ```terraform

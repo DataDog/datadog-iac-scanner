@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Elasticsearch domains should use AWS Key Management Service (KMS) for encryption at rest to provide enhanced security. While enabling basic encryption at rest is important, not specifying a KMS key ID means Elasticsearch will use default AWS-managed keys rather than customer-managed keys, reducing your control over the encryption process. Without KMS encryption, sensitive data stored in Elasticsearch could be at risk if unauthorized access to the storage media occurs.
+Elasticsearch domains should use AWS Key Management Service (KMS) for encryption at rest to provide enhanced security. While enabling basic encryption at rest is important, not specifying a KMS key ID means Elasticsearch will use default AWS-managed keys rather than customer-managed keys, reducing your control over the encryption process. Without KMS encryption, sensitive data stored in Elasticsearch could be at risk if unauthorized access to the storage media occurs.
 
 To properly implement KMS encryption, ensure the `encrypt_at_rest` block includes both `enabled = true` and a specific `kms_key_id`, as shown below:
 
@@ -38,7 +38,6 @@ encrypt_at_rest {
     kms_key_id = "your-kms-key-id"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

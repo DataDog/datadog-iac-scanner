@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "Schema Object properties should not contain 'enum' and schema keywords",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/object_using_enum_with_keyword",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/object_using_enum_with_keyword",
   "platform": "OpenAPI",
   "descriptionID": "96b60dc9",
   "aggregation": 2,

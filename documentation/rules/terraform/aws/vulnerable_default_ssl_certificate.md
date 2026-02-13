@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront web distributions should use custom SSL certificates, specified by setting the `viewer_certificate` block with the `acm_certificate_arn` and not the `cloudfront_default_certificate = true` attribute. Relying on the default CloudFront SSL certificate means content is only secured by the default CloudFront domain, which cannot use custom domain names and exposes the distribution to all clients without proper access restrictions. If left unaddressed, this can allow unintended public access and prevent granular control over who can securely access your content via custom domains.
+CloudFront web distributions should use custom SSL certificates, specified by setting the `viewer_certificate` block with the `acm_certificate_arn` and not the `cloudfront_default_certificate = true` attribute. Relying on the default CloudFront SSL certificate means content is only secured by the default CloudFront domain, which cannot use custom domain names and exposes the distribution to all clients without proper access restrictions. If left unaddressed, this can allow unintended public access and prevent granular control over who can securely access your content via custom domains.
 
 A secure configuration example should look like the following:
 
@@ -39,7 +39,6 @@ viewer_certificate {
   minimum_protocol_version = "TLSv1.2_2018"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

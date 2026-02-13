@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Elastic File System (EFS) stores data in clear text by default, potentially exposing sensitive information if the storage system is compromised. When EFS is not encrypted, unauthorized users who gain access to the underlying storage could read file contents, leading to data breaches and compliance violations. To properly secure an EFS file system, set the `encrypted` attribute to `true` in your Terraform configuration, as shown below:
+AWS Elastic File System (EFS) stores data in clear text by default, potentially exposing sensitive information if the storage system is compromised. When EFS is not encrypted, unauthorized users who gain access to the underlying storage could read file contents, leading to data breaches and compliance violations. To properly secure an EFS file system, set the `encrypted` attribute to `true` in your Terraform configuration, as shown below:
 
 ```hcl
 resource "aws_efs_file_system" "secure_example" {
@@ -40,7 +40,6 @@ resource "aws_efs_file_system" "secure_example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

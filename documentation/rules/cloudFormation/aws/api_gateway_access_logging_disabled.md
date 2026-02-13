@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stages must have access logging and route-level/method-level request logging enabled so request activity is recorded for auditing, troubleshooting, and detecting abuse or suspicious behavior.
+API Gateway stages must have access logging and route-level/method-level request logging enabled so request activity is recorded for auditing, troubleshooting, and detecting abuse or suspicious behavior.
 
  For HTTP APIs (`AWS::ApiGatewayV2::Stage`), `AccessLogSettings` must be defined and `DefaultRouteSettings.LoggingLevel` must be present and not set to `OFF` (use values like `INFO` or `ERROR`).
 
@@ -63,7 +63,6 @@ MyRestApiStage:
         HttpMethod: "*"
         LoggingLevel: INFO
 ```
-
 
 ## Compliant Code Examples
 ```yaml

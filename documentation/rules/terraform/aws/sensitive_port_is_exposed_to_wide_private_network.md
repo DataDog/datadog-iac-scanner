@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Leaving sensitive ports such as port 23 (Telnet) or port 110 (POP3) open to a wide private network via insecure security group rules can expose resources to unnecessary risk, as these ports are frequently targeted by attackers seeking to exploit legacy or weakly protected protocols. In Terraform, a misconfiguration, as in the example below, makes internal resources within the VPC accessible to all hosts in the private address range, greatly increasing the attack surface if any host in that range is compromised. :
+Leaving sensitive ports such as port 23 (Telnet) or port 110 (POP3) open to a wide private network via insecure security group rules can expose resources to unnecessary risk, as these ports are frequently targeted by attackers seeking to exploit legacy or weakly protected protocols. In Terraform, a misconfiguration, as in the example below, makes internal resources within the VPC accessible to all hosts in the private address range, greatly increasing the attack surface if any host in that range is compromised. :
 
 ```
 ingress {
@@ -49,7 +49,6 @@ ingress {
   cidr_blocks = [aws_vpc.main.cidr_block]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

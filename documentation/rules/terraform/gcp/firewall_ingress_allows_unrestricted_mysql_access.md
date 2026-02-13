@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Allowing ingress traffic from `0.0.0.0/0` on port 3306, as shown in the Terraform attribute `source_ranges = ["0.0.0.0/0"]`, exposes MySQL databases to the internet, making them susceptible to unauthorized access and potential attacks. This misconfiguration can lead to data breaches, data loss, or system compromise if malicious actors exploit the open MySQL port. Restricting access to trusted IP ranges, for example `source_ranges = ["192.168.1.0/24"]`, significantly reduces this risk by limiting who can attempt to connect to the database.
-
+Allowing ingress traffic from `0.0.0.0/0` on port 3306, as shown in the Terraform attribute `source_ranges = ["0.0.0.0/0"]`, exposes MySQL databases to the internet, making them susceptible to unauthorized access and potential attacks. This misconfiguration can lead to data breaches, data loss, or system compromise if malicious actors exploit the open MySQL port. Restricting access to trusted IP ranges, for example `source_ranges = ["192.168.1.0/24"]`, significantly reduces this risk by limiting who can attempt to connect to the database.
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Schema of the JSON object should have 'type' defined.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/json_object_schema_without_type",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/json_object_schema_without_type",
   "platform": "OpenAPI",
   "descriptionID": "1822e1a7",
   "aggregation": 2,

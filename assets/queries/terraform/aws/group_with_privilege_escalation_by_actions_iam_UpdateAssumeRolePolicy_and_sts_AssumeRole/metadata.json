@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "This check identifies IAM groups that have been granted both the `iam:UpdateAssumeRolePolicy` and `sts:AssumeRole` actions with a wildcard resource (`\"Resource\": \"*\"`) in their attached policies. Granting these permissions together allows any user in the group to escalate their privileges by altering assume role policies and then assuming any role, potentially gaining unauthorized access to sensitive resources. If left unaddressed, this misconfiguration could enable attackers or malicious insiders to escalate permissions, compromise account security, and move laterally throughout your AWS environment.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_UpdateAssumeRolePolicy_and_sts_AssumeRole",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_updateassumerolepolicy_and_sts_assumerole",
   "platform": "Terraform",
   "descriptionID": "7fec1740",
   "cloudProvider": "aws",

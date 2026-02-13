@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- This vulnerability occurs when security groups allow inbound traffic to sensitive ports (such as SSH, RDP, database, or administrative service ports) from the entire internet (`0.0.0.0/0` or `/0`). Exposing sensitive ports to the internet creates a significant security risk as it allows attackers from anywhere to attempt connections, potentially resulting in unauthorized access, data breaches, or service exploitation.
+This vulnerability occurs when security groups allow inbound traffic to sensitive ports (such as SSH, RDP, database, or administrative service ports) from the entire internet (`0.0.0.0/0` or `/0`). Exposing sensitive ports to the internet creates a significant security risk as it allows attackers from anywhere to attempt connections, potentially resulting in unauthorized access, data breaches, or service exploitation.
 
 To remediate this issue, restrict access to sensitive ports by specifying narrower CIDR ranges or specific IP addresses in your security group rules. For example, instead of using `cidr_blocks = ["0.0.0.0/0"]`, use specific IP ranges such as `cidr_blocks = [aws_vpc.main.cidr_block]` or `cidr_blocks = ["10.0.0.0/16"]` that only allow traffic from trusted networks.
-
 
 ## Compliant Code Examples
 ```json

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM policies must not grant the `sts:AssumeRole` action against all resources (`*`), because allowing AssumeRole on `*` enables principals to assume any role and can lead to privilege escalation and broad lateral movement. Check `AWS::IAM::Policy` resources' `Properties.PolicyDocument.Statement` entries for `Effect: Allow` with `Action` containing `sts:AssumeRole` (case-insensitive) and `Resource` equal to `*` or containing `*`. Statements that allow `sts:AssumeRole` must instead restrict `Resource` to explicit role ARNs or a limited set of ARNs (for example, `arn:aws:iam::123456789012:role/MyRole`). Resources missing this restriction or with `Resource: "*"` will be flagged.
+IAM policies must not grant the `sts:AssumeRole` action against all resources (`*`), because allowing AssumeRole on `*` enables principals to assume any role and can lead to privilege escalation and broad lateral movement. Check `AWS::IAM::Policy` resources' `Properties.PolicyDocument.Statement` entries for `Effect: Allow` with `Action` containing `sts:AssumeRole` (case-insensitive) and `Resource` equal to `*` or containing `*`. Statements that allow `sts:AssumeRole` must instead restrict `Resource` to explicit role ARNs or a limited set of ARNs (for example, `arn:aws:iam::123456789012:role/MyRole`). Resources missing this restriction or with `Resource: "*"` will be flagged.
 
 Secure configuration example (restrict the resource to a specific role ARN):
 
@@ -46,7 +46,6 @@ MyPolicy:
     Roles:
       - Ref: SomeRole
 ```
-
 
 ## Compliant Code Examples
 ```yaml

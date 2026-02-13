@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "String schema should restrict the pattern",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/string_schema_with_broad_pattern",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/string_schema_with_broad_pattern",
   "platform": "OpenAPI",
   "descriptionID": "b1ea7a03",
   "aggregation": 2,

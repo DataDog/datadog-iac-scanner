@@ -12,5 +12,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue", #"MissingAttribute" / "RedundantAttribute"
 		"keyExpectedValue": sprintf("FROM %s:'version' where version should not be 'latest'", [resource.Value[0]]),
 		"keyActualValue": sprintf("FROM %s'", [resource.Value[0]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

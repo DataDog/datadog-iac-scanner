@@ -1,12 +1,12 @@
 [
   {
-    "queryName": "CloudWatch AWS organizations changes missing alarm",
+    "queryName": "Missing CloudWatch alarm for AWS Organizations changes",
     "severity": "LOW",
     "line": 28,
     "fileName": "positive1.tf"
   },
   {
-    "queryName": "CloudWatch AWS organizations changes missing alarm",
+    "queryName": "Missing CloudWatch alarm for AWS Organizations changes",
     "severity": "LOW",
     "line": 28,
     "fileName": "positive2.tf"

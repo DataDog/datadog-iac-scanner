@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "Schemes should use 'https' protocol instead of 'http'. Scheme using 'http' allows for clear text credentials",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/schemes_uses_http copy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/schemes_uses_http copy",
   "platform": "OpenAPI",
   "descriptionID": "34948b49",
   "cwe": "",

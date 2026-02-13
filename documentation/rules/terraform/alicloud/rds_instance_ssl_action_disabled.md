@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- The `ssl_action` parameter must be set to `Open` for `alicloud_db_instance` resources. This rule flags instances where `ssl_action` is set to `Close` or is not defined.
+The `ssl_action` parameter must be set to `Open` for `alicloud_db_instance` resources. This rule flags instances where `ssl_action` is set to `Close` or is not defined.
 Setting `ssl_action = "Open"` enforces SSL/TLS for database connections; leaving it unset or set to `Close` may expose data in transit.
-
 
 ## Compliant Code Examples
 ```terraform

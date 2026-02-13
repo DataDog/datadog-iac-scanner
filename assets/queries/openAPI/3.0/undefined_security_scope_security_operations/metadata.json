@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Access Control",
   "descriptionText": "Using an scope on security of operations that is undefined on 'securityScheme' can be defined by an attacker",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/undefined_security_scope_security_operations",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/undefined_security_scope_security_operations",
   "platform": "OpenAPI",
   "descriptionID": "31fb94e2",
   "cwe": "284",

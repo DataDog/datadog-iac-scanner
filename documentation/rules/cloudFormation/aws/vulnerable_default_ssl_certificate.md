@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront distributions should use a custom SSL/TLS certificate for custom domain names so you control certificate trust and can enforce strong TLS protocol and SNI settings.
+CloudFront distributions should use a custom SSL/TLS certificate for custom domain names so you control certificate trust and can enforce strong TLS protocol and SNI settings.
 
 For `AWS::CloudFront::Distribution` resources, `ViewerCertificate.CloudFrontDefaultCertificate` must be omitted or set to `false`. When a custom certificate is used via `ViewerCertificate.AcmCertificateArn` or `ViewerCertificate.IamCertificateId`, the `ViewerCertificate.SslSupportMethod` and `ViewerCertificate.MinimumProtocolVersion` properties must be defined. Resources with `CloudFrontDefaultCertificate` set to `true` will be flagged. Distributions that specify an ACM or IAM certificate but omit `SslSupportMethod` or `MinimumProtocolVersion` will also be flagged as misconfigured.
 
@@ -44,7 +44,6 @@ MyDistribution:
         SslSupportMethod: sni-only
         MinimumProtocolVersion: TLSv1.2_2019
 ```
-
 
 ## Compliant Code Examples
 ```yaml

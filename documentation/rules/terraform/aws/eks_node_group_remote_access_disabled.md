@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that when configuring remote access for an AWS EKS node group, the `source_security_group_ids` attribute is specified. If this parameter is omitted, the EC2 instances in the EKS node group can potentially be accessed via SSH from any IP address, which significantly increases the risk of unauthorized access. By not restricting SSH access to a specific set of trusted security groups, the node group becomes more vulnerable to brute force attacks and other security threats. Properly configuring the `source_security_group_ids` limits remote access to only those network sources that are explicitly permitted, thereby reducing the node group’s attack surface.
-
+This check ensures that when configuring remote access for an AWS EKS node group, the `source_security_group_ids` attribute is specified. If this parameter is omitted, the EC2 instances in the EKS node group can potentially be accessed via SSH from any IP address, which significantly increases the risk of unauthorized access. By not restricting SSH access to a specific set of trusted security groups, the node group becomes more vulnerable to brute force attacks and other security threats. Properly configuring the `source_security_group_ids` limits remote access to only those network sources that are explicitly permitted, thereby reducing the node group’s attack surface.
 
 ## Compliant Code Examples
 ```terraform

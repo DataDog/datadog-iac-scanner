@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Default service accounts should not be actively used. The `kubernetes_service_account` resource named `default` must include the `automount_service_account_token` attribute and it must be set to `false`. If `automount_service_account_token` is missing, add `automount_service_account_token = false`; if it is set to `true`, replace it with `false`.
-
+Default service accounts should not be actively used. The `kubernetes_service_account` resource named `default` must include the `automount_service_account_token` attribute and it must be set to `false`. If `automount_service_account_token` is missing, add `automount_service_account_token = false`; if it is set to `true`, replace it with `false`.
 
 ## Compliant Code Examples
 ```terraform

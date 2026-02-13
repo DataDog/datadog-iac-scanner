@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Missing `security_group` on `nifcloud_instance` resources.
+Missing `security_group` on `nifcloud_instance` resources.
 The `nifcloud_instance` resource should include a `security_group` to enforce network-level access controls.
 Instances that do not set a `security_group` are flagged as `MissingAttribute`.
-
 
 ## Compliant Code Examples
 ```terraform

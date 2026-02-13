@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "S3 bucket policies must not allow GET actions to all principals (`*`). Public read permissions can lead to data exfiltration or unauthorized disclosure of sensitive content. Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag any statement with `Effect: \"Allow\"` and `Principal: \"*\"` (or equivalent wildcard) where `Action` contains GET operations (for example, `s3:GetObject`). Instead, restrict `Principal` to specific AWS account IDs, roles, or ARNs, or remove GET actions. If public access is required, apply scoped conditions (IP ranges, VPC endpoints) or enable S3 Block Public Access to limit exposure.\n\nSecure configuration example (restrict principal to a specific role):\n\n```yaml\nMyBucketPolicy:\n  Type: AWS::S3::BucketPolicy\n  Properties:\n    Bucket: my-bucket\n    PolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:role/MyRole\n          Action:\n            - s3:GetObject\n          Resource: arn:aws:s3:::my-bucket/*\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_allows_get_actions_from_all_principals",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_allows_get_actions_from_all_principals",
   "platform": "CloudFormation",
   "descriptionID": "5d8cf376",
   "cloudProvider": "aws",

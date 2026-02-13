@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling X-Ray tracing in AWS API Gateway stages provides detailed observability by capturing request traces, which are essential for monitoring, debugging, and identifying performance bottlenecks or errors in distributed applications. When the Terraform configuration for an API Gateway stage omits the attribute `xray_tracing_enabled`, or explicitly sets `xray_tracing_enabled = false`, as shown below, tracing is disabled:
+Enabling X-Ray tracing in AWS API Gateway stages provides detailed observability by capturing request traces, which are essential for monitoring, debugging, and identifying performance bottlenecks or errors in distributed applications. When the Terraform configuration for an API Gateway stage omits the attribute `xray_tracing_enabled`, or explicitly sets `xray_tracing_enabled = false`, as shown below, tracing is disabled:
 
 ```
 resource "aws_api_gateway_stage" "example" {
@@ -40,7 +40,6 @@ resource "aws_api_gateway_stage" "example" {
 ```
 
 Without X-Ray tracing, issues such as increased latency or failed requests may go undetected and unresolved, limiting visibility into the lifecycle of requests as they traverse backend integrations and microservices. Leaving tracing disabled increases operational risks and reduces the ability to promptly identify and remediate failures or security incidents, ultimately impacting the reliability and security of the API service.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Remote Desktop Protocol (RDP) on port 3389 should not be exposed directly to the internet as it creates a significant security risk by allowing potential attackers to attempt brute force attacks against your virtual machines. When network security rules allow TCP traffic on port 3389 from internet sources (using `*`, `0.0.0.0`, `/0`, `internet`, or `any` as `source_address_prefix`), they effectively expose your systems to potential unauthorized access. To mitigate this risk, either deny inbound traffic to port 3389 (access = `Deny`), use a different protocol, or restrict source addresses to specific trusted IP addresses rather than allowing access from anywhere.
-
+Remote Desktop Protocol (RDP) on port 3389 should not be exposed directly to the internet as it creates a significant security risk by allowing potential attackers to attempt brute force attacks against your virtual machines. When network security rules allow TCP traffic on port 3389 from internet sources (using `*`, `0.0.0.0`, `/0`, `internet`, or `any` as `source_address_prefix`), they effectively expose your systems to potential unauthorized access. To mitigate this risk, either deny inbound traffic to port 3389 (access = `Deny`), use a different protocol, or restrict source addresses to specific trusted IP addresses rather than allowing access from anywhere.
 
 ## Compliant Code Examples
 ```terraform

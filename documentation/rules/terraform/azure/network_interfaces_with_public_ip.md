@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Exposing network interfaces with a public IP address in Terraform (`public_ip_address_id` attribute) can introduce significant security risks, as it enables direct access from the internet to associated resources, increasing the attack surface for unauthorized access and attacks. If a public IP is required, additional controls and security baselines should be strictly enforced to minimize exposure. To enhance security, network interfaces should be defined without the `public_ip_address_id` field, as shown below:
+Exposing network interfaces with a public IP address in Terraform (`public_ip_address_id` attribute) can introduce significant security risks, as it enables direct access from the internet to associated resources, increasing the attack surface for unauthorized access and attacks. If a public IP is required, additional controls and security baselines should be strictly enforced to minimize exposure. To enhance security, network interfaces should be defined without the `public_ip_address_id` field, as shown below:
 
 ```
 resource "azurerm_network_interface" "secure" {
@@ -43,7 +43,6 @@ resource "azurerm_network_interface" "secure" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -29,6 +29,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instruction with 'pip/pip3 install <package>' should use package pinning form 'pip/pip3 install <package>=<version>'",
 		"keyActualValue": sprintf("RUN instruction %s does not use package pinning form", [commands]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -53,6 +55,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instruction with 'pip/pip3 install <package>' should use package pinning form 'pip/pip3 install <package>=<version>'",
 		"keyActualValue": sprintf("RUN instruction %s does not use package pinning form", [resource.Value[j]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

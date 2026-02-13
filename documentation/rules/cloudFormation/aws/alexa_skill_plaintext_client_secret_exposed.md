@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Alexa skill client secrets must not be stored as plaintext in CloudFormation templates because embedding secrets in templates exposes credentials to source control and anyone with template access, risking unauthorized access to the skill and its integrations. The `AuthenticationConfiguration.ClientSecret` property on `Alexa::ASK::Skill` resources must be a string that uses a secure dynamic reference beginning with `{{resolve:secretsmanager:` or `{{resolve:ssm-secure:`. This retrieves the secret from AWS Secrets Manager or AWS Systems Manager Parameter Store (`SecureString`) at deploy time. Resources with non-string values or `ClientSecret` values that do not start with those prefixes will be flagged. Use dynamic references instead of hardcoding secrets; for example, a secure CloudFormation configuration looks like:
+Alexa skill client secrets must not be stored as plaintext in CloudFormation templates because embedding secrets in templates exposes credentials to source control and anyone with template access, risking unauthorized access to the skill and its integrations. The `AuthenticationConfiguration.ClientSecret` property on `Alexa::ASK::Skill` resources must be a string that uses a secure dynamic reference beginning with `{{resolve:secretsmanager:` or `{{resolve:ssm-secure:`. This retrieves the secret from AWS Secrets Manager or AWS Systems Manager Parameter Store (`SecureString`) at deploy time. Resources with non-string values or `ClientSecret` values that do not start with those prefixes will be flagged. Use dynamic references instead of hardcoding secrets; for example, a secure CloudFormation configuration looks like:
 
 ```yaml
 MySkillWithSecretsManager:
@@ -47,7 +47,6 @@ MySkillWithSSM:
       ClientId: my-client-id
       ClientSecret: "{{resolve:ssm-secure:/my/secure/param:1}}"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

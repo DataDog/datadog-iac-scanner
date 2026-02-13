@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Public code repositories can expose source code, credentials, and intellectual property, increasing risk of data leakage and supply-chain compromise.
+Public code repositories can expose source code, credentials, and intellectual property, increasing risk of data leakage and supply-chain compromise.
  
  In CloudFormation, `AWS::CodeStar::GitHubRepository` resources must include the `IsPrivate` property and set it to `true`. Resources that omit `IsPrivate` or have `IsPrivate` set to a non-`true` value will be flagged. 
  
@@ -41,7 +41,6 @@ MyRepo:
     RepositoryName: my-repo
     IsPrivate: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

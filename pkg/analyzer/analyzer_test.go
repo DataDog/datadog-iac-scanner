@@ -155,11 +155,11 @@ func TestAnalyzer_Analyze(t *testing.T) {
 			paths: []string{
 				filepath.FromSlash("../../test/fixtures/gitignore"),
 			},
-			wantTypes:            []string{"kubernetes", "terraform"},
+			wantTypes:            []string{"dockerfile", "kubernetes", "terraform"},
 			wantExclude:          []string{},
 			typesFromFlag:        []string{""},
 			excludeTypesFromFlag: []string{""},
-			wantLOC:              33,
+			wantLOC:              42,
 			wantErr:              false,
 			gitIgnoreFileName:    "gitignore",
 			excludeGitIgnore:     true,

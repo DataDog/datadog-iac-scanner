@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `HorizontalPodAutoscaler` must target a valid object. This rule verifies each entry in `spec.metrics` with `type: "Object"` includes the required fields: `object.metric`, `object.target`, and `object.describedObject` with `name`, `apiVersion`, and `kind`. If any of these fields are missing, the metric is considered invalid.
-
+The `HorizontalPodAutoscaler` must target a valid object. This rule verifies each entry in `spec.metrics` with `type: "Object"` includes the required fields: `object.metric`, `object.target`, and `object.describedObject` with `name`, `apiVersion`, and `kind`. If any of these fields are missing, the metric is considered invalid.
 
 ## Compliant Code Examples
 ```yaml

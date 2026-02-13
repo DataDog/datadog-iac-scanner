@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Critical virtual machine disks in Google Cloud should be encrypted with Customer Supplied Encryption Keys (CSEK) or Customer-Managed Encryption Keys (CMEK) to ensure the security of sensitive data at rest. If the `disk_encryption_key` block is missing or does not include either the `raw_key` or `kms_key_self_link` attributes, disks remain encrypted only with Google-managed keys. This may not meet data residency or compliance requirements and could expose data if the default encryption keys are compromised. To address this, you should define the `disk_encryption_key` with either a CSEK or CMEK, for example:
+Critical virtual machine disks in Google Cloud should be encrypted with Customer Supplied Encryption Keys (CSEK) or Customer-Managed Encryption Keys (CMEK) to ensure the security of sensitive data at rest. If the `disk_encryption_key` block is missing or does not include either the `raw_key` or `kms_key_self_link` attributes, disks remain encrypted only with Google-managed keys. This may not meet data residency or compliance requirements and could expose data if the default encryption keys are compromised. To address this, you should define the `disk_encryption_key` with either a CSEK or CMEK, for example:
 
 ```
 resource "google_compute_disk" "secure_example" {
@@ -48,7 +48,6 @@ resource "google_compute_disk" "secure_example" {
 }
 ```
 Unencrypted disks can lead to unauthorized disclosure of sensitive information or regulatory compliance violations if left unaddressed.
-
 
 ## Compliant Code Examples
 ```terraform

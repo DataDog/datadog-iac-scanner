@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check verifies that the `endpoint_public_access` attribute within the `vpc_config` block of an `aws_eks_cluster` resource is set to `false`. Allowing public access by setting `endpoint_public_access = true` exposes the EKS cluster's management endpoint to the internet, substantially increasing the risk of unauthorized access or potential attacks. Restricting the endpoint to private access ensures that only resources within the VPC can communicate with the EKS API, reducing the cluster's exposure and improving overall security.
-
+This check verifies that the `endpoint_public_access` attribute within the `vpc_config` block of an `aws_eks_cluster` resource is set to `false`. Allowing public access by setting `endpoint_public_access = true` exposes the EKS cluster's management endpoint to the internet, substantially increasing the risk of unauthorized access or potential attacks. Restricting the endpoint to private access ensures that only resources within the VPC can communicate with the EKS API, reducing the cluster's exposure and improving overall security.
 
 ## Compliant Code Examples
 ```terraform

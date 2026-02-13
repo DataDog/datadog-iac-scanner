@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When S3 bucket policies allow List actions (such as `s3:ListObjects`) from all principals (`*`), they create a significant security risk by potentially exposing sensitive data to unauthorized users. This configuration can lead to information disclosure vulnerabilities where private files, folder structures, and metadata become publicly accessible, potentially revealing confidential information or intellectual property. To remediate this issue, either deny the list actions explicitly or restrict them to specific trusted principals and IP addresses. Compare the insecure configuration, `"Effect": "Allow", "Principal": "*", "Action": "s3:ListObjects"`, with the secure approach, `"Effect": "Deny", "Action": "s3:*"`, using appropriate conditions to limit access.
-
+When S3 bucket policies allow List actions (such as `s3:ListObjects`) from all principals (`*`), they create a significant security risk by potentially exposing sensitive data to unauthorized users. This configuration can lead to information disclosure vulnerabilities where private files, folder structures, and metadata become publicly accessible, potentially revealing confidential information or intellectual property. To remediate this issue, either deny the list actions explicitly or restrict them to specific trusted principals and IP addresses. Compare the insecure configuration, `"Effect": "Allow", "Principal": "*", "Action": "s3:ListObjects"`, with the secure approach, `"Effect": "Deny", "Action": "s3:*"`, using appropriate conditions to limit access.
 
 ## Compliant Code Examples
 ```terraform

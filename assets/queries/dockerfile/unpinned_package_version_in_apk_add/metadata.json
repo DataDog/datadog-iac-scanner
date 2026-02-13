@@ -1,11 +1,12 @@
 {
   "id": "d3499f6d-1651-41bb-a9a7-de925fea487b",
-  "queryName": "Unpinned Package Version in Apk Add",
+  "queryName": "Unpinned package version in apk add",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
-  "descriptionText": "Package version pinning reduces the range of versions that can be installed, reducing the chances of failure due to unanticipated changes",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "descriptionText": "Alpine packages installed in Dockerfile `RUN` instructions should be version-pinned to prevent supply-chain risks and ensure reproducible builds. Unpinned packages can pull in newer, potentially vulnerable or incompatible versions on rebuilds.\n\nThis rule inspects Dockerfile `RUN` instructions that invoke `apk add` and requires each package token to use the pinning form `package=version`. Flags such as `--virtual`, `-t`, and short options like `-v` are ignored when identifying package names. Alphabetic tokens following `apk add` that are not option flags and do not include `=version` will be flagged.\n\nResources with packages like `apk add curl` (no version) will be reported. Update `RUN` lines to pin package versions.\n\nSecure example:\n\n```Dockerfile\nRUN apk add --no-cache ca-certificates=20210512 curl=7.79.1\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/unpinned_package_version_in_apk_add",
   "platform": "Dockerfile",
   "descriptionID": "adb9d5d5",
-  "cwe": "1357"
+  "cwe": "1357",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
 }

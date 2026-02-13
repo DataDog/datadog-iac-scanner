@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM access keys should never be created or kept active for AWS root user accounts, as specified by the `user = "root"` and `status = "Active"` attributes in a Terraform `aws_iam_access_key` resource block. Allowing active access keys for root users significantly increases the attack surface and exposes highly privileged credentials to potential misuse or compromise, since the root account has unrestricted control over the entire AWS environment. To ensure security, root accounts should have all access keys disabled. For example:
+IAM access keys should never be created or kept active for AWS root user accounts, as specified by the `user = "root"` and `status = "Active"` attributes in a Terraform `aws_iam_access_key` resource block. Allowing active access keys for root users significantly increases the attack surface and exposes highly privileged credentials to potential misuse or compromise, since the root account has unrestricted control over the entire AWS environment. To ensure security, root accounts should have all access keys disabled. For example:
 
 ```
 resource "aws_iam_access_key" "secure_root" {
@@ -36,7 +36,6 @@ resource "aws_iam_access_key" "secure_root" {
   status = "Inactive"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Allowing an IAM group broad permissions with `"cloudformation:CreateStack"` and `"iam:PassRole"` actions on all resources (`"Resource": "*"`) enables privilege escalation. With these permissions, a user can create a CloudFormation stack that provisions new IAM users, roles, or policies with elevated privileges and then use `iam:PassRole` to assume those roles, effectively bypassing intended access controls. If left unaddressed, attackers could gain unauthorized access to sensitive AWS resources or take full control of the account.
-
+Allowing an IAM group broad permissions with `"cloudformation:CreateStack"` and `"iam:PassRole"` actions on all resources (`"Resource": "*"`) enables privilege escalation. With these permissions, a user can create a CloudFormation stack that provisions new IAM users, roles, or policies with elevated privileges and then use `iam:PassRole` to assume those roles, effectively bypassing intended access controls. If left unaddressed, attackers could gain unauthorized access to sensitive AWS resources or take full control of the account.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Pod Security Policy allows containers to share the host IPC namespace. The `kubernetes_pod_security_policy` resource with `spec.host_ipc` set to `true` permits containers to access the host's IPC namespace, which can lead to information disclosure or privilege escalation. The attribute `spec.host_ipc` should be undefined or `false` to prevent sharing the host IPC namespace. Remediation consists of replacing `true` with `false` or removing the `spec.host_ipc` attribute.
-
+Pod Security Policy allows containers to share the host IPC namespace. The `kubernetes_pod_security_policy` resource with `spec.host_ipc` set to `true` permits containers to access the host's IPC namespace, which can lead to information disclosure or privilege escalation. The attribute `spec.host_ipc` should be undefined or `false` to prevent sharing the host IPC namespace. Remediation consists of replacing `true` with `false` or removing the `spec.host_ipc` attribute.
 
 ## Compliant Code Examples
 ```terraform

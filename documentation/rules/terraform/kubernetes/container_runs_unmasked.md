@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Checks whether a container has unmasked access to the host's `/proc` filesystem, which allows retrieval of sensitive information and could permit changing kernel parameters at runtime. The rule verifies that `kubernetes_pod_security_policy.spec.allowed_proc_mount_types` does not contain the value `Unmasked` and that `allowed_proc_mount_types` includes `Default` as the expected value. Unmasked access to `/proc` increases the attack surface and can enable privilege escalation or other runtime compromises.
-
+Checks whether a container has unmasked access to the host's `/proc` filesystem, which allows retrieval of sensitive information and could permit changing kernel parameters at runtime. The rule verifies that `kubernetes_pod_security_policy.spec.allowed_proc_mount_types` does not contain the value `Unmasked` and that `allowed_proc_mount_types` includes `Default` as the expected value. Unmasked access to `/proc` increases the attack surface and can enable privilege escalation or other runtime compromises.
 
 ## Compliant Code Examples
 ```terraform

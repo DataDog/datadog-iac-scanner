@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "The field authorizationUrl on implicit or authorizationCode fields from OAuth must be a valid URL",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/invalid_oauth_authorization_url",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/invalid_oauth_authorization_url",
   "platform": "OpenAPI",
   "descriptionID": "92051404",
   "cwe": "284",

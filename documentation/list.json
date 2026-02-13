@@ -24,7 +24,7 @@
           },
           {
             "name": "unspecified_workflows_permissions",
-            "short_description": "Unspecified Workflows Level Permissions"
+            "short_description": "Unspecified workflows level permissions"
           }
         ]
       }
@@ -1080,6 +1080,249 @@
     ]
   },
   {
+    "name": "dockerfile",
+    "providers": [
+      {
+        "name": "dockerfile",
+        "short_description": "DOCKERFILE Rules",
+        "rules": [
+          {
+            "name": "add_instead_of_copy",
+            "short_description": "ADD instead of COPY"
+          },
+          {
+            "name": "apk_add_using_local_cache_path",
+            "short_description": "apk add using local cache path"
+          },
+          {
+            "name": "apt_get_install_lists_were_not_deleted",
+            "short_description": "apt-get install lists were not deleted"
+          },
+          {
+            "name": "apt_get_install_pin_version_not_defined",
+            "short_description": "apt-get install pin version not defined"
+          },
+          {
+            "name": "apt_get_missing_flags_to_avoid_manual_input",
+            "short_description": "apt-get missing flags to avoid manual input"
+          },
+          {
+            "name": "apt_get_not_avoiding_additional_packages",
+            "short_description": "apt-get not avoiding additional packages"
+          },
+          {
+            "name": "avoid_chmod_777",
+            "short_description": "Avoid chmod 777"
+          },
+          {
+            "name": "avoid_http",
+            "short_description": "Avoid HTTP"
+          },
+          {
+            "name": "changing_default_shell_using_run_command",
+            "short_description": "Changing default shell using RUN command"
+          },
+          {
+            "name": "chown_flag_exists",
+            "short_description": "chown flag exists"
+          },
+          {
+            "name": "copy_from_references_current_from_alias",
+            "short_description": "COPY --from references current FROM alias"
+          },
+          {
+            "name": "copy_with_more_than_two_arguments_not_ending_with_slash",
+            "short_description": "COPY with more than two arguments not ending with a slash"
+          },
+          {
+            "name": "curl_or_wget_instead_of_add",
+            "short_description": "curl or wget instead of ADD"
+          },
+          {
+            "name": "do_not_use_multiple_healthcheck",
+            "short_description": "Multiple HEALTHCHECK instructions"
+          },
+          {
+            "name": "env_no_refer_envvar",
+            "short_description": "ENV refers to itself"
+          },
+          {
+            "name": "exposing_port_22",
+            "short_description": "Exposing port 22 (SSH)"
+          },
+          {
+            "name": "first_instruction_should_be_arg_or_from",
+            "short_description": "First instruction must be ARG or FROM"
+          },
+          {
+            "name": "from_or_maintainer_cannot_be_triggered_within_onbuild",
+            "short_description": "ONBUILD cannot trigger FROM or MAINTAINER"
+          },
+          {
+            "name": "gem_install_without_version",
+            "short_description": "gem install without version"
+          },
+          {
+            "name": "healthcheck_instruction_missing",
+            "short_description": "Healthcheck instruction missing"
+          },
+          {
+            "name": "image_version_not_explicit",
+            "short_description": "Image version not explicit"
+          },
+          {
+            "name": "image_version_using_latest",
+            "short_description": "Image version using latest"
+          },
+          {
+            "name": "last_user_is_root",
+            "short_description": "Last user is root"
+          },
+          {
+            "name": "maintainer_instruction_being_used",
+            "short_description": "MAINTAINER instruction being used"
+          },
+          {
+            "name": "missing_dnf_clean_all",
+            "short_description": "Missing dnf clean all"
+          },
+          {
+            "name": "missing_flag_from_dnf_install",
+            "short_description": "Missing flag from dnf install"
+          },
+          {
+            "name": "missing_user_instruction",
+            "short_description": "Missing user instruction"
+          },
+          {
+            "name": "missing_version_specification_in_dnf_install",
+            "short_description": "Missing version specification in dnf install"
+          },
+          {
+            "name": "missing_zypper_clean",
+            "short_description": "Missing zypper clean"
+          },
+          {
+            "name": "missing_zypper_non_interactive_switch",
+            "short_description": "Missing Zypper non-interactive switch"
+          },
+          {
+            "name": "multiple_cmd_instructions_listed",
+            "short_description": "Multiple CMD instructions listed"
+          },
+          {
+            "name": "multiple_entrypoint_instructions_listed",
+            "short_description": "Multiple ENTRYPOINT instructions listed"
+          },
+          {
+            "name": "multiple_run_add_copy_instructions_listed",
+            "short_description": "Multiple RUN, ADD, COPY instructions listed"
+          },
+          {
+            "name": "not_using_json_in_cmd_and_entrypoint_arguments",
+            "short_description": "Not using JSON for CMD and ENTRYPOINT arguments"
+          },
+          {
+            "name": "npm_install_without_pinned_version",
+            "short_description": "npm install command without pinned version"
+          },
+          {
+            "name": "pip_install_keeping_cached_packages",
+            "short_description": "pip install keeping cached packages"
+          },
+          {
+            "name": "run_command_cd_instead_of_workdir",
+            "short_description": "RUN instruction using cd instead of WORKDIR"
+          },
+          {
+            "name": "run_using_apt",
+            "short_description": "Run using apt"
+          },
+          {
+            "name": "run_using_sudo",
+            "short_description": "Run using sudo"
+          },
+          {
+            "name": "run_using_wget_and_curl",
+            "short_description": "Run using wget and curl"
+          },
+          {
+            "name": "run_utilities_and_posix_commands",
+            "short_description": "Run utilities and POSIX commands"
+          },
+          {
+            "name": "run_yarn_clean_after_yarn_install",
+            "short_description": "Run yarn clean after yarn install"
+          },
+          {
+            "name": "same_alias_in_different_froms",
+            "short_description": "Same alias in different FROM statements"
+          },
+          {
+            "name": "shell_running_a_pipe_without_pipefail_flag",
+            "short_description": "Shell running a pipe without the pipefail flag"
+          },
+          {
+            "name": "should_specify_base_image",
+            "short_description": "Dockerfile should specify base image"
+          },
+          {
+            "name": "unix_ports_out_of_range",
+            "short_description": "UNIX ports out of range"
+          },
+          {
+            "name": "unpinned_package_version_in_apk_add",
+            "short_description": "Unpinned package version in apk add"
+          },
+          {
+            "name": "unpinned_package_version_in_pip_install",
+            "short_description": "Unpinned package version in pip install"
+          },
+          {
+            "name": "update_instruction_alone",
+            "short_description": "Package update without install in same RUN"
+          },
+          {
+            "name": "use_only_an_allowed_registry_in_the_from_image",
+            "short_description": "Use only allowed registry in FROM"
+          },
+          {
+            "name": "use_recommended_flags_with_useradd",
+            "short_description": "Use recommended flags with useradd"
+          },
+          {
+            "name": "using_platform_with_from",
+            "short_description": "Using --platform flag with FROM command"
+          },
+          {
+            "name": "using_unnamed_build_stages",
+            "short_description": "Using unnamed build stages"
+          },
+          {
+            "name": "workdir_path_not_absolute",
+            "short_description": "WORKDIR path not absolute"
+          },
+          {
+            "name": "yum_clean_all_missing",
+            "short_description": "yum clean all missing"
+          },
+          {
+            "name": "yum_install_allows_manual_input",
+            "short_description": "yum install allows manual input"
+          },
+          {
+            "name": "yum_install_without_version",
+            "short_description": "yum install without version"
+          },
+          {
+            "name": "zypper_install_without_version",
+            "short_description": "Zypper install without explicit package version"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "name": "k8s",
     "providers": [
       {
@@ -1400,7 +1643,7 @@
           },
           {
             "name": "permissive_access_to_create_pods",
-            "short_description": "Permissive access to create Pods"
+            "short_description": "Permissive access to create pods"
           },
           {
             "name": "pod_misconfigured_network_policy",
@@ -2097,7 +2340,7 @@
           },
           {
             "name": "cloudwatch_aws_organizations_changes_missing_alarm",
-            "short_description": "CloudWatch AWS organizations changes missing alarm"
+            "short_description": "Missing CloudWatch alarm for AWS Organizations changes"
           },
           {
             "name": "cloudwatch_changes_to_nacl_alarm_missing",
@@ -2542,14 +2785,6 @@
           {
             "name": "guardduty_detector_disabled",
             "short_description": "GuardDuty detector disabled"
-          },
-          {
-            "name": "hardcoded_aws_access_key",
-            "short_description": "Hardcoded AWS access key"
-          },
-          {
-            "name": "hardcoded_aws_access_key_in_lambda",
-            "short_description": "Hardcoded AWS access key in Lambda"
           },
           {
             "name": "http_port_open",
@@ -4236,7 +4471,7 @@
             "short_description": "Root containers admitted"
           },
           {
-            "name": "secoomp_profile_is_not_configured",
+            "name": "seccomp_profile_is_not_configured",
             "short_description": "Seccomp profile is not configured"
           },
           {

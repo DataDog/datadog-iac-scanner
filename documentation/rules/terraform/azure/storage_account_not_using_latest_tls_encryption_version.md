@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- To ensure data transmitted to and from Azure storage accounts remains protected, it is important to enforce the use of the latest supported TLS encryption protocol. If the `min_tls_version` attribute is set to an outdated protocol such as `"TLS1_1"`, as seen below, the storage account may be vulnerable to known security exploits:
+To ensure data transmitted to and from Azure storage accounts remains protected, it is important to enforce the use of the latest supported TLS encryption protocol. If the `min_tls_version` attribute is set to an outdated protocol such as `"TLS1_1"`, as seen below, the storage account may be vulnerable to known security exploits:
 
 ```
   min_tls_version = "TLS1_1"
@@ -41,7 +41,6 @@ To mitigate this risk, configure storage accounts to use at least TLS 1.2 by set
 ```
 
 Failing to enforce modern TLS versions can expose sensitive data in transit to interception or tampering by attackers.
-
 
 ## Compliant Code Examples
 ```terraform

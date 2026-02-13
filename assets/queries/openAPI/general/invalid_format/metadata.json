@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "The format should be valid for the type defined. For integer type must be int32 or int64 and number type must be float or double",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/invalid_format",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/invalid_format",
   "platform": "OpenAPI",
   "descriptionID": "b8284333",
   "aggregation": 2,

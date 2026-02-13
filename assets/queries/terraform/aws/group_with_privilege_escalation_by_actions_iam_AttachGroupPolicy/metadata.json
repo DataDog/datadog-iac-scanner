@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Allowing an IAM group the `iam:AttachGroupPolicy` action with a `Resource` set to `\"*\"` enables any user in that group to attach any policy, including those with administrator privileges, to any group. This creates a significant privilege escalation risk, where users can grant themselves or others far greater permissions than originally intended by attaching powerful policies. If left unaddressed, this can lead to full account compromise, unauthorized access, and loss of control over all AWS resources.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_AttachGroupPolicy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_attachgrouppolicy",
   "platform": "Terraform",
   "descriptionID": "e42aec0c",
   "cloudProvider": "aws",

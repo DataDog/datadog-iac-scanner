@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting a user the `'lambda:CreateFunction'`, `'lambda:InvokeFunction'`, and `'iam:PassRole'` permissions with the `Resource` set to `"*"` allows them to create and execute Lambda functions under any IAM role, potentially escalating their privileges in the AWS environment. This misconfiguration means the user can attach highly privileged roles to their Lambda functions and run them, effectively gaining any permissions those roles have—including full administrative access—without approval or oversight. If left unaddressed, this could lead to complete compromise of AWS resources, data theft, or account takeover.
-
+Granting a user the `'lambda:CreateFunction'`, `'lambda:InvokeFunction'`, and `'iam:PassRole'` permissions with the `Resource` set to `"*"` allows them to create and execute Lambda functions under any IAM role, potentially escalating their privileges in the AWS environment. This misconfiguration means the user can attach highly privileged roles to their Lambda functions and run them, effectively gaining any permissions those roles have—including full administrative access—without approval or oversight. If left unaddressed, this could lead to complete compromise of AWS resources, data theft, or account takeover.
 
 ## Compliant Code Examples
 ```terraform

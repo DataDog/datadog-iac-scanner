@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- RDS DB instances must have deletion protection enabled to prevent accidental or unauthorized deletion that can cause irreversible data loss and service downtime. In AWS CloudFormation, the `DeletionProtection` property on `AWS::RDS::DBInstance` resources must be defined and set to `true`. Resources missing this property or with `DeletionProtection` set to `false` will be flagged. This does not replace regular snapshots or backups, so ensure backups are still configured.
+RDS DB instances must have deletion protection enabled to prevent accidental or unauthorized deletion that can cause irreversible data loss and service downtime. In AWS CloudFormation, the `DeletionProtection` property on `AWS::RDS::DBInstance` resources must be defined and set to `true`. Resources missing this property or with `DeletionProtection` set to `false` will be flagged. This does not replace regular snapshots or backups, so ensure backups are still configured.
 
 Secure CloudFormation example:
 
@@ -42,7 +42,6 @@ MyDBInstance:
     MasterUserPassword: 'REPLACE_WITH_SECRET'
     DeletionProtection: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

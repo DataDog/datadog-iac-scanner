@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon MSK cluster broker logging should be enabled to capture important audit and troubleshooting information. If the `logging_info.broker_logs.cloudwatch_logs.enabled` attribute is set to `false` or omitted, as shown below, critical activity and error logs from the MSK brokers will not be captured: 
+Amazon MSK cluster broker logging should be enabled to capture important audit and troubleshooting information. If the `logging_info.broker_logs.cloudwatch_logs.enabled` attribute is set to `false` or omitted, as shown below, critical activity and error logs from the MSK brokers will not be captured: 
 
 ```
 resource "aws_msk_cluster" "example" {
@@ -56,7 +56,6 @@ resource "aws_msk_cluster" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

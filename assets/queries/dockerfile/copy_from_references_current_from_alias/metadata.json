@@ -1,12 +1,13 @@
 {
   "id": "cdddb86f-95f6-4fc4-b5a1-483d9afceb2b",
-  "queryName": "COPY '--from' References Current FROM Alias",
+  "queryName": "COPY --from references current FROM alias",
   "severity": "LOW",
   "category": "Build Process",
-  "descriptionText": "COPY '--from' should not mention the current FROM alias, since it is impossible to copy from itself",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/multistage-build/",
+  "descriptionText": "`COPY` commands with the `--from` flag must not reference the alias of the stage in which the `COPY` appears. Referencing the current `FROM` alias is logically invalid (a stage cannot copy from itself) and can cause build failures or produce images with missing or incorrect artifacts, which may lead to broken or insecure deployments.\n\nThe check examines Dockerfile `FROM` stages that define an alias (`FROM <image> AS <alias>`) and flags `COPY` commands whose `--from=<alias>` value equals the alias of the current stage. Resources with `COPY --from` set to the same stage alias will be flagged; fix by removing `--from` to copy from the current stage or by specifying a different stage name or external image as the `--from` source.\n\nSecure example copying from a different build stage:\n\n```Dockerfile\nFROM golang:1.18 AS builder\nWORKDIR /app\nRUN go build -o app\n\nFROM alpine:3.16 AS runtime\nCOPY --from=builder /app/app /usr/local/bin/app\nCMD [\"app\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/copy_from_references_current_from_alias",
   "platform": "Dockerfile",
   "descriptionID": "a248d89e",
   "cwe": "706",
-  "oldSeverity": "HIGH"
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/multistage-build/"
 }

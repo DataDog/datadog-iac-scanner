@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- `nifcloud_router` resources must include a `security_group` attribute.
+`nifcloud_router` resources must include a `security_group` attribute.
 Routers without a `security_group` lack explicit network access controls and may be insecure.
 This rule flags any `nifcloud_router` missing `security_group` and reports attributes: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`.
-
 
 ## Compliant Code Examples
 ```terraform

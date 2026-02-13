@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Auto Scaling groups must be associated with a load balancer to distribute traffic and maintain availability during scaling and instance replacement. Without a load balancer, instances can become single points of failure and traffic may be routed unevenly.
+Auto Scaling groups must be associated with a load balancer to distribute traffic and maintain availability during scaling and instance replacement. Without a load balancer, instances can become single points of failure and traffic may be routed unevenly.
 
  In CloudFormation, the `AWS::AutoScaling::AutoScalingGroup` resource must define the `LoadBalancerNames` property, and it must be a non-empty list of Classic ELB names. Resources missing `LoadBalancerNames` or where `LoadBalancerNames` is an empty array will be flagged.
 
@@ -46,7 +46,6 @@ MyAutoScalingGroup:
     LoadBalancerNames:
       - my-classic-elb
 ```
-
 
 ## Compliant Code Examples
 ```yaml

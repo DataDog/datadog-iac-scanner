@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Attaching a Network Security Group (NSG) to a virtual machine in Azure is essential for defining and restricting inbound and outbound traffic. Without an NSG, as in the configuration below where `network_interface_ids` is set to an empty list and no NSG is associated, the virtual machine is left exposed to unrestricted network access, increasing the risk of unauthorized access and potential security breaches.
+Attaching a Network Security Group (NSG) to a virtual machine in Azure is essential for defining and restricting inbound and outbound traffic. Without an NSG, as in the configuration below where `network_interface_ids` is set to an empty list and no NSG is associated, the virtual machine is left exposed to unrestricted network access, increasing the risk of unauthorized access and potential security breaches.
 
 ```
 resource "azurerm_virtual_machine" "example" {
@@ -62,7 +62,6 @@ resource "azurerm_network_interface_security_group_association" "example" {
 ```
 
 Neglecting to configure and attach an NSG can result in unrestricted network exposure for the VM, leading to increased vulnerability to attacks, unauthorized access, and data breaches.
-
 
 ## Compliant Code Examples
 ```terraform

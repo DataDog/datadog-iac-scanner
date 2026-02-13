@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- To ensure cryptographic hygiene and limit risk exposure, all keys managed by Azure Key Vault should have an explicit expiration date set using the `expiration_date` attribute. Without an expiration, keys may remain valid indefinitely, increasing the likelihood of unauthorized access or misuse if the key is ever compromised. For example, a secure configuration includes `expiration_date`, as shown below:
+To ensure cryptographic hygiene and limit risk exposure, all keys managed by Azure Key Vault should have an explicit expiration date set using the `expiration_date` attribute. Without an expiration, keys may remain valid indefinitely, increasing the likelihood of unauthorized access or misuse if the key is ever compromised. For example, a secure configuration includes `expiration_date`, as shown below:
 
 ```
 resource "azurerm_key_vault_key" "example" {
@@ -42,7 +42,6 @@ resource "azurerm_key_vault_key" "example" {
 ```
 
 Failure to set this attribute can result in persistent, potentially stale keys that remain active past their intended lifecycle, increasing the attack surface.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should be configured with a secure seccomp profile to restrict potentially dangerous syscalls. The container or pod field securityContext.seccompProfile.type should be set to 'RuntimeDefault' or 'Localhost'; pod-level settings apply to containers when defined. If the deprecated annotation seccomp.security.alpha.kubernetes.io/defaultProfileName is used, it should be 'runtime/default'; if neither fields nor annotation are present, the seccomp profile is considered missing.
-
+Containers should be configured with a secure seccomp profile to restrict potentially dangerous syscalls. The container or pod field securityContext.seccompProfile.type should be set to 'RuntimeDefault' or 'Localhost'; pod-level settings apply to containers when defined. If the deprecated annotation seccomp.security.alpha.kubernetes.io/defaultProfileName is used, it should be 'runtime/default'; if neither fields nor annotation are present, the seccomp profile is considered missing.
 
 ## Compliant Code Examples
 ```yaml

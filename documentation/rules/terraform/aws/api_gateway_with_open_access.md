@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway methods should restrict the `authorization` type to prevent unauthenticated access, except for the `OPTIONS` method used in CORS preflight requests. If you configure an API Gateway method without specifying authorization, as shown in the example below, it allows open, unauthenticated access to your API, increasing the risk of data exposure and abuse.
+API Gateway methods should restrict the `authorization` type to prevent unauthenticated access, except for the `OPTIONS` method used in CORS preflight requests. If you configure an API Gateway method without specifying authorization, as shown in the example below, it allows open, unauthenticated access to your API, increasing the risk of data exposure and abuse.
 
 ```
 resource "aws_api_gateway_method" "example" {
@@ -49,7 +49,6 @@ resource "aws_api_gateway_method" "example" {
 ```
 
 This ensures that only preflight CORS requests remain unauthenticated, while all other methods require proper authorization, reducing the attack surface of your API.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Amazon Elastic Container Registry (ECR) repositories should have resource policies attached to them to enforce specific access controls. Without a repository policy, the repository may rely only on default AWS account permissions, which are not granular and may inadvertently allow unauthorized users or services to access, modify, or delete container images. This misconfiguration exposes the repository contents to security risks such as privilege escalation or data theft. To mitigate this, it is important to define an `aws_ecr_repository_policy` with the appropriate access permissions for each ECR repository.
-
+Amazon Elastic Container Registry (ECR) repositories should have resource policies attached to them to enforce specific access controls. Without a repository policy, the repository may rely only on default AWS account permissions, which are not granular and may inadvertently allow unauthorized users or services to access, modify, or delete container images. This misconfiguration exposes the repository contents to security risks such as privilege escalation or data theft. To mitigate this, it is important to define an `aws_ecr_repository_policy` with the appropriate access permissions for each ECR repository.
 
 ## Compliant Code Examples
 ```terraform

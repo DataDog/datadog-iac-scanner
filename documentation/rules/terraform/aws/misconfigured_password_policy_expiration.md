@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- A password expiration policy enforces regular password changes, reducing the risk of compromised credentials being exploited over long periods. If the `aws_iam_account_password_policy` resource does not set the `max_password_age` attribute, as shown below, passwords may remain valid indefinitely, increasing the chance that leaked or weak passwords can be used for unauthorized access. This exposes your AWS environment to persistent credential-related threats if not addressed. 
+A password expiration policy enforces regular password changes, reducing the risk of compromised credentials being exploited over long periods. If the `aws_iam_account_password_policy` resource does not set the `max_password_age` attribute, as shown below, passwords may remain valid indefinitely, increasing the chance that leaked or weak passwords can be used for unauthorized access. This exposes your AWS environment to persistent credential-related threats if not addressed. 
 
 ```
 resource "aws_iam_account_password_policy" "example" {
@@ -41,7 +41,6 @@ resource "aws_iam_account_password_policy" "example" {
   // max_password_age not set
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

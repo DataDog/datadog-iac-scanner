@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SageMaker notebook instances must specify a KMS key to encrypt data at rest. This helps protect notebook storage and snapshots from unauthorized access.
+SageMaker notebook instances must specify a KMS key to encrypt data at rest. This helps protect notebook storage and snapshots from unauthorized access.
 
 Check `AWS::SageMaker::NotebookInstance` resources for the `Properties.KmsKeyId` property. It must be defined as a non-empty string that identifies a valid KMS key (key ID, key ARN, or alias). Resources missing `KmsKeyId`, or with `KmsKeyId` set to `""`, will be flagged.
 
@@ -43,7 +43,6 @@ MyNotebook:
     RoleArn: arn:aws:iam::123456789012:role/SageMakerRole
     KmsKeyId: !Ref MyKmsKey
 ```
-
 
 ## Compliant Code Examples
 ```yaml

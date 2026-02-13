@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Lambda functions should enable active tracing to capture end-to-end request traces for observability and security investigations. This helps you detect anomalous behavior and perform forensic analysis during incidents. In AWS CloudFormation, `AWS::Lambda::Function` resources must define `TracingConfig.Mode` and set it to `Active`. Resources missing `TracingConfig` or with `TracingConfig.Mode` set to `PassThrough` will be flagged. Also ensure the function execution role permits publishing traces (for example, by attaching the `AWSXRayDaemonWriteAccess` policy).
+AWS Lambda functions should enable active tracing to capture end-to-end request traces for observability and security investigations. This helps you detect anomalous behavior and perform forensic analysis during incidents. In AWS CloudFormation, `AWS::Lambda::Function` resources must define `TracingConfig.Mode` and set it to `Active`. Resources missing `TracingConfig` or with `TracingConfig.Mode` set to `PassThrough` will be flagged. Also ensure the function execution role permits publishing traces (for example, by attaching the `AWSXRayDaemonWriteAccess` policy).
 
 Secure configuration example:
 
@@ -39,7 +39,6 @@ MyFunction:
     TracingConfig:
       Mode: Active
 ```
-
 
 ## Compliant Code Examples
 ```yaml

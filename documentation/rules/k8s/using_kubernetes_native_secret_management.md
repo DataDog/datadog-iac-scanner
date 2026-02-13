@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Use of an external secret storage and management system should be considered for complex secret management needs, instead of using Kubernetes Secrets directly.
+Use of an external secret storage and management system should be considered for complex secret management needs, instead of using Kubernetes Secrets directly.
 In Kubernetes clusters, prefer solutions that integrate external stores via SecretProviderClass (CSI) or external secret operators rather than embedding secrets in resource manifests.
 Additionally, apply least-privilege access, enable encryption at rest, and enforce rotation and auditing of secret material.
-
 
 ## Compliant Code Examples
 ```yaml

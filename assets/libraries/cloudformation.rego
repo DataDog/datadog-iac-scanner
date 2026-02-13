@@ -251,7 +251,16 @@ resourceFieldName = {
 
 get_resource_name(resource, resourceDefinitionName) = name {
 	field := resourceFieldName[resource.Type]
-	name := resource.Properties[field]
+	fieldValue := resource.Properties[field]
+	is_string(fieldValue)
+	fieldValue != ""
+	name := fieldValue
+} else = name {
+	field := resourceFieldName[resource.Type]
+	fieldValue := resource.Properties[field]
+	is_string(fieldValue)
+	fieldValue != ""
+	name := fieldValue[_]
 } else = name {
 	name := common_lib.get_tag_name_if_exists(resource)
 } else = name {

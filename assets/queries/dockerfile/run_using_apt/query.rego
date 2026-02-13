@@ -15,5 +15,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instructions should not use the 'apt' program",
 		"keyActualValue": "RUN instruction is invoking the 'apt' program",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

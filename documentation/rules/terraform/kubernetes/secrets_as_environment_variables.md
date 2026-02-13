@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- `Containers` should not include secrets as environment variables.
+`Containers` should not include secrets as environment variables.
 The rule detects any use of `env.value_from.secret_key_ref` or `env_from.secret_ref` in `container` and `init_container` entries and flags them as `IncorrectValue`.
 It checks both array and object forms of `env` and `env_from` and reports the resource path where the secret reference is set.
-
 
 ## Compliant Code Examples
 ```terraform

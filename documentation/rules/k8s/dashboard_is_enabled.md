@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- If not needed, disable the dashboard to prevent it from being used as an attack vector. This rule inspects the image fields of `containers` and `initContainers` for "kubernetes-dashboard" or "kubernetesui". Resources deploying these images are reported as incorrect values.
-
+If not needed, disable the dashboard to prevent it from being used as an attack vector. This rule inspects the image fields of `containers` and `initContainers` for "kubernetes-dashboard" or "kubernetesui". Resources deploying these images are reported as incorrect values.
 
 ## Compliant Code Examples
 ```yaml

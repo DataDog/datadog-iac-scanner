@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IoT policies that grant the wildcard action `*` with an `Allow` effect are overly permissive and can enable principals to perform any IoT operation. This increases the risk of device takeover, unauthorized message publishing or subscribing, and configuration changes.
+IoT policies that grant the wildcard action `*` with an `Allow` effect are overly permissive and can enable principals to perform any IoT operation. This increases the risk of device takeover, unauthorized message publishing or subscribing, and configuration changes.
 
 In AWS CloudFormation, inspect `AWS::IoT::Policy` resources' `Properties.PolicyDocument.Statement` entries. A `Statement` with `Effect: Allow` and `Action` equal to `*` (or containing `*` in an action array) is a misconfiguration. This rule flags those statements. Follow least privilege by enumerating only the specific `iot:*` actions required and scoping the `Resource` ARNs to the minimum necessary. 
 
@@ -49,7 +49,6 @@ MyIotPolicy:
             - "iot:Receive"
           Resource: "arn:aws:iot:us-west-2:123456789012:client/my-device-*"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

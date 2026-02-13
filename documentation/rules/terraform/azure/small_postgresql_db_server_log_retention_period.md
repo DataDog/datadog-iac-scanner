@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether the `log_retention_days` configuration for an Azure PostgreSQL Database Server retains logs for at least 3 days. Insufficient log retention, such as setting `value = 2` in the Terraform resource, as shown below, can hinder the ability to investigate security incidents or troubleshoot issues, as critical audit and activity logs may be deleted too quickly.
+This check verifies whether the `log_retention_days` configuration for an Azure PostgreSQL Database Server retains logs for at least 3 days. Insufficient log retention, such as setting `value = 2` in the Terraform resource, as shown below, can hinder the ability to investigate security incidents or troubleshoot issues, as critical audit and activity logs may be deleted too quickly.
 
 ```
 resource "azurerm_postgresql_configuration" "positive1" {
@@ -40,7 +40,6 @@ resource "azurerm_postgresql_configuration" "positive1" {
 ```
 
 Increasing the retention period to a secure value (such as `value = 5`) helps ensure logs are available for effective monitoring and forensic analysis.
-
 
 ## Compliant Code Examples
 ```terraform

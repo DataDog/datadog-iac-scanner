@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Every defined property must be unique throughout the whole API",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/property_not_unique",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/property_not_unique",
   "platform": "OpenAPI",
   "descriptionID": "eb2e14e6",
   "cwe": "20",

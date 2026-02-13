@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting an IAM user permissions for both `glue:CreateDevEndpoint` and `iam:PassRole` actions with the `Resource` set to `\"*\"` allows that user to create a Glue development endpoint and attach any role in the account, including those with elevated privileges. This misconfiguration enables privilege escalation, meaning the user could effectively gain administrator-level access or perform unauthorized actions across the AWS environment. To prevent this, restrict the actions and resources in IAM policies and avoid using wildcard `\"*\"` permissions, as in the secure example below:\n\n```\nresource \"aws_iam_user_policy\" \"inline_policy_limited\" {\n  name = \"inline_policy_limited\"\n  user = aws_iam_user.cosmic2.name\n\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [\n      {\n        Action = [\n          \"ec2:Describe*\",\n        ]\n        Effect   = \"Allow\"\n        Resource = \"*\"\n      },\n    ]\n  })\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_PassRole_and_glue_CreateDevEndpoint",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_passrole_and_glue_createdevendpoint",
   "platform": "Terraform",
   "descriptionID": "8d9e01f1",
   "cloudProvider": "aws",

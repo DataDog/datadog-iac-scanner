@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Opening HTTP ports (for example, using `from_port = 80` and `to_port = 80`) to the internet in a security group by setting `cidr_blocks = ["0.0.0.0/0"]` allows unrestricted access from any IP address. This misconfiguration exposes resources to potential unauthorized access and attacks, such as brute force or exploitation of unpatched web services. To mitigate this risk, restrict `cidr_blocks` to trusted IP addresses or use security controls that limit ingress to necessary sources only, as in the example below:
+Opening HTTP ports (for example, using `from_port = 80` and `to_port = 80`) to the internet in a security group by setting `cidr_blocks = ["0.0.0.0/0"]` allows unrestricted access from any IP address. This misconfiguration exposes resources to potential unauthorized access and attacks, such as brute force or exploitation of unpatched web services. To mitigate this risk, restrict `cidr_blocks` to trusted IP addresses or use security controls that limit ingress to necessary sources only, as in the example below:
 
 ```
 resource "aws_security_group" "secure_http" {
@@ -40,7 +40,6 @@ resource "aws_security_group" "secure_http" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

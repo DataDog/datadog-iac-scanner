@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether the `enable-oslogin` metadata key is set to `true` in Google Cloud project or instance metadata, as shown below:
+This check verifies whether the `enable-oslogin` metadata key is set to `true` in Google Cloud project or instance metadata, as shown below:
 
 ```
 resource "google_compute_project_metadata" "secure_example" {
@@ -39,7 +39,6 @@ resource "google_compute_project_metadata" "secure_example" {
 ```
 
 If OS Login is not enabled, user and SSH key management is handled by instance-level metadata, which can lead to inconsistent access policies and increased risk of unauthorized access. Enabling OS Login centralizes and streamlines IAM-based SSH access, reducing the attack surface of compute resources.
-
 
 ## Compliant Code Examples
 ```terraform

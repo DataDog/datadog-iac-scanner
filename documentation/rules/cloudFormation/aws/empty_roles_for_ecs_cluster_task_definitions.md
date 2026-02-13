@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- ECS services must reference task definitions that assign a specific task role (`TaskRoleArn`) so containers run with scoped IAM credentials and follow the principle of least privilege.
+ECS services must reference task definitions that assign a specific task role (`TaskRoleArn`) so containers run with scoped IAM credentials and follow the principle of least privilege.
  
  If a task definition lacks `TaskRoleArn`, containers may run without credentials or inherit broader instance credentials (for the Amazon EC2 launch type). This can allow unnecessary access to AWS APIs, data exposure, or privilege escalation.
  
@@ -54,7 +54,6 @@ MyService:
     TaskDefinition: !Ref MyTaskDef
     Cluster: !Ref MyCluster
 ```
-
 
 ## Compliant Code Examples
 ```yaml

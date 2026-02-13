@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The RAM account password policy attribute `require_uppercase_characters` should be set to `true`. If set to `false`, passwords may not require uppercase letters, weakening password complexity and increasing risk. Ensure the `alicloud_ram_account_password_policy` resource defines `require_uppercase_characters` as `true`.
-
+The RAM account password policy attribute `require_uppercase_characters` should be set to `true`. If set to `false`, passwords may not require uppercase letters, weakening password complexity and increasing risk. Ensure the `alicloud_ram_account_password_policy` resource defines `require_uppercase_characters` as `true`.
 
 ## Compliant Code Examples
 ```terraform

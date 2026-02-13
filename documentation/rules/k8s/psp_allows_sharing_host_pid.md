@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- PodSecurityPolicy allows containers to share the host process ID namespace when 'spec.hostPID' is true. Sharing the host PID namespace lets containers see and interact with host processes, increasing the risk of information exposure and privilege escalation. This rule flags policies where 'spec.hostPID' is true; it should be false or undefined.
-
+PodSecurityPolicy allows containers to share the host process ID namespace when 'spec.hostPID' is true. Sharing the host PID namespace lets containers see and interact with host processes, increasing the risk of information exposure and privilege escalation. This rule flags policies where 'spec.hostPID' is true; it should be false or undefined.
 
 ## Compliant Code Examples
 ```yaml

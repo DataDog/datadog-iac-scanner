@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SNS topics should use a customer-managed AWS KMS key for server-side encryption to protect published messages at rest and to enable controllable key access, rotation, and auditability.
+SNS topics should use a customer-managed AWS KMS key for server-side encryption to protect published messages at rest and to enable controllable key access, rotation, and auditability.
 
 In CloudFormation, `AWS::SNS::Topic` resources must define `Properties.KmsMasterKeyId` and set it to a KMS key identifier (key ARN, key ID, alias such as `alias/your-alias`, or a `Ref`/`Fn::GetAtt` to an `AWS::KMS::Key`). Resources missing this property will be flagged. When `KmsMasterKeyId` is undefined, SNS falls back to the AWS-managed key (`aws/sns`), which you cannot fully manage via custom key policies or rotation and which may not meet compliance or cross-account access requirements.
 
@@ -46,7 +46,6 @@ MyTopic:
     TopicName: my-topic
     KmsMasterKeyId: !Ref MyKey
 ```
-
 
 ## Compliant Code Examples
 ```yaml

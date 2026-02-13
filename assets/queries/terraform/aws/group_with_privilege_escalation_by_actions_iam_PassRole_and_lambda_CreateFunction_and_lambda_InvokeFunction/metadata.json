@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "This configuration allows an IAM group to escalate privileges by combining `lambda:CreateFunction`, `iam:PassRole`, and `lambda:InvokeFunction` permissions, all with the overly broad `Resource = \"*\"`. Attackers or unauthorized users with this access can create, invoke, and assign any role to Lambda functions, potentially gaining permissions beyond their intended scope and compromising the entire AWS account. To prevent this, restrict `iam:PassRole` and Lambda actions to specific, necessary resources and ensure that the policy does not broadly grant privileges, as shown below:\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"ec2:Describe*\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_PassRole_and_lambda_CreateFunction_and_lambda_InvokeFunction",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_passrole_and_lambda_createfunction_and_lambda_invokefunction",
   "platform": "Terraform",
   "descriptionID": "2a7afde0",
   "cloudProvider": "aws",

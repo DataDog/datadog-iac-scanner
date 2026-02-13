@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The `nifcloud_elb` is configured to use the shared private network `net-COMMON_PRIVATE`.
+The `nifcloud_elb` is configured to use the shared private network `net-COMMON_PRIVATE`.
 This exposes the private side to the shared network and should instead use a dedicated private LAN to maintain isolation.
 The rule flags any `nifcloud_elb` where `network_interface.network_id` equals `net-COMMON_PRIVATE`.
-
 
 ## Compliant Code Examples
 ```terraform

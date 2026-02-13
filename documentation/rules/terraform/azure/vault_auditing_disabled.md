@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling logging for Azure Key Vault ensures that all access and management activities are captured and can be monitored for unauthorized or anomalous activity. Without logging enabled—such as omitting a `azurerm_monitor_diagnostic_setting` resource—critical security events and access records would not be recorded, making it difficult to detect potential breaches or comply with audit requirements. A secure configuration includes adding a diagnostic setting. For example:
+Enabling logging for Azure Key Vault ensures that all access and management activities are captured and can be monitored for unauthorized or anomalous activity. Without logging enabled—such as omitting a `azurerm_monitor_diagnostic_setting` resource—critical security events and access records would not be recorded, making it difficult to detect potential breaches or comply with audit requirements. A secure configuration includes adding a diagnostic setting. For example:
 
 ```
 resource "azurerm_monitor_diagnostic_setting" "example" {
@@ -43,7 +43,6 @@ resource "azurerm_monitor_diagnostic_setting" "example" {
 }
 ```
 This logs Key Vault events and helps ensure accountability and traceability for sensitive key and secret operations.
-
 
 ## Compliant Code Examples
 ```terraform

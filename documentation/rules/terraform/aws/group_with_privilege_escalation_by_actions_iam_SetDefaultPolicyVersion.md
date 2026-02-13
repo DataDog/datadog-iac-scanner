@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The configuration permits the `iam:SetDefaultPolicyVersion` action with a resource value of `"*"`, meaning members of the `aws_iam_group.cosmic` group are allowed to set any version of any IAM policy as the default. This is a dangerous privilege escalation vector, as it could allow attackers to promote a malicious or overly permissive policy version, potentially granting themselves or others administrative access across AWS resources. If left unaddressed, this vulnerability could be exploited to bypass least privilege principles, resulting in unauthorized access or control over critical AWS infrastructure. To mitigate this risk, restrict the allowable actions and resources in IAM policies and avoid assigning wildcard `"*"` resource permissions to sensitive actions such as `iam:SetDefaultPolicyVersion`.
-
+The configuration permits the `iam:SetDefaultPolicyVersion` action with a resource value of `"*"`, meaning members of the `aws_iam_group.cosmic` group are allowed to set any version of any IAM policy as the default. This is a dangerous privilege escalation vector, as it could allow attackers to promote a malicious or overly permissive policy version, potentially granting themselves or others administrative access across AWS resources. If left unaddressed, this vulnerability could be exploited to bypass least privilege principles, resulting in unauthorized access or control over critical AWS infrastructure. To mitigate this risk, restrict the allowable actions and resources in IAM policies and avoid assigning wildcard `"*"` resource permissions to sensitive actions such as `iam:SetDefaultPolicyVersion`.
 
 ## Compliant Code Examples
 ```terraform

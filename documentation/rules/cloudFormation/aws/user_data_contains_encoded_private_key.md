@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Embedding private keys in instance user data (even if base64-encoded) exposes sensitive credentials that can be decoded and used to gain unauthorized access to instances and pivot within your environment.
+Embedding private keys in instance user data (even if base64-encoded) exposes sensitive credentials that can be decoded and used to gain unauthorized access to instances and pivot within your environment.
 
 For `AWS::AutoScaling::LaunchConfiguration` resources, `Properties.UserData` must not contain PEM private key material. This includes raw PEM headers like `-----BEGIN RSA PRIVATE KEY` or their base64-encoded equivalents. This rule flags `UserData` entries that contain base64 fragments indicative of an encoded PEM header (for example, fragments such as `LS0tLS1CR`) or the raw PEM text.
 
@@ -49,7 +49,6 @@ MyLaunchConfiguration:
         aws secretsmanager get-secret-value --secret-id my-app-key --region us-east-1 --query SecretString --output text > /tmp/app-key.pem
         chmod 600 /tmp/app-key.pem
 ```
-
 
 ## Compliant Code Examples
 ```yaml

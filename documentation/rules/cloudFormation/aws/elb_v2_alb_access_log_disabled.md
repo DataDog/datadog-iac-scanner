@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Application Load Balancers must have access logging enabled so you retain detailed request records for incident investigation and traffic analysis. Without logs, security incidents are harder to investigate and you may not meet auditing or compliance requirements.
+Application Load Balancers must have access logging enabled so you retain detailed request records for incident investigation and traffic analysis. Without logs, security incidents are harder to investigate and you may not meet auditing or compliance requirements.
  
  For CloudFormation, check `AWS::ElasticLoadBalancingV2::LoadBalancer` resources have a `LoadBalancerAttributes` entry with `Key` equal to `access_logs.s3.enabled` and `Value` set to `true` (or the string `"true"` in templates). Resources missing the `LoadBalancerAttributes` property, or that include `access_logs.s3.enabled` with `Value` set to `false` (or `"false"`), will be flagged as non-compliant. 
  
@@ -48,7 +48,6 @@ MyLoadBalancer:
       - Key: access_logs.s3.prefix
         Value: alb-logs/
 ```
-
 
 ## Compliant Code Examples
 ```yaml

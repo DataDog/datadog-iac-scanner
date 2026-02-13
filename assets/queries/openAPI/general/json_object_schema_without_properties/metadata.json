@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Schema of the JSON object should have properties defined and 'additionalProperties' set to false.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/json_object_schema_without_properties",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/json_object_schema_without_properties",
   "platform": "OpenAPI",
   "descriptionID": "1778714d",
   "aggregation": 2,

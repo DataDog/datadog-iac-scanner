@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes clusters (`alicloud_cs_kubernetes`) must include the Terway CNI network plugin and define `pod_vswitch_ids`. Specifically, the `addons` block must include an entry for `terway-eniip`, and the `pod_vswitch_ids` attribute must be defined and not null. Terway enables ENI-based networking required for advanced network policies and proper pod communication. This rule flags `alicloud_cs_kubernetes` resources missing either the required `addons` entry or the `pod_vswitch_ids` attribute.
-
+Kubernetes clusters (`alicloud_cs_kubernetes`) must include the Terway CNI network plugin and define `pod_vswitch_ids`. Specifically, the `addons` block must include an entry for `terway-eniip`, and the `pod_vswitch_ids` attribute must be defined and not null. Terway enables ENI-based networking required for advanced network policies and proper pod communication. This rule flags `alicloud_cs_kubernetes` resources missing either the required `addons` entry or the `pod_vswitch_ids` attribute.
 
 ## Compliant Code Examples
 ```terraform

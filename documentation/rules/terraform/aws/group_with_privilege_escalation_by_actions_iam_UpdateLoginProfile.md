@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Allowing an IAM group the `iam:UpdateLoginProfile` action on all resources (`"Resource": "*"`) is a significant privilege escalation risk. With this permission, any user in the group can reset or change the console password of any IAM user in the AWS account, effectively taking over their credentials. If left unaddressed, malicious or compromised users could gain access to higher privileges, potentially leading to unauthorized access, data exfiltration, or service disruption.
-
+Allowing an IAM group the `iam:UpdateLoginProfile` action on all resources (`"Resource": "*"`) is a significant privilege escalation risk. With this permission, any user in the group can reset or change the console password of any IAM user in the AWS account, effectively taking over their credentials. If left unaddressed, malicious or compromised users could gain access to higher privileges, potentially leading to unauthorized access, data exfiltration, or service disruption.
 
 ## Compliant Code Examples
 ```terraform

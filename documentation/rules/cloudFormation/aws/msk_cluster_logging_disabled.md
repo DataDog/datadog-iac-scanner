@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- MSK clusters must have broker logging enabled to provide audit and operational visibility. Without broker logs, you may be unable to detect or investigate security incidents, troubleshoot cluster issues, or meet logging retention and compliance requirements. In AWS CloudFormation, the `AWS::MSK::Cluster` resource must include the `LoggingInfo` property with `BrokerLogs` configured to specify at least one destination (`CloudWatchLogs`, `Firehose`, or `S3`). The selected destination entry must have `Enabled` set to `true`. Resources missing `LoggingInfo`, missing all three broker log destinations, or where none of the `BrokerLogs` entries have `Enabled` set to `true` will be flagged.
+MSK clusters must have broker logging enabled to provide audit and operational visibility. Without broker logs, you may be unable to detect or investigate security incidents, troubleshoot cluster issues, or meet logging retention and compliance requirements. In AWS CloudFormation, the `AWS::MSK::Cluster` resource must include the `LoggingInfo` property with `BrokerLogs` configured to specify at least one destination (`CloudWatchLogs`, `Firehose`, or `S3`). The selected destination entry must have `Enabled` set to `true`. Resources missing `LoggingInfo`, missing all three broker log destinations, or where none of the `BrokerLogs` entries have `Enabled` set to `true` will be flagged.
 
 Secure configuration example (CloudFormation YAML):
 
@@ -48,7 +48,6 @@ MyMSKCluster:
         CloudWatchLogs:
           Enabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

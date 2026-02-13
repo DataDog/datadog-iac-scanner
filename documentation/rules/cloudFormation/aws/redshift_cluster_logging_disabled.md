@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Redshift clusters must have audit and query logging enabled so user actions and query activity are captured for detection, incident response, and compliance. Without logging, malicious activity and data access can go undetected. In AWS CloudFormation, `AWS::Redshift::Cluster` resources must define the `LoggingProperties` property and include a valid `BucketName` (and optional `S3KeyPrefix`) so logs are delivered to an S3 bucket. Resources missing `LoggingProperties` will be flagged. Ensure the destination S3 bucket has appropriate access controls, encryption, and retention or lifecycle policies to protect and retain logs.
+Redshift clusters must have audit and query logging enabled so user actions and query activity are captured for detection, incident response, and compliance. Without logging, malicious activity and data access can go undetected. In AWS CloudFormation, `AWS::Redshift::Cluster` resources must define the `LoggingProperties` property and include a valid `BucketName` (and optional `S3KeyPrefix`) so logs are delivered to an S3 bucket. Resources missing `LoggingProperties` will be flagged. Ensure the destination S3 bucket has appropriate access controls, encryption, and retention or lifecycle policies to protect and retain logs.
 
 ```yaml
 MyRedshiftCluster:
@@ -43,7 +43,6 @@ MyRedshiftCluster:
       BucketName: my-redshift-logs
       S3KeyPrefix: redshift/logs
 ```
-
 
 ## Compliant Code Examples
 ```yaml

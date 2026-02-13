@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Config should include the managed rule that detects unencrypted EBS volumes so that unencrypted volumes, snapshots, and backups are identified and remediated to prevent data exposure if storage media or snapshots are compromised.
+AWS Config should include the managed rule that detects unencrypted EBS volumes so that unencrypted volumes, snapshots, and backups are identified and remediated to prevent data exposure if storage media or snapshots are compromised.
 
  This check looks for an `AWS::Config::ConfigRule` resource with `Properties.Source.SourceIdentifier` set to `ENCRYPTED_VOLUMES`. Resources missing this config rule or with a different `SourceIdentifier` will be flagged.
 
@@ -45,7 +45,6 @@ EncryptedVolumesConfigRule:
       Owner: AWS
       SourceIdentifier: ENCRYPTED_VOLUMES
 ```
-
 
 ## Compliant Code Examples
 ```yaml

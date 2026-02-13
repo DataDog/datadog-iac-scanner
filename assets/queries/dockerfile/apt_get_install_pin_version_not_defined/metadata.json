@@ -1,11 +1,12 @@
 {
   "id": "965a08d7-ef86-4f14-8792-4a3b2098937e",
-  "queryName": "Apt Get Install Pin Version Not Defined",
+  "queryName": "apt-get install pin version not defined",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
-  "descriptionText": "When installing a package, its pin version should be defined",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "descriptionText": "Installing packages in a Dockerfile without pinning versions can lead to unintentional upgrades or supply-chain changes that introduce vulnerabilities or break reproducible builds.\n\nThis rule inspects Dockerfile `RUN` instructions that invoke `apt-get install` and flags any package tokens that do not include an explicit version (for APT, the expected form is `name=version`). Resources with packages missing `=version` will be reported. Ensure every package in the `apt-get install` invocation is pinned to a specific version instead of relying on the distribution's default. \n\nSecure example:\n\n```dockerfile\nRUN apt-get update && apt-get install -y \\\n  curl=7.68.0-1ubuntu2 \\\n  nginx=1.18.0-0ubuntu1\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/apt_get_install_pin_version_not_defined",
   "platform": "Dockerfile",
   "descriptionID": "e0e1edad",
-  "cwe": "1357"
+  "cwe": "1357",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
 }

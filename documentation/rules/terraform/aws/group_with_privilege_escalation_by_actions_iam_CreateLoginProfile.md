@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting a group the `iam:CreateLoginProfile` action with a `Resource` set to `"*"` in an IAM policy allows any user in that group to create or reset the console password for any IAM user in the account. This enables privilege escalation, as attackers or unauthorized users can create login profiles for privileged IAM users, effectively gaining their access. Leaving this misconfiguration unaddressed can lead to account compromise and full administrative access over AWS resources.
-
+Granting a group the `iam:CreateLoginProfile` action with a `Resource` set to `"*"` in an IAM policy allows any user in that group to create or reset the console password for any IAM user in the account. This enables privilege escalation, as attackers or unauthorized users can create login profiles for privileged IAM users, effectively gaining their access. Leaving this misconfiguration unaddressed can lead to account compromise and full administrative access over AWS resources.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When configuring an Amazon SQS VPC Endpoint using Terraform, it is essential to have DNS resolution enabled for the associated VPC by setting `enable_dns_support = true`. If this is not set, such as in the configuration `enable_dns_support = false`, private DNS hostnames are not resolved within the VPC, causing communication failures for instances relying on DNS-based access to AWS services via the endpoint. This can result in application connectivity issues and may force the use of less secure public network routes, increasing the attack surface.
-
+When configuring an Amazon SQS VPC Endpoint using Terraform, it is essential to have DNS resolution enabled for the associated VPC by setting `enable_dns_support = true`. If this is not set, such as in the configuration `enable_dns_support = false`, private DNS hostnames are not resolved within the VPC, causing communication failures for instances relying on DNS-based access to AWS services via the endpoint. This can result in application connectivity issues and may force the use of less secure public network routes, increasing the attack surface.
 
 ## Compliant Code Examples
 ```terraform

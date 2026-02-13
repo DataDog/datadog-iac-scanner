@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enforcing SSL connections on PostgreSQL servers ensures all data transmitted between clients and the database is encrypted, protecting sensitive information from interception or tampering. If the `ssl_enforcement_enabled` attribute is set to `false` or omitted in Terraform, as shown below, data may be transmitted in plaintext, exposing credentials and other data to potential attackers:
+Enforcing SSL connections on PostgreSQL servers ensures all data transmitted between clients and the database is encrypted, protecting sensitive information from interception or tampering. If the `ssl_enforcement_enabled` attribute is set to `false` or omitted in Terraform, as shown below, data may be transmitted in plaintext, exposing credentials and other data to potential attackers:
 
 ```
 resource "azurerm_postgresql_server" "example" {
@@ -46,7 +46,6 @@ resource "azurerm_postgresql_server" "example" {
 }
 ```
 Neglecting to enforce SSL can result in data breaches or non-compliance with security standards.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Amazon ECS task definitions should use `NetworkMode` set to `awsvpc` so each task receives its own elastic network interface and can be protected by VPC security groups. This enables per-task network isolation and reduces the blast radius of compromised containers.\n \n In CloudFormation, the `AWS::ECS::TaskDefinition` resource's `NetworkMode` property must be defined and set to `awsvpc`. If `NetworkMode` is undefined, it defaults to `bridge`. Resources missing the property or with any other value (for example, `bridge` or `host`) will be flagged because they cannot leverage task-level security groups. \n \n Secure configuration example:\n\n```yaml\nMyTaskDefinition:\n  Type: AWS::ECS::TaskDefinition\n  Properties:\n    Family: my-task\n    NetworkMode: awsvpc\n    ContainerDefinitions:\n      - Name: my-container\n        Image: nginx:latest\n        Essential: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecs_task_definition_network_mode_not_recommended",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ecs_task_definition_network_mode_not_recommended",
   "platform": "CloudFormation",
   "descriptionID": "bded2e99",
   "cloudProvider": "aws",

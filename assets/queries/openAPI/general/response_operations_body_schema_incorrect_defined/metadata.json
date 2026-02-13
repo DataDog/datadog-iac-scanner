@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "If a response is head or its code is 204 or 304, it shouldn't have a content defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/response_operations_body_schema_incorrect_defined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/response_operations_body_schema_incorrect_defined",
   "platform": "OpenAPI",
   "descriptionID": "309e8e76",
   "aggregation": 2,

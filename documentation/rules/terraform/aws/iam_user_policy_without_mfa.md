@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies that the AWS root user is required to authenticate using Multi-Factor Authentication (MFA). If the root user is not protected with MFA, as in a policy lacking a condition on `"aws:MultiFactorAuthPresent"`, unauthorized users with access to the root credentials could compromise the entire AWS account. Enforcing MFA by adding a policy condition, such as the following, significantly reduces the risk of credential theft, unauthorized privilege escalation, and account takeovers.
+This check verifies that the AWS root user is required to authenticate using Multi-Factor Authentication (MFA). If the root user is not protected with MFA, as in a policy lacking a condition on `"aws:MultiFactorAuthPresent"`, unauthorized users with access to the root credentials could compromise the entire AWS account. Enforcing MFA by adding a policy condition, such as the following, significantly reduces the risk of credential theft, unauthorized privilege escalation, and account takeovers.
 
 ```
 "Condition": {
@@ -37,7 +37,6 @@ meta:
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

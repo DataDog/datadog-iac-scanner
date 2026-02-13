@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups must not expose unknown TCP ports to the entire internet because unknown or unapproved ports can host undocumented services and increase the attack surface for scanning and exploitation.
+Security groups must not expose unknown TCP ports to the entire internet because unknown or unapproved ports can host undocumented services and increase the attack surface for scanning and exploitation.
 
 For `AWS::EC2::SecurityGroup` resources, this rule inspects each `SecurityGroupIngress` entry and flags entries that use `CidrIp: 0.0.0.0/0` or `CidrIpv6: ::/0` together with `FromPort`/`ToPort` values that are not present in the known TCP ports map. The check treats a missing or unrecognized `FromPort` or `ToPort` as a violation and also flags ranges where any port in `FromPort..ToPort` is unknown.
 
@@ -51,7 +51,6 @@ MySecurityGroup:
         ToPort: 22
         CidrIp: 203.0.113.10/32
 ```
-
 
 ## Compliant Code Examples
 ```yaml

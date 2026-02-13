@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- GKE cluster nodes should be launched with Shielded VM enabled by setting the `enable_shielded_nodes` attribute to `true` in the `google_container_cluster` resource. Failing to enable Shielded VM features exposes cluster nodes to potential rootkit and boot-level malware attacks, as these features help ensure node integrity through secure boot and trusted platform module (TPM) protections. For secure configuration, use:
+GKE cluster nodes should be launched with Shielded VM enabled by setting the `enable_shielded_nodes` attribute to `true` in the `google_container_cluster` resource. Failing to enable Shielded VM features exposes cluster nodes to potential rootkit and boot-level malware attacks, as these features help ensure node integrity through secure boot and trusted platform module (TPM) protections. For secure configuration, use:
 
 ```
 resource "google_container_cluster" "secure" {
@@ -37,7 +37,6 @@ resource "google_container_cluster" "secure" {
   enable_shielded_nodes = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

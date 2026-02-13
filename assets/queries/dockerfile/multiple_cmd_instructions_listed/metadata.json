@@ -1,12 +1,13 @@
 {
   "id": "41c195f4-fc31-4a5c-8a1b-90605538d49f",
-  "queryName": "Multiple CMD Instructions Listed",
+  "queryName": "Multiple CMD instructions listed",
   "severity": "LOW",
   "category": "Build Process",
-  "descriptionText": "There can only be one CMD instruction in a Dockerfile. If you list more than one CMD then only the last CMD will take effect",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#cmd",
+  "descriptionText": "Dockerfiles must contain at most one `CMD` instruction because only the last `CMD` is used at container runtime. Extra `CMD` instructions are ignored and can cause required startup steps or security controls to be skipped, resulting in unexpected or insecure runtime behavior.\n\nThis rule flags Dockerfile documents that include more than one `CMD` instruction. Ensure your Dockerfile defines zero or one `CMD`. If you need multiple initialization steps, combine them into a single `CMD` (exec form), use `ENTRYPOINT` for the main process and `CMD` for default arguments, or run a wrapper script that performs setup and then execs the main process.\n\nSecure examples:\n\n```dockerfile\n# single exec-form CMD\nCMD [\"nginx\", \"-g\", \"daemon off;\"]\n```\n\n```dockerfile\n# ENTRYPOINT for main process, CMD for defaults/arguments\nENTRYPOINT [\"/usr/local/bin/start.sh\"]\nCMD [\"--config\", \"/etc/app/config\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/multiple_cmd_instructions_listed",
   "platform": "Dockerfile",
   "descriptionID": "96f59ca3",
   "cwe": "1041",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#cmd"
 }

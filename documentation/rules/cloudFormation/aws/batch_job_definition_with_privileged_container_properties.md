@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Running Batch job containers in privileged mode grants them elevated access to the host kernel and device nodes, which can enable container escape, host compromise, and lateral movement across your environment. The `Privileged` property under `Properties.ContainerProperties` in `AWS::Batch::JobDefinition` must be set to `false`. Resources with `Privileged` set to `true` will be flagged. If a job legitimately requires extra capabilities, avoid privileged mode and instead grant only the specific capabilities needed or run the workload on dedicated, hardened hosts.
+Running Batch job containers in privileged mode grants them elevated access to the host kernel and device nodes, which can enable container escape, host compromise, and lateral movement across your environment. The `Privileged` property under `Properties.ContainerProperties` in `AWS::Batch::JobDefinition` must be set to `false`. Resources with `Privileged` set to `true` will be flagged. If a job legitimately requires extra capabilities, avoid privileged mode and instead grant only the specific capabilities needed or run the workload on dedicated, hardened hosts.
 
 Secure configuration example:
 
@@ -42,7 +42,6 @@ MyJobDefinition:
       Memory: 1024
       Privileged: false
 ```
-
 
 ## Compliant Code Examples
 ```yaml

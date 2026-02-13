@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- `tencentcloud_security_group_rule_set` `ingress` is configured to accept all traffic.  
+`tencentcloud_security_group_rule_set` `ingress` is configured to accept all traffic.  
 This rule triggers when an `ingress` entry has `action` set to `ACCEPT` and the source is `cidr_block` = `0.0.0.0/0` (IPv4) or `ipv6_cidr_block` = `::/0` (IPv6), with `protocol` = `ALL` and `port` = `ALL`.  
 `tencentcloud_security_group_rule_set` `ingress` should not be set to accept all traffic.
-
 
 ## Compliant Code Examples
 ```terraform

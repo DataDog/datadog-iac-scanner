@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Schema discriminator values should match defined properties.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/schema_discriminator_mismatch_defined_properties",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/schema_discriminator_mismatch_defined_properties",
   "platform": "OpenAPI",
   "descriptionID": "f075e83d",
   "aggregation": 2,

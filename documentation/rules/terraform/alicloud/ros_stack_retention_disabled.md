@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- The `retain_stacks` attribute should be enabled to preserve the stack when deleting a stack instance from a stack group.
+The `retain_stacks` attribute should be enabled to preserve the stack when deleting a stack instance from a stack group.
 If `retain_stacks` is undefined or set to `false`, the underlying `alicloud_ros_stack_instance` is deleted when the instance is removed. Set `retain_stacks = true` to retain the stack.
-
 
 ## Compliant Code Examples
 ```terraform

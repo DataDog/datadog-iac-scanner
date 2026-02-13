@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS DB security groups control access to RDS database instances by defining which IP addresses or Amazon EC2 instances can connect to them. Configuring a DB security group with a public interface (`0.0.0.0/0`) allows unrestricted access from any IP address, potentially exposing your database to unauthorized access and attacks from the internet.
+AWS DB security groups control access to RDS database instances by defining which IP addresses or Amazon EC2 instances can connect to them. Configuring a DB security group with a public interface (`0.0.0.0/0`) allows unrestricted access from any IP address, potentially exposing your database to unauthorized access and attacks from the internet.
 
 This vulnerability significantly increases the risk of data breaches, unauthorized data access, and potential compromise of sensitive information stored in your database. Instead of using public interfaces, you should restrict access to specific IP ranges or VPC CIDR blocks.
 
@@ -53,7 +53,6 @@ resource "aws_db_security_group" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

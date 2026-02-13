@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Domain endpoints for Elasticsearch/OpenSearch must enforce HTTPS to protect data in transit and prevent interception or tampering of requests and responses.
+Domain endpoints for Elasticsearch/OpenSearch must enforce HTTPS to protect data in transit and prevent interception or tampering of requests and responses.
  
  For CloudFormation resources of type `AWS::Elasticsearch::Domain` and `AWS::OpenSearchService::Domain`, the `DomainEndpointOptions.EnforceHTTPS` property must be defined and set to `true`. Resources missing `DomainEndpointOptions`, missing `EnforceHTTPS`, or with `EnforceHTTPS` set to `false` will be flagged.
 
@@ -42,7 +42,6 @@ MyDomain:
     DomainEndpointOptions:
       EnforceHTTPS: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

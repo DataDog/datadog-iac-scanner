@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- This rule verifies that each `databricks_job` and `databricks_cluster` resource has an associated `databricks_permissions` resource referencing it via `job_id` or `cluster_id`.
+This rule verifies that each `databricks_job` and `databricks_cluster` resource has an associated `databricks_permissions` resource referencing it via `job_id` or `cluster_id`.
 
 It also flags any `databricks_permissions` resource with `permission_level == "IS_OWNER"` that lacks an associated `service_principal_name`. Reported findings include `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.
-
 
 ## Compliant Code Examples
 ```terraform

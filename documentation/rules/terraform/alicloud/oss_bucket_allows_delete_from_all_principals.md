@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- An `alicloud_oss_bucket` should not allow the `DeleteBucket` action from all principals. Allowing this action may expose private data or enable unauthorized deletion or tampering. This rule asserts that `Effect` must not be `Allow` when `Action` is `DeleteBucket` and `Principal` is set to `"*"`. The policy evaluated is the `policy` attribute on the `alicloud_oss_bucket` resource.
-
+An `alicloud_oss_bucket` should not allow the `DeleteBucket` action from all principals. Allowing this action may expose private data or enable unauthorized deletion or tampering. This rule asserts that `Effect` must not be `Allow` when `Action` is `DeleteBucket` and `Principal` is set to `"*"`. The policy evaluated is the `policy` attribute on the `alicloud_oss_bucket` resource.
 
 ## Compliant Code Examples
 ```terraform

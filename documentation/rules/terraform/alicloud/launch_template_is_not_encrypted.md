@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- ECS Launch Template resources must have instance disk data encrypted. To enable encryption, the `encrypted` attribute on the `alicloud_launch_template` resource must be set to `true`. If `encrypted` is `false` or not defined, the resource is non-compliant and should be updated to include `encrypted = true`.
-
+ECS Launch Template resources must have instance disk data encrypted. To enable encryption, the `encrypted` attribute on the `alicloud_launch_template` resource must be set to `true`. If `encrypted` is `false` or not defined, the resource is non-compliant and should be updated to include `encrypted = true`.
 
 ## Compliant Code Examples
 ```terraform

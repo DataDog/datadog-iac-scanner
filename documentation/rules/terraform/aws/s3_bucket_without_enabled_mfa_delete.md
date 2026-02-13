@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- An Amazon S3 bucket without Multi-Factor Authentication (MFA) delete enabled is vulnerable to accidental or malicious deletion of objects, even if bucket versioning is turned on. MFA delete adds an extra layer of security by requiring a time-based one-time password from a hardware or virtual MFA device before allowing delete operations on objects or bucket versions. If this protection is not enabled, anyone with appropriate credentials can permanently delete data, increasing the risk of data loss due to stolen credentials or misconfigured permissions. Terraform does not currently support enabling `mfa_delete` in the `versioning` block of the `aws_s3_bucket` resource, so this must be configured manually using the AWS CLI after applying Terraform, as shown in the command: `aws s3api put-bucket-versioning --versioning-configuration Status=Enabled,MFADelete=Enabled --bucket=<BUCKET_NAME> --mfa=<MFA_SERIAL_NUMBER>`.
-
+An Amazon S3 bucket without Multi-Factor Authentication (MFA) delete enabled is vulnerable to accidental or malicious deletion of objects, even if bucket versioning is turned on. MFA delete adds an extra layer of security by requiring a time-based one-time password from a hardware or virtual MFA device before allowing delete operations on objects or bucket versions. If this protection is not enabled, anyone with appropriate credentials can permanently delete data, increasing the risk of data loss due to stolen credentials or misconfigured permissions. Terraform does not currently support enabling `mfa_delete` in the `versioning` block of the `aws_s3_bucket` resource, so this must be configured manually using the AWS CLI after applying Terraform, as shown in the command: `aws s3api put-bucket-versioning --versioning-configuration Status=Enabled,MFADelete=Enabled --bucket=<BUCKET_NAME> --mfa=<MFA_SERIAL_NUMBER>`.
 
 ## Compliant Code Examples
 ```terraform

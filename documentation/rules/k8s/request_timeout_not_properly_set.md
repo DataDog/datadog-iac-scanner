@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- When `kube-apiserver` is used, the `--request-timeout` flag must not be set to more than 300 seconds. Values parsed as greater than 300 seconds are reported as incorrect.
+When `kube-apiserver` is used, the `--request-timeout` flag must not be set to more than 300 seconds. Values parsed as greater than 300 seconds are reported as incorrect.
 The rule inspects `containers` and `initContainers`, checking both `command` and `args`, and converts duration values with `h`, `m`, and `s` suffixes (for example `1h30m`, `45m`, `30s`) into seconds for comparison.
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When BigQuery tables are configured with public access through IAM members or bindings using principals such as `allUsers` or `allAuthenticatedUsers`, they expose potentially sensitive data to anyone on the internet or any authenticated Google account. This significantly increases the risk of data breaches, unauthorized access, and compliance violations related to data privacy regulations.
+When BigQuery tables are configured with public access through IAM members or bindings using principals such as `allUsers` or `allAuthenticatedUsers`, they expose potentially sensitive data to anyone on the internet or any authenticated Google account. This significantly increases the risk of data breaches, unauthorized access, and compliance violations related to data privacy regulations.
 
 To secure BigQuery tables, always restrict access to specific authenticated users, service accounts, or groups instead of using public principals. For example, use `user:someone@example.com` instead of `allUsers` or `allAuthenticatedUsers` as shown in this comparison:
 
@@ -49,7 +49,6 @@ resource "google_bigquery_table_iam_member" "secure_example" {
   role       = "roles/bigquery.dataViewer"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

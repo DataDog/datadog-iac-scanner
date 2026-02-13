@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon DocumentDB clusters must export profiler and audit logs to CloudWatch Logs to ensure visibility for security monitoring and to support incident response and compliance.
+Amazon DocumentDB clusters must export profiler and audit logs to CloudWatch Logs to ensure visibility for security monitoring and to support incident response and compliance.
  
  The `EnableCloudwatchLogsExports` property on `AWS::DocDB::DBCluster` resources must be defined and include both `profiler` and `audit` in the list. Resources missing this property or omitting either value will be flagged because they prevent collection of critical diagnostic and audit data.
 
@@ -45,7 +45,6 @@ MyDocDBCluster:
       - profiler
       - audit
 ```
-
 
 ## Compliant Code Examples
 ```yaml

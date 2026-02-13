@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Content Type should be set to 'multipart/form-data' in case of uploading an arbitrary number of files (array)",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/invalid_content_type_for_multiple_files_upload",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/invalid_content_type_for_multiple_files_upload",
   "platform": "OpenAPI",
   "descriptionID": "d74b6525",
   "cwe": "20",

@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Operations file parameters consumes must be 'multipart/form-data', 'application/x-www-form-urlencoded' or both",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/file_parameter_with_wrong_consumes_property",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/file_parameter_with_wrong_consumes_property",
   "platform": "OpenAPI",
   "descriptionID": "f6b7b31a",
   "cwe": "20",

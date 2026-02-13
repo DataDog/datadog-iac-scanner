@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When `kube-apiserver` is used, the `--disable-admission-plugins` flag should not include the `ServiceAccount` plugin. Disabling the `ServiceAccount` admission plugin prevents the API server from admitting service account tokens and can break pod authentication and credential provisioning. This rule detects `kube-apiserver` containers and examines the container command for the `--disable-admission-plugins` flag containing `ServiceAccount`.
-
+When `kube-apiserver` is used, the `--disable-admission-plugins` flag should not include the `ServiceAccount` plugin. Disabling the `ServiceAccount` admission plugin prevents the API server from admitting service account tokens and can break pod authentication and credential provisioning. This rule detects `kube-apiserver` containers and examines the container command for the `--disable-admission-plugins` flag containing `ServiceAccount`.
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Access keys associated with the AWS root account grant persistent, account-wide credentials. If compromised, they can lead to full account takeover and loss of control over all resources.
+Access keys associated with the AWS root account grant persistent, account-wide credentials. If compromised, they can lead to full account takeover and loss of control over all resources.
 
 In CloudFormation, `AWS::IAM::AccessKey` resources must not be associated with the root account. This rule flags `Resources.<name>.Properties.UserName` values that contain `root` (case-insensitive). Instead of creating or using root access keys, delete or deactivate any existing root keys, enable MFA on the root account, and provision IAM users or roles with least privilege for programmatic access.
 
@@ -45,7 +45,6 @@ MyAccessKey:
   Properties:
     UserName: !Ref MyUser
 ```
-
 
 ## Compliant Code Examples
 ```yaml

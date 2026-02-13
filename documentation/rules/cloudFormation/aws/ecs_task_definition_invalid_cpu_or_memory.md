@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Incorrect CPU or memory settings for AWS Fargate tasks can prevent containers from starting or cause insufficient or imbalanced resource allocation. This can lead to service downtime and degraded availability.
+Incorrect CPU or memory settings for AWS Fargate tasks can prevent containers from starting or cause insufficient or imbalanced resource allocation. This can lead to service downtime and degraded availability.
  
  This rule checks `AWS::ECS::Service` resources with `LaunchType` set to `FARGATE` and their associated `AWS::ECS::TaskDefinition` container definitions:
  - `ContainerDefinitions[].Cpu` must be one of `256`, `512`, `1024`, `2048`, or `4096`.
@@ -53,7 +53,6 @@ MyTaskDef:
         Cpu: 512
         Memory: 2048
 ```
-
 
 ## Compliant Code Examples
 ```yaml

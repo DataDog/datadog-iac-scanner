@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This configuration grants an IAM group the permission to attach any policy to any role in the AWS account, as indicated by the action `iam:AttachRolePolicy` with the resource set to `"*"`. This creates a significant privilege escalation risk, as group members could grant themselves or others broader access, including administrative permissions, by attaching highly privileged policies to roles. If left unaddressed, this misconfiguration makes it possible for malicious or compromised users to take full control of AWS resources, potentially leading to data breaches or loss of service integrity. Restricting such permissions only to trusted entities and minimizing their scope is critical to maintaining a secure AWS environment.
-
+This configuration grants an IAM group the permission to attach any policy to any role in the AWS account, as indicated by the action `iam:AttachRolePolicy` with the resource set to `"*"`. This creates a significant privilege escalation risk, as group members could grant themselves or others broader access, including administrative permissions, by attaching highly privileged policies to roles. If left unaddressed, this misconfiguration makes it possible for malicious or compromised users to take full control of AWS resources, potentially leading to data breaches or loss of service integrity. Restricting such permissions only to trusted entities and minimizing their scope is critical to maintaining a secure AWS environment.
 
 ## Compliant Code Examples
 ```terraform

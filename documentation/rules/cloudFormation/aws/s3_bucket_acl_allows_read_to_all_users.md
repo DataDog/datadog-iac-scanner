@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets with a publicly readable ACL allow any internet user to list and download objects. This can lead to data leakage, accidental exposure of sensitive information, and compliance violations. This rule checks `AWS::S3::Bucket` resources and flags buckets whose `Properties.AccessControl` is set to `PublicRead`. To remediate, set `AccessControl` to `Private` or remove the ACL and enable S3 Block Public Access controls. If you must serve public content, use a CDN (CloudFront) with an origin access identity or a narrowly scoped bucket policy instead of a public ACL.
+S3 buckets with a publicly readable ACL allow any internet user to list and download objects. This can lead to data leakage, accidental exposure of sensitive information, and compliance violations. This rule checks `AWS::S3::Bucket` resources and flags buckets whose `Properties.AccessControl` is set to `PublicRead`. To remediate, set `AccessControl` to `Private` or remove the ACL and enable S3 Block Public Access controls. If you must serve public content, use a CDN (CloudFront) with an origin access identity or a narrowly scoped bucket policy instead of a public ACL.
 
 Secure CloudFormation example:
 
@@ -44,7 +44,6 @@ MySecureBucket:
       BlockPublicPolicy: true
       RestrictPublicBuckets: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

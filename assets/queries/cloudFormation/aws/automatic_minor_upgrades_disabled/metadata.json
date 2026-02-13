@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Amazon RDS instances must have automatic minor version upgrades enabled so vendor patches and security fixes are applied promptly, reducing exposure to known database vulnerabilities and helping meet patching and compliance requirements. The `AutoMinorVersionUpgrade` property on `AWS::RDS::DBInstance` resources must be defined and set to `true`. Resources missing this property or explicitly set to `false` will be flagged. Note that minor upgrades may require a brief database restart during the maintenance window, so configure `PreferredMaintenanceWindow` to control timing.\n\n```yaml\nMyDB:\n  Type: AWS::RDS::DBInstance\n  Properties:\n    DBInstanceIdentifier: mydb\n    Engine: mysql\n    EngineVersion: \"8.0.28\"\n    AutoMinorVersionUpgrade: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/automatic_minor_upgrades_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/automatic_minor_upgrades_disabled",
   "platform": "CloudFormation",
   "descriptionID": "e2908402",
   "cloudProvider": "aws",

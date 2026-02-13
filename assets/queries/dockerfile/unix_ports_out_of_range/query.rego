@@ -12,6 +12,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'EXPOSE' should not contain ports out of range [0, 65535]",
 		"keyActualValue": "'EXPOSE' contains ports out of range [0, 65535]",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the `can_ip_forward` attribute for Google Compute Engine instances is set to `false`, which prevents instances from forwarding packets not addressed to them. If `can_ip_forward` is set to `true`, as shown below, the instance could be misused as a routing or proxy device, increasing the risk of data exfiltration or man-in-the-middle attacks:
+This check ensures that the `can_ip_forward` attribute for Google Compute Engine instances is set to `false`, which prevents instances from forwarding packets not addressed to them. If `can_ip_forward` is set to `true`, as shown below, the instance could be misused as a routing or proxy device, increasing the risk of data exfiltration or man-in-the-middle attacks:
 
 ```
 resource "google_compute_instance" "appserver" {
@@ -50,7 +50,6 @@ resource "google_compute_instance" "appserver" {
 }
 ```
 Disabling IP forwarding hardens network boundaries and reduces the attack surface of the cloud environment.
-
 
 ## Compliant Code Examples
 ```terraform

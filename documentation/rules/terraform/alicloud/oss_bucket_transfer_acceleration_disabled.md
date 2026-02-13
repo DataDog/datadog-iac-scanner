@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- An OSS bucket should have `transfer_acceleration.enabled` set to `true`. This rule inspects `alicloud_oss_bucket` resources and reports when the `transfer_acceleration` block is missing or when `transfer_acceleration.enabled` is `false`. It recommends adding a `transfer_acceleration` block with `enabled = true` or updating the existing value to `true`.
-
+An OSS bucket should have `transfer_acceleration.enabled` set to `true`. This rule inspects `alicloud_oss_bucket` resources and reports when the `transfer_acceleration` block is missing or when `transfer_acceleration.enabled` is `false`. It recommends adding a `transfer_acceleration` block with `enabled = true` or updating the existing value to `true`.
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "VM instance should have OSLogin enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/os_login_is_disabled_for_vm_instance",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/os_login_is_disabled_for_vm_instance",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "0908cbc4",
   "cloudProvider": "gcp",

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront distributions that use a custom TLS certificate should enforce a modern TLS protocol version. This prevents negotiation of weak or deprecated protocols that enable downgrade attacks or compromise confidentiality and integrity.
+CloudFront distributions that use a custom TLS certificate should enforce a modern TLS protocol version. This prevents negotiation of weak or deprecated protocols that enable downgrade attacks or compromise confidentiality and integrity.
 
 For `AWS::CloudFront::Distribution` resources where `ViewerCertificate.CloudFrontDefaultCertificate` is `false`, `ViewerCertificate.MinimumProtocolVersion` must be set to `TLSv1.1` or `TLSv1.2`. Resources missing `MinimumProtocolVersion`, or configured with any other value, will be flagged. Distributions using the default CloudFront certificate (`CloudFrontDefaultCertificate: true`) are not evaluated by this rule.
 
@@ -49,7 +49,6 @@ MyDistribution:
       MinimumProtocolVersion: TLSv1.2
       AcmCertificateArn: arn:aws:acm:region:account:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
-
 
 ## Compliant Code Examples
 ```yaml

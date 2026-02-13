@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "S3 buckets should have server access logging enabled to create an audit trail of requests and changes. This helps detect unauthorized access or data exfiltration and supports forensic analysis and compliance.\n\nIn CloudFormation, `AWS::S3::Bucket` resources must include the `LoggingConfiguration` property with a valid `DestinationBucketName` (and optional `LogFilePrefix`) pointing to the bucket that will receive access logs. Resources missing `LoggingConfiguration` will be flagged. Ensure the destination bucket exists, is appropriately restricted for log retention, and permits S3 log delivery to prevent log loss or tampering.\n\nSecure configuration example:\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    BucketName: my-source-bucket\n    LoggingConfiguration:\n      DestinationBucketName: my-logs-bucket\n      LogFilePrefix: access-logs/\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_logging_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_logging_disabled",
   "platform": "CloudFormation",
   "descriptionID": "ce3728e6",
   "cloudProvider": "aws",

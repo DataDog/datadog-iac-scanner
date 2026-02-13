@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Load balancers must not reference security groups that lack inbound (ingress) rules, because a security group without ingress can block legitimate client traffic to the load balancer and indicates an incomplete network configuration that may cause availability issues.\n \n For each load balancer resource (for example, `AWS::ElasticLoadBalancing::LoadBalancer` or `AWS::ElasticLoadBalancingV2::LoadBalancer`), each entry in the `Properties.SecurityGroups` property must reference an `AWS::EC2::SecurityGroup` with ingress rules defined. The security group must either define a non-empty `SecurityGroupIngress` property or be targeted by one or more `AWS::EC2::SecurityGroupIngress` resources whose `GroupId` references it. Resources missing the `SecurityGroupIngress` key, with `SecurityGroupIngress` set to an empty list, or with no `AWS::EC2::SecurityGroupIngress` resources referencing the group will be flagged.\n\nSecure example with an inline SecurityGroup ingress definition:\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Allow HTTP to load balancer\n    VpcId: vpc-123456\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 80\n        ToPort: 80\n        CidrIp: 0.0.0.0/0\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elb_with_security_group_without_inbound_rules",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/elb_with_security_group_without_inbound_rules",
   "platform": "CloudFormation",
   "descriptionID": "3ccdd7d2",
   "cloudProvider": "aws",

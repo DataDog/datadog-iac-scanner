@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Elastic Load Balancers (ELBs) should have access logging enabled by setting the `enabled` attribute to `true` within the `access_logs` block. Disabling ELB access logs (for example, with `enabled = false`) can make it difficult to investigate errors, identify suspicious activity, or audit access to applications behind the load balancer. Without these logs, incident response and troubleshooting are significantly hindered, increasing the risk of undetected security incidents or prolonged outages.
-
+Elastic Load Balancers (ELBs) should have access logging enabled by setting the `enabled` attribute to `true` within the `access_logs` block. Disabling ELB access logs (for example, with `enabled = false`) can make it difficult to investigate errors, identify suspicious activity, or audit access to applications behind the load balancer. Without these logs, incident response and troubleshooting are significantly hindered, increasing the risk of undetected security incidents or prolonged outages.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ElastiCache replication groups must not use engine default ports because default ports are easily discovered and increase the risk of automated scanning, brute-force attempts, and unauthorized access.
+Amazon ElastiCache replication groups must not use engine default ports because default ports are easily discovered and increase the risk of automated scanning, brute-force attempts, and unauthorized access.
  
  For `AWS::ElastiCache::ReplicationGroup` resources, ensure `Properties.Port` is not set to `6379` when `Properties.Engine` is `redis`, or to `11211` when `Properties.Engine` is `memcached`. Resources with those exact settings will be flagged.
  
@@ -47,7 +47,6 @@ MyReplicationGroup:
     ReplicationGroupId: my-redis-cluster
     ReplicationGroupDescription: "Redis cluster on non-default port"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

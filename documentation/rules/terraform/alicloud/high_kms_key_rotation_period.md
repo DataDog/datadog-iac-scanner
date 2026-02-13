@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- KMS keys should have automatic rotation enabled, and the rotation period must not exceed one year. This rule converts the resource's `rotation_interval` (supports suffixes `s`, `m`, `h`, `d`) to seconds and flags values greater than `31536000`. It also requires `automatic_rotation` to be set to `Enabled`; missing or `Disabled` values are reported. To remediate, set `rotation_interval = "365d"` and `automatic_rotation = "Enabled"`.
-
+KMS keys should have automatic rotation enabled, and the rotation period must not exceed one year. This rule converts the resource's `rotation_interval` (supports suffixes `s`, `m`, `h`, `d`) to seconds and flags values greater than `31536000`. It also requires `automatic_rotation` to be set to `Enabled`; missing or `Disabled` values are reported. To remediate, set `rotation_interval = "365d"` and `automatic_rotation = "Enabled"`.
 
 ## Compliant Code Examples
 ```terraform

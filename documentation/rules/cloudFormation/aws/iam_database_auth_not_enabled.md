@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon RDS instances should have IAM database authentication enabled for engines and versions that support it to avoid embedding long‑lived database credentials in application code or configuration and to enable centralized credential management and rotation.
+Amazon RDS instances should have IAM database authentication enabled for engines and versions that support it to avoid embedding long‑lived database credentials in application code or configuration and to enable centralized credential management and rotation.
  
  For CloudFormation, the `EnableIAMDatabaseAuthentication` property on `AWS::RDS::DBInstance` must be defined and set to `true` when the template's `Engine`, `EngineVersion`, and `DBInstanceClass` indicate IAM authentication compatibility. Resources missing `EnableIAMDatabaseAuthentication` or with `EnableIAMDatabaseAuthentication` set to `false` will be flagged.
 
@@ -43,7 +43,6 @@ MyDBInstance:
     DBInstanceClass: db.t3.medium
     EnableIAMDatabaseAuthentication: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

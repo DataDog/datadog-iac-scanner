@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Missing description for `nifcloud_nas_security_group`.
+Missing description for `nifcloud_nas_security_group`.
 Detects `nifcloud_nas_security_group` resources that do not include the `description` attribute.
 A `description` is required for auditing and inventory purposes; provide a meaningful `description` to clarify the resource's purpose.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Amazon MQ brokers should have encryption options defined to ensure messages are encrypted at rest. Without proper encryption, sensitive data in message queues could be exposed if storage is compromised. To secure your broker, add an encryption_options block to your aws_mq_broker resource, either with a custom KMS key (recommended) or with the default AWS owned keys. Example of secure configuration: `encryption_options { kms_key_id = "your-kms-key-arn" use_aws_owned_key = false }` or simply `encryption_options {}` to use AWS-owned keys.
-
+Amazon MQ brokers should have encryption options defined to ensure messages are encrypted at rest. Without proper encryption, sensitive data in message queues could be exposed if storage is compromised. To secure your broker, add an encryption_options block to your aws_mq_broker resource, either with a custom KMS key (recommended) or with the default AWS owned keys. Example of secure configuration: `encryption_options { kms_key_id = "your-kms-key-arn" use_aws_owned_key = false }` or simply `encryption_options {}` to use AWS-owned keys.
 
 ## Compliant Code Examples
 ```terraform

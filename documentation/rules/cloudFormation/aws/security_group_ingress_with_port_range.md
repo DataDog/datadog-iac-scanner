@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security group ingress rules that specify a port range (`FromPort` does not equal `ToPort`) broaden the network attack surface and can unintentionally expose services that were not meant to be reachable.
+Security group ingress rules that specify a port range (`FromPort` does not equal `ToPort`) broaden the network attack surface and can unintentionally expose services that were not meant to be reachable.
 
 In CloudFormation, `AWS::EC2::SecurityGroupIngress` resources must have `FromPort` equal to `ToPort`. Each entry in an `AWS::EC2::SecurityGroup` resource's `SecurityGroupIngress` list must also have `FromPort` equal to `ToPort`. Any ingress entry where these values differ will be flagged. Resources that intentionally require ranges should include a documented justification and restrict allowed sources (for example, via `CidrIp` or `SourceSecurityGroupId`) to minimize exposure. Note that protocol-specific behavior (for example, ICMP type/code) may use these fields differently and still requires careful review.
 
@@ -56,7 +56,6 @@ MySecurityGroup:
         ToPort: 443
         CidrIp: 198.51.100.0/24
 ```
-
 
 ## Compliant Code Examples
 ```yaml

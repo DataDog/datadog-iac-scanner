@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- App Service instances should be configured to use the latest version of TLS encryption to ensure secure data transmission. Using outdated TLS versions, such as setting `min_tls_version = 1.1`, exposes applications to vulnerabilities and known exploits that exist in deprecated protocols. Setting `min_tls_version = "1.2"` in the `site_config` block helps protect data in transit and reduces the risk of security breaches due to weaker encryption standards.
+App Service instances should be configured to use the latest version of TLS encryption to ensure secure data transmission. Using outdated TLS versions, such as setting `min_tls_version = 1.1`, exposes applications to vulnerabilities and known exploits that exist in deprecated protocols. Setting `min_tls_version = "1.2"` in the `site_config` block helps protect data in transit and reduces the risk of security breaches due to weaker encryption standards.
 
 ```
 resource "azurerm_app_service" "example" {
@@ -38,7 +38,6 @@ resource "azurerm_app_service" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

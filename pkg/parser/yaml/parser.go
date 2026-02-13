@@ -8,6 +8,8 @@ package json
 import (
 	"bytes"
 	"context"
+	"maps"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
@@ -20,7 +22,8 @@ import (
 
 // Parser defines a parser type
 type Parser struct {
-	resolvedFiles map[string]model.ResolvedFile
+	resolvedFiles   map[string]model.ResolvedFile
+	resolvedFilesMu sync.RWMutex
 }
 
 // Resolve - replace or modifies in-memory content before parsing
@@ -30,7 +33,11 @@ func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename strin
 	res := file.NewResolver(yaml.Unmarshal, yaml.Marshal, p.SupportedExtensions())
 	resolvedFilesCache := make(map[string]file.ResolvedFile)
 	resolved := res.Resolve(ctx, fileContent, filename, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
+
+	p.resolvedFilesMu.Lock()
 	p.resolvedFiles = res.ResolvedFiles
+	p.resolvedFilesMu.Unlock()
+
 	if len(res.ResolvedFiles) == 0 {
 		return fileContent, nil
 	}
@@ -205,5 +212,9 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 
 // GetResolvedFiles returns resolved files
 func (p *Parser) GetResolvedFiles() map[string]model.ResolvedFile {
-	return p.resolvedFiles
+	p.resolvedFilesMu.RLock()
+	defer p.resolvedFilesMu.RUnlock()
+	resolvedFiles := make(map[string]model.ResolvedFile, len(p.resolvedFiles))
+	maps.Copy(resolvedFiles, p.resolvedFiles)
+	return resolvedFiles
 }

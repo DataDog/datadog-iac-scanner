@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The OSS bucket used by `alicloud_actiontrail_trail` must not be publicly accessible. This rule flags `alicloud_oss_bucket` resources with `acl` set to `public-read` or `public-read-write`, as these settings expose sensitive log data. The `acl` should be set to private to restrict access.
-
+The OSS bucket used by `alicloud_actiontrail_trail` must not be publicly accessible. This rule flags `alicloud_oss_bucket` resources with `acl` set to `public-read` or `public-read-write`, as these settings expose sensitive log data. The `acl` should be set to private to restrict access.
 
 ## Compliant Code Examples
 ```terraform

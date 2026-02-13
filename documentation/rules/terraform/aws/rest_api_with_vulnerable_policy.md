@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that REST API policies do not use wildcard values for the `Action` and `Principal` fields. Using a wildcard (`"*"`) in the `Principal` field allows any AWS user to invoke the API, and a wildcard in the `Action` field grants permissions for all possible API Gateway actions. This overly permissive configuration introduces a critical security vulnerability, as it permits unauthorized users to execute any API Gateway action, potentially leading to data exposure, unauthorized system manipulation, or service disruption. Restricting these fields to specific users and actions is necessary to enforce least privilege and mitigate the risk of API abuse or compromise.
-
+This check ensures that REST API policies do not use wildcard values for the `Action` and `Principal` fields. Using a wildcard (`"*"`) in the `Principal` field allows any AWS user to invoke the API, and a wildcard in the `Action` field grants permissions for all possible API Gateway actions. This overly permissive configuration introduces a critical security vulnerability, as it permits unauthorized users to execute any API Gateway action, potentially leading to data exposure, unauthorized system manipulation, or service disruption. Restricting these fields to specific users and actions is necessary to enforce least privilege and mitigate the risk of API abuse or compromise.
 
 ## Compliant Code Examples
 ```terraform

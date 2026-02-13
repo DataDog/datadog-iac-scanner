@@ -1,12 +1,13 @@
 {
   "id": "295acb63-9246-4b21-b441-7c1f1fb62dc0",
-  "queryName": "Missing Dnf Clean All",
+  "queryName": "Missing dnf clean all",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "Cached package data should be cleaned after installation to reduce image size",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "descriptionText": "When Dockerfile `RUN` commands install packages with DNF and do not remove package caches, the resulting image retains package metadata and cached packages which increase image size and can broaden the attack surface or complicate vulnerability management.\n\nThis rule checks Dockerfile `RUN` instructions: any `RUN` that contains a `dnf install` command (including variants such as `dnf in`, `dnf reinstall`, `dnf rei`, `dnf install-n`, `dnf install-na`, `dnf install-nevra`) must be followed by a `dnf clean all` invocation. The `dnf clean all` may appear in the same `RUN` (recommended, chained with `&&`) or in a subsequent `RUN` later in the Dockerfile. `RUN` commands that perform a dnf install but have no later `RUN` containing `dnf clean` will be flagged. \n\nSecure example with cleanup in the same `RUN`:\n\n```\nFROM fedora:latest\nRUN dnf -y install my-package && dnf clean all && rm -rf /var/cache/dnf\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/missing_dnf_clean_all",
   "platform": "Dockerfile",
   "descriptionID": "8f8497d7",
   "cwe": "459",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
 }

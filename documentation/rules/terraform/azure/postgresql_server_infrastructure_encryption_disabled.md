@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- PostgreSQL Server infrastructure encryption provides an additional layer of protection for data at rest, beyond the default storage encryption. If the `infrastructure_encryption_enabled` attribute is set to `false` in the Terraform `azurerm_postgresql_server` resource, sensitive data may be exposed in the event of unauthorized access to underlying disks or snapshots. To secure the configuration, set `infrastructure_encryption_enabled = true`.
+PostgreSQL Server infrastructure encryption provides an additional layer of protection for data at rest, beyond the default storage encryption. If the `infrastructure_encryption_enabled` attribute is set to `false` in the Terraform `azurerm_postgresql_server` resource, sensitive data may be exposed in the event of unauthorized access to underlying disks or snapshots. To secure the configuration, set `infrastructure_encryption_enabled = true`.
 
 This ensures that the PostgreSQL server uses Azure's strong encryption mechanisms to protect data at the infrastructure level, significantly reducing the risk of data compromise.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -9,6 +9,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/kics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 )
@@ -21,6 +22,7 @@ func PrepareAndScan(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	services serviceSlice,
+	flagEvaluator featureflags.FlagEvaluator,
 ) error {
 	var wg sync.WaitGroup
 	wgDone := make(chan bool)
@@ -31,7 +33,7 @@ func PrepareAndScan(
 
 	for _, service := range services {
 		wg.Add(1)
-		go service.PrepareSources(workersCtx, scanID, openAPIResolveReferences, maxResolverDepth, &wg, errCh)
+		go service.PrepareSources(workersCtx, scanID, openAPIResolveReferences, maxResolverDepth, &wg, errCh, flagEvaluator)
 	}
 
 	go func() {

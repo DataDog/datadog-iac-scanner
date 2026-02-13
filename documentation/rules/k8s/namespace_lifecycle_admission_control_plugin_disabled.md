@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When running `kube-apiserver`, the `--disable-admission-plugins` flag should not include the `NamespaceLifecycle` plugin. Disabling the `NamespaceLifecycle` admission plugin can bypass namespace lifecycle checks and may lead to orphaned resources or unexpected behavior across namespaces. This rule identifies `kube-apiserver` containers and flags any `--disable-admission-plugins` setting that contains `NamespaceLifecycle`.
-
+When running `kube-apiserver`, the `--disable-admission-plugins` flag should not include the `NamespaceLifecycle` plugin. Disabling the `NamespaceLifecycle` admission plugin can bypass namespace lifecycle checks and may lead to orphaned resources or unexpected behavior across namespaces. This rule identifies `kube-apiserver` containers and flags any `--disable-admission-plugins` setting that contains `NamespaceLifecycle`.
 
 ## Compliant Code Examples
 ```yaml

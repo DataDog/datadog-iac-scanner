@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check determines whether Google Compute SSL policies enforce strong TLS versions by verifying that the `min_tls_version` attribute is set to `"TLS_1_2"`. Allowing lower TLS versions, such as `"TLS_1_1"`, exposes services to vulnerabilities associated with outdated cryptographic algorithms and weak cipher suites, increasing the risk of data breaches and interception. For example, the following secure configuration ensures strong encryption by setting `min_tls_version` to `"TLS_1_2"`:
+This check determines whether Google Compute SSL policies enforce strong TLS versions by verifying that the `min_tls_version` attribute is set to `"TLS_1_2"`. Allowing lower TLS versions, such as `"TLS_1_1"`, exposes services to vulnerabilities associated with outdated cryptographic algorithms and weak cipher suites, increasing the risk of data breaches and interception. For example, the following secure configuration ensures strong encryption by setting `min_tls_version` to `"TLS_1_2"`:
 
 ```
 resource "google_compute_ssl_policy" "example" {
@@ -38,7 +38,6 @@ resource "google_compute_ssl_policy" "example" {
   custom_features = ["TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

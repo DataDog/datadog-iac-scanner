@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes StatefulSets must include exactly one volume claim template with the access mode `ReadWriteOnce`. The rule flags StatefulSets that either do not include any `spec.volumeClaimTemplates` with `accessModes` containing `ReadWriteOnce` (issue type: MissingAttribute) or include more than one such template (issue type: IncorrectValue). The check inspects each entry in `spec.volumeClaimTemplates[].spec.accessModes` to determine the presence of `ReadWriteOnce`.
-
+Kubernetes StatefulSets must include exactly one volume claim template with the access mode `ReadWriteOnce`. The rule flags StatefulSets that either do not include any `spec.volumeClaimTemplates` with `accessModes` containing `ReadWriteOnce` (issue type: MissingAttribute) or include more than one such template (issue type: IncorrectValue). The check inspects each entry in `spec.volumeClaimTemplates[].spec.accessModes` to determine the presence of `ReadWriteOnce`.
 
 ## Compliant Code Examples
 ```yaml

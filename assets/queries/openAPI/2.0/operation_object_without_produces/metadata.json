@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Operation Object should have 'produces' feild defined for 'GET'operation",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/operation_object_without_produces",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/operation_object_without_produces",
   "platform": "OpenAPI",
   "descriptionID": "1736226c",
   "cwe": "665",

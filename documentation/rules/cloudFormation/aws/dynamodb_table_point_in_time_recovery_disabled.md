@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- DynamoDB tables must have point-in-time recovery (PITR) enabled to allow restoration to a prior consistent state after accidental deletes, overwrites, or data corruption. Without PITR, you cannot restore to recent points in time, increasing the risk of permanent data loss and extended recovery time. Check `AWS::DynamoDB::Table` resources and ensure the `Properties.PointInTimeRecoverySpecification.PointInTimeRecoveryEnabled` property is defined and set to `true`. Resources missing `PointInTimeRecoverySpecification`, missing the `PointInTimeRecoveryEnabled` field, or with `PointInTimeRecoveryEnabled` set to `false` will be flagged.
+DynamoDB tables must have point-in-time recovery (PITR) enabled to allow restoration to a prior consistent state after accidental deletes, overwrites, or data corruption. Without PITR, you cannot restore to recent points in time, increasing the risk of permanent data loss and extended recovery time. Check `AWS::DynamoDB::Table` resources and ensure the `Properties.PointInTimeRecoverySpecification.PointInTimeRecoveryEnabled` property is defined and set to `true`. Resources missing `PointInTimeRecoverySpecification`, missing the `PointInTimeRecoveryEnabled` field, or with `PointInTimeRecoveryEnabled` set to `false` will be flagged.
 
 Secure configuration example:
 
@@ -47,7 +47,6 @@ MyDynamoTable:
     PointInTimeRecoverySpecification:
       PointInTimeRecoveryEnabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

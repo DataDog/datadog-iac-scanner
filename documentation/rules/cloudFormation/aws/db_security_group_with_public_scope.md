@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Databases and their associated security groups must not allow ingress from the entire internet. When a publicly accessible Amazon RDS instance allows `CidrIp` set to `0.0.0.0/0` or `CidrIpv6` set to `::/0`, it exposes the database to unauthorized access, brute-force attacks, and data exfiltration.
+Databases and their associated security groups must not allow ingress from the entire internet. When a publicly accessible Amazon RDS instance allows `CidrIp` set to `0.0.0.0/0` or `CidrIpv6` set to `::/0`, it exposes the database to unauthorized access, brute-force attacks, and data exfiltration.
 
  This rule applies when an `AWS::RDS::DBInstance` has `Properties.PubliclyAccessible` set to `true`. It flags:
  - `AWS::EC2::SecurityGroup` resources with `Properties.SecurityGroupIngress` entries where `CidrIp` is `0.0.0.0/0` or `CidrIpv6` is `::/0`.
@@ -58,7 +58,6 @@ MyDBSecurityGroup:
       - CIDRIP: 203.0.113.5/32
     DBSecurityGroupName: my-db-sg
 ```
-
 
 ## Compliant Code Examples
 ```yaml

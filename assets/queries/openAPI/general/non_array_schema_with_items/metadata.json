@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Non-Array Schema should not have 'items' defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/non_array_schema_with_items",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/non_array_schema_with_items",
   "platform": "OpenAPI",
   "descriptionID": "b07dd27a",
   "aggregation": 2,

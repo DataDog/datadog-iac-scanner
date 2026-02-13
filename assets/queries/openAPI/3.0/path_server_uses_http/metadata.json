@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "The property 'url' in the Path Server Object should only allow 'HTTPS' protocols to ensure an encrypted connection",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/path_server_uses_http",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/path_server_uses_http",
   "platform": "OpenAPI",
   "descriptionID": "da49b13c",
   "cwe": "319",

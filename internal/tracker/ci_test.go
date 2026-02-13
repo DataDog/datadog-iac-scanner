@@ -73,60 +73,60 @@ func TestCITracker(t *testing.T) {
 			BagOfFilesFound:    make(map[string]int),
 			FoundResources:     tt.fields.FoundResources,
 		}
-		t.Run(fmt.Sprintf(tt.name+"_LoadedQueries"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_LoadedQueries"), func(t *testing.T) {
 			c.TrackQueryLoad(1)
 			require.Equal(t, 1, c.LoadedQueries)
 		})
 
-		t.Run(fmt.Sprintf(tt.name+"_TrackQueryExecution"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_TrackQueryExecution"), func(t *testing.T) {
 			c.TrackQueryExecution(1)
 			require.Equal(t, 1, c.ExecutedQueries)
 		})
 
-		t.Run(fmt.Sprintf(tt.name+"_TrackFileFound"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_TrackFileFound"), func(t *testing.T) {
 			c.TrackFileFound(tt.name)
 			require.Equal(t, 1, c.FoundFiles)
 		})
 
-		t.Run(fmt.Sprintf(tt.name+"_TrackFileParse"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_TrackFileParse"), func(t *testing.T) {
 			c.TrackFileParse(tt.name)
 			require.Equal(t, 1, c.ParsedFiles)
 		})
-		t.Run(fmt.Sprintf(tt.name+"_TrackQueryExecuting"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_TrackQueryExecuting"), func(t *testing.T) {
 			c.TrackQueryExecuting(1)
 			require.Equal(t, 1, c.ExecutingQueries)
 		})
-		t.Run(fmt.Sprintf(tt.name+"_FailedComputeSimilarityID"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_FailedComputeSimilarityID"), func(t *testing.T) {
 			c.FailedComputeSimilarityID()
 			require.Equal(t, 1, c.FailedSimilarityID)
 		})
-		t.Run(fmt.Sprintf(tt.name+"_FailedComputeOldSimilarityID"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_FailedComputeOldSimilarityID"), func(t *testing.T) {
 			c.FailedComputeOldSimilarityID()
 			require.Equal(t, 1, c.FailedOldSimilarityID)
 		})
-		t.Run(fmt.Sprintf(tt.name+"_FailedDetectLine"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_FailedDetectLine"), func(t *testing.T) {
 			c.FailedDetectLine()
 			require.Equal(t, 0, c.ExecutedQueries)
 		})
-		t.Run(fmt.Sprintf(tt.name+"_TrackFileFoundCountLines"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_TrackFileFoundCountLines"), func(t *testing.T) {
 			c.TrackFileFoundCountLines(3)
 			require.Equal(t, 5, c.FoundCountLines)
 		})
-		t.Run(fmt.Sprintf(tt.name+"_TrackFileParseCountLines"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_TrackFileParseCountLines"), func(t *testing.T) {
 			c.TrackFileParseCountLines(2)
 			require.Equal(t, 3, c.ParsedCountLines)
 		})
-		t.Run(fmt.Sprintf(tt.name+"TrackFileIgnoreCountLines"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"TrackFileIgnoreCountLines"), func(t *testing.T) {
 			c.TrackFileIgnoreCountLines(2)
 			require.Equal(t, 6, c.IgnoreCountLines)
 		})
-		t.Run(fmt.Sprintf(tt.name+"_GetOutputLines"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_GetOutputLines"), func(t *testing.T) {
 			got := c.GetOutputLines()
 			if !reflect.DeepEqual(got, 3) {
 				t.Errorf("GetOutputLines() = %v, want = %v", got, 3)
 			}
 		})
-		t.Run(fmt.Sprintf(tt.name+"_TrackFoundCountResources"), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", tt.name+"_TrackFoundCountResources"), func(t *testing.T) {
 			c.TrackFileFoundCountResources(5)
 			require.Equal(t, 5, c.FoundCountLines)
 		})
@@ -141,7 +141,7 @@ func TestNewTracker(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    CITracker
+		want    *CITracker
 		wantErr bool
 	}{
 		{
@@ -149,7 +149,7 @@ func TestNewTracker(t *testing.T) {
 			args: args{
 				outputLines: 3,
 			},
-			want: CITracker{
+			want: &CITracker{
 				lines:           3,
 				BagOfFilesFound: make(map[string]int),
 				BagOfFilesParse: make(map[string]int),
@@ -161,7 +161,7 @@ func TestNewTracker(t *testing.T) {
 			args: args{
 				outputLines: 0,
 			},
-			want:    CITracker{},
+			want:    &CITracker{},
 			wantErr: true,
 		},
 	}
@@ -169,7 +169,7 @@ func TestNewTracker(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := NewTracker(tt.args.outputLines)
-			gotStrVulnerabilities, errStr := test.StringifyStruct(*got)
+			gotStrVulnerabilities, errStr := test.StringifyStruct(got)
 			require.Nil(t, errStr)
 			wantStrVulnerabilities, errStr := test.StringifyStruct(tt.want)
 			require.Nil(t, errStr)

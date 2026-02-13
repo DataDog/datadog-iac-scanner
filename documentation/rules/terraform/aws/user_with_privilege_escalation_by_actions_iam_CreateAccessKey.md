@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting a user the `iam:CreateAccessKey` action with a resource set to `"*"` allows that user to create access keys for any IAM user in the AWS account. This over-privileged configuration, as shown below, introduces a privilege escalation risk, as the user could generate access keys for higher-privileged users and gain unauthorized access to sensitive resources:
+Granting a user the `iam:CreateAccessKey` action with a resource set to `"*"` allows that user to create access keys for any IAM user in the AWS account. This over-privileged configuration, as shown below, introduces a privilege escalation risk, as the user could generate access keys for higher-privileged users and gain unauthorized access to sensitive resources:
 
 ```
 policy = jsonencode({
@@ -46,7 +46,6 @@ policy = jsonencode({
 ```
 
 To mitigate this risk, limit the action and resource to the specific user needing access, or scope the permissions more narrowly to avoid unauthorized key creation.
-
 
 ## Compliant Code Examples
 ```terraform

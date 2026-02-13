@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Single Sign-On (SSO) policies should be configured to grant only the specific administrative privileges necessary, rather than granting unrestricted access to all AWS resources. If the inline policy uses broad permissions such as `"Action": ["*"]` and `"Resource": ["*"]`, as seen in the example below, it grants users full administrative rights, bypassing the principles of least privilege:
+Single Sign-On (SSO) policies should be configured to grant only the specific administrative privileges necessary, rather than granting unrestricted access to all AWS resources. If the inline policy uses broad permissions such as `"Action": ["*"]` and `"Resource": ["*"]`, as seen in the example below, it grants users full administrative rights, bypassing the principles of least privilege:
 
 ```
 inline_policy = <<POLICY
@@ -51,7 +51,6 @@ POLICY
 ```
 
 This misconfiguration exposes the environment to significant security risks, as any user assigned this policy could perform destructive actions or gain unauthorized access to sensitive data. Properly scoping permissions is crucial to minimize potential damage in the event of compromised credentials or malicious insiders. Failure to address this issue can lead to data breaches, accidental resource deletion, and loss of control over the cloud environment.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that Amazon ECS services are not configured with administrative roles, which could grant excessive permissions and violate the principle of least privilege. When an ECS service has an admin role, it can perform any action within AWS, potentially allowing attackers to escalate privileges if the service is compromised. Instead of using an admin role like `iam_role = "admin"`, you should create a specific role with only the necessary permissions and reference it using its ARN, as shown in this example: `iam_role = aws_iam_role.foo.arn`.
-
+This check ensures that Amazon ECS services are not configured with administrative roles, which could grant excessive permissions and violate the principle of least privilege. When an ECS service has an admin role, it can perform any action within AWS, potentially allowing attackers to escalate privileges if the service is compromised. Instead of using an admin role like `iam_role = "admin"`, you should create a specific role with only the necessary permissions and reference it using its ARN, as shown in this example: `iam_role = aws_iam_role.foo.arn`.
 
 ## Compliant Code Examples
 ```terraform

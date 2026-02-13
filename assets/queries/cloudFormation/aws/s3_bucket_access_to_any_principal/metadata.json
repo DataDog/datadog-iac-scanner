@@ -4,7 +4,7 @@
   "severity": "CRITICAL",
   "category": "Access Control",
   "descriptionText": "Allowing any principal in an S3 bucket policy grants public (or universally authorized) access to the bucket. This can lead to data exposure, unintended read/write access, and unauthorized modifications. This rule checks `AWS::S3::Bucket` resources that have an associated `AWS::S3::BucketPolicy`. The rule flags bucket policies where `Properties.PolicyDocument.Statement` includes `Effect: \"Allow\"` and a wildcard principal (for example, `Principal: \"*\"`, or `Principal: { AWS: \"*\" }`). Bucket policy statements that explicitly list allowed principals (for example, an AWS account ARN or a specific IAM role) are acceptable. Statements with `Principal` as `*` (or equivalent) will be flagged as insecure.\n\nSecure example with an explicit principal:\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    BucketName: my-bucket\n\nMyBucketPolicy:\n  Type: AWS::S3::BucketPolicy\n  Properties:\n    Bucket: !Ref MyBucket\n    PolicyDocument:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: \"arn:aws:iam::123456789012:root\"\n          Action: \"s3:GetObject\"\n          Resource: !Sub \"${MyBucket.Arn}/*\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_access_to_any_principal",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_access_to_any_principal",
   "platform": "CloudFormation",
   "descriptionID": "9a57423d",
   "cloudProvider": "aws",

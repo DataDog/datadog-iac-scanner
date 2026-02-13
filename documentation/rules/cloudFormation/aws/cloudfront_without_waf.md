@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront distributions should be associated with an AWS WAF web ACL to block common web exploits and reduce exposure to application-layer attacks such as SQL injection, cross-site scripting, and automated bot abuse.
+CloudFront distributions should be associated with an AWS WAF web ACL to block common web exploits and reduce exposure to application-layer attacks such as SQL injection, cross-site scripting, and automated bot abuse.
 
  For enabled distributions (resources of type `AWS::CloudFront::Distribution` where `DistributionConfig.Enabled` is not explicitly `false`), the `DistributionConfig.WebACLId` property must be defined and set to a non-empty value. Resources missing `WebACLId` or with `WebACLId` set to an empty string will be flagged.
 
@@ -44,7 +44,6 @@ MyDistribution:
       Enabled: true
       WebACLId: arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-webacl/11111111-1111-1111-1111-111111111111
 ```
-
 
 ## Compliant Code Examples
 ```yaml

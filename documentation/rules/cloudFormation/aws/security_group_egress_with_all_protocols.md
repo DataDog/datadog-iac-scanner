@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Egress rules that allow all protocols (`IpProtocol: -1`) permit unrestricted outbound traffic. This increases the risk of data exfiltration and enables command-and-control traffic or lateral movement.
+Egress rules that allow all protocols (`IpProtocol: -1`) permit unrestricted outbound traffic. This increases the risk of data exfiltration and enables command-and-control traffic or lateral movement.
 
 For `AWS::EC2::SecurityGroupEgress` resources and entries in `AWS::EC2::SecurityGroup` > `Properties.SecurityGroupEgress`, `IpProtocol` must not be set to `-1`. Specify explicit protocols such as `tcp`, `udp`, or `icmp`. Resources with `IpProtocol: -1` will be flagged. Instead, define explicit `IpProtocol` values and corresponding `FromPort`/`ToPort` for TCP/UDP, and restrict destination CIDRs or target security groups to the minimum required.
 
@@ -56,7 +56,6 @@ MyEgressRule:
     ToPort: 443
     CidrIp: 203.0.113.0/24
 ```
-
 
 ## Compliant Code Examples
 ```yaml

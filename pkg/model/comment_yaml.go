@@ -30,18 +30,22 @@ var (
 
 // build builds the ignore struct
 func (i *Ignore) build(lines []int) {
-	defer memoryMu.Unlock()
 	memoryMu.Lock()
+	defer memoryMu.Unlock()
 	i.Lines = append(i.Lines, lines...)
 }
 
 // GetLines returns the lines to ignore
 func (i *Ignore) GetLines() []int {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
 	return RemoveDuplicates(i.Lines)
 }
 
 // Reset resets the ignore struct
 func (i *Ignore) Reset() {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
 	i.Lines = make([]int, 0)
 }
 

@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Missing Dnf Clean All",
+    "queryName": "Missing dnf clean all",
     "severity": "LOW",
     "line": 2
   }

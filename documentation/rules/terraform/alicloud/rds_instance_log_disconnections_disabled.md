@@ -28,8 +28,9 @@ meta:
 
 ### Description
 
- The `log_disconnections` parameter must be set to `ON` for RDS instances. The rule inspects `alicloud_db_instance` resources and their `parameters` array for an entry where `name` is `log_disconnections` and `value` is `ON`. If the parameter exists with `value = OFF`, the policy reports an `IncorrectValue` issue. If the `parameters` array is missing or the parameter is absent, the policy reports a `MissingAttribute` issue and suggests adding or updating the entry to set `value = ON` (for example, `parameters = [{ name = "log_disconnections", value = "ON" }]`).
+The `log_disconnections` parameter must be set to `ON` for RDS instances. The rule inspects `alicloud_db_instance` resources and their `parameters` array for an entry where `name` is `log_disconnections` and `value` is `ON`.
 
+If the parameter exists with `value = OFF`, the policy reports an `IncorrectValue` issue. If the `parameters` array is missing or the parameter is absent, the policy reports a `MissingAttribute` issue and suggests adding or updating the entry to set `value = ON` (for example, `parameters = [{ name = "log_disconnections", value = "ON" }]`).
 
 ## Compliant Code Examples
 ```terraform
@@ -85,16 +86,18 @@ resource "alicloud_db_instance" "default" {
     engine_version = "5.6"
     db_instance_class = "rds.mysql.t1.small"
     db_instance_storage = "10"
-    parameters = [{
-        name = "innodb_large_prefix"
-        value = "ON"
-    },{
-        name = "connect_timeout"
-        value = "50"
-    },{
-        name = "log_disconnections"
-        value = "OFF"
-    }]
+    parameters = [
+        {
+            name = "innodb_large_prefix"
+            value = "ON"
+        },{
+            name = "connect_timeout"
+            value = "50"
+        },{
+            name = "log_disconnections"
+            value = "OFF"
+        }
+    ]
 }
 
 ```

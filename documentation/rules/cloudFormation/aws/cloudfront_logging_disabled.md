@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront distributions must have access logging enabled so viewer requests are captured for incident investigation and traffic analysis. Without logs, you cannot audit access patterns, investigate abuse, or troubleshoot delivery problems.
+CloudFront distributions must have access logging enabled so viewer requests are captured for incident investigation and traffic analysis. Without logs, you cannot audit access patterns, investigate abuse, or troubleshoot delivery problems.
 
  For `AWS::CloudFront::Distribution` resources, `DistributionConfig.Logging` must be defined when the distribution is enabled (that is, `DistributionConfig.Enabled` is not set to `false`).
 
@@ -48,7 +48,6 @@ MyDistribution:
         Prefix: access-logs/
       # ... other distribution settings ...
 ```
-
 
 ## Compliant Code Examples
 ```yaml

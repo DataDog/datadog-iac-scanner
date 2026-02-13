@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Google Firewall should not allow SSH access (port 22) from the Internet (public CIDR block) to ensure the principle of least privileges",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/ssh_access_is_not_restricted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/ssh_access_is_not_restricted",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "10629ac9",
   "cloudProvider": "gcp",

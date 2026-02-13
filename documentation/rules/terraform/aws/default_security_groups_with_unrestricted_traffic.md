@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Default security groups in AWS act as the initial line of defense for EC2 instances, but when configured to allow unrestricted traffic (`0.0.0.0/0` for IPv4 or `::/0` for IPv6), they expose resources to potential attacks from any source on the internet. This vulnerability creates an attack surface that allows malicious actors to potentially access your instances, leading to unauthorized access, data breaches, or service disruption. To mitigate this risk, always configure security groups with specific CIDR blocks that only permit traffic from trusted sources, as shown in the following secure example:
+Default security groups in AWS act as the initial line of defense for EC2 instances, but when configured to allow unrestricted traffic (`0.0.0.0/0` for IPv4 or `::/0` for IPv6), they expose resources to potential attacks from any source on the internet. This vulnerability creates an attack surface that allows malicious actors to potentially access your instances, leading to unauthorized access, data breaches, or service disruption. To mitigate this risk, always configure security groups with specific CIDR blocks that only permit traffic from trusted sources, as shown in the following secure example:
 
 ```terraform
 ingress {
@@ -40,7 +40,6 @@ ingress {
   ipv6_cidr_blocks = ["250.250.250.1:8451"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

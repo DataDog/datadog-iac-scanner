@@ -22,6 +22,7 @@ import (
 	ansibleHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	bicepParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/bicep"
 	buildahParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/buildah"
+	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
@@ -131,7 +132,7 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	if err = scanner.PrepareAndScan(
 		ctx,
 		c.ScanParams.ScanID, c.ScanParams.OpenAPIResolveReferences, c.ScanParams.MaxResolverDepth,
-		executeScanParameters.services); err != nil {
+		executeScanParameters.services, c.FlagEvaluator); err != nil {
 		contextLogger.Err(err).Msgf("failed to prepare and scan %v", err)
 		return nil, err
 	}
@@ -227,6 +228,7 @@ func (c *Client) createService(
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefaultWithParams(c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
 		Add(&bicepParser.Parser{}).
+		Add(&dockerParser.Parser{}).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).
 		Add(&ansibleConfigParser.Parser{}).

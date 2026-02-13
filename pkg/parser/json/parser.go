@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
@@ -16,8 +18,10 @@ import (
 
 // Parser defines a parser type
 type Parser struct {
-	shouldIdent   bool
-	resolvedFiles map[string]model.ResolvedFile
+	shouldIdent     bool
+	shouldIdentMu   sync.RWMutex
+	resolvedFiles   map[string]model.ResolvedFile
+	resolvedFilesMu sync.RWMutex
 }
 
 // Resolve - replace or modifies in-memory content before parsing
@@ -27,7 +31,11 @@ func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename strin
 	res := file.NewResolver(json.Unmarshal, json.Marshal, p.SupportedExtensions())
 	resolvedFilesCache := make(map[string]file.ResolvedFile)
 	resolved := res.Resolve(ctx, fileContent, filename, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
+
+	p.resolvedFilesMu.Lock()
 	p.resolvedFiles = res.ResolvedFiles
+	p.resolvedFilesMu.Unlock()
+
 	if len(res.ResolvedFiles) == 0 {
 		return fileContent, nil
 	}
@@ -54,7 +62,9 @@ func (p *Parser) Parse(ctx context.Context, _ string, fileContent []byte) ([]mod
 		return []model.Document{kicsJSON}, []int{}, nil
 	}
 
+	p.shouldIdentMu.Lock()
 	p.shouldIdent = true
+	p.shouldIdentMu.Unlock()
 
 	return []model.Document{kicsPlan}, []int{}, nil
 }
@@ -88,7 +98,11 @@ func (p *Parser) GetCommentToken() string {
 
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
-	if p.shouldIdent {
+	p.shouldIdentMu.RLock()
+	shouldIdent := p.shouldIdent
+	p.shouldIdentMu.RUnlock()
+
+	if shouldIdent {
 		var out bytes.Buffer
 		err := json.Indent(&out, content, "", "  ")
 		if err != nil {
@@ -101,5 +115,9 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 
 // GetResolvedFiles returns resolved files
 func (p *Parser) GetResolvedFiles() map[string]model.ResolvedFile {
-	return p.resolvedFiles
+	p.resolvedFilesMu.RLock()
+	defer p.resolvedFilesMu.RUnlock()
+	resolvedFiles := make(map[string]model.ResolvedFile, len(p.resolvedFiles))
+	maps.Copy(resolvedFiles, p.resolvedFiles)
+	return resolvedFiles
 }

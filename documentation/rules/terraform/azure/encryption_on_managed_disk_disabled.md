@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When creating Azure managed disks with Terraform, it is important to ensure that encryption is enabled to protect data at rest. If the `encryption_settings` block either has `enabled = false` or is omitted entirely, as shown below, the disk's contents are left unencrypted and may be exposed if the disk is compromised or accessed by unauthorized users.:
+When creating Azure managed disks with Terraform, it is important to ensure that encryption is enabled to protect data at rest. If the `encryption_settings` block either has `enabled = false` or is omitted entirely, as shown below, the disk's contents are left unencrypted and may be exposed if the disk is compromised or accessed by unauthorized users.:
 
 ```
 resource "azurerm_managed_disk" "example" {
@@ -40,7 +40,6 @@ resource "azurerm_managed_disk" "example" {
 ```
 
 Enabling encryption with `encryption_settings = { enabled = true }` ensures sensitive data is protected from unauthorized access and helps meet compliance requirements.
-
 
 ## Compliant Code Examples
 ```terraform

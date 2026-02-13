@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing a user the `iam:CreatePolicyVersion` action with the resource set to `"*"` in Terraform, as shown in the policy statement below, enables them to update any IAM policy in the AWS account. This privilege can be exploited for privilege escalation, as the user could create a new policy version attaching elevated permissions to themselves or others.
+Allowing a user the `iam:CreatePolicyVersion` action with the resource set to `"*"` in Terraform, as shown in the policy statement below, enables them to update any IAM policy in the AWS account. This privilege can be exploited for privilege escalation, as the user could create a new policy version attaching elevated permissions to themselves or others.
 
 ```
 policy = jsonencode({
@@ -46,7 +46,6 @@ policy = jsonencode({
 ```
 
 If left unaddressed, this misconfiguration could allow an attacker to gain unauthorized administrative access or perform malicious actions across your AWS environment by changing permissions on any IAM policy.
-
 
 ## Compliant Code Examples
 ```terraform

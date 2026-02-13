@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Elastic Load Balancers (ELBs) with weak cipher configurations present a significant security vulnerability as they can be exploited through various attacks like BEAST, POODLE, or FREAK, potentially leading to data breaches and session hijacking. Weak ciphers such as DES-CBC3-SHA or TLS_RSA_ARCFOUR_128_SHA1 are considered cryptographically insufficient by modern standards and may be exploited by attackers to decrypt sensitive data passing through the load balancer. To mitigate this risk, configure your ELB with strong cipher suites, as shown below:
+Elastic Load Balancers (ELBs) with weak cipher configurations present a significant security vulnerability as they can be exploited through various attacks like BEAST, POODLE, or FREAK, potentially leading to data breaches and session hijacking. Weak ciphers such as DES-CBC3-SHA or TLS_RSA_ARCFOUR_128_SHA1 are considered cryptographically insufficient by modern standards and may be exploited by attackers to decrypt sensitive data passing through the load balancer. To mitigate this risk, configure your ELB with strong cipher suites, as shown below:
 
 ```hcl
 policy_attribute {
@@ -50,7 +50,6 @@ policy_attribute {
   value = "ELBSecurityPolicy-TLS-1-2-2017-01"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

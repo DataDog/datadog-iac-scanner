@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront distributions must require or redirect viewers to HTTPS to prevent plaintext HTTP traffic that can expose sensitive data in transit and enable interception or downgrade attacks. In `AWS::CloudFront::Distribution` resources, set `DistributionConfig.DefaultCacheBehavior.ViewerProtocolPolicy` and each `DistributionConfig.CacheBehaviors[].ViewerProtocolPolicy` to `https-only` or `redirect-to-https`. Resources missing these properties or configured with `allow-all` (which permits HTTP) will be flagged as insecure.
+CloudFront distributions must require or redirect viewers to HTTPS to prevent plaintext HTTP traffic that can expose sensitive data in transit and enable interception or downgrade attacks. In `AWS::CloudFront::Distribution` resources, set `DistributionConfig.DefaultCacheBehavior.ViewerProtocolPolicy` and each `DistributionConfig.CacheBehaviors[].ViewerProtocolPolicy` to `https-only` or `redirect-to-https`. Resources missing these properties or configured with `allow-all` (which permits HTTP) will be flagged as insecure.
 
 Secure configuration example:
 
@@ -46,7 +46,6 @@ MyDistribution:
           TargetOriginId: myOrigin
           ViewerProtocolPolicy: https-only
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECS services must be configured with a load balancer so traffic is distributed across tasks and a single task does not become a single point of failure for availability and scaling.
+Amazon ECS services must be configured with a load balancer so traffic is distributed across tasks and a single task does not become a single point of failure for availability and scaling.
  
  For `AWS::ECS::Service` resources, the `Properties.LoadBalancers` property must be defined and contain at least one entry. Resources missing this property or where `LoadBalancers` is an empty array will be flagged.
  
@@ -48,7 +48,6 @@ MyEcsService:
         # or: TargetGroupArn: arn:aws:elasticloadbalancing:region:acct:targetgroup/...
     DesiredCount: 2
 ```
-
 
 ## Compliant Code Examples
 ```yaml

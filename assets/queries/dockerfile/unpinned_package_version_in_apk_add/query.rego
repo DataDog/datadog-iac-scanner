@@ -27,6 +27,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instruction with 'apk add <package>' should use package pinning form 'apk add <package>=<version>'",
 		"keyActualValue": sprintf("RUN instruction %s does not use package pinning form", [resource.Value[0]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -55,6 +57,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instruction with 'apk add <package>' should use package pinning form 'apk add <package>=<version>'",
 		"keyActualValue": sprintf("RUN instruction %s does not use package pinning form", [resource.Value[0]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -82,6 +86,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instruction with 'apk add <package>' should use package pinning form 'apk add <package>=<version>'",
 		"keyActualValue": sprintf("RUN instruction %s does not use package pinning form", [resource.Value[0]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -105,6 +111,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instruction with 'apk add <package>' should use package pinning form 'apk add <package>=<version>'",
 		"keyActualValue": sprintf("RUN instruction %s does not use package pinning form", [resource.Value[j]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

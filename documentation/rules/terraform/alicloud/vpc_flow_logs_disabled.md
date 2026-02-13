@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Every `alicloud_vpc` resource should have an associated `alicloud_vpc_flow_log`. If a VPC lacks a flow log, the rule reports an `IncorrectValue` issue on the `alicloud_vpc` resource. Requiring `alicloud_vpc_flow_log` ensures VPC network traffic is captured for auditing and troubleshooting.
-
+Every `alicloud_vpc` resource should have an associated `alicloud_vpc_flow_log`. If a VPC lacks a flow log, the rule reports an `IncorrectValue` issue on the `alicloud_vpc` resource. Requiring `alicloud_vpc_flow_log` ensures VPC network traffic is captured for auditing and troubleshooting.
 
 ## Compliant Code Examples
 ```terraform

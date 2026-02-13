@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Run Using Sudo",
+    "queryName": "Run using sudo",
     "severity": "MEDIUM",
     "line": 3
   }

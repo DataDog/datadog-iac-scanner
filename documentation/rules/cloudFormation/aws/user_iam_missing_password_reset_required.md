@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Console-enabled IAM users should require a password reset on first sign-in to prevent reuse of initial credentials if they are intercepted and to ensure each user sets a unique password.
+Console-enabled IAM users should require a password reset on first sign-in to prevent reuse of initial credentials if they are intercepted and to ensure each user sets a unique password.
 
 In CloudFormation, check `AWS::IAM::User` resources. When `Properties.LoginProfile` contains a `Password`, `LoginProfile.PasswordResetRequired` must be present and set to `true`. This rule flags resources that omit `LoginProfile`, include only a `Password` without `PasswordResetRequired`, or explicitly set `PasswordResetRequired` to `false`.
 
@@ -43,7 +43,6 @@ MyUser:
       Password: "InitialPassword123!"
       PasswordResetRequired: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

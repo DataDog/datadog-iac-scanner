@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should enforce SSL/TLS for data in transit to prevent unencrypted requests from exposing sensitive data or enabling man-in-the-middle attacks.
+S3 buckets should enforce SSL/TLS for data in transit to prevent unencrypted requests from exposing sensitive data or enabling man-in-the-middle attacks.
 
 Ensure each `AWS::S3::Bucket` has an associated `AWS::S3::BucketPolicy` whose `Properties.PolicyDocument.Statement` enforces `aws:SecureTransport`. For example, use a `Deny` statement that blocks unsafe actions (such as `s3:*` or `s3:PutObject`) when `Condition.Bool["aws:SecureTransport"]` is `false`. Alternatively, use `Allow` statements that only permit those actions when `aws:SecureTransport` is `true`.
 
@@ -54,7 +54,6 @@ MyBucketPolicy:
             Bool:
               aws:SecureTransport: "false"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The AWS root account has unrestricted access to all resources in an AWS account, making it a high-value target for attackers. Having active access keys for the root account creates a significant security risk, as compromised keys could lead to complete account takeover and unauthorized access to all AWS services and resources. Best security practice requires using IAM users with appropriate permissions instead of the root account for daily operations and programmatic access.
+The AWS root account has unrestricted access to all resources in an AWS account, making it a high-value target for attackers. Having active access keys for the root account creates a significant security risk, as compromised keys could lead to complete account takeover and unauthorized access to all AWS services and resources. Best security practice requires using IAM users with appropriate permissions instead of the root account for daily operations and programmatic access.
 
 Insecure example:
 ```terraform
@@ -45,7 +45,6 @@ resource "aws_iam_access_key" "negative1" {
   pgp_key = "keybase:some_person_that_exists"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

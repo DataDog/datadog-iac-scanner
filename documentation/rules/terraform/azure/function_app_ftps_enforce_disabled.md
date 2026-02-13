@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- The `ftps_state` attribute within the `site_config` block of an Azure Function App resource controls the enforcement of FTPS (FTP over SSL/TLS) for data transfer. If set to `"AllAllowed"`, both unencrypted FTP and secure FTPS connections are permitted, exposing sensitive data in transit to interception or tampering. To ensure secure data transmission, this attribute should be configured as `ftps_state = "FtpsOnly"`:
+The `ftps_state` attribute within the `site_config` block of an Azure Function App resource controls the enforcement of FTPS (FTP over SSL/TLS) for data transfer. If set to `"AllAllowed"`, both unencrypted FTP and secure FTPS connections are permitted, exposing sensitive data in transit to interception or tampering. To ensure secure data transmission, this attribute should be configured as `ftps_state = "FtpsOnly"`:
 
 ```
 site_config {
   ftps_state = "FtpsOnly"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

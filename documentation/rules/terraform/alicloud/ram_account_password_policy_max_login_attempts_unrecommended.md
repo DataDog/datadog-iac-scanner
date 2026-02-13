@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The RAM account password policy must limit `max_login_attempts` to a maximum of `5` incorrect login attempts. This rule flags any `alicloud_ram_account_password_policy` resource where `max_login_attempts` exceeds `5`. To enforce the limit, set `max_login_attempts = 5`.
-
+The RAM account password policy must limit `max_login_attempts` to a maximum of `5` incorrect login attempts. This rule flags any `alicloud_ram_account_password_policy` resource where `max_login_attempts` exceeds `5`. To enforce the limit, set `max_login_attempts = 5`.
 
 ## Compliant Code Examples
 ```terraform

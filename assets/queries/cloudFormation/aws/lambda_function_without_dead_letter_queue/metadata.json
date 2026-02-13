@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "Lambda functions should be configured with a dead-letter queue (DLQ) to capture failed asynchronous invocations and prevent message loss or silent failures. In AWS CloudFormation, `AWS::Lambda::Function` resources should define `Properties.DeadLetterConfig.TargetArn` and set it to a valid destination ARN (typically an Amazon SQS queue or Amazon SNS topic). Resources missing `DeadLetterConfig` or where `DeadLetterConfig.TargetArn` is undefined or `null` will be flagged.\n\nSecure configuration example (CloudFormation YAML):\n\n```yaml\nMyDLQ:\n  Type: AWS::SQS::Queue\n  Properties:\n    QueueName: my-dlq\n\nMyFunction:\n  Type: AWS::Lambda::Function\n  Properties:\n    FunctionName: my-function\n    Runtime: nodejs14.x\n    Handler: index.handler\n    Role: arn:aws:iam::123456789012:role/lambda-role\n    DeadLetterConfig:\n      TargetArn: !GetAtt MyDLQ.Arn\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/lambda_function_without_dead_letter_queue",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/lambda_function_without_dead_letter_queue",
   "platform": "CloudFormation",
   "descriptionID": "d5d9d047",
   "cloudProvider": "aws",

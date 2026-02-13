@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The image tag must be provided and must not be empty or `latest`. Image digests (using `@`, e.g., `image@sha256:...`) are preferred and will satisfy this rule. Omitting a tag or using the `latest` tag is considered invalid.
-
+The image tag must be provided and must not be empty or `latest`. Image digests (using `@`, e.g., `image@sha256:...`) are preferred and will satisfy this rule. Omitting a tag or using the `latest` tag is considered invalid.
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CVM instances must use roles to obtain required permissions rather than embedding API credentials in instance configuration. This rule detects API secret keys in the `user_data` or `user_data_raw` fields of `tencentcloud_instance` resources. Embedding secrets in user data is insecure. Instead, assign permissions using the `cam_role_name` attribute.
-
+CVM instances must use roles to obtain required permissions rather than embedding API credentials in instance configuration. This rule detects API secret keys in the `user_data` or `user_data_raw` fields of `tencentcloud_instance` resources. Embedding secrets in user data is insecure. Instead, assign permissions using the `cam_role_name` attribute.
 
 ## Compliant Code Examples
 ```terraform

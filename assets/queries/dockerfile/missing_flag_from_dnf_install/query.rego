@@ -19,6 +19,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "When running `dnf install`, `-y` or `--assumeyes` switch should be set to avoid build failure ",
 		"keyActualValue": sprintf("Command `RUN={{%s}}` doesn't have the `-y` or `--assumeyes` switch set", [trim_space(commands[k])]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

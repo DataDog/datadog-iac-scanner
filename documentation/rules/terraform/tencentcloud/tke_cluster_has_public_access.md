@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- In a TKE cluster, `public_ip_assigned` should be set to `false`. A `tencentcloud_kubernetes_cluster` is noncompliant if either `master_config` or `worker_config` sets `public_ip_assigned` to `true` while `internet_max_bandwidth_out` is greater than `0`. It is also noncompliant if `public_ip_assigned` is undefined and `internet_max_bandwidth_out` is greater than `0`; in such cases, `internet_max_bandwidth_out` should be set to `0` or left undefined.
-
+In a TKE cluster, `public_ip_assigned` should be set to `false`. A `tencentcloud_kubernetes_cluster` is noncompliant if either `master_config` or `worker_config` sets `public_ip_assigned` to `true` while `internet_max_bandwidth_out` is greater than `0`. It is also noncompliant if `public_ip_assigned` is undefined and `internet_max_bandwidth_out` is greater than `0`; in such cases, `internet_max_bandwidth_out` should be set to `0` or left undefined.
 
 ## Compliant Code Examples
 ```terraform

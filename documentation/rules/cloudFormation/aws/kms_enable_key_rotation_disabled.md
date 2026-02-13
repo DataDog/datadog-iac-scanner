@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- KMS keys should have automatic key rotation enabled to limit the lifetime of cryptographic material, reduce the impact of a compromised key, and meet common compliance requirements. In AWS CloudFormation, `AWS::KMS::Key` resources must define the `EnableKeyRotation` property and set it to `true`. Resources missing this property or with `EnableKeyRotation` set to `false` will be flagged. Enabling rotation activates AWS-managed annual rotation of the key material.
+KMS keys should have automatic key rotation enabled to limit the lifetime of cryptographic material, reduce the impact of a compromised key, and meet common compliance requirements. In AWS CloudFormation, `AWS::KMS::Key` resources must define the `EnableKeyRotation` property and set it to `true`. Resources missing this property or with `EnableKeyRotation` set to `false` will be flagged. Enabling rotation activates AWS-managed annual rotation of the key material.
 
 Secure configuration example:
 
@@ -48,7 +48,6 @@ MyKMSKey:
           Action: 'kms:*'
           Resource: '*'
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -26,6 +26,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("Instruction 'RUN %s %s' should be followed by 'RUN %s %s' in the same 'RUN' statement", [packageManager, pkg_installer[packageManager], packageManager, pkg_updater[packageManager]]),
 		"keyActualValue": sprintf("Instruction 'RUN %s %s' isn't followed by 'RUN %s %s in the same 'RUN' statement", [packageManager, pkg_installer[packageManager], packageManager, pkg_updater[packageManager]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -64,6 +66,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("Instruction 'RUN %s %s' should be combined with 'RUN %s %s' in the same 'RUN' statement", [nextPackageManager, pkg_installer[nextPackageManager], nextPackageManager, pkg_updater[nextPackageManager]]),
 		"keyActualValue": sprintf("Instruction 'RUN %s %s' isn't combined with 'RUN %s %s in the same 'RUN' statement", [nextPackageManager, pkg_installer[nextPackageManager], nextPackageManager, pkg_updater[nextPackageManager]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

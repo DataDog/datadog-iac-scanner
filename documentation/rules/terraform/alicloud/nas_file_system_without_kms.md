@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- NAS file system resources (`alicloud_nas_file_system`) must include the `encrypt_type` attribute set to `"2"` to enable user-managed KMS encryption. The rule reports a `MissingAttribute` issue when `encrypt_type` is absent, and an `IncorrectValue` issue when it is present but not set to `"2"`. To remediate, ensure that `encrypt_type` is explicitly set to `"2"`.
-
+NAS file system resources (`alicloud_nas_file_system`) must include the `encrypt_type` attribute set to `"2"` to enable user-managed KMS encryption. The rule reports a `MissingAttribute` issue when `encrypt_type` is absent, and an `IncorrectValue` issue when it is present but not set to `"2"`. To remediate, ensure that `encrypt_type` is explicitly set to `"2"`.
 
 ## Compliant Code Examples
 ```terraform

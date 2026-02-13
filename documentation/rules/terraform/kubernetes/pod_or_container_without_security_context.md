@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- A `security_context` defines privileges and access control settings for a `Pod` or `Container`.  
+A `security_context` defines privileges and access control settings for a `Pod` or `Container`.  
 This rule ensures the `security_context` attribute is present on `kubernetes_pod` resources and on `init_container` and `container` entries within the pod `spec`.  
 If `security_context` is missing, the rule reports a `MissingAttribute` issue that includes the resource details and the expected versus actual values.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "The Media Type value should match the following format: <type>/<subtype>[+suffix][;parameters]",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/invalid_media_type_value",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/invalid_media_type_value",
   "platform": "OpenAPI",
   "descriptionID": "6d641994",
   "cwe": "710",

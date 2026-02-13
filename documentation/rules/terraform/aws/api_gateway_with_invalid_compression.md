@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the `minimum_compression_size` attribute is set to a value greater than -1 and less than 10485760 for the `aws_api_gateway_rest_api` resource, enabling proper payload compression. Without valid configuration, API data transfer can be inefficient, leading to increased bandwidth costs and a slower experience for API consumers. Setting a secure configuration, such as shown below, ensures that response payloads are compressed appropriately, improving performance and security by preventing the misuse or neglect of compression settings.
+This check ensures that the `minimum_compression_size` attribute is set to a value greater than -1 and less than 10485760 for the `aws_api_gateway_rest_api` resource, enabling proper payload compression. Without valid configuration, API data transfer can be inefficient, leading to increased bandwidth costs and a slower experience for API consumers. Setting a secure configuration, such as shown below, ensures that response payloads are compressed appropriately, improving performance and security by preventing the misuse or neglect of compression settings.
 
 ```
 resource "aws_api_gateway_rest_api" "example" {
@@ -41,7 +41,6 @@ resource "aws_api_gateway_rest_api" "example" {
   minimum_compression_size = 0
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

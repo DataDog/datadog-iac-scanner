@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IoT policies must not grant `Allow` permissions to all resources (`*`), because an `Allow` with `Resource: '*'` lets principals act across any IoT resource and can result in broad privilege escalation or unauthorized device and data access. In AWS CloudFormation, check `AWS::IoT::Policy` resources. `Properties.PolicyDocument.Statement[].Effect` must not be `Allow` with the corresponding `Statement[].Resource` equal to or containing the wildcard `*`. The rule flags statements where `Resource` is `*` or an array that includes `*`. Use least-privilege ARNs or condition keys to restrict actions to specific IoT resources.
+IoT policies must not grant `Allow` permissions to all resources (`*`), because an `Allow` with `Resource: '*'` lets principals act across any IoT resource and can result in broad privilege escalation or unauthorized device and data access. In AWS CloudFormation, check `AWS::IoT::Policy` resources. `Properties.PolicyDocument.Statement[].Effect` must not be `Allow` with the corresponding `Statement[].Resource` equal to or containing the wildcard `*`. The rule flags statements where `Resource` is `*` or an array that includes `*`. Use least-privilege ARNs or condition keys to restrict actions to specific IoT resources.
 
 Secure configuration example:
 
@@ -44,7 +44,6 @@ MyIoTPolicy:
             - "iot:Publish"
           Resource: "arn:aws:iot:us-west-2:123456789012:topic/my/topic"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

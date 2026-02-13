@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- A Route 53 hosted zone without any DNS record sets can lead to service outages from missing DNS entries. It also increases the risk of unmanaged or manual record additions that bypass infrastructure-as-code controls.
+A Route 53 hosted zone without any DNS record sets can lead to service outages from missing DNS entries. It also increases the risk of unmanaged or manual record additions that bypass infrastructure-as-code controls.
 
 In CloudFormation, every `AWS::Route53::HostedZone` should be accompanied by one or more `AWS::Route53::RecordSet` resources. Record sets should reference the hosted zone via `HostedZoneId` or `HostedZoneName`, and define `Name` and `Type` (plus appropriate record data such as `TTL` and `ResourceRecords`. Templates that create an `AWS::Route53::HostedZone` but contain no `AWS::Route53::RecordSet` resources in the same template will be flagged.
 
@@ -50,7 +50,6 @@ MyRecordSet:
     ResourceRecords:
       - 10.0.0.10
 ```
-
 
 ## Compliant Code Examples
 ```yaml

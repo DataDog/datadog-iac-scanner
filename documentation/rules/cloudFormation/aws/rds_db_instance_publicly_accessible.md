@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- RDS DB instances must not be publicly accessible because exposing a database endpoint to the internet increases the attack surface and can enable unauthorized access, credential-guessing attacks, and data exfiltration. In AWS CloudFormation, the `PubliclyAccessible` property on `AWS::RDS::DBInstance` resources must be set to `false`. Resources with `PubliclyAccessible` set to `true` will be flagged. If the property is omitted, ensure the instance is deployed to private subnets and protected by restrictive security groups so it cannot receive a public IP or accept traffic from the internet.
+RDS DB instances must not be publicly accessible because exposing a database endpoint to the internet increases the attack surface and can enable unauthorized access, credential-guessing attacks, and data exfiltration. In AWS CloudFormation, the `PubliclyAccessible` property on `AWS::RDS::DBInstance` resources must be set to `false`. Resources with `PubliclyAccessible` set to `true` will be flagged. If the property is omitted, ensure the instance is deployed to private subnets and protected by restrictive security groups so it cannot receive a public IP or accept traffic from the internet.
 
 Secure configuration example:
 
@@ -46,7 +46,6 @@ MyDBInstance:
     PubliclyAccessible: false
     DBSubnetGroupName: !Ref MyDBSubnetGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Lambda functions should have the `TracingConfig` property set with `mode = "Active"` to enable active tracing, which provides detailed request and performance monitoring through AWS X-Ray. When `tracing_config` is either omitted or configured as `mode = "PassThrough"`, as shown below, tracing data isn't automatically captured for Lambda invocations:
+AWS Lambda functions should have the `TracingConfig` property set with `mode = "Active"` to enable active tracing, which provides detailed request and performance monitoring through AWS X-Ray. When `tracing_config` is either omitted or configured as `mode = "PassThrough"`, as shown below, tracing data isn't automatically captured for Lambda invocations:
 
 ```
 tracing_config {
@@ -37,7 +37,6 @@ tracing_config {
 ```
 
 Without active tracing, teams lose critical visibility into Lambda execution, making it harder to detect and troubleshoot performance issues or security incidents in serverless environments.
-
 
 ## Compliant Code Examples
 ```terraform

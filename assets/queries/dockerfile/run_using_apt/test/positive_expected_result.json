@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Run Using apt",
+    "queryName": "Run using apt",
     "severity": "LOW",
     "line": 2
   }

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- An SLB policy should not include insecure TLS protocol versions. Specifically, `alicloud_slb_tls_cipher_policy` resources must not specify `TLSv1.0` or `TLSv1.1` in the `tls_versions` attribute. This rule detects resources whose `tls_versions` contains insecure entries and reports details using the attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`, and `searchLine`.
-
+An SLB policy should not include insecure TLS protocol versions. Specifically, `alicloud_slb_tls_cipher_policy` resources must not specify `TLSv1.0` or `TLSv1.1` in the `tls_versions` attribute. This rule detects resources whose `tls_versions` contains insecure entries and reports details using the attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`, and `searchLine`.
 
 ## Compliant Code Examples
 ```terraform

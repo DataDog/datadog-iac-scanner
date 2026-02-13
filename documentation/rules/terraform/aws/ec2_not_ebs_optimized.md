@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Ensuring that an EC2 instance uses EBS optimization is important for maximizing the performance of attached EBS volumes, as this setting reduces contention between EBS I/O and other instance traffic. If the `ebs_optimized` attribute is not enabled, disk operations may experience degraded performance, leading to slower application response times and potential reliability issues under load. To remediate this, set `ebs_optimized = true` in your instance configuration, as shown below:
+Ensuring that an EC2 instance uses EBS optimization is important for maximizing the performance of attached EBS volumes, as this setting reduces contention between EBS I/O and other instance traffic. If the `ebs_optimized` attribute is not enabled, disk operations may experience degraded performance, leading to slower application response times and potential reliability issues under load. To remediate this, set `ebs_optimized = true` in your instance configuration, as shown below:
 
 ```
 resource "aws_instance" "web" {
@@ -41,7 +41,6 @@ resource "aws_instance" "web" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

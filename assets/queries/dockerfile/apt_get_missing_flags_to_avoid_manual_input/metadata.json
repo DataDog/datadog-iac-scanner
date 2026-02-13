@@ -1,13 +1,14 @@
 {
   "id": "77783205-c4ca-4f80-bb80-c777f267c547",
-  "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+  "queryName": "apt-get missing flags to avoid manual input",
   "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "Check if apt-get calls use flags to avoid user manual input.",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#run",
+  "descriptionText": "`apt-get install` commands in Dockerfile `RUN` instructions must be non-interactive to avoid build hangs and inconsistent or improperly configured images. Interactive prompts can stall CI/CD pipelines or lead to images being produced with unintended defaults.\n\nThis rule inspects Dockerfile `RUN` instructions and requires that any command invoking `apt-get install` includes non-interactive flags such as `-y`, `--yes`, `--assume-yes`, `-qq`, `-q=2`, `-qy` or an equivalent use of quiet flags to suppress prompts. `RUN` lines missing these flags will be flagged.\n\nFor reliable automated builds, also consider setting `DEBIAN_FRONTEND=noninteractive` in the same `RUN` line and using `--no-install-recommends` to reduce prompts and avoid installing extra packages.\n\nSecure example:\n\n```Dockerfile\nRUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/apt_get_missing_flags_to_avoid_manual_input",
   "platform": "Dockerfile",
   "descriptionID": "2064113b",
   "cloudProvider": "common",
   "cwe": "710",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run"
 }

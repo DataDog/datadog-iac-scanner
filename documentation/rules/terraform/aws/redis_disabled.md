@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- ElastiCache clusters should have the Redis engine enabled (`engine = "redis"`) to ensure compliance with strict security and compliance regulations, including FedRAMP, HIPAA, and PCI DSS. Using the default `memcached` engine (`engine = "memcached"`) does not provide the advanced security and access control features available in Redis, and may result in non-compliance with these frameworks. If the ElastiCache engine is left as Memcached, organizations risk exposing sensitive or regulated data to unauthorized access, potentially leading to regulatory penalties and data breaches. It is important to review ElastiCache configurations to ensure that the Redis engine is explicitly selected when required for compliance.
-
+ElastiCache clusters should have the Redis engine enabled (`engine = "redis"`) to ensure compliance with strict security and compliance regulations, including FedRAMP, HIPAA, and PCI DSS. Using the default `memcached` engine (`engine = "memcached"`) does not provide the advanced security and access control features available in Redis, and may result in non-compliance with these frameworks. If the ElastiCache engine is left as Memcached, organizations risk exposing sensitive or regulated data to unauthorized access, potentially leading to regulatory penalties and data breaches. It is important to review ElastiCache configurations to ensure that the Redis engine is explicitly selected when required for compliance.
 
 ## Compliant Code Examples
 ```terraform

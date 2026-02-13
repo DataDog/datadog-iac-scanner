@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Gem Install Without Version",
+    "queryName": "gem install without version",
     "severity": "MEDIUM",
     "line": 3
   },
   {
-    "queryName": "Gem Install Without Version",
+    "queryName": "gem install without version",
     "severity": "MEDIUM",
     "line": 4
   },
   {
-    "queryName": "Gem Install Without Version",
+    "queryName": "gem install without version",
     "severity": "MEDIUM",
     "line": 5
   }

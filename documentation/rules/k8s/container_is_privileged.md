@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Privileged containers lack essential security restrictions and should be avoided. The `privileged` flag should be removed or set to `false` to prevent containers from gaining host-level privileges that bypass kernel security controls. This rule checks both `containers` and `initContainers` and flags any container where `securityContext.privileged` is true.
-
+Privileged containers lack essential security restrictions and should be avoided. The `privileged` flag should be removed or set to `false` to prevent containers from gaining host-level privileges that bypass kernel security controls. This rule checks both `containers` and `initContainers` and flags any container where `securityContext.privileged` is true.
 
 ## Compliant Code Examples
 ```yaml

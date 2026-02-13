@@ -17,6 +17,8 @@ CxPolicy[result] {
 		"issueType": "RedundantAttribute",
 		"keyExpectedValue": "Exclusively using 'wget' or 'curl'",
 		"keyActualValue": "Using both 'wget' and 'curl'",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

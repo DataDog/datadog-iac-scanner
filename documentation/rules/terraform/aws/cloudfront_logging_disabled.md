@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling logging for AWS CloudFront distributions is critical to ensure that all viewer requests are captured for security monitoring, troubleshooting, and compliance. Logging is enabled in Terraform by including the `logging_config` attribute within the `aws_cloudfront_distribution` resource, as shown below:
+Enabling logging for AWS CloudFront distributions is critical to ensure that all viewer requests are captured for security monitoring, troubleshooting, and compliance. Logging is enabled in Terraform by including the `logging_config` attribute within the `aws_cloudfront_distribution` resource, as shown below:
 
 ```
 resource "aws_cloudfront_distribution" "logging_enabled" {
@@ -42,7 +42,6 @@ resource "aws_cloudfront_distribution" "logging_enabled" {
 ```
 
 Without logging enabled, malicious or unauthorized access patterns can go undetected, leaving the distribution vulnerable to abuse and limiting forensic analysis capabilities in the event of an incident.
-
 
 ## Compliant Code Examples
 ```terraform

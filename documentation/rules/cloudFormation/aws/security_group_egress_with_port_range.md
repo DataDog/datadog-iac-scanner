@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Egress rules should restrict outbound traffic to a single explicit port to enforce least privilege. Allowing port ranges expands the attack surface and can enable unintended outbound connections, lateral movement, or data exfiltration.
+Egress rules should restrict outbound traffic to a single explicit port to enforce least privilege. Allowing port ranges expands the attack surface and can enable unintended outbound connections, lateral movement, or data exfiltration.
 
 In CloudFormation, `AWS::EC2::SecurityGroupEgress` resources must have `Properties.FromPort` and `Properties.ToPort` defined and set to the same value. For `AWS::EC2::SecurityGroup` resources, each entry in `Properties.SecurityGroupEgress` must have `FromPort` equal to `ToPort`. Resources missing these properties, or where `FromPort` does not equal `ToPort`, will be flagged. Set both properties to the same explicit port number (for example, `443`) instead of using a range.
 
@@ -56,7 +56,6 @@ MySecurityGroup:
         ToPort: 443
         CidrIp: 10.0.0.0/16
 ```
-
 
 ## Compliant Code Examples
 ```yaml

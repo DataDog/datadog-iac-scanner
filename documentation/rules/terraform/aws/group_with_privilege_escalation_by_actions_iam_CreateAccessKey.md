@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check identifies IAM group policies that grant the `iam:CreateAccessKey` permission with the resource set to `"*"`, which allows users in the group to create access keys for any IAM user in the AWS account. This represents a serious privilege escalation vulnerability because any member of the group could create access keys for higher-privilege users and gain unauthorized access to sensitive resources. If left unaddressed, attackers or malicious insiders could leverage this permission to take control of other users' accounts, compromise the environment, or bypass existing security controls. Restricting `iam:CreateAccessKey` to only necessary users and scoping its resource access is critical to reducing the risk of privilege escalation.
-
+This check identifies IAM group policies that grant the `iam:CreateAccessKey` permission with the resource set to `"*"`, which allows users in the group to create access keys for any IAM user in the AWS account. This represents a serious privilege escalation vulnerability because any member of the group could create access keys for higher-privilege users and gain unauthorized access to sensitive resources. If left unaddressed, attackers or malicious insiders could leverage this permission to take control of other users' accounts, compromise the environment, or bypass existing security controls. Restricting `iam:CreateAccessKey` to only necessary users and scoping its resource access is critical to reducing the risk of privilege escalation.
 
 ## Compliant Code Examples
 ```terraform

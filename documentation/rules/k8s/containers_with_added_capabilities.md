@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers and initContainers should not include added capabilities other than NET_BIND_SERVICE. The rule checks container.securityContext.capabilities.add and reports an IncorrectValue when any capability other than NET_BIND_SERVICE is present. It applies to both containers and initContainers found in the pod spec.
-
+Containers and initContainers should not include added capabilities other than NET_BIND_SERVICE. The rule checks container.securityContext.capabilities.add and reports an IncorrectValue when any capability other than NET_BIND_SERVICE is present. It applies to both containers and initContainers found in the pod spec.
 
 ## Compliant Code Examples
 ```yaml

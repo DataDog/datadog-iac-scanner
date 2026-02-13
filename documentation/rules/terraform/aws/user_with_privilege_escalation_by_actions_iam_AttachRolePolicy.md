@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting the `iam:AttachRolePolicy` action with a resource value of `"*"` allows the user to attach any policy to any IAM role, enabling privilege escalation if the user can attach policies granting additional permissions or even administrator-level access. This misconfiguration can lead to unauthorized access across your AWS environment, as users may obtain permissions far beyond their original scope. To remediate, policy statements should scope the `Resource` field to only those roles and policies necessary for the user’s legitimate activities, avoiding the use of a wildcard (`*`).
-
+Granting the `iam:AttachRolePolicy` action with a resource value of `"*"` allows the user to attach any policy to any IAM role, enabling privilege escalation if the user can attach policies granting additional permissions or even administrator-level access. This misconfiguration can lead to unauthorized access across your AWS environment, as users may obtain permissions far beyond their original scope. To remediate, policy statements should scope the `Resource` field to only those roles and policies necessary for the user’s legitimate activities, avoiding the use of a wildcard (`*`).
 
 ## Compliant Code Examples
 ```terraform

@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- PodSecurityPolicy resources must not allow containers to share the host network namespace.
+PodSecurityPolicy resources must not allow containers to share the host network namespace.
 When 'spec.hostNetwork' is true, pods gain access to the host network namespace, increasing privilege and network exposure.
 The 'spec.hostNetwork' field should be set to false or omitted to prevent pods from sharing the host network namespace.
-
 
 ## Compliant Code Examples
 ```yaml

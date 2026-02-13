@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM policies named `AWSSupportAccess` should be attached to explicit principals so support permissions are intentionally granted and controlled. An `AWS::IAM::Policy` with `PolicyName: "AWSSupportAccess"` that has no `Roles`, `Users`, or `Groups` defined is unmanaged or orphaned, which can lead to configuration drift or accidental future attachment that grants broad support privileges.
+IAM policies named `AWSSupportAccess` should be attached to explicit principals so support permissions are intentionally granted and controlled. An `AWS::IAM::Policy` with `PolicyName: "AWSSupportAccess"` that has no `Roles`, `Users`, or `Groups` defined is unmanaged or orphaned, which can lead to configuration drift or accidental future attachment that grants broad support privileges.
 
 Check `AWS::IAM::Policy` resources where `PolicyName` equals `AWSSupportAccess` and ensure at least one of the `Roles`, `Users`, or `Groups` properties is present and contains one or more principals. Resources with these properties missing or empty will be flagged. Attach the policy to designated principals (for example, a support role) to make intent explicit and maintain least privilege.
 
@@ -48,7 +48,6 @@ MySupportPolicy:
     Roles:
       - !Ref SupportRole
 ```
-
 
 ## Compliant Code Examples
 ```yaml

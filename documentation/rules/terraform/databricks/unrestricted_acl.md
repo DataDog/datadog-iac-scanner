@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- Flags `databricks_ip_access_list` resources where the `ip_addresses` attribute includes `0.0.0.0/0` or `::/0`.
+Flags `databricks_ip_access_list` resources where the `ip_addresses` attribute includes `0.0.0.0/0` or `::/0`.
 These CIDRs allow unrestricted ingress, which is insecure and exposes the workspace.
-
 
 ## Compliant Code Examples
 ```terraform

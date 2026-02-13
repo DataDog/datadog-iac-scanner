@@ -1,12 +1,13 @@
 {
   "id": "f4a6bcd3-e231-4acf-993c-aa027be50d2e",
-  "queryName": "RUN Instruction Using 'cd' Instead of WORKDIR",
+  "queryName": "RUN instruction using cd instead of WORKDIR",
   "severity": "LOW",
   "category": "Build Process",
-  "descriptionText": "When using RUN command 'cd' should only be used for full path. For relative path make use of WORKDIR command instead.",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#workdir",
+  "descriptionText": "Using relative paths with `cd` inside Dockerfile `RUN` instructions is fragile and can cause commands to execute in unintended directories, producing nondeterministic builds, accidental inclusion of build-context files, or incorrect file ownership and permissions that may expose sensitive data.\n\nThis rule inspects Dockerfile `RUN` instruction command strings and flags occurrences of `cd <path>` where `<path>` is not an absolute path (does not start with `/` or a Windows drive letter like `C:\\`). Instead of changing directories with a relative `cd`, set the working directory with `WORKDIR /absolute/path` for subsequent instructions or use absolute paths in single `RUN` calls. Directory changes performed only within one `RUN` do not persist across layers and are error-prone.\n\nSecure example using `WORKDIR`:\n\n```dockerfile\nFROM ubuntu:22.04\nWORKDIR /app\nCOPY . .\nRUN make build\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/run_command_cd_instead_of_workdir",
   "platform": "Dockerfile",
   "descriptionID": "edd9f7d3",
   "cwe": "710",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#workdir"
 }

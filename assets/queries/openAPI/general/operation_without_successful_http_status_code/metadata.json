@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "Operation Object should have at least one successful HTTP status code defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/operation_without_successful_http_status_code",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/operation_without_successful_http_status_code",
   "platform": "OpenAPI",
   "descriptionID": "a452c68a",
   "aggregation": 2,

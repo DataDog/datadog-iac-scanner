@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- PostgreSQL Server threat detection policy should be enabled to ensure the server can detect anomalous activities and potential security threats, such as SQL injection or brute-force attacks. When the `threat_detection_policy { enabled = false }` attribute is set, suspicious behaviors will not be identified or logged, leaving the server vulnerable to undetected compromises. Enabling threat detection, as shown below, is essential to alert administrators to suspicious activities and reduce the risk of data breaches.
+PostgreSQL Server threat detection policy should be enabled to ensure the server can detect anomalous activities and potential security threats, such as SQL injection or brute-force attacks. When the `threat_detection_policy { enabled = false }` attribute is set, suspicious behaviors will not be identified or logged, leaving the server vulnerable to undetected compromises. Enabling threat detection, as shown below, is essential to alert administrators to suspicious activities and reduce the risk of data breaches.
 
 ```
 threat_detection_policy {
   enabled = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

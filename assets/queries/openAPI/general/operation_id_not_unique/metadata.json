@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "OperationId should be unique when defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/operation_id_not_unique",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/operation_id_not_unique",
   "platform": "OpenAPI",
   "descriptionID": "940820bd",
   "aggregation": 2,

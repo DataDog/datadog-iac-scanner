@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- TLS connections should use strong cipher suites. Containers running `kube-apiserver` or `kubelet` should define the `--tls-cipher-suites` flag and restrict it to strong cipher suite names. The KubeletConfiguration `tlsCipherSuites` field should be present and contain only strong cipher suites.
-
+TLS connections should use strong cipher suites. Containers running `kube-apiserver` or `kubelet` should define the `--tls-cipher-suites` flag and restrict it to strong cipher suite names. The KubeletConfiguration `tlsCipherSuites` field should be present and contain only strong cipher suites.
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the `network_mode` attribute in an AWS ECS task definition is set to `awsvpc`. When `network_mode` is set to any value other than `awsvpc`, such as `none`, the tasks do not leverage the enhanced network security and isolation features provided by AWS VPCs. Without `awsvpc`, the container tasks may lack granular control over network traffic, security group assignment, and enforcement of network policies, making them more exposed to lateral movement and attacks within the cluster. If left unaddressed, this misconfiguration could lead to unauthorized access or unintended network exposure of container workloads, increasing the risk of compromise.
-
+This check ensures that the `network_mode` attribute in an AWS ECS task definition is set to `awsvpc`. When `network_mode` is set to any value other than `awsvpc`, such as `none`, the tasks do not leverage the enhanced network security and isolation features provided by AWS VPCs. Without `awsvpc`, the container tasks may lack granular control over network traffic, security group assignment, and enforcement of network policies, making them more exposed to lateral movement and attacks within the cluster. If left unaddressed, this misconfiguration could lead to unauthorized access or unintended network exposure of container workloads, increasing the risk of compromise.
 
 ## Compliant Code Examples
 ```terraform

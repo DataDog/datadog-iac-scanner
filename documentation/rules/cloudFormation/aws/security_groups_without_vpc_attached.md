@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups must be associated with a specific VPC to ensure network isolation and to allow enforcement of VPC-level controls. A security group without a `VpcId` may end up outside the intended VPC (or require EC2-Classic), which prevents proper subnet scoping, VPC flow logging, and other VPC security controls and can lead to unintended exposure.
+Security groups must be associated with a specific VPC to ensure network isolation and to allow enforcement of VPC-level controls. A security group without a `VpcId` may end up outside the intended VPC (or require EC2-Classic), which prevents proper subnet scoping, VPC flow logging, and other VPC security controls and can lead to unintended exposure.
 
 For `AWS::EC2::SecurityGroup` resources, `Properties.VpcId` must be defined (for example, `!Ref MyVPC` or an explicit VPC ID). This rule flags security groups where `Properties.VpcId` is undefined and the group is not the default group (`GroupName != "default"`).
 
@@ -46,7 +46,6 @@ MySecurityGroup:
         ToPort: 80
         CidrIp: 10.0.0.0/16
 ```
-
 
 ## Compliant Code Examples
 ```yaml

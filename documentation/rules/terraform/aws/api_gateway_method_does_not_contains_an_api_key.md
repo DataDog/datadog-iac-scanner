@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When defining an `aws_api_gateway_method` resource in Terraform, it is critical to require an API key on method requests by setting the attribute `api_key_required = true`. If this option is set to `false` or omitted (as shown below), unauthorized clients can invoke the API method without providing an API key, exposing the endpoint to potential abuse and unauthorized access.
+When defining an `aws_api_gateway_method` resource in Terraform, it is critical to require an API key on method requests by setting the attribute `api_key_required = true`. If this option is set to `false` or omitted (as shown below), unauthorized clients can invoke the API method without providing an API key, exposing the endpoint to potential abuse and unauthorized access.
 
 ```
 resource "aws_api_gateway_method" "insecure_example" {
@@ -41,7 +41,6 @@ resource "aws_api_gateway_method" "insecure_example" {
 ```
 
 Failing to enforce API key requirements can lead to security risks such as credential-less access to sensitive endpoints, excessive traffic, and increased risk of denial-of-service attacks.
-
 
 ## Compliant Code Examples
 ```terraform

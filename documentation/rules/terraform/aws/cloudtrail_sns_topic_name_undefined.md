@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether an Amazon CloudTrail resource is configured to send logs to an SNS topic by setting the `sns_topic_name` attribute. Without specifying `sns_topic_name`, CloudTrail will not publish notifications of log file delivery events to Amazon SNS, which could result in missed alerts or delayed incident response. To address this, you should configure CloudTrail with an SNS topic, as shown below:
+This check verifies whether an Amazon CloudTrail resource is configured to send logs to an SNS topic by setting the `sns_topic_name` attribute. Without specifying `sns_topic_name`, CloudTrail will not publish notifications of log file delivery events to Amazon SNS, which could result in missed alerts or delayed incident response. To address this, you should configure CloudTrail with an SNS topic, as shown below:
 
 ```
 resource "aws_cloudtrail" "example" {
@@ -36,7 +36,6 @@ resource "aws_cloudtrail" "example" {
   sns_topic_name = "some-topic"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

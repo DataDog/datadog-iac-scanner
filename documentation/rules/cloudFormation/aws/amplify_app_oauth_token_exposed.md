@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amplify app OAuth tokens must not be embedded directly in templates or supplied as parameters with a `Default` value because plaintext or defaulted tokens can be exposed via source control, template snapshots, or CI/CD logs and would allow unauthorized access to linked source repositories and deployment pipelines.
+Amplify app OAuth tokens must not be embedded directly in templates or supplied as parameters with a `Default` value because plaintext or defaulted tokens can be exposed via source control, template snapshots, or CI/CD logs and would allow unauthorized access to linked source repositories and deployment pipelines.
 
  This rule checks resources of type `AWS::Amplify::App` and the `Properties.OauthToken` value.
 
@@ -66,7 +66,6 @@ Resources:
       Name: my-app
       OauthToken: !Ref GithubTokenParam
 ```
-
 
 ## Compliant Code Examples
 ```yaml

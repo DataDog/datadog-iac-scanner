@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "OAuth2 security scheme flow requires a valid URL in the tokenUrl field",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/invalid_oauth2_token_url",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/invalid_oauth2_token_url",
   "platform": "OpenAPI",
   "descriptionID": "78304c48",
   "cwe": "285",

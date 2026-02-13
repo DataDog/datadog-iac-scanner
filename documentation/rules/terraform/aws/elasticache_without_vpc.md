@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ElastiCache clusters should be launched within a Virtual Private Cloud (VPC) to ensure that network access is restricted and controlled. When the `subnet_group_name` attribute is omitted, as shown below, ElastiCache is deployed outside a VPC, making it potentially accessible over the public internet and exposing sensitive cached data to unauthorized actors:
+Amazon ElastiCache clusters should be launched within a Virtual Private Cloud (VPC) to ensure that network access is restricted and controlled. When the `subnet_group_name` attribute is omitted, as shown below, ElastiCache is deployed outside a VPC, making it potentially accessible over the public internet and exposing sensitive cached data to unauthorized actors:
 
 ```
 resource "aws_elasticache_cluster" "example" {
@@ -42,7 +42,6 @@ resource "aws_elasticache_cluster" "example" {
 ```
 
 This misconfiguration can lead to increased risk of data breaches and unauthorized access to cached application data.
-
 
 ## Compliant Code Examples
 ```terraform

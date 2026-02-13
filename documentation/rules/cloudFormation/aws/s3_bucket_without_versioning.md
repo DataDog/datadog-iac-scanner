@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should have object versioning enabled to protect data from accidental or malicious deletion. Versioning also preserves prior object states for recovery and auditing.
+S3 buckets should have object versioning enabled to protect data from accidental or malicious deletion. Versioning also preserves prior object states for recovery and auditing.
 
 In CloudFormation, `AWS::S3::Bucket` resources must include `Properties.VersioningConfiguration.Status` set to `Enabled`. Resources that omit `VersioningConfiguration`, or have `VersioningConfiguration.Status` set to `Suspended`, will be flagged.
 
@@ -42,7 +42,6 @@ MyBucket:
     VersioningConfiguration:
       Status: Enabled
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudTrail should be configured to deliver events to CloudWatch Logs so you have real-time monitoring, alerting, and a reliable audit trail for investigation and incident response. For `AWS::CloudTrail::Trail` resources, the `Properties` must include `CloudWatchLogsLogGroupArn` (the CloudWatch Log Group ARN) and `CloudWatchLogsRoleArn` (an IAM role ARN that CloudTrail can assume). Resources missing either property will be flagged. Ensure the referenced IAM role allows the CloudTrail service principal to write to CloudWatch Logs (for example, `logs:CreateLogStream` and `logs:PutLogEvents`).
+CloudTrail should be configured to deliver events to CloudWatch Logs so you have real-time monitoring, alerting, and a reliable audit trail for investigation and incident response. For `AWS::CloudTrail::Trail` resources, the `Properties` must include `CloudWatchLogsLogGroupArn` (the CloudWatch Log Group ARN) and `CloudWatchLogsRoleArn` (an IAM role ARN that CloudTrail can assume). Resources missing either property will be flagged. Ensure the referenced IAM role allows the CloudTrail service principal to write to CloudWatch Logs (for example, `logs:CreateLogStream` and `logs:PutLogEvents`).
 
 Secure CloudFormation example:
 
@@ -64,7 +64,6 @@ MyTrail:
     CloudWatchLogsLogGroupArn: !GetAtt MyLogGroup.Arn
     CloudWatchLogsRoleArn: !GetAtt MyTrailRole.Arn
 ```
-
 
 ## Compliant Code Examples
 ```yaml

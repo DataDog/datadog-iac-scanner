@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should be configured with AppArmor for each application to reduce its potential attack surface. Pods must include the AppArmor annotation `container.apparmor.security.beta.kubernetes.io/<container-name>` set to an appropriate profile so the kernel enforces confinement. Proper AppArmor profiles limit privileges and reduce the risk of privilege escalation and other compromises.
-
+Containers should be configured with AppArmor for each application to reduce its potential attack surface. Pods must include the AppArmor annotation `container.apparmor.security.beta.kubernetes.io/<container-name>` set to an appropriate profile so the kernel enforces confinement. Proper AppArmor profiles limit privileges and reduce the risk of privilege escalation and other compromises.
 
 ## Compliant Code Examples
 ```terraform

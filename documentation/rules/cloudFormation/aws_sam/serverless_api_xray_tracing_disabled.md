@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Serverless APIs should have AWS X-Ray tracing enabled to capture distributed traces for requests, which helps diagnose performance issues and investigate security incidents or anomalous application behavior. The `TracingEnabled` property on `AWS::Serverless::Api` resources must be defined and set to `true`. Resources with `TracingEnabled` missing, `null`, or set to `false` will be flagged.
+Serverless APIs should have AWS X-Ray tracing enabled to capture distributed traces for requests, which helps diagnose performance issues and investigate security incidents or anomalous application behavior. The `TracingEnabled` property on `AWS::Serverless::Api` resources must be defined and set to `true`. Resources with `TracingEnabled` missing, `null`, or set to `false` will be flagged.
 
  Secure configuration example:
 
@@ -40,7 +40,6 @@ MyServerlessApi:
     StageName: prod
     TracingEnabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

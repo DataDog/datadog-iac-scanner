@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- DynamoDB tables must use AWS KMS-managed encryption rather than the default AWS-owned key so you can control key lifecycle, rotation, and access auditing. Relying on the AWS-owned key can limit your ability to revoke or monitor key use.
+DynamoDB tables must use AWS KMS-managed encryption rather than the default AWS-owned key so you can control key lifecycle, rotation, and access auditing. Relying on the AWS-owned key can limit your ability to revoke or monitor key use.
  
  In CloudFormation, ensure `AWS::DynamoDB::Table` resources include the `SSESpecification` property with `SSEType` set to `KMS` and `SSEEnabled` set to `true`. Resources missing `SSESpecification` or `SSEEnabled`, or with `SSEEnabled` set to `false` while `SSEType` is `KMS`, will be flagged.
  
@@ -53,7 +53,6 @@ MyDynamoTable:
       # Optional: specify a customer-managed CMK
       # KMSMasterKeyId: arn:aws:kms:region:account-id:key/key-id
 ```
-
 
 ## Compliant Code Examples
 ```yaml

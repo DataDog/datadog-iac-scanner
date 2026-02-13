@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Cloud Storage Buckets configured with anonymous or public access pose significant security risks by allowing anyone on the internet to access potentially sensitive data. Including `allUsers` in IAM bindings grants access to anyone, while `allAuthenticatedUsers` grants access to any Google account holder. Both violate the principle of least privilege.
+Cloud Storage Buckets configured with anonymous or public access pose significant security risks by allowing anyone on the internet to access potentially sensitive data. Including `allUsers` in IAM bindings grants access to anyone, while `allAuthenticatedUsers` grants access to any Google account holder. Both violate the principle of least privilege.
 
 Insecure configuration example:
 ```
@@ -47,7 +47,6 @@ resource "google_storage_bucket_iam_binding" "secure" {
   members = ["user:jane@example.com"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

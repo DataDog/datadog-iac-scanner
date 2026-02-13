@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "IAM policies that allow both `Action: \"*\"` and `Resource: \"*\"` grant unrestricted access, posing risks of privilege escalation and data exfiltration. This rule flags `AWS::IAM::Policy` resources in CloudFormation templates when a `PolicyDocument.Statement` has `Effect: \"Allow\"` and both `Action` and `Resource` are set to `\"*\"`, including when they appear in arrays. To enforce least privilege, restrict permissions to specific actions and ARNs, or apply conditions, roles, and permission boundaries.\n\nSecure example:\n\n```yaml\nMyPolicy:\n  Type: AWS::IAM::Policy\n  Properties:\n    PolicyName: ReadS3BucketPolicy\n    PolicyDocument:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Action:\n            - s3:GetObject\n          Resource: arn:aws:s3:::my-bucket/*\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_policy_grants_full_permissions",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/iam_policy_grants_full_permissions",
   "platform": "CloudFormation",
   "descriptionID": "d4158e76",
   "cloudProvider": "aws",

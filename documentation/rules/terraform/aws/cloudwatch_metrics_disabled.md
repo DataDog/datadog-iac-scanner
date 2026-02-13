@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check determines whether Amazon API Gateway stages are properly configured to enable CloudWatch metrics by verifying that the `metrics_enabled` attribute is set to `true` within the `settings` block. If `metrics_enabled` is set to `false` or omitted, CloudWatch metrics will not capture API Gateway performance data, such as error rates, latency, or request counts. This lack of monitoring inhibits an organization's ability to detect misuse, troubleshoot issues, or respond to anomalous behaviors in their API environments. Without timely visibility into API activity, misconfigurations or security incidents may go unnoticed, increasing operational and security risks.
-
+This check determines whether Amazon API Gateway stages are properly configured to enable CloudWatch metrics by verifying that the `metrics_enabled` attribute is set to `true` within the `settings` block. If `metrics_enabled` is set to `false` or omitted, CloudWatch metrics will not capture API Gateway performance data, such as error rates, latency, or request counts. This lack of monitoring inhibits an organization's ability to detect misuse, troubleshoot issues, or respond to anomalous behaviors in their API environments. Without timely visibility into API activity, misconfigurations or security incidents may go unnoticed, increasing operational and security risks.
 
 ## Compliant Code Examples
 ```terraform

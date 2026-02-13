@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Minimize the admission of privileged containers. Privileged containers have elevated access to host resources and should be avoided where possible. This rule checks `container` and `init_container` entries in `spec` or `spec.template.spec` and flags any with `security_context.privileged` set to `true`.
-
+Minimize the admission of privileged containers. Privileged containers have elevated access to host resources and should be avoided where possible. This rule checks `container` and `init_container` entries in `spec` or `spec.template.spec` and flags any with `security_context.privileged` set to `true`.
 
 ## Compliant Code Examples
 ```terraform

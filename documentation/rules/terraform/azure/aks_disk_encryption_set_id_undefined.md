@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Kubernetes Service (AKS) clusters should configure the `disk_encryption_set_id` attribute to ensure that managed disks are encrypted with a customer-managed key instead of the default platform-managed keys. Without this configuration, persistent data stored on cluster disks may be vulnerable to unauthorized access or data exposure, as the encryption relies only on platform defaults. For improved security, configure the AKS resource as follows:
+Azure Kubernetes Service (AKS) clusters should configure the `disk_encryption_set_id` attribute to ensure that managed disks are encrypted with a customer-managed key instead of the default platform-managed keys. Without this configuration, persistent data stored on cluster disks may be vulnerable to unauthorized access or data exposure, as the encryption relies only on platform defaults. For improved security, configure the AKS resource as follows:
 
 ```
 resource "azurerm_kubernetes_cluster" "secure" {
@@ -38,7 +38,6 @@ resource "azurerm_kubernetes_cluster" "secure" {
 }
 ```
 This ensures that sensitive container and application data on disk is encrypted according to organizational policy, reducing risks associated with data breaches.
-
 
 ## Compliant Code Examples
 ```terraform

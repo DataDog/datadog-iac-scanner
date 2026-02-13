@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Security should not use 'password' Flow in OAuth2 authentication",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/global_security_using_password_flow",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/global_security_using_password_flow",
   "platform": "OpenAPI",
   "descriptionID": "14a00e4a",
   "cwe": "285",

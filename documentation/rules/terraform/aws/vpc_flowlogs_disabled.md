@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling VPC Flow Logs ensures that all network traffic within a Virtual Private Cloud (VPC) is captured and monitored for security and compliance purposes. Without the `vpc_id` attribute set for each `aws_flow_log` resource, as shown below, critical visibility into network traffic can be lost, making it difficult to detect suspicious activity or troubleshoot networking issues. To ensure accountability and monitoring, every VPC resource should have an associated flow log defined as follows:
+Enabling VPC Flow Logs ensures that all network traffic within a Virtual Private Cloud (VPC) is captured and monitored for security and compliance purposes. Without the `vpc_id` attribute set for each `aws_flow_log` resource, as shown below, critical visibility into network traffic can be lost, making it difficult to detect suspicious activity or troubleshoot networking issues. To ensure accountability and monitoring, every VPC resource should have an associated flow log defined as follows:
 
 ```
 resource "aws_vpc" "main" {
@@ -42,7 +42,6 @@ resource "aws_flow_log" "main" {
   vpc_id          = aws_vpc.main.id
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

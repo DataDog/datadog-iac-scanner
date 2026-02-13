@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- VPCs should be associated with AWS Network Firewall to enable centralized traffic inspection and enforcement of network policies. This helps prevent lateral movement and detect or block malicious east–west and north–south traffic.
+VPCs should be associated with AWS Network Firewall to enable centralized traffic inspection and enforcement of network policies. This helps prevent lateral movement and detect or block malicious east–west and north–south traffic.
 
 This rule checks CloudFormation for `AWS::EC2::VPC` resources that are not referenced by any `AWS::NetworkFirewall::Firewall` via the firewall's `Properties.VpcId`. The `VpcId` property in `AWS::NetworkFirewall::Firewall` must reference the VPC (for example, using `Ref` to the VPC logical ID). VPC resources without an associated `AWS::NetworkFirewall::Firewall` will be flagged.
 
@@ -50,7 +50,6 @@ MyNetworkFirewall:
       - SubnetId: subnet-0123456789abcdef0
     FirewallPolicyArn: arn:aws:network-firewall:us-east-1:123456789012:firewall-policy/example-policy
 ```
-
 
 ## Compliant Code Examples
 ```yaml

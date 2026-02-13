@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether VPC flow logs are enabled for a `google_compute_subnetwork` resource by ensuring a `log_config` block is included in the Terraform configuration. Without flow logs enabled, as shown below, critical network traffic information is not captured, making it difficult to monitor, detect, or investigate suspicious activity within the network.  
+This check verifies whether VPC flow logs are enabled for a `google_compute_subnetwork` resource by ensuring a `log_config` block is included in the Terraform configuration. Without flow logs enabled, as shown below, critical network traffic information is not captured, making it difficult to monitor, detect, or investigate suspicious activity within the network.  
 
 ```
 resource "google_compute_subnetwork" "example" {
@@ -43,7 +43,6 @@ resource "google_compute_subnetwork" "example" {
 ```
 
 Failure to enable logging can lead to security gaps, reducing visibility into potential breaches and making compliance with auditing requirements more challenging.
-
 
 ## Compliant Code Examples
 ```terraform

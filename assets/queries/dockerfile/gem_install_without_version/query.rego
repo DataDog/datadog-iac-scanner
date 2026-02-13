@@ -24,6 +24,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("%s is 'gem install <gem>:<version>'", [resource.Original]),
 		"keyActualValue": sprintf("%s is 'gem install <gem>', you should use 'gem install <gem>:<version>", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -46,6 +48,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("%s is 'gem install <gem>:<version>'", [resource.Original]),
 		"keyActualValue": sprintf("%s is 'gem install <gem>', you should use 'gem install <gem>:<version>", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

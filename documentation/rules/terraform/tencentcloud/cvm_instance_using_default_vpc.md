@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CVM instances should not be configured in the default VPC network. The `vpc_id` attribute of a `tencentcloud_instance` should not be set to `default`. Additionally, the `subnet_id` should not reference a default subnet.
-
+CVM instances should not be configured in the default VPC network. The `vpc_id` attribute of a `tencentcloud_instance` should not be set to `default`. Additionally, the `subnet_id` should not reference a default subnet.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The RAM account password policy must define `minimum_password_length` and set it to `14` or greater. If the attribute is missing, the policy is non-compliant and should include `minimum_password_length = 14`. This rule reports `IncorrectValue` when the attribute is defined but below `14`, and `MissingAttribute` when it is not defined.
-
+The RAM account password policy must define `minimum_password_length` and set it to `14` or greater. If the attribute is missing, the policy is non-compliant and should include `minimum_password_length = 14`. This rule reports `IncorrectValue` when the attribute is defined but below `14`, and `MissingAttribute` when it is not defined.
 
 ## Compliant Code Examples
 ```terraform

@@ -1,12 +1,13 @@
 {
   "id": "9bae49be-0aa3-4de5-bab2-4c3a069e40cd",
-  "queryName": "Update Instruction Alone",
+  "queryName": "Package update without install in same RUN",
   "severity": "LOW",
   "category": "Build Process",
-  "descriptionText": "Instruction 'RUN update' should always be followed by ' install' in the same RUN statement",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "Separating a package index update from the package installation across multiple Dockerfile `RUN` instructions can cause builds to use cached layers and install packages from stale indexes. This increases the risk of including outdated or vulnerable package versions in the image.\n\nThis check examines Dockerfile `RUN` commands (resources where `Cmd == \"run\"` and `Value` contains the command string) and verifies that when a package-manager updater is invoked (examples: `apt-get update`, `apt update`, `apk update`, `yum update`, `dnf update`, `zypper refresh`, `pacman -Syu`) it is followed in the same `RUN` statement by the corresponding installer command (for example, `apt-get install`/`apt install`, `apk add`, `yum install`, `dnf install`, `zypper install`, and `pacman -S`). Resources that run an update without an install in the same `RUN`, or that place the install in a later `RUN` instruction, will be flagged. \n\nSecure examples that combine update and install in one `RUN`:\n\n```dockerfile\nRUN apt-get update && apt-get install -y --no-install-recommends package1 package2 && rm -rf /var/lib/apt/lists/*\n```\n\n```dockerfile\nRUN apk update && apk add --no-cache package1 package2\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/update_instruction_alone",
   "platform": "Dockerfile",
   "descriptionID": "3785203d",
   "cwe": "710",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

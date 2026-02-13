@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Network ACL entries in the same Network ACL must not reuse the same rule number for the same traffic direction, because duplicate rule numbers in one direction can cause one rule to override another and lead to unintended access or disruption of network traffic.
+Network ACL entries in the same Network ACL must not reuse the same rule number for the same traffic direction, because duplicate rule numbers in one direction can cause one rule to override another and lead to unintended access or disruption of network traffic.
  
  For `AWS::EC2::NetworkAclEntry` resources, `Properties.RuleNumber` must be unique among entries that reference the same `Properties.NetworkAclId` and share the same direction. Direction is determined by the boolean `Properties.Egress` (`true` = egress, `false` = ingress) or `Properties.Ingress`. The rule flags two distinct resources that reference the same `NetworkAclId` with identical `RuleNumber` and identical direction.
  
@@ -81,7 +81,6 @@ MyAclEntryIngress:
     Egress: false
     CidrBlock: 10.0.0.0/8
 ```
-
 
 ## Compliant Code Examples
 ```yaml

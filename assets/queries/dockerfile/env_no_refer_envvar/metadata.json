@@ -1,0 +1,12 @@
+{
+  "id": "be8aab51-94cb-cc12-c40e-f6928d9b544a",
+  "queryName": "ENV refers to itself",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Referencing an environment variable that is declared in the same Dockerfile `ENV` instruction is unreliable and can result in unexpected literal values, broken configuration, or accidental exposure of secrets when the build does not behave as intended.  \n\nThis rule inspects Dockerfile `ENV` instructions (resource type: `dockerfile_container`) and flags any `ENV` value that contains references such as `$VAR` or `${VAR}` where `VAR` is defined in the same `ENV` command.  \n\nTo fix this issue, define the referenced variable in an earlier `ENV` instruction (or use a build-time `ARG`) so Docker can expand it when processing the later `ENV` instruction.  \n\nSecure example with expansion working as intended:\n\n```dockerfile\nENV BASE_URL=https://example.com\nENV API_ENDPOINT=${BASE_URL}/api\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/env_no_refer_envvar",
+  "platform": "Dockerfile",
+  "descriptionID": "be8aab51",
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#env"
+}

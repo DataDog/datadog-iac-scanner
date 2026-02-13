@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Schema Object define type should not use a keyword of another type",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/type_has_invalid_keyword",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/type_has_invalid_keyword",
   "platform": "OpenAPI",
   "descriptionID": "d7b8c860",
   "aggregation": 4,

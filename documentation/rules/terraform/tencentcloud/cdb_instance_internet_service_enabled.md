@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CDB instances (`tencentcloud_mysql_instance`) should have the `internet_service` attribute disabled. The rule detects resources where `internet_service` is set to `1`. The expected value for `internet_service` is `0` or undefined.
-
+CDB instances (`tencentcloud_mysql_instance`) should have the `internet_service` attribute disabled. The rule detects resources where `internet_service` is set to `1`. The expected value for `internet_service` is `0` or undefined.
 
 ## Compliant Code Examples
 ```terraform

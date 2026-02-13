@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Instances must not have IP forwarding enabled, which means the attribute 'canIpForward' must not be true",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/ip_forwarding_enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/ip_forwarding_enabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "dc6dbaa9",
   "cloudProvider": "gcp",

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Role assignments in Terraform should strictly limit permissions granted to guest users. If the `actions` attribute in the `azurerm_role_definition` resource is set to `["*"]`, guest users receive unrestricted permissions within the scope, potentially allowing them to perform any action, escalate privileges, or exfiltrate data. It is recommended to set `actions = []` and `not_actions = ["*"]` to ensure that guest users have no actionable privileges, thereby protecting critical resources from unauthorized access.
+Role assignments in Terraform should strictly limit permissions granted to guest users. If the `actions` attribute in the `azurerm_role_definition` resource is set to `["*"]`, guest users receive unrestricted permissions within the scope, potentially allowing them to perform any action, escalate privileges, or exfiltrate data. It is recommended to set `actions = []` and `not_actions = ["*"]` to ensure that guest users have no actionable privileges, thereby protecting critical resources from unauthorized access.
 
 ```
 permissions {
@@ -36,7 +36,6 @@ permissions {
   not_actions = ["*"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

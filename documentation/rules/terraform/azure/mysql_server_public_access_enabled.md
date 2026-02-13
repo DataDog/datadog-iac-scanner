@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies if the Azure MySQL Server has public network access enabled, which allows connections from the internet to reach your database. When public network access is enabled, your database is accessible to anyone who has the connection information, creating a significant security risk. Properly secured MySQL servers should have `public_network_access_enabled` set to `false`, forcing all connections to be made through private endpoints or service endpoints. The following example shows a secure configuration: 
+This check verifies if the Azure MySQL Server has public network access enabled, which allows connections from the internet to reach your database. When public network access is enabled, your database is accessible to anyone who has the connection information, creating a significant security risk. Properly secured MySQL servers should have `public_network_access_enabled` set to `false`, forcing all connections to be made through private endpoints or service endpoints. The following example shows a secure configuration: 
 ```
 resource "azurerm_mysql_server" "example" {
   // ... other configuration ...
@@ -36,7 +36,6 @@ resource "azurerm_mysql_server" "example" {
   // ... other configuration ...
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

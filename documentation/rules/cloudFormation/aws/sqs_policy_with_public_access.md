@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing sensitive SQS management actions to wildcard principals lets any actor modify, delete, or change permissions on queues. This can enable resource takeover, data loss, or privilege escalation.
+Allowing sensitive SQS management actions to wildcard principals lets any actor modify, delete, or change permissions on queues. This can enable resource takeover, data loss, or privilege escalation.
 
 This rule inspects `AWS::SQS::QueuePolicy` resources and flags `PolicyDocument.Statement` entries where `Effect: "Allow"` and `Action` contains any of `SQS:AddPermission`, `SQS:CreateQueue`, `SQS:DeleteQueue`, `SQS:RemovePermission`, `SQS:TagQueue`, or `SQS:UnTagQueue`, if the `Principal` includes a wildcard (for example, `*` or patterns like `arn:aws:iam::*`). Statements that include a restrictive `Condition` are excluded from this flag. 
 
@@ -52,7 +52,6 @@ MyQueuePolicy:
             - SQS:TagQueue
           Resource: arn:aws:sqs:us-east-1:123456789012:my-queue
 ```
-
 
 ## Compliant Code Examples
 ```yaml

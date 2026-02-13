@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether the Amazon Organizations configuration has the `feature_set` attribute set to `"ALL"`, which enables all features, including the use of Service Control Policies (SCPs). If `feature_set` is set only to `"CONSOLIDATED_BILLING"`, as in the following example, then organizations cannot use SCPs for centralized governance, making it difficult to enforce security and compliance policies across AWS accounts:
+This check verifies whether the Amazon Organizations configuration has the `feature_set` attribute set to `"ALL"`, which enables all features, including the use of Service Control Policies (SCPs). If `feature_set` is set only to `"CONSOLIDATED_BILLING"`, as in the following example, then organizations cannot use SCPs for centralized governance, making it difficult to enforce security and compliance policies across AWS accounts:
 
 ```
 resource "aws_organizations_organization" "example" {
@@ -37,7 +37,6 @@ resource "aws_organizations_organization" "example" {
 ```
 
 This leaves accounts within the organization more vulnerable to misconfigurations and unauthorized access, as critical controls cannot be imposed at the organization level.
-
 
 ## Compliant Code Examples
 ```terraform

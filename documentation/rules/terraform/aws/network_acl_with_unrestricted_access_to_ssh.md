@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Allowing SSH (TCP port 22) from all IP addresses in an AWS Network ACL by setting `cidr_block = "0.0.0.0/0"` exposes your resources to the public internet, making them vulnerable to brute force attacks and unauthorized access. This misconfiguration can lead to potential data breaches or system compromise if attackers exploit this open access. To mitigate this risk, restrict the `cidr_block` attribute to trusted IP ranges only, such as `cidr_block = "10.3.0.0/18"`.
-
+Allowing SSH (TCP port 22) from all IP addresses in an AWS Network ACL by setting `cidr_block = "0.0.0.0/0"` exposes your resources to the public internet, making them vulnerable to brute force attacks and unauthorized access. This misconfiguration can lead to potential data breaches or system compromise if attackers exploit this open access. To mitigate this risk, restrict the `cidr_block` attribute to trusted IP ranges only, such as `cidr_block = "10.3.0.0/18"`.
 
 ## Compliant Code Examples
 ```terraform

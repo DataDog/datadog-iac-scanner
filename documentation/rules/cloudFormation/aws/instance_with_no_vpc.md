@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EC2 instances must be launched into VPC subnets so they are subject to VPC network controls (routing and security groups) and are not placed in undefined network contexts that can increase exposure risk.
+EC2 instances must be launched into VPC subnets so they are subject to VPC network controls (routing and security groups) and are not placed in undefined network contexts that can increase exposure risk.
 
 In AWS CloudFormation:
 - `AWS::EC2::Instance` resources must define `Properties.NetworkInterfaces`.
@@ -55,7 +55,6 @@ MyInstance:
         GroupSet:
           - !Ref MySecurityGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

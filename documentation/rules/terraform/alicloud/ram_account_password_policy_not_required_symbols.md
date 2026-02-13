@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- RAM account password security should require at least one symbol.
+RAM account password security should require at least one symbol.
 Specifically, the `alicloud_ram_account_password_policy` resource must have the `require_symbols` attribute set to `true`.
 This rule flags cases where `require_symbols` is `false` as an `IncorrectValue` issue and suggests replacing it with `true`.
-
 
 ## Compliant Code Examples
 ```terraform

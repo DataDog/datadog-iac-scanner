@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- StackSet AutoDeployment should be enabled and configured to retain stacks when member accounts are removed to prevent unintended deletion of stacks and their resources. Unintended deletions can remove critical security controls, logging, or IAM roles and cause service disruption.
+StackSet AutoDeployment should be enabled and configured to retain stacks when member accounts are removed to prevent unintended deletion of stacks and their resources. Unintended deletions can remove critical security controls, logging, or IAM roles and cause service disruption.
 
 For `AWS::CloudFormation::StackSet` resources, the `Properties.AutoDeployment` object must be present, with `Enabled` set to `true` and `RetainStacksOnAccountRemoval` set to `true`. Resources missing `AutoDeployment`, with `AutoDeployment.Enabled` set to `false`, or with `AutoDeployment.RetainStacksOnAccountRemoval` set to `false` will be flagged.
 
@@ -43,7 +43,6 @@ MyStackSet:
       Enabled: true
       RetainStacksOnAccountRemoval: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

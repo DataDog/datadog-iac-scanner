@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies IAM policies that permit the action `iam:AttachUserPolicy` with the `Resource` field set to `"*"`. Granting this permission to a user, as shown below, allows them to attach any AWS managed or custom policy to any user, which can lead to privilege escalation and potential compromise of the AWS environment.
+This check identifies IAM policies that permit the action `iam:AttachUserPolicy` with the `Resource` field set to `"*"`. Granting this permission to a user, as shown below, allows them to attach any AWS managed or custom policy to any user, which can lead to privilege escalation and potential compromise of the AWS environment.
 
 ```
 policy = jsonencode({
@@ -46,7 +46,6 @@ policy = jsonencode({
 ```
 
 If left unaddressed, an attacker with this permission could escalate their privileges far beyond what was originally intended, potentially gaining administrative access and leading to a full environment takeover.
-
 
 ## Compliant Code Examples
 ```terraform

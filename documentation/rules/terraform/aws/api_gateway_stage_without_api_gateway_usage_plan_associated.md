@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stages should always be associated with an API Gateway UsagePlan, which enforces throttling and quota limits for clients accessing your APIs. Without a defined `aws_api_gateway_usage_plan` resource and its association via the `api_stages` block, as shown below, the API stage can be accessed without usage restrictions, leading to potential misuse, abuse, or denial of service due to unlimited traffic.
+API Gateway stages should always be associated with an API Gateway UsagePlan, which enforces throttling and quota limits for clients accessing your APIs. Without a defined `aws_api_gateway_usage_plan` resource and its association via the `api_stages` block, as shown below, the API stage can be accessed without usage restrictions, leading to potential misuse, abuse, or denial of service due to unlimited traffic.
 
 ```
 resource "aws_api_gateway_stage" "example" {
@@ -50,7 +50,6 @@ resource "aws_api_gateway_usage_plan" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

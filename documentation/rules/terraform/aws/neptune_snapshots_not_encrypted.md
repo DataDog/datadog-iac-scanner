@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Neptune is a fully managed graph database service that stores and queries highly connected data. When Neptune cluster snapshots are not encrypted, sensitive data stored in these snapshots could be vulnerable to unauthorized access, potentially exposing proprietary information, personal data, or other confidential content. Enabling encryption for Neptune cluster snapshots adds an additional layer of security that helps protect your data at rest.
+AWS Neptune is a fully managed graph database service that stores and queries highly connected data. When Neptune cluster snapshots are not encrypted, sensitive data stored in these snapshots could be vulnerable to unauthorized access, potentially exposing proprietary information, personal data, or other confidential content. Enabling encryption for Neptune cluster snapshots adds an additional layer of security that helps protect your data at rest.
 
 Secure configuration example:
 ```terraform
@@ -47,7 +47,6 @@ resource "aws_neptune_cluster_snapshot" "bad_example" {
   storage_encrypted              = false
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

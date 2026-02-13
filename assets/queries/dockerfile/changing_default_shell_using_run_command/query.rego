@@ -35,6 +35,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("{{%s}} should use the SHELL command to change the default shell", [resource.Original]),
 		"keyActualValue": sprintf("{{%s}} uses the RUN command to change the default shell", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -52,5 +54,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("{{%s}} should use the SHELL command to change the default shell", [resource.Original]),
 		"keyActualValue": sprintf("{{%s}} uses the RUN command to change the default shell", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

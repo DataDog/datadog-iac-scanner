@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- User volumes for Amazon WorkSpaces must be encrypted to protect sensitive user data at rest and to reduce the risk of data exposure if storage media, snapshots, or backups are compromised.
+User volumes for Amazon WorkSpaces must be encrypted to protect sensitive user data at rest and to reduce the risk of data exposure if storage media, snapshots, or backups are compromised.
 
 In CloudFormation, `AWS::WorkSpaces::Workspace` resources must include `Properties.UserVolumeEncryptionEnabled` set to `true`. Resources that omit this property or set it to `false` will be flagged. Ensure the property is explicitly defined as a boolean `true` in your template so encryption is enforced for user volumes.
 
@@ -43,7 +43,6 @@ MyWorkSpace:
     UserName: example-user
     UserVolumeEncryptionEnabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

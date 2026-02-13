@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Resource Management",
   "descriptionText": "API Gateway stages must be associated with an API Gateway usage plan to enforce throttling and quota limits and enable API key–based access control. Without a usage plan, a stage is vulnerable to abusive clients, excessive request rates, service exhaustion, and unexpected costs.\n\n Verify the template includes an `AWS::ApiGateway::UsagePlan` resource and that its `Properties.ApiStages` array contains an entry where:\n\n - `ApiId` equals the stage's `RestApiId`\n - `Stage` equals the stage's `StageName`\n\n Resources missing a usage plan or whose usage plan `ApiStages` does not include a matching `ApiId`/`Stage` pair will be flagged. Use intrinsic references so values match, for example:\n\n```yaml\nMyApi:\n  Type: AWS::ApiGateway::RestApi\n\nMyStage:\n  Type: AWS::ApiGateway::Stage\n  Properties:\n    RestApiId: !Ref MyApi\n    StageName: prod\n\nMyUsagePlan:\n  Type: AWS::ApiGateway::UsagePlan\n  Properties:\n    UsagePlanName: MyUsagePlan\n    ApiStages:\n      - ApiId: !Ref MyApi\n        Stage: !Ref MyStage\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/api_gateway_stage_without_api_gateway_usage_plan_associated",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/api_gateway_stage_without_api_gateway_usage_plan_associated",
   "platform": "CloudFormation",
   "descriptionID": "ad012827",
   "cloudProvider": "aws",

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When running `kubelet`, the read-only port should be set to `0` by specifying `--read-only-port=0`. This rule detects containers that invoke `kubelet` with a `--read-only-port` flag not set to `0`, and `KubeletConfiguration` resources whose `readOnlyPort` attribute is not `0`. Disabling the read-only port prevents exposure of the unauthenticated read-only HTTP endpoint.
-
+When running `kubelet`, the read-only port should be set to `0` by specifying `--read-only-port=0`. This rule detects containers that invoke `kubelet` with a `--read-only-port` flag not set to `0`, and `KubeletConfiguration` resources whose `readOnlyPort` attribute is not `0`. Disabling the read-only port prevents exposure of the unauthenticated read-only HTTP endpoint.
 
 ## Compliant Code Examples
 ```yaml

@@ -19,6 +19,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "After installing a package with dnf, command 'dnf clean all' should run.",
 		"keyActualValue": "Command `dnf clean all` is not being run after installing packages.",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

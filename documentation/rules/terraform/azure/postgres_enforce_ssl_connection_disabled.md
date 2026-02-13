@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SSL/TLS encryption is essential for PostgreSQL Database Servers to protect sensitive data during transmission between the client and server. When `ssl_enforcement_enabled` is not set to `ENABLED`, data transferred between clients and the database is vulnerable to eavesdropping, man-in-the-middle attacks, and data tampering. This security vulnerability could lead to unauthorized access and data exposure.
+SSL/TLS encryption is essential for PostgreSQL Database Servers to protect sensitive data during transmission between the client and server. When `ssl_enforcement_enabled` is not set to `ENABLED`, data transferred between clients and the database is vulnerable to eavesdropping, man-in-the-middle attacks, and data tampering. This security vulnerability could lead to unauthorized access and data exposure.
 
 Insecure configuration example:
 ```terraform
@@ -45,7 +45,6 @@ resource "azurerm_postgresql_server" "good_example" {
   ssl_enforcement_enabled = ["ENABLED"] // Secure setting
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

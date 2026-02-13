@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SQL Server alert emails should be enabled to ensure that administrators are promptly notified of suspicious activities or potential security threats, such as SQL injection or data exfiltration attempts. Without setting the `email_account_admins` attribute to `true` in the `azurerm_mssql_server_security_alert_policy` resource, critical security alerts may go unnoticed, delaying incident response and potentially increasing the risk of a successful attack. A secure configuration is shown below:
+SQL Server alert emails should be enabled to ensure that administrators are promptly notified of suspicious activities or potential security threats, such as SQL injection or data exfiltration attempts. Without setting the `email_account_admins` attribute to `true` in the `azurerm_mssql_server_security_alert_policy` resource, critical security alerts may go unnoticed, delaying incident response and potentially increasing the risk of a successful attack. A secure configuration is shown below:
 
 ```
 resource "azurerm_mssql_server_security_alert_policy" "example" {
@@ -47,7 +47,6 @@ resource "azurerm_mssql_server_security_alert_policy" "example" {
 ```
 
 Enabling alert emails reduces the risk of missing critical security events by ensuring they are communicated in real time to account administrators.
-
 
 ## Compliant Code Examples
 ```terraform

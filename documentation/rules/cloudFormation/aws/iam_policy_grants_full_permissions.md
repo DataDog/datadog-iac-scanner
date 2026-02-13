@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM policies that allow both `Action: "*"` and `Resource: "*"` grant unrestricted access, posing risks of privilege escalation and data exfiltration. This rule flags `AWS::IAM::Policy` resources in CloudFormation templates when a `PolicyDocument.Statement` has `Effect: "Allow"` and both `Action` and `Resource` are set to `"*"`, including when they appear in arrays. To enforce least privilege, restrict permissions to specific actions and ARNs, or apply conditions, roles, and permission boundaries.
+IAM policies that allow both `Action: "*"` and `Resource: "*"` grant unrestricted access, posing risks of privilege escalation and data exfiltration. This rule flags `AWS::IAM::Policy` resources in CloudFormation templates when a `PolicyDocument.Statement` has `Effect: "Allow"` and both `Action` and `Resource` are set to `"*"`, including when they appear in arrays. To enforce least privilege, restrict permissions to specific actions and ARNs, or apply conditions, roles, and permission boundaries.
 
 Secure example:
 
@@ -45,7 +45,6 @@ MyPolicy:
             - s3:GetObject
           Resource: arn:aws:s3:::my-bucket/*
 ```
-
 
 ## Compliant Code Examples
 ```yaml

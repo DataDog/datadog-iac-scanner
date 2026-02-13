@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Kinesis Firehose delivery streams should have Server-Side Encryption (SSE) properly configured to protect sensitive data at rest. Without encryption, data stored in Kinesis streams can be exposed to unauthorized access, potentially leading to data breaches and compliance violations. To secure Kinesis streams, the `server_side_encryption` block must be included with `enabled` set to `true` and a valid `key_type` specified (either `AWS_OWNED_CMK` or `CUSTOMER_MANAGED_CMK` with corresponding `key_arn`).
+AWS Kinesis Firehose delivery streams should have Server-Side Encryption (SSE) properly configured to protect sensitive data at rest. Without encryption, data stored in Kinesis streams can be exposed to unauthorized access, potentially leading to data breaches and compliance violations. To secure Kinesis streams, the `server_side_encryption` block must be included with `enabled` set to `true` and a valid `key_type` specified (either `AWS_OWNED_CMK` or `CUSTOMER_MANAGED_CMK` with corresponding `key_arn`).
 ```
 resource "aws_kinesis_firehose_delivery_stream" "example" {
   // ... other configuration ...
@@ -40,7 +40,6 @@ resource "aws_kinesis_firehose_delivery_stream" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

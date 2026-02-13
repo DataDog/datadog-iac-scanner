@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM policies that grant full administrative permissions (`*`) to all resources pose a significant security risk by violating the principle of least privilege. If these credentials are compromised, attackers gain unrestricted access to your AWS environment, potentially leading to data breaches, resource destruction, or cryptocurrency mining. Instead of using wildcard permissions, specify only the actions and resources necessary for the role or user, such as limiting to specific services and resources, as shown below:
+IAM policies that grant full administrative permissions (`*`) to all resources pose a significant security risk by violating the principle of least privilege. If these credentials are compromised, attackers gain unrestricted access to your AWS environment, potentially leading to data breaches, resource destruction, or cryptocurrency mining. Instead of using wildcard permissions, specify only the actions and resources necessary for the role or user, such as limiting to specific services and resources, as shown below:
 
 Insecure example:
 ```json
@@ -48,7 +48,6 @@ Secure example:
 "Effect": "Allow",
 "Resource": "SomeResource"
 ```
-
 
 ## Compliant Code Examples
 ```terraform

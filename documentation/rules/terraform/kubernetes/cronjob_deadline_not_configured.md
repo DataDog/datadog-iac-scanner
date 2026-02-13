@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CronJobs must include a configured deadline. The `starting_deadline_seconds` attribute in the resource spec (`kubernetes_cron_job[].spec.starting_deadline_seconds`) must be defined. This ensures missed job executions have a bounded retry window and are not indefinitely retried.
-
+CronJobs must include a configured deadline. The `starting_deadline_seconds` attribute in the resource spec (`kubernetes_cron_job[].spec.starting_deadline_seconds`) must be defined. This ensures missed job executions have a bounded retry window and are not indefinitely retried.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- AWS CloudFormation stacks should implement a stack policy, set using the `policy_body` or `policy_url` attributes in Terraform, to restrict which actions can modify or delete critical resources within the stack. Without a stack policy, any update operation could unintentionally overwrite, disrupt, or remove essential resources, increasing the risk of accidental outages or security issues. Properly configuring a stack policy helps enforce change management controls and reduces the attack surface for unauthorized or accidental actions.
-
+AWS CloudFormation stacks should implement a stack policy, set using the `policy_body` or `policy_url` attributes in Terraform, to restrict which actions can modify or delete critical resources within the stack. Without a stack policy, any update operation could unintentionally overwrite, disrupt, or remove essential resources, increasing the risk of accidental outages or security issues. Properly configuring a stack policy helps enforce change management controls and reduces the attack surface for unauthorized or accidental actions.
 
 ## Compliant Code Examples
 ```terraform

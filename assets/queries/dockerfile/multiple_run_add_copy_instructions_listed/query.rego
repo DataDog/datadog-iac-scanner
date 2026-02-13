@@ -28,6 +28,8 @@ CxPolicy[result] {
 		"issueType": "RedundantAttribute",
 		"keyExpectedValue": sprintf("There isn´t any %s instruction that could be grouped", [upperName]),
 		"keyActualValue": sprintf("There are %s instructions that could be grouped", [upperName]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

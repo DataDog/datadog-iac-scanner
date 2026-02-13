@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Ensuring strong AWS IAM password security involves configuring both the `password_length` and `password_reset_required` attributes in the `aws_iam_user_login_profile` resource. Failing to set a sufficient `password_length` or omitting the `password_reset_required = true` option, as shown below, can lead to accounts being protected by weak or reused passwords, which increases the risk of unauthorized access.
+Ensuring strong AWS IAM password security involves configuring both the `password_length` and `password_reset_required` attributes in the `aws_iam_user_login_profile` resource. Failing to set a sufficient `password_length` or omitting the `password_reset_required = true` option, as shown below, can lead to accounts being protected by weak or reused passwords, which increases the risk of unauthorized access.
 
 ```
 resource "aws_iam_user_login_profile" "example" {
@@ -49,7 +49,6 @@ resource "aws_iam_user_login_profile" "example" {
   password_reset_required = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

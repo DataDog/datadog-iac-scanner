@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Ingress rules that use single-address CIDRs (IPv4 `/32` or IPv6 `/128`) are brittle. They often indicate hard-coded, single-IP access which can become stale, break when addresses are reassigned, and lead to unintended access or operational disruption.\n\nThis check inspects `AWS::EC2::SecurityGroupIngress` resources (`Properties.CidrIp` and `Properties.CidrIpv6`) and `AWS::EC2::SecurityGroup` resources' `Properties.SecurityGroupIngress[].CidrIp` and `CidrIpv6` entries. Any entry containing `/32` (IPv4) or `/128` (IPv6) will be flagged.\n\nTo remediate, avoid hard-coding single IPs by using `SourceSecurityGroupId`, AWS managed prefix lists, or appropriately scoped network CIDRs that reflect your trusted network. If a single-IP exception is required, document the justification and maintain a process to review and update it.\n\nSecure configuration example (use security group reference instead of single IP):\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Web server security group\n    VpcId: !Ref MyVPC\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        SourceSecurityGroupId: !Ref BastionSecurityGroup\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_group_ingress_has_cidr_not_recommended",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/security_group_ingress_has_cidr_not_recommended",
   "platform": "CloudFormation",
   "descriptionID": "443ba8e1",
   "cloudProvider": "aws",

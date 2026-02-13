@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- DynamoDB tables must have server-side encryption enabled to protect data at rest and prevent unauthorized access to table contents, backups, and snapshots. In CloudFormation, the `AWS::DynamoDB::Table` resource must set `Properties.SSESpecification.SSEEnabled` to `true`. Resources that omit `SSESpecification.SSEEnabled` or have `SSEEnabled` set to `false` will be flagged.
+DynamoDB tables must have server-side encryption enabled to protect data at rest and prevent unauthorized access to table contents, backups, and snapshots. In CloudFormation, the `AWS::DynamoDB::Table` resource must set `Properties.SSESpecification.SSEEnabled` to `true`. Resources that omit `SSESpecification.SSEEnabled` or have `SSEEnabled` set to `false` will be flagged.
 
 Secure configuration example:
 
@@ -41,7 +41,6 @@ MyDynamoTable:
       SSEEnabled: true
       SSEType: AES256
 ```
-
 
 ## Compliant Code Examples
 ```yaml

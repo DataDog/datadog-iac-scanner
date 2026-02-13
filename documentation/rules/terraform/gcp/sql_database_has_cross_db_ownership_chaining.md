@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Cross-database ownership chaining allows users to access objects across databases without requiring separate permissions for each database, creating a potential privilege escalation vulnerability. When enabled, an attacker with access to one database might exploit ownership chains to gain unauthorized access to data in other linked databases, bypassing normal permission boundaries. To secure your SQL Server instance, configure the `cross db ownership chaining` database flag to `off` as shown in the following example:
+Cross-database ownership chaining allows users to access objects across databases without requiring separate permissions for each database, creating a potential privilege escalation vulnerability. When enabled, an attacker with access to one database might exploit ownership chains to gain unauthorized access to data in other linked databases, bypassing normal permission boundaries. To secure your SQL Server instance, configure the `cross db ownership chaining` database flag to `off` as shown in the following example:
 
 ```
 settings {
@@ -38,7 +38,6 @@ settings {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

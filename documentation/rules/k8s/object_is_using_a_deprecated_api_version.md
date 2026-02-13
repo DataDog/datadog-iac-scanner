@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes APIs evolve over time and may be removed in newer releases. To prevent incompatibilities when upgrading Kubernetes, deprecated APIs should be replaced with newer, stable API versions. This rule checks a resource's apiVersion and kind against a mapping of deprecated apiVersions to their recommended replacements and flags resources that use deprecated APIs. The rule reports the expected API version for the resource kind and the actual (deprecated) apiVersion found, so maintainers can update manifests accordingly.
-
+Kubernetes APIs evolve over time and may be removed in newer releases. To prevent incompatibilities when upgrading Kubernetes, deprecated APIs should be replaced with newer, stable API versions. This rule checks a resource's apiVersion and kind against a mapping of deprecated apiVersions to their recommended replacements and flags resources that use deprecated APIs. The rule reports the expected API version for the resource kind and the actual (deprecated) apiVersion found, so maintainers can update manifests accordingly.
 
 ## Compliant Code Examples
 ```yaml

@@ -16,6 +16,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Using WORKDIR to change directory",
 		"keyActualValue": sprintf("RUN %s'", [resource.Value[0]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

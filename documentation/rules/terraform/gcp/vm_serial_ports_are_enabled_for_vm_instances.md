@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Google Compute Engine VM instances should not have serial ports enabled. Enabling serial ports by setting the `serial-port-enable` metadata attribute to `true` (as shown below) can allow anyone with the username, project ID, SSH key, instance name, and zone to directly access the VM, increasing the risk of unauthorized access and potential compromise.
+Google Compute Engine VM instances should not have serial ports enabled. Enabling serial ports by setting the `serial-port-enable` metadata attribute to `true` (as shown below) can allow anyone with the username, project ID, SSH key, instance name, and zone to directly access the VM, increasing the risk of unauthorized access and potential compromise.
 
 ```
 metadata = {
@@ -43,7 +43,6 @@ metadata = {
   serial-port-enable = false
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

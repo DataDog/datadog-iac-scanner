@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting a user the `'ec2:RunInstances'` and `'iam:PassRole'` permissions with the resource set to `'*'` allows them to launch EC2 instances and attach any IAM role, potentially escalating their privileges beyond intended limits. \n\nFor example, the following configuration is unsafe:\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"iam:PassRole\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n    {\n      Action = [\n        \"ec2:RunInstances\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```\n\nThis vulnerability can enable attackers to assume highly privileged roles and gain full administrative access to AWS resources, leading to compromise of the entire cloud environment if left unaddressed. Access to these actions should be tightly scoped with least privilege and limited to essential roles.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_PassRole_and_ec2_RunInstances",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_passrole_and_ec2_runinstances",
   "platform": "Terraform",
   "descriptionID": "05f5544f",
   "cloudProvider": "aws",

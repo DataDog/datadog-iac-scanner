@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When the `kube-apiserver` process is present in a Pod's `containers` or `initContainers`, the `--etcd-cafile` flag should be set. The rule detects `kube-apiserver` in container command arrays and reports resources where the `--etcd-cafile` flag is not defined. Setting `--etcd-cafile` ensures the API server verifies etcd's CA certificate.
-
+When the `kube-apiserver` process is present in a Pod's `containers` or `initContainers`, the `--etcd-cafile` flag should be set. The rule detects `kube-apiserver` in container command arrays and reports resources where the `--etcd-cafile` flag is not defined. Setting `--etcd-cafile` ensures the API server verifies etcd's CA certificate.
 
 ## Compliant Code Examples
 ```yaml

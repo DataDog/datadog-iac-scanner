@@ -26,12 +26,16 @@ type MemoryStorage struct {
 
 // SaveFile adds a new file metadata to files collection
 func (m *MemoryStorage) SaveFile(_ context.Context, metadata *model.FileMetadata) error {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
 	m.allFiles = append(m.allFiles, *metadata)
 	return nil
 }
 
 // GetFiles returns a collection of files saved on MemoryStorage
 func (m *MemoryStorage) GetFiles(_ context.Context, _ string) (model.FileMetadatas, error) {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
 	return m.allFiles, nil
 }
 
@@ -45,6 +49,8 @@ func (m *MemoryStorage) SaveVulnerabilities(_ context.Context, vulnerabilities [
 
 // GetVulnerabilities returns a collection of vulnerabilities saved on MemoryStorage
 func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model.Vulnerability, error) {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
 	return m.getUniqueVulnerabilities(), nil
 }
 

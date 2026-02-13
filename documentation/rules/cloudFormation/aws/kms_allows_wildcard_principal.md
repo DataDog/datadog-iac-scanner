@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- KMS key policies that allow a wildcard principal (`*`) grant access to any AWS principal, including external or unauthenticated callers. This can enable unauthorized use of keys and lead to data decryption, key management abuse, or privilege escalation. In AWS CloudFormation, the `AWS::KMS::Key` resource's `Properties.KeyPolicy.Statement[]` must not have an `Effect: Allow` statement where `Principal` is `*` (or contains `*`). Specify explicit principals (AWS account IDs, IAM role or user ARNs, or service principals) and use conditions such as `aws:SourceAccount` or resource ARN restrictions to narrow access. Statements with `Effect: Allow` and `Principal: '*'` will be flagged.
+KMS key policies that allow a wildcard principal (`*`) grant access to any AWS principal, including external or unauthenticated callers. This can enable unauthorized use of keys and lead to data decryption, key management abuse, or privilege escalation. In AWS CloudFormation, the `AWS::KMS::Key` resource's `Properties.KeyPolicy.Statement[]` must not have an `Effect: Allow` statement where `Principal` is `*` (or contains `*`). Specify explicit principals (AWS account IDs, IAM role or user ARNs, or service principals) and use conditions such as `aws:SourceAccount` or resource ARN restrictions to narrow access. Statements with `Effect: Allow` and `Principal: '*'` will be flagged.
 
 Secure configuration example:
 
@@ -51,7 +51,6 @@ MyKey:
             StringEquals:
               aws:SourceAccount: "123456789012"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

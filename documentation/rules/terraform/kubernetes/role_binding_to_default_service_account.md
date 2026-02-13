@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- No `RoleBinding` or `ClusterRoleBinding` should bind to the default `ServiceAccount`.
+No `RoleBinding` or `ClusterRoleBinding` should bind to the default `ServiceAccount`.
 The rule detects `resource.kubernetes_role_binding` entries where `subject[].kind` is `ServiceAccount` and `subject[].name` is `default`.
 Bindings to the default `ServiceAccount` can grant unintended privileges; prefer distinct service accounts to limit access.
-
 
 ## Compliant Code Examples
 ```terraform

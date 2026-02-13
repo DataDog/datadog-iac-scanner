@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Service resources should not have `spec.type` set to `NodePort`. A `NodePort` service exposes pods on each node and can create security and accessibility concerns; prefer `ClusterIP` or `LoadBalancer` where appropriate.
-
+Service resources should not have `spec.type` set to `NodePort`. A `NodePort` service exposes pods on each node and can create security and accessibility concerns; prefer `ClusterIP` or `LoadBalancer` where appropriate.
 
 ## Compliant Code Examples
 ```yaml

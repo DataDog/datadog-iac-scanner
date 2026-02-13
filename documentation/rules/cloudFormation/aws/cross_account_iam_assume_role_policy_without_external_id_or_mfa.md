@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Cross-account IAM role trust policies must require either an external ID or MFA to prevent confused-deputy attacks and reduce the risk of unauthorized cross-account access.
+Cross-account IAM role trust policies must require either an external ID or MFA to prevent confused-deputy attacks and reduce the risk of unauthorized cross-account access.
 
  Check `AWS::IAM::Role` resources' `AssumeRolePolicyDocument` for `Allow` statements that grant `sts:AssumeRole` to external AWS principals. Those statements must include a `Condition` requiring either the `sts:ExternalId` condition key (for example, `StringEquals`) or `aws:MultiFactorAuthPresent` set to `true`. Resources missing a `Condition` with `sts:ExternalId` or `aws:MultiFactorAuthPresent` will be flagged.
 
@@ -65,7 +65,6 @@ MyRoleWithMFA:
             Bool:
               aws:MultiFactorAuthPresent: "true"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

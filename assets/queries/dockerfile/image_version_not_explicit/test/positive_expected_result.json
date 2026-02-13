@@ -1,14 +1,14 @@
 [
-	{
-		"queryName": "Image Version Not Explicit",
-		"severity": "MEDIUM",
-		"fileName": "positive1.dockerfile",
-		"line": 1
-	},
-	{
-		"queryName": "Image Version Not Explicit",
-		"severity": "MEDIUM",
-		"fileName": "positive2.dockerfile",
-		"line": 7
-	}
+  {
+    "queryName": "Image version not explicit",
+    "severity": "MEDIUM",
+    "fileName": "positive1.dockerfile",
+    "line": 1
+  },
+  {
+    "queryName": "Image version not explicit",
+    "severity": "MEDIUM",
+    "fileName": "positive2.dockerfile",
+    "line": 7
+  }
 ]

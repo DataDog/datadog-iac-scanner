@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Images should be specified with their digests to ensure integrity and immutability. This rule verifies that the `image` attribute is present for `container` and `init_container` entries and that the image includes a digest (contains '@'). It reports `MissingAttribute` when the `image` field is undefined and `IncorrectValue` when the `image` field does not contain a digest.
-
+Images should be specified with their digests to ensure integrity and immutability. This rule verifies that the `image` attribute is present for `container` and `init_container` entries and that the image includes a digest (contains '@'). It reports `MissingAttribute` when the `image` field is undefined and `IncorrectValue` when the `image` field does not contain a digest.
 
 ## Compliant Code Examples
 ```terraform

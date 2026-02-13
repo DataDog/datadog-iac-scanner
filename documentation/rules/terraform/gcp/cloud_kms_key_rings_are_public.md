@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Cloud KMS Key Rings store and manage cryptographic keys used for data encryption in Google Cloud. Making them publicly accessible creates severe security risks that could lead to unauthorized access to sensitive encrypted data. When IAM policies grant permissions to `allUsers` or `allAuthenticatedUsers`, it allows anyone on the internet or any authenticated Google account to access and potentially use these cryptographic keys. To properly secure key rings, ensure IAM members are specific identities (such as `user:someone@example.com`) rather than public principals (`allUsers` or `allAuthenticatedUsers`). For example, use `member = "user:someone@example.com"` instead of `member = "allUsers"` or `members = ["allAuthenticatedUsers", "user:someone@example.com"]`.
-
+Cloud KMS Key Rings store and manage cryptographic keys used for data encryption in Google Cloud. Making them publicly accessible creates severe security risks that could lead to unauthorized access to sensitive encrypted data. When IAM policies grant permissions to `allUsers` or `allAuthenticatedUsers`, it allows anyone on the internet or any authenticated Google account to access and potentially use these cryptographic keys. To properly secure key rings, ensure IAM members are specific identities (such as `user:someone@example.com`) rather than public principals (`allUsers` or `allAuthenticatedUsers`). For example, use `member = "user:someone@example.com"` instead of `member = "allUsers"` or `members = ["allAuthenticatedUsers", "user:someone@example.com"]`.
 
 ## Compliant Code Examples
 ```terraform

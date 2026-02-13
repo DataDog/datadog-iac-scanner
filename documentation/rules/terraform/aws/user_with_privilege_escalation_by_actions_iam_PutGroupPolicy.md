@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting an IAM user the `iam:PutGroupPolicy` action with `"Resource": "*"` allows them to attach arbitrary inline policies to any IAM group in the AWS account, leading to potential privilege escalation. With this permission, a user could assign powerful or administrative permissions to groups they belong to, effectively bypassing intended security boundaries. To prevent this, it's important to restrict IAM user actions to the minimum necessary and avoid using wildcards in sensitive permissions, as shown below:
+Granting an IAM user the `iam:PutGroupPolicy` action with `"Resource": "*"` allows them to attach arbitrary inline policies to any IAM group in the AWS account, leading to potential privilege escalation. With this permission, a user could assign powerful or administrative permissions to groups they belong to, effectively bypassing intended security boundaries. To prevent this, it's important to restrict IAM user actions to the minimum necessary and avoid using wildcards in sensitive permissions, as shown below:
 
 ```
 policy = jsonencode({
@@ -44,7 +44,6 @@ policy = jsonencode({
   ]
 })
 ```
-
 
 ## Compliant Code Examples
 ```terraform

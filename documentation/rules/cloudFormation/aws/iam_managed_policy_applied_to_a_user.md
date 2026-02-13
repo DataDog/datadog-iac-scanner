@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Attaching AWS managed IAM policies directly to individual users increases the risk of privilege sprawl and inconsistent permissions. It also makes auditing and centralized access control harder. Assigning policies to groups enforces consistent role-based access and simplifies permission management.
+Attaching AWS managed IAM policies directly to individual users increases the risk of privilege sprawl and inconsistent permissions. It also makes auditing and centralized access control harder. Assigning policies to groups enforces consistent role-based access and simplifies permission management.
  
  In CloudFormation, validate `AWS::IAM::ManagedPolicy` resources: the `Users` property must not be populated (non-empty array). Instead, assign the managed policy via the `Groups` property (an array of group names or references) or attach the policy to `AWS::IAM::Group` resources. Resources with `Users` defined will be flagged. Remove `Users` and use `Groups` (or group attachments) to centrally manage access.
 
@@ -48,7 +48,6 @@ MyManagedPolicy:
     Groups:
       - Ref: MyAdminGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

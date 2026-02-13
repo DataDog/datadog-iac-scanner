@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon EFS file systems should be tagged to enable asset identification and to support automated policy and access controls. Missing tags make it harder to track ownership and enforce tag-based security or lifecycle rules.
+Amazon EFS file systems should be tagged to enable asset identification and to support automated policy and access controls. Missing tags make it harder to track ownership and enforce tag-based security or lifecycle rules.
  
  The CloudFormation resource `AWS::EFS::FileSystem` must include the `FileSystemTags` property, and it must be defined (not `null`). Resources missing `FileSystemTags` or with it set to `null` will be flagged for remediation.
 
@@ -44,7 +44,6 @@ MyEFS:
       - Key: Environment
         Value: production
 ```
-
 
 ## Compliant Code Examples
 ```yaml

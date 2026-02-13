@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stages should have cache clustering enabled to reduce repeated backend requests and lower latency, helping prevent backend overload and service degradation. The `CacheClusterEnabled` property on `AWS::ApiGateway::Stage` resources must be defined and set to `true`. Resources missing this property or with `CacheClusterEnabled` set to `false` will be flagged. The `CacheClusterSize` property should also be configured to provision adequate cache capacity for expected traffic.
+API Gateway stages should have cache clustering enabled to reduce repeated backend requests and lower latency, helping prevent backend overload and service degradation. The `CacheClusterEnabled` property on `AWS::ApiGateway::Stage` resources must be defined and set to `true`. Resources missing this property or with `CacheClusterEnabled` set to `false` will be flagged. The `CacheClusterSize` property should also be configured to provision adequate cache capacity for expected traffic.
 
 Secure configuration example:
 
@@ -41,7 +41,6 @@ MyStage:
     CacheClusterEnabled: true
     CacheClusterSize: '0.5'
 ```
-
 
 ## Compliant Code Examples
 ```yaml

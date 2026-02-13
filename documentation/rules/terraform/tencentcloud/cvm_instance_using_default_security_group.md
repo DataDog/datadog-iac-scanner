@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CVM instances (`tencentcloud_instance`) should not include the default security group. This rule inspects the `orderly_security_groups` and `security_groups` attributes for any occurrence of `default` and flags the resource if found. Relying on the default security group can result in overly permissive network access and should be avoided.
-
+CVM instances (`tencentcloud_instance`) should not include the default security group. This rule inspects the `orderly_security_groups` and `security_groups` attributes for any occurrence of `default` and flags the resource if found. Relying on the default security group can result in overly permissive network access and should be avoided.
 
 ## Compliant Code Examples
 ```terraform

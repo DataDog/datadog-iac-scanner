@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not run with a UID below 10000, as this may cause conflicts with the host's user table. A container can inherit runAsUser from the pod; both pod- and container-level runAsUser are evaluated. This rule flags containers whose runAsUser is undefined or set to a UID less than 10000.
-
+Containers should not run with a UID below 10000, as this may cause conflicts with the host's user table. A container can inherit runAsUser from the pod; both pod- and container-level runAsUser are evaluated. This rule flags containers whose runAsUser is undefined or set to a UID less than 10000.
 
 ## Compliant Code Examples
 ```yaml

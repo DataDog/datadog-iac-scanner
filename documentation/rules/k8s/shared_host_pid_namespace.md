@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not share the host process ID namespace. If a Pod's `spec.hostPID` is set to true, its containers run in the host's PID namespace and can observe or interact with host processes, increasing the risk of privilege escalation and interference. This rule flags resources where `spec.hostPID` is true; the field should be false or undefined.
-
+Containers should not share the host process ID namespace. If a Pod's `spec.hostPID` is set to true, its containers run in the host's PID namespace and can observe or interact with host processes, increasing the risk of privilege escalation and interference. This rule flags resources where `spec.hostPID` is true; the field should be false or undefined.
 
 ## Compliant Code Examples
 ```yaml

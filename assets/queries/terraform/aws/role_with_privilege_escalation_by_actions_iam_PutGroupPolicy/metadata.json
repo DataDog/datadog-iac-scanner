@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting the `iam:PutGroupPolicy` action with the `Resource` value set to `\"*\"` in an IAM policy, as shown below, allows the role to attach arbitrary permissions to any IAM group in the account:\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"iam:PutGroupPolicy\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```\n\nThis powerful permission can be abused for privilege escalation, as a malicious user assuming this role could grant themselves or others elevated privileges by attaching highly permissive group policies. To mitigate this risk, limit the scope of the `Resource` attribute to only the intended groups and restrict allowed actions to only those necessary for the role’s function.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_PutGroupPolicy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_putgrouppolicy",
   "platform": "Terraform",
   "descriptionID": "ce1bbaeb",
   "cloudProvider": "aws",

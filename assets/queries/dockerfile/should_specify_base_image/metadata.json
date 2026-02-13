@@ -1,0 +1,12 @@
+{
+  "id": "19619060-f22e-094f-fda1-aacf37b69bba",
+  "queryName": "Dockerfile should specify base image",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "Dockerfiles must include a `FROM` instruction that specifies a base image to ensure the built image has the intended runtime and dependencies. Without it, the build may unintentionally produce a bare `scratch` image that lacks essential components.  \n\nThis rule inspects `dockerfile_container` resources and checks the `command` entries for at least one `FROM` instruction.  \n\nResources that do not contain a `FROM` instruction are flagged. To remediate, add a top-level `FROM <image>` line to explicitly declare the base image.  \n\nSecure example Dockerfile:\n\n```dockerfile\nFROM python:3.11-slim\nWORKDIR /app\nCOPY . /app\nRUN pip install -r requirements.txt\nCMD [\"python\", \"app.py\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/should_specify_base_image",
+  "platform": "Dockerfile",
+  "descriptionID": "19619060",
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from"
+}

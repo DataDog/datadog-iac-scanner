@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Remove the verification TXT record used for DNS authentication (records containing `nifty-dns-verify=`) after verification is complete. If the authentication record remains, others could reuse it to claim or re-register the zone, exposing DNS control to unauthorized parties. This rule flags `nifcloud_dns_record` resources that include `nifty-dns-verify=` and returns attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.
-
+Remove the verification TXT record used for DNS authentication (records containing `nifty-dns-verify=`) after verification is complete. If the authentication record remains, others could reuse it to claim or re-register the zone, exposing DNS control to unauthorized parties. This rule flags `nifcloud_dns_record` resources that include `nifty-dns-verify=` and returns attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Disks should have encryption enabled.
+Disks should have encryption enabled.
 This rule checks `tencentcloud_cbs_storage` resources and flags when the `encrypt` attribute is missing or set to `false`.
 The `encrypt` attribute must be set to `true` to ensure block storage volumes are encrypted.
-
 
 ## Compliant Code Examples
 ```terraform

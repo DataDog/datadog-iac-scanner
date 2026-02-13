@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing SSH (TCP port `22`) from the public internet (`0.0.0.0/0`) exposes instances to brute-force attacks, credential theft, lateral movement, and unauthorized access. In CloudFormation `AWS::EC2::SecurityGroup` resources, any `Properties.SecurityGroupIngress` entry with `CidrIp: 0.0.0.0/0` and `FromPort` or `ToPort` equal to `22` will be flagged.
+Allowing SSH (TCP port `22`) from the public internet (`0.0.0.0/0`) exposes instances to brute-force attacks, credential theft, lateral movement, and unauthorized access. In CloudFormation `AWS::EC2::SecurityGroup` resources, any `Properties.SecurityGroupIngress` entry with `CidrIp: 0.0.0.0/0` and `FromPort` or `ToPort` equal to `22` will be flagged.
 
 To remediate, restrict SSH ingress to specific trusted IP ranges, use a bastion/jump host, or adopt AWS Systems Manager Session Manager instead of opening port `22`. Resources containing the insecure ingress entry will be reported.
 
@@ -47,7 +47,6 @@ MySecurityGroup:
 ```
 
 Note: this rule specifically matches ingress entries where `FromPort == 22` or `ToPort == 22`; port ranges that include 22 but do not have 22 as an endpoint may not be detected by this check.
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- ELB security policies must not include weak TLS cipher suites because weak ciphers can be exploited to downgrade or break the confidentiality and integrity of TLS connections to the load balancer.
+ELB security policies must not include weak TLS cipher suites because weak ciphers can be exploited to downgrade or break the confidentiality and integrity of TLS connections to the load balancer.
  
  Check `AWS::ElasticLoadBalancing::LoadBalancer` resources and verify the `Policies[].Attributes[].Name` values (the cipher identifiers or referenced policy names) do not match any known weak ciphers in the IANA, OpenSSL, or GnuTLS lists. Resources with `Attributes` that match a weak-cipher identifier will be flagged. Instead, use AWS predefined strong ELB security policy names or an `SSLNegotiationPolicyType` policy that explicitly references modern cipher suites (TLS 1.2+ with ECDHE and AES-GCM). 
  
@@ -51,7 +51,6 @@ MyLoadBalancer:
           - Name: Reference-Security-Policy
             Value: ELBSecurityPolicy-TLS-1-2-2017-01
 ```
-
 
 ## Compliant Code Examples
 ```yaml

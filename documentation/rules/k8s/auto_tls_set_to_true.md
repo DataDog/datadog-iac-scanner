@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When a container runs `etcd`, the `--auto-tls` flag should be set to `false` or omitted. Enabling `--auto-tls=true` enables automatic certificate management and can introduce security risks. This rule checks `containers` and `initContainers` for commands that invoke `etcd` and reports when `--auto-tls` is present and set to `true`.
-
+When a container runs `etcd`, the `--auto-tls` flag should be set to `false` or omitted. Enabling `--auto-tls=true` enables automatic certificate management and can introduce security risks. This rule checks `containers` and `initContainers` for commands that invoke `etcd` and reports when `--auto-tls` is present and set to `true`.
 
 ## Compliant Code Examples
 ```yaml

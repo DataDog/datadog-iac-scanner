@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies if an AWS IAM role policy grants the `iam:CreateLoginProfile` action with a `Resource` set to `"*"`, as shown below:
+This check identifies if an AWS IAM role policy grants the `iam:CreateLoginProfile` action with a `Resource` set to `"*"`, as shown below:
 
 ```
 policy = jsonencode({
@@ -46,7 +46,6 @@ policy = jsonencode({
 ```
 
 Allowing this action enables a user or role to create login profiles (that is, set console passwords) for any IAM user account, potentially facilitating privilege escalation. If left unaddressed, attackers could exploit this permission to gain unauthorized console access and take full control of IAM users, posing a severe security risk to the environment.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure storage accounts should have their default network access action set to `Deny` to prevent unauthorized or public access to storage resources. If the `network_rules { default_action = "Allow" }` attribute is used, as shown below, storage accounts can be accessed from any network by default, increasing the risk of data breaches or unauthorized data manipulation.
+Azure storage accounts should have their default network access action set to `Deny` to prevent unauthorized or public access to storage resources. If the `network_rules { default_action = "Allow" }` attribute is used, as shown below, storage accounts can be accessed from any network by default, increasing the risk of data breaches or unauthorized data manipulation.
 
 ```
 network_rules {
@@ -37,7 +37,6 @@ network_rules {
 ```
 
 To mitigate this risk, configure `network_rules { default_action = "Deny" }`, ensuring only explicitly allowed networks and IPs can access the storage account.
-
 
 ## Compliant Code Examples
 ```terraform

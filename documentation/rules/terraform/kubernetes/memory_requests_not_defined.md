@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Memory requests should be defined for each container. This allows the kubelet to reserve the requested amount of memory and prevents over-provisioning of individual nodes. Each container must set resources.requests.memory so the scheduler can make informed placement decisions and the kubelet can enforce reservations. Missing memory requests can lead to resource contention and unpredictable behavior on nodes.
-
+Memory requests should be defined for each container. This allows the kubelet to reserve the requested amount of memory and prevents over-provisioning of individual nodes. Each container must set resources.requests.memory so the scheduler can make informed placement decisions and the kubelet can enforce reservations. Missing memory requests can lead to resource contention and unpredictable behavior on nodes.
 
 ## Compliant Code Examples
 ```terraform

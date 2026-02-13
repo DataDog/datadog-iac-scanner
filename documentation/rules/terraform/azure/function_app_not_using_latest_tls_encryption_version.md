@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Function Apps should be configured to use the latest supported TLS version to ensure encrypted communications and protect data in transit. If the `min_tls_version` attribute is set to an outdated value such as `1.1`, as shown below, the application becomes susceptible to known TLS vulnerabilities and exploits:
+Azure Function Apps should be configured to use the latest supported TLS version to ensure encrypted communications and protect data in transit. If the `min_tls_version` attribute is set to an outdated value such as `1.1`, as shown below, the application becomes susceptible to known TLS vulnerabilities and exploits:
 
 ```
 site_config {
@@ -43,7 +43,6 @@ site_config {
   min_tls_version = 1.2
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

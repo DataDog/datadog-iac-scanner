@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies when CloudTrail logs are stored in an S3 bucket that is publicly accessible, creating a significant security risk. CloudTrail logs contain sensitive information about API calls and activities in your AWS environment that could be exposed to unauthorized parties if stored in a public bucket. To remediate this issue, ensure your S3 bucket has its ACL set to `private` instead of `public-read`, as shown in the example below:
+This check identifies when CloudTrail logs are stored in an S3 bucket that is publicly accessible, creating a significant security risk. CloudTrail logs contain sensitive information about API calls and activities in your AWS environment that could be exposed to unauthorized parties if stored in a public bucket. To remediate this issue, ensure your S3 bucket has its ACL set to `private` instead of `public-read`, as shown in the example below:
 
 ```
 resource "aws_s3_bucket" "b" {
@@ -36,7 +36,6 @@ resource "aws_s3_bucket" "b" {
   acl    = "private"  // Correct setting instead of "public-read"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

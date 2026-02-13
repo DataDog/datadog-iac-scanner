@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When storage encryption is enabled for database or analytics clusters or instances, explicitly specifying a customer-managed AWS KMS key prevents use of the AWS-managed default key. Using the AWS-managed default key can limit your ability to enforce key policies, control access, rotate keys, and audit key usage.
+When storage encryption is enabled for database or analytics clusters or instances, explicitly specifying a customer-managed AWS KMS key prevents use of the AWS-managed default key. Using the AWS-managed default key can limit your ability to enforce key policies, control access, rotate keys, and audit key usage.
 
  In CloudFormation, this applies to `AWS::RDS::DBInstance`, `AWS::RDS::DBCluster`, `AWS::DocDB::DBCluster`, `AWS::Neptune::DBCluster`, and `AWS::Redshift::Cluster`. `Properties.StorageEncrypted` must be `true`, and `Properties.KmsKeyId` must be defined and reference a customer-managed AWS KMS key (key ARN, alias, or a `Ref` to an `AWS::KMS::Key`). Resources with `StorageEncrypted` set to `true` and no `KmsKeyId` will be flagged.
 
@@ -49,7 +49,6 @@ MyDB:
     StorageEncrypted: true
     KmsKeyId: !Ref MyKmsKey
 ```
-
 
 ## Compliant Code Examples
 ```yaml

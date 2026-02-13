@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check assesses whether any Redis Cache firewall rule is configured to allow access from an overly broad IP range, such as specifying `start_ip = "1.0.0.0"` and `end_ip = "3.0.0.0"`. Allowing too many hosts to access the Redis Cache can expose sensitive data or enable unauthorized users to exploit the cache service. Firewall rules should narrowly define permitted IPs. For example:
+This check assesses whether any Redis Cache firewall rule is configured to allow access from an overly broad IP range, such as specifying `start_ip = "1.0.0.0"` and `end_ip = "3.0.0.0"`. Allowing too many hosts to access the Redis Cache can expose sensitive data or enable unauthorized users to exploit the cache service. Firewall rules should narrowly define permitted IPs. For example:
 
 ```
 resource "azurerm_redis_firewall_rule" "secure_example" {
@@ -41,7 +41,6 @@ resource "azurerm_redis_firewall_rule" "secure_example" {
 ```
 
 Restricting access to only the necessary hosts mitigates the risk of data breaches and service misuse.
-
 
 ## Compliant Code Examples
 ```terraform

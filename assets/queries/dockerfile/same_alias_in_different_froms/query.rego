@@ -20,6 +20,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue", 
 		"keyExpectedValue": "Different FROM commands don't have the same alias defined",
 		"keyActualValue": sprintf("Different FROM commands with with the same alias '%s' defined", [aliasResource.Value[idx_2]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

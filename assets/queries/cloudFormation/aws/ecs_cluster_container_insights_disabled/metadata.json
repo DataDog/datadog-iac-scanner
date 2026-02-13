@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "Amazon ECS clusters should have Container Insights enabled to collect container-level metrics and logs for monitoring, performance troubleshooting, and security visibility.\n \n The `ClusterSettings` property in `AWS::ECS::Cluster` resources must include a `ClusterSetting` with `Name` set to `containerInsights` and `Value` set to `enabled`. Resources missing `ClusterSettings` or without an entry setting `containerInsights` to `enabled` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyCluster:\n  Type: AWS::ECS::Cluster\n  Properties:\n    ClusterSettings:\n      - Name: containerInsights\n        Value: enabled\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecs_cluster_container_insights_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ecs_cluster_container_insights_disabled",
   "platform": "CloudFormation",
   "descriptionID": "1751124e",
   "cloudProvider": "aws",

@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Network ACL entries that permit all protocols or use unsupported protocol values broaden the attack surface and can allow unintended traffic types to reach your instances, increasing risk of reconnaissance, exploitation, and lateral movement. For `AWS::EC2::NetworkAclEntry` resources, the `Protocol` property must be set to one of the numeric values: `6` (TCP), `17` (UDP), `1` (ICMP), or `58` (ICMPv6). Resources missing the `Protocol` property or configured with any other value (for example, `-1`/`all`) will be flagged. \n \n **Note**: ICMPv6 (`58`) entries must also use an IPv6 CIDR block and include an ICMP type and code.\n\nSecure configuration example:\n\n```yaml\nMyNetworkAclEntry:\n  Type: AWS::EC2::NetworkAclEntry\n  Properties:\n    NetworkAclId: !Ref MyNetworkAcl\n    RuleNumber: 100\n    Protocol: 6\n    RuleAction: allow\n    CidrBlock: 10.0.0.0/16\n    PortRange:\n      From: 443\n      To: 443\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ec2_permissive_network_acl_protocols",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ec2_permissive_network_acl_protocols",
   "platform": "CloudFormation",
   "descriptionID": "397e89de",
   "cloudProvider": "aws",

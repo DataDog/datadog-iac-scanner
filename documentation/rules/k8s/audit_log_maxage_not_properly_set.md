@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When a container runs `kube-apiserver`, the `--audit-log-maxage` flag should be set to 30 days or more. This rule flags containers (including `initContainers`) where the flag is missing or set to a value less than 30. It reports the resource and the command location when the flag is absent or incorrectly configured.
-
+When a container runs `kube-apiserver`, the `--audit-log-maxage` flag should be set to 30 days or more. This rule flags containers (including `initContainers`) where the flag is missing or set to a value less than 30. It reports the resource and the command location when the flag is absent or incorrectly configured.
 
 ## Compliant Code Examples
 ```yaml

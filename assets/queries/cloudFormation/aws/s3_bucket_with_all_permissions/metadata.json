@@ -4,7 +4,7 @@
   "severity": "CRITICAL",
   "category": "Access Control",
   "descriptionText": "S3 bucket policies must not grant `Allow` for all actions to all principals. This creates public full access to the bucket and can result in data exposure, tampering, or deletion.\n\nCheck `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag any statement where `Effect: \"Allow\"`, `Action: \"*\"`, and `Principal: \"*\"`. Statements matching these conditions will be reported. Restrict principals to specific AWS account IDs/ARNs or services and limit `Action` to the minimum required S3 operations instead of using wildcards.\n\nSecure example limiting access to a specific account and action:\n\n```yaml\nMyBucketPolicy:\n  Type: AWS::S3::BucketPolicy\n  Properties:\n    Bucket: !Ref MyBucket\n    PolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:root\n          Action:\n            - s3:GetObject\n          Resource: !Sub '${MyBucket.Arn}/*'\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_with_all_permissions",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_with_all_permissions",
   "platform": "CloudFormation",
   "descriptionID": "65883f5a",
   "cloudProvider": "aws",

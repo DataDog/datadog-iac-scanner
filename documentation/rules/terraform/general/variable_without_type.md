@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- All variables must include a valid `type` attribute.
+All variables must include a valid `type` attribute.
 The `type` must be defined, not null, and not an empty string after trimming whitespace.
-
 
 ## Compliant Code Examples
 ```terraform

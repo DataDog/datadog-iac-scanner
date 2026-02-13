@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- OSS bucket (`alicloud_oss_bucket`) policies must not allow the `Put` action from all principals. This prevents accidental exposure of private data and unauthorized uploads, overwrites, or deletions. The rule flags policies where `Effect` is `Allow`, `Action` includes `Put`, and `Principal` is set to `*` (i.e., applies to all identities). To secure access, restrict `Principal` to specific identities or scope access with conditions.
-
+OSS bucket (`alicloud_oss_bucket`) policies must not allow the `Put` action from all principals. This prevents accidental exposure of private data and unauthorized uploads, overwrites, or deletions. The rule flags policies where `Effect` is `Allow`, `Action` includes `Put`, and `Principal` is set to `*` (i.e., applies to all identities). To secure access, restrict `Principal` to specific identities or scope access with conditions.
 
 ## Compliant Code Examples
 ```terraform

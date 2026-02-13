@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- StatefulSets with more than one replica should have a PodDisruptionBudget that targets the StatefulSet's pod selector (`spec.selector.matchLabels`) to ensure high availability.  
+StatefulSets with more than one replica should have a PodDisruptionBudget that targets the StatefulSet's pod selector (`spec.selector.matchLabels`) to ensure high availability.  
 This prevents simultaneous voluntary evictions from reducing the number of available replicas and helps maintain service continuity.  
 The rule flags StatefulSets where no PodDisruptionBudget matches the StatefulSet's selector.
-
 
 ## Compliant Code Examples
 ```yaml

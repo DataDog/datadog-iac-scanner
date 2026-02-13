@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront distributions must be active and include at least one origin so client traffic is routed through CloudFront's caching and security controls (for example, AWS WAF, AWS Shield, and origin access controls). Without an active distribution or defined origins, traffic can bypass these protections and origins can be exposed to direct access and increased attack surface.
+CloudFront distributions must be active and include at least one origin so client traffic is routed through CloudFront's caching and security controls (for example, AWS WAF, AWS Shield, and origin access controls). Without an active distribution or defined origins, traffic can bypass these protections and origins can be exposed to direct access and increased attack surface.
 
  In CloudFormation, ensure resources of type `AWS::CloudFront::Distribution` set `Properties.DistributionConfig.Enabled` to `true` and that `Properties.DistributionConfig` contains an `Origins` entry with at least one origin definition. Resources missing the `Origins` object or with `Enabled` set to `false` (or the string `"false"`) will be flagged.
 
@@ -50,7 +50,6 @@ MyDistribution:
         TargetOriginId: myS3Origin
         ViewerProtocolPolicy: redirect-to-https
 ```
-
 
 ## Compliant Code Examples
 ```yaml

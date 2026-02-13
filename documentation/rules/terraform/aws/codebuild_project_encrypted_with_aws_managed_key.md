@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that AWS CodeBuild projects are encrypted using customer-managed KMS keys rather than the default AWS-managed keys. Using the default AWS-managed key (for example, `encryption_key = data.aws_kms_key.by_alias.arn` with `key_id = "alias/aws/s3"`) limits your control over key rotation, access policies, and audit logging, potentially increasing the risk of unauthorized data access. To maximize security and compliance, the `encryption_key` attribute should reference a customer-managed KMS key (such as `key_id = "alias/myAlias"`), allowing organizations to fully manage encryption controls for sensitive CodeBuild project data.
-
+This check ensures that AWS CodeBuild projects are encrypted using customer-managed KMS keys rather than the default AWS-managed keys. Using the default AWS-managed key (for example, `encryption_key = data.aws_kms_key.by_alias.arn` with `key_id = "alias/aws/s3"`) limits your control over key rotation, access policies, and audit logging, potentially increasing the risk of unauthorized data access. To maximize security and compliance, the `encryption_key` attribute should reference a customer-managed KMS key (such as `key_id = "alias/myAlias"`), allowing organizations to fully manage encryption controls for sensitive CodeBuild project data.
 
 ## Compliant Code Examples
 ```terraform

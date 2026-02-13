@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A `livenessProbe` allows Kubernetes to restart an unresponsive container, improving application availability. This rule checks `kubernetes_pod` and `kubernetes_deployment` resources to ensure containers include a non-null `livenessProbe` attribute (`spec.container` or `spec.template.spec.container`). Define a `livenessProbe` only when necessary because improper probes can cause cascading failures.
-
+A `livenessProbe` allows Kubernetes to restart an unresponsive container, improving application availability. This rule checks `kubernetes_pod` and `kubernetes_deployment` resources to ensure containers include a non-null `livenessProbe` attribute (`spec.container` or `spec.template.spec.container`). Define a `livenessProbe` only when necessary because improper probes can cause cascading failures.
 
 ## Compliant Code Examples
 ```terraform

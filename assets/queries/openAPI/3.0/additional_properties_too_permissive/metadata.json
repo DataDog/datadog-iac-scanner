@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "Objects should not accept 'additionalProperties' if it is possible",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/additional_properties_too_permissive",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/additional_properties_too_permissive",
   "platform": "OpenAPI",
   "descriptionID": "3623f181",
   "cwe": "665",

@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- API Gateway APIs must use `HTTPS`.
+API Gateway APIs must use `HTTPS`.
 This rule flags `alicloud_api_gateway_api` resources where `request_config.protocol` is not set to `HTTPS`.
 It supports both single and indexed forms of `request_config`, and reports the resource name and attribute location.
-
 
 ## Compliant Code Examples
 ```terraform

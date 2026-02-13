@@ -1,12 +1,13 @@
 {
   "id": "6938958b-3f1a-451c-909b-baeee14bdc97",
-  "queryName": "Multiple ENTRYPOINT Instructions Listed",
+  "queryName": "Multiple ENTRYPOINT instructions listed",
   "severity": "LOW",
   "category": "Build Process",
-  "descriptionText": "There can only be one ENTRYPOINT instruction in a Dockerfile. Only the last ENTRYPOINT instruction in the Dockerfile will have an effect",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#entrypoint",
+  "descriptionText": "Dockerfiles must contain at most one `ENTRYPOINT` because only the last `ENTRYPOINT` instruction is applied and any earlier `ENTRYPOINT` instructions are silently ignored. Multiple `ENTRYPOINT` instructions can cause intended initialization, security wrappers, or startup controls to be bypassed, which may result in containers running unintended processes or reduced security protections.\n\nThis rule flags Dockerfiles that include more than one `ENTRYPOINT` instruction. Ensure the Dockerfile has a single `ENTRYPOINT` (for example, have the `ENTRYPOINT` invoke a wrapper script that performs initialization and then execs the main process). Resources with multiple `ENTRYPOINT` lines will be flagged.\n\nSecure example using a single `ENTRYPOINT`:\n\n```dockerfile\nFROM alpine:3.18\nCOPY start.sh /usr/local/bin/start.sh\nENTRYPOINT [\"/usr/local/bin/start.sh\"]\nCMD [\"--serve\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/multiple_entrypoint_instructions_listed",
   "platform": "Dockerfile",
   "descriptionID": "03be1867",
   "cwe": "1041",
-  "oldSeverity": "HIGH"
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#entrypoint"
 }

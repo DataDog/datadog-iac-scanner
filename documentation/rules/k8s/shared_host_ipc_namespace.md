@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not share the host IPC namespace. The 'hostIPC' field in the pod spec should be set to false or left undefined. 'hostIPC: true' grants containers access to the host IPC namespace, increasing the risk of privilege escalation and information exposure.
-
+Containers should not share the host IPC namespace. The 'hostIPC' field in the pod spec should be set to false or left undefined. 'hostIPC: true' grants containers access to the host IPC namespace, increasing the risk of privilege escalation and information exposure.
 
 ## Compliant Code Examples
 ```yaml

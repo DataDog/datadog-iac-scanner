@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Allowing the `glue:UpdateDevEndpoint` action with the `Resource` attribute set to `"*"` in an AWS IAM policy enables broad and unrestricted management of AWS Glue development endpoints. This creates a serious privilege escalation vulnerability, as attackers with this permission can attach any IAM role to a Glue Dev Endpoint, potentially gaining access to additional permissions not intended for them. If left unaddressed, this misconfiguration may allow malicious users or compromised accounts to assume privileged roles and perform unauthorized actions across your AWS environment. It is critical to restrict sensitive actions like `glue:UpdateDevEndpoint` to only the required resources, and to avoid using wildcard (`"*"`) resource definitions in IAM policies.
-
+Allowing the `glue:UpdateDevEndpoint` action with the `Resource` attribute set to `"*"` in an AWS IAM policy enables broad and unrestricted management of AWS Glue development endpoints. This creates a serious privilege escalation vulnerability, as attackers with this permission can attach any IAM role to a Glue Dev Endpoint, potentially gaining access to additional permissions not intended for them. If left unaddressed, this misconfiguration may allow malicious users or compromised accounts to assume privileged roles and perform unauthorized actions across your AWS environment. It is critical to restrict sensitive actions like `glue:UpdateDevEndpoint` to only the required resources, and to avoid using wildcard (`"*"`) resource definitions in IAM policies.
 
 ## Compliant Code Examples
 ```terraform

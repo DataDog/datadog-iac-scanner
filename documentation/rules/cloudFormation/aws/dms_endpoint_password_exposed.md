@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Storing AWS DMS endpoint passwords as plaintext in a template or embedding them as a parameter `Default` exposes credentials in source control, CloudFormation templates, and stack metadata. This increases the risk of unauthorized access to database resources.
+Storing AWS DMS endpoint passwords as plaintext in a template or embedding them as a parameter `Default` exposes credentials in source control, CloudFormation templates, and stack metadata. This increases the risk of unauthorized access to database resources.
 
  For `AWS::DMS::Endpoint` resources, `Properties.Password` must not be a plain string literal or a `Ref` to a `Parameters.<Name>` that defines a `Default` value. Instead, `Password` should reference an AWS Secrets Manager secret or be supplied via a CloudFormation parameter without a `Default` (use `NoEcho` set to `true` to avoid echoing).
 
@@ -60,7 +60,6 @@ MyDmsEndpoint:
     Username: dbuser
     Password: "{{resolve:secretsmanager:my-db-secret:SecretString:password}}"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

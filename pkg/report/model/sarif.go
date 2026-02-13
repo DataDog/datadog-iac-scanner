@@ -209,6 +209,8 @@ const (
 	platformTag              = "DATADOG_PLATFORM:%s"
 	providerTag              = "DATADOG_PROVIDER:%s"
 	scannedFileCountTag      = "DATADOG_SCANNED_FILE_COUNT:%d"
+
+	DOCKERFILE = "Dockerfile"
 )
 
 func initSarifTool() sarifTool {
@@ -514,6 +516,15 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				resourceEndLocation = remediationEndLocation
 			}
 
+			logVulnerabilityLineEmpty(
+				ctx,
+				vulnerability.LineWithVulnerability,
+				issue.Platform,
+				issue.QueryName,
+				vulnerability.FileName,
+				vulnerability.Line,
+			)
+
 			absoluteFilePath := strings.ReplaceAll(issue.Files[idx].FileName, "../", "")
 			result := sarifResult{
 				ResultRuleID:    issue.QueryName,
@@ -539,7 +550,15 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 					"tags": resultTags,
 				},
 				PartialFingerprints: SarifPartialFingerprints{
-					DatadogFingerprint: GetDatadogFingerprintHash(sciInfo, absoluteFilePath, resourceType, resourceName, issue.QueryID),
+					DatadogFingerprint: GetDatadogFingerprintHash(
+						sciInfo,
+						absoluteFilePath,
+						issue.Platform,
+						resourceType,
+						resourceName,
+						issue.QueryID,
+						vulnerability.LineWithVulnerability,
+					),
 				},
 			}
 			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" {
@@ -623,6 +642,26 @@ func (sr *sarifReport) ResolveFilepaths(basePath string) error {
 }
 
 // nolint:gocritic
-func GetDatadogFingerprintHash(sciInfo model.SCIInfo, filePath, resourceType, resourceName, ruleId string) string {
+func GetDatadogFingerprintHash(sciInfo model.SCIInfo, filePath, platform, resourceType, resourceName, ruleId, vulnline string) string {
+	if platform == DOCKERFILE {
+		return StringToHash(fmt.Sprintf("%s|%s|%s|%s|%s|%s", sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleId, vulnline)) //nolint:lll
+	}
 	return StringToHash(fmt.Sprintf("%s|%s|%s|%s|%s", sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleId)) //nolint:lll
+}
+
+func logVulnerabilityLineEmpty(ctx context.Context, lineWithVulnerability, platform, queryName, fileName string, line int) {
+	if platform == DOCKERFILE && lineWithVulnerability == "" {
+		modifiedLogger := logger.FromContext(ctx).With().
+			Str("platform", platform).
+			Str("query", queryName).
+			Str("filename", fileName).
+			Int("line", line).Logger()
+		modifiedLogger.Warn().
+			Msgf("Could not retrieve vulnerability line for platform %s and issue %s, filename: %s on line %d",
+				platform,
+				queryName,
+				fileName,
+				line,
+			)
+	}
 }

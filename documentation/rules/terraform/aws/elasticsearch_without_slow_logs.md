@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that Amazon Elasticsearch domains have slow logs enabled by verifying the `log_publishing_options` block includes `log_type = "INDEX_SLOW_LOGS"` and `enabled = true`. Without slow logs, it is difficult to detect and diagnose performance issues such as slow queries or inefficient indexing, which could lead to system outages or degraded search performance. Enabling slow logs provides critical visibility into the behavior of the Elasticsearch cluster, allowing for faster investigation and mitigation of operational problems.
+This check ensures that Amazon Elasticsearch domains have slow logs enabled by verifying the `log_publishing_options` block includes `log_type = "INDEX_SLOW_LOGS"` and `enabled = true`. Without slow logs, it is difficult to detect and diagnose performance issues such as slow queries or inefficient indexing, which could lead to system outages or degraded search performance. Enabling slow logs provides critical visibility into the behavior of the Elasticsearch cluster, allowing for faster investigation and mitigation of operational problems.
 
 ```
 resource "aws_elasticsearch_domain" "example" {
@@ -39,7 +39,6 @@ resource "aws_elasticsearch_domain" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

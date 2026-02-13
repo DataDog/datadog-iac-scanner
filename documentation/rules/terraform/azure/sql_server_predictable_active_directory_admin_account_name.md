@@ -28,13 +28,12 @@ meta:
 
 ### Description
 
- Azure SQL Servers should not use predictable Active Directory Administrator account names, such as `Admin`, for the `login` attribute, as this increases the risk of brute-force or dictionary attacks. Using easily guessed usernames, such as `login = "Admin"`, increases the risk of unauthorized access by making accounts more susceptible to targeted attacks. To enhance security, use a unique and hard-to-guess login name, such as:
+Azure SQL Servers should not use predictable Active Directory Administrator account names, such as `Admin`, for the `login` attribute, as this increases the risk of brute-force or dictionary attacks. Using easily guessed usernames, such as `login = "Admin"`, increases the risk of unauthorized access by making accounts more susceptible to targeted attacks. To enhance security, use a unique and hard-to-guess login name, such as:
 
 ```
 login = "NotEasyToPredictAdmin"
 ```
 This helps reduce the likelihood of successful account compromise.
-
 
 ## Compliant Code Examples
 ```terraform

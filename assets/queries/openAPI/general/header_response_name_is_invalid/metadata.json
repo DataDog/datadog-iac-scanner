@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "The Header Response should not be named as 'Content-Type', 'Authorization' or 'Accept'. If so, it will be ignored.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/header_response_name_is_invalid",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/header_response_name_is_invalid",
   "platform": "OpenAPI",
   "descriptionID": "a92faac1",
   "aggregation": 2,

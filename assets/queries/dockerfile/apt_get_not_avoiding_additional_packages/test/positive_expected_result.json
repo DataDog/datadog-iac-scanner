@@ -1,12 +1,12 @@
 [
-	{
-		"queryName": "APT-GET Not Avoiding Additional Packages",
-		"severity": "INFO",
-		"line": 2
-	},
-	{
-		"queryName": "APT-GET Not Avoiding Additional Packages",
-		"severity": "INFO",
-		"line": 3
-	}
+  {
+    "queryName": "apt-get not avoiding additional packages",
+    "severity": "LOW",
+    "line": 2
+  },
+  {
+    "queryName": "apt-get not avoiding additional packages",
+    "severity": "LOW",
+    "line": 3
+  }
 ]

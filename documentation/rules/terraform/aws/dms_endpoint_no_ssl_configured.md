@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Database Migration Service (DMS) endpoints without SSL encryption leave sensitive data exposed during transmission between source and target databases. When SSL mode is set to `none`, database credentials and data are transmitted in plaintext, potentially allowing attackers to intercept and capture confidential information. To secure your endpoints, ensure the `ssl_mode` parameter is set to `require` rather than `none`, as shown below:
+AWS Database Migration Service (DMS) endpoints without SSL encryption leave sensitive data exposed during transmission between source and target databases. When SSL mode is set to `none`, database credentials and data are transmitted in plaintext, potentially allowing attackers to intercept and capture confidential information. To secure your endpoints, ensure the `ssl_mode` parameter is set to `require` rather than `none`, as shown below:
 
 ```
 resource "aws_dms_endpoint" "example" {
@@ -38,7 +38,6 @@ resource "aws_dms_endpoint" "example" {
   ssl_mode      = "require"  // Secure configuration
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

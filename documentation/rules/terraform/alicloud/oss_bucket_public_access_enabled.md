@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- OSS buckets should have public access disabled. This rule flags `alicloud_oss_bucket` resources where `acl` is set to `public-read` or `public-read-write`. To restrict access, set `acl = "private"` or remove the `acl` attribute.
-
+OSS buckets should have public access disabled. This rule flags `alicloud_oss_bucket` resources where `acl` is set to `public-read` or `public-read-write`. To restrict access, set `acl = "private"` or remove the `acl` attribute.
 
 ## Compliant Code Examples
 ```terraform

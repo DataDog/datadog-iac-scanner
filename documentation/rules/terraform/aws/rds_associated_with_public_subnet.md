@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Amazon RDS instances should not be associated with public subnets to prevent potential unauthorized access from the internet. When an RDS instance is placed in a subnet group containing a public subnet (with a CIDR such as `0.0.0.0/0)`, it creates an attack vector for malicious actors to exploit your database. 
+Amazon RDS instances should not be associated with public subnets to prevent potential unauthorized access from the internet. When an RDS instance is placed in a subnet group containing a public subnet (with a CIDR such as `0.0.0.0/0)`, it creates an attack vector for malicious actors to exploit your database. 
 
 Instead, RDS instances should only be deployed in private subnets with specific CIDR blocks. In the secure example, subnets use specific CIDR blocks such as `172.2.0.0/24` and `176.2.0.0/24`, while the vulnerable example uses `0.0.0.0/0` which allows traffic from any IP address. Properly securing your database network configuration helps prevent data breaches and unauthorized access to sensitive information.
-
 
 ## Compliant Code Examples
 ```terraform

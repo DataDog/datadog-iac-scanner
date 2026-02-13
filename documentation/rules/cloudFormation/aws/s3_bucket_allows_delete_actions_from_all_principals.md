@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 bucket policies must not allow delete actions to all principals (`*`). Public delete permissions enable unauthorized users to remove or tamper with objects and buckets, causing data loss and service disruption. Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries. Ensure no statement has `Effect: "Allow"` with `Principal` equal to `*` (or an array containing `*`) while `Action` includes delete operations such as `s3:DeleteObject`, `s3:DeleteBucket`, `s3:DeleteObjectVersion`, or wildcard actions that grant delete privileges.
+S3 bucket policies must not allow delete actions to all principals (`*`). Public delete permissions enable unauthorized users to remove or tamper with objects and buckets, causing data loss and service disruption. Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries. Ensure no statement has `Effect: "Allow"` with `Principal` equal to `*` (or an array containing `*`) while `Action` includes delete operations such as `s3:DeleteObject`, `s3:DeleteBucket`, `s3:DeleteObjectVersion`, or wildcard actions that grant delete privileges.
 
 Statements that combine `Effect: "Allow"`, `Principal: "*"`, and any delete action will be flagged. Instead, restrict delete permissions to explicit principals (account IDs, ARNs, or specific service principals) or remove `Allow` for delete actions to public principals. `Action` may be a single string or a list. Both forms are checked.
 
@@ -50,7 +50,6 @@ MyBucketPolicy:
             - "s3:DeleteObjectVersion"
           Resource: "arn:aws:s3:::my-bucket/*"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

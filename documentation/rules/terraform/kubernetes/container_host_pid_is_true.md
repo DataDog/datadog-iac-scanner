@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Minimize the admission of containers that request sharing the host process ID namespace. Containers with `host_pid` enabled can access host processes, increasing the risk of privilege escalation and lateral movement. This rule flags resources where `spec.host_pid` is set to `true`. The expected value is `false` or undefined.
-
+Minimize the admission of containers that request sharing the host process ID namespace. Containers with `host_pid` enabled can access host processes, increasing the risk of privilege escalation and lateral movement. This rule flags resources where `spec.host_pid` is set to `true`. The expected value is `false` or undefined.
 
 ## Compliant Code Examples
 ```terraform

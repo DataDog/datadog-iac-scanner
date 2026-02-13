@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Pods must not be allowed to run as privileged.
+Pods must not be allowed to run as privileged.
 The `spec.privileged` field on `kubernetes_pod_security_policy` resources must be set to `false`.
 If `spec.privileged` is not `false`, this rule reports an `IncorrectValue` issue and recommends replacing the current value with `false`.
-
 
 ## Compliant Code Examples
 ```terraform

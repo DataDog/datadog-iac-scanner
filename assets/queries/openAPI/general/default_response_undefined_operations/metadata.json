@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "Operations responses should have a default response defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/default_response_undefined_operations",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/default_response_undefined_operations",
   "platform": "OpenAPI",
   "descriptionID": "fcdbb44e",
   "aggregation": 2,

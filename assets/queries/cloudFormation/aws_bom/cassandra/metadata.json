@@ -4,7 +4,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "This rule inventories Cassandra table resources so teams can identify data stores that may contain sensitive information and ensure appropriate protections such as encryption, access controls, and backups are applied. It targets CloudFormation resources of type AWS::Cassandra::Table and emits a bill-of-materials entry with the resource name, detected encryption status, and accessibility information; resources that do not define encryption or accessibility properties will be reported as \"unknown\" to prompt further review. This is informational—review flagged entries and apply encryption and least-privilege access controls where supported.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/cassandra",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_bom/cassandra",
   "platform": "CloudFormation",
   "descriptionID": "bd2db07c",
   "cloudProvider": "aws",

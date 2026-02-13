@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When a container runs `kube-apiserver`, the `--audit-policy-file` flag must be set. The flag's value must reference a valid `.yaml` policy file that exists in a `Policy` resource within the document.
-
+When a container runs `kube-apiserver`, the `--audit-policy-file` flag must be set. The flag's value must reference a valid `.yaml` policy file that exists in a `Policy` resource within the document.
 
 ## Compliant Code Examples
 ```yaml

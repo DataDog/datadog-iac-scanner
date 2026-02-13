@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "There is a constraining keyword in a property which is already restricted by enum values",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/constraining_enum_property",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/constraining_enum_property",
   "platform": "OpenAPI",
   "descriptionID": "63cd2785",
   "cwe": "20",

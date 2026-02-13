@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Parameter Objects should not have duplicate names for 'header' location, since HTTP headers are not case sensitive.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/parameter_objects_headers_dup_name",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/parameter_objects_headers_dup_name",
   "platform": "OpenAPI",
   "descriptionID": "0e053155",
   "aggregation": 2,

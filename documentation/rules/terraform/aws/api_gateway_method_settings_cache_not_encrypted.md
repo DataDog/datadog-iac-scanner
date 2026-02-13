@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When caching is enabled for API Gateway methods, sensitive data may be stored in the cache. If cache encryption is not enabled, this data remains vulnerable to unauthorized access, potentially exposing sensitive information. The `cache_data_encrypted` attribute should be explicitly set to `true` in the settings block of API Gateway method settings whenever caching is enabled.
+When caching is enabled for API Gateway methods, sensitive data may be stored in the cache. If cache encryption is not enabled, this data remains vulnerable to unauthorized access, potentially exposing sensitive information. The `cache_data_encrypted` attribute should be explicitly set to `true` in the settings block of API Gateway method settings whenever caching is enabled.
 
 Secure example:
 ```terraform
@@ -49,7 +49,6 @@ settings {
   cache_data_encrypted = false  // or omitting this field
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

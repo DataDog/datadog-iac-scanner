@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Resource-based policies for AWS Glue should not use wildcard values (`"*"`) in the `principals` or `actions` attributes, as shown in the example below:
+Resource-based policies for AWS Glue should not use wildcard values (`"*"`) in the `principals` or `actions` attributes, as shown in the example below:
 
 ```
 principals {
@@ -39,7 +39,6 @@ actions = ["glue:*"]
 ```
 
 Allowing all actions and granting access to any principal exposes the Glue resources to unauthorized access or privilege escalation, significantly increasing the risk of data breaches or malicious modifications. Restricting both principals and allowed actions to the minimum necessary set reduces the attack surface and enforces least privilege.
-
 
 ## Compliant Code Examples
 ```terraform

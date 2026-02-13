@@ -1,7 +1,7 @@
 [
   {
-    "queryName": "UNIX Ports Out Of Range",
-    "severity": "INFO",
+    "queryName": "UNIX ports out of range",
+    "severity": "LOW",
     "line": 3
   }
 ]

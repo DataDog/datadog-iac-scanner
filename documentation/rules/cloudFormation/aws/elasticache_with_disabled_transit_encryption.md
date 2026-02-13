@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ElastiCache Redis replication groups must have in-transit encryption enabled to protect data exchanged between clients and cluster nodes from interception or tampering, preserving confidentiality and integrity.
+Amazon ElastiCache Redis replication groups must have in-transit encryption enabled to protect data exchanged between clients and cluster nodes from interception or tampering, preserving confidentiality and integrity.
  
  For CloudFormation resources of type `AWS::ElastiCache::ReplicationGroup` with `Engine` set to `redis`, the `TransitEncryptionEnabled` property must be defined and set to `true`. Resources missing `TransitEncryptionEnabled` or with `TransitEncryptionEnabled` set to `false` will be flagged as insecure. 
  
@@ -42,7 +42,6 @@ MyRedisReplicationGroup:
     TransitEncryptionEnabled: true
     # other required properties...
 ```
-
 
 ## Compliant Code Examples
 ```yaml

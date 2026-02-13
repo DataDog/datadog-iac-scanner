@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Verifies that Alicloud Container Service node pools (`alicloud_cs_kubernetes_node_pool`) have `management.auto_repair` set to `true`. The `auto_repair` setting periodically detects and repairs failing nodes to maintain a healthy, running cluster. The rule reports when the `management` block is missing, when `auto_repair` is not present, or when `auto_repair` is explicitly set to `false`. Remediation is to add a `management` block with `auto_repair = true`, or to update the existing `auto_repair` value to `true`.
-
+Verifies that Alicloud Container Service node pools (`alicloud_cs_kubernetes_node_pool`) have `management.auto_repair` set to `true`. The `auto_repair` setting periodically detects and repairs failing nodes to maintain a healthy, running cluster. The rule reports when the `management` block is missing, when `auto_repair` is not present, or when `auto_repair` is explicitly set to `false`. Remediation is to add a `management` block with `auto_repair = true`, or to update the existing `auto_repair` value to `true`.
 
 ## Compliant Code Examples
 ```terraform

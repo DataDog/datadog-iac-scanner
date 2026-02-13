@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "The field 'default' of Schema Object should be consistent with the schema's type",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/default_invalid",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/default_invalid",
   "platform": "OpenAPI",
   "descriptionID": "18b2fb98",
   "aggregation": 2,

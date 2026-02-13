@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Sharing an IAM execution role across multiple AWS Serverless functions increases blast radius and can give unrelated functions identical privileges, making privilege escalation or lateral movement easier if one function is compromised. For `AWS::Serverless::Function` resources, the `Properties.Role` value must be unique for each function and should reference a function-specific IAM role ARN. This rule flags `Resources.<name>.Properties.Role` when the same `Role` value is assigned to more than one `AWS::Serverless::Function`. Fix this by defining a distinct `AWS::IAM::Role` per function (or omitting `Role` to let AWS SAM create unique roles) and applying least-privilege policies to each role.
+Sharing an IAM execution role across multiple AWS Serverless functions increases blast radius and can give unrelated functions identical privileges, making privilege escalation or lateral movement easier if one function is compromised. For `AWS::Serverless::Function` resources, the `Properties.Role` value must be unique for each function and should reference a function-specific IAM role ARN. This rule flags `Resources.<name>.Properties.Role` when the same `Role` value is assigned to more than one `AWS::Serverless::Function`. Fix this by defining a distinct `AWS::IAM::Role` per function (or omitting `Role` to let AWS SAM create unique roles) and applying least-privilege policies to each role.
 
 Secure configuration with distinct roles:
 
@@ -89,7 +89,6 @@ MyFunction2:
     Handler: index.handler
     Runtime: nodejs14.x
 ```
-
 
 ## Compliant Code Examples
 ```yaml

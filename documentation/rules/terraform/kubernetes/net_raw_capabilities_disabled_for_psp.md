@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- `spec.required_drop_capabilities` on `kubernetes_pod_security_policy` resources must be set to `['ALL', 'NET_RAW']`. If `spec.required_drop_capabilities` is not `['ALL', 'NET_RAW']`, the rule reports an `IncorrectValue` issue for the `kubernetes_pod_security_policy` resource.
-
+`spec.required_drop_capabilities` on `kubernetes_pod_security_policy` resources must be set to `['ALL', 'NET_RAW']`. If `spec.required_drop_capabilities` is not `['ALL', 'NET_RAW']`, the rule reports an `IncorrectValue` issue for the `kubernetes_pod_security_policy` resource.
 
 ## Compliant Code Examples
 ```terraform

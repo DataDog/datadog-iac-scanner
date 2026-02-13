@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Secret Management",
   "descriptionText": "Amazon EBS volumes should specify a customer-managed AWS KMS key (`KmsKeyId`) so data at rest is encrypted under keys you control and access to decrypt volumes and snapshots can be restricted via key policies.\n \n In CloudFormation, the `AWS::EC2::Volume` resource must include the `Properties.KmsKeyId` property, and it should reference a key ARN, key ID, or alias for a customer-managed CMK. Resources missing `KmsKeyId` will be flagged. If account-level default EBS encryption is not enabled, this omission can result in unencrypted volumes. If default encryption is enabled, it may cause the AWS-managed key to be used instead of a customer-managed key.\n\nSecure configuration example:\n\n```yaml\nMyVolume:\n  Type: AWS::EC2::Volume\n  Properties:\n    AvailabilityZone: us-west-2a\n    Size: 100\n    KmsKeyId: arn:aws:kms:us-west-2:123456789012:key/01234567-89ab-cdef-0123-456789abcdef\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ebs_volume_without_kms_key_id",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ebs_volume_without_kms_key_id",
   "platform": "CloudFormation",
   "descriptionID": "a10e872a",
   "cloudProvider": "aws",

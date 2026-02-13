@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- All variables must include a `description` attribute that is defined, not null, and not empty or whitespace-only.
+All variables must include a `description` attribute that is defined, not null, and not empty or whitespace-only.
 
 This rule reports:
 
@@ -36,7 +36,6 @@ This rule reports:
 - `IncorrectValue` when the `description` is present but empty after trimming.
 
 Each result includes `documentId`, `resourceType`, `resourceName`, and `searchKey` to help locate the offending variable.
-
 
 ## Compliant Code Examples
 ```terraform

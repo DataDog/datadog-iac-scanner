@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When configuring AWS ElastiCache clusters with multiple nodes, it is important to distribute nodes across multiple Availability Zones (AZs) by setting the `az_mode` attribute to `"cross-az"`. Failing to do so—such as by omitting the `az_mode` attribute or explicitly setting it to `"single-az"`—means all nodes run in a single AZ, increasing the risk of service disruption if that AZ experiences an outage. For example, a secure Terraform configuration explicitly sets the following:
+When configuring AWS ElastiCache clusters with multiple nodes, it is important to distribute nodes across multiple Availability Zones (AZs) by setting the `az_mode` attribute to `"cross-az"`. Failing to do so—such as by omitting the `az_mode` attribute or explicitly setting it to `"single-az"`—means all nodes run in a single AZ, increasing the risk of service disruption if that AZ experiences an outage. For example, a secure Terraform configuration explicitly sets the following:
 
 ```
 resource "aws_elasticache_cluster" "example" {
@@ -40,7 +40,6 @@ resource "aws_elasticache_cluster" "example" {
 ```
 
 Distributing cache nodes across multiple AZs increases fault tolerance and availability for ElastiCache clusters.
-
 
 ## Compliant Code Examples
 ```terraform

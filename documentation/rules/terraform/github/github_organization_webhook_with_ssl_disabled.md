@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Check whether insecure SSL is used in GitHub organization webhooks.
-
+Check whether insecure SSL is used in GitHub organization webhooks.
 
 ## Compliant Code Examples
 ```terraform

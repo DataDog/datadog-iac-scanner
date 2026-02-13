@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A sensitive port, such as `23` or `110`, is open to the public using `TCP` or `UDP`. This rule detects ingress `alicloud_security_group_rule` resources where `cidr_ip` is set to `0.0.0.0/0`, the `protocol` is `tcp`, `udp`, or `all`, and the `port_range` includes a known sensitive port. This configuration exposes the service to the public internet and increases the risk of unauthorized access.
-
+A sensitive port, such as `23` or `110`, is open to the public using `TCP` or `UDP`. This rule detects ingress `alicloud_security_group_rule` resources where `cidr_ip` is set to `0.0.0.0/0`, the `protocol` is `tcp`, `udp`, or `all`, and the `port_range` includes a known sensitive port. This configuration exposes the service to the public internet and increases the risk of unauthorized access.
 
 ## Compliant Code Examples
 ```terraform

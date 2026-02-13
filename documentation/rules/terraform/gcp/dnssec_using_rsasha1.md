@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- DNSSEC should not use the RSASHA1 algorithm, which is considered weak and vulnerable to cryptographic attacks. If a `dnssec_config` block contains a `default_key_specs` attribute with `algorithm = "rsasha1"`, attackers may be able to exploit known weaknesses in the algorithm to forge DNS records, potentially redirecting users to malicious sites or causing other security issues. Instead, use a stronger algorithm such as `rsasha256`:
+DNSSEC should not use the RSASHA1 algorithm, which is considered weak and vulnerable to cryptographic attacks. If a `dnssec_config` block contains a `default_key_specs` attribute with `algorithm = "rsasha1"`, attackers may be able to exploit known weaknesses in the algorithm to forge DNS records, potentially redirecting users to malicious sites or causing other security issues. Instead, use a stronger algorithm such as `rsasha256`:
 
 ```
 dnssec_config {
@@ -37,7 +37,6 @@ dnssec_config {
     }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

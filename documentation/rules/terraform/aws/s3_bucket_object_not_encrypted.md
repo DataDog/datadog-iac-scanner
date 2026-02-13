@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies that S3 bucket objects have server-side encryption enabled to protect sensitive data at rest. Unencrypted S3 objects could expose confidential information if unauthorized access occurs, potentially leading to data breaches and compliance violations. Server-side encryption is a critical security control that should be implemented for all objects stored in S3 buckets.
+This check verifies that S3 bucket objects have server-side encryption enabled to protect sensitive data at rest. Unencrypted S3 objects could expose confidential information if unauthorized access occurs, potentially leading to data breaches and compliance violations. Server-side encryption is a critical security control that should be implemented for all objects stored in S3 buckets.
 
 The vulnerability occurs when the `server_side_encryption` attribute is missing in an `aws_s3_bucket_object` resource, as shown in this insecure example:
 ```hcl
@@ -48,7 +48,6 @@ resource "aws_s3_bucket_object" "examplebucket_object" {
   server_side_encryption = "AES256"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

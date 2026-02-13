@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- VPC resources should have Flow Log enabled.
+VPC resources should have Flow Log enabled.
 
 This rule checks `tencentcloud_vpc_flow_log_config` resources and requires the `enable` attribute to be set to `true`. Resources with `enable` set to `false` are reported as `IncorrectValue`.
-
 
 ## Compliant Code Examples
 ```terraform

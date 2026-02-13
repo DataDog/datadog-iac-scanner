@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Cleartext credentials over unencrypted channel should not be accepted for the operation",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/cleartext_credentials_with_basic_auth_for_operation",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/cleartext_credentials_with_basic_auth_for_operation",
   "platform": "OpenAPI",
   "descriptionID": "dc667769",
   "cwe": "319",

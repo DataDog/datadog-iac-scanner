@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Build projects must specify an explicit AWS KMS encryption key to protect build artifacts and outputs with a customer-controlled key and retain control over key policies, rotation, and auditability.
+Build projects must specify an explicit AWS KMS encryption key to protect build artifacts and outputs with a customer-controlled key and retain control over key policies, rotation, and auditability.
 
  In CloudFormation, the `EncryptionKey` property on `AWS::CodeBuild::Project` (`Resources.<name>.Project.Properties.EncryptionKey`) must be defined and not `null`. It should reference an AWS KMS key ARN or a CloudFormation reference to an `AWS::KMS::Key`. Resources missing this property or with `EncryptionKey` set to `null` will be flagged as non-compliant.
 
@@ -42,7 +42,6 @@ MyCodeBuildProject:
     EncryptionKey: !GetAtt MyKmsKey.Arn
     # other required properties...
 ```
-
 
 ## Compliant Code Examples
 ```yaml

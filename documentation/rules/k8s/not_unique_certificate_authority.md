@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The trusted certificate authority file used by etcd must be different from the client certificate authority file used by the API server. Do not set `--trusted-ca-file` for etcd to the same path as the API server's `--client-ca-file`. Sharing the same CA file can allow clients authenticated to the API server to be implicitly trusted by etcd, weakening isolation and increasing risk.
-
+The trusted certificate authority file used by etcd must be different from the client certificate authority file used by the API server. Do not set `--trusted-ca-file` for etcd to the same path as the API server's `--client-ca-file`. Sharing the same CA file can allow clients authenticated to the API server to be implicitly trusted by etcd, weakening isolation and increasing risk.
 
 ## Compliant Code Examples
 ```yaml

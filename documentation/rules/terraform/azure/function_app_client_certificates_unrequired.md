@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Function Apps should require client certificates for incoming requests by setting the `client_cert_mode` attribute to `"Required"`. Without this setting, as seen below, the Function App allows unauthenticated traffic, increasing the risk of unauthorized access to sensitive business logic or data processed by the Function App:
+Azure Function Apps should require client certificates for incoming requests by setting the `client_cert_mode` attribute to `"Required"`. Without this setting, as seen below, the Function App allows unauthenticated traffic, increasing the risk of unauthorized access to sensitive business logic or data processed by the Function App:
 
 ```
 resource "azurerm_function_app" "example" {
@@ -38,7 +38,6 @@ resource "azurerm_function_app" "example" {
 ```
 
 Enforcing client certificate authentication ensures that only trusted clients can interact with the Function App, reducing the attack surface and protecting against various unauthorized access vectors.
-
 
 ## Compliant Code Examples
 ```terraform

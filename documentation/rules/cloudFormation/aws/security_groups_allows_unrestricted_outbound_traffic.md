@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups must not allow unrestricted outbound traffic by combining `IpProtocol: "ALL"` with `CidrIp: "0.0.0.0/0"`. This permits any protocol to any internet destination and can enable data exfiltration, malware callbacks, and make detection or containment harder.
+Security groups must not allow unrestricted outbound traffic by combining `IpProtocol: "ALL"` with `CidrIp: "0.0.0.0/0"`. This permits any protocol to any internet destination and can enable data exfiltration, malware callbacks, and make detection or containment harder.
 
 In CloudFormation, check `AWS::EC2::SecurityGroup` resources and flag any `SecurityGroupEgress` entry where `IpProtocol` is `ALL` and `CidrIp` is `0.0.0.0/0`. Entries that include `IpProtocol: "ALL"` together with `CidrIp: "0.0.0.0/0"` will be flagged. Instead, define explicit protocols and ports and restrict destination CIDR blocks to the minimum required. If broad internet egress is needed, prefer specific ports (for example, TCP/`443`) or centralize outbound access through NAT gateways, proxies, or VPC endpoints.
 
@@ -50,7 +50,6 @@ MySecurityGroup:
         ToPort: 80
         CidrIp: 10.0.0.0/16
 ```
-
 
 ## Compliant Code Examples
 ```yaml

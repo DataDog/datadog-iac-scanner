@@ -367,21 +367,26 @@ get_tag_name_if_exists(resource) = name {
 } else = name {
 	tag := resource.Properties.Tags[_]
 	tag.Key == "Name"
+	is_string(tag.Value)
 	name := tag.Value
 } else = name {
 	tag := resource.Properties.FileSystemTags[_]
 	tag.Key == "Name"
+	is_string(tag.Value)
 	name := tag.Value
 } else = name {
 	tag := resource.Properties.Tags[key]
+	is_string(tag)
 	key == "Name"
 	name := tag
 } else = name {
 	tag := resource.spec.forProvider.tags[_]
 	tag.key == "Name"
+	is_string(tag.value)
 	name := tag.value
 } else = name {
 	tag := resource.properties.tags[key]
+	is_string(tag)
 	key == "Name"
 	name := tag
 }

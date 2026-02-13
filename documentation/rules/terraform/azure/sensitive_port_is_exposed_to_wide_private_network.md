@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Opening sensitive ports such as port 23 (Telnet) or port 110 (POP3) to wide private network ranges (for example, `10.0.0.0/8`, `172.16.0.0/12`, or `192.168.0.0/16`) in either TCP or UDP protocols increases the attack surface and exposes resources to unnecessary risk, as these ports are often targeted by attackers due to weak authentication and lack of encryption. If left unaddressed, this misconfiguration can lead to potential unauthorized access, credential theft, or exploitation of legacy services, especially if the associated services are enabled and unpatched. To remediate, network security rules should deny inbound access to such sensitive ports. For example:
+Opening sensitive ports such as port 23 (Telnet) or port 110 (POP3) to wide private network ranges (for example, `10.0.0.0/8`, `172.16.0.0/12`, or `192.168.0.0/16`) in either TCP or UDP protocols increases the attack surface and exposes resources to unnecessary risk, as these ports are often targeted by attackers due to weak authentication and lack of encryption. If left unaddressed, this misconfiguration can lead to potential unauthorized access, credential theft, or exploitation of legacy services, especially if the associated services are enabled and unpatched. To remediate, network security rules should deny inbound access to such sensitive ports. For example:
 
 ```
 resource "azurerm_network_security_rule" "secure_example" {
@@ -45,7 +45,6 @@ resource "azurerm_network_security_rule" "secure_example" {
   network_security_group_name = azurerm_network_security_group.example.name
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

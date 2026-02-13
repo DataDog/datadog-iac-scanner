@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Security Center contact alert notifications should be enabled to ensure that designated security contacts receive email alerts about security issues or threats in your Azure environment. If the `alert_notifications` attribute is set to `false`, such as shown below, critical security incidents could go unnoticed, increasing the risk of delayed response to threats.
+Azure Security Center contact alert notifications should be enabled to ensure that designated security contacts receive email alerts about security issues or threats in your Azure environment. If the `alert_notifications` attribute is set to `false`, such as shown below, critical security incidents could go unnoticed, increasing the risk of delayed response to threats.
 
 ```
 resource "azurerm_security_center_contact" "example" {
@@ -39,7 +39,6 @@ resource "azurerm_security_center_contact" "example" {
 ```
 
 Setting `alert_notifications = true` ensures timely awareness and response to potential security incidents.
-
 
 ## Compliant Code Examples
 ```terraform

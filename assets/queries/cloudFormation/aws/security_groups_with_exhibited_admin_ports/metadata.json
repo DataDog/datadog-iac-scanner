@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "Security groups must not allow inbound access from the public internet (`0.0.0.0/0`) to high-risk service ports. Public exposure of these services increases the risk of brute-force attacks, exploitation of known vulnerabilities, and unauthorized access or lateral movement.\n\nThis rule inspects `AWS::EC2::SecurityGroup` resources and flags `SecurityGroupIngress` entries where `CidrIp` is `0.0.0.0/0` and either `FromPort` or `ToPort` equals one of `20`, `21`, `22`, `23`, `115`, `137`, `138`, `139`, `2049`, or `3389`.\n\nTo remediate, restrict `CidrIp` to trusted CIDR ranges, use security group references, or place access behind a bastion host or VPN. Remove or narrow rules for these ports when possible.\n\n**Note**: This check evaluates IPv4 `CidrIp` entries only. Ensure any IPv6 (`::/0`) rules are likewise restricted.\n\nSecure example restricting SSH to a trusted subnet:\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: SSH access from admin network\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 22\n        ToPort: 22\n        CidrIp: 203.0.113.0/24\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_groups_with_exhibited_admin_ports",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/security_groups_with_exhibited_admin_ports",
   "platform": "CloudFormation",
   "descriptionID": "e14121d4",
   "cloudProvider": "aws",

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- APIs without an associated authorizer can accept unauthenticated or insufficiently authenticated requests, increasing the risk of unauthorized access to backend services and potential data exfiltration or abuse.
+APIs without an associated authorizer can accept unauthenticated or insufficiently authenticated requests, increasing the risk of unauthorized access to backend services and potential data exfiltration or abuse.
 
  For CloudFormation, each API resource of type `AWS::ApiGateway::RestApi` or `AWS::ApiGatewayV2::Api` must have a corresponding authorizer resource:
 
@@ -74,7 +74,6 @@ MyV2Authorizer:
       audience:
         - CLIENT_ID
 ```
-
 
 ## Compliant Code Examples
 ```yaml

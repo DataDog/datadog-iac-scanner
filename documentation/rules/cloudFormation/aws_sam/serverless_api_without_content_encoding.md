@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Serverless APIs should enable response compression by configuring `MinimumCompressionSize` to reduce response sizes, lower bandwidth costs, and limit the risk of backend resource exhaustion from large uncompressed payloads. The `MinimumCompressionSize` property on `AWS::Serverless::Api` resources must be defined as an integer between `0` and `10485759` (that is, greater than `-1` and less than `10485760`). Resources missing this property or with values less than `0` or greater than `10485759` will be flagged. A typical secure configuration sets a threshold in bytes (for example, `1024`) to compress responses larger than that size:
+Serverless APIs should enable response compression by configuring `MinimumCompressionSize` to reduce response sizes, lower bandwidth costs, and limit the risk of backend resource exhaustion from large uncompressed payloads. The `MinimumCompressionSize` property on `AWS::Serverless::Api` resources must be defined as an integer between `0` and `10485759` (that is, greater than `-1` and less than `10485760`). Resources missing this property or with values less than `0` or greater than `10485759` will be flagged. A typical secure configuration sets a threshold in bytes (for example, `1024`) to compress responses larger than that size:
 
 ```yaml
 MyApi:
@@ -37,7 +37,6 @@ MyApi:
     StageName: prod
     MinimumCompressionSize: 1024
 ```
-
 
 ## Compliant Code Examples
 ```yaml

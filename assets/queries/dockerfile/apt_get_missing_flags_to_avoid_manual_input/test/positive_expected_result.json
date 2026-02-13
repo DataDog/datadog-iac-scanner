@@ -1,90 +1,90 @@
 [
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 2,
     "filename": "positive1.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 3,
     "filename": "positive1.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 4,
     "filename": "positive1.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 2,
     "filename": "positive2.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 3,
     "filename": "positive2.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 4,
     "filename": "positive2.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 2,
     "filename": "positive3.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 2,
-    "filename": "positive4.dockerfile"  
+    "filename": "positive4.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 3,
-    "filename": "positive4.dockerfile"    
+    "filename": "positive4.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 3,
-    "filename": "positive5.dockerfile"  
-  }, 
+    "filename": "positive5.dockerfile"
+  },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 2,
     "filename": "positive5.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 3,
-    "filename": "positive6.dockerfile"  
-  }, 
+    "filename": "positive6.dockerfile"
+  },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 2,
     "filename": "positive6.dockerfile"
   },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 3,
-    "filename": "positive7.dockerfile"  
-  }, 
+    "filename": "positive7.dockerfile"
+  },
   {
-    "queryName": "APT-GET Missing Flags To Avoid Manual Input",
+    "queryName": "apt-get missing flags to avoid manual input",
     "severity": "LOW",
     "line": 2,
     "filename": "positive7.dockerfile"

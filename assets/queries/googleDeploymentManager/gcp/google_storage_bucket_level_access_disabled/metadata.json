@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Google Storage Bucket Level Access should be enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/google_storage_bucket_level_access_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/google_storage_bucket_level_access_disabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "d9594b64",
   "cloudProvider": "gcp",

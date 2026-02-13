@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Memory limits must be defined for every container. This prevents resource exhaustion by ensuring containers do not exceed their allocated memory. The rule validates both container and init_container entries (array or object forms) and requires resources, resources.limits, and resources.limits.memory to be set; it reports a MissingAttribute when any are missing.
-
+Memory limits must be defined for every container. This prevents resource exhaustion by ensuring containers do not exceed their allocated memory. The rule validates both container and init_container entries (array or object forms) and requires resources, resources.limits, and resources.limits.memory to be set; it reports a MissingAttribute when any are missing.
 
 ## Compliant Code Examples
 ```terraform

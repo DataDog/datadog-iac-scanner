@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Defining a security contact email in the `azurerm_security_center_contact` resource is essential for ensuring that security alerts and notifications from Azure are sent to the correct personnel. If the `email` attribute is omitted, as shown below, important security incidents may go unnoticed, increasing the risk of delayed responses to threats:
+Defining a security contact email in the `azurerm_security_center_contact` resource is essential for ensuring that security alerts and notifications from Azure are sent to the correct personnel. If the `email` attribute is omitted, as shown below, important security incidents may go unnoticed, increasing the risk of delayed responses to threats:
 
 ```
 resource "azurerm_security_center_contact" "insecure" {
@@ -48,7 +48,6 @@ resource "azurerm_security_center_contact" "secure" {
   alerts_to_admins    = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

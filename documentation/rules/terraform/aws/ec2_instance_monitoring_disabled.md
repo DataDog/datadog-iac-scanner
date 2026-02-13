@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Enabling detailed monitoring on EC2 instances ensures that Amazon CloudWatch captures metrics every minute, rather than the default five-minute interval. This is achieved in Terraform by setting the `monitoring` attribute to `true` within the `aws_instance` resource. Without detailed monitoring (`monitoring = false` or omitted), operational visibility is significantly reduced, which can delay the detection of performance issues, outages, or security incidents. If this vulnerability is left unaddressed, administrators may miss critical events or be unable to react promptly to changes in resource behavior, potentially leading to service disruptions or undiagnosed anomalies.
-
+Enabling detailed monitoring on EC2 instances ensures that Amazon CloudWatch captures metrics every minute, rather than the default five-minute interval. This is achieved in Terraform by setting the `monitoring` attribute to `true` within the `aws_instance` resource. Without detailed monitoring (`monitoring = false` or omitted), operational visibility is significantly reduced, which can delay the detection of performance issues, outages, or security incidents. If this vulnerability is left unaddressed, administrators may miss critical events or be unable to react promptly to changes in resource behavior, potentially leading to service disruptions or undiagnosed anomalies.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- OSS buckets should have secure transport enabled. The bucket policy should deny requests when `acs:SecureTransport` is `false`, or allow requests only when `acs:SecureTransport` is `true`. This condition must apply to any principal. Enforcing this prevents acceptance of HTTP requests and ensures data is transferred over TLS.
-
+OSS buckets should have secure transport enabled. The bucket policy should deny requests when `acs:SecureTransport` is `false`, or allow requests only when `acs:SecureTransport` is `true`. This condition must apply to any principal. Enforcing this prevents acceptance of HTTP requests and ensures data is transferred over TLS.
 
 ## Compliant Code Examples
 ```terraform

@@ -1,0 +1,12 @@
+{
+  "id": "408460f2-2a0f-21ab-ab37-4fb86ac3b5ce",
+  "queryName": "ONBUILD cannot trigger FROM or MAINTAINER",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "`ONBUILD` instructions must not trigger `FROM`, `MAINTAINER`, or another `ONBUILD`, because these directives can change the base image or persisted metadata in downstream builds. This can create recursive or unexpected build behavior that undermines build integrity and supply-chain security.  \n\nThis rule inspects `dockerfile_container` resources for Dockerfile `ONBUILD` instructions and verifies that the triggered subcommand is not `FROM`, `MAINTAINER`, or `ONBUILD`.  \n\nResources where `ONBUILD` triggers `FROM`, `MAINTAINER`, or `ONBUILD` are flagged and should be refactored to invoke safer build actions (for example, `RUN` or `COPY`).\n\nSecure `ONBUILD` example:\n\n```\nONBUILD RUN apt-get update && apt-get install -y curl\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/from_or_maintainer_cannot_be_triggered_within_onbuild",
+  "platform": "Dockerfile",
+  "descriptionID": "408460f2",
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#onbuild"
+}

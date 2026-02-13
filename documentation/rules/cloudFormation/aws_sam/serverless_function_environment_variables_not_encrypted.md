@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Serverless functions that define environment variables must encrypt those variables with a customer-managed AWS KMS key to protect secrets and configuration data from exposure if the function configuration is accessed or leaked. For `AWS::Serverless::Function` resources that include `Properties.Environment.Variables`, the `Properties.KmsKeyArn` property must be defined and set to a valid KMS key ARN or alias (not `null`). Resources missing `KmsKeyArn` or where `KmsKeyArn` is `null` will be flagged. Example secure configuration referencing a KMS key:
+Serverless functions that define environment variables must encrypt those variables with a customer-managed AWS KMS key to protect secrets and configuration data from exposure if the function configuration is accessed or leaked. For `AWS::Serverless::Function` resources that include `Properties.Environment.Variables`, the `Properties.KmsKeyArn` property must be defined and set to a valid KMS key ARN or alias (not `null`). Resources missing `KmsKeyArn` or where `KmsKeyArn` is `null` will be flagged. Example secure configuration referencing a KMS key:
 
 ```yaml
 MyFunction:
@@ -41,7 +41,6 @@ MyFunction:
         DB_PASSWORD: mypassword
     KmsKeyArn: !GetAtt MyKmsKey.Arn
 ```
-
 
 ## Compliant Code Examples
 ```yaml

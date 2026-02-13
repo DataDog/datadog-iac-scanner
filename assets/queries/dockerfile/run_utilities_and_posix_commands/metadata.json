@@ -1,11 +1,12 @@
 {
   "id": "9b6b0f38-92a2-41f9-b881-3a1083d99f1b",
-  "queryName": "Run Utilities And POSIX Commands",
-  "severity": "INFO",
+  "queryName": "Run utilities and POSIX commands",
+  "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "Some POSIX commands and interactive utilities shouldn't run inside a Docker Container",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#run",
+  "descriptionText": "`RUN` instructions in Dockerfiles must not invoke interactive editors or host-level utilities (for example, ps, shutdown, service, free, top, kill, mount, ifconfig, nano, and vim). These tools are unnecessary in image builds, can attempt to access or manipulate host/system state, and may indicate insecure usage patterns that increase the risk of container escape or unstable images.\n\nThis rule inspects Dockerfile `RUN` commands and flags any `RUN` whose command string (each segment split on `&&`) contains one of the listed command names. Segments that include the substring `install` (for example, package manager install commands) are excluded and will not be flagged. Remediate by removing interactive or service-management invocations from build steps, performing process/service control at runtime or on the host, or installing required utilities non-interactively during build without executing them.\n\nSecure example installing a utility non-interactively:\n\n```dockerfile\nFROM ubuntu:22.04\nRUN apt-get update && apt-get install -y --no-install-recommends curl\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/run_utilities_and_posix_commands",
   "platform": "Dockerfile",
   "descriptionID": "677fa9a6",
-  "cwe": "710"
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run"
 }

@@ -4,7 +4,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "This rule inventories Amazon MSK clusters and reports their network accessibility and encryption posture so reviewers can identify clusters that are publicly exposed or lack proper encryption protections. It targets CloudFormation resources of type `AWS::MSK::Cluster`, inspecting `BrokerNodeGroupInfo.ConnectivityInfo.PublicAccess.Type` (a value of `SERVICE_PROVIDED_EIPS` denotes a publicly accessible cluster) and the cluster's `EncryptionInfo` properties to record encryption at rest and in-transit settings. This is informational: clusters are labeled \"public\" when `PublicAccess.Type == \"SERVICE_PROVIDED_EIPS\"` and \"private\" otherwise, and the rule emits these details along with the resource name in the bill-of-materials output for review or downstream enforcement.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/msk",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_bom/msk",
   "platform": "CloudFormation",
   "descriptionID": "7413f967",
   "cloudProvider": "aws",

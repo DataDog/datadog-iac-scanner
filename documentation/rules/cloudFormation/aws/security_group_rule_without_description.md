@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups and their ingress/egress rules should include descriptive metadata to document their purpose and scope. Missing descriptions hinder audits and change reviews and make it easier for overly permissive or unintended rules to persist unnoticed.
+Security groups and their ingress/egress rules should include descriptive metadata to document their purpose and scope. Missing descriptions hinder audits and change reviews and make it easier for overly permissive or unintended rules to persist unnoticed.
 
 In CloudFormation, the `GroupDescription` property on `AWS::EC2::SecurityGroup` must be defined. Every rule must also set a `Description`, either as entries in `SecurityGroupIngress`/`SecurityGroupEgress` on the security group resource or on standalone `AWS::EC2::SecurityGroupIngress`/`AWS::EC2::SecurityGroupEgress` resources. Resources or array entries missing these properties will be flagged. Use concise, intent-revealing descriptions that explain the allowed traffic and the rationale for the rule.
 
@@ -52,7 +52,6 @@ MySecurityGroup:
         SourceSecurityGroupId: !Ref BastionSG
         Description: Allow SSH from bastion host for admin access
 ```
-
 
 ## Compliant Code Examples
 ```yaml

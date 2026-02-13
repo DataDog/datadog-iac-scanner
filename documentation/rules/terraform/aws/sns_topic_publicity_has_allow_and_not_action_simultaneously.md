@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- An SNS topic policy should not use both `"Effect": "Allow"` and the `"NotAction"` attribute together, as this grants permission to all actions except those explicitly denied, significantly increasing the potential attack surface. This misconfiguration can unintentionally allow broad access to the SNS topic, which may be exploited by attackers to perform unauthorized actions. To secure the policy, use the `"Action"` attribute alongside `"Effect": "Allow"`, as shown below:
+An SNS topic policy should not use both `"Effect": "Allow"` and the `"NotAction"` attribute together, as this grants permission to all actions except those explicitly denied, significantly increasing the potential attack surface. This misconfiguration can unintentionally allow broad access to the SNS topic, which may be exploited by attackers to perform unauthorized actions. To secure the policy, use the `"Action"` attribute alongside `"Effect": "Allow"`, as shown below:
 
 ```
 {
@@ -41,7 +41,6 @@ meta:
   ]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

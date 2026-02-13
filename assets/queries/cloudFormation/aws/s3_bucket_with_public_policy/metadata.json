@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "S3 buckets should block public bucket policies to prevent bucket policies from granting public access. Public bucket policies can expose objects or other sensitive data.\n\nFor `AWS::S3::Bucket` resources, `Properties.PublicAccessBlockConfiguration.BlockPublicPolicy` must be set to `true`. Resources missing `PublicAccessBlockConfiguration`, or with `BlockPublicPolicy: false`, will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    PublicAccessBlockConfiguration:\n      BlockPublicPolicy: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_with_public_policy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_with_public_policy",
   "platform": "CloudFormation",
   "descriptionID": "bfe99abf",
   "cloudProvider": "aws",

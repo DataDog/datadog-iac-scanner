@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- DynamoDB tables must explicitly specify a valid billing mode to ensure predictable capacity behavior and to avoid deploying tables with undefined or unexpected throughput that can impact availability. In CloudFormation, the `BillingMode` property on `AWS::DynamoDB::Table` must be set to either `PROVISIONED` or `PAY_PER_REQUEST`. Resources missing the `BillingMode` property or using any other value will be flagged. If you choose `PROVISIONED`, also configure appropriate provisioned throughput or auto-scaling. If you choose `PAY_PER_REQUEST`, do not define `ProvisionedThroughput`.
+DynamoDB tables must explicitly specify a valid billing mode to ensure predictable capacity behavior and to avoid deploying tables with undefined or unexpected throughput that can impact availability. In CloudFormation, the `BillingMode` property on `AWS::DynamoDB::Table` must be set to either `PROVISIONED` or `PAY_PER_REQUEST`. Resources missing the `BillingMode` property or using any other value will be flagged. If you choose `PROVISIONED`, also configure appropriate provisioned throughput or auto-scaling. If you choose `PAY_PER_REQUEST`, do not define `ProvisionedThroughput`.
 
 Secure example using on-demand (PAY_PER_REQUEST):
 
@@ -52,7 +52,6 @@ MyDynamoTable:
       ReadCapacityUnits: 5
       WriteCapacityUnits: 5
 ```
-
 
 ## Compliant Code Examples
 ```yaml

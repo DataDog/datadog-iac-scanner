@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- CLB instance should have logging enabled.
+CLB instance should have logging enabled.
 
 This rule checks that the `tencentcloud_clb_instance` resource sets both `log_set_id` and `log_topic_id`. If either attribute is missing, the rule reports a `MissingAttribute` issue indicating that `log_set_id` and `log_topic_id` are not set. Enabling these attributes ensures CLB access logs are collected.
-
 
 ## Compliant Code Examples
 ```terraform

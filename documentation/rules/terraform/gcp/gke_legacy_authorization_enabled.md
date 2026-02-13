@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Legacy Authorization (ABAC) in GKE grants all authenticated users full cluster administrator privileges, violating the principle of least privilege and introducing significant security risks. When enabled, any authenticated user can perform any operation on any resource in the cluster, potentially leading to unauthorized access, data breaches, and complete cluster compromise. To secure your GKE cluster, ensure `enable_legacy_abac` is set to false as shown below:
+Legacy Authorization (ABAC) in GKE grants all authenticated users full cluster administrator privileges, violating the principle of least privilege and introducing significant security risks. When enabled, any authenticated user can perform any operation on any resource in the cluster, potentially leading to unauthorized access, data breaches, and complete cluster compromise. To secure your GKE cluster, ensure `enable_legacy_abac` is set to false as shown below:
 
 ```hcl
 resource "google_container_cluster" "secure_cluster" {
@@ -38,7 +38,6 @@ resource "google_container_cluster" "secure_cluster" {
   enable_legacy_abac = false
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the `aws_cloudformation_stack` resource in Terraform includes either the `template_url` or `template_body` attribute, which defines the CloudFormation template to be deployed. Omitting both of these attributes results in stacks being created without an actual CloudFormation template, leaving the stack incomplete and potentially non-functional. If left unaddressed, this misconfiguration can lead to failed deployments and gaps in infrastructure automation, increasing operational risks.
+This check ensures that the `aws_cloudformation_stack` resource in Terraform includes either the `template_url` or `template_body` attribute, which defines the CloudFormation template to be deployed. Omitting both of these attributes results in stacks being created without an actual CloudFormation template, leaving the stack incomplete and potentially non-functional. If left unaddressed, this misconfiguration can lead to failed deployments and gaps in infrastructure automation, increasing operational risks.
 
 A secure Terraform configuration is shown below:
 
@@ -43,7 +43,6 @@ resource "aws_cloudformation_stack" "example" {
   template_url = "https://s3.amazonaws.com/example/cloudformation-template.yml"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

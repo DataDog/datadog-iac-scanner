@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When using `kube-apiserver`, the `--service-account-lookup` flag should be set to `true`. This rule flags containers (including `initContainers`) that run `kube-apiserver` and explicitly set `--service-account-lookup=false`. Disabling this lookup skips verification that a token's service account still exists, which can allow tokens for deleted or revoked service accounts to be accepted; therefore the flag should be enabled (`true`).
-
+When using `kube-apiserver`, the `--service-account-lookup` flag should be set to `true`. This rule flags containers (including `initContainers`) that run `kube-apiserver` and explicitly set `--service-account-lookup=false`. Disabling this lookup skips verification that a token's service account still exists, which can allow tokens for deleted or revoked service accounts to be accepted; therefore the flag should be enabled (`true`).
 
 ## Compliant Code Examples
 ```yaml

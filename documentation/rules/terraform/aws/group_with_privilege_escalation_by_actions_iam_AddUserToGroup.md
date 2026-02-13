@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting the `iam:AddUserToGroup` action with the `Resource` attribute set to `*` in an AWS IAM policy allows any user to add themselves or any other user to any IAM group within the AWS account. This wide permission can enable unauthorized privilege escalation, as users could gain access to groups with higher-level privileges, potentially bypassing intended access controls. If left unaddressed, attackers or compromised users may escalate their privileges and gain broader access to sensitive resources, severely impacting the security of the environment. To mitigate this risk, restrict the `Resource` field to specific group ARNs and ensure only trusted users have the ability to manage IAM group memberships.
-
+Granting the `iam:AddUserToGroup` action with the `Resource` attribute set to `*` in an AWS IAM policy allows any user to add themselves or any other user to any IAM group within the AWS account. This wide permission can enable unauthorized privilege escalation, as users could gain access to groups with higher-level privileges, potentially bypassing intended access controls. If left unaddressed, attackers or compromised users may escalate their privileges and gain broader access to sensitive resources, severely impacting the security of the environment. To mitigate this risk, restrict the `Resource` field to specific group ARNs and ensure only trusted users have the ability to manage IAM group memberships.
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "DNSSEC should not use the RSASHA1 algorithm",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/dnssec_using_rsasha1",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/dnssec_using_rsasha1",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "7f322f20",
   "cloudProvider": "gcp",

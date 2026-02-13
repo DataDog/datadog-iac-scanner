@@ -20,6 +20,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "zypper usages should have the non-interactive switch activated",
 		"keyActualValue": sprintf("The command '%s' does not have the non-interactive switch activated (-y | --no-confirm)", [commands[img][c].Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

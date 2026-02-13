@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting the `iam:AddUserToGroup` action with a `Resource` value of `"*"` in an IAM role, such as in the example below, allows any user or role assigned this policy to add themselves or any user to any IAM group in the account.
+Granting the `iam:AddUserToGroup` action with a `Resource` value of `"*"` in an IAM role, such as in the example below, allows any user or role assigned this policy to add themselves or any user to any IAM group in the account.
 
 ```
 resource "aws_iam_role_policy" "test_inline_policy" {
@@ -49,7 +49,6 @@ resource "aws_iam_role_policy" "test_inline_policy" {
 ```
 
 This configuration creates a privilege escalation risk, as users may gain unauthorized permissions by adding themselves to groups with higher privileges, potentially leading to account compromise. Limiting both the allowed action and narrowing the resources by specifying particular group ARNs greatly reduces this attack surface.
-
 
 ## Compliant Code Examples
 ```terraform

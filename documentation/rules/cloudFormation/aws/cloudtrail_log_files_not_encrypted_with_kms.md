@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudTrail log files must be encrypted with an AWS KMS customer-managed key to protect the confidentiality and integrity of audit logs and enable key access control and rotation.
+CloudTrail log files must be encrypted with an AWS KMS customer-managed key to protect the confidentiality and integrity of audit logs and enable key access control and rotation.
 
  The CloudFormation resource type `AWS::CloudTrail::Trail` must define the `KMSKeyId` property with a non-empty value (AWS KMS key ARN, key ID, alias, or a reference to an `AWS::KMS::Key`). Resources missing `KMSKeyId` or with it set to `null` or an empty string will be flagged.
 
@@ -49,7 +49,6 @@ MyTrail:
     S3BucketName: my-trail-bucket
     KMSKeyId: !Ref MyKmsKey
 ```
-
 
 ## Compliant Code Examples
 ```yaml

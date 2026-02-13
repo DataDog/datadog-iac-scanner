@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- VPCs must have VPC Flow Logs enabled so network traffic metadata is recorded for detecting suspicious activity and supporting incident investigation and compliance audits.
+VPCs must have VPC Flow Logs enabled so network traffic metadata is recorded for detecting suspicious activity and supporting incident investigation and compliance audits.
 
 For each `AWS::EC2::VPC` resource, ensure there is an `AWS::EC2::FlowLog` resource whose `Properties.ResourceId` references that VPC (for example, `Ref: MyVPC`) so traffic for that VPC is captured. Resources missing a flow log, or where the flow log's `ResourceId` does not reference the VPC, will be flagged. The flow log should also specify a valid destination (CloudWatch Logs or S3) via `LogDestination`/`LogDestinationType`.
 
@@ -52,7 +52,6 @@ VPCFlowLog:
     LogDestinationType: cloud-watch-logs
     LogDestination: !GetAtt FlowLogGroup.Arn
 ```
-
 
 ## Compliant Code Examples
 ```yaml

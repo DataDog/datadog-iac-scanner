@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The `--protect-kernel-defaults` flag must be set to `true`.  
+The `--protect-kernel-defaults` flag must be set to `true`.  
 If kubelet is started via a container command, the command must not include `--protect-kernel-defaults=false`.  
 For `KubeletConfiguration` resources, the `protectKernelDefaults` field must be defined and set to `true`.
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A liveness probe can improve availability by restarting unresponsive containers but can also cause cascading failures. Define a `livenessProbe` only when necessary and configure it to avoid unintended restarts. This rule flags containers that do not include a `livenessProbe`, excluding Job and CronJob resource kinds.
-
+A liveness probe can improve availability by restarting unresponsive containers but can also cause cascading failures. Define a `livenessProbe` only when necessary and configure it to avoid unintended restarts. This rule flags containers that do not include a `livenessProbe`, excluding Job and CronJob resource kinds.
 
 ## Compliant Code Examples
 ```yaml

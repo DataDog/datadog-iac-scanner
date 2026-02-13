@@ -16,6 +16,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue", #"MissingAttribute" / "RedundantAttribute"
 		"keyExpectedValue": "After using apt-get install, the apt-get lists should be deleted",
 		"keyActualValue": "After using apt-get install, the apt-get lists were not deleted",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 bucket policies must not grant `Allow` for all actions to all principals. This creates public full access to the bucket and can result in data exposure, tampering, or deletion.
+S3 bucket policies must not grant `Allow` for all actions to all principals. This creates public full access to the bucket and can result in data exposure, tampering, or deletion.
 
 Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag any statement where `Effect: "Allow"`, `Action: "*"`, and `Principal: "*"`. Statements matching these conditions will be reported. Restrict principals to specific AWS account IDs/ARNs or services and limit `Action` to the minimum required S3 operations instead of using wildcards.
 
@@ -49,7 +49,6 @@ MyBucketPolicy:
             - s3:GetObject
           Resource: !Sub '${MyBucket.Arn}/*'
 ```
-
 
 ## Compliant Code Examples
 ```yaml

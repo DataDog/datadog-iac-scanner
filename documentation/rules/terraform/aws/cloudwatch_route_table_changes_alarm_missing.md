@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that a CloudWatch log metric filter and corresponding alarm are configured to detect and alert on changes to AWS VPC route tables. Without associating the alarm's `metric_name` with the correct CloudWatch log metric filter, as in `metric_name = "XXXX NOT YOUR FILTER XXXX"`, changes to route tables may go unmonitored, potentially allowing unauthorized modifications to routing paths without triggering any notifications. This oversight increases the risk of undetected network misconfigurations or malicious activity that could compromise the integrity and security of cloud network traffic flows.
-
+This check ensures that a CloudWatch log metric filter and corresponding alarm are configured to detect and alert on changes to AWS VPC route tables. Without associating the alarm's `metric_name` with the correct CloudWatch log metric filter, as in `metric_name = "XXXX NOT YOUR FILTER XXXX"`, changes to route tables may go unmonitored, potentially allowing unauthorized modifications to routing paths without triggering any notifications. This oversight increases the risk of undetected network misconfigurations or malicious activity that could compromise the integrity and security of cloud network traffic flows.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Amazon Neptune is a fully managed graph database service that makes it easy to build and run applications working with highly connected datasets. When Neptune database cluster storage encryption is disabled, sensitive data stored in these clusters is vulnerable to unauthorized access if the underlying storage is compromised. Without encryption, data is stored in plaintext, posing a significant security risk.
+Amazon Neptune is a fully managed graph database service that makes it easy to build and run applications working with highly connected datasets. When Neptune database cluster storage encryption is disabled, sensitive data stored in these clusters is vulnerable to unauthorized access if the underlying storage is compromised. Without encryption, data is stored in plaintext, posing a significant security risk.
 
 To properly secure Neptune clusters, always set the `storage_encrypted parameter` to true, as shown in this example: `storage_encrypted = true`. Avoid configurations that either omit this parameter or explicitly set it to `false`.
-
 
 ## Compliant Code Examples
 ```terraform

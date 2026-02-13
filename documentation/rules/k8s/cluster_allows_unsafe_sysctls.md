@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- A Kubernetes cluster must not allow unsafe sysctls. Allowing unsafe sysctls can let a Pod influence other Pods, harm node stability, or consume CPU or memory beyond resource limits.
+A Kubernetes cluster must not allow unsafe sysctls. Allowing unsafe sysctls can let a Pod influence other Pods, harm node stability, or consume CPU or memory beyond resource limits.
 `spec.securityContext.sysctls` must not include unsafe sysctls, and `allowedUnsafeSysctls` must be undefined. This rule detects PodSecurityPolicy resources where `allowedUnsafeSysctls` is defined and flags any `spec.securityContext.sysctls` entries that are not in the defined safe list.
 Only a limited set of sysctls are considered safe; all others are treated as unsafe and should not be used.
-
 
 ## Compliant Code Examples
 ```yaml

@@ -12,6 +12,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "There should be no dangerous commands or utilities executed",
 		"keyActualValue": sprintf("Run instruction is executing the %s command", [resource.Value[0]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

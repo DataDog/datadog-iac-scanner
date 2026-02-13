@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Attaching IAM policies directly to individual users reduces centralized control and increases the risk of privilege sprawl, orphaned permissions, and inconsistent access management. This rule flags AWS CloudFormation `AWS::IAM::Policy` resources that define a non-empty `Properties.Policies[].Users` entry. Policies should be assigned to groups instead using the `Groups` property (or attached as managed policies to roles or groups) so permissions can be managed and audited centrally. Resources with `Resources.<name>.Properties.Policies[].Users` present and non-empty will be flagged. Replace user-level policy attachments with `Groups` (provide group names or `!Ref` to group resources) or use managed policy attachments for better lifecycle control.
+Attaching IAM policies directly to individual users reduces centralized control and increases the risk of privilege sprawl, orphaned permissions, and inconsistent access management. This rule flags AWS CloudFormation `AWS::IAM::Policy` resources that define a non-empty `Properties.Policies[].Users` entry. Policies should be assigned to groups instead using the `Groups` property (or attached as managed policies to roles or groups) so permissions can be managed and audited centrally. Resources with `Resources.<name>.Properties.Policies[].Users` present and non-empty will be flagged. Replace user-level policy attachments with `Groups` (provide group names or `!Ref` to group resources) or use managed policy attachments for better lifecycle control.
 
 Secure configuration example assigning the policy to a group:
 
@@ -47,7 +47,6 @@ MyPolicy:
     Groups:
       - !Ref MyGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

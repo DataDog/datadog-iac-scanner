@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Ensure that the `cluster-admin` role is used only where required (RBAC). This rule detects ClusterRoleBinding resources that bind to the `cluster-admin` role, which grants superuser permissions across the cluster. Such bindings increase risk and should be limited to adhere to the principle of least privilege.
-
+Ensure that the `cluster-admin` role is used only where required (RBAC). This rule detects ClusterRoleBinding resources that bind to the `cluster-admin` role, which grants superuser permissions across the cluster. Such bindings increase risk and should be limited to adhere to the principle of least privilege.
 
 ## Compliant Code Examples
 ```yaml

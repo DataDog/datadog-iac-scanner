@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 bucket policies must not allow restore actions to all principals (`*`). A public `Allow` on restore operations lets anyone trigger restores of archived objects, risking exposure of sensitive archived data and unexpected costs. Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag any statement where `Effect: "Allow"`, `Principal: "*"`, and `Action` includes restore operations such as `s3:RestoreObject`.
+S3 bucket policies must not allow restore actions to all principals (`*`). A public `Allow` on restore operations lets anyone trigger restores of archived objects, risking exposure of sensitive archived data and unexpected costs. Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag any statement where `Effect: "Allow"`, `Principal: "*"`, and `Action` includes restore operations such as `s3:RestoreObject`.
 
 To remediate, restrict `Principal` to explicit AWS principals (account IDs, ARNs, or specific roles), or remove restore actions from publicly allowed statements.
 
@@ -49,7 +49,6 @@ MyBucketPolicy:
             - s3:RestoreObject
           Resource: arn:aws:s3:::my-bucket/* 
 ```
-
 
 ## Compliant Code Examples
 ```yaml

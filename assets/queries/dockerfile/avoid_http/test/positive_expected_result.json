@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Avoid HTTP",
+    "severity": "MEDIUM",
+    "line": 23
+  },
+  {
+    "queryName": "Avoid HTTP",
+    "severity": "MEDIUM",
+    "line": 35
+  }
+]

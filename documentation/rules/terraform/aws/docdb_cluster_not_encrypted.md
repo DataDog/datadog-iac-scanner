@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether Amazon DocumentDB cluster storage encryption is enabled. DocumentDB clusters store sensitive data and should have storage encryption enabled to protect data at rest. When storage encryption is disabled or not configured, data stored in the cluster is vulnerable to unauthorized access if the underlying storage is compromised.
+This check verifies whether Amazon DocumentDB cluster storage encryption is enabled. DocumentDB clusters store sensitive data and should have storage encryption enabled to protect data at rest. When storage encryption is disabled or not configured, data stored in the cluster is vulnerable to unauthorized access if the underlying storage is compromised.
 
 To properly secure a DocumentDB cluster, ensure the `storage_encrypted` attribute is explicitly set to `true`, as shown in the example below:
 ```terraform
@@ -38,7 +38,6 @@ resource "aws_docdb_cluster" "docdb" {
   storage_encrypted = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

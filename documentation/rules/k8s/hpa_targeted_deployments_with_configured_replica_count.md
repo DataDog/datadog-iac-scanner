@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Deployments targeted by HorizontalPodAutoscaler should not include a statically configured replica count. This rule flags Deployments referenced by an HPA via the `scaleTargetRef` when the Deployment's `spec.replicas` field is defined. A defined `spec.replicas` can conflict with the HPA's scaling decisions and should be undefined so the HorizontalPodAutoscaler can manage replica count.
-
+Deployments targeted by HorizontalPodAutoscaler should not include a statically configured replica count. This rule flags Deployments referenced by an HPA via the `scaleTargetRef` when the Deployment's `spec.replicas` field is defined. A defined `spec.replicas` can conflict with the HPA's scaling decisions and should be undefined so the HorizontalPodAutoscaler can manage replica count.
 
 ## Compliant Code Examples
 ```yaml

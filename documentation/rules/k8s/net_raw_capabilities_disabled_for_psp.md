@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should drop `NET_RAW` or `ALL` capabilities. This rule inspects the PodSecurityPolicy `spec.requiredDropCapabilities` field. It flags the resource when `spec.requiredDropCapabilities` is not set to `["ALL", "NET_RAW"]`.
-
+Containers should drop `NET_RAW` or `ALL` capabilities. This rule inspects the PodSecurityPolicy `spec.requiredDropCapabilities` field. It flags the resource when `spec.requiredDropCapabilities` is not set to `["ALL", "NET_RAW"]`.
 
 ## Compliant Code Examples
 ```yaml

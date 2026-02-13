@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Host field should be an IP or a valid host name",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/host_with_invalid_pattern",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/host_with_invalid_pattern",
   "platform": "OpenAPI",
   "descriptionID": "d11c994c",
   "cwe": "20",

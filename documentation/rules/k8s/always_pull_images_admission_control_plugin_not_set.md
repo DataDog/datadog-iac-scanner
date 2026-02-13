@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When running `kube-apiserver`, the `--enable-admission-plugins` flag should include `AlwaysPullImages`. The plugin must be enabled on the `kube-apiserver` command line and configured correctly in the admission control configuration file. If `AlwaysPullImages` is not present, image pull behavior may not be enforced.
-
+When running `kube-apiserver`, the `--enable-admission-plugins` flag should include `AlwaysPullImages`. The plugin must be enabled on the `kube-apiserver` command line and configured correctly in the admission control configuration file. If `AlwaysPullImages` is not present, image pull behavior may not be enforced.
 
 ## Compliant Code Examples
 ```yaml

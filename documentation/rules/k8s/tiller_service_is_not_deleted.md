@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Tiller services should be removed because Helm v2 is deprecated and no longer supported. This rule flags resources that reference 'tiller' in their metadata.name, in values of metadata.labels, or in values under spec.selector. These references should be removed or replaced to ensure compatibility with Helm v3.
-
+Tiller services should be removed because Helm v2 is deprecated and no longer supported. This rule flags resources that reference 'tiller' in their metadata.name, in values of metadata.labels, or in values under spec.selector. These references should be removed or replaced to ensure compatibility with Helm v3.
 
 ## Compliant Code Examples
 ```yaml

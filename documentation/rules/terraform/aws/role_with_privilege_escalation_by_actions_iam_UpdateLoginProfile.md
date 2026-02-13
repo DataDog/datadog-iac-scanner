@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting the `iam:UpdateLoginProfile` action with the `Resource` attribute set to `"*"` in an IAM policy allows a role or user to change the login passwords of any IAM user in the AWS account. This creates a privilege escalation vulnerability, as a user with this permission could take over other accounts and gain unauthorized access to critical resources. 
+Granting the `iam:UpdateLoginProfile` action with the `Resource` attribute set to `"*"` in an IAM policy allows a role or user to change the login passwords of any IAM user in the AWS account. This creates a privilege escalation vulnerability, as a user with this permission could take over other accounts and gain unauthorized access to critical resources. 
 
 To prevent this, use least-privilege access—for example, by restricting allowed actions and resource scope, as shown below:
 
@@ -52,7 +52,6 @@ resource "aws_iam_user_policy" "inline_policy_run_instances2" {
 }
 ```
 This sample policy grants only read-only access to EC2 information, rather than sensitive IAM actions.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -1,10 +1,10 @@
 ---
-title: "CloudWatch AWS organizations changes missing alarm"
+title: "Missing CloudWatch alarm for AWS Organizations changes"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudwatch_aws_organizations_changes_missing_alarm"
   id: "38b85c45-e772-4de8-a247-69619ca137b3"
-  display_name: "CloudWatch AWS organizations changes missing alarm"
+  display_name: "Missing CloudWatch alarm for AWS Organizations changes"
   cloud_provider: "AWS"
   platform: "Terraform"
   severity: "LOW"
@@ -28,8 +28,9 @@ meta:
 
 ### Description
 
- This check ensures that a log metric filter and alarm are configured to monitor changes to AWS Organizations within CloudWatch. Without a properly configured metric filter and alarm, critical events such as the creation, deletion, or modification of organizational accounts and policies may go undetected. This lack of visibility increases the risk of malicious or unauthorized changes going unnoticed, which could compromise the security and governance of the entire AWS environment. Left unaddressed, this misconfiguration may allow threat actors to make unauthorized changes to the organization structure, potentially leading to privilege escalation or data exfiltration.
+This check ensures that a log metric filter and alarm are configured to monitor changes to AWS Organizations within CloudWatch. Without a properly configured metric filter and alarm, critical events such as the creation, deletion, or modification of organizational accounts and policies may go undetected.
 
+This lack of visibility increases the risk of malicious or unauthorized changes going unnoticed, which could compromise the security and governance of the entire AWS environment. Left unaddressed, this misconfiguration may allow threat actors to make unauthorized changes to the organization structure, potentially leading to privilege escalation or data exfiltration.
 
 ## Compliant Code Examples
 ```terraform
@@ -140,7 +141,7 @@ resource "aws_cloudwatch_metric_alarm" "cis_aws_organizations" {
 
 resource "aws_cloudwatch_log_metric_filter" "cis_aws_organizations" {
   name           = "CIS-4.15-AWS-Organizations"
-  pattern        = "{ ($.eventSource = \"organizations.amazonaws.com\") && (($.eventName = \"AcceptHandshake\") || ($.eventName = 'AttachPolicy') || ($.eventName = CreateAccount) || ($.eventName = PutBucketLifecycle) || ($.eventName = CreateOrganizationalUnit) || ($.eventName = CreatePolicy) || ($.eventName = DeclineHandshake) || ($.eventName = DeleteOrganization) || ($.eventName = DeleteOrganizationalUnit) || ($.eventName = DeletePolicy) || ($.eventName = DetachPolicy) || ($.eventName = DisablePolicyType) || ($.eventName = EnablePolicyType) || ($.eventName = InviteAccountToOrganization) || ($.eventName = LeaveOrganization) || ($.eventName = MoveAccount) || ($.eventName = RemoveAccountFromOrganization) || ($.eventName = UpdatePolicy) || ($.eventName = UpdateOrganizationalUni)) }"
+  pattern        = "{ ($.eventSource = \"organizations.amazonaws.com\") && (($.eventName = AcceptHandshake) || ($.eventName = AttachPolicy) || ($.eventName = CreateAccount) || ($.eventName = PutBucketLifecycle) || ($.eventName = CreateOrganizationalUnit) || ($.eventName = CreatePolicy) || ($.eventName = DeclineHandshake) || ($.eventName = DeleteOrganization) || ($.eventName = DeleteOrganizationalUnit) || ($.eventName = DeletePolicy) || ($.eventName = DetachPolicy) || ($.eventName = DisablePolicyType) || ($.eventName = EnablePolicyType) || ($.eventName = InviteAccountToOrganization) || ($.eventName = LeaveOrganization) || ($.eventName = MoveAccount) || ($.eventName = RemoveAccountFromOrganization) || ($.eventName = UpdatePolicy) || ($.eventName = UpdateOrganizationalUni)) }"
   log_group_name = aws_cloudwatch_log_group.CIS_CloudWatch_LogsGroup.name
 
   metric_transformation {

@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Roles and ClusterRoles that are bound to a ServiceAccount should not include the `get`, `list`, `watch`, or `*` verbs on the `secrets` resource.  
+Roles and ClusterRoles that are bound to a ServiceAccount should not include the `get`, `list`, `watch`, or `*` verbs on the `secrets` resource.  
 The rule triggers when a Role or ClusterRole contains a rule for the `secrets` resource and a corresponding RoleBinding or ClusterRoleBinding references a ServiceAccount.  
 This prevents unintended or broad access to secrets by disallowing these read or wildcard verbs for bound roles.
-
 
 ## Compliant Code Examples
 ```yaml

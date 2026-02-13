@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- `PodSecurityPolicy` should not allow privilege escalation. The `kubernetes_pod_security_policy` resource must include the `spec.allow_privilege_escalation` attribute and set it to `false`. If `spec.allow_privilege_escalation` is missing or set to `true`, this rule reports a `MissingAttribute` or `IncorrectValue` issue and recommends setting `spec.allow_privilege_escalation = false` as the remediation. The rule inspects `resource.kubernetes_pod_security_policy[name].spec` to determine the presence and value of `allow_privilege_escalation`.
-
+`PodSecurityPolicy` should not allow privilege escalation. The `kubernetes_pod_security_policy` resource must include the `spec.allow_privilege_escalation` attribute and set it to `false`. If `spec.allow_privilege_escalation` is missing or set to `true`, this rule reports a `MissingAttribute` or `IncorrectValue` issue and recommends setting `spec.allow_privilege_escalation = false` as the remediation. The rule inspects `resource.kubernetes_pod_security_policy[name].spec` to determine the presence and value of `allow_privilege_escalation`.
 
 ## Compliant Code Examples
 ```terraform

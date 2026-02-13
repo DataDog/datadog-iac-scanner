@@ -24,4 +24,5 @@ type ResolverSink func(ctx context.Context, filename string) ([]string, error)
 type SourceProvider interface {
 	GetBasePaths() []string
 	GetSources(ctx context.Context, extensions model.Extensions, sink Sink, resolverSink ResolverSink) error
+	GetParallelSources(ctx context.Context, extensions model.Extensions, sink Sink, resolverSink ResolverSink) error
 }

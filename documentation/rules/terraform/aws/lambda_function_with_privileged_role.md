@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Lambda functions with privileged IAM roles present a significant security risk by violating the principle of least privilege. When Lambda functions are assigned roles with broad permissions such as `iam:*` or `sts:AssumeRole`, they become potential vectors for privilege escalation if compromised. Instead, Lambda functions should be granted only the specific permissions needed for their execution.
+AWS Lambda functions with privileged IAM roles present a significant security risk by violating the principle of least privilege. When Lambda functions are assigned roles with broad permissions such as `iam:*` or `sts:AssumeRole`, they become potential vectors for privilege escalation if compromised. Instead, Lambda functions should be granted only the specific permissions needed for their execution.
 
 For example, avoid policies with broad permissions like the following:
 ```
@@ -57,7 +57,6 @@ policy = jsonencode({
   }]
 })
 ```
-
 
 ## Compliant Code Examples
 ```terraform

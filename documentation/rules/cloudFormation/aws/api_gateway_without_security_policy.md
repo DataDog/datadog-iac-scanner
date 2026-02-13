@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway custom domain names must enforce TLS 1.2 to avoid allowing older TLS/SSL versions that are susceptible to downgrade attacks and weak ciphers, thereby protecting confidentiality and integrity of client-server connections. In CloudFormation, the `AWS::ApiGateway::DomainName` resource must include the `SecurityPolicy` property set to `TLS_1_2`. Resources missing `SecurityPolicy` or with any value other than `TLS_1_2` will be flagged.
+API Gateway custom domain names must enforce TLS 1.2 to avoid allowing older TLS/SSL versions that are susceptible to downgrade attacks and weak ciphers, thereby protecting confidentiality and integrity of client-server connections. In CloudFormation, the `AWS::ApiGateway::DomainName` resource must include the `SecurityPolicy` property set to `TLS_1_2`. Resources missing `SecurityPolicy` or with any value other than `TLS_1_2` will be flagged.
 
 Secure CloudFormation example:
 
@@ -40,7 +40,6 @@ MyDomainName:
     SecurityPolicy: TLS_1_2
     RegionalCertificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abcd-ef01-2345
 ```
-
 
 ## Compliant Code Examples
 ```yaml

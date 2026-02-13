@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes clusters should be configured with labels by defining the `resource_labels` attribute in the `google_container_cluster` resource. Missing cluster labels make it harder to organize, identify, and apply policies to Kubernetes environments, potentially leading to management issues and security policy gaps. To mitigate this, clusters must include the `resource_labels` block as shown below:
+Kubernetes clusters should be configured with labels by defining the `resource_labels` attribute in the `google_container_cluster` resource. Missing cluster labels make it harder to organize, identify, and apply policies to Kubernetes environments, potentially leading to management issues and security policy gaps. To mitigate this, clusters must include the `resource_labels` block as shown below:
 
 ```
 resource "google_container_cluster" "example" {
@@ -42,7 +42,6 @@ resource "google_container_cluster" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

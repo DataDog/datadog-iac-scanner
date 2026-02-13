@@ -28,12 +28,11 @@ meta:
 
 ### Description
 
- Azure SQL Server administrator login names should not use common or predictable values like `admin` or `administrator`. Using predictable names for the `administrator_login` attribute, such as `administrator_login = "Admin"`, makes brute force or credential stuffing attacks easier for malicious actors, increasing the risk of unauthorized database access. To mitigate this, configure the login with an unpredictable name, as shown below:
+Azure SQL Server administrator login names should not use common or predictable values like `admin` or `administrator`. Using predictable names for the `administrator_login` attribute, such as `administrator_login = "Admin"`, makes brute force or credential stuffing attacks easier for malicious actors, increasing the risk of unauthorized database access. To mitigate this, configure the login with an unpredictable name, as shown below:
 
 ```
 administrator_login = "UnpredictableAdminLogin"
 ```
-
 
 ## Compliant Code Examples
 ```terraform

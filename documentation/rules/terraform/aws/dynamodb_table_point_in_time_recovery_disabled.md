@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- It is a best practice to enable Point-in-Time Recovery (PITR) for DynamoDB tables to protect against accidental or malicious data loss. In Terraform, this is configured using the `point_in_time_recovery { enabled = true }` block. Leaving it as `enabled = false` means that deleted or corrupted data cannot be recovered to a previous state. Without PITR enabled, any accidental overwrite or deletion of table data can result in permanent loss, potentially impacting application availability or causing irreparable data integrity issues.
-
+It is a best practice to enable Point-in-Time Recovery (PITR) for DynamoDB tables to protect against accidental or malicious data loss. In Terraform, this is configured using the `point_in_time_recovery { enabled = true }` block. Leaving it as `enabled = false` means that deleted or corrupted data cannot be recovered to a previous state. Without PITR enabled, any accidental overwrite or deletion of table data can result in permanent loss, potentially impacting application availability or causing irreparable data integrity issues.
 
 ## Compliant Code Examples
 ```terraform

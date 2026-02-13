@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- AWS CloudFront distributions should be integrated with AWS Web Application Firewall (WAF) by specifying the `web_acl_id` attribute. If a CloudFront distribution is created without a WAF association (`web_acl_id` missing), the application is left vulnerable to common web attacks such as SQL injection and cross-site scripting. Failing to link a WAF to your CloudFront distribution increases the risk of security breaches, potential data loss, and service interruption.
-
+AWS CloudFront distributions should be integrated with AWS Web Application Firewall (WAF) by specifying the `web_acl_id` attribute. If a CloudFront distribution is created without a WAF association (`web_acl_id` missing), the application is left vulnerable to common web attacks such as SQL injection and cross-site scripting. Failing to link a WAF to your CloudFront distribution increases the risk of security breaches, potential data loss, and service interruption.
 
 ## Compliant Code Examples
 ```terraform

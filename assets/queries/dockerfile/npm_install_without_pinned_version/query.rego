@@ -27,6 +27,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("'%s' uses npm install with a pinned version", [runCmd.Original]),
 		"keyActualValue": sprintf("'%s' does not uses npm install with a pinned version", [runCmd.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

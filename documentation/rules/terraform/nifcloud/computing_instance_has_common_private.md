@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The instance uses the common private network. The `nifcloud_instance` resource's `network_interface.network_id` is set to `net-COMMON_PRIVATE`. The instance should use a private LAN to isolate the private-side network from the shared network.
-
+The instance uses the common private network. The `nifcloud_instance` resource's `network_interface.network_id` is set to `net-COMMON_PRIVATE`. The instance should use a private LAN to isolate the private-side network from the shared network.
 
 ## Compliant Code Examples
 ```terraform

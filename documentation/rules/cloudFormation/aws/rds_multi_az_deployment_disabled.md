@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- RDS DB instances should be deployed across multiple Availability Zones to ensure high availability and reduce the risk of extended outage or data loss caused by an Availability Zone failure or planned maintenance. In AWS CloudFormation, the `AWS::RDS::DBInstance` resource must have the `MultiAZ` property set to `true`. Resources with `MultiAZ` set to `false` or missing the `MultiAZ` property (which defaults to disabled) will be flagged.
+RDS DB instances should be deployed across multiple Availability Zones to ensure high availability and reduce the risk of extended outage or data loss caused by an Availability Zone failure or planned maintenance. In AWS CloudFormation, the `AWS::RDS::DBInstance` resource must have the `MultiAZ` property set to `true`. Resources with `MultiAZ` set to `false` or missing the `MultiAZ` property (which defaults to disabled) will be flagged.
 
 Secure configuration example:
 
@@ -42,7 +42,6 @@ MyDBInstance:
     MasterUserPassword: !Ref DBPassword
     MultiAZ: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

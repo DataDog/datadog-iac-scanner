@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies AWS Security Groups with ingress rules that allow traffic from the internet (`0.0.0.0/0`) on non-standard ports, which significantly increases your attack surface. When security groups allow uncommon ports to be accessed from anywhere on the internet, it exposes your resources to potential unauthorized access and exploitation from malicious actors globally. To secure your configuration, restrict ingress rules to specific IP ranges or use standard ports only, as shown in the example below:
+This check identifies AWS Security Groups with ingress rules that allow traffic from the internet (`0.0.0.0/0`) on non-standard ports, which significantly increases your attack surface. When security groups allow uncommon ports to be accessed from anywhere on the internet, it exposes your resources to potential unauthorized access and exploitation from malicious actors globally. To secure your configuration, restrict ingress rules to specific IP ranges or use standard ports only, as shown in the example below:
 
 ```
 ingress {
@@ -40,7 +40,6 @@ ingress {
 ```
 
 Avoid insecure configurations like: `cidr_blocks = ["0.0.0.0/0"]` for non-standard port ranges.
-
 
 ## Compliant Code Examples
 ```terraform

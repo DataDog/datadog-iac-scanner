@@ -24,6 +24,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "The package version should always be specified when using yum install",
 		"keyActualValue": sprintf("No version is specified in package '%s'", [packages[j]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -46,6 +48,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "The package version should always be specified when using yum install",
 		"keyActualValue": sprintf("No version is specified in package '%s'", [resource.Value[j]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

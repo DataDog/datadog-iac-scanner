@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Access Control",
   "descriptionText": "Using an scope on global security field that is undefined on 'securityScheme' can be defined by an attacker",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/undefined_security_scope_global_security",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/undefined_security_scope_global_security",
   "platform": "OpenAPI",
   "descriptionID": "ef926b66",
   "cwe": "284",

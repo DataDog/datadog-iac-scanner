@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Secrets stored in AWS Secrets Manager should explicitly specify a customer-managed KMS key to ensure you control key policies, enable audited key usage, and allow cross-account access when required.
+Secrets stored in AWS Secrets Manager should explicitly specify a customer-managed KMS key to ensure you control key policies, enable audited key usage, and allow cross-account access when required.
 
 For `AWS::SecretsManager::Secret` resources, `Properties.KmsKeyId` must be defined and should reference a customer-managed KMS key (key ARN, alias, or a `Ref`/`GetAtt` to an `AWS::KMS::Key`). Omitting `KmsKeyId` causes Secrets Manager to use the AWS-managed key, which does not support granting cross-account decrypt permissions. If you need to share secrets across accounts, ensure the referenced KMS key's policy grants the necessary `kms:Decrypt` and `kms:GenerateDataKey` permissions to the target principals. Resources missing `KmsKeyId` will be flagged.
 
@@ -46,7 +46,6 @@ MySecret:
     Name: my-secret
     KmsKeyId: !Ref MyKmsKey
 ```
-
 
 ## Compliant Code Examples
 ```yaml

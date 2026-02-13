@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing any principal in an S3 bucket policy grants public (or universally authorized) access to the bucket. This can lead to data exposure, unintended read/write access, and unauthorized modifications. This rule checks `AWS::S3::Bucket` resources that have an associated `AWS::S3::BucketPolicy`. The rule flags bucket policies where `Properties.PolicyDocument.Statement` includes `Effect: "Allow"` and a wildcard principal (for example, `Principal: "*"`, or `Principal: { AWS: "*" }`). Bucket policy statements that explicitly list allowed principals (for example, an AWS account ARN or a specific IAM role) are acceptable. Statements with `Principal` as `*` (or equivalent) will be flagged as insecure.
+Allowing any principal in an S3 bucket policy grants public (or universally authorized) access to the bucket. This can lead to data exposure, unintended read/write access, and unauthorized modifications. This rule checks `AWS::S3::Bucket` resources that have an associated `AWS::S3::BucketPolicy`. The rule flags bucket policies where `Properties.PolicyDocument.Statement` includes `Effect: "Allow"` and a wildcard principal (for example, `Principal: "*"`, or `Principal: { AWS: "*" }`). Bucket policy statements that explicitly list allowed principals (for example, an AWS account ARN or a specific IAM role) are acceptable. Statements with `Principal` as `*` (or equivalent) will be flagged as insecure.
 
 Secure example with an explicit principal:
 
@@ -51,7 +51,6 @@ MyBucketPolicy:
           Action: "s3:GetObject"
           Resource: !Sub "${MyBucket.Arn}/*"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

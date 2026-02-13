@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Subnets must not automatically assign public IPv4 addresses to instances because automatic public IP assignment exposes instances directly to the internet and increases the risk of unauthorized access and data exposure. For CloudFormation, the `AWS::EC2::Subnet` resource's `Properties.MapPublicIpOnLaunch` property must be defined and set to `false`. Resources with `MapPublicIpOnLaunch` set to `true` will be flagged. For private subnets, explicitly set this property to `false` and use NAT gateways, bastion hosts, or load balancers to provide controlled outbound or inbound access.\n\nSecure configuration example:\n\n```yaml\nMyPrivateSubnet:\n  Type: AWS::EC2::Subnet\n  Properties:\n    VpcId: !Ref MyVPC\n    CidrBlock: 10.0.1.0/24\n    MapPublicIpOnLaunch: false\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ec2_instance_subnet_has_public_ip_mapping_on_launch",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ec2_instance_subnet_has_public_ip_mapping_on_launch",
   "platform": "CloudFormation",
   "descriptionID": "22e3d598",
   "cloudProvider": "aws",

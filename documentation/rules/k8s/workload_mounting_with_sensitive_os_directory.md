@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The workload mounts a volume using a hostPath that points to a sensitive host OS directory. Mounting sensitive directories (for example /etc, /var, /proc) via hostPath grants the pod access to the host filesystem and can compromise host security. This check also flags PersistentVolumes that use hostPath to mount sensitive OS directories.
-
+The workload mounts a volume using a hostPath that points to a sensitive host OS directory. Mounting sensitive directories (for example /etc, /var, /proc) via hostPath grants the pod access to the host filesystem and can compromise host security. This check also flags PersistentVolumes that use hostPath to mount sensitive OS directories.
 
 ## Compliant Code Examples
 ```yaml

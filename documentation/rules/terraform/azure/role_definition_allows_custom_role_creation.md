@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing the `Microsoft.Authorization/roleDefinitions/write` action in a custom Azure role definition grants users the ability to create, modify, or delete role definitions within the assigned scope. This level of permission can lead to privilege escalation, where a malicious or compromised user can create overly permissive roles or alter existing ones. To mitigate this risk, custom roles should be limited to `Microsoft.Authorization/roleDefinitions/read`, as shown below:
+Allowing the `Microsoft.Authorization/roleDefinitions/write` action in a custom Azure role definition grants users the ability to create, modify, or delete role definitions within the assigned scope. This level of permission can lead to privilege escalation, where a malicious or compromised user can create overly permissive roles or alter existing ones. To mitigate this risk, custom roles should be limited to `Microsoft.Authorization/roleDefinitions/read`, as shown below:
 
 ```
 permissions {
@@ -38,7 +38,6 @@ permissions {
 ```
 
 Restricting write access helps protect against unauthorized changes to role definitions and reduces the attack surface for privilege escalation.
-
 
 ## Compliant Code Examples
 ```terraform

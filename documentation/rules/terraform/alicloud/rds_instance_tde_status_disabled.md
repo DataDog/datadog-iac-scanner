@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `tde_status` parameter should be set to `Enabled` for supported RDS instances. This rule applies to `alicloud_db_instance` resources with `engine` set to `MySQL` (versions `5.6`, `5.7`, `8`) or `SQLServer` (versions `08r2_ent_ha`, `2012_ent_ha`, `2016_ent_ha`, `2017_ent`, `2019_std_ha`, `2019_ent`). It flags instances where `tde_status` is missing or set to `Disabled`. Set `tde_status = "Enabled"` to enforce Transparent Data Encryption (TDE).
-
+The `tde_status` parameter should be set to `Enabled` for supported RDS instances. This rule applies to `alicloud_db_instance` resources with `engine` set to `MySQL` (versions `5.6`, `5.7`, `8`) or `SQLServer` (versions `08r2_ent_ha`, `2012_ent_ha`, `2016_ent_ha`, `2017_ent`, `2019_std_ha`, `2019_ent`). It flags instances where `tde_status` is missing or set to `Disabled`. Set `tde_status = "Enabled"` to enforce Transparent Data Encryption (TDE).
 
 ## Compliant Code Examples
 ```terraform

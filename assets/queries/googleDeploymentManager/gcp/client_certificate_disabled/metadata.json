@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Kubernetes Clusters must be created with Client Certificate enabled, which means 'masterAuth' must have 'clientCertificateConfig' with the attribute 'issueClientCertificate' equal to true",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/client_certificate_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/client_certificate_disabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "e74562aa",
   "cloudProvider": "gcp",

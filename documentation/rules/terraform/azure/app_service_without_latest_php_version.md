@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Web apps using outdated PHP versions expose themselves to known security vulnerabilities and miss out on critical security fixes and performance improvements available in newer releases. For example, specifying `php_version = "7.3"` in a Terraform `azurerm_app_service` resource leaves the application open to exploits that are resolved in later PHP versions. To mitigate risk, always configure the `site_config` block to use a recent, supported PHP version, such as in the following example:
+Web apps using outdated PHP versions expose themselves to known security vulnerabilities and miss out on critical security fixes and performance improvements available in newer releases. For example, specifying `php_version = "7.3"` in a Terraform `azurerm_app_service` resource leaves the application open to exploits that are resolved in later PHP versions. To mitigate risk, always configure the `site_config` block to use a recent, supported PHP version, such as in the following example:
 
 ```
 site_config {
@@ -36,7 +36,6 @@ site_config {
 }
 ```
 This ensures the application benefits from the latest patches and features.
-
 
 ## Compliant Code Examples
 ```terraform

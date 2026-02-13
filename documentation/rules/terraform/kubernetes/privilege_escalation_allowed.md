@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Containers should not include `security_context.allow_privilege_escalation` set to `true`.  
+Containers should not include `security_context.allow_privilege_escalation` set to `true`.  
 Preventing `allow_privilege_escalation` from being enabled ensures containers cannot gain more privileges than their parent process.  
 Set `security_context.allow_privilege_escalation` to `false` or omit the field to avoid privilege escalation.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EC2 instances should use IAM roles to be granted access to other AWS services. Storing AWS credentials directly in user data or on the instance, for example with environment variables such as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, as shown below, exposes sensitive credentials to anyone with access to the instance or the AWS console:
+EC2 instances should use IAM roles to be granted access to other AWS services. Storing AWS credentials directly in user data or on the instance, for example with environment variables such as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, as shown below, exposes sensitive credentials to anyone with access to the instance or the AWS console:
 
 ```
 user_data = <<EOF
@@ -40,7 +40,6 @@ EOF
 ```
 
 This misconfiguration creates a significant security risk, as leaked credentials can be used by attackers to gain unauthorized access to AWS resources and potentially compromise the wider AWS environment. Instead, EC2 instances should be granted permissions using IAM roles via the `iam_instance_profile` attribute, which securely delivers temporary credentials to the instance and removes the need to manually manage or expose AWS keys.
-
 
 ## Compliant Code Examples
 ```terraform

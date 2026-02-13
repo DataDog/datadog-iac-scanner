@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- To ensure proper monitoring and alerting of changes to Virtual Private Cloud (VPC) configurations, a log metric filter and corresponding CloudWatch alarm should be configured to detect and notify administrators of events such as `CreateVpc`, `DeleteVpc`, or `ModifyVpcAttribute`. If the `metric_name` attribute in the `aws_cloudwatch_metric_alarm` resource does not reference the correct log metric filter (for example, `metric_name = "XXXX NOT YOUR FILTER XXXX"`), the alarm will not trigger on actual VPC changes, leaving unauthorized or accidental modifications undetected. This misconfiguration undermines security monitoring efforts and increases the risk of undetected changes that could impact network segmentation, access control, or data exposure.
-
+To ensure proper monitoring and alerting of changes to Virtual Private Cloud (VPC) configurations, a log metric filter and corresponding CloudWatch alarm should be configured to detect and notify administrators of events such as `CreateVpc`, `DeleteVpc`, or `ModifyVpcAttribute`. If the `metric_name` attribute in the `aws_cloudwatch_metric_alarm` resource does not reference the correct log metric filter (for example, `metric_name = "XXXX NOT YOUR FILTER XXXX"`), the alarm will not trigger on actual VPC changes, leaving unauthorized or accidental modifications undetected. This misconfiguration undermines security monitoring efforts and increases the risk of undetected changes that could impact network segmentation, access control, or data exposure.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- `output` entries must contain a valid `description`.
+`output` entries must contain a valid `description`.
 The `description` must be defined, non-null, and not empty or whitespace-only.
-
 
 ## Compliant Code Examples
 ```terraform

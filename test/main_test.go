@@ -19,6 +19,7 @@ import (
 	ansibleHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	bicepParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/bicep"
 	buildahParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/buildah"
+	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
@@ -50,6 +51,7 @@ var (
 		"../assets/queries/terraform/alicloud":     {FileKind: []model.FileKind{model.KindTerraform, model.KindJSON}, Platform: "terraform"},
 		"../assets/queries/terraform/nifcloud":     {FileKind: []model.FileKind{model.KindTerraform, model.KindJSON}, Platform: "terraform"},
 		"../assets/queries/terraform/tencentcloud": {FileKind: []model.FileKind{model.KindTerraform, model.KindJSON}, Platform: "terraform"},
+		"../assets/queries/dockerfile":             {FileKind: []model.FileKind{"DOCKERFILE"}, Platform: "dockerfile"},
 
 		// E2E Query Tests to be enabled later
 		// "../assets/queries/crossplane/aws":                  {FileKind: []model.FileKind{model.KindYAML}, Platform: "crossplane"},
@@ -205,6 +207,7 @@ func getCombinedParser() []*parser.Parser {
 		Add(terraformParser.NewDefault()).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).
+		Add(&dockerParser.Parser{}).
 		Add(&ansibleConfigParser.Parser{}).
 		Add(&ansibleHostsParser.Parser{}).
 		Build([]string{""}, []string{""})

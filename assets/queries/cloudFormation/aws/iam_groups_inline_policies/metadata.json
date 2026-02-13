@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "IAM groups should not contain inline policies because inline policies are tightly coupled to the group's lifecycle and are harder to audit, review, and reuse. This increases risk of accidental loss of permissions and inconsistent access control when groups are modified or deleted.\n \n In CloudFormation, check `AWS::IAM::Group` resources and ensure the `Properties.Policies` attribute is undefined or empty. Use reusable managed policies instead by specifying `ManagedPolicyArns` or creating `AWS::IAM::ManagedPolicy` resources and referencing them. Resources with a non-empty `Policies` list will be flagged as a security risk.\n\nSecure configuration example (attach managed policies rather than inline policies):\n\n```yaml\nMyGroup:\n  Type: AWS::IAM::Group\n  Properties:\n    GroupName: Devs\n    ManagedPolicyArns:\n      - arn:aws:iam::aws:policy/ReadOnlyAccess\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_groups_inline_policies",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/iam_groups_inline_policies",
   "platform": "CloudFormation",
   "descriptionID": "e89236a1",
   "cloudProvider": "aws",

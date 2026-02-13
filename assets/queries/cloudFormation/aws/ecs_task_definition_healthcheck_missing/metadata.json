@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "Amazon ECS container definitions must include a `HealthCheck` so the orchestrator and any load balancers can detect unhealthy containers and replace them automatically. Without health checks, failing containers may continue to receive traffic or delay recovery, increasing downtime and operational risk.\n \n For `AWS::ECS::TaskDefinition` resources, each element of `Properties.ContainerDefinitions` must define the `HealthCheck` property. Resources missing `HealthCheck` will be flagged.\n \n The `HealthCheck` should, at minimum, include a `Command`. It can also include `Interval`, `Timeout`, `Retries`, and `StartPeriod` to tune detection and recovery behavior.\n\nSecure example (CloudFormation YAML):\n\n```yaml\nMyTaskDefinition:\n  Type: AWS::ECS::TaskDefinition\n  Properties:\n    ContainerDefinitions:\n      - Name: my-container\n        Image: my-image:latest\n        HealthCheck:\n          Command:\n            - CMD-SHELL\n            - curl -f http://localhost:8080/health || exit 1\n          Interval: 30\n          Timeout: 5\n          Retries: 3\n          StartPeriod: 10\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecs_task_definition_healthcheck_missing",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ecs_task_definition_healthcheck_missing",
   "platform": "CloudFormation",
   "descriptionID": "e2e3a50a",
   "cloudProvider": "aws",

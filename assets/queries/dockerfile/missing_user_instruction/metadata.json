@@ -1,11 +1,12 @@
 {
   "id": "fd54f200-402c-4333-a5a4-36ef6709af2f",
-  "queryName": "Missing User Instruction",
+  "queryName": "Missing user instruction",
   "severity": "HIGH",
   "category": "Build Process",
-  "descriptionText": "A user should be specified in the dockerfile, otherwise the image will run as root",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#user",
+  "descriptionText": "Specify a non-root user in the Dockerfile so containers do not run as root by default, which reduces the blast radius of a compromise and prevents easy privilege escalation.\n\nThis check inspects every build stage (excluding stages based on `scratch`) and flags the Dockerfile when no `USER` instruction appears in any stage. The Dockerfile must include a `USER` instruction that names a non-root user (username or numeric UID), preferably set in the final stage. Resources missing `USER` will be flagged.\n\nThis rule detects the absence of a `USER` instruction but does not validate the value—ensure the user is not `root` or UID `0` and that the user account is created in the image before switching to it.\n\nSecure example:\n\n```dockerfile\nFROM python:3.11-slim AS builder\n# build steps...\nFROM python:3.11-slim\nRUN groupadd -r app && useradd -r -g app app\nCOPY --from=builder /app /app\nUSER app\nCMD [\"python\", \"/app/app.py\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/missing_user_instruction",
   "platform": "Dockerfile",
   "descriptionID": "eb49caf6",
-  "cwe": "250"
+  "cwe": "250",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#user"
 }

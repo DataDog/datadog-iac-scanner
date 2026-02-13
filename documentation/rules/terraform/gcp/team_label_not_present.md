@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- To ensure accountability and efficient resource management, every cloud resource should include a `team` label identifying ownership. Without this label, as shown in the example below, resources may lack clear ownership, making it difficult to track responsibility for maintenance, cost allocation, or incident response:
+To ensure accountability and efficient resource management, every cloud resource should include a `team` label identifying ownership. Without this label, as shown in the example below, resources may lack clear ownership, making it difficult to track responsibility for maintenance, cost allocation, or incident response:
 
 ```
 resource "google_bigtable_instance" "example" {
@@ -45,7 +45,6 @@ labels = {
 ```
 
 Neglecting this can lead to orphaned resources, wasted spend, and slower incident resolution due to unclear points of contact.
-
 
 ## Compliant Code Examples
 ```terraform

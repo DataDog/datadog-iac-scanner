@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Allowing a user the `iam:UpdateLoginProfile` permission with the `Resource` set to `\"*\"` in Terraform, as in the following example, enables that user to change the passwords of any IAM user in the AWS account:\n\n```\nAction = [\n  \"iam:UpdateLoginProfile\",\n]\nResource = \"*\"\n```\n\nThis creates a privilege escalation risk, as the user could assign themselves or others passwords to high-privilege accounts, resulting in unauthorized access or control over critical resources. If left unaddressed, this misconfiguration can lead to account compromise and the potential for significant security incidents.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_UpdateLoginProfile",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_updateloginprofile",
   "platform": "Terraform",
   "descriptionID": "559f74f0",
   "cloudProvider": "aws",

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting an IAM group both the `ec2:RunInstances` and `iam:PassRole` permissions with the `Resource` field set to `"*"` allows users to launch EC2 instances with any IAM role in the account. This opens a dangerous privilege escalation pathway, as users can assign themselves highly privileged roles by launching instances with those roles attached, effectively bypassing intended access controls. If left unaddressed, this misconfiguration can lead to full account compromise, as attackers could elevate their permissions and gain unauthorized access to sensitive resources.
-
+Granting an IAM group both the `ec2:RunInstances` and `iam:PassRole` permissions with the `Resource` field set to `"*"` allows users to launch EC2 instances with any IAM role in the account. This opens a dangerous privilege escalation pathway, as users can assign themselves highly privileged roles by launching instances with those roles attached, effectively bypassing intended access controls. If left unaddressed, this misconfiguration can lead to full account compromise, as attackers could elevate their permissions and gain unauthorized access to sensitive resources.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The `image` attribute must be set and must not be empty or equal to `latest`.
+The `image` attribute must be set and must not be empty or equal to `latest`.
 The rule evaluates both `container` and `init_container` entries in resource specs and supports array and object forms.
 It reports `MissingAttribute` when `image` is absent and `IncorrectValue` when `image` is empty or set to `latest`.
-
 
 ## Compliant Code Examples
 ```terraform

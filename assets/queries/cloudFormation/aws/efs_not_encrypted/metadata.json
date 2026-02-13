@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "Amazon EFS file systems must have encryption enabled to protect data at rest. Without encryption, file data, backups, and snapshots can be exposed if storage media or underlying infrastructure is compromised.\n \n For `AWS::EFS::FileSystem` resources, the `Properties.Encrypted` property must be set to `true`. This rule flags resources with `Encrypted` set to `false`. To ensure encryption is always applied, explicitly set `Encrypted` to `true` and optionally specify `KmsKeyId` to use a customer-managed AWS KMS key.\n\nSecure configuration example:\n\n```yaml\nMyEFS:\n  Type: AWS::EFS::FileSystem\n  Properties:\n    Encrypted: true\n    KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd-ef01-2345-6789\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/efs_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/efs_not_encrypted",
   "platform": "CloudFormation",
   "descriptionID": "e168cb44",
   "cloudProvider": "aws",

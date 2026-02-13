@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Kubernetes Engine Clusters must have Master Authentication set to enabled, which means the attribute 'masterAuth' must have the subattributes 'username' and 'password' defined and not empty",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/cluster_master_authentication_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/cluster_master_authentication_disabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "4a9cd0c6",
   "cloudProvider": "gcp",

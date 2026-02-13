@@ -14,6 +14,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -62,6 +63,7 @@ type Service struct {
 	Tracker        Tracker
 	Resolver       *resolver.Resolver
 	files          model.FileMetadatas
+	filesMu        sync.Mutex
 	MaxFileSize    int
 }
 
@@ -70,22 +72,39 @@ func (s *Service) PrepareSources(ctx context.Context,
 	scanID string,
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
-	wg *sync.WaitGroup, errCh chan<- error) {
+	wg *sync.WaitGroup,
+	errCh chan<- error, flagEvaluator featureflags.FlagEvaluator) {
 	contextLogger := logger.FromContext(ctx)
 	defer wg.Done()
 	// CxSAST query under review
 	data := make([]byte, mbConst)
 	contextLogger.Info().Msgf("Getting sources")
-	if err := s.SourceProvider.GetSources(
-		ctx,
-		s.Parser.SupportedExtensions(),
-		func(ctx context.Context, filename string, rc io.ReadCloser) error {
-			return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
-		},
-		func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
-			return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
-		},
-	); err != nil {
+	var err error
+	// TODO: Remove this if / else upon finishing dogfooding phase
+	if ok := flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing); ok {
+		err = s.SourceProvider.GetParallelSources(
+			ctx,
+			s.Parser.SupportedExtensions(),
+			func(ctx context.Context, filename string, rc io.ReadCloser) error {
+				return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
+			},
+			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
+				return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
+			},
+		)
+	} else {
+		err = s.SourceProvider.GetSources(
+			ctx,
+			s.Parser.SupportedExtensions(),
+			func(ctx context.Context, filename string, rc io.ReadCloser) error {
+				return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
+			},
+			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
+				return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
+			},
+		)
+	}
+	if err != nil {
 		select {
 		case errCh <- errors.Wrap(err, "failed to read sources"):
 		case <-ctx.Done():
@@ -182,7 +201,9 @@ func (s *Service) GetVulnerabilities(ctx context.Context, scanID string) ([]mode
 func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	err := s.Storage.SaveFile(ctx, file)
 	if err == nil {
+		s.filesMu.Lock()
 		s.files = append(s.files, *file)
+		s.filesMu.Unlock()
 	}
 }
 

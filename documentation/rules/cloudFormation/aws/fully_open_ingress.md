@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups attached to ECS services must not allow ingress from `0.0.0.0/0` to all ports because unrestricted public access increases the attack surface of containerized workloads and enables unauthorized access or exploitation.
+Security groups attached to ECS services must not allow ingress from `0.0.0.0/0` to all ports because unrestricted public access increases the attack surface of containerized workloads and enables unauthorized access or exploitation.
  
  Check `AWS::EC2::SecurityGroupIngress` resources where `Properties.CidrIp` is `0.0.0.0/0` and `Properties.ToPort` is `0` for rules that apply to security groups used by ECS services. Such rules will be flagged. Restrict ingress by specifying trusted CIDR ranges or referencing other security groups and by narrowing `FromPort`/`ToPort` to only the ports required (or place services behind a load balancer and WAF).
 
@@ -44,7 +44,6 @@ MySecurityGroupIngress:
     ToPort: 80
     CidrIp: 203.0.113.0/24
 ```
-
 
 ## Compliant Code Examples
 ```yaml

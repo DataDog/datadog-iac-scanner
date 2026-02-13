@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CVM instances should have detailed monitoring enabled. The `tencentcloud_instance` resource must not set `disable_monitor_service` to `true`. To ensure detailed monitoring is enabled, `disable_monitor_service` should be set to `false`.
-
+CVM instances should have detailed monitoring enabled. The `tencentcloud_instance` resource must not set `disable_monitor_service` to `true`. To ensure detailed monitoring is enabled, `disable_monitor_service` should be set to `false`.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Cloud Run services with IAM bindings or members that include public principals such as `allUsers` or `allAuthenticatedUsers` expose your service to anyone on the internet, creating a significant security risk. Public access can lead to unauthorized access, data breaches, or exploitation of vulnerabilities in your application. To secure access, grant roles only to specific users or service accounts. For example, use `members = ["user:someone@example.com", "group:admins@example.com"]` instead of `members = ["allAuthenticatedUsers", "user:someone@example.com"]`.
-
+Cloud Run services with IAM bindings or members that include public principals such as `allUsers` or `allAuthenticatedUsers` expose your service to anyone on the internet, creating a significant security risk. Public access can lead to unauthorized access, data breaches, or exploitation of vulnerabilities in your application. To secure access, grant roles only to specific users or service accounts. For example, use `members = ["user:someone@example.com", "group:admins@example.com"]` instead of `members = ["allAuthenticatedUsers", "user:someone@example.com"]`.
 
 ## Compliant Code Examples
 ```terraform

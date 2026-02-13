@@ -28,12 +28,11 @@ meta:
 
 ### Description
 
- Containers must not share the host IPC namespace.
+Containers must not share the host IPC namespace.
 
 This rule detects resources where the `host_ipc` attribute is set to `true`; the attribute should be undefined or `false` to prevent sharing the host IPC namespace.
 
 The rule's result includes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`, `searchLine`, `remediation`, and `remediationType` to help locate and remediate the issue; remediation replaces `true` with `false`.
-
 
 ## Compliant Code Examples
 ```terraform

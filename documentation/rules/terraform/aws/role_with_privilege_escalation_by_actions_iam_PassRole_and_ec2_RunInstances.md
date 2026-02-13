@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting an IAM role permissions for both `ec2:RunInstances` and `iam:PassRole` with their `Resource` attribute set to `"*"` enables a privilege escalation pathway in AWS. This configuration allows any user or entity assuming the role to launch new EC2 instances and assign any IAM role in the account to those instances, including roles with more expansive permissions. As a result, attackers can potentially gain administrative access by launching an instance with a privileged role, bypassing the originally intended limitations. If left unaddressed, this misconfiguration can result in full compromise of the AWS account’s resources, leading to data loss, service disruption, or unauthorized access to sensitive workloads.
-
+Granting an IAM role permissions for both `ec2:RunInstances` and `iam:PassRole` with their `Resource` attribute set to `"*"` enables a privilege escalation pathway in AWS. This configuration allows any user or entity assuming the role to launch new EC2 instances and assign any IAM role in the account to those instances, including roles with more expansive permissions. As a result, attackers can potentially gain administrative access by launching an instance with a privileged role, bypassing the originally intended limitations. If left unaddressed, this misconfiguration can result in full compromise of the AWS account’s resources, leading to data loss, service disruption, or unauthorized access to sensitive workloads.
 
 ## Compliant Code Examples
 ```terraform

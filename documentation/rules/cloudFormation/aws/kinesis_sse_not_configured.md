@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Kinesis streams must have server-side encryption enabled to protect data at rest and reduce the risk of sensitive records being exposed through compromised storage, snapshots, or insider access. In AWS CloudFormation, `AWS::Kinesis::Stream` resources must include the `Properties.StreamEncryption` object with `EncryptionType` and `KeyId` defined. Resources missing `StreamEncryption` or with `StreamEncryption.EncryptionType` or `StreamEncryption.KeyId` undefined will be flagged as insecure.
+Kinesis streams must have server-side encryption enabled to protect data at rest and reduce the risk of sensitive records being exposed through compromised storage, snapshots, or insider access. In AWS CloudFormation, `AWS::Kinesis::Stream` resources must include the `Properties.StreamEncryption` object with `EncryptionType` and `KeyId` defined. Resources missing `StreamEncryption` or with `StreamEncryption.EncryptionType` or `StreamEncryption.KeyId` undefined will be flagged as insecure.
 
 Secure CloudFormation example:
 
@@ -42,7 +42,6 @@ MyKinesisStream:
       EncryptionType: KMS
       KeyId: arn:aws:kms:us-east-1:123456789012:key/abcd1234-ef56-7890-ab12-3456cdef7890
 ```
-
 
 ## Compliant Code Examples
 ```yaml

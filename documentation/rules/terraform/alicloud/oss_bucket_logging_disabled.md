@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- OSS buckets should have logging enabled to improve visibility into resource and object access.  The `alicloud_oss_bucket` resource must include a `logging` block with `logging_isenable` set to `true`. If the `logging` block is missing or `logging_isenable` is `false`, access logging is not enabled. To remediate, add the block or update `logging_isenable` from `false` to `true`.
-
+OSS buckets should have logging enabled to improve visibility into resource and object access.  The `alicloud_oss_bucket` resource must include a `logging` block with `logging_isenable` set to `true`. If the `logging` block is missing or `logging_isenable` is `false`, access logging is not enabled. To remediate, add the block or update `logging_isenable` from `false` to `true`.
 
 ## Compliant Code Examples
 ```terraform

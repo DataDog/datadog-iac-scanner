@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Service `spec.type` should not be `NodePort`. This rule flags Kubernetes Service resources where `spec.type` is set to `NodePort`, because exposing node ports can bypass load balancers and introduce security and networking risks. The rule returns the following attributes to identify the affected resource and the mismatch: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`.
-
+Service `spec.type` should not be `NodePort`. This rule flags Kubernetes Service resources where `spec.type` is set to `NodePort`, because exposing node ports can bypass load balancers and introduce security and networking risks. The rule returns the following attributes to identify the affected resource and the mismatch: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`.
 
 ## Compliant Code Examples
 ```terraform

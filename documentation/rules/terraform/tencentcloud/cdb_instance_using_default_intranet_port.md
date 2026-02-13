@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CDB instances should not use the default intranet port. The `tencentcloud_mysql_instance` resource must set the `intranet_port` attribute, and it must not be set to `3306`. This rule flags resources where `intranet_port` is either missing or explicitly set to `3306`.
-
+CDB instances should not use the default intranet port. The `tencentcloud_mysql_instance` resource must set the `intranet_port` attribute, and it must not be set to `3306`. This rule flags resources where `intranet_port` is either missing or explicitly set to `3306`.
 
 ## Compliant Code Examples
 ```terraform

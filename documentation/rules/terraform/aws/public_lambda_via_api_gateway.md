@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Allowing a Lambda function to be invoked through a public API Gateway endpoint can introduce security vulnerabilities by exposing the function to the internet. This configuration grants invocation permissions on the Lambda function from any HTTP method and any resource within the associated API Gateway, as illustrated by the use of the wildcard `"/*/*"` in the ARN. If left unaddressed, attackers could exploit the public endpoint to trigger the Lambda function, potentially resulting in unauthorized data access, denial-of-service attacks, or increased costs due to unwanted invocations. To mitigate this risk, permissions should be restricted to only necessary resources and specific methods, thereby limiting the surface area exposed to the public.
-
+Allowing a Lambda function to be invoked through a public API Gateway endpoint can introduce security vulnerabilities by exposing the function to the internet. This configuration grants invocation permissions on the Lambda function from any HTTP method and any resource within the associated API Gateway, as illustrated by the use of the wildcard `"/*/*"` in the ARN. If left unaddressed, attackers could exploit the public endpoint to trigger the Lambda function, potentially resulting in unauthorized data access, denial-of-service attacks, or increased costs due to unwanted invocations. To mitigate this risk, permissions should be restricted to only necessary resources and specific methods, thereby limiting the surface area exposed to the public.
 
 ## Compliant Code Examples
 ```terraform

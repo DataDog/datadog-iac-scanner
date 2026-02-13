@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Geo restriction must be enabled to limit which geographic locations can access your content. Without it, content can be served globally, increasing attack surface and risking data residency or compliance violations.
+Geo restriction must be enabled to limit which geographic locations can access your content. Without it, content can be served globally, increasing attack surface and risking data residency or compliance violations.
  
  In CloudFormation, the `AWS::CloudFront::Distribution` resource’s `Properties.DistributionConfig.Restrictions.GeoRestriction.RestrictionType` must be set to either `whitelist` or `blacklist`. Resources that omit this property or set it to `none` (or any value not containing `whitelist` or `blacklist`) will be flagged. When using `whitelist` or `blacklist`, populate the `Locations` array with the appropriate ISO 3166-1 alpha-2 country codes.
 
@@ -47,7 +47,6 @@ MyDistribution:
             - US
             - CA
 ```
-
 
 ## Compliant Code Examples
 ```yaml

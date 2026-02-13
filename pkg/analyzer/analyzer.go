@@ -77,19 +77,21 @@ var (
 	listKeywordsGoogleDeployment = []string{"resources"}
 	armRegexTypes                = []string{"blueprint", "templateArtifact", "roleAssignmentArtifact", "policyAssignmentArtifact"}
 	possibleFileTypes            = map[string]bool{
-		".yml":    true,
-		".yaml":   true,
-		".json":   true,
-		".debian": true,
-		".ubi8":   true,
-		".tf":     true,
-		"tfvars":  true,
-		".proto":  true,
-		".sh":     true,
-		".cfg":    true,
-		".conf":   true,
-		".ini":    true,
-		".bicep":  true,
+		".yml":        true,
+		".yaml":       true,
+		".json":       true,
+		".dockerfile": true,
+		"Dockerfile":  true,
+		".debian":     true,
+		".ubi8":       true,
+		".tf":         true,
+		"tfvars":      true,
+		".proto":      true,
+		".sh":         true,
+		".cfg":        true,
+		".conf":       true,
+		".ini":        true,
+		".bicep":      true,
 	}
 	supportedRegexes = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
@@ -124,6 +126,7 @@ const (
 	gdm        = "googledeploymentmanager"
 	ansible    = "ansible"
 	grpc       = "grpc"
+	dockerfile = "dockerfile"
 	crossplane = "crossplane"
 	knative    = "knative"
 	sizeMb     = 1048576
@@ -391,6 +394,20 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		linesCount, _ := utils.LineCounter(ctx, a.filePath)
 
 		switch ext {
+		// Dockerfile (direct identification)
+		case ".dockerfile", "Dockerfile":
+			if a.isAvailableType(dockerfile) {
+				results <- dockerfile
+				locCount <- linesCount
+			}
+		// Dockerfile (indirect identification)
+		case "possibleDockerfile", ".ubi8", ".debian":
+			if a.isAvailableType(dockerfile) && isDockerfile(ctx, a.filePath) {
+				results <- dockerfile
+				locCount <- linesCount
+			} else {
+				unwanted <- a.filePath
+			}
 		// Terraform
 		case ".tf", "tfvars":
 			if a.isAvailableType(terraform) {
@@ -421,6 +438,31 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 			a.checkContent(ctx, results, unwanted, locCount, linesCount, ext)
 		}
 	}
+}
+
+func isDockerfile(ctx context.Context, path string) bool {
+	contextLogger := logger.FromContext(ctx)
+	content, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		contextLogger.Error().Msgf("failed to analyze file: %s", err)
+		return false
+	}
+
+	regexes := []*regexp.Regexp{
+		regexp.MustCompile(`\s*FROM\s*`),
+		regexp.MustCompile(`\s*RUN\s*`),
+	}
+
+	check := true
+
+	for _, regex := range regexes {
+		if !regex.Match(content) {
+			check = false
+			break
+		}
+	}
+
+	return check
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json

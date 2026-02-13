@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When an S3 bucket policy allows access to all AWS principals (`*`), it creates a significant security vulnerability by potentially exposing sensitive data to anyone on the internet. Malicious actors could access, modify, or delete your data, leading to data breaches, regulatory violations, and reputational damage. To secure your S3 bucket, avoid using `*` in the `Principal` field with an `Allow` effect. Instead, explicitly specify authorized principals or use a `Deny` effect, as shown below:
+When an S3 bucket policy allows access to all AWS principals (`*`), it creates a significant security vulnerability by potentially exposing sensitive data to anyone on the internet. Malicious actors could access, modify, or delete your data, leading to data breaches, regulatory violations, and reputational damage. To secure your S3 bucket, avoid using `*` in the `Principal` field with an `Allow` effect. Instead, explicitly specify authorized principals or use a `Deny` effect, as shown below:
 
 ```
 "Statement": [
@@ -43,7 +43,6 @@ meta:
   }
 ]
 ```
-
 
 ## Compliant Code Examples
 ```terraform

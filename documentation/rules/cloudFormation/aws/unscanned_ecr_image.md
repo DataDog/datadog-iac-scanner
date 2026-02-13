@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- ECR repositories should enable image scanning on push to detect known vulnerabilities before images are deployed. This reduces the risk of running vulnerable or compromised containers.
+ECR repositories should enable image scanning on push to detect known vulnerabilities before images are deployed. This reduces the risk of running vulnerable or compromised containers.
 
 For `AWS::ECR::Repository` resources, `Properties.ImageScanningConfiguration.ScanOnPush` must be set to `true`. Resources missing `ImageScanningConfiguration`, or with `ScanOnPush` set to `false`, will be flagged.
 
@@ -44,7 +44,6 @@ MyEcrRepository:
     ImageScanningConfiguration:
       ScanOnPush: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

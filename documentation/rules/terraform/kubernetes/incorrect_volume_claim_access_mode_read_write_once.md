@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes StatefulSet resources must include exactly one volume claim template with the access mode `ReadWriteOnce`. This policy inspects `kubernetes_stateful_set.spec.volume_claim_template` and verifies that one template's `spec.access_modes` contains the value `ReadWriteOnce`. If no template contains `ReadWriteOnce` the rule reports `MissingAttribute`; if more than one template contains `ReadWriteOnce` it reports `IncorrectValue`.
-
+Kubernetes StatefulSet resources must include exactly one volume claim template with the access mode `ReadWriteOnce`. This policy inspects `kubernetes_stateful_set.spec.volume_claim_template` and verifies that one template's `spec.access_modes` contains the value `ReadWriteOnce`. If no template contains `ReadWriteOnce` the rule reports `MissingAttribute`; if more than one template contains `ReadWriteOnce` it reports `IncorrectValue`.
 
 ## Compliant Code Examples
 ```terraform

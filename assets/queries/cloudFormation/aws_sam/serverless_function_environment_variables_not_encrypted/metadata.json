@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "Serverless functions that define environment variables must encrypt those variables with a customer-managed AWS KMS key to protect secrets and configuration data from exposure if the function configuration is accessed or leaked. For `AWS::Serverless::Function` resources that include `Properties.Environment.Variables`, the `Properties.KmsKeyArn` property must be defined and set to a valid KMS key ARN or alias (not `null`). Resources missing `KmsKeyArn` or where `KmsKeyArn` is `null` will be flagged. Example secure configuration referencing a KMS key:\n\n```yaml\nMyFunction:\n  Type: AWS::Serverless::Function\n  Properties:\n    Runtime: nodejs14.x\n    Handler: index.handler\n    Environment:\n      Variables:\n        DB_PASSWORD: mypassword\n    KmsKeyArn: !GetAtt MyKmsKey.Arn\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_sam/serverless_function_environment_variables_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_sam/serverless_function_environment_variables_not_encrypted",
   "platform": "CloudFormation",
   "descriptionID": "f218e4bc",
   "cloudProvider": "aws",

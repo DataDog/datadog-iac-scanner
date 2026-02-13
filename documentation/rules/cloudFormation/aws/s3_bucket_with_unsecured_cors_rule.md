@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CORS rules that allow all methods, all headers, or use overly broad (or multiple) origins can enable unintended cross-origin access. This increases the risk of data exfiltration or unauthorized requests to your S3 objects.
+CORS rules that allow all methods, all headers, or use overly broad (or multiple) origins can enable unintended cross-origin access. This increases the risk of data exfiltration or unauthorized requests to your S3 objects.
 
 For `AWS::S3::Bucket` resources, examine `Properties.CorsConfiguration.CorsRules` entries. `AllowedMethods` and `AllowedHeaders` must not include the wildcard (`*`). `AllowedOrigins` should be restricted to explicit, trusted origins rather than wildcards or overly broad lists.
 
@@ -50,7 +50,6 @@ MyBucket:
           AllowedHeaders:
             - "Content-Type"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

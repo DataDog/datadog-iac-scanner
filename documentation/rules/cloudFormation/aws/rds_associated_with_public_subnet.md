@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- RDS instances must not be deployed into public subnets because public routability exposes the database to direct internet access, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration. In AWS CloudFormation, verify the `AWS::RDS::DBInstance` `DBSubnetGroupName` reference and ensure the referenced `AWS::RDS::DBSubnetGroup` `SubnetIds` do not include any `AWS::EC2::Subnet` with unrestricted CIDRs. Specifically, flag subnets where `CidrBlock` equals `0.0.0.0/0` or `Ipv6CidrBlock` equals `::/0`. Database subnet groups containing such subnets will be reported as insecure.
+RDS instances must not be deployed into public subnets because public routability exposes the database to direct internet access, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration. In AWS CloudFormation, verify the `AWS::RDS::DBInstance` `DBSubnetGroupName` reference and ensure the referenced `AWS::RDS::DBSubnetGroup` `SubnetIds` do not include any `AWS::EC2::Subnet` with unrestricted CIDRs. Specifically, flag subnets where `CidrBlock` equals `0.0.0.0/0` or `Ipv6CidrBlock` equals `::/0`. Database subnet groups containing such subnets will be reported as insecure.
 
 Secure example with private subnets:
 
@@ -60,7 +60,6 @@ MyDBInstance:
     Engine: mysql
     DBInstanceClass: db.t3.medium
 ```
-
 
 ## Compliant Code Examples
 ```yaml

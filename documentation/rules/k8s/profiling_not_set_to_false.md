@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When using `kube-apiserver`, `kube-controller-manager`, or `kube-scheduler`, the `--profiling` flag should be set to `false`. If the flag is present and set to `true`, it is reported as an incorrect value. If the flag is missing on applicable components, it is reported as a missing attribute. The `KubeSchedulerConfiguration` document's `enableProfiling` field must also be present and set to `false`.
-
+When using `kube-apiserver`, `kube-controller-manager`, or `kube-scheduler`, the `--profiling` flag should be set to `false`. If the flag is present and set to `true`, it is reported as an incorrect value. If the flag is missing on applicable components, it is reported as a missing attribute. The `KubeSchedulerConfiguration` document's `enableProfiling` field must also be present and set to `false`.
 
 ## Compliant Code Examples
 ```yaml

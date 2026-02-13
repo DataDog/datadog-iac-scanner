@@ -1,0 +1,12 @@
+{
+  "id": "3be406ec-eb81-f09e-05d4-dc6a41683b4c",
+  "queryName": "Avoid chmod 777",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Using `ADD` or `COPY` with the flag `--chmod=777` makes files world-writable inside the image. This allows any user or process in the container to modify those files, increasing the risk of tampering, privilege escalation, and data exposure.  \n\nCheck Dockerfile `ADD` and `COPY` instructions for flags that include `--chmod=777`. This rule inspects instruction flags (resource type `dockerfile_container`) and flags `ADD` or `COPY` commands that specify `--chmod=777`.  \n\nAvoid granting global write permissions. Instead, use more restrictive modes (for example, `0755` for executables or `0644` for regular files), set appropriate ownership with `--chown`, or apply targeted `chown`/`chmod` in a subsequent `RUN` step rather than using `--chmod=777`.\n\nSecure examples:\n\n```dockerfile\n# Use restrictive permissions during copy\nCOPY --chown=app:app --chmod=0755 bin/ /app/bin/\nCOPY --chown=app:app --chmod=0644 conf.yaml /app/conf.yaml\n```\n\n```dockerfile\n# Or set ownership/permissions in a separate step\nCOPY src/ /app/src/\nRUN chown -R app:app /app && chmod -R 0755 /app/bin && chmod 0644 /app/conf.yaml\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/avoid_chmod_777",
+  "platform": "Dockerfile",
+  "descriptionID": "3be406ec",
+  "cwe": "732",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#add"
+}

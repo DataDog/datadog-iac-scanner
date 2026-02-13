@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "Cloud SQL Database Instance should have SSL enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/sql_db_instance_with_ssl_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/sql_db_instance_with_ssl_disabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "b42ee5a9",
   "cloudProvider": "gcp",

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A `kubernetes_stateful_set` can declare a PersistentVolumeClaim template to request storage. The `spec.volume_claim_template.spec.resources.requests.storage` field should not be set; if present it is flagged. When flagged, the rule records `documentId`, `resourceType`, `resourceName`, and `searchKey`, and reports an `IncorrectValue` using `keyActualValue` and `keyExpectedValue`.
-
+A `kubernetes_stateful_set` can declare a PersistentVolumeClaim template to request storage. The `spec.volume_claim_template.spec.resources.requests.storage` field should not be set; if present it is flagged. When flagged, the rule records `documentId`, `resourceType`, `resourceName`, and `searchKey`, and reports an `IncorrectValue` using `keyActualValue` and `keyExpectedValue`.
 
 ## Compliant Code Examples
 ```terraform

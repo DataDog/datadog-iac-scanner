@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway REST APIs should be configured with a `PRIVATE` endpoint to avoid unintended exposure to the public internet. Publicly accessible APIs increase attack surface and can enable unauthorized access to internal services or sensitive data.
+API Gateway REST APIs should be configured with a `PRIVATE` endpoint to avoid unintended exposure to the public internet. Publicly accessible APIs increase attack surface and can enable unauthorized access to internal services or sensitive data.
 
  For CloudFormation, the `AWS::ApiGateway::RestApi` resource must define the `EndpointConfiguration` property and its `Types` list must include `PRIVATE`. Resources missing `EndpointConfiguration`, missing `Types`, or whose `Types` list does not contain `PRIVATE` will be flagged.
 
@@ -43,7 +43,6 @@ MyPrivateApi:
       Types:
         - PRIVATE
 ```
-
 
 ## Compliant Code Examples
 ```yaml

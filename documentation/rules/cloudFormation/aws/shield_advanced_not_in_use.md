@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Resources such as CloudFront distributions, Elastic Load Balancers, Global Accelerator accelerators, Elastic IPs, and Route 53 hosted zones should be protected by AWS Shield Advanced to reduce the risk of large-scale DDoS attacks that can cause prolonged service disruption and costly mitigation.
+Resources such as CloudFront distributions, Elastic Load Balancers, Global Accelerator accelerators, Elastic IPs, and Route 53 hosted zones should be protected by AWS Shield Advanced to reduce the risk of large-scale DDoS attacks that can cause prolonged service disruption and costly mitigation.
 
 This check requires an `AWS::FMS::Policy` resource whose `Properties.SecurityServicePolicyData.Type` is set to `SHIELD_ADVANCED`. That FMS policy must include the relevant resource type in `Properties.ResourceTypeList` (for example, `AWS::CloudFront::Distribution`, `AWS::ElasticLoadBalancing::LoadBalancer`, `AWS::GlobalAccelerator::Accelerator`, `AWS::EC2::EIP`, or `AWS::Route53::HostedZone`). Resources without such an association will be flagged.
 
@@ -48,7 +48,6 @@ ShieldAdvancedFmsPolicy:
     SecurityServicePolicyData:
       Type: SHIELD_ADVANCED
 ```
-
 
 ## Compliant Code Examples
 ```yaml

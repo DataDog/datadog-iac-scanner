@@ -157,9 +157,11 @@ var sarifTests = []sarifTest{
 										},
 									},
 									"test.tf",
+									"Terraform",
 									"aws_ami_launch_permission",
 									"test_resource",
 									"1",
+									"",
 								),
 							},
 						},
@@ -254,9 +256,11 @@ var sarifTests = []sarifTest{
 										},
 									},
 									"test.json",
+									"Terraform",
 									"test_resource_type",
 									"test_resource_name",
 									"1",
+									"",
 								),
 							},
 						},
@@ -445,9 +449,11 @@ var sarifTests = []sarifTest{
 										},
 									},
 									"",
+									"",
 									"test_resource_type",
 									"test_resource_name",
 									"test",
+									"",
 								),
 							},
 						},
@@ -481,9 +487,11 @@ var sarifTests = []sarifTest{
 										},
 									},
 									"",
+									"",
 									"test_resource_type_2",
 									"test_resource_name_2",
 									"test info",
+									"",
 								),
 							},
 						},
@@ -621,9 +629,11 @@ var sarifTests = []sarifTest{
 										},
 									},
 									"test.json",
+									"Terraform",
 									"test_resource_type",
 									"test_resource_name",
 									"1",
+									"",
 								),
 							},
 						},
@@ -658,6 +668,94 @@ var sarifTests = []sarifTest{
 							TaxonomyRealeaseDateUtc:                   "2023-10-26",
 							TaxonomyDefinitions: []taxonomyDefinitions{
 								{},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		name: "Should create one occurrence for Dockerfile with vulnerability line in fingerprint",
+		vq: []model.QueryResult{
+			{
+				QueryName:     "test dockerfile",
+				QueryID:       "dockerfile-test-1",
+				Description:   "test dockerfile description",
+				QueryURI:      "https://www.test.com",
+				Severity:      model.SeverityHigh,
+				Platform:      "Dockerfile",
+				CloudProvider: "common",
+				Category:      "Security",
+				Files: []model.VulnerableFile{
+					{
+						KeyActualValue:        "test dockerfile issue",
+						FileName:              "Dockerfile",
+						Line:                  5,
+						LineWithVulnerability: "RUN apt-get install -y python",
+						ResourceType:          "RUN",
+						ResourceName:          "apt-get install",
+						ResourceLocation: model.ResourceLocation{
+							Start: model.ResourceLine{Line: 5, Col: 1},
+							End:   model.ResourceLine{Line: 5, Col: 30},
+						},
+					},
+				},
+				CWE: "",
+			},
+		},
+		want: sarifReport{
+			Runs: []SarifRun{
+				{
+					Tool: sarifTool{
+						Driver: sarifDriver{
+							Rules: []sarifRule{
+								{
+									RuleID:               "test dockerfile",
+									RuleName:             "test dockerfile",
+									RuleShortDescription: sarifMessage{Text: "test dockerfile"},
+									RuleFullDescription:  sarifMessage{Text: "test dockerfile description\nRule ID: [dockerfile-test-1]"},
+									DefaultConfiguration: sarifConfiguration{
+										Level: "error",
+									},
+									HelpURI: "https://www.test.com",
+									Relationships: []sarifRelationship{
+										{
+											Relationship: sarifDescriptorReference{
+												ReferenceID:    "CAT000",
+												ReferenceIndex: 0,
+												ToolComponent: sarifComponentReference{
+													ComponentReferenceGUID:  "58cdcc6f-fe41-4724-bfb3-131a93df4c3f",
+													ComponentReferenceName:  "Categories",
+													ComponentReferenceIndex: targetTemplate.ToolComponent.ComponentReferenceIndex,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Results: []sarifResult{
+						{
+							ResultRuleID:    "test dockerfile",
+							ResultRuleIndex: 0,
+							ResultKind:      "",
+							ResultMessage:   sarifMessage{Text: "test dockerfile issue", MessageProperties: nil},
+							ResultLocations: []SarifLocation{
+								{
+									PhysicalLocation: sarifPhysicalLocation{
+										ArtifactLocation: sarifArtifactLocation{ArtifactURI: "Dockerfile"},
+										Region:           model.SarifRegion{StartLine: 5, EndLine: 5, StartColumn: 1, EndColumn: 30},
+									},
+								},
+							},
+							ResultLevel: "warning",
+							ResultProperties: sarifProperties{
+								"tags": []string{"DATADOG_CATEGORY:Security", "IAC_RESOURCE_TYPE:RUN", "IAC_RESOURCE_NAME:apt-get install"},
+							},
+							PartialFingerprints: SarifPartialFingerprints{
+								DatadogFingerprint: "07c54291ed30d1ec2fba3082e449aac7bda6922149abe20a90f1806c79c9b575",
 							},
 						},
 					},

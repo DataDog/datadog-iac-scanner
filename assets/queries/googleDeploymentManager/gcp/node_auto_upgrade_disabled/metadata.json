@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Resource Management",
   "descriptionText": "Kubernetes nodes must have auto upgrades set to true, which means the attribute 'nodePools' must be defined and the subattribute 'managment' must be defined and have the attribute 'autoUpgrade' set to true",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/node_auto_upgrade_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/node_auto_upgrade_disabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "40051d4a",
   "cloudProvider": "gcp",

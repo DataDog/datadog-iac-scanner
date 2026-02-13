@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Yum install Without Version",
+    "queryName": "yum install without version",
     "severity": "MEDIUM",
     "line": 2
   },
   {
-    "queryName": "Yum install Without Version",
+    "queryName": "yum install without version",
     "severity": "MEDIUM",
     "line": 3
   }

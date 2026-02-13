@@ -86,7 +86,6 @@ func TestFileSystemSourceProvider_GetSources(t *testing.T) { //nolint
 		excludes map[string][]os.FileInfo
 	}
 	type args struct {
-		ctx          context.Context
 		queryName    string
 		extensions   model.Extensions
 		sink         Sink
@@ -105,7 +104,6 @@ func TestFileSystemSourceProvider_GetSources(t *testing.T) { //nolint
 				excludes: map[string][]os.FileInfo{},
 			},
 			args: args{
-				ctx:          nil,
 				queryName:    "alb_protocol_is_http",
 				extensions:   nil,
 				sink:         mockSink,
@@ -114,13 +112,19 @@ func TestFileSystemSourceProvider_GetSources(t *testing.T) { //nolint
 			wantErr: true,
 		},
 	}
+
+	ctx := context.Background()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &FileSystemSourceProvider{
 				paths:    tt.fields.paths,
 				excludes: tt.fields.excludes,
 			}
-			if err := s.GetSources(tt.args.ctx, tt.args.extensions, tt.args.sink, tt.args.resolverSink); (err != nil) != tt.wantErr {
+			if err := s.GetSources(ctx, tt.args.extensions, tt.args.sink, tt.args.resolverSink); (err != nil) != tt.wantErr {
+				t.Errorf("FileSystemSourceProvider.GetSources() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err := s.GetParallelSources(ctx, tt.args.extensions, tt.args.sink, tt.args.resolverSink); (err != nil) != tt.wantErr {
 				t.Errorf("FileSystemSourceProvider.GetSources() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

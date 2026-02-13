@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECS task definitions should use `NetworkMode` set to `awsvpc` so each task receives its own elastic network interface and can be protected by VPC security groups. This enables per-task network isolation and reduces the blast radius of compromised containers.
+Amazon ECS task definitions should use `NetworkMode` set to `awsvpc` so each task receives its own elastic network interface and can be protected by VPC security groups. This enables per-task network isolation and reduces the blast radius of compromised containers.
  
  In CloudFormation, the `AWS::ECS::TaskDefinition` resource's `NetworkMode` property must be defined and set to `awsvpc`. If `NetworkMode` is undefined, it defaults to `bridge`. Resources missing the property or with any other value (for example, `bridge` or `host`) will be flagged because they cannot leverage task-level security groups. 
  
@@ -45,7 +45,6 @@ MyTaskDefinition:
         Image: nginx:latest
         Essential: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether the `action` field in the `aws_lambda_permission` resource is set to `"lambda:InvokeFunction"`. When the field is misconfigured to allow actions beyond what is necessary, such as "lambda:DeleteFunction", it grants overly permissive access to the Lambda function. This can enable third-party AWS services or principals to perform destructive or unintended operations on the function, increasing the risk of unauthorized deletion, modification, or misuse. If left unaddressed, this misconfiguration could result in loss of critical business logic, disruption of service, or escalation of privileges within your cloud environment.
-
+This check verifies whether the `action` field in the `aws_lambda_permission` resource is set to `"lambda:InvokeFunction"`. When the field is misconfigured to allow actions beyond what is necessary, such as "lambda:DeleteFunction", it grants overly permissive access to the Lambda function. This can enable third-party AWS services or principals to perform destructive or unintended operations on the function, increasing the risk of unauthorized deletion, modification, or misuse. If left unaddressed, this misconfiguration could result in loss of critical business logic, disruption of service, or escalation of privileges within your cloud environment.
 
 ## Compliant Code Examples
 ```terraform

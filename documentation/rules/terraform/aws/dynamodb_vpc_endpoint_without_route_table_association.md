@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- AWS VPC endpoints for DynamoDB provide secure and private connectivity between VPC resources and DynamoDB without traversing the public internet. For a VPC endpoint to function correctly, it must be associated with one or more route tables using the `aws_route_table_association` resource, which ensures the correct routes (`route_table_id` and `subnet_id`) direct DynamoDB traffic through the endpoint. If this association is missing, instances within the VPC will not be able to route requests to DynamoDB over the VPC endpoint, potentially forcing traffic through the public internet or causing connectivity failures. This misconfiguration can expose sensitive data to unnecessary network risk and violates best practices for securing internal AWS service communications.
-
+AWS VPC endpoints for DynamoDB provide secure and private connectivity between VPC resources and DynamoDB without traversing the public internet. For a VPC endpoint to function correctly, it must be associated with one or more route tables using the `aws_route_table_association` resource, which ensures the correct routes (`route_table_id` and `subnet_id`) direct DynamoDB traffic through the endpoint. If this association is missing, instances within the VPC will not be able to route requests to DynamoDB over the VPC endpoint, potentially forcing traffic through the public internet or causing connectivity failures. This misconfiguration can expose sensitive data to unnecessary network risk and violates best practices for securing internal AWS service communications.
 
 ## Compliant Code Examples
 ```terraform

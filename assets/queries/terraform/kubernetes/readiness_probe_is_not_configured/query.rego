@@ -3,15 +3,13 @@ package Cx
 import data.generic.terraform as tf_lib
 import data.generic.common as common_lib
 
-types := {"init_container", "container"}
-
 CxPolicy[result] {
 	resource := input.document[i].resource[resourceType]
 
 	not resource_equal(resourceType)
 
 	specInfo := tf_lib.getSpecInfo(resource[name])
-	container := specInfo.spec[types[x]]
+	container := specInfo.spec.container
 
 	is_object(container) == true
 
@@ -21,10 +19,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": resourceType,
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("%s[%s].%s.%s", [resourceType, name, specInfo.path, types[x]]),
+		"searchKey": sprintf("%s[%s].%s.container", [resourceType, name, specInfo.path]),
 		"issueType": "MissingAttribute",
-		"keyExpectedValue": sprintf("%s[%s].%s.%s.readiness_probe should be set", [resourceType, name, specInfo.path, types[x]]),
-		"keyActualValue": sprintf("%s[%s].%s.%s.readiness_probe is undefined", [resourceType, name, specInfo.path, types[x]]),
+		"keyExpectedValue": sprintf("%s[%s].%s.container.readiness_probe should be set", [resourceType, name, specInfo.path]),
+		"keyActualValue": sprintf("%s[%s].%s.container.readiness_probe is undefined", [resourceType, name, specInfo.path]),
 	}
 }
 
@@ -34,7 +32,7 @@ CxPolicy[result] {
 	not resource_equal(resourceType)
 
 	specInfo := tf_lib.getSpecInfo(resource[name])
-	container := specInfo.spec[types[x]]
+	container := specInfo.spec.container
 
 	is_array(container) == true
 	containersType := container[_]
@@ -45,10 +43,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": resourceType,
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("%s[%s].%s.%s", [resourceType, name, specInfo.path, types[x]]),
+		"searchKey": sprintf("%s[%s].%s.container", [resourceType, name, specInfo.path]),
 		"issueType": "MissingAttribute",
-		"keyExpectedValue": sprintf("%s[%s].%s.%s[%d].readiness_probe should be set", [resourceType, name, specInfo.path, types[x], containersType]),
-		"keyActualValue": sprintf("%s[%s].%s.%s[%d].readiness_probe is undefined", [resourceType, name, specInfo.path, types[x], containersType]),
+		"keyExpectedValue": sprintf("%s[%s].%s.container[%d].readiness_probe should be set", [resourceType, name, specInfo.path, containersType]),
+		"keyActualValue": sprintf("%s[%s].%s.container[%d].readiness_probe is undefined", [resourceType, name, specInfo.path, containersType]),
 	}
 }
 

@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Yum Install Allows Manual Input",
+    "queryName": "yum install allows manual input",
     "severity": "LOW",
     "line": 3
   },
   {
-    "queryName": "Yum Install Allows Manual Input",
+    "queryName": "yum install allows manual input",
     "severity": "LOW",
     "line": 4
   }

@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "Bucket should have versioning enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/bucket_without_versioning",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/bucket_without_versioning",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "97c49cde",
   "cloudProvider": "gcp",

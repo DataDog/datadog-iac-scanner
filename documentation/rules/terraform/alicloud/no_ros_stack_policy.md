@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A ROS stack should define a stack policy to protect resources from unintended changes during creation and update actions. Each `alicloud_ros_stack` resource must include either `stack_policy_body` or `stack_policy_url` for creation protection. For update protection, it must include either `stack_policy_during_update_body` or `stack_policy_during_update_url`. This rule reports a `MissingAttribute` issue when the corresponding attribute is not defined.
-
+A ROS stack should define a stack policy to protect resources from unintended changes during creation and update actions. Each `alicloud_ros_stack` resource must include either `stack_policy_body` or `stack_policy_url` for creation protection. For update protection, it must include either `stack_policy_during_update_body` or `stack_policy_during_update_url`. This rule reports a `MissingAttribute` issue when the corresponding attribute is not defined.
 
 ## Compliant Code Examples
 ```terraform

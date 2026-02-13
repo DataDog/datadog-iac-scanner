@@ -14,5 +14,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("FROM={{%s}}.{{%s}} should not use the '--platform' flag", [name, resource.Original]),
 		"keyActualValue": sprintf("FROM={{%s}}.{{%s}} is using the '--platform' flag", [name, resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

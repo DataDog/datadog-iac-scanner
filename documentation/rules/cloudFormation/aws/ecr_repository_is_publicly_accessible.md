@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECR repository policies that allow wildcard principals (`*`) grant public access to container images, enabling any AWS account or unauthenticated user to pull or push images. This increases the risk of data exposure, unauthorized deployments, and supply-chain compromise.
+Amazon ECR repository policies that allow wildcard principals (`*`) grant public access to container images, enabling any AWS account or unauthenticated user to pull or push images. This increases the risk of data exposure, unauthorized deployments, and supply-chain compromise.
  
  The `RepositoryPolicyText` property of `AWS::ECR::Repository` resources must not contain `Statement` entries where `Effect` is `Allow` and the `Principal` includes `*`. This rule flags repository policy statements with `Principal` set to `*` and `Effect` set to `Allow`. Instead, specify explicit principals such as AWS account ARNs, IAM roles, or service principals and apply least-privilege actions and conditions.
 
@@ -51,7 +51,6 @@ MyRepository:
             - "ecr:BatchCheckLayerAvailability"
           Resource: !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/my-repo"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

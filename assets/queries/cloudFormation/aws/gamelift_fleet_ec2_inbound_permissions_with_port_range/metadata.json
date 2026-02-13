@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Opening port ranges for GameLift fleet instances increases the attack surface by exposing multiple ports instead of a single intended port. This can allow additional network-based attacks and makes it harder to reason about allowed traffic.\n \n For `AWS::GameLift::Fleet` resources, each entry in the `Properties.EC2InboundPermissions` array must set `FromPort` and `ToPort` to the same numeric value so only a single port is opened. Resources with `EC2InboundPermissions` entries where `FromPort` is not equal to `ToPort` will be flagged. Ensure both properties are defined and equal for every entry.\n\nSecure configuration example:\n\n```yaml\nMyGameLiftFleet:\n  Type: AWS::GameLift::Fleet\n  Properties:\n    EC2InboundPermissions:\n      - FromPort: 3478\n        ToPort: 3478\n        IpRange: 0.0.0.0/0\n        Protocol: UDP\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/gamelift_fleet_ec2_inbound_permissions_with_port_range",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/gamelift_fleet_ec2_inbound_permissions_with_port_range",
   "platform": "CloudFormation",
   "descriptionID": "2f59d790",
   "cloudProvider": "aws",

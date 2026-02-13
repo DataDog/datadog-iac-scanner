@@ -1,12 +1,13 @@
 {
   "id": "efbf148a-67e9-42d2-ac47-02fa1c0d0b22",
-  "queryName": "Shell Running A Pipe Without Pipefail Flag",
+  "queryName": "Shell running a pipe without the pipefail flag",
   "severity": "LOW",
   "category": "Insecure Defaults",
-  "descriptionText": "Check if shell commands with pipes (except Powershell) have the pipefail flag set (-o).",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#run",
+  "descriptionText": "Pipeline commands executed by POSIX shells must enable the `pipefail` option so that a failure in any stage of a pipeline makes the whole command fail. Without `pipefail`, earlier command failures can be masked and CI/build steps or image contents may be left in an inconsistent or insecure state.\n\nThis check targets Dockerfile-style instructions: `RUN` commands that invoke a shell (bash, zsh, ash, /bin/bash, /bin/zsh, /bin/ash) and contain a pipe character (`|`) must have `pipefail` enabled either via a preceding `SHELL` instruction that includes `-o pipefail` or by enabling it in the `RUN` command itself. Resources will be flagged when a `RUN` with a pipeline is present and there is no prior `SHELL` instruction with `-o pipefail` and the `RUN` does not explicitly enable `pipefail`. PowerShell-style commands are excluded. Fixes include setting a global shell with pipefail or prefixing pipeline commands with `set -o pipefail` (see examples below).\n\nSecure configuration with a global `SHELL` in a Dockerfile:\n\n```dockerfile\nSHELL [\"/bin/bash\", \"-o\", \"pipefail\", \"-c\"]\nRUN command1 | command2\n```\n\nSecure inline option for a single `RUN`:\n\n```dockerfile\nRUN set -o pipefail; command1 | command2\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/shell_running_a_pipe_without_pipefail_flag",
   "platform": "Dockerfile",
   "descriptionID": "26810b44",
   "cwe": "710",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run"
 }

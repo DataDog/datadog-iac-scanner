@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The `nifcloud_load_balancer` is configured to use the HTTP port (`load_balancer_port` is set to `80`).
+The `nifcloud_load_balancer` is configured to use the HTTP port (`load_balancer_port` is set to `80`).
 It should be switched to HTTPS to benefit from TLS security features.
 The rule reports an `IncorrectValue` issue when `load_balancer_port` equals `80`.
-
 
 ## Compliant Code Examples
 ```terraform

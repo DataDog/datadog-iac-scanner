@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- `resources.limits.cpu` should be set because if the system has free CPU time, a container is guaranteed to be allocated as much CPU as it requests. Setting a CPU limit prevents a container from consuming unbounded CPU and helps ensure fair, predictable resource allocation. This rule checks the `spec` for both `container` and `init_container` entries and verifies that `resources`, `resources.limits`, and `resources.limits.cpu` are present; it reports when any of these keys are missing.
-
+`resources.limits.cpu` should be set because if the system has free CPU time, a container is guaranteed to be allocated as much CPU as it requests. Setting a CPU limit prevents a container from consuming unbounded CPU and helps ensure fair, predictable resource allocation. This rule checks the `spec` for both `container` and `init_container` entries and verifies that `resources`, `resources.limits`, and `resources.limits.cpu` are present; it reports when any of these keys are missing.
 
 ## Compliant Code Examples
 ```terraform

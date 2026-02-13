@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies if AWS S3 bucket ACLs are configured to prevent access from all authenticated AWS users. When an S3 bucket grants access to the `AuthenticatedUsers` group, it allows any AWS account holder worldwide to access your data, not just users within your organization. This significantly increases the risk of unauthorized data access, potential data breaches, and violation of data governance policies.
+This check verifies if AWS S3 bucket ACLs are configured to prevent access from all authenticated AWS users. When an S3 bucket grants access to the `AuthenticatedUsers` group, it allows any AWS account holder worldwide to access your data, not just users within your organization. This significantly increases the risk of unauthorized data access, potential data breaches, and violation of data governance policies.
 
 To secure your S3 bucket, use specific canonical user IDs rather than the global authenticated users group. For example, instead of using:
 ```
@@ -45,7 +45,6 @@ grantee {
   id   = "1234567890abcdef1234567890abcdef12345678"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

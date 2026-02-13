@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- `alicloud_db_instance` resources must have `sql_collector_status` set to `Enabled` and `sql_collector_config_value` set to `180` or greater.
+`alicloud_db_instance` resources must have `sql_collector_status` set to `Enabled` and `sql_collector_config_value` set to `180` or greater.
 This rule flags resources that are missing either attribute, have `sql_collector_status` set to `Disabled`, or have `sql_collector_config_value` less than `180`.
 To remediate, set `sql_collector_status = Enabled` and `sql_collector_config_value = 180`.
-
 
 ## Compliant Code Examples
 ```terraform

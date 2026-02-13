@@ -4,7 +4,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "Kinesis streams should be inventoried so unmanaged or unknown data streams do not create blind spots that could lead to unauthorized access, data exfiltration, or compliance gaps. This rule enumerates CloudFormation resources of type `AWS::Kinesis::Stream` and emits a Bill of Materials entry containing the resource name, vendor (`AWS`), category (`Streaming`), reported encryption state, and a `resource_accessibility` value of `unknown`. This is an informational check that lists streams regardless of property values; the output includes detected encryption details when available and should be used alongside enforcement rules that require specific encryption or access configurations.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/kinesis",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_bom/kinesis",
   "platform": "CloudFormation",
   "descriptionID": "4b8f3b90",
   "cloudProvider": "aws",

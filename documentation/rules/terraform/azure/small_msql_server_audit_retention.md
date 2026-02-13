@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SQL Server auditing logs should be retained for more than 90 days to ensure sufficient historical data is available for security investigations and compliance requirements. When the `retention_in_days` attribute in the `extended_auditing_policy` block is set below 91, such as in the following Terraform snippet, essential audit records may be lost due to premature log deletion:
+SQL Server auditing logs should be retained for more than 90 days to ensure sufficient historical data is available for security investigations and compliance requirements. When the `retention_in_days` attribute in the `extended_auditing_policy` block is set below 91, such as in the following Terraform snippet, essential audit records may be lost due to premature log deletion:
 
 ```
 extended_auditing_policy {
@@ -49,7 +49,6 @@ extended_auditing_policy {
 ```
 
 Failing to enforce adequate audit log retention can prevent detection of security incidents and undermine compliance with regulatory standards.
-
 
 ## Compliant Code Examples
 ```terraform

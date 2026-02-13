@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies that AWS security groups do not allow unrestricted inbound access to port 22 (SSH) from the public internet (`cidr_blocks = ["0.0.0.0/0"]`). Allowing public SSH access exposes instances to unauthorized access attempts and automated attacks, increasing the risk of successful brute-force compromises. To mitigate this vulnerability, the `cidr_blocks` attribute in the `ingress` block should be restricted to trusted IP ranges only, as shown below:
+This check verifies that AWS security groups do not allow unrestricted inbound access to port 22 (SSH) from the public internet (`cidr_blocks = ["0.0.0.0/0"]`). Allowing public SSH access exposes instances to unauthorized access attempts and automated attacks, increasing the risk of successful brute-force compromises. To mitigate this vulnerability, the `cidr_blocks` attribute in the `ingress` block should be restricted to trusted IP ranges only, as shown below:
 
 Insecure configuration:
 ```
@@ -50,7 +50,6 @@ ingress {
 }
 ```
 If left unaddressed, this misconfiguration can lead to remote attackers gaining entry to instances via SSH, putting sensitive data and critical infrastructure at risk.
-
 
 ## Compliant Code Examples
 ```terraform

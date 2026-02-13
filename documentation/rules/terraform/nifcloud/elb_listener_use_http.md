@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The ELB listener uses the HTTP protocol while its ELB network interface is in the 'net-COMMON_GLOBAL' VIP network. The listener should use HTTPS to enable TLS security features and protect data in transit.
-
+The ELB listener uses the HTTP protocol while its ELB network interface is in the 'net-COMMON_GLOBAL' VIP network. The listener should use HTTPS to enable TLS security features and protect data in transit.
 
 ## Compliant Code Examples
 ```terraform

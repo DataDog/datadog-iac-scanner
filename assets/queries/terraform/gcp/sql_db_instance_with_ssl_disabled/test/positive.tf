@@ -45,3 +45,21 @@ resource "google_sql_database_instance" "positive3" {
     }
   }
 }
+
+resource "google_sql_database_instance" "positive4" {
+  provider = google-beta
+
+  name   = "private-instance-${random_id.db_name_suffix.hex}"
+  region = "us-central1"
+
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+
+  settings {
+    tier = "db-f1-micro"
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.private_network.id
+      ssl_mode        = "ALLOW_UNENCRYPTED_AND_ENCRYPTED"
+    }
+  }
+}

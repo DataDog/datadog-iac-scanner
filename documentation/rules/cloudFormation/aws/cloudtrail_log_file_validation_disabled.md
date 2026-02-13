@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudTrail log file validation must be enabled to detect tampering or unauthorized modification of delivered log files and to support reliable forensic investigations and compliance auditing. The `EnableLogFileValidation` property on `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources that omit `EnableLogFileValidation` or set it to `false` will be flagged as a security risk. Enabling validation causes CloudTrail to create digest files that allow verification of the integrity of log files stored in the S3 bucket.
+CloudTrail log file validation must be enabled to detect tampering or unauthorized modification of delivered log files and to support reliable forensic investigations and compliance auditing. The `EnableLogFileValidation` property on `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources that omit `EnableLogFileValidation` or set it to `false` will be flagged as a security risk. Enabling validation causes CloudTrail to create digest files that allow verification of the integrity of log files stored in the S3 bucket.
 
 Secure CloudFormation example:
 
@@ -41,7 +41,6 @@ MyTrail:
     IsLogging: true
     EnableLogFileValidation: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

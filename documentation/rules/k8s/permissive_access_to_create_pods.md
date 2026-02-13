@@ -1,10 +1,10 @@
 ---
-title: "Permissive access to create Pods"
+title: "Permissive access to create pods"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/permissive_access_to_create_pods"
   id: "592ad21d-ad9b-46c6-8d2d-fad09d62a942"
-  display_name: "Permissive access to create Pods"
+  display_name: "Permissive access to create pods"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
   severity: "MEDIUM"
@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The permission to create Pods in a cluster should be restricted because it can allow privilege escalation. This rule detects Role and ClusterRole rules where verbs include "create" for the "pods" resource, or where verbs or resources use wildcard values together with non-custom API groups (empty string or "*"). When triggered, the rule reports the document, resource, and rule location containing the unsafe verb/resource combination.
-
+The permission to create pods in a cluster should be restricted because it can allow privilege escalation. This rule detects Role and ClusterRole rules where verbs include "create" for the "pods" resource, or where verbs or resources use wildcard values together with non-custom API groups (empty string or "*"). When triggered, the rule reports the document, resource, and rule location containing the unsafe verb/resource combination.
 
 ## Compliant Code Examples
 ```yaml
@@ -131,7 +130,7 @@ rules:
   verbs:
     - "get"
     - "watch"
-    - create
+    - "create"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -180,4 +179,5 @@ rules:
 - apiGroups: [""]
   resources: ["p*ds"]
   verbs: ["get", "watch", "create"]
+
 ```

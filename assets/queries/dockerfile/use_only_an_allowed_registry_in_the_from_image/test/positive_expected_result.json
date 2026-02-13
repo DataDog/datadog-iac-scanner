@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Use only allowed registry in FROM",
+    "severity": "HIGH",
+    "line": 2
+  },
+  {
+    "queryName": "Use only allowed registry in FROM",
+    "severity": "HIGH",
+    "line": 36
+  }
+]

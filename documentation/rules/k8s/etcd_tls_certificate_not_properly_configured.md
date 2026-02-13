@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When using `kube-apiserver`, the `--etcd-certfile` and `--etcd-keyfile` flags should be set. The rule checks `containers` and `initContainers` for containers whose command includes `kube-apiserver` and reports a MissingAttribute issue when either flag is not defined.
-
+When using `kube-apiserver`, the `--etcd-certfile` and `--etcd-keyfile` flags should be set. The rule checks `containers` and `initContainers` for containers whose command includes `kube-apiserver` and reports a MissingAttribute issue when either flag is not defined.
 
 ## Compliant Code Examples
 ```yaml

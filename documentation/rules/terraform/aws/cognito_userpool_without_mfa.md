@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Cognito user pools should have Multi-Factor Authentication (MFA) enabled to enhance the security of user accounts. If the `mfa_configuration` attribute is set to `"OFF"` or left undefined, as in the following example, users are only required to use a single authentication factor, making their accounts more susceptible to unauthorized access if credentials are compromised.
+AWS Cognito user pools should have Multi-Factor Authentication (MFA) enabled to enhance the security of user accounts. If the `mfa_configuration` attribute is set to `"OFF"` or left undefined, as in the following example, users are only required to use a single authentication factor, making their accounts more susceptible to unauthorized access if credentials are compromised.
 
 ```
 resource "aws_cognito_user_pool" "example" {
@@ -38,7 +38,6 @@ resource "aws_cognito_user_pool" "example" {
 ```
 
 Enabling MFA (for example, `mfa_configuration = "ON"` or `"OPTIONAL"`) significantly reduces the risk of account takeover by requiring an additional authentication factor.
-
 
 ## Compliant Code Examples
 ```terraform

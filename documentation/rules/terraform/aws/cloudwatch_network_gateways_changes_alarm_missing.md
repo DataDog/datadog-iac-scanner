@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This control checks that a log metric filter and an associated alarm are set up to monitor changes to network gateways in AWS, such as creation or deletion of customer or internet gateways. If the `metric_name` attribute in the `aws_cloudwatch_metric_alarm` resource is not correctly set to the name of the log metric filter (for example, `"XXXX NOT YOUR FILTER XXXX"`), gateway modifications may go undetected. Without this alerting, unauthorized or unintended changes to network gateways can occur without notice, potentially exposing the VPC to security risks or data exfiltration.
-
+This control checks that a log metric filter and an associated alarm are set up to monitor changes to network gateways in AWS, such as creation or deletion of customer or internet gateways. If the `metric_name` attribute in the `aws_cloudwatch_metric_alarm` resource is not correctly set to the name of the log metric filter (for example, `"XXXX NOT YOUR FILTER XXXX"`), gateway modifications may go undetected. Without this alerting, unauthorized or unintended changes to network gateways can occur without notice, potentially exposing the VPC to security risks or data exfiltration.
 
 ## Compliant Code Examples
 ```terraform

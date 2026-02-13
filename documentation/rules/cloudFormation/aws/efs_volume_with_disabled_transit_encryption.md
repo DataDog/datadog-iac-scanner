@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECS task definitions that mount Amazon EFS volumes must enable in-transit encryption to protect data transmitted between containers and the file system from interception or tampering.
+Amazon ECS task definitions that mount Amazon EFS volumes must enable in-transit encryption to protect data transmitted between containers and the file system from interception or tampering.
  
  In CloudFormation, the `AWS::ECS::TaskDefinition` resource’s `Properties.volumes[*].efsVolumeConfiguration.TransitEncryption` property must be defined and set to `ENABLED`. Resources missing this property or with `TransitEncryption` set to any value other than `ENABLED` will be flagged.
 
@@ -46,7 +46,6 @@ MyTaskDefinition:
           FileSystemId: fs-0123456789abcdef0
           TransitEncryption: ENABLED
 ```
-
 
 ## Compliant Code Examples
 ```json

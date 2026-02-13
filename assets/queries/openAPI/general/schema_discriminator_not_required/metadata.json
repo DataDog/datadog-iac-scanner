@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "The discriminator property in the Schema Object should be a required property",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/schema_discriminator_not_required",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/schema_discriminator_not_required",
   "platform": "OpenAPI",
   "descriptionID": "ad9474eb",
   "aggregation": 2,

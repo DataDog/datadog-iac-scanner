@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Resource Management",
   "descriptionText": "Incorrect CPU or memory settings for AWS Fargate tasks can prevent containers from starting or cause insufficient or imbalanced resource allocation. This can lead to service downtime and degraded availability.\n \n This rule checks `AWS::ECS::Service` resources with `LaunchType` set to `FARGATE` and their associated `AWS::ECS::TaskDefinition` container definitions:\n - `ContainerDefinitions[].Cpu` must be one of `256`, `512`, `1024`, `2048`, or `4096`.\n - Memory must match allowed values per CPU:\n   - For `Cpu=256`, memory must be `512`, `1024`, or `2048`.\n   - For `Cpu=512`, memory must be in the range `1024`–`4095`.\n   - For `Cpu=1024`, memory must be in the range `2048`–`8191`.\n   - For `Cpu=2048`, memory must be in the range `4096`–`16383`.\n   - For `Cpu=4096`, memory must be in the range `8192`–`30719`.\n \n Resources missing these properties, with `Cpu` outside the allowed set, with `Memory` outside the mapped values, or (for non-`256` CPU) with `Memory` not a multiple of `1024` will be flagged.\n\nSecure example (valid Fargate task definition):\n\n```yaml\nMyTaskDef:\n  Type: AWS::ECS::TaskDefinition\n  Properties:\n    Family: my-task\n    ContainerDefinitions:\n      - Name: my-container\n        Cpu: 512\n        Memory: 2048\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecs_task_definition_invalid_cpu_or_memory",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ecs_task_definition_invalid_cpu_or_memory",
   "platform": "CloudFormation",
   "descriptionID": "8fa43a9a",
   "cloudProvider": "aws",

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `alicloud_ros_stack` resource must include the `notification_urls` attribute with at least one URL to receive stack-related events. Without a defined, non-empty `notification_urls`, the stack will not receive lifecycle notifications such as create, update, or rollback.
-
+The `alicloud_ros_stack` resource must include the `notification_urls` attribute with at least one URL to receive stack-related events. Without a defined, non-empty `notification_urls`, the stack will not receive lifecycle notifications such as create, update, or rollback.
 
 ## Compliant Code Examples
 ```terraform

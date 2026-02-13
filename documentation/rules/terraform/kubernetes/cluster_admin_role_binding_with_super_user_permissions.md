@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- Ensure the `cluster-admin` role is only used where required for RBAC.
+Ensure the `cluster-admin` role is only used where required for RBAC.
 The `cluster-admin` role grants superuser permissions across the entire cluster and should be limited to essential administrative accounts. This rule flags `kubernetes_cluster_role_binding` resources that bind to `cluster-admin`. Prefer using least-privilege roles or scoped `RoleBinding` assignments instead.
-
 
 ## Compliant Code Examples
 ```terraform

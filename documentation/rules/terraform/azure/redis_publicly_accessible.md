@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Redis Cache instances with firewall rules that allow access from public IP addresses are vulnerable to unauthorized access and potential data breaches. When configuring firewall rules, using public IP ranges (such as `1.2.3.4` to `2.3.4.5`) exposes your Redis Cache to the internet, increasing the risk of brute force attacks or exploitation of vulnerabilities.
+Azure Redis Cache instances with firewall rules that allow access from public IP addresses are vulnerable to unauthorized access and potential data breaches. When configuring firewall rules, using public IP ranges (such as `1.2.3.4` to `2.3.4.5`) exposes your Redis Cache to the internet, increasing the risk of brute force attacks or exploitation of vulnerabilities.
 
 Instead, limit access to private IP ranges within your internal network (such as `10.2.3.4` to `10.3.4.5`), as shown below:
 
@@ -43,7 +43,6 @@ resource "azurerm_redis_firewall_rule" "example" {
 ```
 
 This ensures your Redis Cache is only accessible from within your virtual network, significantly reducing the attack surface.
-
 
 ## Compliant Code Examples
 ```terraform

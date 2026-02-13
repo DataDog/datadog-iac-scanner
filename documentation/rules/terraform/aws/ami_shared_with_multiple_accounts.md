@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that Amazon Machine Images (AMIs) are not granted launch permissions to multiple AWS accounts, which is controlled by the `aws_ami_launch_permission` resource's `account_id` attribute. Allowing more than one account to access the same AMI, as shown below, can lead to unauthorized use or distribution of potentially sensitive images:
+This check ensures that Amazon Machine Images (AMIs) are not granted launch permissions to multiple AWS accounts, which is controlled by the `aws_ami_launch_permission` resource's `account_id` attribute. Allowing more than one account to access the same AMI, as shown below, can lead to unauthorized use or distribution of potentially sensitive images:
 
 ```
 resource "aws_ami_launch_permission" "positive1" {
@@ -50,7 +50,6 @@ resource "aws_ami_launch_permission" "secure_example" {
   account_id = "123456789012"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

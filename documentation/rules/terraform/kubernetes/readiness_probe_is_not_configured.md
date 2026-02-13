@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Check whether `readiness_probe` is configured for every `container` and `init_container`. The rule reports `MissingAttribute` when the `readiness_probe` key is undefined on a container object or array item. This check excludes resources of type `kubernetes_cron_job` and `kubernetes_job`.
-
+Check whether `readiness_probe` is configured for every `container`. The rule reports `MissingAttribute` when the `readiness_probe` key is undefined on a container object or array item. This check excludes `init_container` (readiness probes are not supported on `init_container`) and resources of type `kubernetes_cron_job` and `kubernetes_job`.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A workload is mounting a volume that targets a sensitive host OS directory via `host_path`. Mounting directories such as `/etc`, `/proc`, `/root`, or `/usr` can expose host files and compromise container-host isolation. This rule flags `host_path` mounts that target these sensitive OS directories.
-
+A workload is mounting a volume that targets a sensitive host OS directory via `host_path`. Mounting directories such as `/etc`, `/proc`, `/root`, or `/usr` can expose host files and compromise container-host isolation. This rule flags `host_path` mounts that target these sensitive OS directories.
 
 ## Compliant Code Examples
 ```terraform

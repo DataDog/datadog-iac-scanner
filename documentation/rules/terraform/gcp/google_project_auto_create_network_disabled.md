@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the `auto_create_network` attribute in the `google_project` resource is set to `false`. When `auto_create_network` is set to `true` or left unset (the default), Google Cloud automatically creates a default network with permissive firewall rules, potentially exposing resources to unauthorized access. Secure configuration requires explicitly setting `auto_create_network = false`, as shown below:
+This check ensures that the `auto_create_network` attribute in the `google_project` resource is set to `false`. When `auto_create_network` is set to `true` or left unset (the default), Google Cloud automatically creates a default network with permissive firewall rules, potentially exposing resources to unauthorized access. Secure configuration requires explicitly setting `auto_create_network = false`, as shown below:
 
 ```
 resource "google_project" "example" {
@@ -38,7 +38,6 @@ resource "google_project" "example" {
   auto_create_network = false
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

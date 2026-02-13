@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "MSK clusters must not expose broker endpoints to the public internet because public broker endpoints allow any internet actor to connect, increasing the risk of data exfiltration and unauthorized access. In AWS CloudFormation, verify `AWS::MSK::Cluster` resources. The `BrokerNodeGroupInfo.ConnectivityInfo.PublicAccess.Type` property must be set to `DISABLED` or the `PublicAccess` block omitted. This rule flags resources where `PublicAccess.Type` is set to `SERVICE_PROVIDED_EIPS`, which provisions public EIPs for brokers and makes them reachable from the internet.\n\nSecure configuration example:\n\n```yaml\nMyMSKCluster:\n  Type: AWS::MSK::Cluster\n  Properties:\n    BrokerNodeGroupInfo:\n      ConnectivityInfo:\n        PublicAccess:\n          Type: DISABLED\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/msk_broker_is_publicly_accessible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/msk_broker_is_publicly_accessible",
   "platform": "CloudFormation",
   "descriptionID": "dcf6ab9f",
   "cloudProvider": "aws",

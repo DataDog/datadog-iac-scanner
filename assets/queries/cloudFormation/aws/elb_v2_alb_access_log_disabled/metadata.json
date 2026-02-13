@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "Application Load Balancers must have access logging enabled so you retain detailed request records for incident investigation and traffic analysis. Without logs, security incidents are harder to investigate and you may not meet auditing or compliance requirements.\n \n For CloudFormation, check `AWS::ElasticLoadBalancingV2::LoadBalancer` resources have a `LoadBalancerAttributes` entry with `Key` equal to `access_logs.s3.enabled` and `Value` set to `true` (or the string `\"true\"` in templates). Resources missing the `LoadBalancerAttributes` property, or that include `access_logs.s3.enabled` with `Value` set to `false` (or `\"false\"`), will be flagged as non-compliant. \n \n Secure CloudFormation example:\n\n```yaml\nMyLoadBalancer:\n  Type: AWS::ElasticLoadBalancingV2::LoadBalancer\n  Properties:\n    Name: my-alb\n    Type: application\n    LoadBalancerAttributes:\n      - Key: access_logs.s3.enabled\n        Value: \"true\"\n      - Key: access_logs.s3.bucket\n        Value: my-alb-logs-bucket\n      - Key: access_logs.s3.prefix\n        Value: alb-logs/\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elb_v2_alb_access_log_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/elb_v2_alb_access_log_disabled",
   "platform": "CloudFormation",
   "descriptionID": "1b941e35",
   "cloudProvider": "aws",

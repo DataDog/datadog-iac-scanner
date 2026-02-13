@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EC2 instances should be EBS-optimized to ensure dedicated throughput and reduced I/O contention between instance network traffic and Amazon EBS volumes. This improves disk performance, lowers latency spikes, and helps maintain application availability under load.
+EC2 instances should be EBS-optimized to ensure dedicated throughput and reduced I/O contention between instance network traffic and Amazon EBS volumes. This improves disk performance, lowers latency spikes, and helps maintain application availability under load.
  
  For `AWS::EC2::Instance` resources, the `Properties.EbsOptimized` property must be defined and set to `true` for instance types that are not EBS-optimized by default. Resources missing `EbsOptimized` or with `EbsOptimized` set to `false` will be flagged. Instance types that are EBS-optimized by default are exempt.
  
@@ -43,7 +43,6 @@ MyInstance:
     InstanceType: m5.large
     EbsOptimized: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

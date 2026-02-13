@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Roles or ClusterRoles that grant permissions to port-forward into pods can open socket-level communication channels to containers. If compromised, attackers may abuse this capability to establish direct connections that bypass network security controls. This can enable data exfiltration, remote command execution, or persistent access to containerized workloads. Limiting port-forward permissions to trusted principals and enforcing least-privilege reduces this risk.
-
+Roles or ClusterRoles that grant permissions to port-forward into pods can open socket-level communication channels to containers. If compromised, attackers may abuse this capability to establish direct connections that bypass network security controls. This can enable data exfiltration, remote command execution, or persistent access to containerized workloads. Limiting port-forward permissions to trusted principals and enforcing least-privilege reduces this risk.
 
 ## Compliant Code Examples
 ```yaml

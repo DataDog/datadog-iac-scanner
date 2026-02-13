@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting an IAM user permissions to both `cloudformation:CreateStack` and `iam:PassRole` with `\"Resource\": \"*\"` is a significant security risk, as it allows the user to create CloudFormation stacks that assume any IAM role in the AWS account. This creates a privilege escalation vector, enabling the user to gain broader or even administrative privileges, bypassing intended access controls. If left unaddressed, an attacker or insider with these rights could compromise the integrity and confidentiality of AWS resources, leading to unauthorized access or manipulation of critical infrastructure.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_PassRole_and_cloudformation_CreateStack",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_passrole_and_cloudformation_createstack",
   "platform": "Terraform",
   "descriptionID": "c878232c",
   "cloudProvider": "aws",

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should have server-side encryption enabled to protect data at rest from unauthorized access. Encryption also helps ensure objects remain encrypted if underlying storage media or backups are compromised.
+S3 buckets should have server-side encryption enabled to protect data at rest from unauthorized access. Encryption also helps ensure objects remain encrypted if underlying storage media or backups are compromised.
 
 In CloudFormation, `AWS::S3::Bucket` resources must define `Properties.BucketEncryption.ServerSideEncryptionConfiguration` as a non-empty list. Each entry should include `ServerSideEncryptionByDefault.SSEAlgorithm` set to `AES256` or `aws:kms`. If using `aws:kms`, also specify `ServerSideEncryptionByDefault.KMSMasterKeyID`. Resources missing this property, or with an empty `ServerSideEncryptionConfiguration`, will be flagged.
 
@@ -43,7 +43,6 @@ MyBucket:
         - ServerSideEncryptionByDefault:
             SSEAlgorithm: AES256
 ```
-
 
 ## Compliant Code Examples
 ```yaml

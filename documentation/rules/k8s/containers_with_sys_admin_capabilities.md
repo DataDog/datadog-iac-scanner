@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not include the `CAP_SYS_ADMIN` Linux capability. This rule flags any resource where a `container` or `initContainer` adds `SYS_ADMIN` to `securityContext.capabilities.add`. `CAP_SYS_ADMIN` grants broad privileges and can enable privilege escalation, so it must not be granted to container processes.
-
+Containers should not include the `CAP_SYS_ADMIN` Linux capability. This rule flags any resource where a `container` or `initContainer` adds `SYS_ADMIN` to `securityContext.capabilities.add`. `CAP_SYS_ADMIN` grants broad privileges and can enable privilege escalation, so it must not be granted to container processes.
 
 ## Compliant Code Examples
 ```yaml

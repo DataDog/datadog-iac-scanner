@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The CLB listener `protocol` must not be set to insecure protocols such as `TCP`, `UDP`, or `HTTP`.
+The CLB listener `protocol` must not be set to insecure protocols such as `TCP`, `UDP`, or `HTTP`.
 This rule checks `tencentcloud_clb_listener` resources and flags any instance where the `protocol` is one of these insecure values.
 Resources configured with these protocols are considered insecure and are reported.
-
 
 ## Compliant Code Examples
 ```terraform

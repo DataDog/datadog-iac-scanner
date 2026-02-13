@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "Embedding plaintext credentials in CloudFormation template metadata exposes secrets to anyone with access to the template or its repository and can lead to credential theft and unauthorized access to resources.\n\n This rule flags `AWS::EC2::Instance` resources that include an `AWS::CloudFormation::Authentication` metadata block containing inline credentials:\n\n - For `type: \"S3\"`, it flags `accessKeyId` or `secretKey`\n - For `type: \"basic\"`, it flags `password`\n\n Do not include credential keys in metadata. Instead, grant S3 access via an instance IAM role (`IamInstanceProfile`) and store sensitive values in AWS Secrets Manager or AWS Systems Manager Parameter Store, retrieving them at runtime. \n \n Secure alternative without embedding credentials:\n\n```yaml\nMyInstance:\n  Type: AWS::EC2::Instance\n  Properties:\n    IamInstanceProfile: my-ec2-instance-profile\n    # no AWS::CloudFormation::Authentication metadata containing accessKeyId/secretKey/password\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudformation_specifying_credentials_not_safe",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/cloudformation_specifying_credentials_not_safe",
   "platform": "CloudFormation",
   "descriptionID": "694c6fa8",
   "cloudProvider": "aws",

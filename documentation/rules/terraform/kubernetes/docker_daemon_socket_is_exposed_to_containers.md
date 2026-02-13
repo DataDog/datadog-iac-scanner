@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Detects when the Docker daemon socket is exposed to containers. Checks `kubernetes_pod` and workload kinds `kubernetes_deployment`, `kubernetes_daemonset`, `kubernetes_job`, `kubernetes_stateful_set`, `kubernetes_replication_controller`, and `kubernetes_cron_job` for volumes where `host_path.path` is `/var/run/docker.sock`. Reports an `IncorrectValue` issue and populates `keyExpectedValue` and `keyActualValue` showing that the `spec...volume[n].host_path.path` should not be `/var/run/docker.sock` and indicating the offending value.
-
+Detects when the Docker daemon socket is exposed to containers. Checks `kubernetes_pod` and workload kinds `kubernetes_deployment`, `kubernetes_daemonset`, `kubernetes_job`, `kubernetes_stateful_set`, `kubernetes_replication_controller`, and `kubernetes_cron_job` for volumes where `host_path.path` is `/var/run/docker.sock`. Reports an `IncorrectValue` issue and populates `keyExpectedValue` and `keyActualValue` showing that the `spec...volume[n].host_path.path` should not be `/var/run/docker.sock` and indicating the offending value.
 
 ## Compliant Code Examples
 ```terraform

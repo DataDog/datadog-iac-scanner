@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Front Door should have a Web Application Firewall (WAF) enabled to protect applications from common web vulnerabilities and attacks such as SQL injection and cross-site scripting. If the `web_application_firewall_policy_link_id` attribute is not configured for the `frontend_endpoint` block, malicious traffic can reach backend resources without any inspection or filtering, increasing the risk of exploitation. To address this, ensure that WAF is linked, as shown below:
+Azure Front Door should have a Web Application Firewall (WAF) enabled to protect applications from common web vulnerabilities and attacks such as SQL injection and cross-site scripting. If the `web_application_firewall_policy_link_id` attribute is not configured for the `frontend_endpoint` block, malicious traffic can reach backend resources without any inspection or filtering, increasing the risk of exploitation. To address this, ensure that WAF is linked, as shown below:
 
 ```
 frontend_endpoint {
@@ -37,7 +37,6 @@ frontend_endpoint {
   web_application_firewall_policy_link_id = "id"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

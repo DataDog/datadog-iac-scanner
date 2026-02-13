@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `nifcloud_security_group_rule` resource must include a `description` attribute for auditing and traceability. This rule identifies `nifcloud_security_group_rule` instances that do not include a `description` and reports them as `MissingAttribute`. The rule returns `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue` in the result.
-
+The `nifcloud_security_group_rule` resource must include a `description` attribute for auditing and traceability. This rule identifies `nifcloud_security_group_rule` instances that do not include a `description` and reports them as `MissingAttribute`. The rule returns `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue` in the result.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Network Security Groups (NSGs) in Azure provide filtering of network traffic to and from Azure resources within an Azure virtual network. When a subnet is not configured with an NSG, it lacks essential security controls that filter inbound and outbound traffic, potentially exposing resources to unauthorized access and network-based attacks. 
+Network Security Groups (NSGs) in Azure provide filtering of network traffic to and from Azure resources within an Azure virtual network. When a subnet is not configured with an NSG, it lacks essential security controls that filter inbound and outbound traffic, potentially exposing resources to unauthorized access and network-based attacks. 
 
 A properly secured virtual network requires the `security_group` attribute to be defined with a valid NSG reference in each subnet configuration. Without this protection, workloads running in these subnets may be accessible from unwanted network sources, increasing the attack surface.
 
@@ -49,7 +49,6 @@ subnet {
   // Missing security_group attribute
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- A defective audit logging configuration in Terraform, as defined by the `google_project_iam_audit_config` resource, can lead to incomplete or incorrect logging of critical activities within your cloud environment. For example, omitting required `log_type` values or specifying exempted members, as shown below, allows certain user actions to go unrecorded, potentially bypassing audit trails and hampering incident investigations:
+A defective audit logging configuration in Terraform, as defined by the `google_project_iam_audit_config` resource, can lead to incomplete or incorrect logging of critical activities within your cloud environment. For example, omitting required `log_type` values or specifying exempted members, as shown below, allows certain user actions to go unrecorded, potentially bypassing audit trails and hampering incident investigations:
 
 ```
 resource "google_project_iam_audit_config" "example" {
@@ -42,7 +42,6 @@ resource "google_project_iam_audit_config" "example" {
 ```
 
 Without comprehensive audit logs, organizations may be unable to detect or investigate unauthorized access or changes, increasing the risk of undetected misuse or data breaches. A secure configuration should ensure that all required log types (such as `ADMIN_READ` and `DATA_READ`) are enabled and that no users or accounts are unnecessarily exempted from logging.
-
 
 ## Compliant Code Examples
 ```terraform

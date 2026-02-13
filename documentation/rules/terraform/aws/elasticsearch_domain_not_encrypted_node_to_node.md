@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling node-to-node encryption for an Elasticsearch domain ensures that data transferred between nodes in the Elasticsearch cluster is securely encrypted, preventing unauthorized access to data in transit. If the `node_to_node_encryption` block is omitted, sensitive data could be intercepted by attackers during communication between cluster nodes. To secure the domain, configure:
+Enabling node-to-node encryption for an Elasticsearch domain ensures that data transferred between nodes in the Elasticsearch cluster is securely encrypted, preventing unauthorized access to data in transit. If the `node_to_node_encryption` block is omitted, sensitive data could be intercepted by attackers during communication between cluster nodes. To secure the domain, configure:
 
 ```
 node_to_node_encryption {
@@ -37,7 +37,6 @@ node_to_node_encryption {
 ```
 
 This ensures that all internal communications within the cluster is encrypted, reducing the risk of data exposure.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "API Gateway deployments must be associated with a usage plan to enforce throttling and quotas. This mitigates abuse, denial-of-service risks, and unexpected cost spikes from unbounded API traffic.\n\n For each `AWS::ApiGateway::Deployment`, there must be an `AWS::ApiGateway::UsagePlan` resource whose `Properties.ApiStages` array contains an entry with:\n\n - `ApiId` equal to the deployment's `Properties.RestApiId`\n - `Stage` equal to the deployment's `Properties.StageName`\n\n Resources missing a usage plan or with no `ApiStages` entry matching the deployment's `RestApiId` and `StageName` will be flagged.\n\nSecure configuration example (CloudFormation YAML):\n\n```yaml\nMyApi:\n  Type: AWS::ApiGateway::RestApi\n\nMyDeployment:\n  Type: AWS::ApiGateway::Deployment\n  Properties:\n    RestApiId: !Ref MyApi\n    StageName: prod\n\nMyUsagePlan:\n  Type: AWS::ApiGateway::UsagePlan\n  Properties:\n    UsagePlanName: api-usage-plan\n    ApiStages:\n      - ApiId: !Ref MyApi\n        Stage: prod\n    Throttle:\n      RateLimit: 100\n      BurstLimit: 200\n    Quota:\n      Limit: 10000\n      Period: MONTH\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/api_gateway_deployment_without_api_gateway_usage_plan_associated",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/api_gateway_deployment_without_api_gateway_usage_plan_associated",
   "platform": "CloudFormation",
   "descriptionID": "8161e665",
   "cloudProvider": "aws",

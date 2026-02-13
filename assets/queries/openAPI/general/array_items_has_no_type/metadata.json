@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "Schema array items type should be defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/array_items_has_no_type",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/array_items_has_no_type",
   "platform": "OpenAPI",
   "descriptionID": "5d19ade0",
   "aggregation": 2,

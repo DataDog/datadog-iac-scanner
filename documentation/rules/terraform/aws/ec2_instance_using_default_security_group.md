@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Amazon EC2 instances should not use the default security group, as this group is open by default and permits unrestricted inbound and outbound traffic (`security_groups = [aws_security_group.default.id]`). Using the default security group increases the risk of unauthorized access, lateral movement, and exposure of sensitive workloads. To reduce this attack surface, instances should be assigned to tightly controlled, custom security groups with explicit ingress and egress rules.
-
+Amazon EC2 instances should not use the default security group, as this group is open by default and permits unrestricted inbound and outbound traffic (`security_groups = [aws_security_group.default.id]`). Using the default security group increases the risk of unauthorized access, lateral movement, and exposure of sensitive workloads. To reduce this attack surface, instances should be assigned to tightly controlled, custom security groups with explicit ingress and egress rules.
 
 ## Compliant Code Examples
 ```terraform

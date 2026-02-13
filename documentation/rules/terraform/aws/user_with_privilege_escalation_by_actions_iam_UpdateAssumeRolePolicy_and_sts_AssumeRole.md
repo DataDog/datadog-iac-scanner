@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting an IAM user `iam:UpdateAssumeRolePolicy` and `sts:AssumeRole` permissions with the resource set to `"*"` allows them to escalate their privileges by modifying the trust policies of IAM roles and then assuming those roles. This configuration effectively enables the user to grant themselves access to any role and associated permissions in the AWS account, bypassing intended security controls. If left unaddressed, this vulnerability could lead to full account compromise, data exfiltration, or malicious activity performed under elevated permissions.
-
+Granting an IAM user `iam:UpdateAssumeRolePolicy` and `sts:AssumeRole` permissions with the resource set to `"*"` allows them to escalate their privileges by modifying the trust policies of IAM roles and then assuming those roles. This configuration effectively enables the user to grant themselves access to any role and associated permissions in the AWS account, bypassing intended security controls. If left unaddressed, this vulnerability could lead to full account compromise, data exfiltration, or malicious activity performed under elevated permissions.
 
 ## Compliant Code Examples
 ```terraform

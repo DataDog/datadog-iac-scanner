@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- This check verifies that Amazon SNS topic policies do not allow public access by having wildcard principals in their IAM policies. When an SNS topic policy includes a principal with wildcard (`*`) or allows anonymous access, it makes the topic publicly accessible to any AWS account, potentially exposing sensitive information or allowing unauthorized message publishing/consumption.
+This check verifies that Amazon SNS topic policies do not allow public access by having wildcard principals in their IAM policies. When an SNS topic policy includes a principal with wildcard (`*`) or allows anonymous access, it makes the topic publicly accessible to any AWS account, potentially exposing sensitive information or allowing unauthorized message publishing/consumption.
 
 Secure configuration requires specifying explicit IAM principals rather than using wildcards. For example, instead of using `"AWS": "*"` which grants access to anyone, use a specific account ARN like `"AWS": "arn:aws:iam::account_number:root"` to limit access to authorized entities only. This prevents unauthorized access to your SNS topics and their messages.
-
 
 ## Compliant Code Examples
 ```terraform

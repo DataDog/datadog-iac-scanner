@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing SSH access (TCP port 22) from the internet (such as setting `source_ranges = ["0.0.0.0/0"]` in a `google_compute_firewall` resource) exposes virtual machine instances to potential unauthorized access and brute-force attacks, violating the principle of least privilege. Attackers scanning public IP ranges can exploit this misconfiguration to gain direct access to your systems, increasing the risk of compromise. A secure configuration should restrict SSH access to trusted IP addresses or private networks, as shown below:
+Allowing SSH access (TCP port 22) from the internet (such as setting `source_ranges = ["0.0.0.0/0"]` in a `google_compute_firewall` resource) exposes virtual machine instances to potential unauthorized access and brute-force attacks, violating the principle of least privilege. Attackers scanning public IP ranges can exploit this misconfiguration to gain direct access to your systems, increasing the risk of compromise. A secure configuration should restrict SSH access to trusted IP addresses or private networks, as shown below:
 
 ```
 resource "google_compute_firewall" "secure_example" {
@@ -43,7 +43,6 @@ resource "google_compute_firewall" "secure_example" {
   source_tags = ["admin"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

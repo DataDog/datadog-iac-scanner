@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SageMaker endpoint configurations should specify a customer-managed AWS KMS key to ensure model artifacts, cached data, and inference outputs are encrypted at rest. This also helps retain control over key rotation, access policies, and audit logging.
+SageMaker endpoint configurations should specify a customer-managed AWS KMS key to ensure model artifacts, cached data, and inference outputs are encrypted at rest. This also helps retain control over key rotation, access policies, and audit logging.
 
 Without a defined `KmsKeyId`, the endpoint may fall back to AWS-managed keys or lack explicit encryption control. This reduces your ability to enforce access restrictions and perform key-specific auditing. For `AWS::SageMaker::EndpointConfig` resources, `Properties.KmsKeyId` must be defined and set to a KMS key ARN, alias, or key ID (for example, a `Ref` to an `AWS::KMS::Key`). Resources missing `KmsKeyId` will be flagged.
 
@@ -46,7 +46,6 @@ MyEndpointConfig:
         InitialInstanceCount: 1
         InstanceType: ml.m5.large
 ```
-
 
 ## Compliant Code Examples
 ```yaml

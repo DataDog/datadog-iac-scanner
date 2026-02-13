@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Ensure the cluster uses a CNI plugin that supports NetworkPolicies. CNI plugins that do not support NetworkPolicies (for example, Flannel) cannot enforce pod- or namespace-level network restrictions, which may allow unrestricted cluster traffic and increase the attack surface.
-
+Ensure the cluster uses a CNI plugin that supports NetworkPolicies. CNI plugins that do not support NetworkPolicies (for example, Flannel) cannot enforce pod- or namespace-level network restrictions, which may allow unrestricted cluster traffic and increase the attack surface.
 
 ## Compliant Code Examples
 ```json

@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "500, 429 and 400 responses should be defined for all operations, except head operation. 415 response should be defined for the post, put, and patch operations. 404 response should be defined for the get, put, head, delete operations. 200 response should be defined for options operation. 401 and 403 response should be defined for all operations when the security field is defined.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/response_code_missing",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/response_code_missing",
   "platform": "OpenAPI",
   "descriptionID": "dbf15009",
   "aggregation": 16,

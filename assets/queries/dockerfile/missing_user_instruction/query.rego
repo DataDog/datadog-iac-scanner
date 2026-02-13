@@ -15,6 +15,8 @@ CxPolicy[result] {
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "The 'Dockerfile' should contain the 'USER' instruction",
 		"keyActualValue": "The 'Dockerfile' does not contain any 'USER' instruction",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

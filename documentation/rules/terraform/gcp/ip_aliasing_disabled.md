@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes clusters on Google Kubernetes Engine (GKE) should be created with Alias IP ranges enabled by defining the `ip_allocation_policy` block and setting the `networking_mode` attribute to `"VPC_NATIVE"`. Without these settings, as shown in the example below, the cluster may fall back to legacy networking modes, which do not provide the same isolation or scalability benefits and increase the risk of network conflicts and unauthorized access:
+Kubernetes clusters on Google Kubernetes Engine (GKE) should be created with Alias IP ranges enabled by defining the `ip_allocation_policy` block and setting the `networking_mode` attribute to `"VPC_NATIVE"`. Without these settings, as shown in the example below, the cluster may fall back to legacy networking modes, which do not provide the same isolation or scalability benefits and increase the risk of network conflicts and unauthorized access:
 
 ```
 resource "google_container_cluster" "example" {
@@ -52,7 +52,6 @@ resource "google_container_cluster" "example" {
 ```
 
 Failure to enforce Alias IP allocation can reduce network segmentation and may expose pods and services to unintended network access.
-
 
 ## Compliant Code Examples
 ```terraform

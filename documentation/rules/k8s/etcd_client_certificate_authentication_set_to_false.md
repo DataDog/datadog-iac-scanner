@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When containers run `etcd`, the `--client-cert-auth` flag must be set to `true`. This enforces client certificate authentication to prevent unauthenticated access to the etcd server. The rule reports `IncorrectValue` when the flag is explicitly set to `false`, and `MissingAttribute` when the flag is not defined.
-
+When containers run `etcd`, the `--client-cert-auth` flag must be set to `true`. This enforces client certificate authentication to prevent unauthenticated access to the etcd server. The rule reports `IncorrectValue` when the flag is explicitly set to `false`, and `MissingAttribute` when the flag is not defined.
 
 ## Compliant Code Examples
 ```yaml

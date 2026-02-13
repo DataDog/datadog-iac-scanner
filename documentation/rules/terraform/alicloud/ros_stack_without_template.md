@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- An `alicloud_ros_stack` resource must define a template using either the `template_url` or `template_body` attribute. At least one of these must be present to describe the stack template. If both are missing, the rule reports a `MissingAttribute` issue indicating that one of the two must be set. This ensures ROS has a template to provision resources.
-
+An `alicloud_ros_stack` resource must define a template using either the `template_url` or `template_body` attribute. At least one of these must be present to describe the stack template. If both are missing, the rule reports a `MissingAttribute` issue indicating that one of the two must be set. This ensures ROS has a template to provision resources.
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "Each field on Open API specification which accepts '$ref', infers that field is using a reference object, which has only '$ref' key",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/json_ref_alongside_properties",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/json_ref_alongside_properties",
   "platform": "OpenAPI",
   "descriptionID": "5616ac69",
   "aggregation": 2,

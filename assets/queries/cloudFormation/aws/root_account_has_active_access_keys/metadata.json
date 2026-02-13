@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Access keys associated with the AWS root account grant persistent, account-wide credentials. If compromised, they can lead to full account takeover and loss of control over all resources.\n\nIn CloudFormation, `AWS::IAM::AccessKey` resources must not be associated with the root account. This rule flags `Resources.<name>.Properties.UserName` values that contain `root` (case-insensitive). Instead of creating or using root access keys, delete or deactivate any existing root keys, enable MFA on the root account, and provision IAM users or roles with least privilege for programmatic access.\n\nSecure configuration example (associate access keys with an IAM user rather than the root account):\n\n```yaml\nMyUser:\n  Type: AWS::IAM::User\n  Properties:\n    UserName: app-user\n\nMyAccessKey:\n  Type: AWS::IAM::AccessKey\n  Properties:\n    UserName: !Ref MyUser\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/root_account_has_active_access_keys",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/root_account_has_active_access_keys",
   "platform": "CloudFormation",
   "descriptionID": "195ebcdb",
   "cloudProvider": "aws",

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the `all_regions` attribute is set to `true` in AWS Config configuration aggregators, either within `account_aggregation_source` or `organization_aggregation_source` blocks. If `all_regions = false` or specific regions are listed, AWS Config will not aggregate configuration data from all regions, potentially leaving gaps in compliance visibility and risk detection for resources deployed outside the specified regions. Without full regional aggregation, there is an increased risk that misconfigurations or security issues in unmonitored regions go undetected, undermining centralized auditing and governance across an AWS environment.
-
+This check ensures that the `all_regions` attribute is set to `true` in AWS Config configuration aggregators, either within `account_aggregation_source` or `organization_aggregation_source` blocks. If `all_regions = false` or specific regions are listed, AWS Config will not aggregate configuration data from all regions, potentially leaving gaps in compliance visibility and risk detection for resources deployed outside the specified regions. Without full regional aggregation, there is an increased risk that misconfigurations or security issues in unmonitored regions go undetected, undermining centralized auditing and governance across an AWS environment.
 
 ## Compliant Code Examples
 ```terraform

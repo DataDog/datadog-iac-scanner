@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "MySQL Instance should not have Local Infile On",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/mysql_instance_with_local_infile_on",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/mysql_instance_with_local_infile_on",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "66f8ba25",
   "cloudProvider": "gcp",

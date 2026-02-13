@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- All generic Git module sources should include a revision reference.
+All generic Git module sources should include a revision reference.
 Module sources that begin with `git::` must include a `?ref=` parameter to pin the source to a specific commit, tag, or branch. This ensures reproducible and predictable builds.
 This rule flags modules where `module.source` starts with `git::` and does not contain `?ref=`.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that a log metric filter and an associated CloudWatch alarm are configured to monitor changes to AWS Network Access Control Lists (NACLs). Without properly linking the metric alarm to the log metric filter—such as setting the `metric_name` in `aws_cloudwatch_metric_alarm` to the correct filter like `${aws_cloudwatch_log_metric_filter.cis_changes_nacl.id}`—malicious or accidental modifications to NACLs may go undetected, increasing the risk of unauthorized network access or compromised security postures. The following example ensures the alarm triggers on relevant NACL changes and notifies security teams promptly:
+This check ensures that a log metric filter and an associated CloudWatch alarm are configured to monitor changes to AWS Network Access Control Lists (NACLs). Without properly linking the metric alarm to the log metric filter—such as setting the `metric_name` in `aws_cloudwatch_metric_alarm` to the correct filter like `${aws_cloudwatch_log_metric_filter.cis_changes_nacl.id}`—malicious or accidental modifications to NACLs may go undetected, increasing the risk of unauthorized network access or compromised security postures. The following example ensures the alarm triggers on relevant NACL changes and notifies security teams promptly:
 
 ```
 resource "aws_cloudwatch_metric_alarm" "cis_changes_nacl" {
@@ -36,7 +36,6 @@ resource "aws_cloudwatch_metric_alarm" "cis_changes_nacl" {
   // other relevant attributes...
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

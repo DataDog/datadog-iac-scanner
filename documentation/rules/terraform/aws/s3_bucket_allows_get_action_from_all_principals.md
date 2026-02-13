@@ -28,13 +28,12 @@ meta:
 
 ### Description
 
- When S3 bucket policies allow the `GetObject` action from all principals (using `"Principal: "*"` or `"Principal": {"AWS": "*"}`), they expose private data to anyone on the internet, creating a significant data breach risk. This vulnerability could lead to unauthorized access to sensitive information, intellectual property theft, or compliance violations with regulations like GDPR or HIPAA. Instead of using permissive policies, such as the ones shown below, implement restrictive policies with explicit denials or properly scoped permissions that limit access to specific authenticated principals.
+When S3 bucket policies allow the `GetObject` action from all principals (using `"Principal: "*"` or `"Principal": {"AWS": "*"}`), they expose private data to anyone on the internet, creating a significant data breach risk. This vulnerability could lead to unauthorized access to sensitive information, intellectual property theft, or compliance violations with regulations like GDPR or HIPAA. Instead of using permissive policies, such as the ones shown below, implement restrictive policies with explicit denials or properly scoped permissions that limit access to specific authenticated principals.
 ```
 "Effect": "Allow",
 "Principal": "*",
 "Action": "s3:GetObject"
 ```
-
 
 ## Compliant Code Examples
 ```terraform

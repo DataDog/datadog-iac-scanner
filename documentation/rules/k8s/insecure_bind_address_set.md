@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When using `kube-apiserver`, the `--insecure-bind-address` flag should not be set. This flag causes the API server to listen on an unauthenticated HTTP endpoint, bypassing TLS and potentially exposing the API to unauthenticated access. This rule inspects the `command` fields of `containers` and `initContainers` for invocations of `kube-apiserver` and flags that start with `--insecure-bind-address`.
-
+When using `kube-apiserver`, the `--insecure-bind-address` flag should not be set. This flag causes the API server to listen on an unauthenticated HTTP endpoint, bypassing TLS and potentially exposing the API to unauthenticated access. This rule inspects the `command` fields of `containers` and `initContainers` for invocations of `kube-apiserver` and flags that start with `--insecure-bind-address`.
 
 ## Compliant Code Examples
 ```yaml

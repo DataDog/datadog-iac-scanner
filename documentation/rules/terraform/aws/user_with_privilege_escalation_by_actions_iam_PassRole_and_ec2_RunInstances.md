@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting a user the `'ec2:RunInstances'` and `'iam:PassRole'` permissions with the resource set to `'*'` allows them to launch EC2 instances and attach any IAM role, potentially escalating their privileges beyond intended limits. 
+Granting a user the `'ec2:RunInstances'` and `'iam:PassRole'` permissions with the resource set to `'*'` allows them to launch EC2 instances and attach any IAM role, potentially escalating their privileges beyond intended limits. 
 
 For example, the following configuration is unsafe:
 
@@ -55,7 +55,6 @@ policy = jsonencode({
 ```
 
 This vulnerability can enable attackers to assume highly privileged roles and gain full administrative access to AWS resources, leading to compromise of the entire cloud environment if left unaddressed. Access to these actions should be tightly scoped with least privilege and limited to essential roles.
-
 
 ## Compliant Code Examples
 ```terraform

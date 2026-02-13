@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Domain Name System Security Extensions (DNSSEC) should be enabled for Cloud DNS managed zones to ensure the authenticity and integrity of DNS data by cryptographically signing DNS records. Without DNSSEC enabled (for example, `dnssec_config { state = "off" }`), domains are at greater risk of DNS spoofing and cache poisoning attacks, potentially allowing attackers to redirect traffic or intercept sensitive communications. To mitigate this risk, configure DNSSEC as shown below:
+Domain Name System Security Extensions (DNSSEC) should be enabled for Cloud DNS managed zones to ensure the authenticity and integrity of DNS data by cryptographically signing DNS records. Without DNSSEC enabled (for example, `dnssec_config { state = "off" }`), domains are at greater risk of DNS spoofing and cache poisoning attacks, potentially allowing attackers to redirect traffic or intercept sensitive communications. To mitigate this risk, configure DNSSEC as shown below:
 
 ```
 resource "google_dns_managed_zone" "example" {
@@ -41,7 +41,6 @@ resource "google_dns_managed_zone" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "The configuration permits the `iam:SetDefaultPolicyVersion` action with a resource value of `\"*\"`, meaning members of the `aws_iam_group.cosmic` group are allowed to set any version of any IAM policy as the default. This is a dangerous privilege escalation vector, as it could allow attackers to promote a malicious or overly permissive policy version, potentially granting themselves or others administrative access across AWS resources. If left unaddressed, this vulnerability could be exploited to bypass least privilege principles, resulting in unauthorized access or control over critical AWS infrastructure. To mitigate this risk, restrict the allowable actions and resources in IAM policies and avoid assigning wildcard `\"*\"` resource permissions to sensitive actions such as `iam:SetDefaultPolicyVersion`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_SetDefaultPolicyVersion",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_setdefaultpolicyversion",
   "platform": "Terraform",
   "descriptionID": "2be560bc",
   "cloudProvider": "aws",

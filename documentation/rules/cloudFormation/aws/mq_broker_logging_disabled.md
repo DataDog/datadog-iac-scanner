@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon MQ brokers must have audit and general logging enabled so broker activity and security events are recorded for detection and investigation, and to support compliance and forensic requirements. In AWS CloudFormation, the `AWS::AmazonMQ::Broker` resource must include the `Logs` property with both `Audit` and `General` defined and set to `true`. Resources missing `Logs`, missing either `Audit` or `General`, or with either value set to `false` will be flagged.
+Amazon MQ brokers must have audit and general logging enabled so broker activity and security events are recorded for detection and investigation, and to support compliance and forensic requirements. In AWS CloudFormation, the `AWS::AmazonMQ::Broker` resource must include the `Logs` property with both `Audit` and `General` defined and set to `true`. Resources missing `Logs`, missing either `Audit` or `General`, or with either value set to `false` will be flagged.
 
 Secure configuration example:
 
@@ -41,7 +41,6 @@ MyBroker:
       Audit: true
       General: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

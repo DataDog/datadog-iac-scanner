@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Run yarn clean after yarn install",
+    "severity": "MEDIUM",
+    "line": 18
+  }
+]

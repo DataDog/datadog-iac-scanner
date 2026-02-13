@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Running Batch job containers in privileged mode grants them elevated access to the host kernel and device nodes, which can enable container escape, host compromise, and lateral movement across your environment. The `Privileged` property under `Properties.ContainerProperties` in `AWS::Batch::JobDefinition` must be set to `false`. Resources with `Privileged` set to `true` will be flagged. If a job legitimately requires extra capabilities, avoid privileged mode and instead grant only the specific capabilities needed or run the workload on dedicated, hardened hosts.\n\nSecure configuration example:\n\n```yaml\nMyJobDefinition:\n  Type: AWS::Batch::JobDefinition\n  Properties:\n    ContainerProperties:\n      Image: my-image\n      Vcpus: 1\n      Memory: 1024\n      Privileged: false\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/batch_job_definition_with_privileged_container_properties",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/batch_job_definition_with_privileged_container_properties",
   "platform": "CloudFormation",
   "descriptionID": "c8983ada",
   "cloudProvider": "aws",

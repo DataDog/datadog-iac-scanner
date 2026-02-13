@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Defining an IAM user's console password as a plaintext string in an AWS CloudFormation template embeds credentials in source control and template history, increasing the risk of credential leakage and unauthorized account access. For `AWS::IAM::User` resources, `Properties.LoginProfile.Password` must not be a string literal. Resources where `Properties.LoginProfile.Password` is a literal string will be flagged. Use an AWS Secrets Manager dynamic reference to supply the password so it is not stored directly in the template.
+Defining an IAM user's console password as a plaintext string in an AWS CloudFormation template embeds credentials in source control and template history, increasing the risk of credential leakage and unauthorized account access. For `AWS::IAM::User` resources, `Properties.LoginProfile.Password` must not be a string literal. Resources where `Properties.LoginProfile.Password` is a literal string will be flagged. Use an AWS Secrets Manager dynamic reference to supply the password so it is not stored directly in the template.
 
 Secure configuration example using a Secrets Manager dynamic reference:
 
@@ -41,7 +41,6 @@ MyUser:
       Password: "{{resolve:secretsmanager:my-app/iam/user-password:SecretString:password}}"
       PasswordResetRequired: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

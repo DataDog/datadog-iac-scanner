@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amplify apps with BasicAuth enabled must not embed the password as a plaintext string or as a parameter `Default` because embedded secrets in templates or defaults can be exposed via source control, CloudFormation templates/stack history, or the AWS Console and enable unauthorized access.
+Amplify apps with BasicAuth enabled must not embed the password as a plaintext string or as a parameter `Default` because embedded secrets in templates or defaults can be exposed via source control, CloudFormation templates/stack history, or the AWS Console and enable unauthorized access.
 
  This rule checks resources of type `AWS::Amplify::App` where `Properties.BasicAuthConfig.EnableBasicAuth` is set to `true`.
 
@@ -54,7 +54,6 @@ MyAmplifyApp:
       Username: admin
       Password: '{{resolve:secretsmanager:my-amplify-basic-auth:SecretString:password}}'
 ```
-
 
 ## Compliant Code Examples
 ```yaml

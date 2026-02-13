@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SNS topic policies must not grant `Allow` permissions to all principals because that effectively makes the topic public. This can allow unauthenticated users or arbitrary AWS accounts to publish to or subscribe from the topic, risking data exposure, spam, and abuse.
+SNS topic policies must not grant `Allow` permissions to all principals because that effectively makes the topic public. This can allow unauthenticated users or arbitrary AWS accounts to publish to or subscribe from the topic, risking data exposure, spam, and abuse.
 
 Check `AWS::SNS::TopicPolicy` resources' `Properties.PolicyDocument.Statement` entries. Any statement with `Effect: "Allow"` and `Principal: "*"`, or `Principal.AWS: "*"`, will be flagged.
 
@@ -52,7 +52,6 @@ MyTopicPolicy:
             - sns:Publish
           Resource: !Ref MyTopic
 ```
-
 
 ## Compliant Code Examples
 ```yaml

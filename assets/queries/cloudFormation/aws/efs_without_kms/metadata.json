@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Encryption",
   "descriptionText": "Amazon EFS file systems must be encrypted at rest using an AWS KMS customer-managed key (CMK) to protect stored data from unauthorized access and to enable customer-controlled key rotation, access policies, and audit logging.\n \n In CloudFormation, ensure resources of type `AWS::EFS::FileSystem` have `Encrypted` set to `true` and specify `KmsKeyId` referencing a customer-managed AWS KMS key (ARN, alias, or `Ref` to an `AWS::KMS::Key`). Resources with `Encrypted` missing or set to `false`, or without a valid `KmsKeyId` that points to a customer-managed CMK, will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyEfs:\n  Type: AWS::EFS::FileSystem\n  Properties:\n    Encrypted: true\n    KmsKeyId: !Ref MyKmsKey\n\nMyKmsKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Description: \"Customer-managed CMK for EFS encryption\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/efs_without_kms",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/efs_without_kms",
   "platform": "CloudFormation",
   "descriptionID": "f5a9536a",
   "cloudProvider": "aws",

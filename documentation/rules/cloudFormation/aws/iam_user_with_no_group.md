@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM users should be assigned to IAM groups to enforce least privilege and simplify permission and lifecycle management. Users not placed in groups are harder to audit and more likely to receive excessive or inconsistent permissions. The `Groups` property on `AWS::IAM::User` resources must be defined and include at least one group name. Resources missing the `Groups` property or where `Groups` is empty will be flagged.
+IAM users should be assigned to IAM groups to enforce least privilege and simplify permission and lifecycle management. Users not placed in groups are harder to audit and more likely to receive excessive or inconsistent permissions. The `Groups` property on `AWS::IAM::User` resources must be defined and include at least one group name. Resources missing the `Groups` property or where `Groups` is empty will be flagged.
 
 Secure example:
 
@@ -40,7 +40,6 @@ MyUser:
     Groups:
       - Admins
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Launch Configurations with unencrypted EBS volumes expose sensitive data to potential unauthorized access if the physical storage is compromised or the volume is improperly decommissioned. When data is stored unencrypted, it could allow attackers who gain access to the raw storage to extract sensitive information without needing additional credentials. To properly secure your data, always set the `encrypted` parameter to true in all block device configurations, as shown below:
+AWS Launch Configurations with unencrypted EBS volumes expose sensitive data to potential unauthorized access if the physical storage is compromised or the volume is improperly decommissioned. When data is stored unencrypted, it could allow attackers who gain access to the raw storage to extract sensitive information without needing additional credentials. To properly secure your data, always set the `encrypted` parameter to true in all block device configurations, as shown below:
 
 ```hcl
 ebs_block_device {
@@ -45,7 +45,6 @@ ebs_block_device {
   encrypted = false  // or parameter omitted entirely
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

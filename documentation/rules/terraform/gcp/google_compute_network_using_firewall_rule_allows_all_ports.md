@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Allowing a Google Compute Network firewall rule to permit traffic on all TCP ports (using `ports = ["0-65535"]`) exposes instances to a broad range of attacks and unauthorized access, increasing the risk of exploitation across unused and potentially vulnerable services. By not restricting allowed ports to only those necessary—such as `ports = ["80", "8080"]` for web services—the configuration creates a large attack surface. To minimize security risks, firewall rules should define only the specific protocols and ports required for service functionality.
-
+Allowing a Google Compute Network firewall rule to permit traffic on all TCP ports (using `ports = ["0-65535"]`) exposes instances to a broad range of attacks and unauthorized access, increasing the risk of exploitation across unused and potentially vulnerable services. By not restricting allowed ports to only those necessary—such as `ports = ["80", "8080"]` for web services—the configuration creates a large attack surface. To minimize security risks, firewall rules should define only the specific protocols and ports required for service functionality.
 
 ## Compliant Code Examples
 ```terraform

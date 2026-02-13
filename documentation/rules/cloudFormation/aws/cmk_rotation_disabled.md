@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS KMS Customer Master Keys (CMKs) must have automatic key rotation enabled to limit the exposure of long-lived cryptographic keys and reduce the impact if a key is compromised.
+AWS KMS Customer Master Keys (CMKs) must have automatic key rotation enabled to limit the exposure of long-lived cryptographic keys and reduce the impact if a key is compromised.
 
  This rule applies to `AWS::KMS::Key` resources that are enabled (`Properties.Enabled` set to `true`) and not pending deletion. Such keys must define `Properties.EnableKeyRotation` set to `true`. Resources missing `EnableKeyRotation` or with `EnableKeyRotation` set to `false` will be flagged. Keys that have `Properties.PendingWindowInDays` defined (indicating pending deletion) are excluded from this requirement.
 
@@ -41,7 +41,6 @@ MyKey:
     Enabled: true
     EnableKeyRotation: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

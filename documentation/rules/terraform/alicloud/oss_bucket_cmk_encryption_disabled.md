@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- `alicloud_oss_bucket` resources must have server-side encryption enabled and configured to use a customer-managed KMS key. The `server_side_encryption_rule` block must be present, and the `kms_master_key_id` attribute must be set. Absence of either is considered a policy violation.
-
+`alicloud_oss_bucket` resources must have server-side encryption enabled and configured to use a customer-managed KMS key. The `server_side_encryption_rule` block must be present, and the `kms_master_key_id` attribute must be set. Absence of either is considered a policy violation.
 
 ## Compliant Code Examples
 ```terraform

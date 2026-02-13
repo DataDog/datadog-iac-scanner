@@ -1,0 +1,22 @@
+[
+  {
+    "queryName": "Avoid chmod 777",
+    "severity": "HIGH",
+    "line": 15
+  },
+  {
+    "queryName": "Avoid chmod 777",
+    "severity": "HIGH",
+    "line": 41
+  },
+  {
+    "queryName": "Avoid chmod 777",
+    "severity": "HIGH",
+    "line": 44
+  },
+  {
+    "queryName": "Avoid chmod 777",
+    "severity": "HIGH",
+    "line": 47
+  }
+]

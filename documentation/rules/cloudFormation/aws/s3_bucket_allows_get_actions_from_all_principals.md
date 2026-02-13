@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 bucket policies must not allow GET actions to all principals (`*`). Public read permissions can lead to data exfiltration or unauthorized disclosure of sensitive content. Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag any statement with `Effect: "Allow"` and `Principal: "*"` (or equivalent wildcard) where `Action` contains GET operations (for example, `s3:GetObject`). Instead, restrict `Principal` to specific AWS account IDs, roles, or ARNs, or remove GET actions. If public access is required, apply scoped conditions (IP ranges, VPC endpoints) or enable S3 Block Public Access to limit exposure.
+S3 bucket policies must not allow GET actions to all principals (`*`). Public read permissions can lead to data exfiltration or unauthorized disclosure of sensitive content. Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag any statement with `Effect: "Allow"` and `Principal: "*"` (or equivalent wildcard) where `Action` contains GET operations (for example, `s3:GetObject`). Instead, restrict `Principal` to specific AWS account IDs, roles, or ARNs, or remove GET actions. If public access is required, apply scoped conditions (IP ranges, VPC endpoints) or enable S3 Block Public Access to limit exposure.
 
 Secure configuration example (restrict principal to a specific role):
 
@@ -47,7 +47,6 @@ MyBucketPolicy:
             - s3:GetObject
           Resource: arn:aws:s3:::my-bucket/*
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,13 +28,12 @@ meta:
 
 ### Description
 
- AWS Elastic Block Store (EBS) volumes should have encryption enabled by default to protect sensitive data at rest. When EBS encryption is disabled, data stored on these volumes remains in plaintext, potentially exposing confidential information if the physical storage is compromised or if the volume is improperly decommissioned. To enable default encryption, ensure that the `enabled` attribute in the `aws_ebs_encryption_by_default` resource is set to `true` or omitted (as it defaults to `true`). A secure configuration looks like the following: 
+AWS Elastic Block Store (EBS) volumes should have encryption enabled by default to protect sensitive data at rest. When EBS encryption is disabled, data stored on these volumes remains in plaintext, potentially exposing confidential information if the physical storage is compromised or if the volume is improperly decommissioned. To enable default encryption, ensure that the `enabled` attribute in the `aws_ebs_encryption_by_default` resource is set to `true` or omitted (as it defaults to `true`). A secure configuration looks like the following: 
 ```
 resource "aws_ebs_encryption_by_default" "example" {
   enabled = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

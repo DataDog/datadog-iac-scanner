@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Integrating AWS CloudTrail with CloudWatch Logs is essential for real-time monitoring and alerting on account activity. If the `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` attributes are not set in the `aws_cloudtrail` resource, as in the following insecure configuration, CloudTrail events will only be stored in S3 with no efficient mechanism for real-time detection or automated response to suspicious activities:
+Integrating AWS CloudTrail with CloudWatch Logs is essential for real-time monitoring and alerting on account activity. If the `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` attributes are not set in the `aws_cloudtrail` resource, as in the following insecure configuration, CloudTrail events will only be stored in S3 with no efficient mechanism for real-time detection or automated response to suspicious activities:
 
 ```
 resource "aws_cloudtrail" "example" {
@@ -50,7 +50,6 @@ resource "aws_cloudtrail" "example" {
   cloud_watch_logs_role_arn     = aws_iam_role.cloudtrail_cloudwatch_role.arn
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

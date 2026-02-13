@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Subnets must not automatically assign public IPv4 addresses to instances because automatic public IP assignment exposes instances directly to the internet and increases the risk of unauthorized access and data exposure. For CloudFormation, the `AWS::EC2::Subnet` resource's `Properties.MapPublicIpOnLaunch` property must be defined and set to `false`. Resources with `MapPublicIpOnLaunch` set to `true` will be flagged. For private subnets, explicitly set this property to `false` and use NAT gateways, bastion hosts, or load balancers to provide controlled outbound or inbound access.
+Subnets must not automatically assign public IPv4 addresses to instances because automatic public IP assignment exposes instances directly to the internet and increases the risk of unauthorized access and data exposure. For CloudFormation, the `AWS::EC2::Subnet` resource's `Properties.MapPublicIpOnLaunch` property must be defined and set to `false`. Resources with `MapPublicIpOnLaunch` set to `true` will be flagged. For private subnets, explicitly set this property to `false` and use NAT gateways, bastion hosts, or load balancers to provide controlled outbound or inbound access.
 
 Secure configuration example:
 
@@ -40,7 +40,6 @@ MyPrivateSubnet:
     CidrBlock: 10.0.1.0/24
     MapPublicIpOnLaunch: false
 ```
-
 
 ## Compliant Code Examples
 ```yaml

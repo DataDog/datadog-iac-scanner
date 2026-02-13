@@ -1,0 +1,12 @@
+{
+  "id": "44fbf45c-87a6-3b95-64ef-07e1fef7395b",
+  "queryName": "Use recommended flags with useradd",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "Creating users in Docker images without disabling login record creation causes `utmp`, `wtmp`, and `lastlog` entries to be written into image layers. This increases image size and can embed unnecessary host or user metadata in the image.  \n\nThis rule scans `dockerfile_container` `RUN` commands for `useradd` invocations and requires the command to include either the short `-l` flag (which may be combined with other short flags) or the long `--no-log-init` option to prevent login file initialization.  \n\nResources that invoke `useradd` without `-l` or `--no-log-init` are flagged. Use one of the safe invocations below when creating users in Dockerfiles:\n\n```dockerfile\n# using short flag (can be combined with other short flags)\nRUN useradd -l -r -s /sbin/nologin myuser\n```\n\n```dockerfile\n# using long option\nRUN useradd --no-log-init -r -s /sbin/nologin myuser\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/use_recommended_flags_with_useradd",
+  "platform": "Dockerfile",
+  "descriptionID": "44fbf45c",
+  "cwe": "710",
+  "providerUrl": "https://man7.org/linux/man-pages/man8/useradd.8.html"
+}

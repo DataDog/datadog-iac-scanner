@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting a user the `iam:PutUserPolicy` action with a resource value of `"*"` allows that user to attach any policy to any IAM user, including themselves. This creates a privilege escalation vulnerability, as the user could grant themselves administrative permissions or access otherwise restricted resources. To mitigate this risk, permission sets should be strictly defined and limited; for example, only allowing non-privileged actions such as in the following example:
+Granting a user the `iam:PutUserPolicy` action with a resource value of `"*"` allows that user to attach any policy to any IAM user, including themselves. This creates a privilege escalation vulnerability, as the user could grant themselves administrative permissions or access otherwise restricted resources. To mitigate this risk, permission sets should be strictly defined and limited; for example, only allowing non-privileged actions such as in the following example:
 
 ```
 policy = jsonencode({
@@ -45,7 +45,6 @@ policy = jsonencode({
 })
 ```
 Limiting permissions in this way reduces the risk of unauthorized privilege escalation.
-
 
 ## Compliant Code Examples
 ```terraform

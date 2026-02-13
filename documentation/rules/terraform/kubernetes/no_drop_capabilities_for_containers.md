@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Checks whether the Kubernetes 'capabilities.drop' setting is present to ensure container security context. The rule verifies that each container and init_container defines 'security_context', that 'capabilities' exists, and that 'capabilities.drop' is set. Missing or undefined attributes are reported as missing or incorrect values.
-
+Checks whether the Kubernetes 'capabilities.drop' setting is present to ensure container security context. The rule verifies that each container and init_container defines 'security_context', that 'capabilities' exists, and that 'capabilities.drop' is set. Missing or undefined attributes are reported as missing or incorrect values.
 
 ## Compliant Code Examples
 ```terraform

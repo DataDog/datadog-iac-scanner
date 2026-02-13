@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- For containers running `kube-controller-manager`, the `--terminated-pod-gc-threshold` flag must be set to a value between `0` and `12501`. The rule checks the `command` fields in both `initContainers` and `containers` and reports when the flag is missing or set to an incorrect value.
-
+For containers running `kube-controller-manager`, the `--terminated-pod-gc-threshold` flag must be set to a value between `0` and `12501`. The rule checks the `command` fields in both `initContainers` and `containers` and reports when the flag is missing or set to an incorrect value.
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The default Amazon EC2 security group must not define inbound or outbound rules because permissive rules on the default group can expose instances to unauthorized access and enable lateral movement between resources.
+The default Amazon EC2 security group must not define inbound or outbound rules because permissive rules on the default group can expose instances to unauthorized access and enable lateral movement between resources.
 
  In CloudFormation, this rule checks `AWS::EC2::SecurityGroup` resources with `Properties.GroupName` set to `"default"` and requires that `Properties.SecurityGroupIngress` and `Properties.SecurityGroupEgress` are either absent or empty. Resources with non-empty ingress or egress arrays will be flagged.
 
@@ -43,7 +43,6 @@ DefaultSecurityGroup:
     GroupName: default
     VpcId: vpc-01234567
 ```
-
 
 ## Compliant Code Examples
 ```yaml

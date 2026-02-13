@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling auto repair for Google Kubernetes Engine (GKE) node pools ensures that failed or unhealthy nodes are automatically detected and repaired, maintaining cluster health and minimizing manual intervention. If the `auto_repair` attribute is set to `false` or omitted in a Terraform resource, as in the following configuration, unhealthy nodes may persist and degrade application availability or introduce operational risks: 
+Enabling auto repair for Google Kubernetes Engine (GKE) node pools ensures that failed or unhealthy nodes are automatically detected and repaired, maintaining cluster health and minimizing manual intervention. If the `auto_repair` attribute is set to `false` or omitted in a Terraform resource, as in the following configuration, unhealthy nodes may persist and degrade application availability or introduce operational risks: 
 
 ```
 management {
@@ -45,7 +45,6 @@ management {
 ```
 
 This configuration helps maintain a resilient and self-healing node environment in your GKE cluster.
-
 
 ## Compliant Code Examples
 ```terraform

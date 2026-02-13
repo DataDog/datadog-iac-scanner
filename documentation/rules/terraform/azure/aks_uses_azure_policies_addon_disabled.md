@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling the Azure Policy Add-On for Azure Kubernetes Service (AKS) clusters helps enforce organizational standards and compliance at scale by applying policy controls directly to the cluster. If the `addon_profile.azure_policy.enabled` attribute is set to `false`, as shown below, the cluster will not have Azure Policy integration, leaving it vulnerable to resource misconfigurations and violating compliance policies.
+Enabling the Azure Policy Add-On for Azure Kubernetes Service (AKS) clusters helps enforce organizational standards and compliance at scale by applying policy controls directly to the cluster. If the `addon_profile.azure_policy.enabled` attribute is set to `false`, as shown below, the cluster will not have Azure Policy integration, leaving it vulnerable to resource misconfigurations and violating compliance policies.
 
 ```
 addon_profile {
@@ -47,7 +47,6 @@ addon_profile {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

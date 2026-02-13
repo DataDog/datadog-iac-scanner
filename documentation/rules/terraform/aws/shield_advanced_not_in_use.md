@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Shield Advanced provides enhanced protection against distributed denial-of-service (DDoS) attacks for critical AWS resources, such as Amazon Route 53 hosted zones, AWS Global Accelerator accelerators, Elastic IP addresses, Elastic Load Balancers, and Amazon CloudFront distributions. Without Shield Advanced enabled, these resources are vulnerable to large-scale DDoS attacks, which can lead to downtime, degraded performance, and increased mitigation costs. To secure these resources in Terraform, use the `aws_shield_protection` resource with the correct `resource_arn`. For example:
+AWS Shield Advanced provides enhanced protection against distributed denial-of-service (DDoS) attacks for critical AWS resources, such as Amazon Route 53 hosted zones, AWS Global Accelerator accelerators, Elastic IP addresses, Elastic Load Balancers, and Amazon CloudFront distributions. Without Shield Advanced enabled, these resources are vulnerable to large-scale DDoS attacks, which can lead to downtime, degraded performance, and increased mitigation costs. To secure these resources in Terraform, use the `aws_shield_protection` resource with the correct `resource_arn`. For example:
 
 ```
 resource "aws_shield_protection" "example" {
@@ -40,7 +40,6 @@ resource "aws_shield_protection" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

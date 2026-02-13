@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Elasticsearch domains should enforce IAM authentication to restrict access to authorized users only. Without proper IAM policies—such as using `"Principal": "*"` in the `aws_elasticsearch_domain_policy` resource—unauthorized users could gain access to sensitive data by connecting from approved IP addresses. To mitigate this risk, the `Principal` field should be set to reference specific IAM principals, as shown below:
+AWS Elasticsearch domains should enforce IAM authentication to restrict access to authorized users only. Without proper IAM policies—such as using `"Principal": "*"` in the `aws_elasticsearch_domain_policy` resource—unauthorized users could gain access to sensitive data by connecting from approved IP addresses. To mitigate this risk, the `Principal` field should be set to reference specific IAM principals, as shown below:
 
 ```
 "Principal" : {
@@ -40,7 +40,6 @@ meta:
 ```
 
 Failing to enforce IAM authentication can expose your Elasticsearch domain to unauthorized access and potential data breaches.
-
 
 ## Compliant Code Examples
 ```terraform

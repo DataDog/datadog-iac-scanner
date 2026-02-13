@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- When `kubelet` or `kube-apiserver` are used, the `--anonymous-auth` flag should be set to `false`.  
+When `kubelet` or `kube-apiserver` are used, the `--anonymous-auth` flag should be set to `false`.  
 The rule checks container `command` entries for those components and the `KubeletConfiguration.authentication.anonymous.enabled` attribute.  
 An IncorrectValue issue is reported when `--anonymous-auth` is set to `true` or `authentication.anonymous.enabled` is not `false`.
-
 
 ## Compliant Code Examples
 ```yaml

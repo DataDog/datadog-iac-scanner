@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Cloud storage buckets should have logging enabled to capture access and usage data for auditing and monitoring purposes. If the `logging` block is not configured in the Terraform resource, access to and modifications of storage objects may go unnoticed, making it difficult to detect unauthorized activities or investigate security incidents.
+Cloud storage buckets should have logging enabled to capture access and usage data for auditing and monitoring purposes. If the `logging` block is not configured in the Terraform resource, access to and modifications of storage objects may go unnoticed, making it difficult to detect unauthorized activities or investigate security incidents.
 
 A secure configuration includes a `logging` block, as shown below:
 
@@ -54,7 +54,6 @@ resource "google_storage_bucket" "auto_expiring_bucket" {
 ```
 
 Enabling logging helps improve visibility into data access and can aid in compliance efforts.
-
 
 ## Compliant Code Examples
 ```terraform

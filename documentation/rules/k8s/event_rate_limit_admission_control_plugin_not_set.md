@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When `kube-apiserver` is used, the `--enable-admission-plugins` flag should include `EventRateLimit`. The admission control configuration file must also contain the corresponding `EventRateLimit` configuration. This rule checks the `containers` and `initContainers` command lines for `kube-apiserver` and reports a MissingAttribute if `EventRateLimit` is absent.
-
+When `kube-apiserver` is used, the `--enable-admission-plugins` flag should include `EventRateLimit`. The admission control configuration file must also contain the corresponding `EventRateLimit` configuration. This rule checks the `containers` and `initContainers` command lines for `kube-apiserver` and reports a MissingAttribute if `EventRateLimit` is absent.
 
 ## Compliant Code Examples
 ```yaml

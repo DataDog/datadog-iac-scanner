@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling multi-region trails in AWS CloudTrail ensures that all activity across all regions in an account is logged and monitored. Without setting the `is_multi_region_trail` and `include_global_service_events` attributes to `true`, activity in regions outside of the primary region or global service events may go unlogged, creating blind spots for potential unauthorized actions. To address this, the secure Terraform configuration should include `is_multi_region_trail = true` and `include_global_service_events = true`, as shown below:
+Enabling multi-region trails in AWS CloudTrail ensures that all activity across all regions in an account is logged and monitored. Without setting the `is_multi_region_trail` and `include_global_service_events` attributes to `true`, activity in regions outside of the primary region or global service events may go unlogged, creating blind spots for potential unauthorized actions. To address this, the secure Terraform configuration should include `is_multi_region_trail = true` and `include_global_service_events = true`, as shown below:
 
 ```
 resource "aws_cloudtrail" "secure_example" {
@@ -38,7 +38,6 @@ resource "aws_cloudtrail" "secure_example" {
   include_global_service_events = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

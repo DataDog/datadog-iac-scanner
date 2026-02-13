@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM policies should never allow full administrative privileges across all resources, which occurs when both `"Action"` and `"Resource"` are set to `"*"`, as shown below:
+IAM policies should never allow full administrative privileges across all resources, which occurs when both `"Action"` and `"Resource"` are set to `"*"`, as shown below:
 
 ```
 "Statement": [
@@ -41,7 +41,6 @@ meta:
 ```
 
 Granting such broad permissions bypasses the principle of least privilege, enabling any user or service with this policy to perform any action on any AWS resource. If left unaddressed, this misconfiguration can lead to privilege escalation, data exfiltration, resource manipulation, or complete account compromise in the event of credential leakage.
-
 
 ## Compliant Code Examples
 ```terraform

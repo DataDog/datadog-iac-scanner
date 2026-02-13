@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- All rules within an AWS security group should have descriptive text provided for each rule. Including a `description` for both `ingress` and `egress` rules makes it easier to understand the purpose and intent behind each rule, improving the maintainability and auditability of your security configurations. Without descriptive annotations, security teams may struggle to identify the rationale for specific rules, increasing the risk of misconfigurations or inadvertent exposure of resources. Leaving descriptions blank can lead to confusion, make incident response more difficult, and may undermine compliance efforts that require clear documentation of network security controls.
-
+All rules within an AWS security group should have descriptive text provided for each rule. Including a `description` for both `ingress` and `egress` rules makes it easier to understand the purpose and intent behind each rule, improving the maintainability and auditability of your security configurations. Without descriptive annotations, security teams may struggle to identify the rationale for specific rules, increasing the risk of misconfigurations or inadvertent exposure of resources. Leaving descriptions blank can lead to confusion, make incident response more difficult, and may undermine compliance efforts that require clear documentation of network security controls.
 
 ## Compliant Code Examples
 ```terraform

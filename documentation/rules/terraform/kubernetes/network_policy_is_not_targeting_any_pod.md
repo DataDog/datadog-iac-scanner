@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Checks whether any `kubernetes_network_policy` does not target any pod.  
+Checks whether any `kubernetes_network_policy` does not target any pod.  
 Validates that `spec.pod_selector.match_labels` contains concrete label key/value pairs that match at least one pod's `metadata.labels` and not unresolved references like `kubernetes_<resource>.<name>`.  
 If no pod matches the selector or the label value appears to be a reference, the rule reports an `IncorrectValue` issue.
-
 
 ## Compliant Code Examples
 ```terraform

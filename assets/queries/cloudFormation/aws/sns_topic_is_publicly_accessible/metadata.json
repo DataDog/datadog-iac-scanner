@@ -4,7 +4,7 @@
   "severity": "CRITICAL",
   "category": "Access Control",
   "descriptionText": "SNS topic policies must not grant `Allow` permissions to all principals because that effectively makes the topic public. This can allow unauthenticated users or arbitrary AWS accounts to publish to or subscribe from the topic, risking data exposure, spam, and abuse.\n\nCheck `AWS::SNS::TopicPolicy` resources' `Properties.PolicyDocument.Statement` entries. Any statement with `Effect: \"Allow\"` and `Principal: \"*\"`, or `Principal.AWS: \"*\"`, will be flagged.\n\nTo remediate, require explicit principals such as AWS account ARNs or service principals, or use scoped conditions for cross-account access rather than wildcard principals. Statements that list wildcard principals, or omit principal restrictions, should be corrected.\n\nSecure configuration example (CloudFormation YAML):\n\n```yaml\nMyTopicPolicy:\n  Type: AWS::SNS::TopicPolicy\n  Properties:\n    Topics:\n      - !Ref MyTopic\n    PolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:root\n          Action:\n            - sns:Publish\n          Resource: !Ref MyTopic\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sns_topic_is_publicly_accessible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/sns_topic_is_publicly_accessible",
   "platform": "CloudFormation",
   "descriptionID": "93100b84",
   "cloudProvider": "aws",

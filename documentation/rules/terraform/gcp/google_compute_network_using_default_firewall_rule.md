@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Google Compute Network resources should avoid using the default firewall rule, as it typically allows overly permissive access to network resources and does not restrict traffic according to least-privilege principles. If left unaddressed, using the default firewall may expose internal resources to unauthorized external access, increasing the risk of lateral movement or compromise within a project. Instead, firewall rules should be defined explicitly with restricted protocols, source ranges, and tags, as shown below:
+Google Compute Network resources should avoid using the default firewall rule, as it typically allows overly permissive access to network resources and does not restrict traffic according to least-privilege principles. If left unaddressed, using the default firewall may expose internal resources to unauthorized external access, increasing the risk of lateral movement or compromise within a project. Instead, firewall rules should be defined explicitly with restricted protocols, source ranges, and tags, as shown below:
 
 ```
 resource "google_compute_firewall" "secure_example" {
@@ -47,7 +47,6 @@ resource "google_compute_network" "secure_example" {
   name = "test-network"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Elasticsearch domains must not grant access to wildcard or anonymous principals because such policies allow unauthenticated access to cluster APIs and data, risking data exposure and unauthorized configuration changes.
+Elasticsearch domains must not grant access to wildcard or anonymous principals because such policies allow unauthenticated access to cluster APIs and data, risking data exposure and unauthorized configuration changes.
  
  In CloudFormation, verify `AWS::Elasticsearch::Domain` resources. The `Properties.AccessPolicies.Statement[].Principal` value must specify explicit IAM principals (for example, AWS account IDs or role/user/service ARNs). It must not be the literal `"*"` and must not include `AWS="*"` (or equivalent wildcard principals). Resources with `Principal="*"` or `Principal.AWS="*"` (or other any-principal patterns) will be flagged. Instead, scope access to specific ARNs, AWS account numbers, or IAM roles/users. You can also combine principals with conditions such as `aws:SourceVpc` or `aws:SourceIp` to limit exposure.
 
@@ -48,7 +48,6 @@ MyEsDomain:
           Action: es:ESHttp*
           Resource: arn:aws:es:us-west-2:123456789012:domain/my-domain/*
 ```
-
 
 ## Compliant Code Examples
 ```yaml

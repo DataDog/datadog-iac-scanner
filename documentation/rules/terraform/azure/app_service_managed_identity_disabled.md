@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure App Services should have managed identities enabled to provide secure, automated identity management for accessing Azure resources. Without specifying the `identity { type = "SystemAssigned" }` block in the Terraform configuration, the service may rely on insecure credential storage or hardcoded secrets, increasing the risk of credential exposure. Enabling managed identity ensures the App Service can securely authenticate to Azure resources without the need to manage credentials manually, reducing the attack surface and enhancing overall security.
+Azure App Services should have managed identities enabled to provide secure, automated identity management for accessing Azure resources. Without specifying the `identity { type = "SystemAssigned" }` block in the Terraform configuration, the service may rely on insecure credential storage or hardcoded secrets, increasing the risk of credential exposure. Enabling managed identity ensures the App Service can securely authenticate to Azure resources without the need to manage credentials manually, reducing the attack surface and enhancing overall security.
 
 ```
 resource "azurerm_app_service" "example" {
@@ -39,7 +39,6 @@ resource "azurerm_app_service" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

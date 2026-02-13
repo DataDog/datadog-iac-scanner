@@ -1,12 +1,13 @@
 {
   "id": "fc775e75-fcfb-4c98-b2f2-910c5858b359",
-  "queryName": "Run Using 'wget' and 'curl'",
+  "queryName": "Run using wget and curl",
   "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "Shouldn't use both 'wget' and 'curl' since they are two tools that have the same effect",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "Including both `wget` and `curl` in the same Dockerfile increases image size and attack surface and encourages inconsistent or duplicate download logic that can lead to insecure fetches or maintenance errors.\n\nThis rule checks Dockerfile `RUN` instructions and flags images where `RUN` commands invoke both the `wget` and `curl` utilities (either as separate commands in a single `RUN` line or in exec-form `RUN` where the command is `wget` or `curl`). Resources will be flagged when any `RUN` instruction contains occurrences of both `wget` and `curl`. Instead, use a single downloader and ensure downloads are verified (TLS and checksum validation) rather than keeping both tools. \n\nSecure examples using only one downloader:\n\n```dockerfile\n# Use curl only\nRUN curl -fSL https://example.com/install.sh -o /tmp/install.sh && \\\n    sha256sum -c /tmp/install.sh.sha256 && \\\n    sh /tmp/install.sh\n```\n\n```dockerfile\n# Use wget only\nRUN wget -qO /tmp/install.sh https://example.com/install.sh && \\\n    echo \"checksum  /tmp/install.sh\" | sha256sum -c - && \\\n    sh /tmp/install.sh\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/run_using_wget_and_curl",
   "platform": "Dockerfile",
   "descriptionID": "22261deb",
   "cwe": "1041",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

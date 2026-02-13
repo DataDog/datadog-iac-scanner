@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CloudWatch Logs destination policies should not use wildcards ('*') in the `principals` or `actions` fields, as this can inadvertently grant broad permissions. When wildcards are used, any AWS principal may gain permission to perform any logs-related actions, increasing the risk of unauthorized access or data exfiltration. Attackers or unintentional actors could potentially send or retrieve log data, modify log subscriptions, or disrupt monitoring workflows. Restricting both `principals` and `actions` to only necessary accounts and actions protects log data integrity and helps maintain the security of monitoring operations.
-
+CloudWatch Logs destination policies should not use wildcards ('*') in the `principals` or `actions` fields, as this can inadvertently grant broad permissions. When wildcards are used, any AWS principal may gain permission to perform any logs-related actions, increasing the risk of unauthorized access or data exfiltration. Attackers or unintentional actors could potentially send or retrieve log data, modify log subscriptions, or disrupt monitoring workflows. Restricting both `principals` and `actions` to only necessary accounts and actions protects log data integrity and helps maintain the security of monitoring operations.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When using `kube-apiserver`, the `--kubelet-certificate-authority` flag should be set. The rule checks `containers` and `initContainers` for commands that include `kube-apiserver` and reports when the `--kubelet-certificate-authority` flag is not present. Setting this flag ensures the API server uses the kubelet's certificate authority to validate kubelet TLS connections.
-
+When using `kube-apiserver`, the `--kubelet-certificate-authority` flag should be set. The rule checks `containers` and `initContainers` for commands that include `kube-apiserver` and reports when the `--kubelet-certificate-authority` flag is not present. Setting this flag ensures the API server uses the kubelet's certificate authority to validate kubelet TLS connections.
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- An ingress `nifcloud_security_group_rule` allows traffic from a `/0` CIDR. The policy detects `nifcloud_security_group_rule` resources whose `cidr_ip` is `/0` (allowing traffic from anywhere) and flags them as insecure. The rule reports the following attributes: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.
-
+An ingress `nifcloud_security_group_rule` allows traffic from a `/0` CIDR. The policy detects `nifcloud_security_group_rule` resources whose `cidr_ip` is `/0` (allowing traffic from anywhere) and flags them as insecure. The rule reports the following attributes: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.
 
 ## Compliant Code Examples
 ```terraform

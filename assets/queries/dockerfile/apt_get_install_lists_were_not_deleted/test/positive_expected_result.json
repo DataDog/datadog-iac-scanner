@@ -1,31 +1,31 @@
 [
   {
-    "queryName": "Apt Get Install Lists Were Not Deleted",
-    "severity": "INFO",
+    "queryName": "apt-get install lists were not deleted",
+    "severity": "LOW",
     "line": 2,
     "fileName": "positive.dockerfile"
   },
   {
-    "queryName": "Apt Get Install Lists Were Not Deleted",
-    "severity": "INFO",
+    "queryName": "apt-get install lists were not deleted",
+    "severity": "LOW",
     "line": 5,
     "fileName": "positive.dockerfile"
   },
   {
-    "queryName": "Apt Get Install Lists Were Not Deleted",
-    "severity": "INFO",
+    "queryName": "apt-get install lists were not deleted",
+    "severity": "LOW",
     "line": 8,
     "fileName": "positive.dockerfile"
   },
   {
-    "queryName": "Apt Get Install Lists Were Not Deleted",
-    "severity": "INFO",
+    "queryName": "apt-get install lists were not deleted",
+    "severity": "LOW",
     "line": 12,
     "fileName": "positive.dockerfile"
   },
   {
-    "queryName": "Apt Get Install Lists Were Not Deleted",
-    "severity": "INFO",
+    "queryName": "apt-get install lists were not deleted",
+    "severity": "LOW",
     "line": 2,
     "fileName": "positive2.dockerfile"
   }

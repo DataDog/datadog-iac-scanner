@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "Components links definitions should be referenced or removed from Open API definition",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/components_link_definition_unused",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/components_link_definition_unused",
   "platform": "OpenAPI",
   "descriptionID": "3e317e78",
   "cwe": "710",

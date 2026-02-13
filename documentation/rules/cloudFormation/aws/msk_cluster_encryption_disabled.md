@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- MSK clusters must have encryption enabled for data at rest and in transit to prevent unauthorized access, eavesdropping, and tampering of Kafka messages and backups. In AWS CloudFormation, `AWS::MSK::Cluster` resources must define `EncryptionInfo`. `EncryptionInfo.EncryptionInTransit.ClientBroker` must be set to `TLS` and `EncryptionInfo.EncryptionInTransit.InCluster` must be set to `true`. Resources missing `EncryptionInfo`, with `ClientBroker` set to other values (for example, `PLAINTEXT` or `TLS_PLAINTEXT`), or with `InCluster` set to `false` will be flagged as insecure. 
+MSK clusters must have encryption enabled for data at rest and in transit to prevent unauthorized access, eavesdropping, and tampering of Kafka messages and backups. In AWS CloudFormation, `AWS::MSK::Cluster` resources must define `EncryptionInfo`. `EncryptionInfo.EncryptionInTransit.ClientBroker` must be set to `TLS` and `EncryptionInfo.EncryptionInTransit.InCluster` must be set to `true`. Resources missing `EncryptionInfo`, with `ClientBroker` set to other values (for example, `PLAINTEXT` or `TLS_PLAINTEXT`), or with `InCluster` set to `false` will be flagged as insecure. 
  
  Secure configuration example:
 
@@ -42,7 +42,6 @@ MyMSKCluster:
         ClientBroker: TLS
         InCluster: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

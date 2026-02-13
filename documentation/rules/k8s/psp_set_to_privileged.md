@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Pods should not be allowed to run with privileged execution. The PodSecurityPolicy resource's `spec.privileged` field should be set to false to prevent containers from gaining elevated host privileges. Allowing privileged containers grants broad host-level access and increases the risk of privilege escalation or host compromise.
-
+Pods should not be allowed to run with privileged execution. The PodSecurityPolicy resource's `spec.privileged` field should be set to false to prevent containers from gaining elevated host privileges. Allowing privileged containers grants broad host-level access and increases the risk of privilege escalation or host compromise.
 
 ## Compliant Code Examples
 ```yaml

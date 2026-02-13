@@ -1,12 +1,13 @@
 {
   "id": "68a51e22-ae5a-4d48-8e87-b01a323605c9",
-  "queryName": "Using Unnamed Build Stages",
+  "queryName": "Using unnamed build stages",
   "severity": "LOW",
   "category": "Build Process",
-  "descriptionText": " This query is used to ensure that build stages are named. This way even if the Dockerfile is re-ordered, the COPY instruction doesn't break.",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/multistage-build/",
+  "descriptionText": "`COPY` instructions should reference a named build stage alias instead of a numeric stage index. Numeric references are brittle because reordering or inserting stages can change which stage is referenced, potentially causing unintended files or secrets from another stage to be copied into the final image.\n\nThis rule examines Dockerfile `COPY` commands that use the `--from` flag and flags cases where the `--from` value is a numeric index. The `--from` argument must be a previously defined `FROM ... AS <name>` alias (a non-numeric name).\n\n`COPY` instructions with `--from=<number>` (for example, `--from=2`) will be flagged. Ensure each build stage defines an alias with `AS <name>` and reference that alias in `COPY --from=<alias>`.\n\nSecure example using a named stage alias:\n\n```dockerfile\nFROM golang:1.18 AS builder\nWORKDIR /app\nCOPY . .\nRUN go build -o app\n\nFROM alpine:3.16\nCOPY --from=builder /app/app /usr/local/bin/app\nCMD [\"/usr/local/bin/app\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/using_unnamed_build_stages",
   "platform": "Dockerfile",
   "descriptionID": "dea09829",
   "cloudProvider": "common",
-  "cwe": "710"
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/multistage-build/"
 }

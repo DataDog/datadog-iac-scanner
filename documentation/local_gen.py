@@ -14,13 +14,19 @@ from pathlib import Path
 NO_DESC = "No description provided"
 POSITIVE = re.compile(r"^positive\d*\..+$")
 NEGATIVE = re.compile(r"^negative\d*\..+$")
-CODE_SUFFIX = {"tf": "terraform", "yaml": "yaml", "json": "json"}
+CODE_SUFFIX = {
+    "tf": "terraform",
+    "yaml": "yaml",
+    "json": "json",
+    "dockerfile": "dockerfile",
+}
 CLOUD_PROVIDER = {
     "alicloud": "Alicloud",
     "aws": "AWS",
     "aws_sam": "AWS",
     "gcp": "GCP",
     "k8s": "Kubernetes",
+    "dockerfile": "Dockerfile",
     "azure": "Azure",
     "databricks": "Databricks",
     "gcp": "GCP",
@@ -140,9 +146,9 @@ meta:
 """
     if provider_url:
         markdown += f"\n#### Learn More\n\n - [Provider Reference]({provider_url})\n"
-    markdown += f"\n### Description\n\n {description}\n"
+    markdown += f"\n### Description\n\n{description}\n"
     if compliant:
-        markdown += "\n\n## Compliant Code Examples\n" + "\n\n".join(compliant)
+        markdown += "\n## Compliant Code Examples\n" + "\n\n".join(compliant)
     if non_compliant:
         markdown += "\n## Non-Compliant Code Examples\n" + "\n\n".join(non_compliant)
     return markdown

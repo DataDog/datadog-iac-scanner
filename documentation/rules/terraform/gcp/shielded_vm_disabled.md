@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Compute instances must be configured with Shielded VM enabled to provide enhanced security against rootkits and other persistent threats. This requires defining the `shielded_instance_config` block with all sub-attributes—`enable_secure_boot`, `enable_vtpm`, and `enable_integrity_monitoring`—set to `true`. Failure to enable these features, as shown below, can leave virtual machines vulnerable to unauthorized modifications, tampering, or attacks that compromise the integrity and confidentiality of the system.
+Compute instances must be configured with Shielded VM enabled to provide enhanced security against rootkits and other persistent threats. This requires defining the `shielded_instance_config` block with all sub-attributes—`enable_secure_boot`, `enable_vtpm`, and `enable_integrity_monitoring`—set to `true`. Failure to enable these features, as shown below, can leave virtual machines vulnerable to unauthorized modifications, tampering, or attacks that compromise the integrity and confidentiality of the system.
 
 ```
 data "google_compute_instance" "appserver" {
@@ -41,7 +41,6 @@ data "google_compute_instance" "appserver" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

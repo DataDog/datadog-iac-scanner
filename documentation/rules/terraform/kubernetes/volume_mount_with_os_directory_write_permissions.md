@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers can mount sensitive host folders, which may grant dangerous access to critical host configurations and binaries. This rule inspects `container` and `init_container` entries in the resource spec and evaluates each `volume_mount` (object or array) whose `mount_path` targets host-sensitive directories or `/`. The rule enforces that the `read_only` attribute is set to `true`. It reports a `MissingAttribute` if `read_only` is undefined, and an `IncorrectValue` if it is explicitly set to `false`. To remediate, add `read_only = true` when missing or replace `false` with `true` for incorrect values.
-
+Containers can mount sensitive host folders, which may grant dangerous access to critical host configurations and binaries. This rule inspects `container` and `init_container` entries in the resource spec and evaluates each `volume_mount` (object or array) whose `mount_path` targets host-sensitive directories or `/`. The rule enforces that the `read_only` attribute is set to `true`. It reports a `MissingAttribute` if `read_only` is undefined, and an `IncorrectValue` if it is explicitly set to `false`. To remediate, add `read_only = true` when missing or replace `false` with `true` for incorrect values.
 
 ## Compliant Code Examples
 ```terraform
