@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "MSSQL server public network access enabled",
+    "severity": "HIGH",
+    "line": 1,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "MSSQL server public network access enabled",
+    "severity": "HIGH",
+    "line": 16,
+    "fileName": "positive2.tf"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "id": "c999cf62-0920-40f8-8dda-0caccd66ed7e",
+  "queryName": "API Gateway stage without API Gateway usage plan associated",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "API Gateway stages should always be associated with an API Gateway UsagePlan, which enforces throttling and quota limits for clients accessing your APIs. Without a defined `aws_api_gateway_usage_plan` resource and its association via the `api_stages` block, as shown below, the API stage can be accessed without usage restrictions, leading to potential misuse, abuse, or denial of service due to unlimited traffic.\n\n```\nresource \"aws_api_gateway_stage\" \"example\" {\n  deployment_id = \"some deployment id\"\n  rest_api_id   = \"some rest api id\"\n  stage_name    = \"development\"\n}\n```\n\nConfiguring a UsagePlan, such as the one in the example below, helps mitigate these risks by controlling consumption through quotas and throttling, protecting backend resources and maintaining predictable API performance.\n\n```\nresource \"aws_api_gateway_usage_plan\" \"example\" {\n  name        = \"my-usage-plan\"\n  description = \"usage plan description\"\n  api_stages {\n    api_id = \"some rest api id\"\n    stage  = \"development\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/api_gateway_stage_without_api_gateway_usage_plan_associated",
+  "platform": "Terraform",
+  "descriptionID": "72d08d94",
+  "cloudProvider": "aws",
+  "cwe": "285",
+  "oldDescriptionText": "API Gateway Stage should have API Gateway UsagePlan defined and associated.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/api_gateway_stage"
+}

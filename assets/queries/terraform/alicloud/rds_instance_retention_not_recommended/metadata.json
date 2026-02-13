@@ -1,0 +1,14 @@
+{
+  "id": "dc158941-28ce-481d-a7fa-dc80761edf46",
+  "queryName": "RDS instance retention period not recommended",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "`alicloud_db_instance` resources must have `sql_collector_status` set to `Enabled` and `sql_collector_config_value` set to `180` or greater.\nThis rule flags resources that are missing either attribute, have `sql_collector_status` set to `Disabled`, or have `sql_collector_config_value` less than `180`.\nTo remediate, set `sql_collector_status = Enabled` and `sql_collector_config_value = 180`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_retention_not_recommended",
+  "platform": "Terraform",
+  "descriptionID": "243a4fb4",
+  "cloudProvider": "alicloud",
+  "cwe": "779",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/db_instance#sql_collector_config_value"
+}

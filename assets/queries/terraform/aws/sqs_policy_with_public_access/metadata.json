@@ -1,0 +1,14 @@
+{
+  "id": "730675f9-52ed-49b6-8ead-0acb5dd7df7f",
+  "queryName": "SQS policy with public access",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "This check looks for overly permissive `Action` statements and wildcards `\"Principal\": \"*\"` in AWS SQS queue policies, which may grant broad permissions to any user. If left unaddressed, this misconfiguration can allow unauthorized parties to perform any action on the queue, including viewing, deleting, or sending messages, which poses risks such as data leakage or denial of service. To reduce the attack surface, always scope the `Principal` attribute in policy documents to trusted AWS identities instead of using `\"*\"` or `{\"AWS\": \"*\"}`.\n\nThe following is an example of an insecure configuration:\n\n```\nresource \"aws_sqs_queue_policy\" \"test\" {\n  ...\n  policy = <<EOF\n{\n  \"Statement\": [{\n      \"Effect\": \"Allow\",\n      \"Principal\": \"*\",\n      \"Action\": \"sqs:*\",\n      \"Resource\": \"arn:aws:sqs:*:111122223333:queue1\"\n  }]\n}\nEOF\n}\n```\n\nA secure configuration uses a more restrictive principal, as shown below:\n\n```\nresource \"aws_sqs_queue_policy\" \"test\" {\n  ...\n  policy = <<EOF\n{\n  \"Statement\": [{\n      \"Effect\": \"Allow\",\n      \"Principal\": {\"AWS\": \"arn:aws:iam::111122223333:user/TrustedUser\"},\n      \"Action\": \"sqs:*\",\n      \"Resource\": \"arn:aws:sqs:*:111122223333:queue1\"\n  }]\n}\nEOF\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sqs_policy_with_public_access",
+  "platform": "Terraform",
+  "descriptionID": "534fb194",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldDescriptionText": "Checks for dangerous permissions in Action statements in an SQS Queue Policy. This is deemed a potential security risk as it would allow various attacks to the queue",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sqs_queue_policy"
+}

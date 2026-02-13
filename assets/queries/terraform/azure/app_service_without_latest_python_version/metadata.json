@@ -1,0 +1,14 @@
+{
+  "id": "cc4aaa9d-1070-461a-b519-04e00f42db8a",
+  "queryName": "App Service without latest Python version",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "It is recommended to specify the latest supported Python version for the `python_version` attribute in the `site_config` block of the `azurerm_app_service` resource. Using outdated Python versions, such as `\"python_version = \\\"2.7\\\"\"`, exposes your application to known security vulnerabilities and prevents access to important features and security updates available in newer releases. To reduce risk, configure the resource with an up-to-date version. For example:\n\n```\nsite_config {\n  python_version = \"3.10\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/app_service_without_latest_python_version",
+  "platform": "Terraform",
+  "descriptionID": "848bf695",
+  "cloudProvider": "azure",
+  "cwe": "665",
+  "oldDescriptionText": "Periodically, newer versions are released for Python software either due to security flaws or to include additional functionality. Using the latest full Python version for web apps is recommended in order to take advantage of security fixes, if any, and/or additional functionalities of the newer version.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/app_service#python_version"
+}

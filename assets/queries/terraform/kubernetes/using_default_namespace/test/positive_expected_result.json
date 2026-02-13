@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Using default namespace",
+		"severity": "LOW",
+		"line": 4,
+		"fileName": ""
+	},
+	{
+		"queryName": "Using default namespace",
+		"severity": "LOW",
+		"line": 9,
+		"fileName": ""
+	}
+]

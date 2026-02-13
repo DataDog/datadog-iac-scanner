@@ -1,0 +1,12 @@
+{
+  "id": "845acfbe-3e10-4b8e-b656-3b404d36dfb2",
+  "queryName": "Service type is NodePort",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Service resources should not have `spec.type` set to `NodePort`. A `NodePort` service exposes pods on each node and can create security and accessibility concerns; prefer `ClusterIP` or `LoadBalancer` where appropriate.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_type_is_nodeport",
+  "platform": "Kubernetes",
+  "descriptionID": "4744714e",
+  "cwe": "665",
+  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/service/"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "f3g4h5i6-j7k8-9lmn-0opq-12345abcdefg",
+  "queryName": "SageMaker notebook internet access enabled",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "Amazon SageMaker notebook instances with direct internet access enabled create potential security vulnerabilities by allowing unauthorized outbound connections and possible data exfiltration channels. When enabled, malicious code or compromised notebooks can directly communicate with external servers, bypassing network security controls and potentially leaking sensitive information or intellectual property. To secure SageMaker notebook instances, you should explicitly disable direct internet access as shown in the following example:\n\n```hcl\nresource \"aws_sagemaker_notebook_instance\" \"good_example\" {\n  name                   = \"example-notebook\"\n  role_arn               = \"arn:aws:iam::123456789012:role/SageMakerRole\"\n  direct_internet_access = \"Disabled\"\n  instance_type          = \"ml.t2.medium\"\n}\n```\n\nAvoid the insecure configuration that enables direct internet access:\n\n```hcl\nresource \"aws_sagemaker_notebook_instance\" \"bad_example\" {\n  name                   = \"example-notebook\"\n  role_arn               = \"arn:aws:iam::123456789012:role/SageMakerRole\"\n  direct_internet_access = \"Enabled\" \n  instance_type          = \"ml.t2.medium\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sagemaker_direct_internet_access_enabled",
+  "platform": "Terraform",
+  "descriptionID": "f3g4h5i6",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldDescriptionText": "Ensures that direct internet access is disabled for Amazon SageMaker Notebook Instances. Allowing direct internet access could expose the instance to unauthorized access or data exfiltration.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sagemaker_notebook_instance#direct_internet_access",
+  "customFrameworks": [
+    {
+      "control": "aws.1.24",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

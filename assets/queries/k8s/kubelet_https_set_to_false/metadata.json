@@ -1,0 +1,13 @@
+{
+  "id": "cdc8b54e-6b16-4538-a1b0-35849dbe29cf",
+  "queryName": "Kubelet HTTPS set to false",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "When using `kube-apiserver`, the `--kubelet-https` flag should be set to `true` or omitted; it must not be set to `false`.\nThis rule checks container and initContainer command arguments for `kube-apiserver` and reports when `--kubelet-https=false` is present.\nSetting the flag to `false` disables HTTPS to the kubelet and results in insecure communication; set it to `true` or remove the flag to enforce secure connections.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_https_set_to_false",
+  "platform": "Kubernetes",
+  "descriptionID": "754a303a",
+  "cwe": "311",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

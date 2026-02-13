@@ -1,0 +1,12 @@
+{
+  "id": "7f203940-39c4-4ea7-91ee-7aba16bca9e2",
+  "queryName": "Property 'allowReserved' Improperly Defined",
+  "severity": "INFO",
+  "category": "Structure and Semantics",
+  "descriptionText": "Property 'allowReserved' should be only defined for query parameters",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/property_allow_reserved_improperly_defined",
+  "platform": "OpenAPI",
+  "descriptionID": "a23029a8",
+  "cwe": "665",
+  "providerUrl": "https://swagger.io/specification/#parameter-object"
+}

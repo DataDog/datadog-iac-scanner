@@ -1,0 +1,15 @@
+{
+  "id": "b139213e-7d24-49c2-8025-c18faa21ecaa",
+  "queryName": "Node auto upgrade disabled",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Kubernetes nodes should have automatic upgrades enabled to ensure that critical security patches, bug fixes, and feature updates are applied without manual intervention. In Terraform, this is configured by setting the `auto_upgrade` attribute to `true` within the `management` block:\n\n```\nmanagement {\n  auto_upgrade = true\n}\n```\n\nIf `auto_upgrade` is not enabled, as in the following example, nodes may remain outdated and vulnerable to known security flaws:\n\n```\nmanagement {\n  auto_upgrade = false\n}\n```\n\nLeaving auto upgrade disabled can expose your cluster to exploits and instability due to unpatched vulnerabilities in the underlying infrastructure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/node_auto_upgrade_disabled",
+  "platform": "Terraform",
+  "descriptionID": "46e4c29f",
+  "cloudProvider": "gcp",
+  "cwe": "1188",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Kubernetes nodes must have auto upgrades set to true, which means Node 'auto_upgrade' should be enabled for Kubernetes Clusters",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/container_node_pool#auto_upgrade"
+}

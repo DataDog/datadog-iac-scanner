@@ -1,0 +1,14 @@
+[
+  {
+    "fileName": "positive1.yaml",
+    "queryName": "EC2 public instance exposed through subnet",
+    "severity": "MEDIUM",
+    "line": 28
+  },
+  {
+    "queryName": "EC2 public instance exposed through subnet",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive2.json"
+  }
+]

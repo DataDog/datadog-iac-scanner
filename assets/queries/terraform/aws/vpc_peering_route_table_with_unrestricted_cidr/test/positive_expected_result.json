@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "VPC peering route table with unrestricted CIDR",
+    "severity": "HIGH",
+    "line": 118,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "VPC peering route table with unrestricted CIDR",
+    "severity": "HIGH",
+    "line": 132,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "VPC peering route table with unrestricted CIDR",
+    "severity": "HIGH",
+    "line": 120,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "VPC peering route table with unrestricted CIDR",
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive4.tf"
+  }
+]

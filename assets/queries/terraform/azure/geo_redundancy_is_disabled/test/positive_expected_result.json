@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Geo redundancy is disabled",
+    "severity": "LOW",
+    "line": 2
+  },
+  {
+    "queryName": "Geo redundancy is disabled",
+    "severity": "LOW",
+    "line": 31
+  }
+]

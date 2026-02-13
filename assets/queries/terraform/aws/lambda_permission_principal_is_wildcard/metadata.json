@@ -1,0 +1,14 @@
+{
+  "id": "e08ed7eb-f3ef-494d-9d22-2e3db756a347",
+  "queryName": "Lambda permission principal is wildcard",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Lambda function permissions should not define the `principal` attribute with a wildcard (`*`) value. Using a wildcard as the principal allows any AWS account or service to invoke the Lambda function, significantly increasing the risk of unauthorized access or unintentional exposure. Instead, the `principal` should be set to the specific AWS service or account that requires access, such as `events.amazonaws.com`, to enforce strict access controls and limit potential abuse.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/lambda_permission_principal_is_wildcard",
+  "platform": "Terraform",
+  "descriptionID": "b443babe",
+  "cloudProvider": "aws",
+  "cwe": "155",
+  "oldDescriptionText": "Lambda Permission Principal should not contain a wildcard.",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/lambda_policy_module.html"
+}

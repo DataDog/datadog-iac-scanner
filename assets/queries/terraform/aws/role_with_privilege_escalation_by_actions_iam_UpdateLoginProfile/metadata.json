@@ -1,0 +1,14 @@
+{
+  "id": "35ccf766-0e4d-41ed-9ec4-2dab155082b4",
+  "queryName": "Role with privilege escalation by actions 'iam:UpdateLoginProfile'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting the `iam:UpdateLoginProfile` action with the `Resource` attribute set to `\"*\"` in an IAM policy allows a role or user to change the login passwords of any IAM user in the AWS account. This creates a privilege escalation vulnerability, as a user with this permission could take over other accounts and gain unauthorized access to critical resources. \n\nTo prevent this, use least-privilege access—for example, by restricting allowed actions and resource scope, as shown below:\n\n```\nresource \"aws_iam_user_policy\" \"inline_policy_run_instances2\" {\n  name = \"inline_policy_run_instances\"\n  user = aws_iam_user.cosmic2.name\n\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [\n      {\n        Action = [\n          \"ec2:Describe*\",\n        ]\n        Effect   = \"Allow\"\n        Resource = \"*\"\n      },\n    ]\n  })\n}\n```\nThis sample policy grants only read-only access to EC2 information, rather than sensitive IAM actions.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_UpdateLoginProfile",
+  "platform": "Terraform",
+  "descriptionID": "8bf480db",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Role with privilege escalation by actions 'iam:UpdateLoginProfile' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy#policy"
+}

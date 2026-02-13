@@ -1,0 +1,13 @@
+{
+  "id": "a1423864-2fbc-4f46-bfe1-fbbf125c71c9",
+  "queryName": "CodeBuild Not Encrypted",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "CodeBuild Project should be encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/codebuild_not_encrypted",
+  "platform": "Ansible",
+  "descriptionID": "7d51416a",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/aws_codebuild_module.html"
+}

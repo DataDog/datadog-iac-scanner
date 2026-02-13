@@ -1,0 +1,14 @@
+{
+  "id": "e401d614-8026-4f4b-9af9-75d1197461ba",
+  "queryName": "IAM Policies With Full Privileges",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IAM policies shouldn't allow full administrative privileges (for all resources)",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_policies_with_full_privileges",
+  "platform": "Ansible",
+  "descriptionID": "3827a620",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/iam_managed_policy_module.html"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "38c5ee0d-7f22-4260-ab72-5073048df100",
+  "queryName": "S3 bucket ACL allows read or write to all users",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "This check identifies AWS S3 buckets that have ACLs allowing read or write access to all users, creating a significant security risk. When S3 buckets are configured with public access (using ACLs such as `public-read` or `public-read-write`), sensitive data can be exposed to unauthorized users, potentially leading to data breaches, intellectual property theft, or compliance violations. To secure your S3 buckets, always use private ACLs, as shown in the example below:\n\n```terraform\nresource \"aws_s3_bucket\" \"secure_example\" {\n  bucket = \"my-tf-test-bucket\"\n  acl    = \"private\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_acl_allows_read_or_write_to_all_users",
+  "platform": "Terraform",
+  "descriptionID": "d535387f",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "S3 Buckets should not be readable and writable to all users",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket",
+  "defaultFrameworks": [
+    {
+      "control": "1.6",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "aws"
+    }
+  ]
+}

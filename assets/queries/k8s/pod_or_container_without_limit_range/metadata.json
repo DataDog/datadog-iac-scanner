@@ -1,0 +1,12 @@
+{
+  "id": "4a20ebac-1060-4c81-95d1-1f7f620e983b",
+  "queryName": "Pod or container without LimitRange",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Each namespace must include an associated LimitRange policy to ensure resource allocations for Pods, containers, and PersistentVolumeClaims remain within defined boundaries. The rule checks resources of kinds Pod, Deployment, DaemonSet, StatefulSet, ReplicaSet, ReplicationController, Job, CronJob, and PersistentVolumeClaim and reports when no LimitRange exists in the same namespace (or in 'default' when the namespace is not set).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/pod_or_container_without_limit_range",
+  "platform": "Kubernetes",
+  "descriptionID": "142ed21f",
+  "cwe": "400",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/limit-range/"
+}

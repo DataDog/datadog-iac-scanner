@@ -1,0 +1,13 @@
+{
+  "id": "0f0fb06b-0f2f-4374-8588-f2c7c348c7a0",
+  "queryName": "CloudWatch logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Route 53 hosted zones should have query logging enabled so DNS queries are recorded for detection, forensics, and troubleshooting. Without query logs, DNS-based attacks and misconfigurations are harder to detect and investigate.\n\n In CloudFormation, `AWS::Route53::HostedZone` resources must include the `QueryLoggingConfig` property with a valid `CloudWatchLogsLogGroupArn` pointing to a CloudWatch Logs log group to receive DNS query logs. Ensure the referenced log group exists and that permissions allow Route 53 to publish logs. Resources missing `QueryLoggingConfig` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyHostedZone:\n  Type: AWS::Route53::HostedZone\n  Properties:\n    Name: example.com\n    QueryLoggingConfig:\n      CloudWatchLogsLogGroupArn: arn:aws:logs:us-east-1:123456789012:log-group:/aws/route53/example\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudwatch_logging_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "617aba8a",
+  "cloudProvider": "aws",
+  "cwe": "779",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-route53-hostedzone.html#cfn-route53-hostedzone-queryloggingconfig"
+}

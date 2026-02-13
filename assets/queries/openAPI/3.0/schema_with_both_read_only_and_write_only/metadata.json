@@ -1,0 +1,12 @@
+{
+  "id": "d2361d58-361c-49f0-9e50-b957fd608b29",
+  "queryName": "Schema With Both ReadOnly And WriteOnly",
+  "severity": "INFO",
+  "category": "Structure and Semantics",
+  "descriptionText": "Schema should not have both 'writeOnly' and 'readOnly' set to true",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/schema_with_both_read_only_and_write_only",
+  "platform": "OpenAPI",
+  "descriptionID": "adb56e0b",
+  "cwe": "665",
+  "providerUrl": "https://swagger.io/specification/#schema-object"
+}

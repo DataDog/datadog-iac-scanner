@@ -1,0 +1,12 @@
+{
+  "id": "06764426-3c56-407e-981f-caa25db1c149",
+  "queryName": "Security Scheme HTTP Unknown Scheme",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Security Scheme HTTP scheme should be registered in the IANA Authentication Scheme registry",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/security_schemes_http_unknown_scheme",
+  "platform": "OpenAPI",
+  "descriptionID": "e8060d48",
+  "cwe": "284",
+  "providerUrl": "https://swagger.io/specification/#security-scheme-object"
+}

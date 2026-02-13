@@ -1,0 +1,14 @@
+{
+  "id": "cb8e4bf0-903d-45c6-a278-9a947d82a27b",
+  "queryName": "Storage Account Not Forcing HTTPS",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Storage Accounts should enforce the use of HTTPS",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/azure/storage_account_not_forcing_https",
+  "platform": "Pulumi",
+  "descriptionID": "406540e1",
+  "cloudProvider": "azure",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://www.pulumi.com/registry/packages/azure-native/api-docs/storage/storageaccount/#enablehttpstrafficonly_yaml"
+}

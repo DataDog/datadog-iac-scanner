@@ -1,0 +1,13 @@
+{
+  "id": "5744cbb8-5946-4b75-a196-ade44449525b",
+  "queryName": "HPA targeted deployments with configured replica count",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "Deployments targeted by HorizontalPodAutoscaler should not include a statically configured replica count. This rule flags Deployments referenced by an HPA via the `scaleTargetRef` when the Deployment's `spec.replicas` field is defined. A defined `spec.replicas` can conflict with the HPA's scaling decisions and should be undefined so the HorizontalPodAutoscaler can manage replica count.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/hpa_targeted_deployments_with_configured_replica_count",
+  "platform": "Kubernetes",
+  "descriptionID": "3ccc5d6c",
+  "cwe": "400",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/"
+}

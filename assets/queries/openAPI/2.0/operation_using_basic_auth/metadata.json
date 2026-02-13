@@ -1,0 +1,13 @@
+{
+  "id": "ceefb058-8065-418f-9c4c-584a78c7e104",
+  "queryName": "Operation Using Basic Auth",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Operation Object should not use basic authentication",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/operation_using_basic_auth",
+  "platform": "OpenAPI",
+  "descriptionID": "bb3bb0b3",
+  "cwe": "284",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://swagger.io/specification/v2/#operation-object"
+}

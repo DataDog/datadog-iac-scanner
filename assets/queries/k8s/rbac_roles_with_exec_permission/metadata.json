@@ -1,0 +1,12 @@
+{
+  "id": "c589f42c-7924-4871-aee2-1cede9bc7cbc",
+  "queryName": "RBAC roles with exec permission",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Roles or ClusterRoles that grant permissions to run commands in containers via `kubectl exec` can be abused by attackers to execute malicious code if a subject is compromised. To reduce this risk, the `pods/exec` verb should not be used in production environments. Such permissions increase the attack surface and violate the principle of least privilege. When exec access is required, it should be tightly scoped to specific subjects and namespaces and regularly audited.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/rbac_roles_with_exec_permission",
+  "platform": "Kubernetes",
+  "descriptionID": "c589f42c",
+  "cwe": "732",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/"
+}

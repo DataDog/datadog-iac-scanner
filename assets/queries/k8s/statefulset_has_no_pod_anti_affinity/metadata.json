@@ -1,0 +1,12 @@
+{
+  "id": "d740d048-8ed3-49d3-b77b-6f072f3b669e",
+  "queryName": "StatefulSet without podAntiAffinity",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "StatefulSets should define a `podAntiAffinity` policy to prevent scheduling multiple Pods from the same StatefulSet onto the same node.\nThe `spec.template.spec.affinity.podAntiAffinity` field must be set with either `preferredDuringSchedulingIgnoredDuringExecution` or `requiredDuringSchedulingIgnoredDuringExecution`. Each term must use `topologyKey: kubernetes.io/hostname` with a label selector that matches the Pod template labels.\nThis rule applies when `spec.replicas` is greater than 2.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/statefulset_has_no_pod_anti_affinity",
+  "platform": "Kubernetes",
+  "descriptionID": "f0d30dd9",
+  "cwe": "400",
+  "providerUrl": "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/"
+}

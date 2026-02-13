@@ -1,0 +1,12 @@
+{
+  "id": "229588ef-8fde-40c8-8756-f4f2b5825ded",
+  "queryName": "Memory requests not defined",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Memory requests should be defined for each container so the scheduler and kubelet can account for and reserve the requested memory and help prevent over-provisioning on nodes. Without a defined memory request, the scheduler may overcommit node memory, increasing the risk of resource contention and out-of-memory (OOM) terminations.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/memory_requests_not_defined",
+  "platform": "Kubernetes",
+  "descriptionID": "3dcbd683",
+  "cwe": "400",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/"
+}

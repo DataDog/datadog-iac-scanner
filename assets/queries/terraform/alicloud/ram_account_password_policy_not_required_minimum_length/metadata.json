@@ -1,0 +1,14 @@
+{
+  "id": "a9dfec39-a740-4105-bbd6-721ba163c053",
+  "queryName": "RAM account password policy does not enforce minimum password length",
+  "severity": "LOW",
+  "category": "Secret Management",
+  "descriptionText": "The RAM account password policy must define `minimum_password_length` and set it to `14` or greater. If the attribute is missing, the policy is non-compliant and should include `minimum_password_length = 14`. This rule reports `IncorrectValue` when the attribute is defined but below `14`, and `MissingAttribute` when it is not defined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_account_password_policy_not_required_minimum_length",
+  "platform": "Terraform",
+  "descriptionID": "a8b47743",
+  "cloudProvider": "alicloud",
+  "cwe": "521",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ram_account_password_policy#minimum_password_length"
+}

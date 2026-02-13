@@ -1,0 +1,14 @@
+{
+  "id": "704dadd3-54fc-48ac-b6a0-02f170011473",
+  "queryName": "GuardDuty detector disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "This check ensures that Amazon GuardDuty is enabled in your AWS environment by verifying that the `enable` attribute in the `aws_guardduty_detector` Terraform resource is set to `true`. GuardDuty is a threat detection service that continuously monitors for malicious or unauthorized behavior, helping identify and prioritize potential security risks. If GuardDuty is disabled, suspicious activities such as anomalous API calls, potentially unauthorized deployments, or account compromise may go undetected, leaving cloud resources vulnerable to attack. Enabling GuardDuty is a crucial security best practice to maintain visibility into potential threats and respond to incidents promptly.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/guardduty_detector_disabled",
+  "platform": "Terraform",
+  "descriptionID": "0a3448be",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "Make sure that Amazon GuardDuty is Enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/guardduty_detector#example-usage"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "b9db8a10-020c-49ca-88c6-780e5fdb4328",
+  "queryName": "Link Object Incorrect Ref",
+  "severity": "INFO",
+  "category": "Structure and Semantics",
+  "descriptionText": "Link object reference must always point to '#/components/links'",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/link_object_incorrect_ref",
+  "platform": "OpenAPI",
+  "descriptionID": "d32809e9",
+  "cwe": "20",
+  "providerUrl": "https://swagger.io/specification/#link-object"
+}

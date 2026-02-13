@@ -1,0 +1,14 @@
+{
+  "id": "4ab10c48-bedb-4deb-8f3b-ff12783b61de",
+  "queryName": "API Gateway X-Ray disabled",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "Failing to enable AWS X-Ray tracing on API Gateway stages prevents collection of end-to-end request traces, which hinders latency analysis, root-cause investigation, and detection of suspicious cross-service behavior. The `TracingEnabled` property on `AWS::ApiGateway::Stage` resources must be defined and set to `true`. Resources that omit `TracingEnabled` or set it to `false` (boolean `false` or the string `\"false\"`) will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyStage:\n  Type: AWS::ApiGateway::Stage\n  Properties:\n    StageName: prod\n    RestApiId: !Ref MyApi\n    TracingEnabled: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/api_gateway_xray_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "7db1d7b0",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-apigateway-stage.html#cfn-apigateway-stage-tracingenabled"
+}

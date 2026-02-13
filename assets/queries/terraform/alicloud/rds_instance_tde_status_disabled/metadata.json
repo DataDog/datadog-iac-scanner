@@ -1,0 +1,13 @@
+{
+  "id": "44d434ca-a9bf-4203-8828-4c81a8d5a598",
+  "queryName": "RDS instance TDE status disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "The `tde_status` parameter should be set to `Enabled` for supported RDS instances. This rule applies to `alicloud_db_instance` resources with `engine` set to `MySQL` (versions `5.6`, `5.7`, `8`) or `SQLServer` (versions `08r2_ent_ha`, `2012_ent_ha`, `2016_ent_ha`, `2017_ent`, `2019_std_ha`, `2019_ent`). It flags instances where `tde_status` is missing or set to `Disabled`. Set `tde_status = \"Enabled\"` to enforce Transparent Data Encryption (TDE).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_tde_status_disabled",
+  "platform": "Terraform",
+  "descriptionID": "ae8fb315",
+  "cloudProvider": "alicloud",
+  "cwe": "326",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/db_instance#tde_status"
+}

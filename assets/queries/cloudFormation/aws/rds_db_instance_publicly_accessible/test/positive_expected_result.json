@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "RDS DB instance publicly accessible",
+    "severity": "CRITICAL",
+    "line": 69,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "RDS DB instance publicly accessible",
+    "severity": "CRITICAL",
+    "line": 61,
+    "fileName": "positive2.json"
+  }
+]

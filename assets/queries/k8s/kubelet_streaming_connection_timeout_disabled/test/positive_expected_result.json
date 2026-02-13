@@ -1,0 +1,20 @@
+[
+  {
+    "queryName": "Kubelet streaming connection timeout disabled",
+    "severity": "MEDIUM",
+    "line": 11,
+    "filename": "positive1.yaml"
+  },
+  {
+    "queryName": "Kubelet streaming connection timeout disabled",
+    "severity": "MEDIUM",
+    "line": 8,
+    "filename": "positive2.yaml"
+  },
+  {
+    "queryName": "Kubelet streaming connection timeout disabled",
+    "severity": "MEDIUM",
+    "line": 10,
+    "filename": "positive3.json"
+  }
+]

@@ -1,0 +1,68 @@
+[
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 13,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive3.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive4.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 22,
+    "fileName": "positive5.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 28,
+    "fileName": "positive5.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 25,
+    "fileName": "positive6.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 32,
+    "fileName": "positive6.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 23,
+    "fileName": "positive7.yaml"
+  },
+  {
+    "queryName": "Container with low UID",
+    "severity": "MEDIUM",
+    "line": 25,
+    "fileName": "positive7.yaml"
+  }
+]

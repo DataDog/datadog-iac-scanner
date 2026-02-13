@@ -1,0 +1,15 @@
+{
+  "id": "ce089fd4-1406-47bd-8aad-c259772bb294",
+  "queryName": "DynamoDB table not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "This check verifies if AWS DynamoDB Tables are configured with server-side encryption to protect sensitive data at rest. Without encryption, stored data is vulnerable to unauthorized access if the database storage is compromised. To properly secure your DynamoDB table, you must include a `server_side_encryption` block with `enabled = true`, as shown below:\n\n```\nserver_side_encryption {\n  enabled = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/dynamodb_table_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "a4233398",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "AWS DynamoDB Tables should have server-side encryption",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/dynamodb_table#server_side_encryption"
+}

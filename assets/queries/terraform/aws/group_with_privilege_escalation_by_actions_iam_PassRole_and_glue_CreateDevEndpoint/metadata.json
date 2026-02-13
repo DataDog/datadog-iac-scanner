@@ -1,0 +1,14 @@
+{
+  "id": "7d544dad-8a6c-431c-84c1-5f07fe9afc0e",
+  "queryName": "Group with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting an IAM group the permissions `glue:CreateDevEndpoint` and `iam:PassRole` with the `Resource` field set to `*` creates a significant privilege escalation risk. With these permissions, a user can create an AWS Glue Development Endpoint while passing any IAM role of their choosing, effectively allowing them to assume roles with higher privileges than originally authorized. If this misconfiguration is left unaddressed, attackers or unprivileged users could leverage this pathway to gain full administrative access over the AWS environment, bypassing the intended separation of duties. To minimize this risk, always restrict the `Resource` field to specific, intended roles and endpoints, and avoid using `\"Resource\": \"*\"` in sensitive IAM policy configurations.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_PassRole_and_glue_CreateDevEndpoint",
+  "platform": "Terraform",
+  "descriptionID": "59598729",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Group with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_group_policy#policy"
+}

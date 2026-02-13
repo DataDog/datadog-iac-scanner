@@ -1,0 +1,12 @@
+{
+  "id": "cd290efd-6c82-4e9d-a698-be12ae31d536",
+  "queryName": "Shared host IPC namespace",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Containers should not share the host IPC namespace. The 'hostIPC' field in the pod spec should be set to false or left undefined. 'hostIPC: true' grants containers access to the host IPC namespace, increasing the risk of privilege escalation and information exposure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/shared_host_ipc_namespace",
+  "platform": "Kubernetes",
+  "descriptionID": "1ef1fe71",
+  "cwe": "200",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+}

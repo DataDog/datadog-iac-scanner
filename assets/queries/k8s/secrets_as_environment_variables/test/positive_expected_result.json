@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "Secrets used as environment variables",
+    "severity": "LOW",
+    "line": 12
+  },
+  {
+    "queryName": "Secrets used as environment variables",
+    "severity": "LOW",
+    "line": 17
+  },
+  {
+    "queryName": "Secrets used as environment variables",
+    "severity": "LOW",
+    "line": 30
+  }
+]

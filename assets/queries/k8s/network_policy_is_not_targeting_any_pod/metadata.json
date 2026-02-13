@@ -1,0 +1,13 @@
+{
+  "id": "85ab1c5b-014e-4352-b5f8-d7dea3bb4fd3",
+  "queryName": "Network policy without Pod target",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Each NetworkPolicy should target at least one Pod.\nThis rule verifies that the `spec.podSelector.matchLabels` entries match the `metadata.labels` of at least one Pod present in the input documents.\nIf no Pod matches the selector, the NetworkPolicy is reported as not targeting any Pod.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/network_policy_is_not_targeting_any_pod",
+  "platform": "Kubernetes",
+  "descriptionID": "be3c67e3",
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/network-policies/"
+}

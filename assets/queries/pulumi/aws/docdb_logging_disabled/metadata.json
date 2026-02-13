@@ -1,0 +1,14 @@
+{
+  "id": "2ca87964-fe7e-4cdc-899c-427f0f3525f8",
+  "queryName": "DocDB Logging Is Disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "DocDB logging should be enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/docdb_logging_disabled",
+  "platform": "Pulumi",
+  "descriptionID": "c5bd58cd",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://www.pulumi.com/registry/packages/aws/api-docs/docdb/cluster/#enabledcloudwatchlogsexports_yaml"
+}

@@ -1,0 +1,31 @@
+{
+  "id": "e86e26fc-489e-44f0-9bcd-97305e4ba69a",
+  "queryName": "ECR repository is publicly accessible",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "Amazon ECR repository policies that use a wildcard `*` in the `Principal` field grant public access to your container images, potentially exposing sensitive data or proprietary code. When left unaddressed, this vulnerability allows unauthorized users to pull, and in some cases push, container images, compromising the integrity and confidentiality of your container deployments. To remediate this issue, always specify explicit IAM principals in your repository policies, such as `\"Principal\": { \"AWS\": \"arn:aws:iam::account_number:root\" }` instead of using `\"Principal\": \"*\"`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/ecr_repository_is_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "5a3ad5ce",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Amazon ECR image repositories shouldn't have public access",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecr_repository_policy",
+  "customFrameworks": [
+    {
+      "control": "aws.1.1",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ],
+  "defaultFrameworks": [
+    {
+      "control": "1.4",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "aws"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "00b78adf-b83f-419c-8ed8-c6018441dd3a",
+  "queryName": "Pattern Undefined (v3)",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "String schema should have 'pattern' defined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/pattern_undefined",
+  "platform": "OpenAPI",
+  "descriptionID": "16f07413",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "afde15cf-9444-4126-8c62-41cd79db1d1d",
+      "queryName": "Pattern Undefined (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#schemaObject",
+      "descriptionText": "String schema/parameter/header should have 'pattern' defined."
+    }
+  },
+  "cwe": "20",
+  "providerUrl": "https://swagger.io/specification/#schema-object"
+}

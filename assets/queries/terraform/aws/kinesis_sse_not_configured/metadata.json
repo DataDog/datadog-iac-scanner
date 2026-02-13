@@ -1,0 +1,22 @@
+{
+  "id": "5c6dd5e7-1fe0-4cae-8f81-4c122717cef3",
+  "queryName": "Kinesis SSE not configured",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS Kinesis Firehose delivery streams should have Server-Side Encryption (SSE) properly configured to protect sensitive data at rest. Without encryption, data stored in Kinesis streams can be exposed to unauthorized access, potentially leading to data breaches and compliance violations. To secure Kinesis streams, the `server_side_encryption` block must be included with `enabled` set to `true` and a valid `key_type` specified (either `AWS_OWNED_CMK` or `CUSTOMER_MANAGED_CMK` with corresponding `key_arn`).\n```\nresource \"aws_kinesis_firehose_delivery_stream\" \"example\" {\n  // ... other configuration ...\n  \n  server_side_encryption {\n    enabled  = true\n    key_type = \"CUSTOMER_MANAGED_CMK\"\n    key_arn  = \"arn:aws:kms:region:account-id:key/key-id\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/kinesis_sse_not_configured",
+  "platform": "Terraform",
+  "descriptionID": "fce3b812",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "AWS Kinesis Server data at rest should have Server Side Encryption (SSE) enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kinesis_firehose_delivery_stream#server_side_encryption",
+  "customFrameworks": [
+    {
+      "control": "aws.1.30",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

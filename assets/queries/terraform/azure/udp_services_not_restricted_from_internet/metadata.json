@@ -1,0 +1,14 @@
+{
+  "id": "a3b4c5d6-e7f8-9012-3456-7890abcdef12",
+  "queryName": "Ensure that UDP services are restricted from the Internet",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "Network Security Group (NSG) rules that allow unrestricted UDP traffic from the internet (`0.0.0.0/0`) create significant security vulnerabilities in Azure environments. UDP is a connectionless protocol that doesn't provide built-in security controls, making services using it particularly susceptible to DDoS attacks, packet spoofing, and unauthorized access when exposed publicly. Instead of using broad source address prefixes like `0.0.0.0/0`, restrict inbound UDP traffic to specific IP ranges or CIDR blocks that require access.\n\nSecure example:\n```\nsecurity_rule {\n  protocol                  = \"udp\"\n  source_address_prefix     = \"192.168.1.0/24\"\n  destination_port_range    = \"53\"\n}\n```\n\nVulnerable example:\n```\nsecurity_rule {\n  protocol                  = \"udp\"\n  source_address_prefix     = \"0.0.0.0/0\"\n  destination_port_range    = \"53\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/udp_services_not_restricted_from_internet",
+  "platform": "Terraform",
+  "descriptionID": "a3b4c5d6",
+  "cloudProvider": "azure",
+  "cwe": "284",
+  "oldDescriptionText": "NSG rules for UDP traffic must restrict inbound access from the public Internet. Allowing UDP inbound from '0.0.0.0/0' poses significant security risks.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_group"
+}

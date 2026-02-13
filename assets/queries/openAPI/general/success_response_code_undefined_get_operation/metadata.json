@@ -1,0 +1,22 @@
+{
+  "id": "b2f275be-7d64-4064-b418-be6b431363a7",
+  "queryName": "Success Response Code Undefined for Get Operation (v3)",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Get should define at least one success response (200 or 202)",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/success_response_code_undefined_get_operation",
+  "platform": "OpenAPI",
+  "descriptionID": "dd31a235",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "9b633f3b-c94b-4fbb-a65b-1a4e9134fb63",
+      "queryName": "Success Response Code Undefined for Get Operation (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#operation-object",
+      "descriptionText": ""
+    }
+  },
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://swagger.io/specification/#operation-object"
+}

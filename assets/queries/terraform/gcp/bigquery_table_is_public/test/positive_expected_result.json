@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "BigQuery table is public",
+    "severity": "HIGH",
+    "line": 4
+  },
+  {
+    "queryName": "BigQuery table is public",
+    "severity": "HIGH",
+    "line": 11
+  }
+]

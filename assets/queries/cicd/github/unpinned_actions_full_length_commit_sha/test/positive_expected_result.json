@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Unpinned actions full length commit SHA",
+    "severity": "LOW",
+    "line": 12,
+    "fileName": "positive1.yaml"
+  }
+]

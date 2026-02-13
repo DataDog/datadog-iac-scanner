@@ -1,0 +1,29 @@
+{
+  "id": "24e16922-4330-4e9d-be8a-caa90299466a",
+  "queryName": "Elasticsearch not encrypted at rest",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "This check ensures that AWS Elasticsearch domains have encryption at rest enabled, which protects sensitive data stored in Elasticsearch indices from unauthorized access if the underlying physical storage is compromised. Without encryption at rest, data stored in Elasticsearch is vulnerable to exposure if someone gains access to the underlying storage media, potentially leading to data breaches and compliance violations.\n\nTo properly secure Elasticsearch, you must explicitly configure the encrypt_at_rest block with enabled set to true:\n\n```\nresource \"aws_elasticsearch_domain\" \"example\" {\n  domain_name           = \"example\"\n  elasticsearch_version = \"1.5\"\n\n  encrypt_at_rest {\n      enabled = true\n  }\n}\n```\n\nInsecure configurations either omit the `encrypt_at_rest` block entirely or explicitly set `enabled` to `false`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elasticsearch_not_encrypted_at_rest",
+  "platform": "Terraform",
+  "descriptionID": "c402717e",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Check if ElasticSearch encryption is disabled at Rest",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticsearch_domain",
+  "customFrameworks": [
+    {
+      "control": "aws.1.20",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    },
+    {
+      "control": "aws.1.27",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

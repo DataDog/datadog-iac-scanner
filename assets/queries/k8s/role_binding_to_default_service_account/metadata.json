@@ -1,0 +1,13 @@
+{
+  "id": "1e749bc9-fde8-471c-af0c-8254efd2dee5",
+  "queryName": "Role binding to default service account",
+  "severity": "MEDIUM",
+  "category": "Insecure Defaults",
+  "descriptionText": "No RoleBinding or ClusterRoleBinding should bind to the default ServiceAccount. Binding roles to the default ServiceAccount grants those permissions to all pods that use that account in the namespace, increasing the risk of unintended privilege escalation. This undermines least-privilege principles and can expose workloads to unnecessary privileges.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/role_binding_to_default_service_account",
+  "platform": "Kubernetes",
+  "descriptionID": "9879e8c2",
+  "cwe": "665",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "abb06e5f-ef9a-4a99-98c6-376d396bfcdf",
+  "queryName": "SQS queue exposed",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "An SQS Queue is considered exposed when its policy allows access from any principal by setting `Principal` to `*`. This creates a security vulnerability where unauthorized users can send messages to your queue, potentially leading to information disclosure or denial of service attacks.\n\nTo secure your SQS queue, avoid using wildcard principals in your policy statements. Instead, explicitly specify the ARNs of services or resources that should have access to the queue, as shown in the following secure example:\n\n```\n{\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": \"sqs:SendMessage\",\n      \"Resource\": \"${aws_sqs_queue.q.arn}\",\n      \"Condition\": {\n        \"ArnEquals\": {\n          \"aws:SourceArn\": \"${aws_sns_topic.example.arn}\"\n        }\n      }\n    }\n  ]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sqs_queue_exposed",
+  "platform": "Terraform",
+  "descriptionID": "59f958c0",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldDescriptionText": "Checks if the SQS Queue is exposed",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sqs_queue#policy",
+  "customFrameworks": [
+    {
+      "control": "aws.1.5",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "8d29754a-2a18-460d-a1ba-9509f8d359da",
+  "queryName": "IAM Access Analyzer not enabled",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "IAM Access Analyzer provides continuous monitoring of resource-based policies to detect unintended public or cross-account access. If an `AWS::AccessAnalyzer::Analyzer` is not defined, these permission issues can go undetected, increasing the risk of data exposure or privilege escalation.\n \n The CloudFormation template must include an `AWS::AccessAnalyzer::Analyzer` resource. Templates missing this resource will be flagged. Set the `Properties.Type` to `ACCOUNT` to monitor a single account or `ORGANIZATION` to monitor an AWS Organization, and optionally provide an `AnalyzerName` for identification.\n\nSecure configuration example:\n\n```yaml\nMyAccessAnalyzer:\n  Type: AWS::AccessAnalyzer::Analyzer\n  Properties:\n    AnalyzerName: my-access-analyzer\n    Type: ACCOUNT\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_access_analyzer_not_enabled",
+  "platform": "CloudFormation",
+  "descriptionID": "24a6978e",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.amazonaws.cn/en_us/AWSCloudFormation/latest/UserGuide/aws-resource-accessanalyzer-analyzer.html"
+}

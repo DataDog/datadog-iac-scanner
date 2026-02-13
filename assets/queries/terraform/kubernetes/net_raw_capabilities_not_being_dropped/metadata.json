@@ -1,0 +1,13 @@
+{
+  "id": "e5587d53-a673-4a6b-b3f2-ba07ec274def",
+  "queryName": "NET_RAW capabilities not being dropped",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers must set `security_context.capabilities.drop` to include `ALL` or, at minimum, `NET_RAW`. This policy applies to both `container` and `init_container` entries and detects missing `security_context` or `capabilities` attributes. It flags when `capabilities.drop` is undefined or does not contain `ALL` or `NET_RAW`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/net_raw_capabilities_not_being_dropped",
+  "platform": "Terraform",
+  "descriptionID": "548d4eac",
+  "cwe": "269",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#drop"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "b61cce4b-0cc4-472b-8096-15617a6d769b",
+  "queryName": "App Service managed identity disabled",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "Azure App Services should have managed identities enabled to provide secure, automated identity management for accessing Azure resources. Without specifying the `identity { type = \"SystemAssigned\" }` block in the Terraform configuration, the service may rely on insecure credential storage or hardcoded secrets, increasing the risk of credential exposure. Enabling managed identity ensures the App Service can securely authenticate to Azure resources without the need to manage credentials manually, reducing the attack surface and enhancing overall security.\n\n```\nresource \"azurerm_app_service\" \"example\" {\n  // ...other configuration...\n\n  identity {\n    type = \"SystemAssigned\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/app_service_managed_identity_disabled",
+  "platform": "Terraform",
+  "descriptionID": "c8096e2d",
+  "cloudProvider": "azure",
+  "cwe": "285",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Azure App Service should have managed identity enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/app_service#identity"
+}

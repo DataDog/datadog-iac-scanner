@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Storage container is publicly accessible",
+    "severity": "HIGH",
+    "line": 4
+  }
+]

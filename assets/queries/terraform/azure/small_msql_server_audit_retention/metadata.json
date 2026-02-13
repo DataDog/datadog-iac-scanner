@@ -1,0 +1,15 @@
+{
+  "id": "59acb56b-2b10-4c2c-ba38-f2223c3f5cfc",
+  "queryName": "Small MSSQL server audit retention",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "SQL Server auditing logs should be retained for more than 90 days to ensure sufficient historical data is available for security investigations and compliance requirements. When the `retention_in_days` attribute in the `extended_auditing_policy` block is set below 91, such as in the following Terraform snippet, essential audit records may be lost due to premature log deletion:\n\n```\nextended_auditing_policy {\n  storage_endpoint            = azurerm_storage_account.example.primary_blob_endpoint\n  storage_account_access_key  = azurerm_storage_account.example.primary_access_key\n  retention_in_days           = 20\n}\n```\n\nA secure configuration should set `retention_in_days` to at least 91, as shown below, to ensure audit logs are preserved for sufficient time:\n\n```\nextended_auditing_policy {\n  storage_endpoint            = azurerm_storage_account.example.primary_blob_endpoint\n  storage_account_access_key  = azurerm_storage_account.example.primary_access_key\n  retention_in_days           = 91\n}\n```\n\nFailing to enforce adequate audit log retention can prevent detection of security incidents and undermine compliance with regulatory standards.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/small_msql_server_audit_retention",
+  "platform": "Terraform",
+  "descriptionID": "96124822",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Make sure for SQL Servers that Auditing Retention is greater than 90 days",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/sql_server"
+}

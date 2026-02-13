@@ -1,0 +1,13 @@
+{
+  "id": "7f384a5f-b5a2-4d84-8ca3-ee0a5247becb",
+  "queryName": "Empty roles for ECS cluster task definitions",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "ECS services must reference task definitions that assign a specific task role (`TaskRoleArn`) so containers run with scoped IAM credentials and follow the principle of least privilege.\n \n If a task definition lacks `TaskRoleArn`, containers may run without credentials or inherit broader instance credentials (for the Amazon EC2 launch type). This can allow unnecessary access to AWS APIs, data exposure, or privilege escalation.\n \n This rule checks `AWS::ECS::Service` resources' `Properties.TaskDefinition` and verifies the referenced `AWS::ECS::TaskDefinition` resource defines `Properties.TaskRoleArn` (an IAM role ARN or a `Ref` to an `AWS::IAM::Role`). Resources missing `TaskDefinition`, referencing a non-existent task definition, or referencing a task definition that does not define `TaskRoleArn` will be flagged. `TaskDefinition` may be specified as a resource name string or as a `Ref` object.\n\nSecure example with a task role referenced:\n\n```yaml\nMyTaskRole:\n  Type: AWS::IAM::Role\n  Properties:\n    AssumeRolePolicyDocument: {...}\n\nMyTaskDef:\n  Type: AWS::ECS::TaskDefinition\n  Properties:\n    TaskRoleArn: !Ref MyTaskRole\n    ContainerDefinitions: [...]\n\nMyService:\n  Type: AWS::ECS::Service\n  Properties:\n    TaskDefinition: !Ref MyTaskDef\n    Cluster: !Ref MyCluster\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/empty_roles_for_ecs_cluster_task_definitions",
+  "platform": "CloudFormation",
+  "descriptionID": "b47b42b2",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-service.html"
+}

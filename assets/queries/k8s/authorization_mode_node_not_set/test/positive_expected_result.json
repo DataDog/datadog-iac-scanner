@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Authorization mode node not set",
+    "severity": "MEDIUM",
+    "line": 11,
+    "filename": "positive1.yaml"
+  },
+  {
+    "queryName": "Authorization mode node not set",
+    "severity": "MEDIUM",
+    "line": 11,
+    "filename": "positive2.yaml"
+  }
+]

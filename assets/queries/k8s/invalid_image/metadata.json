@@ -1,0 +1,12 @@
+{
+  "id": "583053b7-e632-46f0-b989-f81ff8045385",
+  "queryName": "Invalid image tag",
+  "severity": "LOW",
+  "category": "Supply-Chain",
+  "descriptionText": "The image tag must be provided and must not be empty or `latest`. Image digests (using `@`, e.g., `image@sha256:...`) are preferred and will satisfy this rule. Omitting a tag or using the `latest` tag is considered invalid.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/invalid_image",
+  "platform": "Kubernetes",
+  "descriptionID": "30154626",
+  "cwe": "665",
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/#updating-images"
+}

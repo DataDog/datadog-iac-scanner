@@ -1,0 +1,22 @@
+{
+  "id": "6e8849c1-3aa7-40e3-9063-b85ee300f29f",
+  "queryName": "SQS with SSE disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Amazon Simple Queue Service (SQS) queues should use Server-Side Encryption (SSE) to protect the contents of their messages while at rest. Without specifying the `kms_master_key_id` attribute in the Terraform configuration (for example, `resource \"aws_sqs_queue\" \"positive1\"`), messages sent to the queue are stored without encryption, exposing sensitive data to unauthorized access if AWS infrastructure is compromised. Enabling SSE by setting `kms_master_key_id`, as shown below, ensures that all messages are encrypted using a customer-managed key, significantly reducing the risk of data leakage.\n\n```\nresource \"aws_sqs_queue\" \"example\" {\n  name                  = \"terraform-example-queue\"\n  kms_master_key_id     = \"alias/aws/sqs\"\n  kms_data_key_reuse_period_seconds = 300\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sqs_with_sse_disabled",
+  "platform": "Terraform",
+  "descriptionID": "e478b54b",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "oldDescriptionText": "Amazon Simple Queue Service (SQS) queue should protect the contents of their messages using Server-Side Encryption (SSE)",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sqs_queue",
+  "customFrameworks": [
+    {
+      "control": "aws.1.28",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

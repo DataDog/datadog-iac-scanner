@@ -1,0 +1,14 @@
+{
+  "id": "2f56b7ab-7fba-4e93-82f0-247e5ddeb239",
+  "queryName": "MSK cluster logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Amazon MSK cluster broker logging should be enabled to capture important audit and troubleshooting information. If the `logging_info.broker_logs.cloudwatch_logs.enabled` attribute is set to `false` or omitted, as shown below, critical activity and error logs from the MSK brokers will not be captured: \n\n```\nresource \"aws_msk_cluster\" \"example\" {\n  logging_info {\n    broker_logs {\n      cloudwatch_logs {\n        enabled = false\n      }\n    }\n  }\n}\n```\n\nWithout logging enabled, security events, operational issues, and access patterns will be invisible, making detection and investigation of incidents significantly more difficult. To ensure proper visibility, logging should be enabled as below:\n\n```\nresource \"aws_msk_cluster\" \"example\" {\n  logging_info {\n    broker_logs {\n      cloudwatch_logs {\n        enabled   = true\n        log_group = aws_cloudwatch_log_group.example.name\n      }\n    }\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/msk_cluster_logging_disabled",
+  "platform": "Terraform",
+  "descriptionID": "816831cc",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "Ensure MSK Cluster Logging is enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/msk_cluster#broker_logs"
+}

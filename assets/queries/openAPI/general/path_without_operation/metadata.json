@@ -1,0 +1,21 @@
+{
+  "id": "84c826c9-1893-4b34-8cdd-db97645b4bf3",
+  "queryName": "Path Without Operation (v3)",
+  "severity": "INFO",
+  "category": "Best Practices",
+  "descriptionText": "Path object should have at least one operation object defined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/path_without_operation",
+  "platform": "OpenAPI",
+  "descriptionID": "089453e7",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "609cd557-66b4-41fa-8edd-2abc6c7cfd08",
+      "queryName": "Path Without Operation (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#pathItemObject",
+      "descriptionText": ""
+    }
+  },
+  "cwe": "710",
+  "providerUrl": "https://swagger.io/specification/#path-item-object"
+}

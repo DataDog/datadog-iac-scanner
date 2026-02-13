@@ -1,0 +1,12 @@
+{
+  "id": "b30981fa-a12e-49c7-a5bb-eeafb61d0f0f",
+  "queryName": "Global Parameter Definition Not Being Used",
+  "severity": "INFO",
+  "category": "Best Practices",
+  "descriptionText": "All global parameters definitions  should be in use",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/unused_parameter_definition",
+  "platform": "OpenAPI",
+  "descriptionID": "9850673a",
+  "cwe": "710",
+  "providerUrl": "https://swagger.io/specification/v2/#parametersDefinitionsObject"
+}

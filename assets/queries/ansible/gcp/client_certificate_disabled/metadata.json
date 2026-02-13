@@ -1,0 +1,13 @@
+{
+  "id": "20180133-a0d0-4745-bfe0-94049fbb12a9",
+  "queryName": "Client Certificate Disabled",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Kubernetes Clusters must be created with Client Certificate enabled, which means 'master_auth' must have 'client_certificate_config' with the attribute 'issue_client_certificate' equal to true",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/client_certificate_disabled",
+  "platform": "Ansible",
+  "descriptionID": "53a8ab26",
+  "cloudProvider": "gcp",
+  "cwe": "295",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_container_cluster_module.html"
+}

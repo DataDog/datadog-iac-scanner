@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "REST API with vulnerable policy",
+    "severity": "MEDIUM",
+    "line": 15,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "REST API with vulnerable policy",
+    "severity": "MEDIUM",
+    "line": 15,
+    "fileName": "positive_module.tf"
+  }
+]

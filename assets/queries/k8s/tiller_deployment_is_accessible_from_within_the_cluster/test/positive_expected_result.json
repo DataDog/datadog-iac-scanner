@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Tiller Deployment accessible within cluster",
+    "severity": "HIGH",
+    "line": 21
+  },
+  {
+    "queryName": "Tiller Deployment accessible within cluster",
+    "severity": "HIGH",
+    "line": 53
+  }
+]

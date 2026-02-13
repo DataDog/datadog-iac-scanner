@@ -1,0 +1,14 @@
+{
+  "id": "d6fae5b6-ada9-46c0-8b36-3108a2a2f77b",
+  "queryName": "PostgreSQL Logging Of Temporary Files Disabled",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "PostgreSQL database 'log_temp_files' flag isn't set to '0'",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/postgresql_logging_of_temporary_files_disabled",
+  "platform": "Ansible",
+  "descriptionID": "764f0b06",
+  "cloudProvider": "gcp",
+  "cwe": "20",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_sql_instance_module.html#parameter-settings/database_flags"
+}

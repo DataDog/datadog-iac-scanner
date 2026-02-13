@@ -1,0 +1,13 @@
+{
+  "id": "df6928ed-02f4-421f-9a67-a529860dd7e7",
+  "queryName": "Beta - TKE cluster has public access",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "In a TKE cluster, `public_ip_assigned` should be set to `false`. A `tencentcloud_kubernetes_cluster` is noncompliant if either `master_config` or `worker_config` sets `public_ip_assigned` to `true` while `internet_max_bandwidth_out` is greater than `0`. It is also noncompliant if `public_ip_assigned` is undefined and `internet_max_bandwidth_out` is greater than `0`; in such cases, `internet_max_bandwidth_out` should be set to `0` or left undefined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/tke_cluster_has_public_access",
+  "platform": "Terraform",
+  "descriptionID": "6570e731",
+  "cloudProvider": "tencentcloud",
+  "cwe": "732",
+  "providerUrl": "https://registry.terraform.io/providers/tencentcloudstack/tencentcloud/latest/docs/resources/kubernetes_cluster#public_ip_assigned"
+}

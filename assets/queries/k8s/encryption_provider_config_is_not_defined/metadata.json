@@ -1,0 +1,12 @@
+{
+  "id": "cbd2db69-0b21-4c14-8a40-7710a50571a9",
+  "queryName": "Encryption provider config is not defined",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "When `kube-apiserver` is used, the `--encryption-provider-config` flag should be set, and the referenced encryption configuration file should correctly configure encryption providers. This rule checks `containers` and `initContainers` for `kube-apiserver` command invocations and reports when the `--encryption-provider-config` flag is not present. Missing this flag and a valid encryption config can result in secrets and other sensitive data being stored unencrypted at rest.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/encryption_provider_config_is_not_defined",
+  "platform": "Kubernetes",
+  "descriptionID": "c018594c",
+  "cwe": "311",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

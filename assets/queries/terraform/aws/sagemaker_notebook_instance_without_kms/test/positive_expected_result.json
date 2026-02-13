@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "SageMaker notebook instance without KMS",
+    "severity": "HIGH",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "SageMaker notebook instance without KMS",
+    "severity": "HIGH",
+    "line": 1,
+    "fileName": "positive_module.tf"
+  }
+]

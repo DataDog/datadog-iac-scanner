@@ -1,0 +1,15 @@
+{
+  "id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+  "queryName": "ALB deletion protection disabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Enabling deletion protection for an Application Load Balancer (ALB) helps prevent accidental or unauthorized deletion of the ALB resource, which could cause significant downtime or impact application availability. If the `enable_deletion_protection` attribute is set to `false`, as shown below, malicious or inadvertent actions could destroy the ALB and disrupt traffic flow to critical applications:\n\n```\nresource \"aws_alb\" \"example\" {\n  name                      = \"test-lb-tf\"\n  internal                  = false\n  load_balancer_type        = \"network\"\n  subnets                   = aws_subnet.public.*.id\n\n  enable_deletion_protection = true\n\n  tags = {\n    Environment = \"production\"\n  }\n}\n```\n\nEnabling this setting minimizes the risk of outages by requiring an extra step to delete the load balancer, thereby safeguarding essential network infrastructure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/alb_deletion_protection_disabled",
+  "platform": "Terraform",
+  "descriptionID": "224b3c6f",
+  "cloudProvider": "aws",
+  "cwe": "693",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "Application Load Balancer should have deletion protection enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lb#enable_deletion_protection"
+}

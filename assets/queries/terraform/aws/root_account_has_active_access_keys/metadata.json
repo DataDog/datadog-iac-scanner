@@ -1,0 +1,30 @@
+{
+  "id": "970d224d-b42a-416b-81f9-8f4dfe70c4bc",
+  "queryName": "Root account has active access keys",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "The AWS root account has unrestricted access to all resources in an AWS account, making it a high-value target for attackers. Having active access keys for the root account creates a significant security risk, as compromised keys could lead to complete account takeover and unauthorized access to all AWS services and resources. Best security practice requires using IAM users with appropriate permissions instead of the root account for daily operations and programmatic access.\n\nInsecure example:\n```terraform\nresource \"aws_iam_access_key\" \"positive1\" {\n  user    = \"root\"\n  pgp_key = \"keybase:some_person_that_exists\"\n}\n```\n\nSecure example:\n```terraform\nresource \"aws_iam_access_key\" \"negative1\" {\n  user    = aws_iam_user.lb.name\n  pgp_key = \"keybase:some_person_that_exists\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/root_account_has_active_access_keys",
+  "platform": "Terraform",
+  "descriptionID": "f0795485",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "oldDescriptionText": "The AWS Root Account must not have active access keys associated, which means if there are access keys associated to the Root Account, they must be inactive.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_access_key",
+  "customFrameworks": [
+    {
+      "control": "aws.1.3",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ],
+  "defaultFrameworks": [
+    {
+      "control": "1.13",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "aws"
+    }
+  ]
+}

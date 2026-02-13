@@ -1,0 +1,15 @@
+{
+  "id": "ad9dabc7-7839-4bae-a957-aa9120013f39",
+  "queryName": "Lambda with vulnerable policy",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "AWS Lambda permissions with wildcard actions (`lambda:*`) grant excessive privileges that violate the principle of least privilege, potentially allowing unauthorized operations on your Lambda functions. When wildcards are used, principals may execute unintended actions against your functions, leading to potential service disruption or data leakage. Instead of using wildcards like `action = \"lambda:*\"`, specify only the precise permissions needed, such as `action = \"lambda:InvokeFunction\"` to ensure proper access controls and reduce the attack surface of your Lambda resources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/lambda_with_vulnerable_policy",
+  "platform": "Terraform",
+  "descriptionID": "5db376a3",
+  "cloudProvider": "aws",
+  "cwe": "155",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "The attribute 'action' should not have wildcard",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission#action"
+}

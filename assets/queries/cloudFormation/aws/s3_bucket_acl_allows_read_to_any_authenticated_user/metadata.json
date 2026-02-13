@@ -1,0 +1,13 @@
+{
+  "id": "835d5497-a526-4aea-a23f-98a9afd1635f",
+  "queryName": "S3 bucket ACL allows read to any authenticated user",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "S3 buckets configured with the `AuthenticatedRead` canned ACL allow any AWS authenticated user to read bucket objects. This can lead to unintended data exposure and compliance violations. For CloudFormation, the `AWS::S3::Bucket` resource's `AccessControl` property must not be set to `AuthenticatedRead`. Resources with `AccessControl: AuthenticatedRead` will be flagged. Set `AccessControl: Private` or omit ACLs and enforce least-privilege access using explicit bucket policies or IAM principals instead.\n\nSecure configuration example:\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    BucketName: my-bucket\n    AccessControl: Private\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_acl_allows_read_to_any_authenticated_user",
+  "platform": "CloudFormation",
+  "descriptionID": "25d149a4",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-s3-bucket.html"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "e979fcbc-df6c-422d-9458-c33d65e71c45",
+  "queryName": "Elasticsearch without slow logs",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "This check ensures that Amazon Elasticsearch domains have slow logs enabled by verifying the `log_publishing_options` block includes `log_type = \"INDEX_SLOW_LOGS\"` and `enabled = true`. Without slow logs, it is difficult to detect and diagnose performance issues such as slow queries or inefficient indexing, which could lead to system outages or degraded search performance. Enabling slow logs provides critical visibility into the behavior of the Elasticsearch cluster, allowing for faster investigation and mitigation of operational problems.\n\n```\nresource \"aws_elasticsearch_domain\" \"example\" {\n  log_publishing_options {\n    cloudwatch_log_group_arn = aws_cloudwatch_log_group.example.arn\n    log_type                 = \"INDEX_SLOW_LOGS\"\n    enabled                  = true\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elasticsearch_without_slow_logs",
+  "platform": "Terraform",
+  "descriptionID": "7430bf37",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Ensure that AWS Elasticsearch enables support for slow logs",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticsearch_domain#log_publishing_options"
+}

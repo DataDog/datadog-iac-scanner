@@ -1,0 +1,15 @@
+{
+  "id": "b7b9d1c7-2d3b-49b4-b867-ebbe68d0b643",
+  "queryName": "App Service not using latest TLS encryption version",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "App Service instances should be configured to use the latest version of TLS encryption to ensure secure data transmission. Using outdated TLS versions, such as setting `min_tls_version = 1.1`, exposes applications to vulnerabilities and known exploits that exist in deprecated protocols. Setting `min_tls_version = \"1.2\"` in the `site_config` block helps protect data in transit and reduces the risk of security breaches due to weaker encryption standards.\n\n```\nresource \"azurerm_app_service\" \"example\" {\n  // ...\n  site_config {\n    min_tls_version = \"1.2\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/app_service_not_using_latest_tls_encryption_version",
+  "platform": "Terraform",
+  "descriptionID": "63399f46",
+  "cloudProvider": "azure",
+  "cwe": "326",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Ensure App Service is using the latest version of TLS encryption",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/app_service#min_tls_version"
+}

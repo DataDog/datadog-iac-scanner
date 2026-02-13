@@ -1,0 +1,13 @@
+{
+  "id": "a05331ee-1653-45cb-91e6-13637a76e4f0",
+  "queryName": "Deployment without PodDisruptionBudget",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "Deployments should be assigned a `PodDisruptionBudget` to ensure high availability. For `kubernetes_deployment` resources with `spec.replicas > 1`, the deployment's `spec.selector.match_labels` should be targeted by a `kubernetes_pod_disruption_budget`. This ensures the deployment's selector labels are referenced by the `PodDisruptionBudget`, preventing excessive pod evictions during voluntary disruptions.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/deployment_without_pod_disruption_budget",
+  "platform": "Terraform",
+  "descriptionID": "add58c0c",
+  "cwe": "400",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/deployment#selector"
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "OSLogin disabled",
+    "severity": "MEDIUM",
+    "line": 3
+  },
+  {
+    "queryName": "OSLogin disabled",
+    "severity": "MEDIUM",
+    "line": 8
+  }
+]

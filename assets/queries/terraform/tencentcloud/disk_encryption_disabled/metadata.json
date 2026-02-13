@@ -1,0 +1,13 @@
+{
+  "id": "1ee0f202-31da-49ba-bbce-04a989912e4b",
+  "queryName": "Beta - disk encryption disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Disks should have encryption enabled.\nThis rule checks `tencentcloud_cbs_storage` resources and flags when the `encrypt` attribute is missing or set to `false`.\nThe `encrypt` attribute must be set to `true` to ensure block storage volumes are encrypted.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/disk_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "1ee0f202",
+  "cloudProvider": "tencentcloud",
+  "cwe": "311",
+  "providerUrl": "https://registry.terraform.io/providers/tencentcloudstack/tencentcloud/latest/docs/resources/cbs_storage#encrypt"
+}

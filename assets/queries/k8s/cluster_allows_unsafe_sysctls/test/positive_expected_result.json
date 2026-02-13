@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "Cluster allows unsafe sysctls",
+    "severity": "HIGH",
+    "line": 11,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Cluster allows unsafe sysctls",
+    "severity": "HIGH",
+    "line": 13,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Cluster allows unsafe sysctls",
+    "severity": "HIGH",
+    "line": 24,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Cluster allows unsafe sysctls",
+    "severity": "HIGH",
+    "line": 18,
+    "fileName": "positive2.yaml"
+  }
+]

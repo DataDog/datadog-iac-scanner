@@ -1,0 +1,15 @@
+{
+  "id": "a4966c4f-9141-48b8-a564-ffe9959945bc",
+  "queryName": "S3 bucket with all permissions",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "When an S3 bucket policy allows all actions (`s3:*`) to all principals (`*`), it creates a severe security vulnerability by exposing your data to unauthorized access, modification, and deletion by anyone on the internet. Instead of using overly permissive policies like `s3:*`, implement the principle of least privilege by granting only specific permissions (for example, `s3:putObject`) that are required for legitimate operations. For example, replace insecure configurations like `Action`: [`s3:*`] with more restrictive ones such as `Action`: [`s3:putObject`] to ensure your S3 buckets remain protected while still enabling necessary functionality.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_with_all_permissions",
+  "platform": "Terraform",
+  "descriptionID": "aec8fae9",
+  "cloudProvider": "aws",
+  "cwe": "250",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "S3 Buckets should not have all permissions, as to prevent leaking private information to the entire internet or allow unauthorized data tampering / deletion. This means the 'Effect' must not be 'Allow' when the 'Action' is '*', for all Principals.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket"
+}

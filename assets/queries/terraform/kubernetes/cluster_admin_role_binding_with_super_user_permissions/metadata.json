@@ -1,0 +1,13 @@
+{
+  "id": "17172bc2-56fb-4f17-916f-a014147706cd",
+  "queryName": "Cluster admin rolebinding with superuser permissions",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Ensure the `cluster-admin` role is only used where required for RBAC.\nThe `cluster-admin` role grants superuser permissions across the entire cluster and should be limited to essential administrative accounts. This rule flags `kubernetes_cluster_role_binding` resources that bind to `cluster-admin`. Prefer using least-privilege roles or scoped `RoleBinding` assignments instead.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/cluster_admin_role_binding_with_super_user_permissions",
+  "platform": "Terraform",
+  "descriptionID": "3cfeabe4",
+  "cwe": "250",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/cluster_role_binding#name"
+}

@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "OSS bucket public access enabled",
+		"severity": "HIGH",
+		"line": 3,
+		"fileName": "positive1.tf"
+	},
+	{
+		"queryName": "OSS bucket public access enabled",
+		"severity": "HIGH",
+		"line": 3,
+		"fileName": "positive2.tf"
+	}
+]

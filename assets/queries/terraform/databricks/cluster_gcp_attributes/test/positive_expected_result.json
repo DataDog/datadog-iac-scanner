@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Beta - check Databricks cluster GCP attribute best practices",
+		"severity": "LOW",
+		"line": 11,
+		"fileName": "positive1.tf"
+	}
+]

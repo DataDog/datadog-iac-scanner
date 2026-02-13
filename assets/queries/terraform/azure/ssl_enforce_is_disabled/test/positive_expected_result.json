@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "SSL enforce disabled",
+    "severity": "MEDIUM",
+    "line": 18
+  },
+  {
+    "queryName": "SSL enforce disabled",
+    "severity": "MEDIUM",
+    "line": 22
+  }
+]

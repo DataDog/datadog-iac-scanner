@@ -1,0 +1,13 @@
+{
+  "id": "9bf57c23-fbab-4222-85f3-3f207a53c6a8",
+  "queryName": "Beta - Nifcloud RDB has common private network",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "`nifcloud_db_instance` is configured to use the common private LAN `net-COMMON_PRIVATE`. The resource's `network_id` should be a private LAN that isolates the private-side network from the shared network. This rule identifies `nifcloud_db_instance` resources that are using the common private network.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/db_instance_has_common_private",
+  "platform": "Terraform",
+  "descriptionID": "89f1ff38",
+  "cloudProvider": "nifcloud",
+  "cwe": "285",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/db_instance#network_id"
+}

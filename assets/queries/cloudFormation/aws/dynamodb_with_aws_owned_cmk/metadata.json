@@ -1,0 +1,13 @@
+{
+  "id": "c8dee387-a2e6-4a73-a942-183c975549ac",
+  "queryName": "DynamoDB with AWS-owned CMK",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "DynamoDB tables must use AWS KMS-managed encryption rather than the default AWS-owned key so you can control key lifecycle, rotation, and access auditing. Relying on the AWS-owned key can limit your ability to revoke or monitor key use.\n \n In CloudFormation, ensure `AWS::DynamoDB::Table` resources include the `SSESpecification` property with `SSEType` set to `KMS` and `SSEEnabled` set to `true`. Resources missing `SSESpecification` or `SSEEnabled`, or with `SSEEnabled` set to `false` while `SSEType` is `KMS`, will be flagged.\n \n If you want the AWS-managed service key, set `SSEType` to `KMS`, set `SSEEnabled` to `true`, and omit `KMSMasterKeyId`. To use a customer-managed CMK, also set `KMSMasterKeyId` to the CMK ARN or alias.\n\nSecure configuration example:\n\n```yaml\nMyDynamoTable:\n  Type: AWS::DynamoDB::Table\n  Properties:\n    TableName: my-table\n    AttributeDefinitions:\n      - AttributeName: id\n        AttributeType: S\n    KeySchema:\n      - AttributeName: id\n        KeyType: HASH\n    SSESpecification:\n      SSEEnabled: true\n      SSEType: KMS\n      # Optional: specify a customer-managed CMK\n      # KMSMasterKeyId: arn:aws:kms:region:account-id:key/key-id\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/dynamodb_with_aws_owned_cmk",
+  "platform": "CloudFormation",
+  "descriptionID": "a71d0c61",
+  "cloudProvider": "aws",
+  "cwe": "312",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-ssespecification.html"
+}

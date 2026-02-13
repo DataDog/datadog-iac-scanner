@@ -1,0 +1,13 @@
+{
+  "id": "c3b9f7b0-f5a0-49ec-9cbc-f1e346b7274d",
+  "queryName": "S3 Bucket Logging Disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Server Access Logging should be enabled on S3 Buckets so that all changes are logged and trackable",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_logging_disabled",
+  "platform": "Ansible",
+  "descriptionID": "2b508aee",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/s3_bucket_module.html#parameter-debug_botocore_endpoint_logs"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "e7e961ac-d17e-4413-84bc-8a1fbe242944",
+  "queryName": "Cloud Storage bucket versioning disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Enabling versioning on a Google Cloud Storage bucket ensures that previous versions of objects are preserved, preventing accidental or malicious data loss or overwrites. Without versioning enabled (for example, `versioning = { enabled = false }` or omitting the `versioning` block entirely), deleted or overwritten objects cannot be recovered, increasing the risk of permanent data loss. To mitigate this risk, enable versioning by setting `versioning = { enabled = true }` in your Terraform configuration:\n\n```\nresource \"google_storage_bucket\" \"secure_example\" {\n  name     = \"foo\"\n  location = \"EU\"\n\n  versioning = {\n    enabled = true\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/cloud_storage_bucket_versioning_disabled",
+  "platform": "Terraform",
+  "descriptionID": "9fda4554",
+  "cloudProvider": "gcp",
+  "cwe": "710",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Cloud Storage Bucket should have versioning enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket#enabled"
+}

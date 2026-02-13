@@ -1,0 +1,26 @@
+[
+	{
+		"queryName": "Pod or container without security context",
+		"severity": "LOW",
+		"line": 6,
+		"fileName": ""
+	},
+	{
+		"queryName": "Pod or container without security context",
+		"severity": "LOW",
+		"line": 7,
+		"fileName": ""
+	},
+	{
+		"queryName": "Pod or container without security context",
+		"severity": "LOW",
+		"line": 7,
+		"fileName": ""
+	},
+	{
+		"queryName": "Pod or container without security context",
+		"severity": "LOW",
+		"line": 93,
+		"fileName": ""
+	}
+]

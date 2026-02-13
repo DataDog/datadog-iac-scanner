@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "SQLServer Ingress From Any IP",
+    "severity": "CRITICAL",
+    "line": 8
+  }
+]

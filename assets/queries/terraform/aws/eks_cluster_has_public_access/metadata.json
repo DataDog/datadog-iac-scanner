@@ -1,0 +1,14 @@
+{
+  "id": "42f4b905-3736-4213-bfe9-c0660518cda8",
+  "queryName": "EKS cluster has public access",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check verifies that the `endpoint_public_access` attribute within the `vpc_config` block of an `aws_eks_cluster` resource is set to `false`. Allowing public access by setting `endpoint_public_access = true` exposes the EKS cluster's management endpoint to the internet, substantially increasing the risk of unauthorized access or potential attacks. Restricting the endpoint to private access ensures that only resources within the VPC can communicate with the EKS API, reducing the cluster's exposure and improving overall security.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/eks_cluster_has_public_access",
+  "platform": "Terraform",
+  "descriptionID": "653e0650",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "Amazon EKS public endpoint shoud be set to false",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eks_cluster"
+}

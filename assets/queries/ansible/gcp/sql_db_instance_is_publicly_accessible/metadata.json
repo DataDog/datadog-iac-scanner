@@ -1,0 +1,14 @@
+{
+  "id": "7d7054c0-3a52-4e9b-b9ff-cbfe16a2378b",
+  "queryName": "SQL DB Instance Publicly Accessible",
+  "severity": "CRITICAL",
+  "category": "Insecure Configurations",
+  "descriptionText": "Cloud SQL instances should not be publicly accessible.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/sql_db_instance_is_publicly_accessible",
+  "platform": "Ansible",
+  "descriptionID": "c1bb13ce",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_sql_instance_module.html"
+}

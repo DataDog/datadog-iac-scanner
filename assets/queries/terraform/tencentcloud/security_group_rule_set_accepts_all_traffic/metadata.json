@@ -1,0 +1,13 @@
+{
+  "id": "d135a36e-c474-452f-b891-76db1e6d1cd5",
+  "queryName": "Beta - security group rule set accepts all traffic",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "`tencentcloud_security_group_rule_set` `ingress` is configured to accept all traffic.  \nThis rule triggers when an `ingress` entry has `action` set to `ACCEPT` and the source is `cidr_block` = `0.0.0.0/0` (IPv4) or `ipv6_cidr_block` = `::/0` (IPv6), with `protocol` = `ALL` and `port` = `ALL`.  \n`tencentcloud_security_group_rule_set` `ingress` should not be set to accept all traffic.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/security_group_rule_set_accepts_all_traffic",
+  "platform": "Terraform",
+  "descriptionID": "24df00d9",
+  "cloudProvider": "tencentcloud",
+  "cwe": "285",
+  "providerUrl": "https://registry.terraform.io/providers/tencentcloudstack/tencentcloud/latest/docs/resources/security_group_rule_set#ingress"
+}

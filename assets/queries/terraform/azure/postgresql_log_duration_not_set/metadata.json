@@ -1,0 +1,14 @@
+{
+  "id": "16e0879a-c4ae-4ff8-a67d-a2eed5d67b8f",
+  "queryName": "PostgreSQL log duration not set",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "The PostgreSQL server parameter `log_duration` should be set to `ON` to ensure that the duration of each completed SQL statement is logged. Without this setting enabled (for example, if `value = \"off\"` is used in the `azurerm_postgresql_configuration` resource), critical visibility into query performance and potential issues will be lost, making it difficult to identify slow-running queries or investigate security incidents. Setting `log_duration` to `ON`, as shown below, enables enhanced monitoring and auditing capabilities for your database:\n\n```\nresource \"azurerm_postgresql_configuration\" \"secure_example\" {\n    name                = \"log_duration\"\n    resource_group_name = \"example_resource_group_name\"\n    server_name         = \"example_server_name\"\n    value               = \"ON\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/postgresql_log_duration_not_set",
+  "platform": "Terraform",
+  "descriptionID": "2961eac3",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldDescriptionText": "Make sure that for PostgreSQL Database, server parameter 'log_duration' is set to 'ON'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_configuration"
+}

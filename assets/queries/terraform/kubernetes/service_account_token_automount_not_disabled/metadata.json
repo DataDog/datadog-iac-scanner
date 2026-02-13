@@ -1,0 +1,13 @@
+{
+  "id": "a9a13d4f-f17a-491b-b074-f54bffffcb4a",
+  "queryName": "Service account token automount not disabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Defaults",
+  "descriptionText": "Service account tokens are mounted automatically, even when not necessary. This rule checks Kubernetes resources — `kubernetes_pod`, `kubernetes_deployment`, `kubernetes_daemonset`, `kubernetes_job`, `kubernetes_stateful_set`, `kubernetes_replication_controller`, and `kubernetes_cron_job` — for the `automount_service_account_token` attribute and requires it to be set to `false`. It reports a `MissingAttribute` when `automount_service_account_token` is undefined and an `IncorrectValue` when it is explicitly set to `true`; remediation is to set `automount_service_account_token = false` (replacement from `true` to `false` when applicable).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/service_account_token_automount_not_disabled",
+  "platform": "Terraform",
+  "descriptionID": "9674e7f6",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#automount_service_account_token"
+}

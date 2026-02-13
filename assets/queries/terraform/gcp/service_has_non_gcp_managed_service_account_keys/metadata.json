@@ -1,0 +1,22 @@
+{
+  "id": "3jh54js8-e5f6-7890-abcd-ef1234567890",
+  "descriptionID": "3jh54js8",
+  "queryName": "There are non GCP-managed service account keys for a service account",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Service account keys provide access to GCP resources. Manually created keys pose significant security risks because they can be leaked, shared inappropriately, or remain active indefinitely without rotation. GCP-managed service account keys follow security best practices by default, including automatic key rotation and secure storage managed by Google. To ensure security, avoid manually specifying key data in Terraform, such as `public_key_data = \"dummy-key\"`. Instead, rely on GCP's managed keys by omitting this attribute.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/service_has_non_gcp_managed_service_account_keys",
+  "platform": "Terraform",
+  "cloudProvider": "GCP",
+  "cwe": "CWE-522",
+  "oldDescriptionText": "Ensures that only GCP-managed service account keys are used, preventing manually created keys that pose security risks.",
+  "providerUrl": "https://cloud.google.com/iam/docs/best-practices-for-managing-service-account-keys",
+  "defaultFrameworks": [
+    {
+      "control": "3.6",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "gcp"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "857f8808-e96a-4ba8-a9b7-f2d4ec6cad94",
+  "queryName": "Automatic Minor Upgrades Disabled",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "RDS instance should have automatic minor upgrades enabled, which means the attribute 'auto_minor_version_upgrade' must be set to true.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/automatic_minor_upgrades_disabled",
+  "platform": "Ansible",
+  "descriptionID": "7734a8b1",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-auto_minor_version_upgrade"
+}

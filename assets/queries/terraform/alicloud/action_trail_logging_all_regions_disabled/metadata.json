@@ -1,0 +1,13 @@
+{
+  "id": "c065b98e-1515-4991-9dca-b602bd6a2fbb",
+  "queryName": "Action trail logging for all regions disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "ActionTrail logging must be enabled for all regions.\nThis rule checks that each `alicloud_actiontrail_trail` resource:\n\n- Includes the `oss_bucket_name` attribute\n- Sets both `event_rw` and `trail_region` attributes to `All`\n\nMissing attributes trigger a `MissingAttribute` issue. Incorrect values trigger an `IncorrectValue` issue, with suggested remediation to add or correct the attribute.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/action_trail_logging_all_regions_disabled",
+  "platform": "Terraform",
+  "descriptionID": "72180b32",
+  "cloudProvider": "alicloud",
+  "cwe": "778",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/actiontrail_trail#trail_region"
+}

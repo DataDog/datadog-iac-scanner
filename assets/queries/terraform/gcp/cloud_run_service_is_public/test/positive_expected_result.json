@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Cloud Run service is public",
+    "severity": "HIGH",
+    "line": 4
+  },
+  {
+    "queryName": "Cloud Run service is public",
+    "severity": "HIGH",
+    "line": 11
+  }
+]

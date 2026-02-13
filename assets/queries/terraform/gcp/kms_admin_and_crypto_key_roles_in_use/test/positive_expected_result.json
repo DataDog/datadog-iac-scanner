@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "KMS admin and CryptoKey roles in use",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive1.tf"
+  }
+]

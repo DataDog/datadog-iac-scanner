@@ -1,0 +1,5 @@
+---
+- name: Setup AWS API Gateway setup on AWS cloudwatchlogs
+  community.aws.cloudwatchlogs_log_group:
+    state: present
+    kms_key_id: arn:aws:kms:region:account-id:key/key-id

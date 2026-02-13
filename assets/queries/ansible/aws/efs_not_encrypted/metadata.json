@@ -1,0 +1,13 @@
+{
+  "id": "727c4fd4-d604-4df6-a179-7713d3c85e20",
+  "queryName": "EFS Not Encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Elastic File System (EFS) must be encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/efs_not_encrypted",
+  "platform": "Ansible",
+  "descriptionID": "f4c8801c",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/efs_module.html#parameter-encrypt"
+}

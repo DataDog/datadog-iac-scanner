@@ -1,0 +1,38 @@
+[
+  {
+    "queryName": "Service account with improper privileges",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Service account with improper privileges",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "Service account with improper privileges",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "Service account with improper privileges",
+    "severity": "MEDIUM",
+    "line": 10,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "Service account with improper privileges",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive4.tf"
+  },
+  {
+    "queryName": "Service account with improper privileges",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive4.tf"
+  }
+]

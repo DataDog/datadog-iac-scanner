@@ -1,0 +1,22 @@
+{
+  "id": "8c8261c2-19a9-4ef7-ad37-b8bc7bdd4d85",
+  "queryName": "Maximum Length Undefined (v3)",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "String schema should have 'maxLength' defined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/maximum_length_undefined",
+  "platform": "OpenAPI",
+  "descriptionID": "e470e664",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "2ec86e48-ab90-4cb6-a131-0502afd1f442",
+      "queryName": "Maximum Length Undefined (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#schemaObject",
+      "descriptionText": "String schema/parameter/header should have 'maxLength' defined."
+    }
+  },
+  "cwe": "20",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://swagger.io/specification/#schema-object"
+}

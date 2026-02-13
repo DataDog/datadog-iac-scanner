@@ -1,0 +1,15 @@
+{
+  "id": "ba40ace1-a047-483c-8a8d-bc2d3a67a82d",
+  "queryName": "EKS node group remote access disabled",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check ensures that when configuring remote access for an AWS EKS node group, the `source_security_group_ids` attribute is specified. If this parameter is omitted, the EC2 instances in the EKS node group can potentially be accessed via SSH from any IP address, which significantly increases the risk of unauthorized access. By not restricting SSH access to a specific set of trusted security groups, the node group becomes more vulnerable to brute force attacks and other security threats. Properly configuring the `source_security_group_ids` limits remote access to only those network sources that are explicitly permitted, thereby reducing the node group’s attack surface.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/eks_node_group_remote_access_disabled",
+  "platform": "Terraform",
+  "descriptionID": "6d42a06d",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "EKS node group remote access is disabled when 'SourceSecurityGroups' is missing",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eks_node_group#remote_access"
+}

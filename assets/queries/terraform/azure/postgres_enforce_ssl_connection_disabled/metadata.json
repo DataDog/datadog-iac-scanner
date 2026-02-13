@@ -1,0 +1,14 @@
+{
+  "id": "93f9tyjk-e5f6-7890-ab12-cd34ef567890",
+  "queryName": "ssl_enforcement_enabled is not set to ENABLED for PostgreSQL database server",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "SSL/TLS encryption is essential for PostgreSQL Database Servers to protect sensitive data during transmission between the client and server. When `ssl_enforcement_enabled` is not set to `ENABLED`, data transferred between clients and the database is vulnerable to eavesdropping, man-in-the-middle attacks, and data tampering. This security vulnerability could lead to unauthorized access and data exposure.\n\nInsecure configuration example:\n```terraform\nresource \"azurerm_postgresql_server\" \"bad_example\" {\n  // ... other configuration\n  ssl_enforcement_enabled = [\"DISABLED\"] // Insecure\n}\n```\n\nSecure configuration example:\n```terraform\nresource \"azurerm_postgresql_server\" \"good_example\" {\n  // ... other configuration\n  ssl_enforcement_enabled = [\"ENABLED\"] // Secure setting\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/postgres_enforce_ssl_connection_disabled",
+  "platform": "Terraform",
+  "descriptionID": "93f9tyjk",
+  "cloudProvider": "azure",
+  "cwe": "311",
+  "oldDescriptionText": "PostgreSQL Database Server should have SSL enforcement enabled to ensure secure connections. The 'ssl_enforcement_enabled' attribute must be set to 'ENABLED'.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_server"
+}

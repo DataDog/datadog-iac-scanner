@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Trusted Microsoft services not enabled",
+    "severity": "MEDIUM",
+    "line": 8
+  },
+  {
+    "queryName": "Trusted Microsoft services not enabled",
+    "severity": "MEDIUM",
+    "line": 21
+  }
+]

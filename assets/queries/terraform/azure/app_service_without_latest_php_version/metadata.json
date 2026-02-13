@@ -1,0 +1,14 @@
+{
+  "id": "96fe318e-d631-4156-99fa-9080d57280ae",
+  "queryName": "App Service without latest PHP version",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Web apps using outdated PHP versions expose themselves to known security vulnerabilities and miss out on critical security fixes and performance improvements available in newer releases. For example, specifying `php_version = \"7.3\"` in a Terraform `azurerm_app_service` resource leaves the application open to exploits that are resolved in later PHP versions. To mitigate risk, always configure the `site_config` block to use a recent, supported PHP version, such as in the following example:\n\n```\nsite_config {\n  php_version = \"8.1\"\n}\n```\nThis ensures the application benefits from the latest patches and features.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/app_service_without_latest_php_version",
+  "platform": "Terraform",
+  "descriptionID": "0054cbe3",
+  "cloudProvider": "azure",
+  "cwe": "665",
+  "oldDescriptionText": "Periodically newer versions are released for PHP software either due to security flaws or to include additional functionality. Using the latest PHP version for web apps is recommended in order to take advantage of security fixes, if any, and/or additional functionalities of the newer version.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/app_service#php_version"
+}

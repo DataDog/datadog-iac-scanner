@@ -1,0 +1,12 @@
+{
+  "id": "9587c890-0524-40c2-9ce2-663af7c2f063",
+  "queryName": "Service account admission control plugin disabled",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "When `kube-apiserver` is used, the `--disable-admission-plugins` flag should not include the `ServiceAccount` plugin. Disabling the `ServiceAccount` admission plugin prevents the API server from admitting service account tokens and can break pod authentication and credential provisioning. This rule detects `kube-apiserver` containers and examines the container command for the `--disable-admission-plugins` flag containing `ServiceAccount`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_account_admission_control_plugin_disabled",
+  "platform": "Kubernetes",
+  "descriptionID": "3649a726",
+  "cwe": "284",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

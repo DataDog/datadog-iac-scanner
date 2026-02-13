@@ -1,0 +1,26 @@
+[
+  {
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive1.yaml",
+    "queryName": "Neptune cluster with IAM database authentication disabled"
+  },
+  {
+    "severity": "HIGH",
+    "line": 12,
+    "fileName": "positive1.yaml",
+    "queryName": "Neptune cluster with IAM database authentication disabled"
+  },
+  {
+    "line": 8,
+    "fileName": "positive2.json",
+    "queryName": "Neptune cluster with IAM database authentication disabled",
+    "severity": "HIGH"
+  },
+  {
+    "line": 15,
+    "fileName": "positive2.json",
+    "queryName": "Neptune cluster with IAM database authentication disabled",
+    "severity": "HIGH"
+  }
+]

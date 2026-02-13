@@ -1,0 +1,15 @@
+{
+  "id": "c407c3cf-c409-4b29-b590-db5f4138d332",
+  "queryName": "PostgreSQL Server threat detection policy disabled",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "PostgreSQL Server threat detection policy should be enabled to ensure the server can detect anomalous activities and potential security threats, such as SQL injection or brute-force attacks. When the `threat_detection_policy { enabled = false }` attribute is set, suspicious behaviors will not be identified or logged, leaving the server vulnerable to undetected compromises. Enabling threat detection, as shown below, is essential to alert administrators to suspicious activities and reduce the risk of data breaches.\n\n```\nthreat_detection_policy {\n  enabled = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/postgresql_server_threat_detection_policy_disabled",
+  "platform": "Terraform",
+  "descriptionID": "ed803b39",
+  "cloudProvider": "azure",
+  "cwe": "665",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "PostgreSQL Server Threat Detection Policy should be enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_server#threat_detection_policy"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "87065ef8-de9b-40d8-9753-f4a4303e27a4",
+  "queryName": "Container is privileged",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Minimize the admission of privileged containers. Privileged containers have elevated access to host resources and should be avoided where possible. This rule checks `container` and `init_container` entries in `spec` or `spec.template.spec` and flags any with `security_context.privileged` set to `true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/container_is_privileged",
+  "platform": "Terraform",
+  "descriptionID": "e2be4ab9",
+  "cwe": "269",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#privileged"
+}

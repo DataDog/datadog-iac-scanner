@@ -1,0 +1,14 @@
+{
+  "id": "6685d912-d81f-4cfa-95ad-e316ea31c989",
+  "queryName": "Directory service simple AD password exposed",
+  "severity": "HIGH",
+  "category": "Secret Management",
+  "descriptionText": "Storing AWS Directory Service Simple AD passwords in plaintext or as parameter `Default` values in CloudFormation exposes directory credentials to anyone who can read the template or parameter defaults. This can enable unauthorized access, lateral movement, and credential leakage via template repositories or build logs.\n\n For `AWS::DirectoryService::SimpleAD` resources, `Properties.Password` must not be a hard-coded string or a reference to a parameter that defines a `Default` value. Instead, provide the secret via a secrets service or as a parameter with no `Default` so it is supplied at deployment time.\n\n Resources will be flagged if `Properties.Password` is a literal password string, if it `Ref`s a parameter whose `Parameters.<name>.Default` contains a password-like value, or if the value is not backed by an AWS Secrets Manager or secure parameter reference.\n\n Secure examples include referencing an AWS Secrets Manager secret via a dynamic reference or using a parameter without a `Default` and supplying the password at deploy time.\n\nSecure dynamic Secrets Manager example:\n\n```yaml\nMyDirectory:\n  Type: AWS::DirectoryService::SimpleAD\n  Properties:\n    Name: example.local\n    Password: '{{resolve:secretsmanager:my-secret:SecretString:password}}'\n    Size: Small\n    VpcSettings:\n      VpcId: vpc-123456\n      SubnetIds:\n        - subnet-123456\n```\n\nSecure parameter-based example (no Default):\n\n```yaml\nParameters:\n  DirectoryPassword:\n    Type: String\n    NoEcho: true\n\nResources:\n  MyDirectory:\n    Type: AWS::DirectoryService::SimpleAD\n    Properties:\n      Name: example.local\n      Password: !Ref DirectoryPassword\n      Size: Small\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/directory_service_simple_ad_password_exposed",
+  "platform": "CloudFormation",
+  "descriptionID": "fc2c7fb8",
+  "cloudProvider": "aws",
+  "cwe": "256",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-directoryservice-simplead.html"
+}

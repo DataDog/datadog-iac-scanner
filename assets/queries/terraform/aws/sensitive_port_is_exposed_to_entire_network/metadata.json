@@ -1,0 +1,23 @@
+{
+  "id": "381c3f2a-ef6f-4eff-99f7-b169cda3422c",
+  "queryName": "Sensitive port is exposed to entire network",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "This vulnerability occurs when security groups allow inbound traffic to sensitive ports (such as SSH, RDP, database, or administrative service ports) from the entire internet (`0.0.0.0/0` or `/0`). Exposing sensitive ports to the internet creates a significant security risk as it allows attackers from anywhere to attempt connections, potentially resulting in unauthorized access, data breaches, or service exploitation.\n\nTo remediate this issue, restrict access to sensitive ports by specifying narrower CIDR ranges or specific IP addresses in your security group rules. For example, instead of using `cidr_blocks = [\"0.0.0.0/0\"]`, use specific IP ranges such as `cidr_blocks = [aws_vpc.main.cidr_block]` or `cidr_blocks = [\"10.0.0.0/16\"]` that only allow traffic from trusted networks.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sensitive_port_is_exposed_to_entire_network",
+  "platform": "Terraform",
+  "descriptionID": "5be78364",
+  "aggregation": 63,
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldDescriptionText": "A sensitive port, such as port 23 or port 110, is open for the whole network in either TCP or UDP protocol",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group",
+  "defaultFrameworks": [
+    {
+      "control": "1.20",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "aws"
+    }
+  ]
+}

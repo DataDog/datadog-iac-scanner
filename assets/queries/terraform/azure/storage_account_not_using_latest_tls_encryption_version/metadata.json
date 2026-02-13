@@ -1,0 +1,14 @@
+{
+  "id": "8263f146-5e03-43e0-9cfe-db960d56d1e7",
+  "queryName": "Storage account not using latest TLS encryption version",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "To ensure data transmitted to and from Azure storage accounts remains protected, it is important to enforce the use of the latest supported TLS encryption protocol. If the `min_tls_version` attribute is set to an outdated protocol such as `\"TLS1_1\"`, as seen below, the storage account may be vulnerable to known security exploits:\n\n```\n  min_tls_version = \"TLS1_1\"\n```\n\nTo mitigate this risk, configure storage accounts to use at least TLS 1.2 by setting:\n\n```\n  min_tls_version = \"TLS1_2\"\n```\n\nFailing to enforce modern TLS versions can expose sensitive data in transit to interception or tampering by attackers.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/storage_account_not_using_latest_tls_encryption_version",
+  "platform": "Terraform",
+  "descriptionID": "a38872a7",
+  "cloudProvider": "azure",
+  "cwe": "326",
+  "oldDescriptionText": "Ensure Storage Account is using the latest version of TLS encryption",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account"
+}

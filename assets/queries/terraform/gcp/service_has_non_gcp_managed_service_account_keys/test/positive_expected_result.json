@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "There are non GCP-managed service account keys for a service account",
+    "severity": "HIGH",
+    "line": 3
+  }
+]

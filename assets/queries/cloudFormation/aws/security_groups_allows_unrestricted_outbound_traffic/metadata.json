@@ -1,0 +1,14 @@
+{
+  "id": "66f2d8f9-a911-4ced-ae27-34f09690bb2c",
+  "queryName": "Security groups allows unrestricted outbound traffic",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Security groups must not allow unrestricted outbound traffic by combining `IpProtocol: \"ALL\"` with `CidrIp: \"0.0.0.0/0\"`. This permits any protocol to any internet destination and can enable data exfiltration, malware callbacks, and make detection or containment harder.\n\nIn CloudFormation, check `AWS::EC2::SecurityGroup` resources and flag any `SecurityGroupEgress` entry where `IpProtocol` is `ALL` and `CidrIp` is `0.0.0.0/0`. Entries that include `IpProtocol: \"ALL\"` together with `CidrIp: \"0.0.0.0/0\"` will be flagged. Instead, define explicit protocols and ports and restrict destination CIDR blocks to the minimum required. If broad internet egress is needed, prefer specific ports (for example, TCP/`443`) or centralize outbound access through NAT gateways, proxies, or VPC endpoints.\n\nSecure configuration example with explicit ports and restricted destinations:\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Example secure egress rules\n    VpcId: vpc-123456\n    SecurityGroupEgress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        CidrIp: 0.0.0.0/0\n      - IpProtocol: tcp\n        FromPort: 80\n        ToPort: 80\n        CidrIp: 10.0.0.0/16\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_groups_allows_unrestricted_outbound_traffic",
+  "platform": "CloudFormation",
+  "descriptionID": "05891eb1",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html"
+}

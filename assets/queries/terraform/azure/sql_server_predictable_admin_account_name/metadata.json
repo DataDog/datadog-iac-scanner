@@ -1,0 +1,15 @@
+{
+  "id": "2ab6de9a-0136-415c-be92-79d2e4fd750f",
+  "queryName": "SQL server predictable admin account name",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Azure SQL Server administrator login names should not use common or predictable values like `admin` or `administrator`. Using predictable names for the `administrator_login` attribute, such as `administrator_login = \"Admin\"`, makes brute force or credential stuffing attacks easier for malicious actors, increasing the risk of unauthorized database access. To mitigate this, configure the login with an unpredictable name, as shown below:\n\n```\nadministrator_login = \"UnpredictableAdminLogin\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/sql_server_predictable_admin_account_name",
+  "platform": "Terraform",
+  "descriptionID": "d0bed58e",
+  "cloudProvider": "azure",
+  "cwe": "522",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Azure SQL Server's Admin account login must avoid using names like 'Admin', that are too predictable, which means the attribute 'administrator_login' must be set to a name that is not easy to predict",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/sql_server"
+}

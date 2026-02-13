@@ -1,0 +1,13 @@
+{
+  "id": "87482183-a8e7-4e42-a566-7a23ec231c16",
+  "queryName": "Security group ingress with port range",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Security group ingress rules that specify a port range (`FromPort` does not equal `ToPort`) broaden the network attack surface and can unintentionally expose services that were not meant to be reachable.\n\nIn CloudFormation, `AWS::EC2::SecurityGroupIngress` resources must have `FromPort` equal to `ToPort`. Each entry in an `AWS::EC2::SecurityGroup` resource's `SecurityGroupIngress` list must also have `FromPort` equal to `ToPort`. Any ingress entry where these values differ will be flagged. Resources that intentionally require ranges should include a documented justification and restrict allowed sources (for example, via `CidrIp` or `SourceSecurityGroupId`) to minimize exposure. Note that protocol-specific behavior (for example, ICMP type/code) may use these fields differently and still requires careful review.\n\nSecure configuration examples:\n\n```yaml\nMySgIngress:\n  Type: AWS::EC2::SecurityGroupIngress\n  Properties:\n    GroupId: sg-0123456789abcdef0\n    IpProtocol: tcp\n    FromPort: 22\n    ToPort: 22\n    CidrIp: 203.0.113.4/32\n```\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: allow-https\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        CidrIp: 198.51.100.0/24\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_group_ingress_with_port_range",
+  "platform": "CloudFormation",
+  "descriptionID": "5f2b65f3",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group-ingress.html"
+}

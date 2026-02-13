@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "RBAC roles allow privilege escalation",
+    "severity": "MEDIUM",
+    "line": 8
+  }
+]

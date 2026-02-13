@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Cloud Storage bucket versioning disabled",
+    "severity": "MEDIUM",
+    "line": 6
+  },
+  {
+    "queryName": "Cloud Storage bucket versioning disabled",
+    "severity": "MEDIUM",
+    "line": 10
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "id": "22ef1d26-80f8-4a6c-8c15-f35aab3cac78",
+  "queryName": "Google Compute network using firewall rule that allows all ports",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Allowing a Google Compute Network firewall rule to permit traffic on all TCP ports (using `ports = [\"0-65535\"]`) exposes instances to a broad range of attacks and unauthorized access, increasing the risk of exploitation across unused and potentially vulnerable services. By not restricting allowed ports to only those necessary—such as `ports = [\"80\", \"8080\"]` for web services—the configuration creates a large attack surface. To minimize security risks, firewall rules should define only the specific protocols and ports required for service functionality.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/google_compute_network_using_firewall_rule_allows_all_ports",
+  "platform": "Terraform",
+  "descriptionID": "20fce4e9",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldDescriptionText": "Google Compute Network should not use a firewall rule that allows all ports",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall#allow"
+}

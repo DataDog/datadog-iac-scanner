@@ -1,0 +1,13 @@
+{
+  "id": "42e7dca3-8cce-4325-8df0-108888259136",
+  "queryName": "BOM - AWS SNS",
+  "severity": "TRACE",
+  "category": "Bill Of Materials",
+  "descriptionText": "Missing or unmanaged SNS topics can hide messaging channels that are publicly accessible or lack server-side encryption, increasing the risk of unauthorized notifications or data exposure. This rule enumerates CloudFormation `AWS::SNS::Topic` resources to record each topic’s name, its associated `AWS::SNS::TopicPolicy` (checked via the Topics property) to determine accessibility, and its encryption setting (e.g., `KmsMasterKeyId`) for BOM reporting. Resources without an attached TopicPolicy or without a KMS key will be reflected in the bill-of-materials output so operators can quickly identify topics that may require access restriction or encryption.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/sns",
+  "platform": "CloudFormation",
+  "descriptionID": "3cd7a815",
+  "cloudProvider": "aws",
+  "cwe": "532",
+  "providerUrl": "https://kics.io"
+}

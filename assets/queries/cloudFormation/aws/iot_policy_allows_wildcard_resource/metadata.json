@@ -1,0 +1,13 @@
+{
+  "id": "be5b230d-4371-4a28-a441-85dc760e2aa3",
+  "queryName": "IoT policy allows a wildcard resource",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IoT policies must not grant `Allow` permissions to all resources (`*`), because an `Allow` with `Resource: '*'` lets principals act across any IoT resource and can result in broad privilege escalation or unauthorized device and data access. In AWS CloudFormation, check `AWS::IoT::Policy` resources. `Properties.PolicyDocument.Statement[].Effect` must not be `Allow` with the corresponding `Statement[].Resource` equal to or containing the wildcard `*`. The rule flags statements where `Resource` is `*` or an array that includes `*`. Use least-privilege ARNs or condition keys to restrict actions to specific IoT resources.\n\nSecure configuration example:\n\n```yaml\nMyIoTPolicy:\n  Type: AWS::IoT::Policy\n  Properties:\n    PolicyDocument:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Action:\n            - \"iot:Publish\"\n          Resource: \"arn:aws:iot:us-west-2:123456789012:topic/my/topic\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iot_policy_allows_wildcard_resource",
+  "platform": "CloudFormation",
+  "descriptionID": "d5e52bc7",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iot-policy.html"
+}

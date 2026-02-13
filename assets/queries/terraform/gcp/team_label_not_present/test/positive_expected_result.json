@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Team label missing on GCP resource",
+    "severity": "LOW",
+    "line": 1
+  },
+  {
+    "queryName": "Team label missing on GCP resource",
+    "severity": "LOW",
+    "line": 24
+  }
+]

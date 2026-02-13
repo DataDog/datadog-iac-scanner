@@ -1,0 +1,13 @@
+{
+  "id": "7249e3b0-9231-4af3-bc5f-5daf4988ecbf",
+  "queryName": "StatefulSet without PodDisruptionBudget",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "StatefulSets should be assigned a PodDisruptionBudget to ensure high availability. A PodDisruptionBudget protects StatefulSet pods from simultaneous voluntary evictions, preserving quorum and minimizing downtime during maintenance or cluster changes. Ensure the StatefulSet's .spec.selector.match_labels are targeted by a corresponding PodDisruptionBudget selector.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/statefulset_without_pod_disruption_budget",
+  "platform": "Terraform",
+  "descriptionID": "efa415db",
+  "cwe": "754",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/stateful_set#selector"
+}

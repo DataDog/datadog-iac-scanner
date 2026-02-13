@@ -1,0 +1,12 @@
+{
+  "id": "afa36afb-39fe-4d94-b9b6-afb236f7a03d",
+  "queryName": "Pod security policy admission control plugin not set",
+  "severity": "HIGH",
+  "category": "Build Process",
+  "descriptionText": "When a `kube-apiserver` container is present (in `containers` or `initContainers`), the `--enable-admission-plugins` flag should include `PodSecurityPolicy`. The rule inspects the container `command` for `kube-apiserver` and reports a MissingAttribute if the flag does not contain `PodSecurityPolicy`. The admission control configuration file should also be correctly configured to enable the plugin.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/pod_security_policy_admission_control_plugin_not_set",
+  "platform": "Kubernetes",
+  "descriptionID": "5b3d44e9",
+  "cwe": "284",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

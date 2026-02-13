@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Shared host IPC namespace",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Shared host IPC namespace",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive2.yaml"
+  }
+]

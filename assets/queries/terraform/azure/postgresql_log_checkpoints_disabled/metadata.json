@@ -1,0 +1,14 @@
+{
+  "id": "3790d386-be81-4dcf-9850-eaa7df6c10d9",
+  "queryName": "PostgreSQL log checkpoints disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "The PostgreSQL `log_checkpoints` parameter controls whether checkpoint activities are logged, which is critical for monitoring and troubleshooting database performance and reliability. If `log_checkpoints` is set to `off`, important information about checkpoint events will not be recorded, making it more difficult to detect or respond to potential issues or attacks. To mitigate this risk, the parameter should be enabled, as shown below:\n\n```\nresource \"azurerm_postgresql_configuration\" \"secure_example\" {\n    name                = \"log_checkpoints\"\n    resource_group_name = data.azurerm_resource_group.example.name\n    server_name         = azurerm_postgresql_server.example.name\n    value               = \"on\"\n}\n```\n\nFailing to enable this logging may leave administrators unaware of problems that can impact data durability or signal malicious activity, increasing the risk of unnoticed outages or data loss.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/postgresql_log_checkpoints_disabled",
+  "platform": "Terraform",
+  "descriptionID": "06d14345",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldDescriptionText": "Make sure that for Postgre SQL Database Server, parameter 'log_checkpoints' is set to 'ON'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_configuration"
+}

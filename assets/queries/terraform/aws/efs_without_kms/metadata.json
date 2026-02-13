@@ -1,0 +1,15 @@
+{
+  "id": "25d251f3-f348-4f95-845c-1090e41a615c",
+  "queryName": "EFS without KMS",
+  "severity": "LOW",
+  "category": "Encryption",
+  "descriptionText": "This check ensures that Amazon Elastic File System (EFS) resources are configured with encryption enabled using a customer-managed KMS key specified via the `kms_key_id` attribute, rather than defaulting to AWS-managed keys. If only `encrypted = true` is set without specifying a `kms_key_id`, sensitive data stored in EFS will use default AWS-managed encryption keys, reducing control over key rotation and access management. Failure to use a customer-managed key increases the risk of unauthorized data access and may not meet stringent compliance requirements for sensitive workloads.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/efs_without_kms",
+  "platform": "Terraform",
+  "descriptionID": "c5dfddad",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Amazon Elastic Filesystem should have filesystem encryption enabled using KMS CMK customer-managed keys instead of AWS managed-keys",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/efs_file_system#kms_key_id"
+}

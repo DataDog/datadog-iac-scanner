@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "OSS bucket allows delete action from all principals",
+		"severity": "CRITICAL",
+		"line": 5,
+		"fileName": "positive1.tf"
+	}
+]

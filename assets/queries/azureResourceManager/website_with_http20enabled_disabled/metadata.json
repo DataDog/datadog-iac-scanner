@@ -1,0 +1,12 @@
+{
+  "id": "70111098-7f85-48f0-b1b4-e4261cf5f61b",
+  "queryName": "Website with 'Http20Enabled' Disabled",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "'Microsoft.Web/sites' should have 'Http20Enabled' enabled",
+  "descriptionUrl": "https://docs.microsoft.com/en-us/azure/templates/microsoft.web/sites?tabs=json#siteproperties-object",
+  "platform": "AzureResourceManager",
+  "descriptionID": "e0cdbc75",
+  "cloudProvider": "azure",
+  "cwe": "757"
+}

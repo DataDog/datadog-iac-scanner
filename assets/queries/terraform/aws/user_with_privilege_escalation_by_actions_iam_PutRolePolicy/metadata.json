@@ -1,0 +1,14 @@
+{
+  "id": "eeb4d37a-3c59-4789-a00c-1509bc3af1e5",
+  "queryName": "User with privilege escalation by actions 'iam:PutRolePolicy'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Allowing a user the `iam:PutRolePolicy` action on all resources (that is, `\"Resource\": \"*\"`) enables them to attach inline policies to any IAM role in the AWS environment. This grants the user a privilege escalation path, as they could grant overly broad or administrative permissions to roles they do not own, potentially gaining full control over the AWS account. To mitigate this risk, restrict the `iam:PutRolePolicy` action using least privilege and avoid using wildcards in the `Resource` attribute, as shown below:\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"ec2:Describe*\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_PutRolePolicy",
+  "platform": "Terraform",
+  "descriptionID": "367257fe",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "User with privilege escalation by actions 'iam:PutRolePolicy' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_user_policy#policy"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "72a931c2-12f5-40d1-93cc-47bff2f7aa2a",
+  "queryName": "API Gateway With CloudWatch Logging Disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "AWS CloudWatch Logs for APIs is not enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/api_gateway_with_cloudwatch_logging_disabled",
+  "platform": "Ansible",
+  "descriptionID": "313709e8",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/cloudwatchlogs_log_group_module.html#ansible-collections-community-aws-cloudwatchlogs-log-group-module"
+}

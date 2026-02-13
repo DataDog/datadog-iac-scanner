@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "S3 bucket with all permissions",
+    "severity": "CRITICAL",
+    "line": 5,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "S3 bucket with all permissions",
+    "severity": "CRITICAL",
+    "line": 12,
+    "fileName": "positive2.tf"
+  }
+]

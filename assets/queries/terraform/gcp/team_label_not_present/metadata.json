@@ -1,0 +1,14 @@
+{
+  "id": "b2b3c4d5-e6f7-8901-gh23-ijkl456m7890",
+  "queryName": "Team label missing on GCP resource",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "To ensure accountability and efficient resource management, every cloud resource should include a `team` label identifying ownership. Without this label, as shown in the example below, resources may lack clear ownership, making it difficult to track responsibility for maintenance, cost allocation, or incident response:\n\n```\nresource \"google_bigtable_instance\" \"example\" {\n  name = \"my-instance\"\n}\n```\n\nProperly labeling resources with a `team` tag, as in the following example, improves governance and accountability:\n\n```\nlabels = {\n  team = \"DevOps\"\n}\n```\n\nNeglecting this can lead to orphaned resources, wasted spend, and slower incident resolution due to unclear points of contact.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/team_label_not_present",
+  "platform": "Terraform",
+  "descriptionID": "b2b3c4d5",
+  "cloudProvider": "gcp",
+  "oldDescriptionText": "Ensures that every cloud resource has a 'team' label for ownership tracking.",
+  "providerUrl": "https://cloud.google.com/storage/docs/tags-and-labels",
+  "cwe": ""
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "ECR repository not encrypted with CMK",
+    "severity": "LOW",
+    "line": 1
+  },
+  {
+    "queryName": "ECR repository not encrypted with CMK",
+    "severity": "LOW",
+    "line": 18
+  }
+]

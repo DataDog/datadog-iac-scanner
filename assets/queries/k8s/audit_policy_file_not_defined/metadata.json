@@ -1,0 +1,20 @@
+{
+  "id": "13a49a2e-488e-4309-a7c0-d6b05577a5fb",
+  "queryName": "Audit policy file not defined",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "When a container runs `kube-apiserver`, the `--audit-policy-file` flag must be set. The flag's value must reference a valid `.yaml` policy file that exists in a `Policy` resource within the document.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/audit_policy_file_not_defined",
+  "platform": "Kubernetes",
+  "descriptionID": "7ae0f3cb",
+  "cwe": "284",
+  "defaultFrameworks": [
+    {
+      "control": "4.20",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

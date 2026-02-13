@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Container with unmasked /proc access",
+    "severity": "HIGH",
+    "line": 12
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "id": "6425c98b-ca4e-41fe-896a-c78772c131f8",
+  "queryName": "PostgreSQL server infrastructure encryption disabled",
+  "severity": "LOW",
+  "category": "Encryption",
+  "descriptionText": "PostgreSQL Server infrastructure encryption provides an additional layer of protection for data at rest, beyond the default storage encryption. If the `infrastructure_encryption_enabled` attribute is set to `false` in the Terraform `azurerm_postgresql_server` resource, sensitive data may be exposed in the event of unauthorized access to underlying disks or snapshots. To secure the configuration, set `infrastructure_encryption_enabled = true`.\n\nThis ensures that the PostgreSQL server uses Azure's strong encryption mechanisms to protect data at the infrastructure level, significantly reducing the risk of data compromise.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/postgresql_server_infrastructure_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "b982dca0",
+  "cloudProvider": "azure",
+  "cwe": "311",
+  "oldDescriptionText": "PostgreSQL Server Infrastructure Encryption should be enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_server#infrastructure_encryption_enabled"
+}

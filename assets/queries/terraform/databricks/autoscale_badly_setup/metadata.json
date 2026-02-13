@@ -1,0 +1,13 @@
+{
+  "id": "953c0cc6-5f30-44cb-a803-bf4ef2571be8",
+  "queryName": "Beta - Databricks autoscale configuration incomplete",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Databricks clusters must define both `autoscale.min_workers` and `autoscale.max_workers`. This rule flags `databricks_cluster` resources where either attribute is missing or unset.\nDefining both ensures predictable autoscaling and prevents resource overuse or unexpected costs.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/autoscale_badly_setup",
+  "platform": "Terraform",
+  "descriptionID": "e6eabd3e",
+  "cloudProvider": "common",
+  "cwe": "400",
+  "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/cluster"
+}

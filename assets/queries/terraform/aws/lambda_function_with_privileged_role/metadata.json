@@ -1,0 +1,22 @@
+{
+  "id": "1b3af2f9-af8c-4dfc-a0f1-a03adb70deb2",
+  "queryName": "Lambda function with privileged role",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "AWS Lambda functions with privileged IAM roles present a significant security risk by violating the principle of least privilege. When Lambda functions are assigned roles with broad permissions such as `iam:*` or `sts:AssumeRole`, they become potential vectors for privilege escalation if compromised. Instead, Lambda functions should be granted only the specific permissions needed for their execution.\n\nFor example, avoid policies with broad permissions like the following:\n```\npolicy = jsonencode({\n  Statement = [{\n    Action = [\n      \"ec2:Describe*\",\n      \"iam:*\"\n    ],\n    Effect   = \"Allow\",\n    Resource = \"*\"\n  }]\n})\n```\n\nInstead, implement least privilege permissions:\n```\npolicy = jsonencode({\n  Statement = [{\n    Action = [\n      \"ec2:Describe*\",\n      \"s3:GetObject\"\n    ],\n    Effect   = \"Allow\",\n    Resource = \"*\"\n  }]\n})\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/lambda_function_with_privileged_role",
+  "platform": "Terraform",
+  "descriptionID": "1b3af2f9",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "It is not advisable for AWS Lambda Functions to have privileged permissions.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function",
+  "defaultFrameworks": [
+    {
+      "control": "1.16",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "aws"
+    }
+  ]
+}

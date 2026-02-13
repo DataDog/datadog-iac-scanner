@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "SageMaker notebook internet access enabled",
+    "severity": "HIGH",
+    "line": 4,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "SageMaker notebook internet access enabled",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive_module.tf"
+  }
+]

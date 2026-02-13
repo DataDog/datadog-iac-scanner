@@ -1,0 +1,14 @@
+{
+  "id": "151187cb-0efc-481c-babd-ad24e3c9bc22",
+  "queryName": "Remote Desktop port open to internet",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check identifies AWS Security Groups that have Remote Desktop ports (commonly in ranges 3380-3450) exposed to the internet via '0.0.0.0/0' or similar CIDR blocks. Exposing Remote Desktop ports to the public internet creates a significant security risk as it allows potential attackers to attempt brute-force attacks against your instances. Instead, restrict access to specific trusted IP ranges or use a bastion host/VPN for secure remote access.\n\nSecure example:\n```terraform\ningress {\n  description = \"Remote desktop open private\"\n  from_port   = 3380\n  to_port     = 3450\n  protocol    = \"tcp\"\n  cidr_blocks = [\"10.0.0.0/16\"]  // Restricted to private network\n}\n```\n\nInsecure example:\n```terraform\ningress {\n  description = \"Remote desktop port open\"\n  from_port   = 3380\n  to_port     = 3450\n  protocol    = \"tcp\"\n  cidr_blocks = [\"0.0.0.0/0\"]  // Open to the internet\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/remote_desktop_port_open_to_internet",
+  "platform": "Terraform",
+  "descriptionID": "aea02d46",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldDescriptionText": "The Remote Desktop port is open to the internet in a Security Group",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group"
+}

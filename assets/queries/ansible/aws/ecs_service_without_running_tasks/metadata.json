@@ -1,0 +1,14 @@
+{
+  "id": "f5c45127-1d28-4b49-a692-0b97da1c3a84",
+  "queryName": "ECS Service Without Running Tasks",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "ECS Service should have at least 1 task running",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ecs_service_without_running_tasks",
+  "platform": "Ansible",
+  "descriptionID": "dce30fcb",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/ecs_service_module.html#ansible-collections-community-aws-ecs-service-module"
+}

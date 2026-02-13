@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Google Compute firewall ingress allows unrestricted FTP access",
+    "severity": "MEDIUM",
+    "line": 10
+  }
+]

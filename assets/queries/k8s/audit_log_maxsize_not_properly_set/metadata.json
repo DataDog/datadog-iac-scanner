@@ -1,0 +1,12 @@
+{
+  "id": "35c0a471-f7c8-4993-aa2c-503a3c712a66",
+  "queryName": "Audit log maxsize not properly set",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "When a container runs `kube-apiserver`, the `--audit-log-maxsize` flag should be set to 100 megabytes or more.  \nThis rule inspects `containers` and `initContainers` and checks container commands for `kube-apiserver`; it verifies that `--audit-log-maxsize` is present and has a value of at least 100 megabytes.  \nThe rule reports `MissingAttribute` if the flag is absent and `IncorrectValue` if the flag is set to less than 100 megabytes.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/audit_log_maxsize_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "9609fc23",
+  "cwe": "778",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

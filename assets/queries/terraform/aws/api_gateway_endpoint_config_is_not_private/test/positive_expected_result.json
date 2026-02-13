@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "API Gateway endpoint config is not private",
+    "severity": "MEDIUM",
+    "line": 5
+  }
+]

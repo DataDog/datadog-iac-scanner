@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "MSSQL server auditing disabled",
+    "severity": "MEDIUM",
+    "line": 1
+  }
+]

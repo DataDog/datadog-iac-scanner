@@ -1,0 +1,20 @@
+[
+	{
+		"queryName": "CPU limits not set",
+		"severity": "LOW",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "CPU limits not set",
+		"severity": "LOW",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "CPU limits not set",
+		"severity": "LOW",
+		"line": 106,
+		"fileName": ""
+	}
+]

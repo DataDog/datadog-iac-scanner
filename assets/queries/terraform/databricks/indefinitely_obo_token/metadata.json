@@ -1,0 +1,13 @@
+{
+  "id": "23e1f5f0-12b7-4d7e-9087-f60f42ccd514",
+  "queryName": "Beta - Databricks OBO token has indefinite lifetime",
+  "severity": "MEDIUM",
+  "category": "Insecure Defaults",
+  "descriptionText": "`databricks_obo_token` has an indefinite lifetime.\nOBO tokens must include a `lifetime_seconds` attribute to enforce a finite validity period.\nThis rule flags any `databricks_obo_token` resource that does not set `lifetime_seconds`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/indefinitely_obo_token",
+  "platform": "Terraform",
+  "descriptionID": "df3aa7ed",
+  "cloudProvider": "common",
+  "cwe": "307",
+  "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/obo_token"
+}

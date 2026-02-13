@@ -1,0 +1,13 @@
+{
+  "id": "e519ed6a-8328-4b69-8eb7-8fa549ac3050",
+  "queryName": "Amazon MQ broker logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Amazon MQ brokers must have audit and general logging enabled so broker activity and security events are recorded for detection and investigation, and to support compliance and forensic requirements. In AWS CloudFormation, the `AWS::AmazonMQ::Broker` resource must include the `Logs` property with both `Audit` and `General` defined and set to `true`. Resources missing `Logs`, missing either `Audit` or `General`, or with either value set to `false` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyBroker:\n  Type: AWS::AmazonMQ::Broker\n  Properties:\n    BrokerName: my-broker\n    Logs:\n      Audit: true\n      General: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/mq_broker_logging_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "3799829c",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-amazonmq-broker.html#cfn-amazonmq-broker-logs"
+}

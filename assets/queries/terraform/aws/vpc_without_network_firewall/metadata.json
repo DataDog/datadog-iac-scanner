@@ -1,0 +1,14 @@
+{
+  "id": "fd632aaf-b8a1-424d-a4d1-0de22fd3247a",
+  "queryName": "VPC without Network Firewall",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check ensures that every Amazon Virtual Private Cloud (VPC) has an AWS Network Firewall associated with it for advanced network traffic filtering and threat protection. Without a Network Firewall, the VPC is left vulnerable to attacks such as unauthorized access, data exfiltration, and propagation of malware between workloads and subnets. Associating a Network Firewall with the VPC allows administrators to define and enforce rules that control both inbound and outbound traffic, enhancing security posture. Failing to implement this safeguard can result in greater exposure to network-based attacks or unmonitored lateral movement within the cloud environment.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/vpc_without_network_firewall",
+  "platform": "Terraform",
+  "descriptionID": "2e7d55e6",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "VPC should have a Network Firewall associated",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/networkfirewall_firewall#vpc_id"
+}

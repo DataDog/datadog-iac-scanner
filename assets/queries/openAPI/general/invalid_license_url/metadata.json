@@ -1,0 +1,21 @@
+{
+  "id": "9239c289-9e4c-4d92-8be1-9d506057c971",
+  "queryName": "Invalid License URL (v3)",
+  "severity": "INFO",
+  "category": "Best Practices",
+  "descriptionText": "License Object URL should be a valid URL",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/invalid_license_url",
+  "platform": "OpenAPI",
+  "descriptionID": "d5d073df",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "de2b4910-8484-46d6-a055-dc1e793ee3ff",
+      "queryName": "Invalid License URL (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#licenseObject",
+      "descriptionText": ""
+    }
+  },
+  "cwe": "710",
+  "providerUrl": "https://swagger.io/specification/#license-object"
+}

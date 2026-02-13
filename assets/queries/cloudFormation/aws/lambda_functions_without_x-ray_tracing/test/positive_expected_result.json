@@ -1,0 +1,26 @@
+[
+  {
+    "line": 37,
+    "fileName": "positive1.yaml",
+    "queryName": "Lambda functions without X-Ray tracing",
+    "severity": "LOW"
+  },
+  {
+    "queryName": "Lambda functions without X-Ray tracing",
+    "severity": "LOW",
+    "line": 4,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Lambda functions without X-Ray tracing",
+    "severity": "LOW",
+    "line": 16,
+    "fileName": "positive3.json"
+  },
+  {
+    "queryName": "Lambda functions without X-Ray tracing",
+    "severity": "LOW",
+    "line": 4,
+    "fileName": "positive4.json"
+  }
+]

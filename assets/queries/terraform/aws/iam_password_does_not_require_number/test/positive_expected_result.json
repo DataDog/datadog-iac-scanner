@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "IAM password policy does not require numbers",
+    "severity": "MEDIUM",
+    "line": 4,
+    "filename": "positive.tf"
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "queryName": "Redshift not encrypted",
+    "severity": "HIGH",
+    "line": 1
+  },
+  {
+    "queryName": "Redshift not encrypted",
+    "severity": "HIGH",
+    "line": 17
+  },
+  {
+    "queryName": "Redshift not encrypted",
+    "severity": "HIGH",
+    "line": 13,
+    "fileName": "positive_module.tf"
+  }
+]

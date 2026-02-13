@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "SQL server predictable admin account name",
+    "severity": "LOW",
+    "line": 20
+  },
+  {
+    "queryName": "SQL server predictable admin account name",
+    "severity": "LOW",
+    "line": 40
+  }
+]

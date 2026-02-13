@@ -1,0 +1,23 @@
+{
+  "id": "55af1353-2f62-4fa0-a8e1-a210ca2708f5",
+  "queryName": "Cloudfront viewer protocol policy allows HTTP",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "This check ensures that the connection between Amazon CloudFront and the viewer is encrypted by verifying the `viewer_protocol_policy` attribute. If set to `allow-all` (for example, `viewer_protocol_policy = \"allow-all\"`), CloudFront can serve content over both HTTP and HTTPS, leaving data in transit vulnerable to interception or man-in-the-middle attacks. To address this, the attribute should be set to `https-only` in all cache behaviors (for example, `viewer_protocol_policy = \"https-only\"`), ensuring all communications between CloudFront and the end user are encrypted, thus preserving the confidentiality and integrity of the data.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudfront_viewer_protocol_policy_allows_http",
+  "platform": "Terraform",
+  "descriptionID": "3547cd5a",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Checks if the connection between CloudFront and the viewer is encrypted",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution",
+  "customFrameworks": [
+    {
+      "control": "aws.1.14",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "da905474-7454-43c0-b8d2-5756ab951aba",
+  "queryName": "KMS key with a vulnerable policy",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "KMS keys must have a strict, explicit key policy because policies that grant broad `kms:*` permissions to wildcard principals (or omit a policy entirely) allow unintended principals to administer or use the key. This can lead to unauthorized decryption, key compromise, or deletion.\n\nIn AWS CloudFormation, inspect `AWS::KMS::Key` resources and verify `Properties.KeyPolicy.Statement[]`. A statement will be flagged when `Effect` is `Allow`, `Action` includes `kms:*`, and `Principal` is `*` (or contains wildcard values) without a restrictive `Condition`. Resources with `Properties.KeyPolicy` undefined or `null` are also flagged.\n\nTo remediate, define an explicit `KeyPolicy`, specify principals by ARN or AWS account ID, and limit `Action` to only the required KMS operations. If you must use `kms:*`, limit it to trusted administrative principals. You can also add conditions (for example, `aws:SourceAccount` or `aws:PrincipalOrgID`) to scope `Allow` statements.\n\nSecure example with explicit principals and limited actions:\n\n```yaml\nMyKey:\n  Type: AWS::KMS::Key\n  Properties:\n    KeyPolicy:\n      Version: \"2012-10-17\"\n      Statement:\n        - Sid: AllowAppUse\n          Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:role/MyAppRole\n          Action:\n            - \"kms:Encrypt\"\n            - \"kms:Decrypt\"\n          Resource: \"*\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/kms_key_with_full_permissions",
+  "platform": "CloudFormation",
+  "descriptionID": "1f88b704",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-kms-key.html#cfn-kms-key-keypolicy"
+}

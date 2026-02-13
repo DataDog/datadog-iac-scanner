@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Beta - Nifcloud RDB has public DB ingress security group rule",
+		"severity": "HIGH",
+		"line": 1,
+		"fileName": "positive.tf"
+	}
+]

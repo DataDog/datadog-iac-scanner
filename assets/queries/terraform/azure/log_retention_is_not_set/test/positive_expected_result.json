@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "Log retention is not set",
+    "severity": "MEDIUM",
+    "line": 5
+  },
+  {
+    "queryName": "Log retention is not set",
+    "severity": "MEDIUM",
+    "line": 12
+  },
+  {
+    "queryName": "Log retention is not set",
+    "severity": "MEDIUM",
+    "line": 19
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "id": "a9174d31-d526-4ad9-ace4-ce7ddbf52e03",
+  "queryName": "Cluster allows unsafe sysctls",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "A Kubernetes cluster must not allow unsafe sysctls to prevent a pod from influencing other pods on the same node, harming node health, or consuming CPU or memory beyond a pod's resource limits. This rule requires that `spec.security_context.sysctl` must not include unsafe sysctls and that `allowed_unsafe_sysctls` is undefined. The rule applies to `kubernetes_pod` and `kubernetes_pod_security_policy` resources and flags any configured unsafe sysctl names.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/cluster_allows_unsafe_sysctls",
+  "platform": "Terraform",
+  "descriptionID": "21547beb",
+  "cwe": "732",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#allowed_unsafe_sysctls"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "829ce3b8-065c-41a3-ad57-e0accfea82d2",
+  "queryName": "Unknown port exposed to internet",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "Security groups must not expose unknown TCP ports to the entire internet because unknown or unapproved ports can host undocumented services and increase the attack surface for scanning and exploitation.\n\nFor `AWS::EC2::SecurityGroup` resources, this rule inspects each `SecurityGroupIngress` entry and flags entries that use `CidrIp: 0.0.0.0/0` or `CidrIpv6: ::/0` together with `FromPort`/`ToPort` values that are not present in the known TCP ports map. The check treats a missing or unrecognized `FromPort` or `ToPort` as a violation and also flags ranges where any port in `FromPort..ToPort` is unknown.\n\nTo remediate, restrict the CIDR to trusted IP ranges, use explicit approved ports, or reference other security groups instead.\n\nSecure example (allow only a known public port (HTTPS) from the internet, and restrict SSH to a trusted IP range):\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Example secure SG\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        CidrIp: 0.0.0.0/0\n      - IpProtocol: tcp\n        FromPort: 22\n        ToPort: 22\n        CidrIp: 203.0.113.10/32\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/unknown_port_exposed_to_internet",
+  "platform": "CloudFormation",
+  "descriptionID": "0cc0a902",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html"
+}

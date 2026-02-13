@@ -1,0 +1,14 @@
+{
+  "id": "fe286195-e75c-4359-bd58-00847c4f855a",
+  "queryName": "OSS bucket allows put action from all principals",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "OSS bucket (`alicloud_oss_bucket`) policies must not allow the `Put` action from all principals. This prevents accidental exposure of private data and unauthorized uploads, overwrites, or deletions. The rule flags policies where `Effect` is `Allow`, `Action` includes `Put`, and `Principal` is set to `*` (i.e., applies to all identities). To secure access, restrict `Principal` to specific identities or scope access with conditions.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_allows_put_action_from_all_principals",
+  "platform": "Terraform",
+  "descriptionID": "14d65676",
+  "cloudProvider": "alicloud",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/oss_bucket#policy"
+}

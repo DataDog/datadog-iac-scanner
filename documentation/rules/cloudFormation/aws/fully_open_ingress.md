@@ -1,0 +1,2021 @@
+---
+title: "Fully open ingress"
+group_id: "CloudFormation / AWS"
+meta:
+  name: "aws/fully_open_ingress"
+  id: "e415f8d3-fc2b-4f52-88ab-1129e8c8d3f5"
+  display_name: "Fully open ingress"
+  cloud_provider: "AWS"
+  platform: "CloudFormation"
+  severity: "HIGH"
+  category: "Networking and Firewall"
+---
+## Metadata
+
+**Id:** `e415f8d3-fc2b-4f52-88ab-1129e8c8d3f5`
+
+**Cloud Provider:** AWS
+
+**Platform:** CloudFormation
+
+**Severity:** High
+
+**Category:** Networking and Firewall
+
+#### Learn More
+
+ - [Provider Reference](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/get-set-up-for-amazon-ecs.html#create-a-base-security-group)
+
+### Description
+
+ Security groups attached to ECS services must not allow ingress from `0.0.0.0/0` to all ports because unrestricted public access increases the attack surface of containerized workloads and enables unauthorized access or exploitation.
+ 
+ Check `AWS::EC2::SecurityGroupIngress` resources where `Properties.CidrIp` is `0.0.0.0/0` and `Properties.ToPort` is `0` for rules that apply to security groups used by ECS services. Such rules will be flagged. Restrict ingress by specifying trusted CIDR ranges or referencing other security groups and by narrowing `FromPort`/`ToPort` to only the ports required (or place services behind a load balancer and WAF).
+
+Secure configuration example (restrict access to TCP port 80 from a specific CIDR):
+
+```yaml
+MySecurityGroupIngress:
+  Type: AWS::EC2::SecurityGroupIngress
+  Properties:
+    GroupId: !Ref MySecurityGroup
+    IpProtocol: tcp
+    FromPort: 80
+    ToPort: 80
+    CidrIp: 203.0.113.0/24
+```
+
+
+## Compliant Code Examples
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select a VPC that allows instances access to the Internet.
+  SubnetId:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select at two subnets in your selected VPC.
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !Ref 'VpcId'
+  EcsSecurityGroupHTTPinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupSSHinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupALBports:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: 31000
+      ToPort: 61000
+      SourceSecurityGroupId: !Ref 'EcsSecurityGroup'
+  CloudwatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['-', [ECSLogGroup, !Ref 'AWS::StackName']]
+      RetentionInDays: 14
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Join ['', [!Ref 'AWS::StackName', -ecs-demo-app]]
+      ContainerDefinitions:
+      - Name: simple-app
+        Cpu: 10
+        Essential: true
+        Image: httpd:2.4
+        Memory: 300
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref 'CloudwatchLogsGroup'
+            awslogs-region: !Ref 'AWS::Region'
+            awslogs-stream-prefix: ecs-demo-app
+        MountPoints:
+        - ContainerPath: /usr/local/apache2/htdocs
+          SourceVolume: my-vol
+        PortMappings:
+        - ContainerPort: 80
+      - Name: busybox
+        Cpu: 10
+        Command: ['/bin/sh -c "while true; do echo ''<html> <head> <title>Amazon ECS
+            Sample App</title></head><body></body></html>'' > bottom; cat top date bottom > /usr/local/apache2/htdocs/index.html
+            ; sleep 1; done"']
+        EntryPoint: [sh, -c]
+        Essential: false
+        Image: busybox
+        Memory: 200
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref 'CloudwatchLogsGroup'
+            awslogs-region: !Ref 'AWS::Region'
+            awslogs-stream-prefix: ecs-demo-app
+        VolumesFrom:
+        - SourceContainer: simple-app
+      Volumes:
+      - Name: my-vol
+  ECSALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: ECSALB
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: '30'
+      Subnets: !Ref 'SubnetId'
+      SecurityGroups: [!Ref 'EcsSecurityGroup']
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref 'ECSTG'
+      LoadBalancerArn: !Ref 'ECSALB'
+      Port: 80
+      Protocol: HTTP
+  ECSALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref 'ECSTG'
+      Conditions:
+      - Field: path-pattern
+        Values: [/]
+      ListenerArn: !Ref 'ALBListener'
+      Priority: 1
+  ECSTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: ECSTG
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref 'VpcId'
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref 'SubnetId'
+      LaunchConfigurationName: !Ref 'ContainerInstances'
+      MinSize: '1'
+      MaxSize: 4
+      DesiredCapacity: 2
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: true
+  ContainerInstances:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-09bee01cc997a78a6
+      SecurityGroups: [!Ref 'EcsSecurityGroup']
+      InstanceType: t2.small
+      IamInstanceProfile: !Ref 'EC2InstanceProfile'
+      KeyName: my-ssh-key
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}
+  service:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref 'ECSCluster'
+      DesiredCount: 1
+      LoadBalancers:
+      - ContainerName: simple-app
+        ContainerPort: 80
+        TargetGroupArn: !Ref 'ECSTG'
+      Role: !Ref 'ECSServiceRole'
+      TaskDefinition: !Ref 'taskdefinition'
+  ECSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['elasticloadbalancing:DeregisterInstancesFromLoadBalancer', 'elasticloadbalancing:DeregisterTargets',
+              'elasticloadbalancing:Describe*', 'elasticloadbalancing:RegisterInstancesWithLoadBalancer',
+              'elasticloadbalancing:RegisterTargets', 'ec2:Describe*', 'ec2:AuthorizeSecurityGroupIngress']
+            Resource: '*'
+  ServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 2
+      MinCapacity: 1
+      ResourceId: !Join ['', [service/, !Ref 'ECSCluster', /, !GetAtt [service, Name]]]
+      RoleARN: !GetAtt [AutoscalingRole, Arn]
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+  ServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: AStepPolicy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref 'ServiceScalingTarget'
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 60
+        MetricAggregationType: Average
+        StepAdjustments:
+        - MetricIntervalLowerBound: 0
+          ScalingAdjustment: 200
+  ALB500sAlarmScaleUp:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Average
+      Threshold: 10
+      AlarmDescription: Alarm if our ALB generates too many HTTP 500s.
+      Period: 60
+      AlarmActions: [!Ref 'ServiceScalingPolicy']
+      Namespace: AWS/ApplicationELB
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt
+            - ECSALB
+            - LoadBalancerFullName
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: HTTPCode_ELB_5XX_Count
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['ecs:CreateCluster', 'ecs:DeregisterContainerInstance', 'ecs:DiscoverPollEndpoint',
+              'ecs:Poll', 'ecs:RegisterContainerInstance', 'ecs:StartTelemetrySession',
+              'ecs:Submit*', 'logs:CreateLogStream', 'logs:PutLogEvents']
+            Resource: '*'
+  AutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: service-autoscaling
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['application-autoscaling:*', 'cloudwatch:DescribeAlarms', 'cloudwatch:PutMetricAlarm',
+              'ecs:DescribeServices', 'ecs:UpdateService']
+            Resource: '*'
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [!Ref 'EC2Role']
+
+```
+
+```json
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "Select a VPC that allows instances access to the Internet."
+    },
+    "SubnetId": {
+      "Description": "Select at two subnets in your selected VPC.",
+      "Type": "List\u003cAWS::EC2::Subnet::Id\u003e"
+    }
+  },
+  "Resources": {
+    "EcsSecurityGroupHTTPinbound": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "CidrIp": "0.0.0.0/0",
+        "GroupId": "EcsSecurityGroup",
+        "IpProtocol": "tcp",
+        "FromPort": 80,
+        "ToPort": 80
+      }
+    },
+    "EcsSecurityGroupALBports": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": "EcsSecurityGroup",
+        "IpProtocol": "tcp",
+        "FromPort": 31000,
+        "ToPort": 61000,
+        "SourceSecurityGroupId": "EcsSecurityGroup"
+      }
+    },
+    "CloudwatchLogsGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": [
+          "-",
+          [
+            "ECSLogGroup",
+            "AWS::StackName"
+          ]
+        ],
+        "RetentionInDays": 14
+      }
+    },
+    "ALBListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": "ECSTG"
+          }
+        ],
+        "LoadBalancerArn": "ECSALB",
+        "Port": 80,
+        "Protocol": "HTTP"
+      }
+    },
+    "ECSALBListenerRule": {
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+      "Properties": {
+        "Actions": [
+          {
+            "TargetGroupArn": "ECSTG",
+            "Type": "forward"
+          }
+        ],
+        "Conditions": [
+          {
+            "Field": "path-pattern",
+            "Values": [
+              "/"
+            ]
+          }
+        ],
+        "ListenerArn": "ALBListener",
+        "Priority": 1
+      }
+    },
+    "ALB500sAlarmScaleUp": {
+      "Properties": {
+        "Dimensions": [
+          {
+            "Name": "LoadBalancer",
+            "Value": [
+              "ECSALB",
+              "LoadBalancerFullName"
+            ]
+          }
+        ],
+        "ComparisonOperator": "GreaterThanThreshold",
+        "MetricName": "HTTPCode_ELB_5XX_Count",
+        "Statistic": "Average",
+        "Threshold": 10,
+        "AlarmDescription": "Alarm if our ALB generates too many HTTP 500s.",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "AlarmActions": [
+          "ServiceScalingPolicy"
+        ],
+        "Namespace": "AWS/ApplicationELB"
+      },
+      "Type": "AWS::CloudWatch::Alarm"
+    },
+    "AutoscalingRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "application-autoscaling.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "service-autoscaling",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "application-autoscaling:*",
+                    "cloudwatch:DescribeAlarms",
+                    "cloudwatch:PutMetricAlarm",
+                    "ecs:DescribeServices",
+                    "ecs:UpdateService"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ECSCluster": {
+      "Type": "AWS::ECS::Cluster"
+    },
+    "ECSServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ecs.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                    "elasticloadbalancing:DeregisterTargets",
+                    "elasticloadbalancing:Describe*",
+                    "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                    "elasticloadbalancing:RegisterTargets",
+                    "ec2:Describe*",
+                    "ec2:AuthorizeSecurityGroupIngress"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ServiceScalingPolicy": {
+      "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+      "Properties": {
+        "PolicyName": "AStepPolicy",
+        "PolicyType": "StepScaling",
+        "ScalingTargetId": "ServiceScalingTarget",
+        "StepScalingPolicyConfiguration": {
+          "Cooldown": 60,
+          "MetricAggregationType": "Average",
+          "StepAdjustments": [
+            {
+              "MetricIntervalLowerBound": 0,
+              "ScalingAdjustment": 200
+            }
+          ],
+          "AdjustmentType": "PercentChangeInCapacity"
+        }
+      }
+    },
+    "EC2InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          "EC2Role"
+        ]
+      }
+    },
+    "ECSAutoScalingGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "VPCZoneIdentifier": "SubnetId",
+        "LaunchConfigurationName": "ContainerInstances",
+        "MinSize": "1",
+        "MaxSize": 4,
+        "DesiredCapacity": 2
+      },
+      "CreationPolicy": {
+        "ResourceSignal": {
+          "Timeout": "PT15M"
+        }
+      },
+      "UpdatePolicy": {
+        "AutoScalingReplacingUpdate": {
+          "WillReplace": true
+        }
+      }
+    },
+    "ECSALB": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Scheme": "internet-facing",
+        "LoadBalancerAttributes": [
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "30"
+          }
+        ],
+        "Subnets": "SubnetId",
+        "SecurityGroups": [
+          "EcsSecurityGroup"
+        ],
+        "Name": "ECSALB"
+      }
+    },
+    "ECSTG": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "ECSTG",
+        "Protocol": "HTTP",
+        "HealthCheckPath": "/",
+        "HealthCheckTimeoutSeconds": 5,
+        "HealthyThresholdCount": 2,
+        "UnhealthyThresholdCount": 2,
+        "VpcId": "VpcId",
+        "HealthCheckIntervalSeconds": 10,
+        "HealthCheckProtocol": "HTTP",
+        "Port": 80
+      }
+    },
+    "EC2Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Resource": "*",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecs:CreateCluster",
+                    "ecs:DeregisterContainerInstance",
+                    "ecs:DiscoverPollEndpoint",
+                    "ecs:Poll",
+                    "ecs:RegisterContainerInstance",
+                    "ecs:StartTelemetrySession",
+                    "ecs:Submit*",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "TaskDefinition": {
+      "Properties": {
+        "Volumes": [
+          {
+            "Name": "my-vol"
+          }
+        ],
+        "Family": [
+          "",
+          [
+            "AWS::StackName",
+            "-ecs-demo-app"
+          ]
+        ],
+        "ContainerDefinitions": [
+          {
+            "Image": "httpd:2.4",
+            "Memory": 300,
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": "CloudwatchLogsGroup",
+                "awslogs-region": "AWS::Region",
+                "awslogs-stream-prefix": "ecs-demo-app"
+              }
+            },
+            "MountPoints": [
+              {
+                "ContainerPath": "/usr/local/apache2/htdocs",
+                "SourceVolume": "my-vol"
+              }
+            ],
+            "PortMappings": [
+              {
+                "ContainerPort": 80
+              }
+            ],
+            "Name": "simple-app",
+            "Cpu": 10,
+            "Essential": true
+          },
+          {
+            "VolumesFrom": [
+              {
+                "SourceContainer": "simple-app"
+              }
+            ],
+            "Cpu": 10,
+            "EntryPoint": [
+              "sh",
+              "-c"
+            ],
+            "Essential": false,
+            "Image": "busybox",
+            "Memory": 200,
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-stream-prefix": "ecs-demo-app",
+                "awslogs-group": "CloudwatchLogsGroup",
+                "awslogs-region": "AWS::Region"
+              }
+            },
+            "Name": "busybox",
+            "Command": [
+              "/bin/sh -c \"while true; do echo '\u003chtml\u003e \u003chead\u003e \u003ctitle\u003eAmazon ECS Sample App\u003c/title\u003e\u003c/head\u003e\u003cbody\u003e\u003c/body\u003e\u003c/html\u003e' \u003e bottom; cat top date bottom \u003e /usr/local/apache2/htdocs/index.html ; sleep 1; done\""
+            ]
+          }
+        ]
+      },
+      "Type": "AWS::ECS::TaskDefinition"
+    },
+    "EcsSecurityGroupSSHinbound": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "ToPort": 22,
+        "CidrIp": "0.0.0.0/0",
+        "GroupId": "EcsSecurityGroup",
+        "IpProtocol": "tcp",
+        "FromPort": 22
+      }
+    },
+    "ContainerInstances": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "ImageId": "ami-09bee01cc997a78a6",
+        "SecurityGroups": [
+          "EcsSecurityGroup"
+        ],
+        "InstanceType": "t2.small",
+        "IamInstanceProfile": "EC2InstanceProfile",
+        "KeyName": "my-ssh-key",
+        "UserData": {
+          "Fn::Base64": "#!/bin/bash -xe\necho ECS_CLUSTER=${ECSCluster} \u003e\u003e /etc/ecs/ecs.config\nyum install -y aws-cfn-bootstrap\n/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}\n"
+        }
+      }
+    },
+    "service": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": "ECSCluster",
+        "DesiredCount": 1,
+        "LoadBalancers": [
+          {
+            "ContainerPort": 80,
+            "TargetGroupArn": "ECSTG",
+            "ContainerName": "simple-app"
+          }
+        ],
+        "Role": "ECSServiceRole",
+        "TaskDefinition": "taskdefinition"
+      }
+    },
+    "ServiceScalingTarget": {
+      "Properties": {
+        "MinCapacity": 1,
+        "ResourceId": [
+          "",
+          [
+            "service/",
+            "ECSCluster",
+            "/",
+            [
+              "service",
+              "Name"
+            ]
+          ]
+        ],
+        "RoleARN": [
+          "AutoscalingRole",
+          "Arn"
+        ],
+        "ScalableDimension": "ecs:service:DesiredCount",
+        "ServiceNamespace": "ecs",
+        "MaxCapacity": 2
+      },
+      "Type": "AWS::ApplicationAutoScaling::ScalableTarget"
+    },
+    "EcsSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "ECS Security Group",
+        "VpcId": "VpcId"
+      }
+    }
+  }
+}
+
+```
+## Non-Compliant Code Examples
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select a VPC that allows instances access to the Internet.
+  SubnetId:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select at two subnets in your selected VPC.
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !Ref 'VpcId'
+  EcsSecurityGroupHTTPinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 0
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupSSHinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupALBports:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: 31000
+      ToPort: 61000
+      SourceSecurityGroupId: !Ref 'EcsSecurityGroup'
+  CloudwatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['-', [ECSLogGroup, !Ref 'AWS::StackName']]
+      RetentionInDays: 14
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Join ['', [!Ref 'AWS::StackName', -ecs-demo-app]]
+      ContainerDefinitions:
+      - Name: simple-app
+        Cpu: 10
+        Essential: true
+        Image: httpd:2.4
+        Memory: 300
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref 'CloudwatchLogsGroup'
+            awslogs-region: !Ref 'AWS::Region'
+            awslogs-stream-prefix: ecs-demo-app
+        MountPoints:
+        - ContainerPath: /usr/local/apache2/htdocs
+          SourceVolume: my-vol
+        PortMappings:
+        - ContainerPort: 80
+      - Name: busybox
+        Cpu: 10
+        Command: ['/bin/sh -c "while true; do echo ''<html> <head> <title>Amazon ECS
+            Sample App</title></head><body></body></html>'' > bottom; cat top date bottom > /usr/local/apache2/htdocs/index.html
+            ; sleep 1; done"']
+        EntryPoint: [sh, -c]
+        Essential: false
+        Image: busybox
+        Memory: 200
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref 'CloudwatchLogsGroup'
+            awslogs-region: !Ref 'AWS::Region'
+            awslogs-stream-prefix: ecs-demo-app
+        VolumesFrom:
+        - SourceContainer: simple-app
+      Volumes:
+      - Name: my-vol
+  ECSALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: ECSALB
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: '30'
+      Subnets: !Ref 'SubnetId'
+      SecurityGroups: [!Ref 'EcsSecurityGroup']
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref 'ECSTG'
+      LoadBalancerArn: !Ref 'ECSALB'
+      Port: 80
+      Protocol: HTTP
+  ECSALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref 'ECSTG'
+      Conditions:
+      - Field: path-pattern
+        Values: [/]
+      ListenerArn: !Ref 'ALBListener'
+      Priority: 1
+  ECSTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: ECSTG
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref 'VpcId'
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref 'SubnetId'
+      LaunchConfigurationName: !Ref 'ContainerInstances'
+      MinSize: '1'
+      MaxSize: 4
+      DesiredCapacity: 2
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: true
+  ContainerInstances:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-09bee01cc997a78a6
+      SecurityGroups: [!Ref 'EcsSecurityGroup']
+      InstanceType: t2.small
+      IamInstanceProfile: !Ref 'EC2InstanceProfile'
+      KeyName: my-ssh-key
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}
+  service:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref 'ECSCluster'
+      DesiredCount: 1
+      LoadBalancers:
+      - ContainerName: simple-app
+        ContainerPort: 80
+        TargetGroupArn: !Ref 'ECSTG'
+      Role: !Ref 'ECSServiceRole'
+      TaskDefinition: !Ref 'TaskDefinition'
+  ECSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['elasticloadbalancing:DeregisterInstancesFromLoadBalancer', 'elasticloadbalancing:DeregisterTargets',
+              'elasticloadbalancing:Describe*', 'elasticloadbalancing:RegisterInstancesWithLoadBalancer',
+              'elasticloadbalancing:RegisterTargets', 'ec2:Describe*', 'ec2:AuthorizeSecurityGroupIngress']
+            Resource: '*'
+  ServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 2
+      MinCapacity: 1
+      ResourceId: !Join ['', [service/, !Ref 'ECSCluster', /, !GetAtt [service, Name]]]
+      RoleARN: !GetAtt [AutoscalingRole, Arn]
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+  ServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: AStepPolicy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref 'ServiceScalingTarget'
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 60
+        MetricAggregationType: Average
+        StepAdjustments:
+        - MetricIntervalLowerBound: 0
+          ScalingAdjustment: 200
+  ALB500sAlarmScaleUp:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Average
+      Threshold: 10
+      AlarmDescription: Alarm if our ALB generates too many HTTP 500s.
+      Period: 60
+      AlarmActions: [!Ref 'ServiceScalingPolicy']
+      Namespace: AWS/ApplicationELB
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt
+            - ECSALB
+            - LoadBalancerFullName
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: HTTPCode_ELB_5XX_Count
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['ecs:CreateCluster', 'ecs:DeregisterContainerInstance', 'ecs:DiscoverPollEndpoint',
+              'ecs:Poll', 'ecs:RegisterContainerInstance', 'ecs:StartTelemetrySession',
+              'ecs:Submit*', 'logs:CreateLogStream', 'logs:PutLogEvents']
+            Resource: '*'
+  AutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: service-autoscaling
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['application-autoscaling:*', 'cloudwatch:DescribeAlarms', 'cloudwatch:PutMetricAlarm',
+              'ecs:DescribeServices', 'ecs:UpdateService']
+            Resource: '*'
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [!Ref 'EC2Role']
+
+
+```
+
+```json
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "Select a VPC that allows instances access to the Internet."
+    },
+    "SubnetId": {
+      "Type": "List\u003cAWS::EC2::Subnet::Id\u003e",
+      "Description": "Select at two subnets in your selected VPC."
+    }
+  },
+  "Resources": {
+    "ECSCluster": {
+      "Type": "AWS::ECS::Cluster"
+    },
+    "EcsSecurityGroupALBports": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "IpProtocol": "tcp",
+        "FromPort": 31000,
+        "ToPort": 61000,
+        "SourceSecurityGroupId": "EcsSecurityGroup",
+        "GroupId": "EcsSecurityGroup"
+      }
+    },
+    "ECSServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ecs.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                    "elasticloadbalancing:DeregisterTargets",
+                    "elasticloadbalancing:Describe*",
+                    "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                    "elasticloadbalancing:RegisterTargets",
+                    "ec2:Describe*",
+                    "ec2:AuthorizeSecurityGroupIngress"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "AutoscalingRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "application-autoscaling.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "service-autoscaling",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "application-autoscaling:*",
+                    "cloudwatch:DescribeAlarms",
+                    "cloudwatch:PutMetricAlarm",
+                    "ecs:DescribeServices",
+                    "ecs:UpdateService"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "EcsSecurityGroupSSHinbound": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "ToPort": 0,
+        "CidrIp": "0.0.0.0/0",
+        "GroupId": "EcsSecurityGroup",
+        "IpProtocol": "tcp",
+        "FromPort": 22
+      }
+    },
+    "ECSALB": {
+      "Properties": {
+        "Name": "ECSALB",
+        "Scheme": "internet-facing",
+        "LoadBalancerAttributes": [
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "30"
+          }
+        ],
+        "Subnets": "SubnetId",
+        "SecurityGroups": [
+          "EcsSecurityGroup"
+        ]
+      },
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    },
+    "ECSAutoScalingGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "VPCZoneIdentifier": "SubnetId",
+        "LaunchConfigurationName": "ContainerInstances",
+        "MinSize": "1",
+        "MaxSize": 4,
+        "DesiredCapacity": 2
+      },
+      "CreationPolicy": {
+        "ResourceSignal": {
+          "Timeout": "PT15M"
+        }
+      },
+      "UpdatePolicy": {
+        "AutoScalingReplacingUpdate": {
+          "WillReplace": true
+        }
+      }
+    },
+    "ServiceScalingTarget": {
+      "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+      "Properties": {
+        "MaxCapacity": 2,
+        "MinCapacity": 1,
+        "ResourceId": [
+          "",
+          [
+            "service/",
+            "ECSCluster",
+            "/",
+            [
+              "service",
+              "Name"
+            ]
+          ]
+        ],
+        "RoleARN": [
+          "AutoscalingRole",
+          "Arn"
+        ],
+        "ScalableDimension": "ecs:service:DesiredCount",
+        "ServiceNamespace": "ecs"
+      }
+    },
+    "ServiceScalingPolicy": {
+      "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+      "Properties": {
+        "PolicyType": "StepScaling",
+        "ScalingTargetId": "ServiceScalingTarget",
+        "StepScalingPolicyConfiguration": {
+          "StepAdjustments": [
+            {
+              "MetricIntervalLowerBound": 0,
+              "ScalingAdjustment": 200
+            }
+          ],
+          "AdjustmentType": "PercentChangeInCapacity",
+          "Cooldown": 60,
+          "MetricAggregationType": "Average"
+        },
+        "PolicyName": "AStepPolicy"
+      }
+    },
+    "EC2Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "ecs:CreateCluster",
+                    "ecs:DeregisterContainerInstance",
+                    "ecs:DiscoverPollEndpoint",
+                    "ecs:Poll",
+                    "ecs:RegisterContainerInstance",
+                    "ecs:StartTelemetrySession",
+                    "ecs:Submit*",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ECSTG": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "HealthCheckIntervalSeconds": 10,
+        "HealthCheckProtocol": "HTTP",
+        "HealthCheckTimeoutSeconds": 5,
+        "Name": "ECSTG",
+        "Port": 80,
+        "Protocol": "HTTP",
+        "HealthCheckPath": "/",
+        "HealthyThresholdCount": 2,
+        "UnhealthyThresholdCount": 2,
+        "VpcId": "VpcId"
+      }
+    },
+    "service": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": "ECSCluster",
+        "DesiredCount": 1,
+        "LoadBalancers": [
+          {
+            "ContainerName": "simple-app",
+            "ContainerPort": 80,
+            "TargetGroupArn": "ECSTG"
+          }
+        ],
+        "Role": "ECSServiceRole",
+        "TaskDefinition": "TaskDefinition"
+      }
+    },
+    "ALB500sAlarmScaleUp": {
+      "Properties": {
+        "Threshold": 10,
+        "Dimensions": [
+          {
+            "Name": "LoadBalancer",
+            "Value": [
+              "ECSALB",
+              "LoadBalancerFullName"
+            ]
+          }
+        ],
+        "ComparisonOperator": "GreaterThanThreshold",
+        "MetricName": "HTTPCode_ELB_5XX_Count",
+        "EvaluationPeriods": 1,
+        "AlarmDescription": "Alarm if our ALB generates too many HTTP 500s.",
+        "Period": 60,
+        "AlarmActions": [
+          "ServiceScalingPolicy"
+        ],
+        "Namespace": "AWS/ApplicationELB",
+        "Statistic": "Average"
+      },
+      "Type": "AWS::CloudWatch::Alarm"
+    },
+    "EC2InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          "EC2Role"
+        ]
+      }
+    },
+    "EcsSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": "VpcId",
+        "GroupDescription": "ECS Security Group"
+      }
+    },
+    "EcsSecurityGroupHTTPinbound02": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": "EcsSecurityGroup",
+        "IpProtocol": "tcp",
+        "FromPort": 80,
+        "ToPort": 0,
+        "CidrIp": "0.0.0.0/0"
+      }
+    },
+    "CloudwatchLogsGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": [
+          "-",
+          [
+            "ECSLogGroup",
+            "AWS::StackName"
+          ]
+        ],
+        "RetentionInDays": 14
+      }
+    },
+    "TaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "Family": [
+          "",
+          [
+            "AWS::StackName",
+            "-ecs-demo-app"
+          ]
+        ],
+        "ContainerDefinitions": [
+          {
+            "Name": "simple-app",
+            "Cpu": 10,
+            "Essential": true,
+            "Image": "httpd:2.4",
+            "Memory": 300,
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": "CloudwatchLogsGroup",
+                "awslogs-region": "AWS::Region",
+                "awslogs-stream-prefix": "ecs-demo-app"
+              }
+            },
+            "MountPoints": [
+              {
+                "ContainerPath": "/usr/local/apache2/htdocs",
+                "SourceVolume": "my-vol"
+              }
+            ],
+            "PortMappings": [
+              {
+                "ContainerPort": 80
+              }
+            ]
+          },
+          {
+            "VolumesFrom": [
+              {
+                "SourceContainer": "simple-app"
+              }
+            ],
+            "Name": "busybox",
+            "Cpu": 10,
+            "Command": [
+              "/bin/sh -c \"while true; do echo '\u003chtml\u003e \u003chead\u003e \u003ctitle\u003eAmazon ECS Sample App\u003c/title\u003e\u003c/head\u003e\u003c/html\u003e' \u003e bottom; cat top date bottom \u003e /usr/local/apache2/htdocs/index.html ; sleep 1; done\""
+            ],
+            "Image": "busybox",
+            "Memory": 200,
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-stream-prefix": "ecs-demo-app",
+                "awslogs-group": "CloudwatchLogsGroup",
+                "awslogs-region": "AWS::Region"
+              }
+            },
+            "EntryPoint": [
+              "sh",
+              "-c"
+            ],
+            "Essential": false
+          }
+        ],
+        "Volumes": [
+          {
+            "Name": "my-vol"
+          }
+        ]
+      }
+    },
+    "ALBListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "LoadBalancerArn": "ECSALB",
+        "Port": 80,
+        "Protocol": "HTTP",
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": "ECSTG"
+          }
+        ]
+      }
+    },
+    "ECSALBListenerRule": {
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+      "Properties": {
+        "Actions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": "ECSTG"
+          }
+        ],
+        "Conditions": [
+          {
+            "Values": [
+              "/"
+            ],
+            "Field": "path-pattern"
+          }
+        ],
+        "ListenerArn": "ALBListener",
+        "Priority": 1
+      }
+    },
+    "ContainerInstances": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "ImageId": "ami-128731982dhash",
+        "SecurityGroups": [
+          "EcsSecurityGroup"
+        ],
+        "InstanceType": "t2.small",
+        "IamInstanceProfile": "EC2InstanceProfile",
+        "KeyName": "my-ssh-key",
+        "UserData": {
+          "Fn::Base64": "#!/bin/bash -xe\necho ECS_CLUSTER=${ECSCluster} \u003e\u003e /etc/ecs/ecs.config\nyum install -y aws-cfn-bootstrap\n/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}\n"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "ecscluster": {
+      "Value": "ECSCluster"
+    },
+    "ECSALB": {
+      "Description": "Your ALB DNS URL",
+      "Value": [
+        "",
+        [
+          [
+            "ECSALB",
+            "DNSName"
+          ]
+        ]
+      ]
+    },
+    "taskdef": {
+      "Value": "TaskDefinition"
+    },
+    "ecsservice": {
+      "Value": "service"
+    }
+  }
+}
+
+```
+
+```json
+{
+  "Resources": {
+    "TaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "Family": [
+          "",
+          [
+            "AWS::StackName",
+            "-ecs-demo-app"
+          ]
+        ],
+        "ContainerDefinitions": [
+          {
+            "Essential": true,
+            "Image": "httpd:2.4",
+            "Memory": 300,
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": "CloudwatchLogsGroup",
+                "awslogs-region": "AWS::Region",
+                "awslogs-stream-prefix": "ecs-demo-app"
+              }
+            },
+            "MountPoints": [
+              {
+                "SourceVolume": "my-vol",
+                "ContainerPath": "/usr/local/apache2/htdocs"
+              }
+            ],
+            "PortMappings": [
+              {
+                "ContainerPort": 80
+              }
+            ],
+            "Name": "simple-app",
+            "Cpu": 10
+          },
+          {
+            "EntryPoint": [
+              "sh",
+              "-c"
+            ],
+            "Essential": false,
+            "Memory": 200,
+            "Command": [
+              "/bin/sh -c \"while true; do echo '\u003chtml\u003e \u003chead\u003e \u003ctitle\u003eAmazon ECS Sample App\u003c/title\u003e\u003c/head\u003e\u003cbody\u003e\u003c/body\u003e\u003c/html\u003e' \u003e bottom; cat top date bottom \u003e /usr/local/apache2/htdocs/index.html ; sleep 1; done\""
+            ],
+            "Cpu": 10,
+            "Image": "busybox",
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-stream-prefix": "ecs-demo-app",
+                "awslogs-group": "CloudwatchLogsGroup",
+                "awslogs-region": "AWS::Region"
+              }
+            },
+            "VolumesFrom": [
+              {
+                "SourceContainer": "simple-app"
+              }
+            ],
+            "Name": "busybox"
+          }
+        ],
+        "Volumes": [
+          {
+            "Name": "my-vol"
+          }
+        ]
+      }
+    },
+    "ALBListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": "ECSTG"
+          }
+        ],
+        "LoadBalancerArn": "ECSALB",
+        "Port": 80,
+        "Protocol": "HTTP"
+      }
+    },
+    "ECSServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ecs.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                    "elasticloadbalancing:DeregisterTargets",
+                    "elasticloadbalancing:Describe*",
+                    "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                    "elasticloadbalancing:RegisterTargets",
+                    "ec2:Describe*",
+                    "ec2:AuthorizeSecurityGroupIngress"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ALB500sAlarmScaleUp": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "Period": 60,
+        "Dimensions": [
+          {
+            "Name": "LoadBalancer",
+            "Value": [
+              "ECSALB",
+              "LoadBalancerFullName"
+            ]
+          }
+        ],
+        "ComparisonOperator": "GreaterThanThreshold",
+        "AlarmDescription": "Alarm if our ALB generates too many HTTP 500s.",
+        "Statistic": "Average",
+        "Threshold": 10,
+        "AlarmActions": [
+          "ServiceScalingPolicy"
+        ],
+        "Namespace": "AWS/ApplicationELB",
+        "MetricName": "HTTPCode_ELB_5XX_Count",
+        "EvaluationPeriods": 1
+      }
+    },
+    "service": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "TaskDefinition": "TaskDefinition",
+        "Cluster": "ECSCluster",
+        "DesiredCount": 1,
+        "LoadBalancers": [
+          {
+            "ContainerName": "simple-app",
+            "ContainerPort": 80,
+            "TargetGroupArn": "ECSTG"
+          }
+        ],
+        "Role": "ECSServiceRole"
+      }
+    },
+    "EcsSecurityGroupSSHinbound": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": "EcsSecurityGroup",
+        "IpProtocol": "tcp",
+        "FromPort": 22,
+        "ToPort": 22,
+        "CidrIp": "0.0.0.0/0"
+      }
+    },
+    "EcsSecurityGroupALBports": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "FromPort": 31000,
+        "ToPort": 61000,
+        "SourceSecurityGroupId": "EcsSecurityGroup",
+        "GroupId": "EcsSecurityGroup",
+        "IpProtocol": "tcp"
+      }
+    },
+    "CloudwatchLogsGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "RetentionInDays": 14,
+        "LogGroupName": [
+          "-",
+          [
+            "ECSLogGroup",
+            "AWS::StackName"
+          ]
+        ]
+      }
+    },
+    "ECSALB": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Scheme": "internet-facing",
+        "LoadBalancerAttributes": [
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "30"
+          }
+        ],
+        "Subnets": "SubnetId",
+        "SecurityGroups": [
+          "EcsSecurityGroup"
+        ],
+        "Name": "ECSALB"
+      }
+    },
+    "ECSALBListenerRule": {
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+      "Properties": {
+        "Actions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": "ECSTG"
+          }
+        ],
+        "Conditions": [
+          {
+            "Field": "path-pattern",
+            "Values": [
+              "/"
+            ]
+          }
+        ],
+        "ListenerArn": "ALBListener",
+        "Priority": 1
+      }
+    },
+    "ContainerInstances": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "IamInstanceProfile": "EC2InstanceProfile",
+        "KeyName": "my-ssh-key",
+        "UserData": {
+          "Fn::Base64": "#!/bin/bash -xe\necho ECS_CLUSTER=${ECSCluster} \u003e\u003e /etc/ecs/ecs.config\nyum install -y aws-cfn-bootstrap\n/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}\n"
+        },
+        "ImageId": "ami-09bee01cc997a78a6",
+        "SecurityGroups": [
+          "EcsSecurityGroup"
+        ],
+        "InstanceType": "t2.small"
+      }
+    },
+    "ECSCluster": {
+      "Type": "AWS::ECS::Cluster"
+    },
+    "EcsSecurityGroupHTTPinbound": {
+      "Properties": {
+        "GroupId": "EcsSecurityGroup",
+        "IpProtocol": "tcp",
+        "FromPort": 80,
+        "ToPort": 0,
+        "CidrIp": "0.0.0.0/0"
+      },
+      "Type": "AWS::EC2::SecurityGroupIngress"
+    },
+    "ECSTG": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "ECSTG",
+        "Port": 80,
+        "VpcId": "VpcId",
+        "HealthCheckPath": "/",
+        "HealthCheckProtocol": "HTTP",
+        "HealthyThresholdCount": 2,
+        "Protocol": "HTTP",
+        "UnhealthyThresholdCount": 2,
+        "HealthCheckIntervalSeconds": 10,
+        "HealthCheckTimeoutSeconds": 5
+      }
+    },
+    "ServiceScalingTarget": {
+      "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+      "Properties": {
+        "MaxCapacity": 2,
+        "MinCapacity": 1,
+        "ResourceId": [
+          "",
+          [
+            "service/",
+            "ECSCluster",
+            "/",
+            [
+              "service",
+              "Name"
+            ]
+          ]
+        ],
+        "RoleARN": [
+          "AutoscalingRole",
+          "Arn"
+        ],
+        "ScalableDimension": "ecs:service:DesiredCount",
+        "ServiceNamespace": "ecs"
+      }
+    },
+    "AutoscalingRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "application-autoscaling.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "service-autoscaling",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "application-autoscaling:*",
+                    "cloudwatch:DescribeAlarms",
+                    "cloudwatch:PutMetricAlarm",
+                    "ecs:DescribeServices",
+                    "ecs:UpdateService"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "EcsSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "ECS Security Group",
+        "VpcId": "VpcId"
+      }
+    },
+    "ECSAutoScalingGroup": {
+      "CreationPolicy": {
+        "ResourceSignal": {
+          "Timeout": "PT15M"
+        }
+      },
+      "UpdatePolicy": {
+        "AutoScalingReplacingUpdate": {
+          "WillReplace": true
+        }
+      },
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "VPCZoneIdentifier": "SubnetId",
+        "LaunchConfigurationName": "ContainerInstances",
+        "MinSize": "1",
+        "MaxSize": 4,
+        "DesiredCapacity": 2
+      }
+    },
+    "ServiceScalingPolicy": {
+      "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+      "Properties": {
+        "PolicyName": "AStepPolicy",
+        "PolicyType": "StepScaling",
+        "ScalingTargetId": "ServiceScalingTarget",
+        "StepScalingPolicyConfiguration": {
+          "AdjustmentType": "PercentChangeInCapacity",
+          "Cooldown": 60,
+          "MetricAggregationType": "Average",
+          "StepAdjustments": [
+            {
+              "MetricIntervalLowerBound": 0,
+              "ScalingAdjustment": 200
+            }
+          ]
+        }
+      }
+    },
+    "EC2Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ],
+              "Effect": "Allow"
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecs:CreateCluster",
+                    "ecs:DeregisterContainerInstance",
+                    "ecs:DiscoverPollEndpoint",
+                    "ecs:Poll",
+                    "ecs:RegisterContainerInstance",
+                    "ecs:StartTelemetrySession",
+                    "ecs:Submit*",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "EC2InstanceProfile": {
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          "EC2Role"
+        ]
+      },
+      "Type": "AWS::IAM::InstanceProfile"
+    }
+  },
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "Select a VPC that allows instances access to the Internet."
+    },
+    "SubnetId": {
+      "Type": "List\u003cAWS::EC2::Subnet::Id\u003e",
+      "Description": "Select at two subnets in your selected VPC."
+    }
+  }
+}
+
+```

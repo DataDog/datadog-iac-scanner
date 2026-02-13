@@ -1,0 +1,14 @@
+{
+  "id": "ba48df05-eaa1-4d64-905e-4a4b051e7587",
+  "queryName": "Autoscaling groups supply tags",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "Autoscaling groups in AWS should be configured with appropriate tags to ensure proper resource management, cost allocation, and identification. When the `tags` attribute is omitted, as in the following example, it becomes difficult to track and manage autoscaling resources, increasing the risk of orphaned or mismanaged infrastructure.\n\n```\nresource \"aws_autoscaling_group\" \"example\" {\n  name                 = \"foobar3-terraform-test\"\n  max_size             = 5\n  min_size             = 2\n  launch_configuration = aws_launch_configuration.foobar.name\n  vpc_zone_identifier  = [aws_subnet.example1.id, aws_subnet.example2.id]\n}\n```\n\nAdding descriptive tags, as shown below, helps enforce governance, simplifies operations, and supports effective monitoring:\n\n```\nresource \"aws_autoscaling_group\" \"example\" {\n  // ... other configuration ...\n  tags = [\n    {\n      \"key\"                 = \"environment\"\n      \"value\"               = \"production\"\n      \"propagate_at_launch\" = true\n    }\n  ]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/autoscaling_groups_supply_tags",
+  "platform": "Terraform",
+  "descriptionID": "83cb6386",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "oldDescriptionText": "Autoscaling groups should supply tags to configurate",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/autoscaling_group#tag-and-tags"
+}

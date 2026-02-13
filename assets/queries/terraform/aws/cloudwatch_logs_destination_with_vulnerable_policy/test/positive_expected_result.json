@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "CloudWatch logs destination with vulnerable policy",
+    "severity": "LOW",
+    "line": 22,
+    "fileName": "positive.tf"
+  }
+]

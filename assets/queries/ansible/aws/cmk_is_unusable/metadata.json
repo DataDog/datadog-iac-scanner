@@ -1,0 +1,13 @@
+{
+  "id": "133fee21-37ef-45df-a563-4d07edc169f4",
+  "queryName": "CMK Is Unusable",
+  "severity": "MEDIUM",
+  "category": "Availability",
+  "descriptionText": "AWS Key Management Service (KMS) must only possess usable Customer Master Keys (CMK), which means the CMKs must have the attribute 'enabled' set to true and the attribute 'pending_window' must be undefined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cmk_is_unusable",
+  "platform": "Ansible",
+  "descriptionID": "cb70e349",
+  "cloudProvider": "aws",
+  "cwe": "693",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/aws_kms_module.html#parameter-enabled"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "73980e43-f399-4fcc-a373-658228f7adf7",
+  "queryName": "Amplify app access token exposed",
+  "severity": "HIGH",
+  "category": "Secret Management",
+  "descriptionText": "Storing an Amplify access token in plaintext or as a parameter `Default` risks accidental disclosure (for example, via source control, template exports, or build logs) and can allow unauthorized access to connected repositories or services.\n\n This rule checks `AWS::Amplify::App` resources and the `Properties.AccessToken` value.\n\n - The access token must not be a literal token string.\n - The access token must not be supplied via a parameter `Default` containing a token-like value.\n\n Instead, `AccessToken` should reference a secure secret (for example, an AWS Secrets Manager dynamic reference) or be supplied via a template parameter without a `Default` and with `NoEcho` set to `true` so the token is not embedded in the template.\n\n This rule flags tokens that resemble JWTs or long token strings (for example, >`50` characters and dot-separated) when they appear inline or as parameter defaults and when there is no Secrets Manager reference.\n\nSecure example using Secrets Manager dynamic reference:\n\n```yaml\nMySecret:\n  Type: AWS::SecretsManager::Secret\n  Properties:\n    Name: amplify/access-token\n\nMyApp:\n  Type: AWS::Amplify::App\n  Properties:\n    Name: my-app\n    AccessToken: '{{resolve:secretsmanager:amplify/access-token:SecretString:accessToken}}'\n```\n\nSecure example using a parameter without a Default:\n\n```yaml\nParameters:\n  AmplifyAccessToken:\n    Type: String\n    NoEcho: true\n\nMyApp:\n  Type: AWS::Amplify::App\n  Properties:\n    Name: my-app\n    AccessToken: !Ref AmplifyAccessToken\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/amplify_app_access_token_exposed",
+  "platform": "CloudFormation",
+  "descriptionID": "40717425",
+  "cloudProvider": "aws",
+  "cwe": "798",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-amplify-app.html"
+}

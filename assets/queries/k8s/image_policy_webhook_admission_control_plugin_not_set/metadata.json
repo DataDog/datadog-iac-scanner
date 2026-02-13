@@ -1,0 +1,12 @@
+{
+  "id": "14abda69-8e91-4acb-9931-76e2bee90284",
+  "queryName": "Image policy webhook admission control plugin not set",
+  "severity": "LOW",
+  "category": "Build Process",
+  "descriptionText": "When running `kube-apiserver`, the `--enable-admission-plugins` flag should include `ImagePolicyWebhook`, and the plugin must be configured in the admission control configuration file so it is operational. If the `--enable-admission-plugins` flag does not contain `ImagePolicyWebhook`, this rule reports a missing attribute for the `kube-apiserver` container.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/image_policy_webhook_admission_control_plugin_not_set",
+  "platform": "Kubernetes",
+  "descriptionID": "7e7fe5b6",
+  "cwe": "284",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

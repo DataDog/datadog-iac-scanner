@@ -1,0 +1,13 @@
+{
+  "id": "1cc2fbd7-816c-4fbf-ad6d-38a4afa4312a",
+  "queryName": "Security group egress CIDR open to world",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Egress rules that allow `0.0.0.0/0` or `::/0` permit unrestricted outbound traffic to the internet. This can enable data exfiltration and communications with malicious command-and-control infrastructure.\n\nIn CloudFormation, check `AWS::EC2::SecurityGroupEgress` resources and `AWS::EC2::SecurityGroup` resources’ `Properties.SecurityGroupEgress` entries. `CidrIp` must not be `0.0.0.0/0` and `CidrIpv6` must not be `::/0`. Resources with these values set will be flagged. Restrict egress to specific destination CIDR ranges, reference other security groups, or route outbound traffic through centralized egress controls (NAT gateways, proxies, or firewalls) to meet this requirement.\n\nSecure configuration example:\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Restricted outbound access\n    SecurityGroupEgress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        CidrIp: 10.0.0.0/16\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_group_egress_cidr_open_to_world",
+  "platform": "CloudFormation",
+  "descriptionID": "ec506916",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-security-group-egress.html"
+}

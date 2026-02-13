@@ -1,0 +1,14 @@
+{
+  "id": "4216ebac-d74c-4423-b437-35025cb88af5",
+  "queryName": "Network interfaces IP forwarding enabled",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Enabling IP forwarding on network interfaces allows packets to be routed between networks, which can make the network interface behave like a router. This may expose your environment to lateral movement and man-in-the-middle attacks if an attacker gains access to the interface. To prevent this risk, set the `enable_ip_forwarding` attribute to `false` in your Terraform configuration, as shown below:\n\n```\nresource \"azurerm_network_interface\" \"secure\" {\n  // ... other configuration ...\n  enable_ip_forwarding = false\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/network_interfaces_ip_forwarding_enabled",
+  "platform": "Terraform",
+  "descriptionID": "890cf9a4",
+  "cloudProvider": "azure",
+  "cwe": "1188",
+  "oldDescriptionText": "Network Interfaces IP Forwarding should be disabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_interface#enable_ip_forwarding"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "768aab52-2504-4a2f-a3e3-329d5a679848",
+  "queryName": "Audit log maxbackup not properly set",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "When a container or initContainer runs `kube-apiserver`, the `--audit-log-maxbackup` flag should be set to 10 or more. The rule reports a MissingAttribute when the flag is not defined and an IncorrectValue when the flag is defined with a value less than 10. Setting the flag to at least 10 helps retain rotated audit logs for a longer period.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/audit_log_maxbackup_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "eb8a6c2a",
+  "cwe": "778",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

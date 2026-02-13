@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Network ACL With Unrestricted Access To SSH",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive.tf"
+  }
+]

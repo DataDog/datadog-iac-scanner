@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "ALB is not integrated with WAF",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "ALB is not integrated with WAF",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive2.tf"
+  }
+]

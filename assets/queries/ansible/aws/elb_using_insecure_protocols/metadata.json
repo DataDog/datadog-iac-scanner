@@ -1,0 +1,14 @@
+{
+  "id": "730a5951-2760-407a-b032-dd629b55c23a",
+  "queryName": "ELB Using Insecure Protocols",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "ELB Predefined or Custom Security Policies must not use insecure protocols, to reduce the risk of the SSL connection between the client and the load balancer being exploited. That means the 'SslPolicy' of 'listeners' must not coincide with any of a predefined list of insecure protocols.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/elb_using_insecure_protocols",
+  "platform": "Ansible",
+  "descriptionID": "8a2e6f3b",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/elb_application_lb_module.html"
+}

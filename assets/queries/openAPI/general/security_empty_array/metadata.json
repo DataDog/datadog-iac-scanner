@@ -1,0 +1,21 @@
+{
+  "id": "d674aea4-ba8b-454b-bb97-88a772ea33f0",
+  "queryName": "Global Security Field Has An Empty Array (v3)",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Security object need to have defined rules in its array and rules should be defined on securityScheme",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/security_empty_array",
+  "platform": "OpenAPI",
+  "descriptionID": "28d95589",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "da31d54b-ad54-41dc-95eb-8b3828629213",
+      "queryName": "Global Security Field Has An Empty Array (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#security-requirement-object",
+      "descriptionText": ""
+    }
+  },
+  "cwe": "284",
+  "providerUrl": "https://swagger.io/specification/#security-requirement-object"
+}

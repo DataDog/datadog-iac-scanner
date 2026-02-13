@@ -1,0 +1,15 @@
+{
+  "id": "fa00ce45-386d-4718-8392-fb485e1f3c5b",
+  "queryName": "Secrets Manager with vulnerable policy",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "AWS Secrets Manager policies with wildcards in `Principal` or `Action` fields create significant security risks by potentially granting excessive permissions to unintended entities. When `*` is used in the Principal field, any AWS identity can access your secrets, and when used in the `Action` field, it allows all possible operations on those secrets. This overly permissive access violates the principle of least privilege and could lead to unauthorized access or manipulation of sensitive information. Instead of using wildcards, specify exact identities and permissions, as shown in the secure example: `\"Principal\": {\"AWS\": \"arn:aws:iam::var.account_id:saml-provider/var.provider_name\"}` and `\"Action\": \"secretsmanager:GetSecretValue\"`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/secrets_manager_with_vulnerable_policy",
+  "platform": "Terraform",
+  "descriptionID": "d348a5e7",
+  "cloudProvider": "aws",
+  "cwe": "155",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Secrets Manager policy should avoid wildcard in 'Principal' and 'Action'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/secretsmanager_secret_policy#policy"
+}

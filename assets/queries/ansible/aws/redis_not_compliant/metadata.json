@@ -1,0 +1,13 @@
+{
+  "id": "9f34885e-c08f-4d13-a7d1-cf190c5bd268",
+  "queryName": "Redis Not Compliant",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Check if the redis version is compliant with the necessary AWS PCI DSS requirements",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/redis_not_compliant",
+  "platform": "Ansible",
+  "descriptionID": "99b5ec71",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/elasticache_module.html#parameter-cache_engine_version"
+}

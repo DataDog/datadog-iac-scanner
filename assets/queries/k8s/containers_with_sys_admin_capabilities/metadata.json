@@ -1,0 +1,13 @@
+{
+  "id": "235236ee-ad78-4065-bd29-61b061f28ce0",
+  "queryName": "Containers with sys admin capabilities",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should not include the `CAP_SYS_ADMIN` Linux capability. This rule flags any resource where a `container` or `initContainer` adds `SYS_ADMIN` to `securityContext.capabilities.add`. `CAP_SYS_ADMIN` grants broad privileges and can enable privilege escalation, so it must not be granted to container processes.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/containers_with_sys_admin_capabilities",
+  "platform": "Kubernetes",
+  "descriptionID": "029aeb1d",
+  "cwe": "250",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+}

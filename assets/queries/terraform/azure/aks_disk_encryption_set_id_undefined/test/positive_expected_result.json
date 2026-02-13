@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "AKS disk encryption set ID undefined",
+    "severity": "LOW",
+    "line": 1,
+    "fileName": "positive.tf"
+  }
+]

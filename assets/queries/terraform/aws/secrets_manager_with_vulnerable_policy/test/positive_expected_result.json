@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Secrets Manager with vulnerable policy",
+    "severity": "HIGH",
+    "line": 12,
+    "fileName": "positive.tf"
+  }
+]

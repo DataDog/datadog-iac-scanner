@@ -1,0 +1,14 @@
+{
+  "id": "4e88adee-a8eb-4605-a78d-9fb1096e3091",
+  "queryName": "RDS associated with a public subnet",
+  "severity": "CRITICAL",
+  "category": "Networking and Firewall",
+  "descriptionText": "RDS instances must not be deployed into public subnets because public routability exposes the database to direct internet access, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration. In AWS CloudFormation, verify the `AWS::RDS::DBInstance` `DBSubnetGroupName` reference and ensure the referenced `AWS::RDS::DBSubnetGroup` `SubnetIds` do not include any `AWS::EC2::Subnet` with unrestricted CIDRs. Specifically, flag subnets where `CidrBlock` equals `0.0.0.0/0` or `Ipv6CidrBlock` equals `::/0`. Database subnet groups containing such subnets will be reported as insecure.\n\nSecure example with private subnets:\n\n```yaml\nMyPrivateSubnet1:\n  Type: AWS::EC2::Subnet\n  Properties:\n    CidrBlock: 10.0.1.0/24\n    VpcId: vpc-12345\n\nMyPrivateSubnet2:\n  Type: AWS::EC2::Subnet\n  Properties:\n    CidrBlock: 10.0.2.0/24\n    VpcId: vpc-12345\n\nMyDBSubnetGroup:\n  Type: AWS::RDS::DBSubnetGroup\n  Properties:\n    DBSubnetGroupDescription: \"Private subnets for RDS\"\n    SubnetIds:\n      - !Ref MyPrivateSubnet1\n      - !Ref MyPrivateSubnet2\n\nMyDBInstance:\n  Type: AWS::RDS::DBInstance\n  Properties:\n    DBSubnetGroupName: !Ref MyDBSubnetGroup\n    Engine: mysql\n    DBInstanceClass: db.t3.medium\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/rds_associated_with_public_subnet",
+  "platform": "CloudFormation",
+  "descriptionID": "be2d1742",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-rds-database-instance.html#cfn-rds-dbinstance-dbsubnetgroupname"
+}

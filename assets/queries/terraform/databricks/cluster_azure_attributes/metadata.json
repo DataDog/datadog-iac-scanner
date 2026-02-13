@@ -1,0 +1,14 @@
+{
+  "id": "38028698-e663-4ef7-aa92-773fef0ca86f",
+  "queryName": "Beta - check Databricks cluster Azure attribute best practices",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "One or more Azure attribute best practices are not followed for this Databricks cluster. The rule flags clusters when:\n\n- `azure_attributes.availability` is set to `SPOT` or `SPOT_AZURE`,\n- `azure_attributes.first_on_demand` is `0`, or\n- `azure_attributes.first_on_demand` is missing.\n\nThese settings must ensure the use of at least one on-demand instance and avoid exclusive reliance on spot VMs.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/cluster_azure_attributes",
+  "platform": "Terraform",
+  "descriptionID": "bb2e4c81",
+  "cloudProvider": "common",
+  "cwe": "710",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.databricks.com/clusters/cluster-config-best-practices.html"
+}

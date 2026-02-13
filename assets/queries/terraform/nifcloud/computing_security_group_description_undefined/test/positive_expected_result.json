@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Beta - Nifcloud computing undefined description to security group",
+		"severity": "LOW",
+		"line": 1,
+		"fileName": "positive.tf"
+	}
+]

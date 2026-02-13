@@ -1,0 +1,50 @@
+[
+  {
+    "queryName": "Shielded VM disabled",
+    "severity": "MEDIUM",
+    "line": 2,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Shielded VM disabled",
+    "severity": "MEDIUM",
+    "line": 10,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Shielded VM disabled",
+    "severity": "MEDIUM",
+    "line": 19,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Shielded VM disabled",
+    "severity": "MEDIUM",
+    "line": 28,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Shielded VM disabled",
+    "severity": "MEDIUM",
+    "line": 38,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Shielded VM disabled",
+    "severity": "MEDIUM",
+    "line": 49,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Shielded VM disabled",
+    "severity": "MEDIUM",
+    "line": 60,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Shielded VM disabled",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.tf"
+  }
+]

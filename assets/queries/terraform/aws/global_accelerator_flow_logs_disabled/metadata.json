@@ -1,0 +1,15 @@
+{
+  "id": "96e8183b-e985-457b-90cd-61c0503a3369",
+  "queryName": "Global Accelerator flow logs disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Enabling flow logs for AWS Global Accelerator allows visibility into all traffic that traverses the accelerator, providing critical data for monitoring, security auditing, and detecting anomalous activity. If the Terraform attribute `flow_logs_enabled` is not set to `true` and related fields such as `flow_logs_s3_bucket` are not specified, administrators lose valuable insight into network events, significantly hindering threat detection and incident response. Without flow logs enabled, malicious or unauthorized activity could go undetected, increasing the risk of security breaches and data exfiltration.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/global_accelerator_flow_logs_disabled",
+  "platform": "Terraform",
+  "descriptionID": "3670731d",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "Global Accelerator should have flow logs enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/globalaccelerator_accelerator#flow_logs_enabled"
+}

@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "ROS stack retention disabled",
+		"severity": "MEDIUM",
+		"line": 6,
+		"fileName": "positive.tf"
+	},
+	{
+		"queryName": "ROS stack retention disabled",
+		"severity": "MEDIUM",
+		"line": 1,
+		"fileName": "positive2.tf"
+	}
+]

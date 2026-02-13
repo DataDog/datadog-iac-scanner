@@ -1,0 +1,14 @@
+{
+  "id": "4d46ff3b-7160-41d1-a310-71d6d370b08f",
+  "queryName": "ECS task definition volume not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon ECS task definition with EFS volumes should have transit encryption enabled to protect sensitive data transmitted between the ECS host and the EFS server. When transit encryption is disabled, data can be intercepted and read by unauthorized entities during transmission, posing a significant security risk to your containerized applications. To secure your EFS volumes, ensure the `transit_encryption` parameter is set to `ENABLED` in the `efs_volume_configuration` block, as shown below:\n\n```\nefs_volume_configuration {\n  file_system_id = aws_efs_file_system.fs.id\n  transit_encryption = \"ENABLED\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/ecs_task_definition_volume_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "b01e131b",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "AWS ECS Task Definition EFS data in transit between AWS ECS host and AWS EFS server should be encrypted",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecs_task_definition#transit_encryption"
+}

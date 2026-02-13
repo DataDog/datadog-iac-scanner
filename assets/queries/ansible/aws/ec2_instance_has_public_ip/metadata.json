@@ -1,0 +1,14 @@
+{
+  "id": "a8b0c58b-cd25-4b53-9ad0-55bca0be0bc1",
+  "queryName": "EC2 Instance Has Public IP",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "EC2 Instance should not have a public IP address.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ec2_instance_has_public_ip",
+  "platform": "Ansible",
+  "descriptionID": "f32c5d88",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_module.html#parameter-assign_public_ip"
+}

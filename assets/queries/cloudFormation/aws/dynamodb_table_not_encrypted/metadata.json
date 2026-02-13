@@ -1,0 +1,14 @@
+{
+  "id": "4bd21e68-38c1-4d58-acdc-6a14b203237f",
+  "queryName": "DynamoDB table not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "DynamoDB tables must have server-side encryption enabled to protect data at rest and prevent unauthorized access to table contents, backups, and snapshots. In CloudFormation, the `AWS::DynamoDB::Table` resource must set `Properties.SSESpecification.SSEEnabled` to `true`. Resources that omit `SSESpecification.SSEEnabled` or have `SSEEnabled` set to `false` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyDynamoTable:\n  Type: AWS::DynamoDB::Table\n  Properties:\n    TableName: my-table\n    SSESpecification:\n      SSEEnabled: true\n      SSEType: AES256\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/dynamodb_table_not_encrypted",
+  "platform": "CloudFormation",
+  "descriptionID": "92975bc8",
+  "cloudProvider": "aws",
+  "cwe": "312",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-ssespecification.html"
+}

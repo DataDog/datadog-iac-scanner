@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "SSM session transit encryption disabled",
+    "severity": "MEDIUM",
+    "line": 5,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "SSM session transit encryption disabled",
+    "severity": "MEDIUM",
+    "line": 5,
+    "fileName": "positive2.tf"
+  }
+]

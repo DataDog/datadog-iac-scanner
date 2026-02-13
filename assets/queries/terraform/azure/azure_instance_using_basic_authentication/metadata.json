@@ -1,0 +1,23 @@
+{
+  "id": "dafe30ec-325d-4516-85d1-e8e6776f012c",
+  "queryName": "Azure instance using basic authentication",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "Allowing basic password authentication for Azure virtual machines introduces a significant security risk, as passwords can be easily guessed, brute-forced, or leaked. When `disable_password_authentication = false` is set in the `os_profile_linux_config` block, as shown below, the VM permits password-based SSH logins:\n\n```\nos_profile_linux_config {\n  disable_password_authentication = false\n}\n```\n\nInstead, SSH key authentication should be required to ensure secure, cryptographically strong access to the instance, as in the following configuration:\n\n```\nadmin_ssh_key {\n  username   = \"adminuser\"\n  public_key = file(\"~/.ssh/id_rsa.pub\")\n}\n```\n\nFailure to enforce SSH key authentication can lead to unauthorized access, data breaches, or compromise of critical resources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/azure_instance_using_basic_authentication",
+  "platform": "Terraform",
+  "descriptionID": "dafe30ec",
+  "cloudProvider": "azure",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Azure Instances should use SSH Key instead of basic authentication",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/linux_virtual_machine#admin_ssh_key",
+  "defaultFrameworks": [
+    {
+      "control": "2.7",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "azure"
+    }
+  ]
+}

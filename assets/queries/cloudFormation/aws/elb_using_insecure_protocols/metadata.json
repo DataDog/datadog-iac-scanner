@@ -1,0 +1,14 @@
+{
+  "id": "61a94903-3cd3-4780-88ec-fc918819b9c8",
+  "queryName": "ELB using insecure protocols",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Load balancer policies that permit SSLv2, SSLv3, TLSv1.0, or TLSv1.1 expose TLS connections to known cryptographic weaknesses and downgrade attacks, increasing the risk of intercepted or tampered data in transit.\n \n In CloudFormation, this rule checks `AWS::ElasticLoadBalancing::LoadBalancer` resources and flags any `Policies[].Attributes[].Name` equal to `Protocol-SSLv2`, `Protocol-SSLv3`, `Protocol-TLSv1`, or `Protocol-TLSv1.1`. Replace these identifiers with TLS 1.2+ protocol settings or attach a current ELB security policy that enforces strong TLS versions and ciphers. Resources with the listed attribute values will be reported.\n\nSecure configuration example (use TLS 1.2 or newer):\n\n```yaml\nMyLoadBalancer:\n  Type: AWS::ElasticLoadBalancing::LoadBalancer\n  Properties:\n    Policies:\n      - PolicyName: TLS12Policy\n        PolicyType: SSLNegotiationPolicyType\n        Attributes:\n          - Name: Protocol-TLSv1.2\n            Value: \"true\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elb_using_insecure_protocols",
+  "platform": "CloudFormation",
+  "descriptionID": "cd6bbd85",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-elb.html"
+}

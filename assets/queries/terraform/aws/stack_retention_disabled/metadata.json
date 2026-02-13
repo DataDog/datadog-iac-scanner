@@ -1,0 +1,14 @@
+{
+  "id": "6e0e2f68-3fd9-4cd8-a5e4-e2213ef0df97",
+  "queryName": "Stack retention disabled",
+  "severity": "MEDIUM",
+  "category": "Backup",
+  "descriptionText": "When defining an `aws_cloudformation_stack_set_instance` resource in Terraform, it is important to set the `retain_stack` attribute to `true`. If `retain_stack` is set to `false` or omitted (the default value is `false`), the underlying CloudFormation stack and all associated resources will be deleted when the stack set instance is destroyed or removed from the configuration. This creates a risk of accidental and irreversible data loss, as resources could be unintentionally deleted during operations such as stack set updates, deletions, or when Terraform destroy is executed. Ensuring that `retain_stack` is enabled (`retain_stack = true`) helps protect critical infrastructure by leaving the stack and its resources intact even after the stack set instance is removed, allowing for manual intervention or recovery if needed.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/stack_retention_disabled",
+  "platform": "Terraform",
+  "descriptionID": "fc66d737",
+  "cloudProvider": "aws",
+  "cwe": "404",
+  "oldDescriptionText": "Make sure that retain_stack is enabled to keep the Stack and it's associated resources during resource destruction",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set_instance#stack_set_name"
+}

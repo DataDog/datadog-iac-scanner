@@ -1,0 +1,14 @@
+{
+  "id": "46883ce1-dc3e-4b17-9195-c6a601624c73",
+  "queryName": "Default security groups with unrestricted traffic",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "Default security groups in AWS act as the initial line of defense for EC2 instances, but when configured to allow unrestricted traffic (`0.0.0.0/0` for IPv4 or `::/0` for IPv6), they expose resources to potential attacks from any source on the internet. This vulnerability creates an attack surface that allows malicious actors to potentially access your instances, leading to unauthorized access, data breaches, or service disruption. To mitigate this risk, always configure security groups with specific CIDR blocks that only permit traffic from trusted sources, as shown in the following secure example:\n\n```terraform\ningress {\n  protocol  = -1\n  self      = true\n  from_port = 0\n  to_port   = 0\n  cidr_blocks = [\"10.1.0.0/16\"]\n  ipv6_cidr_blocks = [\"250.250.250.1:8451\"]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/default_security_groups_with_unrestricted_traffic",
+  "platform": "Terraform",
+  "descriptionID": "d218356d",
+  "cloudProvider": "aws",
+  "cwe": "285",
+  "oldDescriptionText": "Check if default security group does not restrict all inbound and outbound traffic.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/default_security_group"
+}

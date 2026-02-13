@@ -1,0 +1,13 @@
+{
+  "id": "323db967-c68e-44e6-916c-a777f95af34b",
+  "queryName": "ElastiCache using default port",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Amazon ElastiCache replication groups must not use engine default ports because default ports are easily discovered and increase the risk of automated scanning, brute-force attempts, and unauthorized access.\n \n For `AWS::ElastiCache::ReplicationGroup` resources, ensure `Properties.Port` is not set to `6379` when `Properties.Engine` is `redis`, or to `11211` when `Properties.Engine` is `memcached`. Resources with those exact settings will be flagged.\n \n Choose a non-default `Port` value if you require obscurity, but do not rely on port choice alone. Also restrict access with security groups, subnet/VPC controls, and parameter group settings.\n \n Note that omitting the `Port` property typically causes the engine to use its default port. Explicitly configure a non-default port or enforce network-level restrictions to mitigate exposure.\n\nSecure configuration example (CloudFormation YAML):\n\n```yaml\nMyReplicationGroup:\n  Type: AWS::ElastiCache::ReplicationGroup\n  Properties:\n    Engine: redis\n    Port: 6380\n    ReplicationGroupId: my-redis-cluster\n    ReplicationGroupDescription: \"Redis cluster on non-default port\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elasticache_using_default_port",
+  "platform": "CloudFormation",
+  "descriptionID": "5aef27fd",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticache-replicationgroup.html#cfn-elasticache-replicationgroup-port"
+}

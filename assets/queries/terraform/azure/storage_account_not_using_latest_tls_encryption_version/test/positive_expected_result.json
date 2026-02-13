@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Storage account not using latest TLS encryption version",
+    "severity": "MEDIUM",
+    "line": 7,
+    "fileName": "positive.tf"
+  }
+]

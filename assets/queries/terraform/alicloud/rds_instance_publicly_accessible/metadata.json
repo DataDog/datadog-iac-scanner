@@ -1,0 +1,14 @@
+{
+  "id": "1b4565c0-4877-49ac-ab03-adebbccd42ae",
+  "queryName": "RDS DB instance publicly accessible",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "`0.0.0.0` or `0.0.0.0/0` should not be included in the `security_ips` list. This rule flags `alicloud_db_instance` resources whose `security_ips` contain these public addresses. Allowing them grants public network access to the database instance and may expose it to the internet.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "aac97545",
+  "cloudProvider": "alicloud",
+  "cwe": "668",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/db_instance#security_ips"
+}

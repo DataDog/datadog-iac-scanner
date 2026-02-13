@@ -1,0 +1,13 @@
+{
+  "id": "df58dd45-8009-43c2-90f7-c90eb9d53ed9",
+  "queryName": "Beta - Nifcloud computing has common private network",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "The instance uses the common private network. The `nifcloud_instance` resource's `network_interface.network_id` is set to `net-COMMON_PRIVATE`. The instance should use a private LAN to isolate the private-side network from the shared network.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/computing_instance_has_common_private",
+  "platform": "Terraform",
+  "descriptionID": "c5065d3a",
+  "cloudProvider": "nifcloud",
+  "cwe": "200",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/instance#network_id"
+}

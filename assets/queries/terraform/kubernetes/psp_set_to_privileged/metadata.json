@@ -1,0 +1,14 @@
+{
+  "id": "a6a4d4fc-4e8f-47d1-969f-e9d4a084f3b9",
+  "queryName": "PSP set to privileged",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Pods must not be allowed to run as privileged.\nThe `spec.privileged` field on `kubernetes_pod_security_policy` resources must be set to `false`.\nIf `spec.privileged` is not `false`, this rule reports an `IncorrectValue` issue and recommends replacing the current value with `false`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/psp_set_to_privileged",
+  "platform": "Terraform",
+  "descriptionID": "5ca96212",
+  "cwe": "732",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#privileged"
+}

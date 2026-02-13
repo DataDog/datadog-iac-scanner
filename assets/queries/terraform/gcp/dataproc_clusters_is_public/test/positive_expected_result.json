@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Dataproc clusters publicly accessible",
+    "severity": "HIGH",
+    "line": 4
+  },
+  {
+    "queryName": "Dataproc clusters publicly accessible",
+    "severity": "HIGH",
+    "line": 10
+  }
+]

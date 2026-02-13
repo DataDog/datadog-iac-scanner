@@ -1,0 +1,15 @@
+{
+  "id": "b897dfbf-322c-45a8-b67c-1e698beeaa51",
+  "queryName": "Admin user enabled for container registry",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Enabling the admin user for an Azure Container Registry by setting the `admin_enabled` attribute to `true` in Terraform exposes static credentials that can be used to access and manage the registry. This increases the attack surface, as the admin username and key are global for the registry and can be easily leaked or abused if compromised. To mitigate this risk, the admin user should be disabled by setting `admin_enabled = false`:\n\n```\nresource \"azurerm_container_registry\" \"example\" {\n  // other arguments\n  admin_enabled = false\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/admin_user_enabled_for_container_registry",
+  "platform": "Terraform",
+  "descriptionID": "5250257b",
+  "cloudProvider": "azure",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Admin user is enabled for Container Registry",
+  "providerUrl": "https://www.terraform.io/docs/providers/azurerm/r/container_registry.html"
+}

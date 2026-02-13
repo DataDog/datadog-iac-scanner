@@ -1,0 +1,13 @@
+{
+  "id": "ed6e3ba0-278f-47b6-a1f5-173576b40b7e",
+  "queryName": "CMK is unusable",
+  "severity": "MEDIUM",
+  "category": "Availability",
+  "descriptionText": "Alicloud KMS must only include enabled Customer Master Keys (CMKs). This rule flags `alicloud_kms_key` resources when:\n\n- `is_enabled` is explicitly set to false (`IncorrectValue`), or\n- `is_enabled` is missing (`MissingAttribute`)\n\nTo remediate, set or update `is_enabled = true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/cmk_is_unusable",
+  "platform": "Terraform",
+  "descriptionID": "52a5ea7c",
+  "cloudProvider": "alicloud",
+  "cwe": "693",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/kms_key#is_enabled"
+}

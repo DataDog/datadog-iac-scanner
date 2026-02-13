@@ -1,0 +1,22 @@
+[
+  {
+    "queryName": "IAM audit not properly configured",
+    "severity": "LOW",
+    "line": 3
+  },
+  {
+    "queryName": "IAM audit not properly configured",
+    "severity": "LOW",
+    "line": 9
+  },
+  {
+    "queryName": "IAM audit not properly configured",
+    "severity": "LOW",
+    "line": 19
+  },
+  {
+    "queryName": "IAM audit not properly configured",
+    "severity": "LOW",
+    "line": 23
+  }
+]

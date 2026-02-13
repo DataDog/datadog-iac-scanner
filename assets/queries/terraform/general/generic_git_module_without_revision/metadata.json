@@ -1,0 +1,13 @@
+{
+  "id": "3a81fc06-566f-492a-91dd-7448e409e2cd",
+  "queryName": "Generic Git module without revision",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "All generic Git module sources should include a revision reference.\nModule sources that begin with `git::` must include a `?ref=` parameter to pin the source to a specific commit, tag, or branch. This ensures reproducible and predictable builds.\nThis rule flags modules where `module.source` starts with `git::` and does not contain `?ref=`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/general/generic_git_module_without_revision",
+  "platform": "Terraform",
+  "descriptionID": "2ee26fd1",
+  "cloudProvider": "common",
+  "cwe": "703",
+  "providerUrl": "https://www.terraform.io/docs/language/modules/sources.html#selecting-a-revision"
+}

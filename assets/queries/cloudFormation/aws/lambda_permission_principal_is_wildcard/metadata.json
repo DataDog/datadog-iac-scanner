@@ -1,0 +1,13 @@
+{
+  "id": "1d6e16f1-5d8a-4379-bfb3-2dadd38ed5a7",
+  "queryName": "Lambda permission principal is a wildcard",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting a wildcard principal (`*`) in a Lambda permission makes the function publicly invokable, allowing any AWS account or unauthenticated caller to invoke it and potentially leading to unauthorized invocation, data exposure, or abuse. The `AWS::Lambda::Permission` resource's `Principal` property must specify an explicit principal, such as a service principal (for example, `sns.amazonaws.com`), an AWS account ARN, or a specific IAM principal. It must not be `*` or contain wildcard values. This rule flags `AWS::Lambda::Permission` resources where `Properties.Principal` contains `*`. To fix, set `Principal` to the intended principal and, when applicable, add `SourceArn` or other conditions to restrict which resources can invoke the function.\n\nSecure configuration example:\n\n```yaml\nMyLambdaPermission:\n  Type: AWS::Lambda::Permission\n  Properties:\n    FunctionName: !GetAtt MyFunction.Arn\n    Action: lambda:InvokeFunction\n    Principal: sns.amazonaws.com\n    SourceArn: arn:aws:sns:us-east-1:123456789012:MyTopic\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/lambda_permission_principal_is_wildcard",
+  "platform": "CloudFormation",
+  "descriptionID": "cfa9120c",
+  "cloudProvider": "aws",
+  "cwe": "155",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-lambda-permission.html"
+}

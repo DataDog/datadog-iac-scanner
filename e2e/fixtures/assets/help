@@ -1,0 +1,16 @@
+NAME:
+   datadog-iac-scanner - Scans your Infrastructure as Code configurations
+
+USAGE:
+   datadog-iac-scanner [global options] [command [command options]]
+
+COMMANDS:
+   scan            Analyzes the content of a repository
+   list-platforms  Returns a list of all available platforms
+   list-queries    Returns a list of all available query ids
+   help, h         Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --log-format string  log format (pretty, json) (default: "pretty")
+   --log-level string   minimum log level to display (trace, debug, info, warn, error, fatal, panic, disable) (default: "error")
+   --help, -h           show help

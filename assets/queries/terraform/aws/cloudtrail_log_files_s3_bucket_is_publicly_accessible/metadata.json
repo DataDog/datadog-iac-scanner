@@ -1,0 +1,14 @@
+{
+  "id": "bd0088a5-c133-4b20-b129-ec9968b16ef3",
+  "queryName": "CloudTrail log files S3 bucket is publicly accessible",
+  "severity": "HIGH",
+  "category": "Observability",
+  "descriptionText": "This check identifies when CloudTrail logs are stored in an S3 bucket that is publicly accessible, creating a significant security risk. CloudTrail logs contain sensitive information about API calls and activities in your AWS environment that could be exposed to unauthorized parties if stored in a public bucket. To remediate this issue, ensure your S3 bucket has its ACL set to `private` instead of `public-read`, as shown in the example below:\n\n```\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"my-tf-test-bucket\"\n  acl    = \"private\"  // Correct setting instead of \"public-read\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudtrail_log_files_s3_bucket_is_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "2f7c6ca4",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldDescriptionText": "CloudTrail Log Files S3 Bucket should not be publicly accessible",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudtrail#s3_bucket_name"
+}

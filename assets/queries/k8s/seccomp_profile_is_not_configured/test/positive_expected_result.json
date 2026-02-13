@@ -1,0 +1,50 @@
+[
+  {
+    "queryName": "Seccomp profile is not configured",
+    "severity": "MEDIUM",
+    "line": 7,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Seccomp profile is not configured",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Seccomp profile is not configured",
+    "severity": "MEDIUM",
+    "line": 26,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Seccomp profile is not configured",
+    "severity": "MEDIUM",
+    "line": 43,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Seccomp profile is not configured",
+    "severity": "MEDIUM",
+    "line": 24,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Seccomp profile is not configured",
+    "severity": "MEDIUM",
+    "line": 24,
+    "fileName": "positive3.yaml"
+  },
+  {
+    "queryName": "Seccomp profile is not configured",
+    "severity": "MEDIUM",
+    "line": 33,
+    "fileName": "positive3.yaml"
+  },
+  {
+    "queryName": "Seccomp profile is not configured",
+    "severity": "MEDIUM",
+    "line": 35,
+    "fileName": "positive4.yaml"
+  }
+]

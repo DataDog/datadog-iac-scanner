@@ -1,0 +1,9 @@
+# Requirements for sync_framework_mappings.py
+#
+# Installation:
+#   pip install -r requirements.txt
+#
+# Usage:
+#   python sync_framework_mappings.py --source ~/dd/security-monitoring
+#
+toml>=0.10.0

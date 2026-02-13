@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "OSS bucket allows put action from all principals",
+		"severity": "CRITICAL",
+		"line": 5,
+		"fileName": "positive1.tf"
+	},
+	{
+		"queryName": "OSS bucket allows put action from all principals",
+		"severity": "CRITICAL",
+		"line": 5,
+		"fileName": "positive2.tf"
+	}
+]

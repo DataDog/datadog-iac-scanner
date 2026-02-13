@@ -1,0 +1,14 @@
+{
+  "id": "050a9ba8-d1cb-4c61-a5e8-8805a70d3b85",
+  "queryName": "CloudTrail log files not encrypted with KMS",
+  "severity": "LOW",
+  "category": "Encryption",
+  "descriptionText": "CloudTrail log files must be encrypted with an AWS KMS customer-managed key to protect the confidentiality and integrity of audit logs and enable key access control and rotation.\n\n The CloudFormation resource type `AWS::CloudTrail::Trail` must define the `KMSKeyId` property with a non-empty value (AWS KMS key ARN, key ID, alias, or a reference to an `AWS::KMS::Key`). Resources missing `KMSKeyId` or with it set to `null` or an empty string will be flagged.\n\n Create or reference a customer-managed AWS KMS key and assign it to `KMSKeyId` (using `!Ref`, `!GetAtt`, or an ARN) so CloudTrail delivers logs encrypted under that key.\n\nSecure CloudFormation example:\n\n```yaml\nMyKmsKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Description: KMS key for CloudTrail log encryption\n\nMyTrail:\n  Type: AWS::CloudTrail::Trail\n  Properties:\n    IsLogging: true\n    S3BucketName: my-trail-bucket\n    KMSKeyId: !Ref MyKmsKey\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudtrail_log_files_not_encrypted_with_kms",
+  "platform": "CloudFormation",
+  "descriptionID": "cdc07a23",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-cloudtrail-trail.html#cfn-cloudtrail-trail-kmskeyid"
+}

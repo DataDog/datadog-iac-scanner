@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Role assignment not limit guest user permissions",
+    "severity": "MEDIUM",
+    "line": 20
+  }
+]

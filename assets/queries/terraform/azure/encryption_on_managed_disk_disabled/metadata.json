@@ -1,0 +1,14 @@
+{
+  "id": "a99130ab-4c0e-43aa-97f8-78d4fcb30024",
+  "queryName": "Encryption on managed disk disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "When creating Azure managed disks with Terraform, it is important to ensure that encryption is enabled to protect data at rest. If the `encryption_settings` block either has `enabled = false` or is omitted entirely, as shown below, the disk's contents are left unencrypted and may be exposed if the disk is compromised or accessed by unauthorized users.:\n\n```\nresource \"azurerm_managed_disk\" \"example\" {\n  // ... other parameters ...\n  encryption_settings = {\n    enabled = false\n  }\n}\n```\n\nEnabling encryption with `encryption_settings = { enabled = true }` ensures sensitive data is protected from unauthorized access and helps meet compliance requirements.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/encryption_on_managed_disk_disabled",
+  "platform": "Terraform",
+  "descriptionID": "8f6e1fa8",
+  "cloudProvider": "azure",
+  "cwe": "311",
+  "oldDescriptionText": "Ensure that the encryption is active on the disk",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_disk#encryption_settings"
+}

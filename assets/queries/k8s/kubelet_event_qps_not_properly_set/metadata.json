@@ -1,0 +1,12 @@
+{
+  "id": "1a07a446-8e61-4e4d-bc16-b0781fcb8211",
+  "queryName": "Kubelet event QPS not properly set",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "When running `kubelet`, the `--event-qps` flag should be set to `0`. The rule flags kubelet containers whose command includes `kubelet` and whose `--event-qps` flag is not set to `0`. It also inspects `KubeletConfiguration` resources and reports when `eventRecordQPS` is missing or set to a non-zero value.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_event_qps_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "3163b76e",
+  "cwe": "778",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/"
+}

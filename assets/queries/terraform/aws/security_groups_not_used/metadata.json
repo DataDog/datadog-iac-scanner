@@ -1,0 +1,14 @@
+{
+  "id": "4849211b-ac39-479e-ae78-5694d506cb24",
+  "queryName": "Security group not used",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "This check ensures that AWS load balancers are associated with appropriate security groups, which control network traffic to and from the resource. When the `security_groups` attribute is omitted from an `aws_lb` resource, as shown below, the load balancer may become exposed to unrestricted network access, increasing the risk of unauthorized access or attacks:\n\n```\nresource \"aws_lb\" \"test\" {\n  name = \"test\"\n  load_balancer_type = \"application\"\n  subnets = [aws_subnet.subnet1.id, aws_subnet.subnet2.id]\n  internal = true\n}\n```\n\nBy explicitly defining `security_groups`, you can restrict inbound and outbound traffic to only trusted sources:\n\n```\nresource \"aws_lb\" \"test\" {\n  name = \"test\"\n  load_balancer_type = \"application\"\n  subnets = [aws_subnet.subnet1.id, aws_subnet.subnet2.id]\n  internal = true\n  security_groups = [aws_security_group.allow_tls.id]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/security_groups_not_used",
+  "platform": "Terraform",
+  "descriptionID": "eff2383a",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "Security group must be used or not declared",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group"
+}

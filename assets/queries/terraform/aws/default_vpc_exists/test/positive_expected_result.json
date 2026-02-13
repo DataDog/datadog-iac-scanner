@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Default VPC exists",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Default VPC exists",
+    "severity": "MEDIUM",
+    "line": 14,
+    "filename": "positive2.tf"
+  }
+]

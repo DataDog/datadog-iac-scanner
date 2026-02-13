@@ -1,0 +1,14 @@
+{
+  "id": "1bcdf9f0-b1aa-40a4-b8c6-cd7785836843",
+  "queryName": "API gateway API protocol not HTTPS",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "API Gateway APIs must use `HTTPS`.\nThis rule flags `alicloud_api_gateway_api` resources where `request_config.protocol` is not set to `HTTPS`.\nIt supports both single and indexed forms of `request_config`, and reports the resource name and attribute location.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/api_gateway_api_protocol_not_https",
+  "platform": "Terraform",
+  "descriptionID": "31f4c870",
+  "cloudProvider": "alicloud",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/api_gateway_api#protocol"
+}

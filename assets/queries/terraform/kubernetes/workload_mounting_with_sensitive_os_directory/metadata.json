@@ -1,0 +1,14 @@
+{
+  "id": "a737be28-37d8-4bff-aa6d-1be8aa0a0015",
+  "queryName": "Workload mounting with sensitive OS directory",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "A workload is mounting a volume that targets a sensitive host OS directory via `host_path`. Mounting directories such as `/etc`, `/proc`, `/root`, or `/usr` can expose host files and compromise container-host isolation. This rule flags `host_path` mounts that target these sensitive OS directories.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/workload_mounting_with_sensitive_os_directory",
+  "platform": "Terraform",
+  "descriptionID": "2047253f",
+  "cwe": "200",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#host_path"
+}

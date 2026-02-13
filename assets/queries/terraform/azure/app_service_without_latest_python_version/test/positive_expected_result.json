@@ -1,0 +1,20 @@
+[
+  {
+    "queryName": "App Service without latest Python version",
+    "severity": "LOW",
+    "line": 11,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "App Service without latest Python version",
+    "severity": "LOW",
+    "line": 25,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "App Service without latest Python version",
+    "severity": "LOW",
+    "line": 26,
+    "fileName": "positive3.tf"
+  }
+]

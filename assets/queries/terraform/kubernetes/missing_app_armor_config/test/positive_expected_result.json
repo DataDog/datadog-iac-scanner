@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Missing AppArmor config",
+		"severity": "MEDIUM",
+		"line": 4,
+		"fileName": ""
+	},
+	{
+		"queryName": "Missing AppArmor config",
+		"severity": "MEDIUM",
+		"line": 58,
+		"fileName": ""
+	}
+]

@@ -1,0 +1,14 @@
+{
+  "id": "d926aa95-0a04-4abc-b20c-acf54afe38a1",
+  "queryName": "Elasticsearch encryption with KMS disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Elasticsearch domains must use AWS KMS-backed encryption at rest to protect indexed data, snapshots, and backups from unauthorized access and to provide customer control and auditability of encryption keys.\n \n In CloudFormation, the `AWS::Elasticsearch::Domain` resource must include the `EncryptionAtRestOptions` property with `KmsKeyId` defined and not `null`. Resources missing `EncryptionAtRestOptions` or with `EncryptionAtRestOptions.KmsKeyId` undefined will be flagged. The `KmsKeyId` value should reference a customer-managed AWS KMS key ARN or a `Ref` to an `AWS::KMS::Key`, rather than relying solely on the service default key.\n\nSecure configuration example:\n\n```yaml\nMyDomain:\n  Type: AWS::Elasticsearch::Domain\n  Properties:\n    DomainName: my-domain\n    EncryptionAtRestOptions:\n      Enabled: true\n      KmsKeyId: !Ref MyKmsKey\n\nMyKmsKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Description: KMS key for Elasticsearch encryption\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elasticsearch_domain_encryption_with_kms_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "6700680a",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticsearch-domain.html#cfn-elasticsearch-domain-encryptionatrestoptions"
+}

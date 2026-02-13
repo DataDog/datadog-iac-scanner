@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "IAM password policy does not require symbol",
+    "severity": "MEDIUM",
+    "line": 3
+  }
+]

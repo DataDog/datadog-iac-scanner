@@ -1,0 +1,15 @@
+{
+  "id": "30e8dfd2-3591-4d19-8d11-79e93106c93d",
+  "queryName": "Stackdriver Monitoring disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Kubernetes Engine clusters must have Stackdriver Monitoring enabled by setting the `monitoring_service` attribute to `\"monitoring.googleapis.com/kubernetes\"` or leaving it undefined to use the default monitoring. Disabling monitoring by setting `monitoring_service = \"none\"` removes visibility into cluster performance, health, and security events, increasing the risk of undetected failures or malicious activity. \n\nA secure configuration should include:\n\n```\nresource \"google_container_cluster\" \"example\" {\n  name               = \"secure-cluster\"\n  location           = \"us-central1-a\"\n  initial_node_count = 3\n  monitoring_service = \"monitoring.googleapis.com/kubernetes\"\n}\n```\nIf left unaddressed, this misconfiguration can prevent prompt detection and remediation of operational or security incidents, potentially leading to service outages or breaches.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/stackdriver_monitoring_disabled",
+  "platform": "Terraform",
+  "descriptionID": "97635f79",
+  "cloudProvider": "gcp",
+  "cwe": "778",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Kubernetes Engine Clusters must have Stackdriver Monitoring enabled, which means the attribute 'monitoring_service' must be defined and different than 'none'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/container_cluster#monitoring_service"
+}

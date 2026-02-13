@@ -1,0 +1,26 @@
+[
+	{
+		"queryName": "Service account token automount not disabled",
+		"severity": "MEDIUM",
+		"line": 25,
+		"fileName": ""
+	},
+	{
+		"queryName": "Service account token automount not disabled",
+		"severity": "MEDIUM",
+		"line": 88,
+		"fileName": ""
+	},
+	{
+		"queryName": "Service account token automount not disabled",
+		"severity": "MEDIUM",
+		"line": 144,
+		"fileName": ""
+	},
+	{
+		"queryName": "Service account token automount not disabled",
+		"severity": "MEDIUM",
+		"line": 162,
+		"fileName": ""
+	}
+]

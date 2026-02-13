@@ -1,0 +1,14 @@
+{
+  "id": "d0b4d550-c001-46c3-bbdb-d5d75d33f05f",
+  "queryName": "OSLogin is disabled for VM instance",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check ensures that the `enable-oslogin` metadata attribute is set to `true` on Google Compute Engine VM instances. Disabling OS Login (`enable-oslogin = \"FALSE\"`) allows users to manage SSH keys directly in instance metadata, which can lead to inconsistent access controls and make it harder to track or revoke user access. By setting `enable-oslogin` to `true`, as shown below, you centralize SSH access management through IAM, improving auditability and reducing the risk of unauthorized access.\n\n```\nmetadata = {\n  enable-oslogin = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/os_login_is_disabled_for_vm_instance",
+  "platform": "Terraform",
+  "descriptionID": "a0cc649c",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldDescriptionText": "Check if any VM instance disables OSLogin",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance"
+}

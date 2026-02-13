@@ -1,0 +1,14 @@
+{
+  "id": "4f615f3e-fb9c-4fad-8b70-2e9f781806ce",
+  "queryName": "DB security group open to large scope",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check ensures that DB security groups aren't configured with overly broad CIDR ranges that could expose your database to unnecessary network access. When a CIDR block with more than 256 hosts (such as /24 or lower) is configured in the ingress rules, it increases the attack surface and potential for unauthorized access to your database instances.\n\nIn the insecure example below, the security group allows access from a /24 CIDR block (256 hosts):\n```\nresource \"aws_db_security_group\" \"positive1\" {\n  name = \"rds_sg\"\n\n  ingress {\n    cidr = \"10.0.0.0/24\"\n  }\n}\n```\n\nTo remediate this issue, restrict access to a smaller CIDR range with fewer hosts, such as /25 (128 hosts) or more restrictive:\n```\nresource \"aws_db_security_group\" \"negative1\" {\n  name = \"rds_sg\"\n\n  ingress {\n    cidr = \"10.0.0.0/25\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/db_security_group_open_to_large_scope",
+  "platform": "Terraform",
+  "descriptionID": "cd091033",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldDescriptionText": "The IP address in a DB Security Group must not have more than 256 hosts.",
+  "providerUrl": "https://registry.terraform.io/providers/rgeraskin/aws3/latest/docs/resources/db_security_group"
+}

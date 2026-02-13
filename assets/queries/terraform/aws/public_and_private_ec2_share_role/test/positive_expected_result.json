@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Public and private EC2 share role",
+    "severity": "MEDIUM",
+    "line": 103,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Public and private EC2 share role",
+    "severity": "MEDIUM",
+    "line": 38,
+    "filename": "positive2.tf"
+  }
+]

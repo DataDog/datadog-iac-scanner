@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "Unrestricted security group ingress",
+    "severity": "HIGH",
+    "line": 13,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Unrestricted security group ingress",
+    "severity": "HIGH",
+    "line": 43,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Unrestricted security group ingress",
+    "severity": "HIGH",
+    "line": 30,
+    "fileName": "positive2.json"
+  },
+  {
+    "queryName": "Unrestricted security group ingress",
+    "severity": "HIGH",
+    "line": 56,
+    "fileName": "positive2.json"
+  }
+]

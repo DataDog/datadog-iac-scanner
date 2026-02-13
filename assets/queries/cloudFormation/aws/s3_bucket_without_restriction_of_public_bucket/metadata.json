@@ -1,0 +1,14 @@
+{
+  "id": "350cd468-0e2c-44ef-9d22-cfb73a62523c",
+  "queryName": "S3 bucket without restriction of public bucket",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "S3 buckets should restrict public bucket settings to prevent accidental or unauthorized public exposure of objects. This also ensures bucket-level public access controls are enforced.\n\nIn CloudFormation, `AWS::S3::Bucket` resources must define `Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets` and set it to `true`. Resources missing `PublicAccessBlockConfiguration`, missing `RestrictPublicBuckets`, or with `RestrictPublicBuckets: false` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    BucketName: my-bucket\n    PublicAccessBlockConfiguration:\n      BlockPublicAcls: true\n      BlockPublicPolicy: true\n      IgnorePublicAcls: true\n      RestrictPublicBuckets: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_without_restriction_of_public_bucket",
+  "platform": "CloudFormation",
+  "descriptionID": "f9a4d93a",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-s3-bucket-publicaccessblockconfiguration.html"
+}

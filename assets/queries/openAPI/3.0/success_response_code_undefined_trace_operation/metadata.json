@@ -1,0 +1,13 @@
+{
+  "id": "105e20dd-8449-4d71-95c6-d5dac96639af",
+  "queryName": "Success Response Code Undefined for Trace Operation",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Trace should define the '200' successful code",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/success_response_code_undefined_trace_operation",
+  "platform": "OpenAPI",
+  "descriptionID": "d3325ec2",
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://swagger.io/specification/#operation-object"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "12933609-c5bf-44b4-9a41-a6467c3b685b",
+  "queryName": "BOM - AWS RDS",
+  "severity": "TRACE",
+  "category": "Bill Of Materials",
+  "descriptionText": "A list of RDS resources found. Amazon Relational Database Service (Amazon RDS) is a collection of managed services that makes it simple to set up, operate, and scale databases in the cloud.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws_bom/rds",
+  "platform": "Terraform",
+  "descriptionID": "b621abbb",
+  "cloudProvider": "aws",
+  "cwe": "532",
+  "providerUrl": "https://kics.io"
+}

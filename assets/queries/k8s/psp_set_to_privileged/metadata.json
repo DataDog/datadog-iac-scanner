@@ -1,0 +1,13 @@
+{
+  "id": "c48e57d3-d642-4e0b-90db-37f807b41b91",
+  "queryName": "PSP set to privileged",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Pods should not be allowed to run with privileged execution. The PodSecurityPolicy resource's `spec.privileged` field should be set to false to prevent containers from gaining elevated host privileges. Allowing privileged containers grants broad host-level access and increases the risk of privilege escalation or host compromise.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/psp_set_to_privileged",
+  "platform": "Kubernetes",
+  "descriptionID": "11a8da07",
+  "cwe": "732",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#privileged"
+}

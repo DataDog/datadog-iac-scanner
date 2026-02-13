@@ -1,0 +1,12 @@
+{
+  "id": "cb7e695d-6a85-495c-b15f-23aed2519303",
+  "queryName": "Certificate authority is not unique",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "The trusted certificate authority file used by etcd must be different from the client certificate authority file used by the API server. Do not set `--trusted-ca-file` for etcd to the same path as the API server's `--client-ca-file`. Sharing the same CA file can allow clients authenticated to the API server to be implicitly trusted by etcd, weakening isolation and increasing risk.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/not_unique_certificate_authority",
+  "platform": "Kubernetes",
+  "descriptionID": "d2c6c9e8",
+  "cwe": "295",
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+}

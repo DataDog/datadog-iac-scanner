@@ -1,0 +1,56 @@
+[
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 14,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 14,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 12,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 8,
+    "filename": "positive4.tf"
+  },
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive5.tf"
+  },
+  {
+    "queryName": "ALB not dropping invalid headers",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive6.tf"
+  }
+]

@@ -1,0 +1,5 @@
+# Owners of the whole repo
+* @Datadog/infrastructure-as-code
+
+# Owners of the documentation
+/documentation/rules/**/*.md @DataDog/documentation

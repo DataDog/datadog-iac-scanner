@@ -1,0 +1,12 @@
+{
+  "id": "6cf42c97-facd-4fda-b8af-ea4529123355",
+  "queryName": "Kubelet protect-kernel-defaults set to false",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "The `--protect-kernel-defaults` flag must be set to `true`.  \nIf kubelet is started via a container command, the command must not include `--protect-kernel-defaults=false`.  \nFor `KubeletConfiguration` resources, the `protectKernelDefaults` field must be defined and set to `true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_protect_kernel_defaults_set_to_false",
+  "platform": "Kubernetes",
+  "descriptionID": "e3a4b35d",
+  "cwe": "732",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/"
+}

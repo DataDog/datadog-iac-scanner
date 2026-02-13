@@ -1,0 +1,15 @@
+{
+  "id": "ce9dfce0-5fc8-433b-944a-3b16153111a8",
+  "queryName": "SSO permission with inadequate user session duration",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Single Sign-On (SSO) permission sets should restrict user session durations to a maximum of one hour to reduce the window of opportunity for unauthorized access and session hijacking. Allowing longer session durations by setting the `session_duration` attribute to values such as `\"PT2H\"` or `\"PT1H1M\"` in the `aws_ssoadmin_permission_set` resource increases the risk of attackers leveraging stale or stolen sessions. Configuring session durations to `session_duration = \"PT1H\"`, or omitting the duration in the configuration enforces this security best practice and helps limit potential exposure.\n\n```\nresource \"aws_ssoadmin_permission_set\" \"example\" {\n  name             = \"Example\"\n  instance_arn     = tolist(data.aws_ssoadmin_instances.example.arns)[0]\n  relay_state      = \"https://s3.console.aws.amazon.com/s3/home?region=us-east-1//\"\n  session_duration = \"PT1H\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sso_permission_with_inadequate_user_session_duration",
+  "platform": "Terraform",
+  "descriptionID": "755ecfdf",
+  "cloudProvider": "aws",
+  "cwe": "613",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "SSO permissions should be configured to limit user sessions to no longer than 1 hour. Allowing longer sessions can increase the risk of unauthorized access or session hijacking. This is a best practice for security and should be implemented in SSO permission settings.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssoadmin_permission_set"
+}

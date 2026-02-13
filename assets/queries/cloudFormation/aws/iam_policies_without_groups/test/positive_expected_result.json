@@ -1,0 +1,14 @@
+[
+  {
+    "fileName": "positive1.yaml",
+    "queryName": "IAM policies without groups",
+    "severity": "LOW",
+    "line": 25
+  },
+  {
+    "queryName": "IAM policies without groups",
+    "severity": "LOW",
+    "line": 38,
+    "fileName": "positive2.json"
+  }
+]

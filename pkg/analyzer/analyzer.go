@@ -1,0 +1,782 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+package analyzer
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/pkg/errors"
+	ignore "github.com/sabhiram/go-gitignore"
+
+	yamlParser "gopkg.in/yaml.v3"
+)
+
+// move the openApi regex to public to be used on file.go
+// openAPIRegex - Regex that finds OpenAPI defining property "openapi" or "swagger"
+// openAPIRegexInfo - Regex that finds OpenAPI defining property "info"
+// openAPIRegexPath - Regex that finds OpenAPI defining property "paths", "components", or "webhooks" (from 3.1.0)
+// cloudRegex - Regex that finds CloudFormation defining property "Resources"
+// k8sRegex - Regex that finds Kubernetes defining property "apiVersion"
+// k8sRegexKind - Regex that finds Kubernetes defining property "kind"
+// k8sRegexMetadata - Regex that finds Kubernetes defining property "metadata"
+// k8sRegexSpec - Regex that finds Kubernetes defining property "spec"
+var (
+	OpenAPIRegex                                    = regexp.MustCompile(`("(openapi|swagger)"|(openapi|swagger))\s*:`)
+	OpenAPIRegexInfo                                = regexp.MustCompile(`("info"|info)\s*:`)
+	OpenAPIRegexPath                                = regexp.MustCompile(`("(paths|components|webhooks)"|(paths|components|webhooks))\s*:`)
+	armRegexContentVersion                          = regexp.MustCompile(`"contentVersion"\s*:`)
+	armRegexResources                               = regexp.MustCompile(`"resources"\s*:`)
+	cloudRegex                                      = regexp.MustCompile(`("Resources"|Resources)\s*:`)
+	k8sRegex                                        = regexp.MustCompile(`("apiVersion"|apiVersion)\s*:`)
+	k8sRegexKind                                    = regexp.MustCompile(`("kind"|kind)\s*:`)
+	tfPlanRegexPV                                   = regexp.MustCompile(`"planned_values"\s*:`)
+	tfPlanRegexRC                                   = regexp.MustCompile(`"resource_changes"\s*:`)
+	tfPlanRegexConf                                 = regexp.MustCompile(`"configuration"\s*:`)
+	tfPlanRegexTV                                   = regexp.MustCompile(`"terraform_version"\s*:`)
+	cdkTfRegexMetadata                              = regexp.MustCompile(`"metadata"\s*:`)
+	cdkTfRegexStackName                             = regexp.MustCompile(`"stackName"\s*:`)
+	cdkTfRegexTerraform                             = regexp.MustCompile(`"terraform"\s*:`)
+	artifactsRegexKind                              = regexp.MustCompile(`("kind"|kind)\s*:`)
+	artifactsRegexProperties                        = regexp.MustCompile(`("properties"|properties)\s*:`)
+	artifactsRegexParametes                         = regexp.MustCompile(`("parameters"|parameters)\s*:`)
+	policyAssignmentArtifactRegexPolicyDefinitionID = regexp.MustCompile(`("policyDefinitionId"|policyDefinitionId)\s*:`)
+	roleAssignmentArtifactRegexPrincipalIds         = regexp.MustCompile(`("principalIds"|principalIds)\s*:`)
+	roleAssignmentArtifactRegexRoleDefinitionID     = regexp.MustCompile(`("roleDefinitionId"|roleDefinitionId)\s*:`)
+	templateArtifactRegexParametes                  = regexp.MustCompile(`("template"|template)\s*:`)
+	blueprintpRegexTargetScope                      = regexp.MustCompile(`("targetScope"|targetScope)\s*:`)
+	blueprintpRegexProperties                       = regexp.MustCompile(`("properties"|properties)\s*:`)
+	buildahRegex                                    = regexp.MustCompile(`buildah\s*from\s*\w+`)
+	crossPlaneRegex                                 = regexp.MustCompile(`"?apiVersion"?\s*:\s*(\w+\.)+crossplane\.io/v\w+\s*`)
+	knativeRegex                                    = regexp.MustCompile(`"?apiVersion"?\s*:\s*(\w+\.)+knative\.dev/v\w+\s*`)
+	pulumiNameRegex                                 = regexp.MustCompile(`name\s*:`)
+	pulumiRuntimeRegex                              = regexp.MustCompile(`runtime\s*:`)
+	pulumiResourcesRegex                            = regexp.MustCompile(`resources\s*:`)
+	serverlessServiceRegex                          = regexp.MustCompile(`service\s*:`)
+	serverlessProviderRegex                         = regexp.MustCompile(`(^|\n)provider\s*:`)
+	cicdOnRegex                                     = regexp.MustCompile(`\s*on:\s*`)
+	cicdJobsRegex                                   = regexp.MustCompile(`\s*jobs:\s*`)
+	cicdStepsRegex                                  = regexp.MustCompile(`\s*steps:\s*`)
+	queryRegexPathsAnsible                          = regexp.MustCompile(fmt.Sprintf(`^.*?%s(?:group|host)_vars%s.*$`, regexp.QuoteMeta(string(os.PathSeparator)), regexp.QuoteMeta(string(os.PathSeparator)))) //nolint:lll
+)
+
+var (
+	listKeywordsGoogleDeployment = []string{"resources"}
+	armRegexTypes                = []string{"blueprint", "templateArtifact", "roleAssignmentArtifact", "policyAssignmentArtifact"}
+	possibleFileTypes            = map[string]bool{
+		".yml":    true,
+		".yaml":   true,
+		".json":   true,
+		".debian": true,
+		".ubi8":   true,
+		".tf":     true,
+		"tfvars":  true,
+		".proto":  true,
+		".sh":     true,
+		".cfg":    true,
+		".conf":   true,
+		".ini":    true,
+		".bicep":  true,
+	}
+	supportedRegexes = map[string][]string{
+		"azureresourcemanager": append(armRegexTypes, arm),
+		"buildah":              {"buildah"},
+		"cicd":                 {"cicd"},
+		"cloudformation":       {"cloudformation"},
+		"crossplane":           {"crossplane"},
+		"knative":              {"knative"},
+		"kubernetes":           {"kubernetes"},
+		"openapi":              {"openapi"},
+		"terraform":            {"terraform", "cdkTf"},
+		"pulumi":               {"pulumi"},
+		"serverlessfw":         {"serverlessfw"},
+	}
+	listKeywordsAnsible = []string{"name", "gather_facts",
+		"hosts", "tasks", "become", "with_items", "with_dict",
+		"when", "become_pass", "become_exe", "become_flags"}
+	playBooks               = "playbooks"
+	ansibleHost             = []string{"all", "ungrouped"}
+	listKeywordsAnsibleHots = []string{"hosts", "children"}
+)
+
+const (
+	yml        = ".yml"
+	yaml       = ".yaml"
+	json       = ".json"
+	sh         = ".sh"
+	arm        = "azureresourcemanager"
+	bicep      = "bicep"
+	kubernetes = "kubernetes"
+	terraform  = "terraform"
+	gdm        = "googledeploymentmanager"
+	ansible    = "ansible"
+	grpc       = "grpc"
+	crossplane = "crossplane"
+	knative    = "knative"
+	sizeMb     = 1048576
+)
+
+type Parameters struct {
+	Results     string
+	Path        []string
+	MaxFileSize int
+}
+
+// regexSlice is a struct to contain a slice of regex
+type regexSlice struct {
+	regex []*regexp.Regexp
+}
+
+type analyzerInfo struct {
+	typesFlag        []string
+	excludeTypesFlag []string
+	filePath         string
+}
+
+// Analyzer keeps all the relevant info for the function Analyze
+type Analyzer struct {
+	Paths             []string
+	Types             []string
+	ExcludeTypes      []string
+	Exc               []string
+	GitIgnoreFileName string
+	ExcludeGitIgnore  bool
+	MaxFileSize       int
+	NumWorkers        int
+}
+
+// types is a map that contains the regex by type
+var types = map[string]regexSlice{
+	"openapi": {
+		regex: []*regexp.Regexp{
+			OpenAPIRegex,
+			OpenAPIRegexInfo,
+			OpenAPIRegexPath,
+		},
+	},
+	"kubernetes": {
+		regex: []*regexp.Regexp{
+			k8sRegex,
+			k8sRegexKind,
+		},
+	},
+	"crossplane": {
+		regex: []*regexp.Regexp{
+			crossPlaneRegex,
+			k8sRegexKind,
+		},
+	},
+	"knative": {
+		regex: []*regexp.Regexp{
+			knativeRegex,
+			k8sRegexKind,
+		},
+	},
+	"cloudformation": {
+		regex: []*regexp.Regexp{
+			cloudRegex,
+		},
+	},
+	"azureresourcemanager": {
+		[]*regexp.Regexp{
+			armRegexContentVersion,
+			armRegexResources,
+		},
+	},
+	"terraform": {
+		[]*regexp.Regexp{
+			tfPlanRegexConf,
+			tfPlanRegexPV,
+			tfPlanRegexRC,
+			tfPlanRegexTV,
+		},
+	},
+	"cdkTf": {
+		[]*regexp.Regexp{
+			cdkTfRegexMetadata,
+			cdkTfRegexStackName,
+			cdkTfRegexTerraform,
+		},
+	},
+	"policyAssignmentArtifact": {
+		[]*regexp.Regexp{
+			artifactsRegexKind,
+			artifactsRegexProperties,
+			artifactsRegexParametes,
+			policyAssignmentArtifactRegexPolicyDefinitionID,
+		},
+	},
+	"roleAssignmentArtifact": {
+		[]*regexp.Regexp{
+			artifactsRegexKind,
+			artifactsRegexProperties,
+			roleAssignmentArtifactRegexPrincipalIds,
+			roleAssignmentArtifactRegexRoleDefinitionID,
+		},
+	},
+	"templateArtifact": {
+		[]*regexp.Regexp{
+			artifactsRegexKind,
+			artifactsRegexProperties,
+			artifactsRegexParametes,
+			templateArtifactRegexParametes,
+		},
+	},
+	"blueprint": {
+		[]*regexp.Regexp{
+			blueprintpRegexTargetScope,
+			blueprintpRegexProperties,
+		},
+	},
+	"buildah": {
+		[]*regexp.Regexp{
+			buildahRegex,
+		},
+	},
+	"pulumi": {
+		[]*regexp.Regexp{
+			pulumiNameRegex,
+			pulumiRuntimeRegex,
+			pulumiResourcesRegex,
+		},
+	},
+	"serverlessfw": {
+		[]*regexp.Regexp{
+			serverlessServiceRegex,
+			serverlessProviderRegex,
+		},
+	},
+	"cicd": {
+		[]*regexp.Regexp{
+			cicdOnRegex,
+			cicdJobsRegex,
+			cicdStepsRegex,
+		},
+	},
+}
+
+var defaultConfigFiles = []string{"pnpm-lock.yaml"}
+
+// Analyze will go through the slice paths given and determine what type of queries should be loaded
+// should be loaded based on the extension of the file and the content
+func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
+	contextLogger := logger.FromContext(ctx)
+	// start metrics for file analyzer
+	returnAnalyzedPaths := model.AnalyzedPaths{
+		Types:       make([]string, 0),
+		Exc:         make([]string, 0),
+		ExpectedLOC: 0,
+	}
+
+	var files []string
+	var wg sync.WaitGroup
+	// results is the channel shared by the workers that contains the types found
+	results := make(chan string)
+	locCount := make(chan int)
+	ignoreFiles := make([]string, 0)
+	projectConfigFiles := make([]string, 0)
+	hasGitIgnoreFile, gitIgnore := shouldConsiderGitIgnoreFile(ctx, a.Paths[0], a.GitIgnoreFileName, a.ExcludeGitIgnore)
+	// get all the files inside the given paths
+	for _, path := range a.Paths {
+		if _, err := os.Stat(path); err != nil {
+			return returnAnalyzedPaths, errors.Wrap(err, "failed to analyze path")
+		}
+		if err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			ext, errExt := utils.GetExtension(ctx, path)
+			if errExt == nil {
+				trimmedPath := strings.ReplaceAll(path, a.Paths[0], filepath.Base(a.Paths[0]))
+				ignoreFiles = a.checkIgnore(ctx, info.Size(), hasGitIgnoreFile, gitIgnore, path, trimmedPath, ignoreFiles)
+
+				if isConfigFile(ctx, path, defaultConfigFiles) {
+					projectConfigFiles = append(projectConfigFiles, path)
+					a.Exc = append(a.Exc, path)
+				}
+
+				if _, ok := possibleFileTypes[ext]; ok && !isExcludedFile(ctx, path, a.Exc) {
+					files = append(files, path)
+				}
+			}
+			return nil
+		}); err != nil {
+			contextLogger.Error().Msgf("failed to analyze path %s: %s", path, err)
+		}
+	}
+
+	// unwanted is the channel shared by the workers that contains the unwanted files that the parser will ignore
+	unwanted := make(chan string, len(files))
+
+	a.Types, a.ExcludeTypes = typeLower(a.Types, a.ExcludeTypes)
+
+	// Use a worker pool to limit concurrent file analysis
+	numWorkers := utils.AdjustNumWorkers(a.NumWorkers)
+
+	// Create a job channel for files to analyze
+	jobs := make(chan string, len(files))
+
+	// Start worker pool
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for filePath := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				analyzerInfo := &analyzerInfo{
+					typesFlag:        a.Types,
+					excludeTypesFlag: a.ExcludeTypes,
+					filePath:         filePath,
+				}
+				analyzerInfo.worker(ctx, results, unwanted, locCount)
+			}
+		}()
+	}
+
+	// Feed jobs to workers
+	go func() {
+		defer close(jobs)
+		for _, file := range files {
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- file:
+			}
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+		// close channel results when the worker has finished writing into it
+		close(unwanted)
+		close(results)
+		close(locCount)
+	}()
+
+	availableTypes, unwantedPaths, loc := computeValues(results, unwanted, locCount)
+	multiPlatformTypeCheck(&availableTypes)
+	unwantedPaths = append(unwantedPaths, ignoreFiles...)
+	unwantedPaths = append(unwantedPaths, projectConfigFiles...)
+	returnAnalyzedPaths.Types = availableTypes
+	returnAnalyzedPaths.Exc = unwantedPaths
+	returnAnalyzedPaths.ExpectedLOC = loc
+	return returnAnalyzedPaths, nil
+}
+
+// worker determines the type of the file by ext (dockerfile and terraform)/content and
+// writes the answer to the results channel
+// if no types were found, the worker will write the path of the file in the unwanted channel
+func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- string, locCount chan<- int) { //nolint: gocyclo
+	ext, errExt := utils.GetExtension(ctx, a.filePath)
+	if errExt == nil {
+		linesCount, _ := utils.LineCounter(ctx, a.filePath)
+
+		switch ext {
+		// Terraform
+		case ".tf", "tfvars":
+			if a.isAvailableType(terraform) {
+				results <- terraform
+				locCount <- linesCount
+			}
+		// Bicep
+		case ".bicep":
+			if a.isAvailableType(bicep) {
+				results <- bicep
+				locCount <- linesCount
+			}
+		// GRPC
+		case ".proto":
+			if a.isAvailableType(grpc) {
+				results <- grpc
+				locCount <- linesCount
+			}
+		// It could be Ansible Config or Ansible Inventory
+		case ".cfg", ".conf", ".ini":
+			if a.isAvailableType(ansible) {
+				results <- ansible
+				locCount <- linesCount
+			}
+		/* It could be Ansible, Buildah, CICD, CloudFormation, Crossplane, OpenAPI, Azure Resource Manager
+		Docker Compose, Knative, Kubernetes, Pulumi, ServerlessFW or Google Deployment Manager*/
+		case yaml, yml, json, sh:
+			a.checkContent(ctx, results, unwanted, locCount, linesCount, ext)
+		}
+	}
+}
+
+// overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
+func needsOverride(check bool, returnType, key, ext string) bool {
+	if check && returnType == kubernetes && key == arm && ext == json {
+		return true
+	} else if check && returnType == kubernetes && (key == knative || key == crossplane) && (ext == yaml || ext == yml) {
+		return true
+	}
+	return false
+}
+
+// checkContent will determine the file type by content when worker was unable to
+// determine by ext, if no type was determined checkContent adds it to unwanted channel
+func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<- string, locCount chan<- int, linesCount int, ext string) {
+	contextLogger := logger.FromContext(ctx)
+	typesFlag := a.typesFlag
+	excludeTypesFlag := a.excludeTypesFlag
+	// get file content
+	content, err := os.ReadFile(a.filePath)
+	if err != nil {
+		contextLogger.Error().Msgf("failed to analyze file: %s", err)
+		return
+	}
+
+	returnType := ""
+
+	// Sort map so that CloudFormation (type that as less requireds) goes last
+	keys := make([]string, 0, len(types))
+	for k := range types {
+		keys = append(keys, k)
+	}
+
+	if typesFlag[0] != "" {
+		keys = getKeysFromTypesFlag(typesFlag)
+	} else if excludeTypesFlag[0] != "" {
+		keys = getKeysFromExcludeTypesFlag(excludeTypesFlag)
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+
+	for _, key := range keys {
+		check := true
+		for _, typeRegex := range types[key].regex {
+			if !typeRegex.Match(content) {
+				check = false
+				break
+			}
+		}
+		// If all regexs passed and there wasn't a type already assigned
+		if check && returnType == "" {
+			returnType = key
+		} else if needsOverride(check, returnType, key, ext) {
+			returnType = key
+		}
+	}
+	returnType = checkReturnType(ctx, a.filePath, returnType, ext, content)
+	if returnType != "" {
+		if a.isAvailableType(returnType) {
+			results <- returnType
+			locCount <- linesCount
+			return
+		}
+	}
+	// No type was determined (ignore on parser)
+	unwanted <- a.filePath
+}
+
+func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte) string {
+	if returnType != "" {
+		if returnType == "cdkTf" {
+			return terraform
+		}
+		if utils.Contains(returnType, armRegexTypes) {
+			return arm
+		}
+	} else if ext == yaml || ext == yml {
+		if checkHelm(ctx, path) {
+			return kubernetes
+		}
+		platform := checkYamlPlatform(ctx, content, path)
+		if platform != "" {
+			return platform
+		}
+	}
+	return returnType
+}
+
+func checkHelm(ctx context.Context, path string) bool {
+	contextLogger := logger.FromContext(ctx)
+	_, err := os.Stat(filepath.Join(filepath.Dir(path), "Chart.yaml"))
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	} else if err != nil {
+		contextLogger.Error().Msgf("failed to check helm: %s", err)
+	}
+
+	return true
+}
+
+func checkYamlPlatform(ctx context.Context, content []byte, path string) string {
+	contextLogger := logger.FromContext(ctx)
+	content = utils.DecryptAnsibleVault(ctx, content, os.Getenv("ANSIBLE_VAULT_PASSWORD_FILE"))
+
+	// Parse as Node to manually call Datadog's version of UnmarshalYAML with context
+	var node yamlParser.Node
+	if err := yamlParser.Unmarshal(content, &node); err != nil {
+		contextLogger.Warn().Msgf("failed to parse yaml file (%s): %s", path, err)
+		return ""
+	}
+
+	// Get the yaml content in node
+	contentNode := &node
+	if node.Kind == yamlParser.DocumentNode && len(node.Content) > 0 {
+		contentNode = node.Content[0]
+	}
+
+	var yamlContent model.Document
+	if err := yamlContent.UnmarshalYAML(ctx, contentNode); err != nil {
+		contextLogger.Warn().Msgf("failed to unmarshal yaml file (%s): %s", path, err)
+		return ""
+	}
+
+	// check if it is google deployment manager platform
+	for _, keyword := range listKeywordsGoogleDeployment {
+		if _, ok := yamlContent[keyword]; ok {
+			return gdm
+		}
+	}
+
+	// check if the file contains some keywords related with Ansible
+	if checkForAnsible(yamlContent) {
+		return ansible
+	}
+	// check if the file contains some keywords related with Ansible Host
+	if checkForAnsibleHost(yamlContent) {
+		return ansible
+	}
+	// add for yaml files contained at paths (group_vars, host_vars) related with ansible
+	if checkForAnsibleByPaths(path) {
+		return ansible
+	}
+	return ""
+}
+
+func checkForAnsibleByPaths(path string) bool {
+	return queryRegexPathsAnsible.MatchString(path)
+}
+
+func checkForAnsible(yamlContent model.Document) bool {
+	isAnsible := false
+	if play := yamlContent[playBooks]; play != nil {
+		if listOfPlayBooks, ok := play.([]interface{}); ok {
+			for _, value := range listOfPlayBooks {
+				castingValue, ok := value.(map[string]interface{})
+				if ok {
+					for _, keyword := range listKeywordsAnsible {
+						if _, ok := castingValue[keyword]; ok {
+							isAnsible = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return isAnsible
+}
+
+func checkForAnsibleHost(yamlContent model.Document) bool {
+	isAnsible := false
+	for _, ansibleDefault := range ansibleHost {
+		if hosts := yamlContent[ansibleDefault]; hosts != nil {
+			if listHosts, ok := hosts.(map[string]interface{}); ok {
+				for _, value := range listKeywordsAnsibleHots {
+					if host := listHosts[value]; host != nil {
+						isAnsible = true
+					}
+				}
+			}
+		}
+	}
+	return isAnsible
+}
+
+// computeValues computes expected Lines of Code to be scanned from locCount channel
+// and creates the types and unwanted slices from the channels removing any duplicates
+func computeValues(types, unwanted chan string, locCount chan int) (typesS, unwantedS []string, locTotal int) {
+	var val int
+	unwantedSlice := make([]string, 0)
+	typeSlice := make([]string, 0)
+	for locCount != nil || unwanted != nil || types != nil {
+		select {
+		case i, ok := <-locCount:
+			if ok {
+				val += i
+			} else {
+				locCount = nil
+			}
+		case i, ok := <-unwanted:
+			if ok {
+				if !utils.Contains(i, unwantedSlice) {
+					unwantedSlice = append(unwantedSlice, i)
+				}
+			} else {
+				unwanted = nil
+			}
+		case i, ok := <-types:
+			if ok {
+				if !utils.Contains(i, typeSlice) {
+					typeSlice = append(typeSlice, i)
+				}
+			} else {
+				types = nil
+			}
+		}
+	}
+	return typeSlice, unwantedSlice, val
+}
+
+// getKeysFromTypesFlag gets all the regexes keys related to the types flag
+func getKeysFromTypesFlag(typesFlag []string) []string {
+	ks := make([]string, 0, len(types))
+	for i := range typesFlag {
+		t := typesFlag[i]
+
+		if regexes, ok := supportedRegexes[t]; ok {
+			ks = append(ks, regexes...)
+		}
+	}
+	return ks
+}
+
+// getKeysFromExcludeTypesFlag gets all the regexes keys related to the excluding unwanted types from flag
+func getKeysFromExcludeTypesFlag(excludeTypesFlag []string) []string {
+	ks := make([]string, 0, len(types))
+	for k := range supportedRegexes {
+		if !utils.Contains(k, excludeTypesFlag) {
+			if regexes, ok := supportedRegexes[k]; ok {
+				ks = append(ks, regexes...)
+			}
+		}
+	}
+	return ks
+}
+
+// isExcludedFile verifies if the path is pointed in the --exclude-paths flag
+func isExcludedFile(ctx context.Context, path string, exc []string) bool {
+	contextLogger := logger.FromContext(ctx)
+	for i := range exc {
+		exclude, err := provider.GetExcludePaths(ctx, exc[i])
+		if err != nil {
+			contextLogger.Err(err).Msg("failed to get exclude paths")
+		}
+		for j := range exclude {
+			if exclude[j] == path {
+				contextLogger.Info().Msgf("Excluded file %s from analyzer", path)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isDeadSymlink(path string) bool {
+	fileInfo, _ := os.Stat(path)
+	return fileInfo == nil
+}
+
+func isConfigFile(ctx context.Context, path string, exc []string) bool {
+	contextLogger := logger.FromContext(ctx)
+	for i := range exc {
+		exclude, err := provider.GetExcludePaths(ctx, exc[i])
+		if err != nil {
+			contextLogger.Err(err).Msg("failed to get exclude paths")
+		}
+		for j := range exclude {
+			fileInfo, _ := os.Stat(path)
+			if fileInfo != nil && fileInfo.IsDir() {
+				continue
+			}
+
+			if len(path)-len(exclude[j]) > 0 && path[len(path)-len(exclude[j]):] == exclude[j] && exclude[j] != "" {
+				contextLogger.Info().Msgf("Excluded file %s from analyzer", path)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// shouldConsiderGitIgnoreFile verifies if the scan should exclude the files according to the .gitignore file
+func shouldConsiderGitIgnoreFile(ctx context.Context, path, gitIgnore string, excludeGitIgnoreFile bool) (hasGitIgnoreFileRes bool,
+	gitIgnoreRes *ignore.GitIgnore) {
+	contextLogger := logger.FromContext(ctx)
+	gitIgnorePath := filepath.ToSlash(filepath.Join(path, gitIgnore))
+	_, err := os.Stat(gitIgnorePath)
+
+	if !excludeGitIgnoreFile && err == nil && gitIgnore != "" {
+		gitIgnore, _ := ignore.CompileIgnoreFile(gitIgnorePath)
+		if gitIgnore != nil {
+			contextLogger.Info().Msgf(".gitignore file was found in '%s' and it will be used to automatically exclude paths", path)
+			return true, gitIgnore
+		}
+	}
+	return false, nil
+}
+
+func multiPlatformTypeCheck(typesSelected *[]string) {
+	if utils.Contains("serverlessfw", *typesSelected) && !utils.Contains("cloudformation", *typesSelected) {
+		*typesSelected = append(*typesSelected, "cloudformation")
+	}
+	if utils.Contains("knative", *typesSelected) && !utils.Contains("kubernetes", *typesSelected) {
+		*typesSelected = append(*typesSelected, "kubernetes")
+	}
+}
+
+func (a *analyzerInfo) isAvailableType(typeName string) bool {
+	// no flag is set
+	if len(a.typesFlag) == 1 && a.typesFlag[0] == "" && len(a.excludeTypesFlag) == 1 && a.excludeTypesFlag[0] == "" {
+		return true
+	} else if len(a.typesFlag) > 1 || a.typesFlag[0] != "" {
+		// type flag is set
+		return utils.Contains(typeName, a.typesFlag)
+	} else if len(a.excludeTypesFlag) > 1 || a.excludeTypesFlag[0] != "" {
+		// exclude type flag is set
+		return !utils.Contains(typeName, a.excludeTypesFlag)
+	}
+	// no valid behavior detected
+	return false
+}
+
+func (a *Analyzer) checkIgnore(ctx context.Context, fileSize int64, hasGitIgnoreFile bool,
+	gitIgnore *ignore.GitIgnore,
+	fullPath string, trimmedPath string, ignoreFiles []string) []string {
+	contextLogger := logger.FromContext(ctx)
+	exceededFileSize := a.MaxFileSize >= 0 && float64(fileSize)/float64(sizeMb) > float64(a.MaxFileSize)
+
+	if (hasGitIgnoreFile && gitIgnore.MatchesPath(trimmedPath)) || isDeadSymlink(fullPath) || exceededFileSize {
+		ignoreFiles = append(ignoreFiles, fullPath)
+		a.Exc = append(a.Exc, fullPath)
+
+		if exceededFileSize {
+			contextLogger.Error().Msgf("file %s exceeds maximum file size of %d Mb", fullPath, a.MaxFileSize)
+		}
+	}
+	return ignoreFiles
+}
+
+func typeLower(types, exclTypes []string) (typesRes, exclTypesRes []string) {
+	for i := range types {
+		types[i] = strings.ToLower(types[i])
+	}
+
+	for i := range exclTypes {
+		exclTypes[i] = strings.ToLower(exclTypes[i])
+	}
+
+	return types, exclTypes
+}

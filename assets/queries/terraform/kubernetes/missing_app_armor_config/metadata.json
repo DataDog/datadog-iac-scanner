@@ -1,0 +1,14 @@
+{
+  "id": "bd6bd46c-57db-4887-956d-d372f21291b6",
+  "queryName": "Missing AppArmor config",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Containers should be configured with AppArmor for each application to reduce its potential attack surface. Pods must include the AppArmor annotation `container.apparmor.security.beta.kubernetes.io/<container-name>` set to an appropriate profile so the kernel enforces confinement. Proper AppArmor profiles limit privileges and reduce the risk of privilege escalation and other compromises.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/missing_app_armor_config",
+  "platform": "Terraform",
+  "descriptionID": "ba36908b",
+  "cwe": "284",
+  "cloudProvider": "common",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#annotations"
+}

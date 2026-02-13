@@ -1,0 +1,15 @@
+{
+  "id": "a81573f9-3691-4d83-88a0-7d4af63e17a3",
+  "queryName": "Azure App Service client certificate disabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Enabling client certificates for Azure App Service ensures that only authenticated clients can access the application by requiring a client SSL certificate in all HTTPS requests. If the `client_cert_enabled` attribute is not set to `true`, unauthorized users could potentially connect to the service, increasing the risk of data leaks or abuse. To secure the App Service, always configure the resource as follows:\n\n```\nresource \"azurerm_app_service\" \"example\" {\n  // ... other configuration ...\n  client_cert_enabled = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/azure_app_service_client_certificate_disabled",
+  "platform": "Terraform",
+  "descriptionID": "7beaf18e",
+  "cloudProvider": "azure",
+  "cwe": "295",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Azure App Service client certificate should be enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/app_service#client_cert_enabled"
+}

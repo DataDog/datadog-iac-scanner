@@ -1,0 +1,12 @@
+{
+  "id": "2d8c175a-6d90-412b-8b0e-e034ea49a1fe",
+  "queryName": "Global Server Object Uses HTTP",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Global server object URL should use 'https' protocol instead of 'http'",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/global_server_uses_http",
+  "platform": "OpenAPI",
+  "descriptionID": "6b568693",
+  "cwe": "319",
+  "providerUrl": "https://swagger.io/specification/#server-object"
+}

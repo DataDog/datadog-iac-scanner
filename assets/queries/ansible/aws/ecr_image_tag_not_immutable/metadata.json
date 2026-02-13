@@ -1,0 +1,13 @@
+{
+  "id": "60bfbb8a-c72f-467f-a6dd-a46b7d612789",
+  "queryName": "ECR Image Tag Not Immutable",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "ECR should have an image tag be immutable. This prevents image tags from being overwritten.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ecr_image_tag_not_immutable",
+  "platform": "Ansible",
+  "descriptionID": "a9bdce24",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/ecs_ecr_module.html"
+}

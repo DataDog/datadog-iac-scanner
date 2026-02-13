@@ -1,0 +1,12 @@
+{
+  "id": "8fe1846f-52cc-4413-ace9-1933d7d23672",
+  "queryName": "Parameter Object Without Schema",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "The Parameter Object should have the attribute 'schema' defined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/parameter_object_without_schema",
+  "platform": "OpenAPI",
+  "descriptionID": "de40b141",
+  "cwe": "20",
+  "providerUrl": "https://swagger.io/specification/#parameter-object"
+}

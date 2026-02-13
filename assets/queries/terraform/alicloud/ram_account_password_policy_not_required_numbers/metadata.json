@@ -1,0 +1,14 @@
+{
+  "id": "063234c0-91c0-4ab5-bbd0-47ddb5f23786",
+  "queryName": "RAM account password policy does not require numbers",
+  "severity": "LOW",
+  "category": "Secret Management",
+  "descriptionText": "The RAM account password policy resource `alicloud_ram_account_password_policy` should set `require_numbers` to `true`. This enforces the inclusion of numeric characters in passwords and strengthens account security. Resources where `require_numbers` is `false` or omitted will trigger this rule and should set `require_numbers = true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_account_password_policy_not_required_numbers",
+  "platform": "Terraform",
+  "descriptionID": "0ee40b1d",
+  "cloudProvider": "alicloud",
+  "cwe": "521",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ram_account_password_policy#require_numbers"
+}

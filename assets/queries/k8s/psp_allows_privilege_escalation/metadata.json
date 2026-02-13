@@ -1,0 +1,13 @@
+{
+  "id": "87554eef-154d-411d-bdce-9dbd91e56851",
+  "queryName": "PSP allows privilege escalation",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "PodSecurityPolicy should not allow privilege escalation. The PodSecurityPolicy must include the 'allowPrivilegeEscalation' attribute and it must be set to false. If the attribute is missing or set to true, the PodSecurityPolicy is considered non-compliant.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/psp_allows_privilege_escalation",
+  "platform": "Kubernetes",
+  "descriptionID": "d7c5e3ad",
+  "cwe": "269",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "de77cd9f-0e8b-46cc-b4a4-b6b436838642",
+  "queryName": "CloudFront logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "CloudFront distributions must have access logging enabled so viewer requests are captured for incident investigation and traffic analysis. Without logs, you cannot audit access patterns, investigate abuse, or troubleshoot delivery problems.\n\n For `AWS::CloudFront::Distribution` resources, `DistributionConfig.Logging` must be defined when the distribution is enabled (that is, `DistributionConfig.Enabled` is not set to `false`).\n\n The logging configuration must include a `Bucket` value that points to an Amazon S3 bucket using the S3 domain suffix (it must end with `.s3.amazonaws.com`). Resources missing `Logging` or with a `Bucket` that does not end with `.s3.amazonaws.com` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyDistribution:\n  Type: AWS::CloudFront::Distribution\n  Properties:\n    DistributionConfig:\n      Enabled: true\n      Logging:\n        Bucket: my-log-bucket.s3.amazonaws.com\n        IncludeCookies: false\n        Prefix: access-logs/\n      # ... other distribution settings ...\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudfront_logging_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "3254d6d0",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/logging-and-monitoring.html"
+}

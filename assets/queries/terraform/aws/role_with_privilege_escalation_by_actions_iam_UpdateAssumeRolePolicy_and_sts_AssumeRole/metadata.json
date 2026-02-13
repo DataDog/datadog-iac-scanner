@@ -1,0 +1,14 @@
+{
+  "id": "f1173d8c-3264-4148-9fdb-61181e031b51",
+  "queryName": "Role with privilege escalation by actions 'iam:UpdateAssumeRolePolicy' and 'sts:AssumeRole'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting an IAM role permissions for both `iam:UpdateAssumeRolePolicy` and `sts:AssumeRole` actions with the `Resource` attribute set to `\"*\"` creates a severe privilege escalation risk. This misconfiguration allows a user or role to modify the trust policies of any role and subsequently assume any role in the AWS account, potentially gaining administrative privileges. If left unaddressed, malicious actors could exploit these permissions to take over sensitive roles and perform unauthorized actions across all AWS resources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_UpdateAssumeRolePolicy_and_sts_AssumeRole",
+  "platform": "Terraform",
+  "descriptionID": "2d747022",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Role with privilege escalation by actions 'iam:UpdateAssumeRolePolicy' and 'sts:AssumeRole' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy#policy"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "3ef8696c-e4ae-4872-92c7-520bb44dfe77",
+  "queryName": "Public Lambda via API Gateway",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Allowing a Lambda function to be invoked through a public API Gateway endpoint can introduce security vulnerabilities by exposing the function to the internet. This configuration grants invocation permissions on the Lambda function from any HTTP method and any resource within the associated API Gateway, as illustrated by the use of the wildcard `\"/*/*\"` in the ARN. If left unaddressed, attackers could exploit the public endpoint to trigger the Lambda function, potentially resulting in unauthorized data access, denial-of-service attacks, or increased costs due to unwanted invocations. To mitigate this risk, permissions should be restricted to only necessary resources and specific methods, thereby limiting the surface area exposed to the public.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/public_lambda_via_api_gateway",
+  "platform": "Terraform",
+  "descriptionID": "1f20399a",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "Allowing to run lambda function using public API Gateway",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission"
+}

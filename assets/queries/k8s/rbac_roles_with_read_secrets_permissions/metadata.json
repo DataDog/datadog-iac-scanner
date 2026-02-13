@@ -1,0 +1,12 @@
+{
+  "id": "b7bca5c4-1dab-4c2c-8cbe-3050b9d59b14",
+  "queryName": "RBAC roles with read secrets permissions",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Roles and ClusterRoles with `get`, `watch`, or `list` permissions on Kubernetes Secrets are dangerous and should be avoided.\nThese permissions allow read access to Secrets objects across the scope of the Role or ClusterRole. In case of compromise, attackers could abuse these roles to access sensitive data such as passwords, tokens, and keys, increasing the blast radius.\nThis policy flags Role and ClusterRole rules that grant the `get`, `watch`, or `list` verbs on the `secrets` resource.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/rbac_roles_with_read_secrets_permissions",
+  "platform": "Kubernetes",
+  "descriptionID": "ca97f029",
+  "cwe": "732",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/"
+}

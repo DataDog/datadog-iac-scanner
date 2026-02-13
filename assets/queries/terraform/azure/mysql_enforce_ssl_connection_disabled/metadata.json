@@ -1,0 +1,14 @@
+{
+  "id": "c3f2e1d0-b9a8-7c6d-5e4f-3210fedcba98",
+  "queryName": "ssl_enforcement_enabled is not set to ENABLED for MySQL database server",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "When SSL enforcement is disabled on Azure MySQL Database Servers, connections to the database are vulnerable to man-in-the-middle attacks and data interception. This security vulnerability allows attackers to potentially capture sensitive data transmitted between client applications and the database server, including credentials, personally identifiable information, and business-critical data. To secure your MySQL server, you must explicitly set `ssl_enforcement_enabled` to `ENABLED`, as shown below:\n\n```terraform\nresource \"azurerm_mysql_server\" \"good_example\" {\n  name                = \"good-mysql-server\"\n  location            = \"East US\"\n  resource_group_name = \"example-rg\"\n\n  ssl_enforcement_enabled = [\"ENABLED\"]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/mysql_enforce_ssl_connection_disabled",
+  "platform": "Terraform",
+  "descriptionID": "c3f2e1d0",
+  "cloudProvider": "azure",
+  "cwe": "311",
+  "oldDescriptionText": "MySQL Database Server should have SSL enforcement enabled to ensure secure connections. The 'ssl_enforcement_enabled' attribute must be set to 'ENABLED'.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/3.6.0/docs/resources/mysql_server"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "a7b520bb-2509-4fb0-be05-bc38f54c7a4c",
+  "queryName": "MySQL Instance With Local Infile On",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "MySQL Instance should not have Local Infile On",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/mysql_instance_with_local_infile_on",
+  "platform": "Ansible",
+  "descriptionID": "16bc53a4",
+  "cloudProvider": "gcp",
+  "cwe": "1188",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_sql_instance_module.html#parameter-settings/database_flags"
+}

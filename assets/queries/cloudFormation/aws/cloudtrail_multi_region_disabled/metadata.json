@@ -1,0 +1,14 @@
+{
+  "id": "058ac855-989f-4378-ba4d-52d004020da7",
+  "queryName": "CloudTrail multi-region disabled",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "CloudTrail must be configured as a multi-region trail to capture management events from all AWS regions and avoid auditing gaps if a single region is compromised. The `IsMultiRegionTrail` property in `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources missing this property or with `IsMultiRegionTrail` set to `false` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyTrail:\n  Type: AWS::CloudTrail::Trail\n  Properties:\n    IsMultiRegionTrail: true\n    S3BucketName: my-cloudtrail-bucket\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudtrail_multi_region_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "34ddc2cb",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-cloudtrail-trail.html#cfn-cloudtrail-trail-ismultiregiontrail"
+}

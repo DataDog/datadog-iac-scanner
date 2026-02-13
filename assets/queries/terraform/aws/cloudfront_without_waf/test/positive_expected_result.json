@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "CloudFront without WAF",
+    "severity": "MEDIUM",
+    "line": 15
+  }
+]

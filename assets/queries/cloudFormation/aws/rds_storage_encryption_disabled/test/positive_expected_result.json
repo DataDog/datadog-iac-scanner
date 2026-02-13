@@ -1,0 +1,32 @@
+[
+  {
+    "queryName": "RDS storage encryption disabled",
+    "severity": "HIGH",
+    "line": 12,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "RDS storage encryption disabled",
+    "severity": "HIGH",
+    "line": 5,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "RDS storage encryption disabled",
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive3.json"
+  },
+  {
+    "fileName": "positive4.json",
+    "queryName": "RDS storage encryption disabled",
+    "severity": "HIGH",
+    "line": 59
+  },
+  {
+    "fileName": "positive5.yaml",
+    "queryName": "RDS storage encryption disabled",
+    "severity": "HIGH",
+    "line": 5
+  }
+]

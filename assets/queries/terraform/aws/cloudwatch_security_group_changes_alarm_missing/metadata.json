@@ -1,0 +1,14 @@
+{
+  "id": "4beaf898-9f8b-4237-89e2-5ffdc7ee6006",
+  "queryName": "Cloudwatch security group changes alarm missing",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "This check ensures that log metric filters and corresponding alarms are configured to monitor changes to AWS security groups. Without a properly configured alarm referencing the correct log metric filter, security group changes—such as modifications to ingress or egress rules, or the creation and deletion of security groups—may go undetected. This lack of visibility can allow unauthorized or accidental changes that could expose sensitive resources or weaken the security posture of your environment. If left unaddressed, such misconfigurations could result in delayed detection of security incidents, increasing the potential for data breaches or service compromise.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudwatch_security_group_changes_alarm_missing",
+  "platform": "Terraform",
+  "descriptionID": "7ed6edfe",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "Ensure a log metric filter and alarm exist for security group changes",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_metric_filter#pattern"
+}

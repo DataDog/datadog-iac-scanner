@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "Default Azure storage account network access is too permissive",
+    "severity": "MEDIUM",
+    "line": 30,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Default Azure storage account network access is too permissive",
+    "severity": "MEDIUM",
+    "line": 38,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Default Azure storage account network access is too permissive",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "Default Azure storage account network access is too permissive",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive4.tf"
+  }
+]

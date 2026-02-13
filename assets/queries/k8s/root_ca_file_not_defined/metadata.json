@@ -1,0 +1,12 @@
+{
+  "id": "05fb986f-ac73-4ebb-a5b2-7faafa93d882",
+  "queryName": "Root CA file not defined",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Containers (including `initContainers`) that run `kube-controller-manager` should include the `--root-ca-file` flag. This flag specifies the path to the root CA certificate used to validate TLS certificates; without it the controller manager may not validate certificates correctly. The rule reports a MissingAttribute when the `--root-ca-file` flag is not present in the container's command.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/root_ca_file_not_defined",
+  "platform": "Kubernetes",
+  "descriptionID": "7d439960",
+  "cwe": "311",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/"
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Team tag missing on AWS resource",
+    "severity": "LOW",
+    "line": 5
+  },
+  {
+    "queryName": "Team tag missing on AWS resource",
+    "severity": "LOW",
+    "line": 10
+  }
+]

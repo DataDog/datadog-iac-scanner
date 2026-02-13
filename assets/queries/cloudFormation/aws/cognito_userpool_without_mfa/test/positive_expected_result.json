@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "Cognito user pool without MFA",
+    "severity": "LOW",
+    "line": 14,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Cognito user pool without MFA",
+    "severity": "LOW",
+    "line": 8,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Cognito user pool without MFA",
+    "severity": "LOW",
+    "line": 19,
+    "fileName": "positive2.json"
+  },
+  {
+    "severity": "LOW",
+    "line": 10,
+    "fileName": "positive2.json",
+    "queryName": "Cognito user pool without MFA"
+  }
+]

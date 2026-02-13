@@ -1,0 +1,14 @@
+{
+  "id": "2bff9906-4e9b-4f71-9346-8ebedfdf43ef",
+  "queryName": "PSP allows privilege escalation",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "`PodSecurityPolicy` should not allow privilege escalation. The `kubernetes_pod_security_policy` resource must include the `spec.allow_privilege_escalation` attribute and set it to `false`. If `spec.allow_privilege_escalation` is missing or set to `true`, this rule reports a `MissingAttribute` or `IncorrectValue` issue and recommends setting `spec.allow_privilege_escalation = false` as the remediation. The rule inspects `resource.kubernetes_pod_security_policy[name].spec` to determine the presence and value of `allow_privilege_escalation`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/psp_allows_privilege_escalation",
+  "platform": "Terraform",
+  "descriptionID": "1cdd3f21",
+  "cwe": "288",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#allow_privilege_escalation"
+}

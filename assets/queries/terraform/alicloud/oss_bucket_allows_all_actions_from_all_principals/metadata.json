@@ -1,0 +1,14 @@
+{
+  "id": "ec62a32c-a297-41ca-a850-cab40b42094a",
+  "queryName": "OSS bucket allows all actions from all principals",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "OSS buckets must not allow all actions (`*`) from all principals, as this can expose private data or permit unauthorized modification or deletion. This rule inspects the `policy` attribute of `alicloud_oss_bucket` resources to detect such configurations. Specifically, `Effect` must not be `Allow` when both `Action` and `Principal` are set to `*`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_allows_all_actions_from_all_principals",
+  "platform": "Terraform",
+  "descriptionID": "5507d429",
+  "cloudProvider": "alicloud",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/oss_bucket#policy"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "69b5d7da-a5db-4db9-a42e-90b65d0efb0b",
+  "queryName": "ActionTrail trail OSS bucket is publicly accessible",
+  "severity": "HIGH",
+  "category": "Observability",
+  "descriptionText": "The OSS bucket used by `alicloud_actiontrail_trail` must not be publicly accessible. This rule flags `alicloud_oss_bucket` resources with `acl` set to `public-read` or `public-read-write`, as these settings expose sensitive log data. The `acl` should be set to private to restrict access.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/actiontrail_trail_oss_bucket_is_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "0b91a8b5",
+  "cloudProvider": "alicloud",
+  "cwe": "668",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/actiontrail_trail"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "60263b4a-6801-4587-911d-919c37ed733b",
+  "queryName": "Group with privilege escalation by actions 'iam:PutUserPolicy'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Allowing the action `iam:PutUserPolicy` on the `Resource` set to `\"*\"` in an inline group policy grants members of that group the ability to attach arbitrary permissions to any IAM user in the AWS account. This privilege escalation vulnerability could allow an attacker or compromised group member to grant themselves administrative access, bypass intended access controls, or compromise the entire AWS environment. To mitigate this risk, restrict the `iam:PutUserPolicy` action to specific users or resources and avoid policies with wildcard resources where possible, as shown below in a secure example:\n\n```\nresource \"aws_iam_user\" \"cosmic2\" {\n  name = \"cosmic2\"\n}\n\nresource \"aws_iam_user_policy\" \"inline_policy_run_instances2\" {\n  name = \"inline_policy_run_instances\"\n  user = aws_iam_user.cosmic2.name\n\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [\n      {\n        Action = [\n          \"ec2:Describe*\",\n        ]\n        Effect   = \"Allow\"\n        Resource = \"*\"\n      },\n    ]\n  })\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_PutUserPolicy",
+  "platform": "Terraform",
+  "descriptionID": "fdfe7031",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Group with privilege escalation by actions 'iam:PutUserPolicy' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_group_policy#policy"
+}

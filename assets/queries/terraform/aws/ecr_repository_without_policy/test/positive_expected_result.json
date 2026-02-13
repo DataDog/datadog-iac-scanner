@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "ECR repository without policy",
+    "severity": "LOW",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "ECR repository without policy",
+    "severity": "LOW",
+    "line": 1,
+    "filename": "positive2.tf"
+  }
+]

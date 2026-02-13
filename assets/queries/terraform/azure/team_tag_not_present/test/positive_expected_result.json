@@ -1,0 +1,16 @@
+[
+  {
+    "queryName": "Ensure that Azure cloud resource has a team tag",
+    "severity": "LOW",
+    "resourceType": "azurerm_storage_account",
+    "line": 2,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Ensure that Azure cloud resource has a team tag",
+    "severity": "LOW",
+    "resourceType": "azurerm_storage_account",
+    "line": 17,
+    "fileName": "positive.tf"
+  }
+]

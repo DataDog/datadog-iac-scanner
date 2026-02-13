@@ -1,0 +1,14 @@
+{
+  "id": "16c4216a-50d3-4785-bfb2-4adb5144a8ba",
+  "queryName": "Elasticsearch domain with vulnerable policy",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Using a wildcard (`*`) for both `Action` and `Principal` in an `aws_elasticsearch_domain_policy`—such as `\"Action\": \"es:*\"` and `\"Principal\": \"*\"`—grants unrestricted access to the Elasticsearch domain, allowing any identity to perform any action. This broad permission model introduces a significant security vulnerability, as it may expose sensitive data and allow unauthorized users to modify or delete resources. To mitigate this risk, explicitly define trusted principals and limit actions using specific permissions in the policy document.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elasticsearch_domain_with_vulnerable_policy",
+  "platform": "Terraform",
+  "descriptionID": "265f06df",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "Elasticsearch Domain policy should avoid wildcard in 'Action' and 'Principal'.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticsearch_domain_policy#access_policies"
+}

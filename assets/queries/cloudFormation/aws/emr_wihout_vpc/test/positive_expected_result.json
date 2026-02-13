@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "EMR without VPC",
+    "severity": "LOW",
+    "line": 23,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "EMR without VPC",
+    "severity": "LOW",
+    "line": 32,
+    "fileName": "positive2.json"
+  }
+]

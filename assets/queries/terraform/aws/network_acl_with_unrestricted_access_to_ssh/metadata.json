@@ -1,0 +1,15 @@
+{
+  "id": "3af7f2fd-06e6-4dab-b996-2912bea19ba4",
+  "queryName": "Network ACL with unrestricted access to SSH",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Allowing SSH (TCP port 22) from all IP addresses in an AWS Network ACL by setting `cidr_block = \"0.0.0.0/0\"` exposes your resources to the public internet, making them vulnerable to brute force attacks and unauthorized access. This misconfiguration can lead to potential data breaches or system compromise if attackers exploit this open access. To mitigate this risk, restrict the `cidr_block` attribute to trusted IP ranges only, such as `cidr_block = \"10.3.0.0/18\"`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/network_acl_with_unrestricted_access_to_ssh",
+  "platform": "Terraform",
+  "descriptionID": "215ffb15",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "'SSH' (TCP:22) should not be public in AWS Network ACL",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/network_acl"
+}

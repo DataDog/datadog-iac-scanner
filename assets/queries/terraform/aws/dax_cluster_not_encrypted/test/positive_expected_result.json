@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "DAX cluster not encrypted",
+    "severity": "HIGH",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "DAX cluster not encrypted",
+    "severity": "HIGH",
+    "line": 14,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "DAX cluster not encrypted",
+    "severity": "HIGH",
+    "line": 25,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "DAX cluster not encrypted",
+    "severity": "HIGH",
+    "line": 6,
+    "filename": "positive_module.tf"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "id": "56f6a008-1b14-4af4-b9b2-ab7cf7e27641",
+  "queryName": "DocumentDB logging is disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Enabling logging for Amazon DocumentDB clusters helps ensure that database activity is captured and monitored, allowing for the detection of anomalous behavior and aiding in incident investigations. If logging is not enabled by omitting the `enabled_cloudwatch_logs_exports` attribute, critical events and queries may go unrecorded, making it difficult to audit access or troubleshoot security events. To enforce secure configurations, the `aws_docdb_cluster` resource should specify the desired log exports, such as in the example below:\n\n```\nresource \"aws_docdb_cluster\" \"example\" {\n  cluster_identifier      = \"my-docdb-cluster\"\n  engine                  = \"docdb\"\n  master_username         = \"foo\"\n  master_password         = \"mustbeeightchars\"\n  backup_retention_period = 5\n  preferred_backup_window = \"07:00-09:00\"\n  skip_final_snapshot     = true\n\n  enabled_cloudwatch_logs_exports = [\"profiler\", \"audit\"]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/docdb_logging_disabled",
+  "platform": "Terraform",
+  "descriptionID": "7a864a61",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "DocDB logging should be enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/docdb_cluster#enabled_cloudwatch_logs_exports"
+}

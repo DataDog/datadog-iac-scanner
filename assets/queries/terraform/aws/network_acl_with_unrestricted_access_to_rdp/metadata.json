@@ -1,0 +1,14 @@
+{
+  "id": "a20be318-cac7-457b-911d-04cc6e812c25",
+  "queryName": "Network ACL with unrestricted access to RDP",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check ensures that network ACLs don't allow unrestricted access to RDP (TCP port 3389) from the public internet (`0.0.0.0/0`). Exposing RDP to the entire internet significantly increases the risk of brute force attacks and unauthorized access to your instances, potentially leading to data breaches or system compromise. Instead of using a wide-open CIDR block like `0.0.0.0/0`, restrict RDP access to specific IP ranges as shown in the following secure configuration: `ingress = [{ protocol = \"tcp\", rule_no = 100, action = \"allow\", cidr_block = \"10.3.0.0/18\", from_port = 3389, to_port = 3389 }]`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/network_acl_with_unrestricted_access_to_rdp",
+  "platform": "Terraform",
+  "descriptionID": "ed220e0d",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldDescriptionText": "'RDP' (TCP:3389) should not be public in AWS Network ACL",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/network_acl"
+}

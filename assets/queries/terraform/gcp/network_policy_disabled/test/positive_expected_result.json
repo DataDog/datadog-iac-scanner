@@ -1,0 +1,32 @@
+[
+  {
+    "queryName": "Network policy disabled",
+    "severity": "MEDIUM",
+    "line": 2
+  },
+  {
+    "queryName": "Network policy disabled",
+    "severity": "MEDIUM",
+    "line": 16
+  },
+  {
+    "queryName": "Network policy disabled",
+    "severity": "MEDIUM",
+    "line": 30
+  },
+  {
+    "queryName": "Network policy disabled",
+    "severity": "MEDIUM",
+    "line": 48
+  },
+  {
+    "queryName": "Network policy disabled",
+    "severity": "MEDIUM",
+    "line": 63
+  },
+  {
+    "queryName": "Network policy disabled",
+    "severity": "MEDIUM",
+    "line": 86
+  }
+]

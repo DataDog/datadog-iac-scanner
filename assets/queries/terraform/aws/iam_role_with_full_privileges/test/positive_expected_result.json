@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "IAM role with full privileges",
+    "severity": "HIGH",
+    "line": 4
+  },
+  {
+    "queryName": "IAM role with full privileges",
+    "severity": "HIGH",
+    "line": 29
+  }
+]

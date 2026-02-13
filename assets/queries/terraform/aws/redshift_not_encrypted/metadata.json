@@ -1,0 +1,22 @@
+{
+  "id": "cfdcabb0-fc06-427c-865b-c59f13e898ce",
+  "queryName": "Redshift not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS Redshift clusters store large amounts of potentially sensitive data and should be encrypted at rest to protect this information from unauthorized access if the underlying storage is compromised. When a Redshift cluster is not encrypted, all data stored within it remains in plaintext, potentially exposing customer information, business data, or other confidential information to attackers who gain access to the storage media. To properly secure your Redshift cluster, explicitly set the `encrypted` parameter to true in your Terraform configuration, as shown in the following example: \n```\nresource \"aws_redshift_cluster\" \"secure_example\" {\n  cluster_identifier = \"tf-redshift-cluster\"\n  database_name      = \"mydb\"\n  master_username    = \"foo\"\n  master_password    = \"Mustbe8characters\"\n  node_type          = \"dc1.large\"\n  cluster_type       = \"single-node\"\n  encrypted          = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/redshift_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "2bee4895",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "AWS Redshift Cluster should be encrypted. Check if 'encrypted' field is false or undefined (default is false)",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/redshift_cluster#encrypted",
+  "customFrameworks": [
+    {
+      "control": "aws.1.26",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

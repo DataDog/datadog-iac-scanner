@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Shared host PID namespace",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Shared host PID namespace",
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive2.yaml"
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "queryName": "ECS task definition network mode not recommended",
+    "severity": "MEDIUM",
+    "line": 3
+  },
+  {
+    "queryName": "ECS task definition network mode not recommended",
+    "severity": "MEDIUM",
+    "line": 38,
+    "fileName": "positive_module.tf"
+  }
+]

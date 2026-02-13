@@ -1,0 +1,13 @@
+{
+  "id": "a6f34658-fdfb-4154-9536-56d516f65828",
+  "queryName": "Docker daemon socket is exposed to containers",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "The Docker daemon socket should not be exposed to containers. Mounting /var/run/docker.sock into a container grants the container direct access to the host Docker daemon, which can enable privilege escalation and full control of the host. Alternatives include using isolated build environments, container runtime APIs with proper access controls, or dedicated build services.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/docker_daemon_socket_is_exposed_to_containers",
+  "platform": "Kubernetes",
+  "descriptionID": "0865e6f6",
+  "cwe": "668",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://kubernetes.io/docs/concepts/storage/volumes/"
+}

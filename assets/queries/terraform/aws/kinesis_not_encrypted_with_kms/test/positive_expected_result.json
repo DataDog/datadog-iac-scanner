@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "Kinesis not encrypted with KMS",
+    "severity": "HIGH",
+    "line": 1
+  },
+  {
+    "queryName": "Kinesis not encrypted with KMS",
+    "severity": "HIGH",
+    "line": 34
+  },
+  {
+    "queryName": "Kinesis not encrypted with KMS",
+    "severity": "HIGH",
+    "line": 41
+  }
+]

@@ -1,0 +1,98 @@
+[
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 2,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 2,
+    "fileName": "positive2.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive2.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive2.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive2.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive2.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive2.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive2.dockerfile"
+  },
+  {
+    "queryName": "Apt Get Install Pin Version Not Defined",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive2.dockerfile"
+  }
+]

@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "ALB listening on HTTP",
+		"severity": "MEDIUM",
+		"line": 3,
+		"fileName": "positive.tf"
+	}
+]

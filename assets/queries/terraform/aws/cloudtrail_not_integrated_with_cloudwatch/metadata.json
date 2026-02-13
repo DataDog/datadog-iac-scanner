@@ -1,0 +1,15 @@
+{
+  "id": "17b30f8f-8dfb-4597-adf6-57600b6cf25e",
+  "queryName": "CloudTrail not integrated with CloudWatch",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "Integrating AWS CloudTrail with CloudWatch Logs is essential for real-time monitoring and alerting on account activity. If the `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` attributes are not set in the `aws_cloudtrail` resource, as in the following insecure configuration, CloudTrail events will only be stored in S3 with no efficient mechanism for real-time detection or automated response to suspicious activities:\n\n```\nresource \"aws_cloudtrail\" \"example\" {\n  name = \"tf-trail-foobar\"\n  s3_bucket_name = aws_s3_bucket.foo.id\n  // cloud_watch_logs_group_arn and cloud_watch_logs_role_arn not set\n}\n```\n\nWithout CloudWatch integration, critical security or operational issues could go unnoticed, increasing the risk of unauthorized behavior persisting undetected in your AWS environment.\n\nA secure Terraform configuration should explicitly connect CloudTrail to CloudWatch Logs. For example:\n\n```\nresource \"aws_cloudtrail\" \"example\" {\n  name                          = \"tf-trail-secure\"\n  s3_bucket_name                = aws_s3_bucket.foo.id\n  cloud_watch_logs_group_arn    = aws_cloudwatch_log_group.cloudtrail_logs.arn\n  cloud_watch_logs_role_arn     = aws_iam_role.cloudtrail_cloudwatch_role.arn\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudtrail_not_integrated_with_cloudwatch",
+  "platform": "Terraform",
+  "descriptionID": "11653439",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "CloudTrail should be integrated with CloudWatch",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudtrail"
+}

@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Secrets as environment variables",
+		"severity": "LOW",
+		"line": 11,
+		"fileName": ""
+	},
+	{
+		"queryName": "Secrets as environment variables",
+		"severity": "LOW",
+		"line": 20,
+		"fileName": ""
+	}
+]

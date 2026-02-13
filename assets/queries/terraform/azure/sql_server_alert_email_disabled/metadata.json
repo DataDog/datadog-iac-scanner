@@ -1,0 +1,14 @@
+{
+  "id": "55975007-f6e7-4134-83c3-298f1fe4b519",
+  "queryName": "SQL server alert email disabled",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "SQL Server alert emails should be enabled to ensure that administrators are promptly notified of suspicious activities or potential security threats, such as SQL injection or data exfiltration attempts. Without setting the `email_account_admins` attribute to `true` in the `azurerm_mssql_server_security_alert_policy` resource, critical security alerts may go unnoticed, delaying incident response and potentially increasing the risk of a successful attack. A secure configuration is shown below:\n\n```\nresource \"azurerm_mssql_server_security_alert_policy\" \"example\" {\n  resource_group_name        = azurerm_resource_group.example.name\n  server_name                = azurerm_sql_server.example.name\n  state                      = \"Enabled\"\n  storage_endpoint           = azurerm_storage_account.example.primary_blob_endpoint\n  storage_account_access_key = azurerm_storage_account.example.primary_access_key\n  disabled_alerts = [\n    \"Sql_Injection\",\n    \"Data_Exfiltration\"\n  ]\n  retention_days = 20\n  email_account_admins = true\n}\n```\n\nEnabling alert emails reduces the risk of missing critical security events by ensuring they are communicated in real time to account administrators.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/sql_server_alert_email_disabled",
+  "platform": "Terraform",
+  "descriptionID": "4eb880dd",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldDescriptionText": "SQL Server alert email should be enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/mssql_server_security_alert_policy#email_account_admins"
+}

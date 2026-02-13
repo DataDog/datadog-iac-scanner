@@ -1,0 +1,38 @@
+[
+  {
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive1.yaml",
+    "queryName": "Empty roles for ECS cluster task definitions"
+  },
+  {
+    "fileName": "positive1.yaml",
+    "queryName": "Empty roles for ECS cluster task definitions",
+    "severity": "MEDIUM",
+    "line": 24
+  },
+  {
+    "queryName": "Empty roles for ECS cluster task definitions",
+    "severity": "MEDIUM",
+    "line": 41,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Empty roles for ECS cluster task definitions",
+    "severity": "MEDIUM",
+    "line": 96,
+    "fileName": "positive2.json"
+  },
+  {
+    "queryName": "Empty roles for ECS cluster task definitions",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive2.json"
+  },
+  {
+    "queryName": "Empty roles for ECS cluster task definitions",
+    "severity": "MEDIUM",
+    "line": 39,
+    "fileName": "positive2.json"
+  }
+]

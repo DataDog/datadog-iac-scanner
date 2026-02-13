@@ -1,0 +1,14 @@
+{
+  "id": "abcb818b-5af7-4d72-aba9-6dd84956b451",
+  "queryName": "Using default namespace",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Resources must not use the `default` namespace.\nThis rule flags Kubernetes resources that either lack `metadata` or `metadata.namespace`, or have `metadata.namespace` set to `default`.\nIt applies to resource kinds: `kubernetes_ingress`, `kubernetes_config_map`, `kubernetes_secret`, `kubernetes_service`, `kubernetes_cron_job`, `kubernetes_service_account`, `kubernetes_role`, `kubernetes_role_binding`, `kubernetes_pod`, `kubernetes_deployment`, `kubernetes_daemonset`, `kubernetes_job`, `kubernetes_stateful_set`, `kubernetes_replication_controller`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/using_default_namespace",
+  "platform": "Terraform",
+  "descriptionID": "4d26d672",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#namespace"
+}

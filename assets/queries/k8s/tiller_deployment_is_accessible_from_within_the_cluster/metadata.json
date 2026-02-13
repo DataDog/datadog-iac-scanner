@@ -1,0 +1,12 @@
+{
+  "id": "e17fa86a-6222-4584-a914-56e8f6c87e06",
+  "queryName": "Tiller Deployment accessible within cluster",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "Tiller deployments must not allow access from within the cluster.  \nTiller containers must include the `--listen` argument and set it to a local address (for example `localhost` or `127.0.0.1`).  \nResources lacking `args` or whose `--listen` value is not a local address are flagged.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/tiller_deployment_is_accessible_from_within_the_cluster",
+  "platform": "Kubernetes",
+  "descriptionID": "615614b8",
+  "cwe": "286",
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/"
+}

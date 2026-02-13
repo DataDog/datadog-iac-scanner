@@ -1,0 +1,32 @@
+[
+  {
+    "queryName": "Security group not used",
+    "severity": "LOW",
+    "line": 8,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Security group not used",
+    "severity": "LOW",
+    "line": 15,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Security group not used",
+    "severity": "LOW",
+    "line": 19,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Security group not used",
+    "severity": "LOW",
+    "line": 21,
+    "filename": "positive4.tf"
+  },
+  {
+    "queryName": "Security group not used",
+    "severity": "LOW",
+    "line": 1,
+    "filename": "positive5.tf"
+  }
+]

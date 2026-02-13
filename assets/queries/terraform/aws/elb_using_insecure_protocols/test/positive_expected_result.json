@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "ELB using insecure protocols",
+    "severity": "MEDIUM",
+    "line": 41
+  },
+  {
+    "queryName": "ELB using insecure protocols",
+    "severity": "MEDIUM",
+    "line": 30
+  }
+]

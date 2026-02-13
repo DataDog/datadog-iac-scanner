@@ -1,0 +1,12 @@
+{
+  "id": "09bb9e96-8da3-4736-b89a-b36814acca60",
+  "queryName": "etcd peer TLS certificate files not properly set",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "When a container command includes `etcd`, the `--peer-cert-file` and `--peer-key-file` flags should be set. The rule inspects both initContainers and containers and reports a MissingAttribute when any required flag is not present in the container's command. The result identifies the resource and the command position where the missing flag was detected.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/etcd_peer_tls_certificate_files_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "f3bb5a8e",
+  "cwe": "287",
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+}

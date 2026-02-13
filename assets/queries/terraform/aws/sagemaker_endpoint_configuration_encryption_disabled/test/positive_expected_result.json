@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "SageMaker endpoint configuration encryption disabled",
+    "severity": "HIGH",
+    "line": 1,
+    "fileName": "positive.tf"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "id": "73e251f0-363d-4e53-86e2-0a93592437eb",
+  "queryName": "Audit log path not set",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "When `kube-apiserver` appears in a container command, the `--audit-log-path` flag should be set. This rule detects containers running `kube-apiserver` that do not include the `--audit-log-path` flag. Without `--audit-log-path`, the API server will not write audit logs to a file, preventing persistent audit records and hindering incident investigation and compliance.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/audit_log_path_not_set",
+  "platform": "Kubernetes",
+  "descriptionID": "21d0f732",
+  "cwe": "778",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

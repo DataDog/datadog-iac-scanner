@@ -1,0 +1,13 @@
+{
+  "id": "fb2b0ecf-1492-491a-a70d-ba1df579175d",
+  "queryName": "ECS no load balancer attached",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "Amazon ECS services must be configured with a load balancer so traffic is distributed across tasks and a single task does not become a single point of failure for availability and scaling.\n \n For `AWS::ECS::Service` resources, the `Properties.LoadBalancers` property must be defined and contain at least one entry. Resources missing this property or where `LoadBalancers` is an empty array will be flagged.\n \n Each `LoadBalancers` entry should reference the service port mapping (for example, `ContainerName` and `ContainerPort`) or a `TargetGroupArn` when using an Application Load Balancer or Network Load Balancer so traffic can be routed to task containers.\n\nSecure configuration example:\n\n```yaml\nMyEcsService:\n  Type: AWS::ECS::Service\n  Properties:\n    Cluster: !Ref MyEcsCluster\n    TaskDefinition: !Ref MyTaskDef\n    LoadBalancers:\n      - ContainerName: my-app-container\n        ContainerPort: 80\n        # or: TargetGroupArn: arn:aws:elasticloadbalancing:region:acct:targetgroup/...\n    DesiredCount: 2\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecs_no_load_balancer_attached",
+  "platform": "CloudFormation",
+  "descriptionID": "2f3ec772",
+  "cloudProvider": "aws",
+  "cwe": "400",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-service.html"
+}

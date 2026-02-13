@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Incorrect volume claim access mode ReadWriteOnce",
+		"severity": "MEDIUM",
+		"line": 166,
+		"fileName": ""
+	},
+	{
+		"queryName": "Incorrect volume claim access mode ReadWriteOnce",
+		"severity": "MEDIUM",
+		"line": 367,
+		"fileName": ""
+	}
+]

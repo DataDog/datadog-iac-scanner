@@ -1,0 +1,14 @@
+{
+  "id": "b72d0026-f649-4c91-a9ea-15d8f681ac09",
+  "queryName": "Stack notifications disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Enabling stack notifications in AWS CloudFormation ensures that administrators are promptly informed about critical events such as stack creation, updates, or failures. Without specifying the `notification_arns` attribute in the Terraform resource, as shown below, important operational or security changes may go unnoticed, potentially delaying response to incidents or failures:\n\n```\nresource \"aws_cloudformation_stack\" \"example\" {\n  name = \"networking-stack\"\n  parameters = {\n    VPCCidr = \"10.0.0.0/16\"\n  }\n  notification_arns = [\"arn:aws:sns:us-east-1:123456789012:my-sns-topic\"]\n}\n```\n\nMissing notifications can lead to undetected application outages or misconfigurations, increasing the risk to your cloud infrastructure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/stack_notifications_disabled",
+  "platform": "Terraform",
+  "descriptionID": "f9826281",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "AWS CloudFormation should have stack notifications enabled to be notified when an event occurs",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack"
+}

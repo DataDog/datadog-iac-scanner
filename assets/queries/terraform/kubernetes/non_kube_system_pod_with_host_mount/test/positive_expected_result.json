@@ -1,0 +1,26 @@
+[
+	{
+		"queryName": "Non kube system pod with host mount",
+		"severity": "HIGH",
+		"line": 53,
+		"fileName": ""
+	},
+	{
+		"queryName": "Non kube system pod with host mount",
+		"severity": "HIGH",
+		"line": 113,
+		"fileName": ""
+	},
+	{
+		"queryName": "Non kube system pod with host mount",
+		"severity": "HIGH",
+		"line": 173,
+		"fileName": ""
+	},
+	{
+		"queryName": "Non kube system pod with host mount",
+		"severity": "HIGH",
+		"line": 233,
+		"fileName": ""
+	}
+]

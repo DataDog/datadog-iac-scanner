@@ -1,0 +1,13 @@
+{
+  "id": "e4239438-e639-44aa-adb8-866e400e3ade",
+  "queryName": "IAM policy on user",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IAM policies should be applied to groups rather than directly to individual users to centralize permission management and reduce privilege creep. This rule checks `AWS::IAM::Policy` resources and flags policies that define the `Users` property. Policies should instead use the `Groups` property (a list of group names or refs). Resources with `Properties.Users` present or without a `Groups` assignment will be flagged. Remove `Users` and attach the policy to one or more groups, then add users to those groups for consistent, auditable permission control.\n\nSecure configuration example (CloudFormation YAML):\n\n```yaml\nMyPolicy:\n  Type: AWS::IAM::Policy\n  Properties:\n    PolicyName: MyPolicy\n    PolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Action: s3:ListBucket\n          Resource: '*'\n    Groups:\n      - Ref: MyIamGroup\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_policy_on_user",
+  "platform": "CloudFormation",
+  "descriptionID": "50f7785d",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iam-policy.html"
+}

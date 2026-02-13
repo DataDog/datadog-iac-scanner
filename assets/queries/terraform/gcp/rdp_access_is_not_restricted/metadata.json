@@ -1,0 +1,23 @@
+{
+  "id": "678fd659-96f2-454a-a2a0-c2571f83a4a3",
+  "queryName": "RDP access is not restricted",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check verifies if Google Compute firewall rules allow unrestricted RDP access by examining if port 3389 (the default RDP port) is openly accessible from the internet. When firewall rules allow RDP traffic from `0.0.0.0/0` (all IPv4) or `::/0` (all IPv6), it significantly increases the risk of brute force attacks, unauthorized access, and potential system compromise.\n\nVulnerable configurations include allowing port 3389 directly or within ranges (for example, `21-3390`), or using `protocol = \"all\"` with unrestricted source ranges. To secure your environment, explicitly exclude RDP ports from public access and restrict RDP traffic to specific trusted IP addresses or VPN connections.\n\n```hcl\n// Insecure configuration (AVOID):\nresource \"google_compute_firewall\" \"insecure\" {\n  // ... other configuration ...\n  allow {\n    protocol = \"tcp\"\n    ports    = [\"80\", \"3389\"]\n  }\n  source_ranges = [\"0.0.0.0/0\"]\n}\n\n// Secure configuration:\nresource \"google_compute_firewall\" \"secure\" {\n  // ... other configuration ...\n  allow {\n    protocol = \"tcp\"\n    ports    = [\"80\", \"8080\", \"1000-2000\"] // Excludes RDP port 3389\n  }\n  source_tags = [\"web\"]\n  // Alternatively, limit RDP to specific IPs:\n  // source_ranges = [\"10.0.0.0/24\", \"192.168.1.0/24\"]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/rdp_access_is_not_restricted",
+  "platform": "Terraform",
+  "descriptionID": "f8156d3b",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Check if the Google compute firewall allows unrestricted RDP access. Allowed ports should not contain RDP port 3389",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall",
+  "defaultFrameworks": [
+    {
+      "control": "3.7",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "gcp"
+    }
+  ]
+}

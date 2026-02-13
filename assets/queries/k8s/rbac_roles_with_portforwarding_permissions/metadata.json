@@ -1,0 +1,12 @@
+{
+  "id": "38fa11ef-dbcc-4da8-9680-7e1fd855b6fb",
+  "queryName": "RBAC roles with port-forwarding permission",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Roles or ClusterRoles that grant permissions to port-forward into pods can open socket-level communication channels to containers. If compromised, attackers may abuse this capability to establish direct connections that bypass network security controls. This can enable data exfiltration, remote command execution, or persistent access to containerized workloads. Limiting port-forward permissions to trusted principals and enforcing least-privilege reduces this risk.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/rbac_roles_with_portforwarding_permissions",
+  "platform": "Kubernetes",
+  "descriptionID": "38fa11ef",
+  "cwe": "732",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/"
+}

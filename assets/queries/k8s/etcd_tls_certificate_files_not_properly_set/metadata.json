@@ -1,0 +1,13 @@
+{
+  "id": "075ca296-6768-4322-aea2-ba5063b969a9",
+  "queryName": "etcd TLS certificate files not properly set",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "For containers and initContainers that run `etcd`, the `--cert-file` and `--key-file` flags must be set. This rule reports resources whose container command includes `etcd` but where one or both flags are missing from the container command.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/etcd_tls_certificate_files_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "3c8aae35",
+  "cwe": "287",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+}

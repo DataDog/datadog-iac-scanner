@@ -1,0 +1,22 @@
+{
+  "id": "dd5230f8-a577-4bbb-b7ac-f2c2fe7d5299",
+  "queryName": "Storage container is publicly accessible",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "When a storage container in Azure Blob Storage has `container_access_type` set to `blob` or `container`, it enables anonymous public access to the data stored within. This configuration creates a significant security risk as it allows anyone with the container URL to access, view, and potentially download the stored data without authentication, potentially leading to sensitive data exposure or unauthorized data access.\n\nTo secure your storage containers, always set `container_access_type` to `private` explicitly, or rely on the default value, which is also `private`. For example:\n\n```\nresource \"azurerm_storage_container\" \"secure_container\" {\n  name                  = \"vhds\"\n  storage_account_name  = azurerm_storage_account.example.name\n  container_access_type = \"private\"\n}\n```\n\nAvoid using the insecure configuration shown below:\n\n```\nresource \"azurerm_storage_container\" \"insecure_container\" {\n  name                  = \"vhds\"\n  storage_account_name  = azurerm_storage_account.example.name\n  container_access_type = \"blob\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/storage_container_is_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "a9e178f3",
+  "cloudProvider": "azure",
+  "cwe": "285",
+  "oldDescriptionText": "Anonymous, public read access to a container and its blobs are enabled in Azure Blob Storage",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_container#container_access_type",
+  "defaultFrameworks": [
+    {
+      "control": "2.1",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "azure"
+    }
+  ]
+}

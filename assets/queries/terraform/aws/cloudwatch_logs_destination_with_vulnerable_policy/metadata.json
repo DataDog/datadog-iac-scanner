@@ -1,0 +1,15 @@
+{
+  "id": "db0ec4c4-852c-46a2-b4f3-7ec13cdb12a8",
+  "queryName": "CloudWatch logs destination with vulnerable policy",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "CloudWatch Logs destination policies should not use wildcards ('*') in the `principals` or `actions` fields, as this can inadvertently grant broad permissions. When wildcards are used, any AWS principal may gain permission to perform any logs-related actions, increasing the risk of unauthorized access or data exfiltration. Attackers or unintentional actors could potentially send or retrieve log data, modify log subscriptions, or disrupt monitoring workflows. Restricting both `principals` and `actions` to only necessary accounts and actions protects log data integrity and helps maintain the security of monitoring operations.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudwatch_logs_destination_with_vulnerable_policy",
+  "platform": "Terraform",
+  "descriptionID": "0f0cc4cf",
+  "cloudProvider": "aws",
+  "cwe": "155",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "CloudWatch Logs destination policy should avoid wildcard in 'principals' and 'actions'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_destination_policy#access_policy"
+}

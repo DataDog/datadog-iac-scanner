@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: datadog-iac-scanner
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: datadog-iac-scanner
+    main: ./cmd/scanner/
+    binary: datadog-iac-scanner
+    targets:
+      - darwin_arm64
+      - linux_arm64
+      - linux_amd64
+      - windows_amd64
+    ldflags:
+      - -s
+      - -w
+      - -X github.com/DataDog/datadog-iac-scanner/internal/constants.Version={{ .Version }}
+      - -X github.com/DataDog/datadog-iac-scanner/internal/constants.SCMCommit={{ .Commit }}
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - ids: [datadog-iac-scanner]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+
+changelog:
+  use: github-native
+
+release:
+  draft: true

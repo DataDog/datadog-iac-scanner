@@ -1,0 +1,14 @@
+{
+  "id": "1b6322d9-c755-4f8c-b804-32c19250f2d9",
+  "queryName": "Config rule for encrypted volumes disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS Config should include the managed rule that detects unencrypted EBS volumes so that unencrypted volumes, snapshots, and backups are identified and remediated to prevent data exposure if storage media or snapshots are compromised.\n\n This check looks for an `AWS::Config::ConfigRule` resource with `Properties.Source.SourceIdentifier` set to `ENCRYPTED_VOLUMES`. Resources missing this config rule or with a different `SourceIdentifier` will be flagged.\n\n Ensure a config rule with `SourceIdentifier` set to `ENCRYPTED_VOLUMES` (typically `Owner` set to `AWS` for the managed rule) is defined and enabled in your CloudFormation template.\n\nSecure CloudFormation example:\n\n```yaml\nEncryptedVolumesConfigRule:\n  Type: AWS::Config::ConfigRule\n  Properties:\n    ConfigRuleName: encrypted-volumes\n    Source:\n      Owner: AWS\n      SourceIdentifier: ENCRYPTED_VOLUMES\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/config_rule_for_encryption_volumes_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "d0026f39",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-config-configrule.html#cfn-config-configrule-source"
+}

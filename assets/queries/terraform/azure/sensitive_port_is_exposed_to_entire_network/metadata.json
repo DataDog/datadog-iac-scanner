@@ -1,0 +1,15 @@
+{
+  "id": "594c198b-4d79-41b8-9b36-fde13348b619",
+  "queryName": "Sensitive port is exposed to entire network",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check identifies Azure network security rules that expose sensitive ports (such as 23 [Telnet], 110 [POP3], or others) to the entire internet, creating a significant security vulnerability. When sensitive ports are accessible from any source IP (`/0`, `0.0.0.0/0`, or similar notation), attackers can exploit these services to gain unauthorized access, perform reconnaissance, or execute service-specific attacks. To remediate this issue, either deny access to these ports, restrict access to specific IP addresses, or change the protocol. For example, use `access = \"Deny\"` for sensitive ports, or replace `source_address_prefix = \"0.0.0.0/0\"` or `source_address_prefix = \"/0\"` with a more restrictive value such as `source_address_prefix = \"192.168.0.0\"`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/sensitive_port_is_exposed_to_entire_network",
+  "platform": "Terraform",
+  "descriptionID": "a5d60df9",
+  "aggregation": 63,
+  "cloudProvider": "azure",
+  "cwe": "200",
+  "oldDescriptionText": "A sensitive port, such as port 23 or port 110, is open for the whole network in either TCP or UDP protocol",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_rule"
+}

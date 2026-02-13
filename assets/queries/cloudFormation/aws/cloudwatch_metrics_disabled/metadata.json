@@ -1,0 +1,13 @@
+{
+  "id": "5d3c1807-acb3-4bb0-be4e-0440230feeaf",
+  "queryName": "CloudWatch metrics disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "API Gateway stages must enable CloudWatch metrics for their method settings to provide visibility into request volume, latency, and errors and to support alerting and incident response.\n\n In CloudFormation, check resources of type `AWS::ApiGateway::Stage`: the `Properties.MethodSettings` array must include `MethodSetting` objects with `MetricsEnabled` set to `true`.\n\n Resources missing `MethodSettings` or where `MethodSettings[].MetricsEnabled` is missing or set to `false` will be flagged as a security/operational risk. \n \n Secure configuration example:\n\n```yaml\nMyStage:\n  Type: AWS::ApiGateway::Stage\n  Properties:\n    StageName: prod\n    RestApiId: !Ref MyApi\n    MethodSettings:\n      - ResourcePath: \"/*\"\n        HttpMethod: \"*\"\n        MetricsEnabled: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudwatch_metrics_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "72a550b1",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-cw-alarm.html"
+}

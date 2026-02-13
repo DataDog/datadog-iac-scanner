@@ -1,0 +1,14 @@
+{
+  "id": "656880aa-1388-488f-a6d4-8f73c23149b2",
+  "queryName": "RDS database cluster not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon RDS database clusters should be encrypted at rest to protect sensitive data from unauthorized access if storage is compromised. When not properly configured with the `storage_encrypted` attribute set to `true`, database contents remain in plaintext, potentially exposing sensitive information to attackers who gain access to the underlying storage. To secure your RDS cluster, ensure encryption is enabled, as shown below:\n\n```\nresource \"aws_rds_cluster\" \"secure_example\" {\n  // Required configuration\n  cluster_identifier   = \"example\"\n  engine               = \"aurora\"\n  master_password      = \"securepassword\"\n  master_username      = \"admin\"\n  \n  // Security configuration\n  storage_encrypted    = true  // Enables encryption at rest\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/rds_database_cluster_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "c88d0255",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "RDS Database Cluster Encryption should be enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/db_cluster_snapshot"
+}

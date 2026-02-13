@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "SLB policy with insecure TLS version in use",
+		"severity": "MEDIUM",
+		"line": 3,
+		"fileName": "positive.tf"
+	}
+]

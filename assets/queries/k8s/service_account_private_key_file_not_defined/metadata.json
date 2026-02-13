@@ -1,0 +1,13 @@
+{
+  "id": "ccc98ff7-68a7-436e-9218-185cb0b0b780",
+  "queryName": "Service account private key file not defined",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "When `kube-controller-manager` is used, the `--service-account-private-key-file` flag should be set. This rule checks the `containers` and `initContainers` `command` fields for `kube-controller-manager` and verifies the presence of the `--service-account-private-key-file` flag. Setting this flag ensures the controller manager has a private key to sign service account tokens.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_account_private_key_file_not_defined",
+  "platform": "Kubernetes",
+  "descriptionID": "b2fc61b4",
+  "cwe": "286",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/"
+}

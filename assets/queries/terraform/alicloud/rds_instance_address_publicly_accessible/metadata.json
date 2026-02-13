@@ -1,0 +1,14 @@
+{
+  "id": "faaefc15-51a5-419e-bb5e-51a4b5ab3485",
+  "queryName": "RDS DB instance publicly accessible",
+  "severity": "CRITICAL",
+  "category": "Insecure Configurations",
+  "descriptionText": "Replace `0.0.0.0/0` with a specific CIDR range for `address`, or remove the public access entry to restrict connectivity.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_address_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "d23dc3f9",
+  "cloudProvider": "alicloud",
+  "cwe": "668",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/db_instance#address"
+}

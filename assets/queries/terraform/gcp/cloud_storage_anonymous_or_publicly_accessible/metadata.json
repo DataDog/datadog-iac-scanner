@@ -1,0 +1,15 @@
+{
+  "id": "a6cd52a1-3056-4910-96a5-894de9f3f3b3",
+  "queryName": "Cloud Storage is anonymous or publicly accessible",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "Cloud Storage Buckets configured with anonymous or public access pose significant security risks by allowing anyone on the internet to access potentially sensitive data. Including `allUsers` in IAM bindings grants access to anyone, while `allAuthenticatedUsers` grants access to any Google account holder. Both violate the principle of least privilege.\n\nInsecure configuration example:\n```\nresource \"google_storage_bucket_iam_binding\" \"insecure\" {\n  bucket = google_storage_bucket.default.name\n  role = \"roles/storage.admin\"\n  members = [\"user:jane@example.com\", \"allUsers\"]\n}\n```\n\nSecure configuration example:\n```\nresource \"google_storage_bucket_iam_binding\" \"secure\" {\n  bucket = google_storage_bucket.default.name\n  role = \"roles/storage.admin\"\n  members = [\"user:jane@example.com\"]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/cloud_storage_anonymous_or_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "fd990360",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Cloud Storage Buckets must not be anonymously or publicly accessible, which means the attribute 'members' must not possess 'allUsers' or 'allAuthenticatedUsers'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket_iam#google_storage_bucket_iam_binding"
+}

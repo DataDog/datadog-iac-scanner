@@ -1,0 +1,14 @@
+{
+  "id": "3ab1f27d-52cc-4943-af1d-43c1939e739a",
+  "queryName": "S3 Bucket Access to Any Principal",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "Checks if the S3 bucket is accessible for all users",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_access_to_any_principal",
+  "platform": "Ansible",
+  "descriptionID": "25111d64",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/s3_bucket_module.html#ansible-collections-amazon-aws-s3-bucket-module"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "76976de7-c7b1-4f64-a94f-90c1345914c2",
+  "queryName": "ElastiCache replication group not encrypted at rest",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS ElastiCache Replication Group stores sensitive data that should be protected from unauthorized access through encryption at rest. When at-rest encryption is disabled, any data stored in the cache is vulnerable to unauthorized access if the physical storage media is compromised, stolen, or improperly decommissioned. Enabling encryption ensures that all data written to disk is encrypted, protecting against data exposure and meeting compliance requirements for data protection. To secure your ElastiCache Replication Group, add the attribute `at_rest_encryption_enabled = true` to your configuration, as shown in the following example: ```\nresource \"aws_elasticache_replication_group\" \"example\" {\n  // other configurations\n  at_rest_encryption_enabled = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elasticache_replication_group_not_encrypted_at_rest",
+  "platform": "Terraform",
+  "descriptionID": "b4d49d59",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "ElastiCache Replication Group encryption should be enabled at Rest",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticache_replication_group#at_rest_encryption_enabled"
+}

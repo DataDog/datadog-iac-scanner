@@ -1,0 +1,13 @@
+{
+  "id": "5061f84c-ab66-4660-90b9-680c9df346c0",
+  "queryName": "Beta - Nifcloud ELB has common private network",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "The `nifcloud_elb` is configured to use the shared private network `net-COMMON_PRIVATE`.\nThis exposes the private side to the shared network and should instead use a dedicated private LAN to maintain isolation.\nThe rule flags any `nifcloud_elb` where `network_interface.network_id` equals `net-COMMON_PRIVATE`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/elb_has_common_private",
+  "platform": "Terraform",
+  "descriptionID": "40e5b2b8",
+  "cloudProvider": "nifcloud",
+  "cwe": "285",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/elb#network_id"
+}

@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Service account allows access secrets",
+		"severity": "MEDIUM",
+		"line": 7,
+		"fileName": ""
+	},
+	{
+		"queryName": "Service account allows access secrets",
+		"severity": "MEDIUM",
+		"line": 49,
+		"fileName": ""
+	}
+]

@@ -1,0 +1,12 @@
+{
+  "id": "d2ad057f-0928-41ef-a83c-f59203bb855b",
+  "queryName": "Dashboard is enabled",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "If not needed, disable the dashboard to prevent it from being used as an attack vector. This rule inspects the image fields of `containers` and `initContainers` for \"kubernetes-dashboard\" or \"kubernetesui\". Resources deploying these images are reported as incorrect values.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/dashboard_is_enabled",
+  "platform": "Kubernetes",
+  "descriptionID": "ad0e6a8d",
+  "cwe": "779",
+  "providerUrl": "https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/"
+}

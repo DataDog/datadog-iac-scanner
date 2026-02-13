@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "CloudTrail SNS topic name undefined",
+    "severity": "LOW",
+    "line": 1
+  },
+  {
+    "queryName": "CloudTrail SNS topic name undefined",
+    "severity": "LOW",
+    "line": 5
+  }
+]

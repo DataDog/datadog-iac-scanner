@@ -1,0 +1,15 @@
+{
+  "id": "4bb76f17-3d63-4529-bdca-2b454529d774",
+  "queryName": "CloudTrail logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "This check ensures that logging is enabled for AWS CloudTrail by verifying that the `enable_logging` attribute is set to `true` in the resource configuration. Disabling logging (`enable_logging = false`) prevents the capture of API activity in your AWS account, which can hinder threat detection, audit investigations, and incident response efforts. For security and compliance, CloudTrail logging should always be enabled, as shown below:\n\n```\nresource \"aws_cloudtrail\" \"example\" {\n  name           = \"example\"\n  s3_bucket_name = \"bucketlog\"\n  enable_logging = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudtrail_logging_disabled",
+  "platform": "Terraform",
+  "descriptionID": "d0aecc8d",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Checks if logging is enabled for CloudTrail.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudtrail#enable_logging"
+}

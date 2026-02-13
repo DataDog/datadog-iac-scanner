@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "IAM user with access to console",
+    "severity": "MEDIUM",
+    "line": 2,
+    "filename": "positive1.tf"
+  }
+]

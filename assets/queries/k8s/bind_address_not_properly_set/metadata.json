@@ -1,0 +1,14 @@
+{
+  "id": "46a2e9ec-6a5f-4faa-9d39-4ea44d5d87a2",
+  "queryName": "Bind address not properly set",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "When running `kube-controller-manager` or `kube-scheduler`, the `--bind-address` flag must be set to `127.0.0.1`. The rule inspects command arguments in both `containers` and `initContainers` and reports a finding if the `--bind-address=127.0.0.1` flag is missing or set to a different value.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/bind_address_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "b52844f2",
+  "cwe": "710",
+  "oldSeverity": "HIGH",
+  "cloudProvider": "common",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/"
+}

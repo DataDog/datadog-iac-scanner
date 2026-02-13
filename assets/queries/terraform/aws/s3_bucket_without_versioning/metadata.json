@@ -1,0 +1,14 @@
+{
+  "id": "568a4d22-3517-44a6-a7ad-6a7eed88722c",
+  "queryName": "S3 bucket without versioning",
+  "severity": "MEDIUM",
+  "category": "Backup",
+  "descriptionText": "Amazon S3 buckets should have versioning enabled to protect against accidental or malicious deletion and overwriting of objects. Without versioning (`versioning { enabled = false }`), deleted or overwritten files cannot be recovered, potentially leading to permanent data loss or loss of critical information. Enabling versioning (`versioning { enabled = true }`) allows you to preserve, retrieve, and restore every version of every object stored in the bucket, significantly improving data resiliency.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_without_versioning",
+  "platform": "Terraform",
+  "descriptionID": "7614ce3b",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "oldDescriptionText": "S3 bucket should have versioning enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket#versioning"
+}

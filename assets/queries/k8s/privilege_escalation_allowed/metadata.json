@@ -1,0 +1,12 @@
+{
+  "id": "5572cc5e-1e4c-4113-92a6-7a8a3bd25e6d",
+  "queryName": "Privilege escalation allowed",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should not run with the `allowPrivilegeEscalation` attribute set to `true`. The attribute must be present and set to `false` to prevent a container from gaining more privileges than its parent process. This rule applies to both `containers` and `initContainers` and reports missing attributes or values set to `true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/privilege_escalation_allowed",
+  "platform": "Kubernetes",
+  "descriptionID": "525fccf4",
+  "cwe": "269",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+}

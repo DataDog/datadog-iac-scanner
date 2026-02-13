@@ -1,0 +1,14 @@
+{
+  "id": "b4d9c12b-bfba-4aeb-9cb8-2358546d8041",
+  "queryName": "Vulnerable default SSL certificate",
+  "severity": "MEDIUM",
+  "category": "Insecure Defaults",
+  "descriptionText": "CloudFront distributions should use a custom SSL/TLS certificate for custom domain names so you control certificate trust and can enforce strong TLS protocol and SNI settings.\n\nFor `AWS::CloudFront::Distribution` resources, `ViewerCertificate.CloudFrontDefaultCertificate` must be omitted or set to `false`. When a custom certificate is used via `ViewerCertificate.AcmCertificateArn` or `ViewerCertificate.IamCertificateId`, the `ViewerCertificate.SslSupportMethod` and `ViewerCertificate.MinimumProtocolVersion` properties must be defined. Resources with `CloudFrontDefaultCertificate` set to `true` will be flagged. Distributions that specify an ACM or IAM certificate but omit `SslSupportMethod` or `MinimumProtocolVersion` will also be flagged as misconfigured.\n\nSecure configuration example:\n\n```yaml\nMyDistribution:\n  Type: AWS::CloudFront::Distribution\n  Properties:\n    DistributionConfig:\n      ViewerCertificate:\n        AcmCertificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abcdefg-1234-5678-90ab-cdef12345678\n        SslSupportMethod: sni-only\n        MinimumProtocolVersion: TLSv1.2_2019\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/vulnerable_default_ssl_certificate",
+  "platform": "CloudFormation",
+  "descriptionID": "ee3b82bc",
+  "cloudProvider": "aws",
+  "cwe": "295",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-cloudfront-distribution.html"
+}

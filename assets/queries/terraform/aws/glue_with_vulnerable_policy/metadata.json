@@ -1,0 +1,14 @@
+{
+  "id": "d25edb51-07fb-4a73-97d4-41cecdc53a22",
+  "queryName": "Glue with vulnerable policy",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Resource-based policies for AWS Glue should not use wildcard values (`\"*\"`) in the `principals` or `actions` attributes, as shown in the example below:\n\n```\nprincipals {\n  identifiers = [\"*\"]\n  type        = \"AWS\"\n}\nactions = [\"glue:*\"]\n```\n\nAllowing all actions and granting access to any principal exposes the Glue resources to unauthorized access or privilege escalation, significantly increasing the risk of data breaches or malicious modifications. Restricting both principals and allowed actions to the minimum necessary set reduces the attack surface and enforces least privilege.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/glue_with_vulnerable_policy",
+  "platform": "Terraform",
+  "descriptionID": "61db62a1",
+  "cloudProvider": "aws",
+  "cwe": "155",
+  "oldDescriptionText": "Glue policy should avoid wildcard in 'principals' and 'actions'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/glue_resource_policy#policy"
+}

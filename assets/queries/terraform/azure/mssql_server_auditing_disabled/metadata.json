@@ -1,0 +1,14 @@
+{
+  "id": "609839ae-bd81-4375-9910-5bce72ae7b92",
+  "queryName": "MSSQL server auditing disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Auditing should be enabled for MSSQL servers to ensure that access and activity logs are generated and retained for security monitoring and incident response. Without the `azurerm_mssql_server_extended_auditing_policy` resource configured, suspicious activities or potential breaches may go undetected, increasing the risk of data compromise. Auditing can be enabled by adding a resource like the following:\n\n```\nresource \"azurerm_mssql_server_extended_auditing_policy\" \"example\" {\n  database_id      = azurerm_mssql_database.example.id\n  storage_endpoint = azurerm_storage_account.example.primary_blob_endpoint\n  retention_in_days = 6\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/mssql_server_auditing_disabled",
+  "platform": "Terraform",
+  "descriptionID": "f0be3ea8",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldDescriptionText": "Make sure that for MSSQL Servers, that 'Auditing' is set to 'On'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/mssql_server"
+}

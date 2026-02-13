@@ -1,0 +1,13 @@
+{
+  "id": "12726829-93ed-4d51-9cbe-13423f4299e1",
+  "queryName": "SQS with SSE disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "SQS queues should encrypt message contents at rest to prevent unauthorized disclosure if storage, backups, or snapshots are compromised and to meet data protection and compliance requirements.\n\nIn CloudFormation, `AWS::SQS::Queue` resources must either define `Properties.KmsMasterKeyId` (a customer-managed KMS key ID, ARN, or alias) or set `Properties.SqsManagedSseEnabled` to `true` to enable server-side encryption. Resources that omit `KmsMasterKeyId` and either omit `SqsManagedSseEnabled` or set it to `false` will be flagged.\n\nSecure configurations:\n\n```yaml\nMyQueue:\n  Type: AWS::SQS::Queue\n  Properties:\n    SqsManagedSseEnabled: true\n```\n\n```yaml\nMyQueueWithKms:\n  Type: AWS::SQS::Queue\n  Properties:\n    KmsMasterKeyId: arn:aws:kms:us-west-2:123456789012:key/EXAMPLE-KEY-ID\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sqs_with_sse_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "7c3c1b44",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-sqs-queues.html#aws-sqs-queue-kmsmasterkeyid"
+}

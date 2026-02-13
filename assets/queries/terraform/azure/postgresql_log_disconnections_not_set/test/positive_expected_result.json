@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "PostgreSQL log disconnections not set",
+    "severity": "MEDIUM",
+    "line": 5
+  },
+  {
+    "queryName": "PostgreSQL log disconnections not set",
+    "severity": "MEDIUM",
+    "line": 12
+  },
+  {
+    "queryName": "PostgreSQL log disconnections not set",
+    "severity": "MEDIUM",
+    "line": 19
+  }
+]

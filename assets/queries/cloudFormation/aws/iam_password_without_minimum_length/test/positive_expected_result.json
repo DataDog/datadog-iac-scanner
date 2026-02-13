@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "IAM password without minimum length",
+    "severity": "LOW",
+    "line": 9,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "IAM password without minimum length",
+    "severity": "LOW",
+    "line": 10,
+    "fileName": "positive2.json"
+  }
+]

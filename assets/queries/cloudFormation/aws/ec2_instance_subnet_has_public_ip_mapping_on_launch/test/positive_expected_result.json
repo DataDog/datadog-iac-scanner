@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "EC2 instance subnet has public IP mapping on launch",
+    "severity": "MEDIUM",
+    "line": 7,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "EC2 instance subnet has public IP mapping on launch",
+    "severity": "MEDIUM",
+    "line": 8,
+    "fileName": "positive2.json"
+  }
+]

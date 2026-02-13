@@ -1,0 +1,13 @@
+{
+  "id": "5e7acff5-095b-40ac-9073-ac2e4ad8a512",
+  "queryName": "IAM policies without groups",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Attaching IAM policies directly to individual users reduces centralized control and increases the risk of privilege sprawl, orphaned permissions, and inconsistent access management. This rule flags AWS CloudFormation `AWS::IAM::Policy` resources that define a non-empty `Properties.Policies[].Users` entry. Policies should be assigned to groups instead using the `Groups` property (or attached as managed policies to roles or groups) so permissions can be managed and audited centrally. Resources with `Resources.<name>.Properties.Policies[].Users` present and non-empty will be flagged. Replace user-level policy attachments with `Groups` (provide group names or `!Ref` to group resources) or use managed policy attachments for better lifecycle control.\n\nSecure configuration example assigning the policy to a group:\n\n```yaml\nMyPolicy:\n  Type: AWS::IAM::Policy\n  Properties:\n    PolicyName: AllowS3Read\n    PolicyDocument:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Action:\n            - \"s3:GetObject\"\n          Resource: \"*\"\n    Groups:\n      - !Ref MyGroup\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_policies_without_groups",
+  "platform": "CloudFormation",
+  "descriptionID": "d9bcf74d",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-iam.html#scenario-iam-policy"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "65c1bc7a-4835-4ac4-a2b6-13d310b0648d",
+  "queryName": "Cluster labels disabled",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Kubernetes clusters should be configured with labels by defining the `resource_labels` attribute in the `google_container_cluster` resource. Missing cluster labels make it harder to organize, identify, and apply policies to Kubernetes environments, potentially leading to management issues and security policy gaps. To mitigate this, clusters must include the `resource_labels` block as shown below:\n\n```\nresource \"google_container_cluster\" \"example\" {\n  name               = \"my-cluster\"\n  location           = \"us-central1-a\"\n  initial_node_count = 3\n\n  resource_labels {\n    environment = \"production\"\n    team        = \"devops\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/cluster_labels_disabled",
+  "platform": "Terraform",
+  "descriptionID": "947385a5",
+  "cloudProvider": "gcp",
+  "cwe": "710",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Kubernetes Clusters must be configured with labels, which means the attribute 'resource_labels' must be defined",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/container_cluster"
+}

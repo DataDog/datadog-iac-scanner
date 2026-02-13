@@ -1,0 +1,13 @@
+{
+  "id": "869e7fb4-30f0-4bdb-b360-ad548f337f2f",
+  "queryName": "Redis Cache Allows Non SSL Connections",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Redis Cache resources should not allow non-SSL connections",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/redis_cache_allows_non_ssl_connections",
+  "platform": "Ansible",
+  "descriptionID": "31e56819",
+  "cloudProvider": "azure",
+  "cwe": "319",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_rediscache_module.html"
+}

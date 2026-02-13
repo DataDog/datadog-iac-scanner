@@ -1,0 +1,14 @@
+{
+  "id": "0ad60203-c050-4115-83b6-b94bde92541d",
+  "queryName": "Container runs unmasked",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Checks whether a container has unmasked access to the host's `/proc` filesystem, which allows retrieval of sensitive information and could permit changing kernel parameters at runtime. The rule verifies that `kubernetes_pod_security_policy.spec.allowed_proc_mount_types` does not contain the value `Unmasked` and that `allowed_proc_mount_types` includes `Default` as the expected value. Unmasked access to `/proc` increases the attack surface and can enable privilege escalation or other runtime compromises.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/container_runs_unmasked",
+  "platform": "Terraform",
+  "descriptionID": "bbb3aa40",
+  "cwe": "1188",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#allowed_proc_mount_types"
+}

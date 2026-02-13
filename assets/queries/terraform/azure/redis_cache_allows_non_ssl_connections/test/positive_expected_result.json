@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Redis cache allows non SSL connections",
+    "severity": "MEDIUM",
+    "line": 8
+  }
+]

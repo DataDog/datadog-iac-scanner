@@ -1,0 +1,13 @@
+{
+  "id": "0e5872b4-19a0-4165-8b2f-56d9e14b909f",
+  "queryName": "IAM managed policy applied to a user",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "Attaching AWS managed IAM policies directly to individual users increases the risk of privilege sprawl and inconsistent permissions. It also makes auditing and centralized access control harder. Assigning policies to groups enforces consistent role-based access and simplifies permission management.\n \n In CloudFormation, validate `AWS::IAM::ManagedPolicy` resources: the `Users` property must not be populated (non-empty array). Instead, assign the managed policy via the `Groups` property (an array of group names or references) or attach the policy to `AWS::IAM::Group` resources. Resources with `Users` defined will be flagged. Remove `Users` and use `Groups` (or group attachments) to centrally manage access.\n\nSecure CloudFormation example:\n\n```yaml\nMyManagedPolicy:\n  Type: AWS::IAM::ManagedPolicy\n  Properties:\n    ManagedPolicyName: MyPolicy\n    PolicyDocument:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Action: s3:ListBucket\n          Resource: arn:aws:s3:::example-bucket\n    Groups:\n      - Ref: MyAdminGroup\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_managed_policy_applied_to_a_user",
+  "platform": "CloudFormation",
+  "descriptionID": "e7fa1d68",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iam-managedpolicy.html#cfn-iam-managedpolicy-groups"
+}

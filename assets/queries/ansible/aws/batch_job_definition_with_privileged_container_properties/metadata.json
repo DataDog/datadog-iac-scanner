@@ -1,0 +1,13 @@
+{
+  "id": "defe5b18-978d-4722-9325-4d1975d3699f",
+  "queryName": "Batch Job Definition With Privileged Container Properties",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Batch Job Definition should not have Privileged Container Properties",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/batch_job_definition_with_privileged_container_properties",
+  "platform": "Ansible",
+  "descriptionID": "9683e81a",
+  "cloudProvider": "aws",
+  "cwe": "250",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/aws_batch_job_definition_module.html"
+}

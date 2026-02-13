@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "MSK broker is publicly accessible",
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive1.tf"
+  }
+]

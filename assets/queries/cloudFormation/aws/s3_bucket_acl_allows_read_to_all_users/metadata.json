@@ -1,0 +1,13 @@
+{
+  "id": "219f4c95-aa50-44e0-97de-cf71f4641170",
+  "queryName": "S3 bucket ACL allows read to all users",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "S3 buckets with a publicly readable ACL allow any internet user to list and download objects. This can lead to data leakage, accidental exposure of sensitive information, and compliance violations. This rule checks `AWS::S3::Bucket` resources and flags buckets whose `Properties.AccessControl` is set to `PublicRead`. To remediate, set `AccessControl` to `Private` or remove the ACL and enable S3 Block Public Access controls. If you must serve public content, use a CDN (CloudFront) with an origin access identity or a narrowly scoped bucket policy instead of a public ACL.\n\nSecure CloudFormation example:\n\n```yaml\nMySecureBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    BucketName: my-secure-bucket\n    AccessControl: Private\n    PublicAccessBlockConfiguration:\n      BlockPublicAcls: true\n      IgnorePublicAcls: true\n      BlockPublicPolicy: true\n      RestrictPublicBuckets: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_acl_allows_read_to_all_users",
+  "platform": "CloudFormation",
+  "descriptionID": "cfd67020",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-s3-bucket.html"
+}

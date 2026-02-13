@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Ensure that UDP services are restricted from the Internet",
+    "severity": "HIGH",
+    "resourceType": "azurerm_network_security_group",
+    "line": 6
+  },
+  {
+    "queryName": "Ensure that UDP services are restricted from the Internet",
+    "severity": "HIGH",
+    "resourceType": "azurerm_network_security_rule",
+    "line": 27
+  }
+]

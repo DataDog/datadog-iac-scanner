@@ -1,0 +1,12 @@
+{
+  "id": "6b896afb-ca07-467a-b256-1a0077a1c08e",
+  "queryName": "RBAC wildcard in rule",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Roles and ClusterRoles with wildcard RBAC permissions grant excessive rights to the Kubernetes API and should be avoided. This rule flags Role and ClusterRole resources where any rule uses the wildcard \"*\" in the `apiGroups`, `resources`, or `verbs` fields. Wildcards permit broad access across API groups, resources, or actions, which can lead to privilege escalation or unintended access. The principle of least privilege recommends listing only the specific resources and actions required and reviewing existing rules to remove unnecessary wildcards.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/rbac_wildcard_in_rule",
+  "platform": "Kubernetes",
+  "descriptionID": "ccf4e279",
+  "cwe": "732",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/"
+}

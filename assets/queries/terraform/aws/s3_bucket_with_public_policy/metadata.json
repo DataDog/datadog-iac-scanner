@@ -1,0 +1,14 @@
+{
+  "id": "1a4bc881-9f69-4d44-8c9a-d37d08f54c50",
+  "queryName": "S3 bucket allows public policy",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "S3 buckets should block public policies to prevent unauthorized access to bucket contents. When the `block_public_policy` attribute is set to false or not defined in the `aws_s3_bucket_public_access_block` resource, attackers could potentially attach public policies to the bucket, exposing sensitive data to the internet. To secure your S3 bucket, ensure that `block_public_policy` is set to `true`, as shown in the following example:\n\n```terraform\nresource \"aws_s3_bucket_public_access_block\" \"example\" {\n  bucket = aws_s3_bucket.example.id\n  block_public_acls   = true\n  block_public_policy = true\n  ignore_public_acls  = false\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_with_public_policy",
+  "platform": "Terraform",
+  "descriptionID": "a8924b3b",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "S3 bucket allows public policy",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block"
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "queryName": "DocumentDB logging is disabled",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "DocumentDB logging is disabled",
+    "severity": "MEDIUM",
+    "line": 10,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "DocumentDB logging is disabled",
+    "severity": "MEDIUM",
+    "line": 10,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "DocumentDB logging is disabled",
+    "severity": "MEDIUM",
+    "line": 10,
+    "filename": "positive4.tf"
+  },
+  {
+    "queryName": "DocumentDB logging is disabled",
+    "severity": "MEDIUM",
+    "line": 19,
+    "fileName": "positive_module.tf"
+  }
+]

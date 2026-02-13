@@ -1,0 +1,13 @@
+{
+  "id": "ca2fba76-c1a7-4afd-be67-5249f861cb0e",
+  "queryName": "Tiller (Helm v2) is deployed",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Check whether Tiller is deployed.  \nDetects references to Tiller in resource `metadata` and in container `image` fields.  \nSpecifically inspects `metadata.name`, `metadata.labels.app`, `metadata.labels.name`, top-level `spec`, pod template `spec.template`, and both `container` and `init_container` entries for container images that contain `tiller`.  \nWhen a match is found, the rule reports an issue with attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/tiller_is_deployed",
+  "platform": "Terraform",
+  "descriptionID": "bf1b3f30",
+  "cwe": "200",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#image"
+}

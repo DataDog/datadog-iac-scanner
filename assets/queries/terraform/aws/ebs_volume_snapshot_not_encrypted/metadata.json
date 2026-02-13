@@ -1,0 +1,14 @@
+{
+  "id": "e6b4b943-6883-47a9-9739-7ada9568f8ca",
+  "queryName": "EBS volume snapshot not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "EBS volume snapshots should be encrypted to protect sensitive data at rest from unauthorized access. When an EBS volume is unencrypted, snapshots derived from it remain unencrypted as well, potentially exposing sensitive information if accessed by malicious actors. The security impact includes potential data breaches, compliance violations, and unauthorized data access even if the original volume is no longer in use.\n\nTo ensure proper encryption, create your EBS volumes with encryption enabled, as shown below:\n\n```\nresource \"aws_ebs_volume\" \"secure_example\" {\n  availability_zone = \"us-west-2a\"\n  size              = 40\n  encrypted         = true\n\n  tags = {\n    Name = \"HelloWorld\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/ebs_volume_snapshot_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "b36765a7",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "The value on AWS EBS Volume Snapshot Encryptation must be true",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ebs_snapshot#encrypted"
+}

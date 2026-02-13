@@ -1,0 +1,15 @@
+{
+  "id": "38c71c00-c177-4cd7-8d36-cd1007cdb190",
+  "queryName": "Vault auditing disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Enabling logging for Azure Key Vault ensures that all access and management activities are captured and can be monitored for unauthorized or anomalous activity. Without logging enabled—such as omitting a `azurerm_monitor_diagnostic_setting` resource—critical security events and access records would not be recorded, making it difficult to detect potential breaches or comply with audit requirements. A secure configuration includes adding a diagnostic setting. For example:\n\n```\nresource \"azurerm_monitor_diagnostic_setting\" \"example\" {\n  name               = \"example\"\n  target_resource_id = azurerm_key_vault.example.id\n  storage_account_id = azurerm_storage_account.example.id\n\n  log {\n    category = \"AuditEvent\"\n    enabled  = true\n  }\n}\n```\nThis logs Key Vault events and helps ensure accountability and traceability for sensitive key and secret operations.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/vault_auditing_disabled",
+  "platform": "Terraform",
+  "descriptionID": "047ab315",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Ensure that logging for Azure KeyVault is 'Enabled'",
+  "providerUrl": "https://www.terraform.io/docs/providers/azurerm/r/key_vault.html"
+}

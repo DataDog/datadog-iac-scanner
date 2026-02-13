@@ -1,0 +1,22 @@
+{
+  "id": "e576ce44-dd03-4022-a8c0-3906acca2ab4",
+  "queryName": "BigQuery dataset is public",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "This check identifies BigQuery datasets configured to allow public or anonymous access, which can expose sensitive data to unauthorized users and increase the risk of data breaches. The vulnerability occurs when access controls use the special groups `allAuthenticatedUsers` or `allUsers`, effectively making data available to anyone with a Google account or the general public. To secure your BigQuery dataset, restrict access to specific users, groups, or domains instead of using public access groups, as shown in the example below:\n\n```terraform\naccess {\n  role          = \"OWNER\"\n  user_by_email = google_service_account.bqowner.email\n}\n\naccess {\n  role   = \"READER\"\n  domain = \"hashicorp.com\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/bigquery_dataset_is_public",
+  "platform": "Terraform",
+  "descriptionID": "cb5081a0",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldDescriptionText": "BigQuery dataset is anonymously or publicly accessible",
+  "providerUrl": "https://www.terraform.io/docs/providers/google/r/bigquery_dataset.html",
+  "defaultFrameworks": [
+    {
+      "control": "3.5",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "gcp"
+    }
+  ]
+}

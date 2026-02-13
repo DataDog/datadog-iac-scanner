@@ -1,0 +1,14 @@
+{
+  "id": "9ef08939-ea40-489c-8851-667870b2ef50",
+  "queryName": "ROS stack notifications disabled",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "The `alicloud_ros_stack` resource must include the `notification_urls` attribute with at least one URL to receive stack-related events. Without a defined, non-empty `notification_urls`, the stack will not receive lifecycle notifications such as create, update, or rollback.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ros_stack_notifications_disabled",
+  "platform": "Terraform",
+  "descriptionID": "9552bb69",
+  "cloudProvider": "alicloud",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ros_stack#notification_urls"
+}

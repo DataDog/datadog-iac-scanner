@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Unrestricted SQL server access",
+    "severity": "CRITICAL",
+    "line": 19
+  },
+  {
+    "queryName": "Unrestricted SQL server access",
+    "severity": "CRITICAL",
+    "line": 27
+  }
+]

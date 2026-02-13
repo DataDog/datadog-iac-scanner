@@ -1,0 +1,15 @@
+{
+  "id": "38b85c45-e772-4de8-a247-69619ca137b3",
+  "queryName": "CloudWatch AWS organizations changes missing alarm",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "This check ensures that a log metric filter and alarm are configured to monitor changes to AWS Organizations within CloudWatch. Without a properly configured metric filter and alarm, critical events such as the creation, deletion, or modification of organizational accounts and policies may go undetected. This lack of visibility increases the risk of malicious or unauthorized changes going unnoticed, which could compromise the security and governance of the entire AWS environment. Left unaddressed, this misconfiguration may allow threat actors to make unauthorized changes to the organization structure, potentially leading to privilege escalation or data exfiltration.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudwatch_aws_organizations_changes_missing_alarm",
+  "platform": "Terraform",
+  "descriptionID": "38b85c45",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Ensure a log metric filter and alarm exist for AWS organizations changes",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_metric_filter#pattern"
+}

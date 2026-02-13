@@ -1,0 +1,15 @@
+{
+  "id": "b5681959-6c09-4f55-b42b-c40fa12d03ec",
+  "queryName": "IAM user policy without MFA",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check verifies that the AWS root user is required to authenticate using Multi-Factor Authentication (MFA). If the root user is not protected with MFA, as in a policy lacking a condition on `\"aws:MultiFactorAuthPresent\"`, unauthorized users with access to the root credentials could compromise the entire AWS account. Enforcing MFA by adding a policy condition, such as the following, significantly reduces the risk of credential theft, unauthorized privilege escalation, and account takeovers.\n\n```\n\"Condition\": {\n  \"BoolIfExists\": {\n    \"aws:MultiFactorAuthPresent\": \"true\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/iam_user_policy_without_mfa",
+  "platform": "Terraform",
+  "descriptionID": "3e905f71",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Check if the root user is authenticated with MFA",
+  "providerUrl": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_mfa_configure-api-require.html"
+}

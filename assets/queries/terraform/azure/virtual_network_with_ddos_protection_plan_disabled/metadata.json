@@ -1,0 +1,15 @@
+{
+  "id": "b4cc2c52-34a6-4b43-b57c-4bdeb4514a5a",
+  "queryName": "Virtual network with DDoS protection plan disabled",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "Azure Virtual Networks should have a DDoS Protection Plan enabled to safeguard against distributed denial-of-service (DDoS) attacks that can overwhelm and disrupt services hosted in the cloud. Without the `ddos_protection_plan` block configured with `enable = true` in the `azurerm_virtual_network` resource, as shown below, the network remains vulnerable to these attacks, potentially resulting in service downtime and extensive business impact.\n\n```\nddos_protection_plan {\n  id     = azurerm_network_ddos_protection_plan.example.id\n  enable = true\n}\n```\n\nEnabling DDoS protection ensures automatic detection and mitigation of DDoS attacks, helping protect application availability and data integrity in the Azure environment.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/virtual_network_with_ddos_protection_plan_disabled",
+  "platform": "Terraform",
+  "descriptionID": "c08cb91b",
+  "cloudProvider": "azure",
+  "cwe": "693",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Virtual Network should have DDoS Protection Plan enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_network#ddos_protection_plan"
+}

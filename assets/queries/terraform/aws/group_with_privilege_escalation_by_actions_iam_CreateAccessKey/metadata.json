@@ -1,0 +1,14 @@
+{
+  "id": "846646e3-2af1-428c-ac5d-271eccfa6faf",
+  "queryName": "Group with privilege escalation by actions 'iam:CreateAccessKey'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "This check identifies IAM group policies that grant the `iam:CreateAccessKey` permission with the resource set to `\"*\"`, which allows users in the group to create access keys for any IAM user in the AWS account. This represents a serious privilege escalation vulnerability because any member of the group could create access keys for higher-privilege users and gain unauthorized access to sensitive resources. If left unaddressed, attackers or malicious insiders could leverage this permission to take control of other users' accounts, compromise the environment, or bypass existing security controls. Restricting `iam:CreateAccessKey` to only necessary users and scoping its resource access is critical to reducing the risk of privilege escalation.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_CreateAccessKey",
+  "platform": "Terraform",
+  "descriptionID": "5182dbde",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Group with privilege escalation by actions 'iam:CreateAccessKey' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_group_policy#policy"
+}

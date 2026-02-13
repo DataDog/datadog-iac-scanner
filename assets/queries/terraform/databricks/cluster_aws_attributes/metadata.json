@@ -1,0 +1,14 @@
+{
+  "id": "b0749c53-e3ff-4d09-bbe4-dca94e2e7a38",
+  "queryName": "Beta - check Databricks cluster AWS attribute best practices",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "One or more AWS attribute best practices are not followed for this Databricks cluster.\n\nThe rule flags `databricks_cluster` resources when:\n\n- `aws_attributes.availability` is set to `SPOT`\n- `aws_attributes.first_on_demand` is missing or set to `0`\n- `aws_attributes.zone_id` is not equal to `auto`\n\nEach finding includes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/cluster_aws_attributes",
+  "platform": "Terraform",
+  "descriptionID": "b6345aa6",
+  "cloudProvider": "common",
+  "cwe": "710",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.databricks.com/clusters/cluster-config-best-practices.html"
+}

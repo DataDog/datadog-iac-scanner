@@ -1,0 +1,32 @@
+[
+	{
+		"queryName": "Tiller (Helm v2) is deployed",
+		"severity": "HIGH",
+		"line": 3,
+		"fileName": ""
+	},
+	{
+		"queryName": "Tiller (Helm v2) is deployed",
+		"severity": "HIGH",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "Tiller (Helm v2) is deployed",
+		"severity": "HIGH",
+		"line": 103,
+		"fileName": ""
+	},
+	{
+		"queryName": "Tiller (Helm v2) is deployed",
+		"severity": "HIGH",
+		"line": 175,
+		"fileName": ""
+	},
+	{
+		"queryName": "Tiller (Helm v2) is deployed",
+		"severity": "HIGH",
+		"line": 200,
+		"fileName": ""
+	}
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Policy without principal",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive.tf"
+  }
+]

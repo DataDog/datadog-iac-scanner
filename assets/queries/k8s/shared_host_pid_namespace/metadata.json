@@ -1,0 +1,12 @@
+{
+  "id": "302736f4-b16c-41b8-befe-c0baffa0bd9d",
+  "queryName": "Shared host PID namespace",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should not share the host process ID namespace. If a Pod's `spec.hostPID` is set to true, its containers run in the host's PID namespace and can observe or interact with host processes, increasing the risk of privilege escalation and interference. This rule flags resources where `spec.hostPID` is true; the field should be false or undefined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/shared_host_pid_namespace",
+  "platform": "Kubernetes",
+  "descriptionID": "c34092eb",
+  "cwe": "200",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+}

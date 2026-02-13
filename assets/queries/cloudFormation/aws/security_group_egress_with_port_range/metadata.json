@@ -1,0 +1,13 @@
+{
+  "id": "dae9c373-8287-462f-8746-6f93dad93610",
+  "queryName": "Security group egress with port range",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Egress rules should restrict outbound traffic to a single explicit port to enforce least privilege. Allowing port ranges expands the attack surface and can enable unintended outbound connections, lateral movement, or data exfiltration.\n\nIn CloudFormation, `AWS::EC2::SecurityGroupEgress` resources must have `Properties.FromPort` and `Properties.ToPort` defined and set to the same value. For `AWS::EC2::SecurityGroup` resources, each entry in `Properties.SecurityGroupEgress` must have `FromPort` equal to `ToPort`. Resources missing these properties, or where `FromPort` does not equal `ToPort`, will be flagged. Set both properties to the same explicit port number (for example, `443`) instead of using a range.\n\nSecure configuration examples:\n\n```yaml\nMyEgressRule:\n  Type: AWS::EC2::SecurityGroupEgress\n  Properties:\n    GroupId: sg-01234567\n    IpProtocol: tcp\n    FromPort: 443\n    ToPort: 443\n    CidrIp: 10.0.0.0/16\n```\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Example security group\n    SecurityGroupEgress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        CidrIp: 10.0.0.0/16\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_group_egress_with_port_range",
+  "platform": "CloudFormation",
+  "descriptionID": "af27e909",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-security-group-egress.html"
+}

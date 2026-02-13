@@ -1,0 +1,14 @@
+{
+  "id": "70cb518c-d990-46f6-bc05-44a5041493d6",
+  "queryName": "User with privilege escalation by actions 'iam:AttachUserPolicy'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "This check identifies IAM policies that permit the action `iam:AttachUserPolicy` with the `Resource` field set to `\"*\"`. Granting this permission to a user, as shown below, allows them to attach any AWS managed or custom policy to any user, which can lead to privilege escalation and potential compromise of the AWS environment.\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"iam:AttachUserPolicy\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```\n\nIf left unaddressed, an attacker with this permission could escalate their privileges far beyond what was originally intended, potentially gaining administrative access and leading to a full environment takeover.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_AttachUserPolicy",
+  "platform": "Terraform",
+  "descriptionID": "98aa676c",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "User with privilege escalation by actions 'iam:AttachUserPolicy' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_user_policy#policy"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "2b1836f1-dcce-416e-8e16-da8c71920633",
+  "queryName": "Workload host port not specified",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Checks whether a Kubernetes workload defines a container port with a specified hostPort. It inspects both top-level pod specs and workload templates (spec.template.spec) for entries in containers and initContainers and reports any ports where hostPort is defined. Findings are reported as \"IncorrectValue\" because container port entries should not include hostPort.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/workload_host_port_not_specified",
+  "platform": "Kubernetes",
+  "descriptionID": "dba41ddb",
+  "cwe": "665",
+  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/connect-applications-service/#exposing-the-service"
+}

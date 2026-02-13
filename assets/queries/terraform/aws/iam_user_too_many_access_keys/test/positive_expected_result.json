@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "IAM user has too many access keys",
+    "severity": "MEDIUM",
+    "line": 2
+  },
+  {
+    "queryName": "IAM user has too many access keys",
+    "severity": "MEDIUM",
+    "line": 7
+  }
+]

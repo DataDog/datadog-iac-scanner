@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "S3 bucket object not encrypted",
+    "severity": "HIGH",
+    "line": 14,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "S3 bucket object not encrypted",
+    "severity": "HIGH",
+    "line": 1,
+    "fileName": "positive_module.tf"
+  }
+]

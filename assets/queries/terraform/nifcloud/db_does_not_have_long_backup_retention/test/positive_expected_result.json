@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Beta - Nifcloud RDB has backup retention less than 2 days",
+		"severity": "MEDIUM",
+		"line": 1,
+		"fileName": "positive1.tf"
+	},
+	{
+		"queryName": "Beta - Nifcloud RDB has backup retention less than 2 days",
+		"severity": "MEDIUM",
+		"line": 1,
+		"fileName": "positive2.tf"
+	}
+]

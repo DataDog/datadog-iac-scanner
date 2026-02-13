@@ -1,0 +1,1742 @@
+[
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive4.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive4.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive4.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive5.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive6.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive6.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive6.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive6.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive6.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive7.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 6,
+    "filename": "positive8.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  },
+  {
+    "queryName": "Sensitive port is exposed to wide private network",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive9.tf"
+  }
+]

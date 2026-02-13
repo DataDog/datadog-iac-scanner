@@ -1,0 +1,13 @@
+{
+  "id": "f20e97f9-4919-43f1-9be9-f203cd339cdd",
+  "queryName": "OSS bucket encryption using CMK disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "`alicloud_oss_bucket` resources must have server-side encryption enabled and configured to use a customer-managed KMS key. The `server_side_encryption_rule` block must be present, and the `kms_master_key_id` attribute must be set. Absence of either is considered a policy violation.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_cmk_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "5907ee8c",
+  "cloudProvider": "alicloud",
+  "cwe": "311",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/oss_bucket#server_side_encryption_rule"
+}

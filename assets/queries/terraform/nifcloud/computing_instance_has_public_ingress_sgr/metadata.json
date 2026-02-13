@@ -1,0 +1,13 @@
+{
+  "id": "b2ea2367-8dc9-4231-a035-d0b28bfa3dde",
+  "queryName": "Beta - Nifcloud computing has public ingress security group rule",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "An ingress `nifcloud_security_group_rule` allows traffic from a `/0` CIDR. The policy detects `nifcloud_security_group_rule` resources whose `cidr_ip` is `/0` (allowing traffic from anywhere) and flags them as insecure. The rule reports the following attributes: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/computing_instance_has_public_ingress_sgr",
+  "platform": "Terraform",
+  "descriptionID": "54f48b3e",
+  "cloudProvider": "nifcloud",
+  "cwe": "668",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/security_group_rule#cidr_ip"
+}

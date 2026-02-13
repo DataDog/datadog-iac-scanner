@@ -1,0 +1,12 @@
+{
+  "id": "f985a7d2-d404-4a7f-9814-f645f791e46e",
+  "queryName": "Invalid Media Type Value (v2)",
+  "severity": "INFO",
+  "category": "Best Practices",
+  "descriptionText": "The Media Type value should match the following format: <type>/<subtype>[+suffix][;parameters]",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/invalid_media_type_value",
+  "platform": "OpenAPI",
+  "descriptionID": "bde04b9d",
+  "cwe": "710",
+  "providerUrl": "https://swagger.io/specification/#media-type-object"
+}

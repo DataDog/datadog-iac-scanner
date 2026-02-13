@@ -1,0 +1,13 @@
+{
+  "id": "01986452-bdd8-4aaa-b5df-d6bf61d616ff",
+  "queryName": "ECS service admin role is present",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Amazon ECS services must not be assigned administrative IAM roles because a service role with admin privileges lets containers or the ECS control plane perform broad, potentially destructive actions across your account. This increases the risk of privilege escalation and data exposure.\n \n This check targets `AWS::ECS::Service` resources with a `Role` property and load balancers configured. It flags cases where `Role` is provided as a literal string that contains `admin` (case-insensitive), which commonly indicates an admin role or admin ARN.\n \n The `Role` property should reference a least-privilege IAM role (for example, reference an `AWS::IAM::Role` resource by ARN) and must not be an admin role or include `AdministratorAccess` policies. Note that this rule specifically looks for literal role names/strings containing `admin` and will not flag roles supplied via CloudFormation `Ref`. \n \n Secure example where the service references a dedicated, scoped IAM role:\n\n```yaml\nMyECSServiceRole:\n  Type: AWS::IAM::Role\n  Properties:\n    AssumeRolePolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Principal:\n            Service: ecs.amazonaws.com\n          Action: sts:AssumeRole\n    ManagedPolicyArns:\n      - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole\n\nMyService:\n  Type: AWS::ECS::Service\n  Properties:\n    Role: !GetAtt MyECSServiceRole.Arn\n    LoadBalancers:\n      - ContainerName: myapp\n        ContainerPort: 80\n        TargetGroupArn: !Ref MyTargetGroup\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecs_service_admin_role_is_present",
+  "platform": "CloudFormation",
+  "descriptionID": "756701f8",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-service.html"
+}

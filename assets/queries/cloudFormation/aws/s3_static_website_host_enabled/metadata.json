@@ -1,0 +1,13 @@
+{
+  "id": "90501b1b-cded-4cc1-9e8b-206b85cda317",
+  "queryName": "S3 static website host enabled",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "S3 buckets configured for static website hosting expose content via the S3 website endpoint. These endpoints do not support HTTPS, and website hosting is frequently paired with public access. This increases the risk of accidental data exposure, content tampering, and man-in-the-middle attacks.\n\nThe `WebsiteConfiguration` property on `AWS::S3::Bucket` resources indicates static website hosting and must not be defined. This rule flags any resource where `Resources.<name>.Properties.WebsiteConfiguration` is present.\n\nIf you require public web content, serve it through a CDN (for example, CloudFront) and restrict bucket access via policies and PublicAccessBlock rather than enabling S3 website hosting. Ensure HTTPS is enforced at the CDN. Resources with `WebsiteConfiguration` defined will be flagged so you can remove the property or replace direct website hosting with a secured delivery approach.\n\nSecure example (CloudFormation - no `WebsiteConfiguration` and public access blocked):\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    AccessControl: Private\n    PublicAccessBlockConfiguration:\n      BlockPublicAcls: true\n      IgnorePublicAcls: true\n      BlockPublicPolicy: true\n      RestrictPublicBuckets: true\n    BucketEncryption:\n      ServerSideEncryptionConfiguration:\n        - ServerSideEncryptionByDefault:\n            SSEAlgorithm: AES256\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_static_website_host_enabled",
+  "platform": "CloudFormation",
+  "descriptionID": "b50aab99",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-s3-websiteconfiguration.html"
+}

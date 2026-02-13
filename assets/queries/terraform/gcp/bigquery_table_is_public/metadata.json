@@ -1,0 +1,14 @@
+{
+  "id": "a9b8c7d6-e5f4-3210-abcd-1234567890ab",
+  "queryName": "BigQuery table is public",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "When BigQuery tables are configured with public access through IAM members or bindings using principals such as `allUsers` or `allAuthenticatedUsers`, they expose potentially sensitive data to anyone on the internet or any authenticated Google account. This significantly increases the risk of data breaches, unauthorized access, and compliance violations related to data privacy regulations.\n\nTo secure BigQuery tables, always restrict access to specific authenticated users, service accounts, or groups instead of using public principals. For example, use `user:someone@example.com` instead of `allUsers` or `allAuthenticatedUsers` as shown in this comparison:\n\n```hcl\n// Insecure configuration\nresource \"google_bigquery_table_iam_member\" \"insecure_example\" {\n  dataset_id = \"my_dataset\"\n  table_id   = \"my_table\"\n  member     = \"allUsers\"\n  role       = \"roles/bigquery.dataViewer\"\n}\n\n// Secure configuration\nresource \"google_bigquery_table_iam_member\" \"secure_example\" {\n  dataset_id = \"my_dataset\"\n  table_id   = \"my_table\"\n  member     = \"user:someone@example.com\"\n  role       = \"roles/bigquery.dataViewer\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/bigquery_table_is_public",
+  "platform": "Terraform",
+  "descriptionID": "a9b8c7d6",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldDescriptionText": "BigQuery tables must not be publicly accessible. Public principals like 'allUsers' or 'allAuthenticatedUsers' should not be assigned as IAM members or bindings, as this may expose sensitive data.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/bigquery_table_iam"
+}

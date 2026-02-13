@@ -1,0 +1,13 @@
+{
+  "id": "7d05ca25-91b4-42ee-b6f6-b06611a87ce8",
+  "queryName": "Beta - Databricks token has indefinite lifetime",
+  "severity": "MEDIUM",
+  "category": "Insecure Defaults",
+  "descriptionText": "The `databricks_token` resource is missing the `lifetime_seconds` attribute, resulting in a token with an indefinite lifetime.\nThis attribute defines the token's validity period and should be set to enforce expiration.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/indefinitely_token",
+  "platform": "Terraform",
+  "descriptionID": "79759163",
+  "cloudProvider": "common",
+  "cwe": "307",
+  "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/token"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "de7f5e83-da88-4046-871f-ea18504b1d43",
+  "queryName": "ALB listening on HTTP",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check verifies that AWS Application Load Balancers (ALBs) are not configured to listen for incoming traffic on unencrypted HTTP ports (typically port 80). Allowing an ALB to accept HTTP traffic without redirecting it to HTTPS exposes sensitive data to potential interception, as communication is not encrypted in transit. Insecure configurations, such as setting the `protocol` parameter within an `aws_lb_listener` to `\"HTTP\"` without ensuring a redirect to `\"HTTPS\"`, can result in data breaches or man-in-the-middle attacks.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/alb_listening_on_http",
+  "platform": "Terraform",
+  "descriptionID": "47a8608d",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "AWS Application Load Balancer (alb) should not listen on HTTP",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lb_listener"
+}

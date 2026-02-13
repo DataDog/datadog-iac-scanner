@@ -1,0 +1,13 @@
+{
+  "id": "8c415f6f-7b90-4a27-a44a-51047e1506f9",
+  "queryName": "RDS with backup disabled",
+  "severity": "MEDIUM",
+  "category": "Backup",
+  "descriptionText": "Disabling automated backups for an RDS instance removes point-in-time recovery and increases the risk of permanent data loss and compliance violations. In AWS CloudFormation, check `AWS::RDS::DBInstance` resources. The `Properties.BackupRetentionPeriod` must be a positive integer (greater than or equal to `1`) representing the number of days to retain automated backups. This rule flags resources where `BackupRetentionPeriod` is set to `0`. Ensure the property is defined and set to at least `1` to enable automated backups and point-in-time recovery.\n\nSecure configuration example:\n\n```yaml\nMyDB:\n  Type: AWS::RDS::DBInstance\n  Properties:\n    DBInstanceIdentifier: my-db\n    Engine: mysql\n    BackupRetentionPeriod: 7\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/rds_with_backup_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "4ebe02ca",
+  "cloudProvider": "aws",
+  "cwe": "754",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-rds-database-instance.html"
+}

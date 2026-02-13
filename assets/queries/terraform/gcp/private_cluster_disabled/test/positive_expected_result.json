@@ -1,0 +1,37 @@
+[
+  {
+    "queryName": "Private cluster disabled",
+    "severity": "MEDIUM",
+    "line": 1
+  },
+  {
+    "queryName": "Private cluster disabled",
+    "severity": "MEDIUM",
+    "line": 16
+  },
+  {
+    "queryName": "Private cluster disabled",
+    "severity": "MEDIUM",
+    "line": 30
+  },
+  {
+    "queryName": "Private cluster disabled",
+    "severity": "MEDIUM",
+    "line": 44
+  },
+  {
+    "queryName": "Private cluster disabled",
+    "severity": "MEDIUM",
+    "line": 58
+  },
+  {
+    "queryName": "Private cluster disabled",
+    "severity": "MEDIUM",
+    "line": 73
+  },
+  {
+    "queryName": "Private cluster disabled",
+    "severity": "MEDIUM",
+    "line": 88
+  }
+]

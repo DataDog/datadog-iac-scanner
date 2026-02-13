@@ -1,0 +1,38 @@
+[
+  {
+    "queryName": "Elasticsearch logs disabled",
+    "severity": "MEDIUM",
+    "line": 34,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Elasticsearch logs disabled",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Elasticsearch logs disabled",
+    "severity": "MEDIUM",
+    "line": 44,
+    "fileName": "positive3.json"
+  },
+  {
+    "queryName": "Elasticsearch logs disabled",
+    "severity": "MEDIUM",
+    "line": 7,
+    "fileName": "positive4.json"
+  },
+  {
+    "queryName": "Elasticsearch logs disabled",
+    "severity": "MEDIUM",
+    "line": 43,
+    "fileName": "positive5.json"
+  },
+  {
+    "queryName": "Elasticsearch logs disabled",
+    "severity": "MEDIUM",
+    "line": 34,
+    "fileName": "positive6.yaml"
+  }
+]

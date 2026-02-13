@@ -1,0 +1,14 @@
+{
+  "id": "be2aa235-bd93-4b68-978a-1cc65d49082f",
+  "queryName": "Role with privilege escalation by actions 'cloudformation:CreateStack' and 'iam:PassRole'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting an IAM role permissions for both `cloudformation:CreateStack` and `iam:PassRole` actions with the resource set to `\"*\"` allows users with this role to launch CloudFormation stacks that assume any IAM role in the account, leading to privilege escalation. This vulnerability means an attacker could potentially create resources with elevated privileges or gain full administrative access to the AWS environment. To mitigate this, avoid assigning overly permissive policies, and instead restrict `iam:PassRole` and `cloudformation:CreateStack` to only trusted roles and explicitly specify the allowed resource ARNs in the policy's `Resource` attribute.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_PassRole_and_cloudformation_CreateStack",
+  "platform": "Terraform",
+  "descriptionID": "779be66e",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Role with privilege escalation by actions 'cloudformation:CreateStack' and 'iam:PassRole' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy#policy"
+}

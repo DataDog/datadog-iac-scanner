@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Workload mounting with sensitive OS directory",
+		"severity": "HIGH",
+		"line": 53,
+		"fileName": ""
+	},
+	{
+		"queryName": "Workload mounting with sensitive OS directory",
+		"severity": "HIGH",
+		"line": 112,
+		"fileName": ""
+	}
+]

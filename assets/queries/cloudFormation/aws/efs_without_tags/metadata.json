@@ -1,0 +1,13 @@
+{
+  "id": "08e39832-5e42-4304-98a0-aa5b43393162",
+  "queryName": "EFS without tags",
+  "severity": "LOW",
+  "category": "Build Process",
+  "descriptionText": "Amazon EFS file systems should be tagged to enable asset identification and to support automated policy and access controls. Missing tags make it harder to track ownership and enforce tag-based security or lifecycle rules.\n \n The CloudFormation resource `AWS::EFS::FileSystem` must include the `FileSystemTags` property, and it must be defined (not `null`). Resources missing `FileSystemTags` or with it set to `null` will be flagged for remediation.\n\nSecure configuration example:\n\n```yaml\nMyEFS:\n  Type: AWS::EFS::FileSystem\n  Properties:\n    FileSystemTags:\n      - Key: Name\n        Value: my-efs\n      - Key: Environment\n        Value: production\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/efs_without_tags",
+  "platform": "CloudFormation",
+  "descriptionID": "a7eb7aff",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-efs-filesystem.html"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "4a1e6b34-1008-4e61-a5f2-1f7c276f8d14",
+  "queryName": "Unrestricted security group ingress",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "Security groups must not allow ingress from the entire internet (`0.0.0.0/0` or `::/0`) because such wide-open rules expose instances and services to unauthorized access, brute-force attempts, and remote exploitation.\n\nThis rule checks `AWS::EC2::SecurityGroupIngress` resources (`Properties.CidrIp` / `Properties.CidrIpv6`) and `AWS::EC2::SecurityGroup` resources' `Properties.SecurityGroupIngress` entries. `CidrIp` must not be `0.0.0.0/0` and `CidrIpv6` must not be `::/0`. Resources with those values will be flagged.\n\nTo remediate, restrict access to specific trusted CIDR ranges, use VPC-only ranges, prefix lists, or reference other security groups via `SourceSecurityGroupId`/`SourceSecurityGroupOwnerId`.\n\nSecure examples (CloudFormation YAML):\n\n```yaml\nMyRestrictedIngress:\n  Type: AWS::EC2::SecurityGroupIngress\n  Properties:\n    GroupId: !Ref MySecurityGroup\n    IpProtocol: tcp\n    FromPort: 22\n    ToPort: 22\n    CidrIp: 10.0.0.0/16\n```\n\n```yaml\nMySGToSGIngress:\n  Type: AWS::EC2::SecurityGroupIngress\n  Properties:\n    GroupId: !Ref MySecurityGroup\n    IpProtocol: tcp\n    FromPort: 443\n    ToPort: 443\n    SourceSecurityGroupId: sg-0123456789abcdef0\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/unrestricted_security_group_ingress",
+  "platform": "CloudFormation",
+  "descriptionID": "08256d31",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group-ingress.html"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "1819ac03-542b-4026-976b-f37addd59f3b",
+  "queryName": "EBS volume not attached to instances",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "Unattached Amazon EBS volumes can retain sensitive data at rest and therefore increase the risk of data exposure or unauthorized access if snapshots are created, shared, or the storage is otherwise misused. In CloudFormation, each `AWS::EC2::Volume` should be associated with an `AWS::EC2::VolumeAttachment` whose `Properties.VolumeId` references the volume (typically using `Ref` to the volume logical ID). Resources missing a corresponding `AWS::EC2::VolumeAttachment` or where no `AWS::EC2::VolumeAttachment` resource's `Properties.VolumeId` equals the volume's `Ref` will be flagged.\n \n Note: This rule detects explicit `AWS::EC2::VolumeAttachment` resources and may not catch attachments made via instance block device mappings, LaunchConfigurations, or Auto Scaling constructs.\n\nSecure example with an explicit attachment:\n\n```yaml\nMyVolume:\n  Type: AWS::EC2::Volume\n  Properties:\n    AvailabilityZone: us-east-1a\n    Size: 100\n    Encrypted: true\n\nAttachVolume:\n  Type: AWS::EC2::VolumeAttachment\n  Properties:\n    InstanceId: !Ref MyInstance\n    VolumeId: !Ref MyVolume\n    Device: /dev/sdf\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ebs_volume_not_attached_to_instances",
+  "platform": "CloudFormation",
+  "descriptionID": "33e2f7f6",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-ebs-volumeattachment.html"
+}

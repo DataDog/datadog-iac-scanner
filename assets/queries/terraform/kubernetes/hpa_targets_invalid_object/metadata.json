@@ -1,0 +1,13 @@
+{
+  "id": "17e52ca3-ddd0-4610-9d56-ce107442e110",
+  "queryName": "HPA targets invalid object",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "The Horizontal Pod Autoscaler must target a valid object.\n\nThe `kubernetes_horizontal_pod_autoscaler` resource's `spec.metric` must be an object with `type` set to `Object` and an `object` field.\n\nThat `object` must include `metric`, `target`, and a `described_object` containing `name`, `api_version`, and `kind`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/hpa_targets_invalid_object",
+  "platform": "Terraform",
+  "descriptionID": "f4d95aa4",
+  "cwe": "400",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/horizontal_pod_autoscaler#metric"
+}

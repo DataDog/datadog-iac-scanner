@@ -1,0 +1,22 @@
+{
+  "id": "6998389e-66b2-473d-8d05-c8d71ac4d04d",
+  "queryName": "Array Without Maximum Number of Items (v3)",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Array schema should have the field 'maxItems' set",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/array_without_maximum_number_items",
+  "platform": "OpenAPI",
+  "descriptionID": "7389106d",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "99eb2c95-2040-4104-9e7c-e16f7474d218",
+      "queryName": "Array Without Maximum Number of Items (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#parameterObject",
+      "descriptionText": "Array schema/parameter should have the field 'maxItems' set"
+    }
+  },
+  "cwe": "665",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://swagger.io/specification/#schema-object"
+}

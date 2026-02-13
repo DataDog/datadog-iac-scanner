@@ -1,0 +1,13 @@
+{
+  "id": "a964d6e3-8e1e-4d93-8120-61fa640dd55a",
+  "queryName": "IAM user without password reset",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "Console-enabled IAM users should require a password reset on first sign-in to prevent reuse of initial credentials if they are intercepted and to ensure each user sets a unique password.\n\nIn CloudFormation, check `AWS::IAM::User` resources. When `Properties.LoginProfile` contains a `Password`, `LoginProfile.PasswordResetRequired` must be present and set to `true`. This rule flags resources that omit `LoginProfile`, include only a `Password` without `PasswordResetRequired`, or explicitly set `PasswordResetRequired` to `false`.\n\nSecure configuration example:\n\n```yaml\nMyUser:\n  Type: AWS::IAM::User\n  Properties:\n    UserName: example-user\n    LoginProfile:\n      Password: \"InitialPassword123!\"\n      PasswordResetRequired: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/user_iam_missing_password_reset_required",
+  "platform": "CloudFormation",
+  "descriptionID": "a44edc48",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-iam-user-loginprofile.html"
+}

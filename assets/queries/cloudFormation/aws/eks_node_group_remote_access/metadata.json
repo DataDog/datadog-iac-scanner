@@ -1,0 +1,14 @@
+{
+  "id": "73d59e76-a12c-4b74-a3d8-d3e1e19c25b3",
+  "queryName": "EKS node group remote access",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Amazon EKS node groups that configure an EC2 SSH key permit SSH access to worker nodes. If that access is not limited to specific security groups, it can be reachable from untrusted networks, enabling unauthorized access and lateral movement.\n \n For `AWS::EKS::Nodegroup` resources, when `Properties.RemoteAccess.Ec2SshKey` is set, `Properties.RemoteAccess.SourceSecurityGroups` must be defined and not `null` to explicitly restrict SSH ingress to trusted security groups. Resources missing `RemoteAccess.SourceSecurityGroups` or with it set to `null` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyNodeGroup:\n  Type: AWS::EKS::Nodegroup\n  Properties:\n    RemoteAccess:\n      Ec2SshKey: my-key\n      SourceSecurityGroups:\n        - sg-0123456789abcdef0\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/eks_node_group_remote_access",
+  "platform": "CloudFormation",
+  "descriptionID": "b3ebf24c",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-eks-nodegroup.html"
+}

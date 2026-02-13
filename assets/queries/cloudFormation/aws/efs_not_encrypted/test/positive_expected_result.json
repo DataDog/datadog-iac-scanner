@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "EFS not encrypted",
+    "severity": "HIGH",
+    "line": 49,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "EFS not encrypted",
+    "severity": "HIGH",
+    "line": 90,
+    "fileName": "positive2.json"
+  }
+]

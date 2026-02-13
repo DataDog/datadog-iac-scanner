@@ -1,0 +1,50 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+package similarity
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"path/filepath"
+	"strings"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+)
+
+// ComputeSimilarityID This function receives four string parameters and computes a sha256 hash
+func ComputeSimilarityID(ctx context.Context, basePaths []string, filePath, queryID, searchKey, searchValue string) (*string, error) {
+	contextLogger := logger.FromContext(ctx)
+	basePath := ""
+	for _, path := range basePaths {
+		if strings.Contains(filepath.ToSlash(filePath), filepath.ToSlash(path)) {
+			basePath = filepath.ToSlash(path)
+			break
+		}
+	}
+	standardizedPath, err := standardizeToRelativePath(basePath, filePath)
+	if err != nil {
+		contextLogger.Debug().Msgf("Error while standardizing path: %s", err)
+	}
+
+	var stringNode = standardizedPath + queryID + searchKey + searchValue
+
+	hashSum := sha256.Sum256([]byte(stringNode))
+
+	similarity := hex.EncodeToString(hashSum[:])
+	return &similarity, nil
+}
+
+func standardizeToRelativePath(basePath, path string) (string, error) {
+	cleanPath := filepath.Clean(path)
+	standardPath := filepath.ToSlash(cleanPath)
+	basePath = filepath.ToSlash(basePath)
+	relativeStandardPath, err := filepath.Rel(basePath, standardPath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(relativeStandardPath), nil
+}

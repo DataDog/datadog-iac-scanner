@@ -1,0 +1,20 @@
+[
+  {
+    "queryName": "Image pull policy of the container is not set to always",
+    "severity": "LOW",
+    "line": 9,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Image pull policy of the container is not set to always",
+    "severity": "LOW",
+    "line": 18,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Image pull policy of the container is not set to always",
+    "severity": "LOW",
+    "line": 16,
+    "fileName": "positive3.yaml"
+  }
+]

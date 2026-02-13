@@ -1,0 +1,13 @@
+{
+  "id": "c689f51b-9203-43b3-9d8b-caed123f706c",
+  "queryName": "BOM - AWS Elasticache",
+  "severity": "TRACE",
+  "category": "Bill Of Materials",
+  "descriptionText": "ElastiCache clusters must not be exposed to the public internet because unrestricted access can expose sensitive cached data and allow attackers to modify or delete cache contents or pivot into your network. This rule inspects `AWS::ElastiCache::CacheCluster` resources and follows the `CacheSecurityGroupNames` entries through `AWS::ElastiCache::SecurityGroupIngress` to the referenced `AWS::EC2::SecurityGroup` resources to determine accessibility. Any EC2 security group ingress rule with `CidrIp` set to `0.0.0.0/0` or `::/0` is considered unrestricted and will cause the cluster to be reported as having at least one unrestricted security group. Resources missing `CacheSecurityGroupNames` or where the mappings cannot be resolved will be reported as \"unknown\". \n\nSecure example: \n\n```yaml\nMyCacheSecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: \"Restricted access for ElastiCache\"\n    VpcId: vpc-123456\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 6379\n        ToPort: 6379\n        CidrIp: 10.0.0.0/16\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/elasticache",
+  "platform": "CloudFormation",
+  "descriptionID": "deea2b5c",
+  "cloudProvider": "aws",
+  "cwe": "532",
+  "providerUrl": "https://kics.io"
+}

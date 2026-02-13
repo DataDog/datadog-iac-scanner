@@ -1,0 +1,14 @@
+[
+  {
+    "line": 11,
+    "queryName": "Batch job definition with privileged container properties",
+    "severity": "HIGH",
+    "filename": "positive.tf"
+  },
+  {
+    "line": 26,
+    "queryName": "Batch job definition with privileged container properties",
+    "severity": "HIGH",
+    "filename": "positive_module.tf"
+  }
+]

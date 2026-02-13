@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "S3 bucket allows authenticated users access",
+    "severity": "HIGH",
+    "line": 8
+  }
+]

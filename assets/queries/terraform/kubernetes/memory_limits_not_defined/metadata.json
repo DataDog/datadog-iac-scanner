@@ -1,0 +1,13 @@
+{
+  "id": "fd097ed0-7fe6-4f58-8b71-fef9f0820a21",
+  "queryName": "Memory limits not defined",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Memory limits must be defined for every container. This prevents resource exhaustion by ensuring containers do not exceed their allocated memory. The rule validates both container and init_container entries (array or object forms) and requires resources, resources.limits, and resources.limits.memory to be set; it reports a MissingAttribute when any are missing.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/memory_limits_not_defined",
+  "platform": "Terraform",
+  "descriptionID": "c957affa",
+  "cwe": "400",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#limits"
+}

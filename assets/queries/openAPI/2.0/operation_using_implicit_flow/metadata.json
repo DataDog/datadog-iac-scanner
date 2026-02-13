@@ -1,0 +1,13 @@
+{
+  "id": "f42dfe7e-787d-4478-a75e-a5f3d8a2269e",
+  "queryName": "Operation Using Implicit Flow",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Operation Object should not use implicit flow",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/operation_using_implicit_flow",
+  "platform": "OpenAPI",
+  "descriptionID": "5f7dafc1",
+  "cwe": "284",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://swagger.io/specification/v2/#operation-object"
+}

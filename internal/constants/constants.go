@@ -1,0 +1,129 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+package constants
+
+import (
+	"fmt"
+	"math"
+)
+
+var (
+	// Version - current KICS version
+	Version = "development"
+	// SCMCommit - Source control management commit identifier
+	SCMCommit = "NOCOMMIT"
+	// SentryDSN - sentry DSN, unset for disabling
+	SentryDSN = ""
+	// BaseURL - Descriptions endpoint URL
+	BaseURL = ""
+	// APIScanner - API scanner feature switch
+	APIScanner = ""
+
+	// AvailableCategories - All categories and its identifies
+	AvailableCategories = map[string]string{
+		"Access Control":          "CAT001",
+		"Availability":            "CAT002",
+		"Backup":                  "CAT003",
+		"Best Practices":          "CAT004",
+		"Build Process":           "CAT005",
+		"Encryption":              "CAT006",
+		"Insecure Configurations": "CAT007",
+		"Insecure Defaults":       "CAT008",
+		"Networking and Firewall": "CAT009",
+		"Observability":           "CAT010",
+		"Resource Management":     "CAT011",
+		"Secret Management":       "CAT012",
+		"Supply-Chain":            "CAT013",
+		"Structure and Semantics": "CAT014",
+		"Bill Of Materials":       "CAT015",
+	}
+
+	// AvailablePlatforms - All platforms available
+	AvailablePlatforms = map[string]string{
+		"Ansible":                 "ansible",
+		"CICD":                    "cicd",
+		"CloudFormation":          "cloudFormation",
+		"Crossplane":              "crossplane",
+		"Knative":                 "knative",
+		"Kubernetes":              "k8s",
+		"OpenAPI":                 "openAPI",
+		"Terraform":               "terraform",
+		"AzureResourceManager":    "azureResourceManager",
+		"Bicep":                   "bicep",
+		"GoogleDeploymentManager": "googleDeploymentManager",
+		"GRPC":                    "grpc",
+		"Buildah":                 "buildah",
+		"Pulumi":                  "pulumi",
+		"ServerlessFW":            "serverlessFW",
+	}
+
+	// AvailableSeverities - All severities available
+	AvailableSeverities = []string{
+		"critical",
+		"high",
+		"medium",
+		"low",
+		"info",
+		"trace",
+	}
+
+	// AvailableLogLevels - All log levels available
+	AvailableLogLevels = []string{
+		"TRACE",
+		"DEBUG",
+		"INFO",
+		"WARN",
+		"ERROR",
+		"FATAL",
+	}
+
+	// AvailableCloudProviders - All cloud providers available
+	AvailableCloudProviders = map[string]string{
+		"alicloud":     "",
+		"aws":          "",
+		"azure":        "",
+		"gcp":          "",
+		"nifcloud":     "",
+		"tencentcloud": "",
+	}
+)
+
+const (
+	// Fullname - KICS fullname
+	Fullname = "DataDog IaC Scanner"
+
+	// URL - DD Docs url
+	URL = "https://docs.datadoghq.com/security/code_security/iac_security/"
+
+	// DefaultLogFile - logfile name
+	DefaultLogFile = "info.log"
+
+	// DefaultConfigFilename - default configuration filename
+	DefaultConfigFilename = "dd-iac-scan.config"
+
+	// MinimumPreviewLines - default minimum preview lines number
+	MinimumPreviewLines = 1
+
+	// MaximumPreviewLines - default maximum preview lines number
+	MaximumPreviewLines = 30
+
+	// EngineErrorCode - Exit Status code for error in engine
+	EngineErrorCode = 126
+
+	// SignalInterruptCode - Exit Status code for a signal interrupt
+	SignalInterruptCode = 130
+
+	// MaxInteger - max possible integer in golang
+	MaxInteger = math.MaxInt64
+
+	// SentryRefreshRate - sentry crash report refresh rate
+	SentryRefreshRate = 2
+)
+
+// GetVersion - returns the current version in the format 'DataDog IaC Scanner <version>'
+func GetVersion() string {
+	return fmt.Sprintf("%s %s", Fullname, Version)
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "line": 14,
+    "fileName": "positive2.yaml",
+    "queryName": "Workspace without encryption",
+    "severity": "HIGH"
+  },
+  {
+    "fileName": "positive1.yaml",
+    "queryName": "Workspace without encryption",
+    "severity": "HIGH",
+    "line": 4
+  },
+  {
+    "queryName": "Workspace without encryption",
+    "severity": "HIGH",
+    "line": 5,
+    "fileName": "positive3.json"
+  },
+  {
+    "severity": "HIGH",
+    "line": 17,
+    "fileName": "positive4.json",
+    "queryName": "Workspace without encryption"
+  }
+]

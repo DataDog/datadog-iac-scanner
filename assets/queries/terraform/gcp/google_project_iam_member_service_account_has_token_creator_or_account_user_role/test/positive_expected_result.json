@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Google project IAM member service account has token creator or account user role",
+    "severity": "HIGH",
+    "line": 3
+  },
+  {
+    "queryName": "Google project IAM member service account has token creator or account user role",
+    "severity": "HIGH",
+    "line": 9
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "id": "d532566b-8d9d-4f3b-80bd-361fe802f9c2",
+  "queryName": "Root container not mounted as read-only",
+  "severity": "LOW",
+  "category": "Build Process",
+  "descriptionText": "Verifies that container root filesystems are mounted read-only by ensuring `security_context.read_only_root_filesystem` is set to `true`. Flags resources where `security_context` or `security_context.read_only_root_filesystem` is missing, or where `read_only_root_filesystem` is set to `false`, for both `container` and `init_container` entries. This enforces an immutable root filesystem to reduce the attack surface.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/root_container_not_mounted_as_read_only",
+  "platform": "Terraform",
+  "descriptionID": "b7afed50",
+  "cwe": "668",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#read_only_root_filesystem"
+}

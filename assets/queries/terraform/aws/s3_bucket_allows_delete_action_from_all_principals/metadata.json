@@ -1,0 +1,15 @@
+{
+  "id": "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+  "queryName": "S3 bucket allows delete action from all principals",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "This vulnerability occurs when an S3 bucket policy allows the delete action from all principals (`*`), which can lead to unauthorized deletion of data and potential data loss or service disruption. Even when IP address conditions are applied, allowing delete actions from all principals presents a significant security risk as it could be exploited if the IP restriction is bypassed or misconfigured.\n\nAn insecure configuration looks like the following:\n```\n{\n  \"Effect\": \"Allow\",\n  \"Principal\": \"*\",\n  \"Action\": \"s3:DeleteObject\",\n  \"Resource\": \"arn:aws:s3:::my_tf_test_bucket/*\"\n}\n```\n\nTo secure your S3 bucket, either explicitly deny the action or restrict it to specific principals:\n```\n{\n  \"Effect\": \"Deny\",\n  \"Action\": \"s3:*\",\n  \"Resource\": \"arn:aws:s3:::my_tf_test_bucket/*\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_allows_delete_action_from_all_principals",
+  "platform": "Terraform",
+  "descriptionID": "8dc6c718",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "S3 Buckets must not allow Delete Action From All Principals, as to prevent leaking private information to the entire internet or allow unauthorized data tampering / deletion. This means the 'Effect' must not be 'Allow' when the 'Action' is Delete, for all Principals.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy"
+}

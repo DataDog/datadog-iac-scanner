@@ -1,0 +1,15 @@
+{
+  "id": "482b7d26-0bdb-4b5f-bf6f-545826c0a3dd",
+  "queryName": "CloudTrail SNS topic name undefined",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "This check verifies whether an Amazon CloudTrail resource is configured to send logs to an SNS topic by setting the `sns_topic_name` attribute. Without specifying `sns_topic_name`, CloudTrail will not publish notifications of log file delivery events to Amazon SNS, which could result in missed alerts or delayed incident response. To address this, you should configure CloudTrail with an SNS topic, as shown below:\n\n```\nresource \"aws_cloudtrail\" \"example\" {\n  // ... other configuration ...\n  sns_topic_name = \"some-topic\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudtrail_sns_topic_name_undefined",
+  "platform": "Terraform",
+  "descriptionID": "a9eb3c6c",
+  "cloudProvider": "aws",
+  "cwe": "703",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Check if SNS topic name is set for CloudTrail",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudtrail"
+}

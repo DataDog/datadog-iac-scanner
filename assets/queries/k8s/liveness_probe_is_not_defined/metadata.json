@@ -1,0 +1,13 @@
+{
+  "id": "ade74944-a674-4e00-859e-c6eab5bde441",
+  "queryName": "Liveness probe is not defined",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "A liveness probe can improve availability by restarting unresponsive containers but can also cause cascading failures. Define a `livenessProbe` only when necessary and configure it to avoid unintended restarts. This rule flags containers that do not include a `livenessProbe`, excluding Job and CronJob resource kinds.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/liveness_probe_is_not_defined",
+  "platform": "Kubernetes",
+  "descriptionID": "f724fa60",
+  "cwe": "754",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#when-should-you-use-a-liveness-probe"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "a0ae0a4e-712b-4115-8112-51b9eeed9d69",
+  "queryName": "Lambda functions with full privileges",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Lambda functions must not be assigned IAM roles whose inline policies grant full administrative privileges, because a compromised function with full permissions can exfiltrate data, modify or delete resources, or escalate privileges across your account. This rule inspects `AWS::Lambda::Function` resources' `Properties.Role` reference (when the role is defined in the same template) and examines the referenced role's `Resources.<role>.Properties.Policies[].PolicyDocument.Statement[]`. A statement will be flagged when `Effect` is `Allow` and both `Action` and `Resource` are `*` (including arrays that contain `*`). To remediate, follow least privilege. Replace wildcard actions and resources with explicit actions and scoped ARNs, or attach narrowly scoped managed policies. Inline policies must not simultaneously allow `Action: '*'` and `Resource: '*'`.\n\nSecure example (inline role policy scoped to a single S3 bucket):\n\n```yaml\nMyLambdaRole:\n  Type: AWS::IAM::Role\n  Properties:\n    AssumeRolePolicyDocument:\n      Statement:\n        - Effect: Allow\n          Principal:\n            Service: lambda.amazonaws.com\n          Action: sts:AssumeRole\n    Policies:\n      - PolicyName: LambdaS3ReadOnly\n        PolicyDocument:\n          Statement:\n            - Effect: Allow\n              Action:\n                - s3:GetObject\n              Resource: arn:aws:s3:::example-bucket/* \n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/lambda_functions_with_full_privileges",
+  "platform": "CloudFormation",
+  "descriptionID": "48d30c57",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-lambda-function.html"
+}

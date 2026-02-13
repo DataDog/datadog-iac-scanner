@@ -1,0 +1,13 @@
+{
+  "id": "a0b846e8-815f-4f15-b660-bc4ab9fa1e1a",
+  "queryName": "Beta - Nifcloud RDB has public DB ingress security group rule",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "A `nifcloud_db_security_group` ingress security group rule allows traffic from `/0`. The rule parses `rule[].cidr_ip`, splitting on `/` and converting the suffix to a number; it flags when that numeric mask is less than 1, indicating a CIDR of `/0`. This represents an overly permissive `cidr` range that allows traffic from any IP address.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/db_security_group_has_public_ingress_sgr",
+  "platform": "Terraform",
+  "descriptionID": "05a9f362",
+  "cloudProvider": "nifcloud",
+  "cwe": "284",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/db_security_group#cidr_ip"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "b7c9a40c-23e4-4a2d-8d39-a3352f10f288",
+  "queryName": "API Gateway method settings cache not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "When caching is enabled for API Gateway methods, sensitive data may be stored in the cache. If cache encryption is not enabled, this data remains vulnerable to unauthorized access, potentially exposing sensitive information. The `cache_data_encrypted` attribute should be explicitly set to `true` in the settings block of API Gateway method settings whenever caching is enabled.\n\nSecure example:\n```terraform\nsettings {\n  metrics_enabled = true\n  logging_level = \"INFO\"\n  caching_enabled = true\n  cache_data_encrypted = true\n}\n```\n\nInsecure example:\n```terraform\nsettings {\n  metrics_enabled = true\n  logging_level = \"INFO\"\n  caching_enabled = true\n  cache_data_encrypted = false  // or omitting this field\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/api_gateway_method_settings_cache_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "ceabd70f",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "API Gateway Method Settings Cache should be encrypted",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/api_gateway_method_settings#cache_data_encrypted"
+}

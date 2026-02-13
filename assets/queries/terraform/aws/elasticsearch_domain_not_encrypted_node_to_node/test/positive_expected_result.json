@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Elasticsearch domain not encrypted node to node",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Elasticsearch domain not encrypted node to node",
+    "severity": "MEDIUM",
+    "line": 14,
+    "fileName": "positive2.tf"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "id": "e28ceb92-d588-4166-aac5-766c8f5b7472",
+  "queryName": "AWS Password Policy With Unchangeable Passwords",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Unchangeable passwords in AWS password policy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/aws_password_policy_with_unchangeable_passwords",
+  "platform": "Ansible",
+  "descriptionID": "5a7cf92f",
+  "cloudProvider": "aws",
+  "cwe": "620",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/iam_password_policy_module.html"
+}

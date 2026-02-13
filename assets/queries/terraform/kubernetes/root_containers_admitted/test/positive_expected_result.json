@@ -1,0 +1,32 @@
+[
+	{
+		"queryName": "Root containers admitted",
+		"severity": "MEDIUM",
+		"line": 6,
+		"fileName": ""
+	},
+	{
+		"queryName": "Root containers admitted",
+		"severity": "MEDIUM",
+		"line": 7,
+		"fileName": ""
+	},
+	{
+		"queryName": "Root containers admitted",
+		"severity": "MEDIUM",
+		"line": 19,
+		"fileName": ""
+	},
+	{
+		"queryName": "Root containers admitted",
+		"severity": "MEDIUM",
+		"line": 27,
+		"fileName": ""
+	},
+	{
+		"queryName": "Root containers admitted",
+		"severity": "MEDIUM",
+		"line": 37,
+		"fileName": ""
+	}
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Secrets Manager secret without KMS",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Secrets Manager secret without KMS",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive_module.tf"
+  }
+]

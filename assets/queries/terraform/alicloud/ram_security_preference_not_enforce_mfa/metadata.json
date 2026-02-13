@@ -1,0 +1,14 @@
+{
+  "id": "dcda2d32-e482-43ee-a926-75eaabeaa4e0",
+  "queryName": "RAM security preference does not enforce MFA login",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "`alicloud_ram_security_preference` must be defined and configured to enforce MFA login for `alicloud_ram_user` accounts.\nThe rule detects when the `alicloud_ram_security_preference` resource is missing, when `enforce_mfa_for_login` is not defined, or when `enforce_mfa_for_login` is set to false.\nWhen any of these conditions occur, the policy reports the affected resource and suggests setting `enforce_mfa_for_login = true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_security_preference_not_enforce_mfa",
+  "platform": "Terraform",
+  "descriptionID": "6131e90d",
+  "cloudProvider": "alicloud",
+  "cwe": "287",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ram_security_preference#enforce_mfa_for_login"
+}

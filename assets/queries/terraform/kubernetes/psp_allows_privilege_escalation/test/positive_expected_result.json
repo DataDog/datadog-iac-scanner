@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "PSP allows privilege escalation",
+		"severity": "HIGH",
+		"line": 7,
+		"fileName": ""
+	},
+	{
+		"queryName": "PSP allows privilege escalation",
+		"severity": "HIGH",
+		"line": 50,
+		"fileName": ""
+	}
+]

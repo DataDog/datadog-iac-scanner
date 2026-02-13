@@ -1,0 +1,14 @@
+{
+  "id": "9d13b150-a2ab-42a1-b6f4-142e41f81e52",
+  "queryName": "SNS topic without KmsMasterKeyId",
+  "severity": "LOW",
+  "category": "Secret Management",
+  "descriptionText": "SNS topics should use a customer-managed AWS KMS key for server-side encryption to protect published messages at rest and to enable controllable key access, rotation, and auditability.\n\nIn CloudFormation, `AWS::SNS::Topic` resources must define `Properties.KmsMasterKeyId` and set it to a KMS key identifier (key ARN, key ID, alias such as `alias/your-alias`, or a `Ref`/`Fn::GetAtt` to an `AWS::KMS::Key`). Resources missing this property will be flagged. When `KmsMasterKeyId` is undefined, SNS falls back to the AWS-managed key (`aws/sns`), which you cannot fully manage via custom key policies or rotation and which may not meet compliance or cross-account access requirements.\n\nSecure configuration example (CloudFormation YAML):\n\n```yaml\nMyKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Description: \"CMK for SNS topic encryption\"\n\nMyTopic:\n  Type: AWS::SNS::Topic\n  Properties:\n    TopicName: my-topic\n    KmsMasterKeyId: !Ref MyKey\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sns_topic_without_kms_master_key_id",
+  "platform": "CloudFormation",
+  "descriptionID": "a8a19ba3",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-sns-topic.html"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "420e6360-47bb-46f6-9072-b20ed22c842d",
+  "queryName": "StatefulSet without service name",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "StatefulSets should reference an existing headless `Service` via `spec.serviceName`. The referenced `Service` must be headless (`spec.clusterIP: \"None\"`) and exist in the same namespace. The `Service` selector labels (`spec.selector`) must match the StatefulSet Pod template labels (`spec.template.metadata.labels`).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/statefulset_without_service_name",
+  "platform": "Terraform",
+  "descriptionID": "a0d17b18",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/stateful_set#selector"
+}

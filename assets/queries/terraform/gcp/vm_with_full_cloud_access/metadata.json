@@ -1,0 +1,15 @@
+{
+  "id": "bc280331-27b9-4acb-a010-018e8098aa5d",
+  "queryName": "VM with full cloud access",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "If a Google Compute Engine VM instance is configured to use the default service account with `cloud-platform` scope (full access to all Cloud APIs), any process running on that instance can interact with all enabled Google Cloud services in the project, significantly increasing the risk of privilege escalation or unintended data exposure. For example, the following configuration is insecure:\n\n```\nservice_account {\n  scopes = [\"userinfo-email\", \"compute-ro\", \"storage-ro\", \"cloud-platform\"]\n}\n```\n\nTo limit permissions and reduce the attack surface, the service account should only be granted the minimum set of scopes necessary, such as:\n\n```\nservice_account {\n  scopes = [\"userinfo-email\", \"compute-ro\", \"storage-ro\"]\n}\n```\n\nLeaving excessive permissions unaddressed can allow attackers or compromised applications to gain broad and unnecessary access across your cloud environment.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/vm_with_full_cloud_access",
+  "platform": "Terraform",
+  "descriptionID": "a0c651be",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "A VM instance is configured to use the default service account with full access to all Cloud APIs",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance#scopes"
+}

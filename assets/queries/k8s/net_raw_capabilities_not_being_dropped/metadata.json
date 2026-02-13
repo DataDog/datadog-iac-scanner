@@ -1,0 +1,12 @@
+{
+  "id": "dbbc6705-d541-43b0-b166-dd4be8208b54",
+  "queryName": "NET_RAW capabilities not dropped",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should drop `ALL` or at least `NET_RAW` capabilities.  \nThe container's `securityContext.capabilities.drop` field must include `ALL` or `NET_RAW`.  \nIf the `drop` list is undefined or does not include these capabilities, the policy reports a violation.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/net_raw_capabilities_not_being_dropped",
+  "platform": "Kubernetes",
+  "descriptionID": "e9790956",
+  "cwe": "269",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+}

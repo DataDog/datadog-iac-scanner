@@ -1,0 +1,14 @@
+{
+  "id": "07f7134f-9f37-476e-8664-670c218e4702",
+  "queryName": "PostgreSQL log disconnections not set",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "The PostgreSQL server parameter `log_disconnections` controls whether session disconnections are logged, which is important for auditing and monitoring database activity. If this parameter is set to `\"off\"`, as shown in the configuration below, database disconnect events will not be recorded, making it significantly harder to detect unauthorized access or troubleshoot potential security incidents.\n\n```\nresource \"azurerm_postgresql_configuration\" \"example\" {\n    name                = \"log_disconnections\"\n    resource_group_name = data.azurerm_resource_group.example.name\n    server_name         = azurerm_postgresql_server.example.name\n    value               = \"off\"\n}\n```\n\nTo mitigate this risk, ensure that `log_disconnections` is configured to `\"on\"` in your Terraform code:\n\n```\nresource \"azurerm_postgresql_configuration\" \"example\" {\n    name                = \"log_disconnections\"\n    resource_group_name = data.azurerm_resource_group.example.name\n    server_name         = azurerm_postgresql_server.example.name\n    value               = \"on\"\n}\n```\n\nLeaving this parameter disabled can result in blind spots in your security monitoring and incident response processes.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/postgresql_log_disconnections_not_set",
+  "platform": "Terraform",
+  "descriptionID": "d183d853",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldDescriptionText": "Make sure that for PostgreSQL Database, server parameter 'log_disconnections' is set to 'ON'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_configuration"
+}

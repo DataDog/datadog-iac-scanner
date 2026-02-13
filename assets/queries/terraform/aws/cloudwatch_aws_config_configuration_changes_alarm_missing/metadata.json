@@ -1,0 +1,15 @@
+{
+  "id": "5b8d7527-de8e-4114-b9dd-9d988f1f418f",
+  "queryName": "CloudWatch AWS Config configuration changes alarm missing",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "A log metric filter and alarm should be configured in AWS CloudWatch to detect changes to AWS Config settings, such as stopping the configuration recorder or modifying delivery channels. Without properly linking the `aws_cloudwatch_log_metric_filter` and the `aws_cloudwatch_metric_alarm`—for example, by incorrectly setting the `metric_name` in the alarm—the system may fail to alert administrators to unauthorized or unintended configuration changes. This could result in undetected activity that undermines compliance or security auditing, potentially exposing the environment to security risks. \n\nA secure Terraform configuration should reference the correct filter name in the alarm, as shown below:\n\n```\nresource \"aws_cloudwatch_metric_alarm\" \"CIS_AWS_Config_Change_CW_Alarm\" {\n  alarm_name          = \"CIS-3.9-AWSConfigChanges\"\n  metric_name         = aws_cloudwatch_log_metric_filter.CIS_AWS_Config_Change_Metric_Filter.id\n  namespace           = \"CIS_Metric_Alarm_Namespace\"\n  // ...other configuration...\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudwatch_aws_config_configuration_changes_alarm_missing",
+  "platform": "Terraform",
+  "descriptionID": "698457eb",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "Ensure a log metric filter and alarm exist for AWS Config configuration changes",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_metric_filter#pattern"
+}

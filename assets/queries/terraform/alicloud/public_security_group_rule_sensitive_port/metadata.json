@@ -1,0 +1,14 @@
+{
+  "id": "2ae9d554-23fb-4065-bfd1-fe43d5f7c419",
+  "queryName": "Public security group rule sensitive port",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "A sensitive port, such as `23` or `110`, is open to the public using `TCP` or `UDP`. This rule detects ingress `alicloud_security_group_rule` resources where `cidr_ip` is set to `0.0.0.0/0`, the `protocol` is `tcp`, `udp`, or `all`, and the `port_range` includes a known sensitive port. This configuration exposes the service to the public internet and increases the risk of unauthorized access.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/public_security_group_rule_sensitive_port",
+  "platform": "Terraform",
+  "descriptionID": "717c49e0",
+  "aggregation": 63,
+  "cloudProvider": "alicloud",
+  "cwe": "284",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/security_group_rule#port_range"
+}

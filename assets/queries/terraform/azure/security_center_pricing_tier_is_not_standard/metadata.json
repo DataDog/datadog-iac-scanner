@@ -1,0 +1,14 @@
+{
+  "id": "819d50fd-1cdf-45c3-9936-be408aaad93e",
+  "queryName": "Security center pricing tier is not standard",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Selecting the appropriate pricing tier for Azure Security Center is crucial for ensuring comprehensive security monitoring and protection. If the `tier` attribute in the `azurerm_security_center_subscription_pricing` resource is set to `\"Free\"`, as in the following configuration, only limited security features and monitoring capabilities are enabled, leaving the environment more vulnerable to threats:\n\n```\nresource \"azurerm_security_center_subscription_pricing\" \"example\" {\n   tier = \"Free\"\n}\n```\n\nTo enhance security coverage, upgrade to the `\"Standard\"` tier, as shown below. This enables advanced features such as threat detection and automated response, significantly reducing the risk of undetected attacks and data breaches:\n\n```\nresource \"azurerm_security_center_subscription_pricing\" \"example\" {\n   tier = \"Standard\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/security_center_pricing_tier_is_not_standard",
+  "platform": "Terraform",
+  "descriptionID": "6a9ab071",
+  "cloudProvider": "azure",
+  "cwe": "665",
+  "oldDescriptionText": "Make sure that the 'Standard' pricing tiers were selected.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/security_center_subscription_pricing"
+}

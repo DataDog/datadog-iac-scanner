@@ -1,0 +1,50 @@
+[
+  {
+    "queryName": "CloudWatch S3 policy change alarm missing",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "CloudWatch S3 policy change alarm missing",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "CloudWatch S3 policy change alarm missing",
+    "severity": "MEDIUM",
+    "line": 30,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "CloudWatch S3 policy change alarm missing",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "CloudWatch S3 policy change alarm missing",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "CloudWatch S3 policy change alarm missing",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive4.tf"
+  },
+  {
+    "queryName": "CloudWatch S3 policy change alarm missing",
+    "severity": "MEDIUM",
+    "line": 4,
+    "fileName": "positive5.tf"
+  },
+  {
+    "queryName": "CloudWatch S3 policy change alarm missing",
+    "severity": "MEDIUM",
+    "line": 31,
+    "fileName": "positive5.tf"
+  }
+]

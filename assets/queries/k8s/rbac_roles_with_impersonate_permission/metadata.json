@@ -1,0 +1,12 @@
+{
+  "id": "9f85c3f6-26fd-4007-938a-2e0cb0100980",
+  "queryName": "RBAC roles with impersonate permission",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Roles or ClusterRoles with the `impersonate` permission allow subjects to assume the rights of other users, groups, or service accounts. If an identity with such permissions is compromised, attackers can abuse this sudo-like capability to escalate privileges and act with the impersonated principals' access. Misuse of the `impersonate` permission can enable lateral movement, persistent access, and the bypass of intended permission boundaries. For these reasons, `impersonate` is considered a high-risk permission and is commonly subject to restriction and monitoring.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/rbac_roles_with_impersonate_permission",
+  "platform": "Kubernetes",
+  "descriptionID": "9f85c3f6",
+  "cwe": "732",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/authentication/#user-impersonation"
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "IP aliasing disabled",
+    "severity": "MEDIUM",
+    "line": 2
+  },
+  {
+    "queryName": "IP aliasing disabled",
+    "severity": "MEDIUM",
+    "line": 13
+  },
+  {
+    "queryName": "IP aliasing disabled",
+    "severity": "MEDIUM",
+    "line": 26
+  }
+]

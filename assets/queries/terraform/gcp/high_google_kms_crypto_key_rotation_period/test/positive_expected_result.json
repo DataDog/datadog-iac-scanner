@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "High Google KMS crypto key rotation period",
+    "severity": "MEDIUM",
+    "line": 4
+  },
+  {
+    "queryName": "High Google KMS crypto key rotation period",
+    "severity": "MEDIUM",
+    "line": 10
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "id": "ffac8a12-322e-42c1-b9b9-81ff85c39ef7",
+  "queryName": "HTTP port open to internet",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Opening HTTP ports (for example, using `from_port = 80` and `to_port = 80`) to the internet in a security group by setting `cidr_blocks = [\"0.0.0.0/0\"]` allows unrestricted access from any IP address. This misconfiguration exposes resources to potential unauthorized access and attacks, such as brute force or exploitation of unpatched web services. To mitigate this risk, restrict `cidr_blocks` to trusted IP addresses or use security controls that limit ingress to necessary sources only, as in the example below:\n\n```\nresource \"aws_security_group\" \"secure_http\" {\n  ingress {\n    from_port   = 80\n    to_port     = 80\n    protocol    = \"tcp\"\n    cidr_blocks = [\"203.0.113.0/24\"] // Restrict to trusted IP ranges only\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/http_port_open",
+  "platform": "Terraform",
+  "descriptionID": "a829609b",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "The HTTP port is open to the internet in a Security Group",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group"
+}

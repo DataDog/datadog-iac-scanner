@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Function App not using latest TLS encryption version",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Function App not using latest TLS encryption version",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive2.tf"
+  }
+]

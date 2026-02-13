@@ -1,0 +1,13 @@
+{
+  "id": "97e94d17-e2c7-4109-a53b-6536ac1bb64e",
+  "queryName": "VPC attached with too many gateways",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "Attaching an excessive number of gateways to a single VPC increases the attack surface and may indicate misconfiguration or exceed AWS service limits. Exceeding service limits can cause routing problems or service disruption.\n\nThis rule checks `AWS::EC2::VPC` resources and counts `AWS::EC2::VPCGatewayAttachment` resources whose `Properties.VpcId` refers to that VPC. The count must not be greater than `3`. Resources with more than three gateway attachments referencing the VPC will be flagged. `VpcId` may be specified as a literal value or a `Ref`.\n\nSecure configuration example showing a single gateway attachment:\n\n```yaml\nMyVPC:\n  Type: AWS::EC2::VPC\n  Properties:\n    CidrBlock: 10.0.0.0/16\n\nMyInternetGateway:\n  Type: AWS::EC2::InternetGateway\n\nMyVPCGatewayAttachment:\n  Type: AWS::EC2::VPCGatewayAttachment\n  Properties:\n    VpcId: !Ref MyVPC\n    InternetGatewayId: !Ref MyInternetGateway\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/vpc_attached_with_too_many_gateways",
+  "platform": "CloudFormation",
+  "descriptionID": "1370ae52",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-vpc-gateway-attachment.html"
+}

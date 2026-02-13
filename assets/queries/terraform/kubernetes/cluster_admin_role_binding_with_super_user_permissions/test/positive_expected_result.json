@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Cluster admin rolebinding with superuser permissions",
+		"severity": "LOW",
+		"line": 8,
+		"fileName": ""
+	}
+]

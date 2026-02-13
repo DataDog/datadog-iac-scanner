@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Resource not using tags",
+    "severity": "LOW",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Resource not using tags",
+    "severity": "LOW",
+    "line": 14,
+    "filename": "positive1.tf"
+  }
+]

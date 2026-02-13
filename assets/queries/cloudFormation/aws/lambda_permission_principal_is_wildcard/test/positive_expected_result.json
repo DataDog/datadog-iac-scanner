@@ -1,0 +1,14 @@
+[
+  {
+    "line": 9,
+    "fileName": "positive1.yaml",
+    "queryName": "Lambda permission principal is a wildcard",
+    "severity": "MEDIUM"
+  },
+  {
+    "severity": "MEDIUM",
+    "line": 10,
+    "fileName": "positive2.json",
+    "queryName": "Lambda permission principal is a wildcard"
+  }
+]

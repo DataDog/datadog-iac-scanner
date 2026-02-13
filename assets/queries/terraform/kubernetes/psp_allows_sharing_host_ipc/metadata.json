@@ -1,0 +1,14 @@
+{
+  "id": "51bed0ac-a8ae-407a-895e-90c6cb0610ce",
+  "queryName": "PSP allows sharing host IPC",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Pod Security Policy allows containers to share the host IPC namespace. The `kubernetes_pod_security_policy` resource with `spec.host_ipc` set to `true` permits containers to access the host's IPC namespace, which can lead to information disclosure or privilege escalation. The attribute `spec.host_ipc` should be undefined or `false` to prevent sharing the host IPC namespace. Remediation consists of replacing `true` with `false` or removing the `spec.host_ipc` attribute.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/psp_allows_sharing_host_ipc",
+  "platform": "Terraform",
+  "descriptionID": "45566e38",
+  "cwe": "250",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#host_ipc"
+}

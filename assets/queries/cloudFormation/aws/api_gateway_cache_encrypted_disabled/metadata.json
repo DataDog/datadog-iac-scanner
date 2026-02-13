@@ -1,0 +1,13 @@
+{
+  "id": "37cca703-b74c-48ba-ac81-595b53398e9b",
+  "queryName": "API Gateway cache encrypted disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "API Gateway stage caches can store sensitive response data. If caching is enabled but cache data is not encrypted, cached content at rest may be exposed via compromised storage or unauthorized access.\n\n For CloudFormation, `AWS::ApiGateway::Deployment` resources must set `StageDescription.CacheDataEncrypted` to `true` whenever `StageDescription.CachingEnabled` is set to `true`. Resources missing the `CacheDataEncrypted` property or with `CacheDataEncrypted` set to `false` while caching is enabled will be flagged. \n \n Secure configuration example:\n\n```yaml\nMyDeployment:\n  Type: AWS::ApiGateway::Deployment\n  Properties:\n    RestApiId: !Ref MyApi\n    StageName: prod\n    StageDescription:\n      CachingEnabled: true\n      CacheDataEncrypted: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/api_gateway_cache_encrypted_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "16f89b5d",
+  "cloudProvider": "aws",
+  "cwe": "316",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-apigateway-deployment-stagedescription.html"
+}

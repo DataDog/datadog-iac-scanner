@@ -1,0 +1,14 @@
+{
+  "id": "e76fd7ab-7333-40c6-a2d8-ea28af4a319e",
+  "queryName": "RAM account password policy max login attempts not recommended",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "The RAM account password policy must limit `max_login_attempts` to a maximum of `5` incorrect login attempts. This rule flags any `alicloud_ram_account_password_policy` resource where `max_login_attempts` exceeds `5`. To enforce the limit, set `max_login_attempts = 5`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_account_password_policy_max_login_attempts_unrecommended",
+  "platform": "Terraform",
+  "descriptionID": "6a2e9c34",
+  "cloudProvider": "alicloud",
+  "cwe": "307",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ram_account_password_policy#max_login_attempts"
+}

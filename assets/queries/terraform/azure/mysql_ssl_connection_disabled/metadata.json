@@ -1,0 +1,15 @@
+{
+  "id": "73e42469-3a86-4f39-ad78-098f325b4e9f",
+  "queryName": "MySQL SSL connection disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "To ensure data transmitted between clients and the MySQL server is secure, the `ssl_enforcement_enabled` attribute in the `azurerm_mysql_server` resource should be set to `true`. If `ssl_enforcement_enabled` is set to `false`, as shown below, database connections can occur over unencrypted channels, potentially exposing sensitive information such as credentials and application data to interception and misuse.\n\n```\nresource \"azurerm_mysql_server\" \"example\" {\n  ...\n  ssl_enforcement_enabled = false\n}\n```\n\nEnabling SSL enforcement mitigates this risk by ensuring that all clients must connect using SSL, protecting data in transit.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/mysql_ssl_connection_disabled",
+  "platform": "Terraform",
+  "descriptionID": "81500787",
+  "cloudProvider": "azure",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Make sure that for MySQL Database Server, 'Enforce SSL connection' is enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/3.6.0/docs/resources/mysql_server"
+}

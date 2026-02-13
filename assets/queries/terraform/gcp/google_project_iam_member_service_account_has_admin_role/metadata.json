@@ -1,0 +1,15 @@
+{
+  "id": "84d36481-fd63-48cb-838e-635c44806ec2",
+  "queryName": "Google project IAM member service account has admin role",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "This query identifies when a service account is granted an administrative role in a Google Cloud project, which violates the principle of least privilege. Service accounts with administrative permissions such as `roles/iam.serviceAccountAdmin` can create and manage other service accounts, potentially leading to privilege escalation attacks and unauthorized access across your Google Cloud environment.\n\nInstead of using administrative roles, assign more granular, limited roles that provide only the permissions required for the service account to function. For example:\n\n```hcl\n// Insecure configuration - service account with admin role\nresource \"google_project_iam_member\" \"insecure\" {\n  project = \"your-project-id\"\n  role    = \"roles/iam.serviceAccountAdmin\"\n  member  = \"serviceAccount:my-app@appspot.gserviceacccount.com\"\n}\n\n// Secure configuration - service account with limited role\nresource \"google_project_iam_member\" \"secure\" {\n  project = \"your-project-id\"\n  role    = \"roles/editor\"\n  member  = \"serviceAccount:my-app@appspot.gserviceacccount.com\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/google_project_iam_member_service_account_has_admin_role",
+  "platform": "Terraform",
+  "descriptionID": "965c0d1c",
+  "cloudProvider": "gcp",
+  "cwe": "285",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Verifies that Google Project IAM Member Service Account doesn't have an Admin Role associated",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project_iam#google_project_iam_member"
+}

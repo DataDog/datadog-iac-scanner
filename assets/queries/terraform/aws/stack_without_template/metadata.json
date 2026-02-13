@@ -1,0 +1,15 @@
+{
+  "id": "91bea7b8-0c31-4863-adc9-93f6177266c4",
+  "queryName": "Stack without template",
+  "severity": "LOW",
+  "category": "Build Process",
+  "descriptionText": "This check ensures that the `aws_cloudformation_stack` resource in Terraform includes either the `template_url` or `template_body` attribute, which defines the CloudFormation template to be deployed. Omitting both of these attributes results in stacks being created without an actual CloudFormation template, leaving the stack incomplete and potentially non-functional. If left unaddressed, this misconfiguration can lead to failed deployments and gaps in infrastructure automation, increasing operational risks.\n\nA secure Terraform configuration is shown below:\n\n```\nresource \"aws_cloudformation_stack\" \"example\" {\n  name = \"networking-stack\"\n\n  parameters = {\n    VPCCidr = \"10.0.0.0/16\"\n  }\n\n  template_url = \"https://s3.amazonaws.com/example/cloudformation-template.yml\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/stack_without_template",
+  "platform": "Terraform",
+  "descriptionID": "e925d0ee",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "AWS CloudFormation should have a template defined through the attribute template_url or attribute template_body",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack"
+}

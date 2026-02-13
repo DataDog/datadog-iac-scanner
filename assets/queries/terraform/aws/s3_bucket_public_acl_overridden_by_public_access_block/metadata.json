@@ -1,0 +1,15 @@
+{
+  "id": "bf878b1a-7418-4de3-b13c-3a86cf894920",
+  "queryName": "S3 bucket public ACL overridden by public access block",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "This check identifies S3 buckets that have been configured with public ACLs but are simultaneously protected by bucket-level public access block settings that override those ACLs. This configuration creates a security risk through misleading access controls, where developers might assume the bucket is public (based on ACL settings) when it's actually restricted by the public access block. To properly secure S3 buckets, ensure consistency between your ACL settings and public access block configuration. For example, an insecure configuration might include a public ACL with restrictive public access block settings: ```acl = \"public-read-write\"\nblock_public_acls = true\nignore_public_acls = true```. A more transparent configuration would align these settings: ```acl = \"public-read-write\"\nblock_public_acls = false\nignore_public_acls = false```.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_public_acl_overridden_by_public_access_block",
+  "platform": "Terraform",
+  "descriptionID": "aa9967ef",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "S3 bucket public access is overridden by S3 bucket Public Access Block when the following attributes are set to true - 'block_public_acls', 'block_public_policy', 'ignore_public_acls', and 'restrict_public_buckets'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block#bucket"
+}

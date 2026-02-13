@@ -1,0 +1,12 @@
+{
+  "id": "f377b83e-bd07-4f48-a591-60c82b14a78b",
+  "queryName": "Seccomp profile is not configured",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should be configured with a secure seccomp profile to restrict potentially dangerous syscalls. The container or pod field securityContext.seccompProfile.type should be set to 'RuntimeDefault' or 'Localhost'; pod-level settings apply to containers when defined. If the deprecated annotation seccomp.security.alpha.kubernetes.io/defaultProfileName is used, it should be 'runtime/default'; if neither fields nor annotation are present, the seccomp profile is considered missing.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/seccomp_profile_is_not_configured",
+  "platform": "Kubernetes",
+  "descriptionID": "d943c7e7",
+  "cwe": "665",
+  "providerUrl": "https://kubernetes.io/docs/tutorials/security/seccomp/#create-pod-that-uses-the-container-runtime-default-seccomp-profile"
+}

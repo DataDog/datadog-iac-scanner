@@ -1,0 +1,15 @@
+{
+  "id": "4d080822-5ee2-49a4-8984-68f3d4c890fc",
+  "queryName": "Key expiration not set",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "To ensure cryptographic hygiene and limit risk exposure, all keys managed by Azure Key Vault should have an explicit expiration date set using the `expiration_date` attribute. Without an expiration, keys may remain valid indefinitely, increasing the likelihood of unauthorized access or misuse if the key is ever compromised. For example, a secure configuration includes `expiration_date`, as shown below:\n\n```\nresource \"azurerm_key_vault_key\" \"example\" {\n  name             = \"generated-certificate\"\n  key_vault_id     = azurerm_key_vault.example.id\n  key_type         = \"RSA\"\n  key_size         = 2048\n  key_opts         = [\"decrypt\", \"encrypt\", \"sign\", \"unwrapKey\", \"verify\", \"wrapKey\"]\n  expiration_date  = \"2020-12-30T20:00:00Z\"\n}\n```\n\nFailure to set this attribute can result in persistent, potentially stale keys that remain active past their intended lifecycle, increasing the attack surface.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/key_expiration_not_set",
+  "platform": "Terraform",
+  "descriptionID": "bb99ceb7",
+  "cloudProvider": "azure",
+  "cwe": "521",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Make sure that for all keys the expiration date is set",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault_key"
+}

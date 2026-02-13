@@ -1,0 +1,13 @@
+{
+  "id": "2623d682-dccb-44cd-99d0-54d9fd62f8f2",
+  "queryName": "EC2 Network ACL Deny rule not blocking all traffic",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Deny entries in Network ACLs that are intended to block all external traffic must explicitly target all IP addresses (`0.0.0.0/0`). If a deny rule uses a narrower CIDR, it may leave other sources allowed and create a false sense of protection.\n \n For `AWS::EC2::NetworkAclEntry` resources, when `Properties.RuleAction` is `deny`, `Properties.CidrBlock` must be `0.0.0.0/0`. Resources with `RuleAction` set to `deny` and a different or missing `CidrBlock` will be flagged as ineffective for global traffic denial. If you only intend to block specific ranges, use the appropriate CIDRs and verify rule ordering. \n \n Secure example with a global deny entry:\n\n```yaml\nDenyAllEntry:\n  Type: AWS::EC2::NetworkAclEntry\n  Properties:\n    NetworkAclId: acl-0123456789abcdef0\n    RuleNumber: 100\n    Protocol: -1\n    RuleAction: deny\n    Egress: false\n    CidrBlock: 0.0.0.0/0\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ec2_network_acl_ineffective_denied_traffic",
+  "platform": "CloudFormation",
+  "descriptionID": "e8c34905",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-network-acl-entry.html"
+}

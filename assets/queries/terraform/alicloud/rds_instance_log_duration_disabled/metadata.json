@@ -1,0 +1,14 @@
+{
+  "id": "a597e05a-c065-44e7-9cc8-742f572a504a",
+  "queryName": "RDS instance log duration disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "The `log_duration` parameter must be defined in the `parameters` array of `alicloud_db_instance` resources and set to `ON`.  \nIf `log_duration` exists and is set to `OFF`, the rule reports an `IncorrectValue` issue and suggests replacing `OFF` with `ON`.  \nIf the `parameters` array or the `log_duration` parameter is missing, the rule reports a `MissingAttribute` issue and suggests adding `parameters = [{ name = \"log_duration\" value = \"ON\" }]`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_log_duration_disabled",
+  "platform": "Terraform",
+  "descriptionID": "c4027901",
+  "cloudProvider": "alicloud",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/db_instance#parameters"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "3e4d5ce6-3280-4027-8010-c26eeea1ec01",
+  "queryName": "Project-wide SSH keys are enabled in VM instances",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "This check ensures that Google Compute Engine VM instances have project-wide SSH keys blocked by setting the metadata attribute `block-project-ssh-keys` to `\"TRUE\"`. Without this setting, anyone with project-level SSH key access can connect to the VM, increasing the risk of unauthorized access and making it harder to manage individual SSH permissions. For a secure configuration, define the attribute in your Terraform configuration as follows:\n\n```\nmetadata = {\n  block-project-ssh-keys = \"TRUE\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/project_wide_ssh_keys_are_enabled_in_vm_instances",
+  "platform": "Terraform",
+  "descriptionID": "4b9307cd",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldDescriptionText": "VM Instance should block project-wide SSH keys",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance"
+}

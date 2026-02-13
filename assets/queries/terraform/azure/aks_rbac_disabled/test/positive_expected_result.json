@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "AKS RBAC disabled",
+    "severity": "MEDIUM",
+    "line": 7,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "AKS RBAC disabled",
+    "severity": "MEDIUM",
+    "line": 35,
+    "fileName": "positive.tf"
+  }
+]

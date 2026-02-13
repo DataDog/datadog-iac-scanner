@@ -1,0 +1,12 @@
+[
+	{
+		"queryName": "Route53 Record Undefined",
+		"severity": "HIGH",
+		"line": 3
+	},
+	{
+		"queryName": "Route53 Record Undefined",
+		"severity": "HIGH",
+		"line": 14
+	}
+]

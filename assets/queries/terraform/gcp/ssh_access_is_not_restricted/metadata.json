@@ -1,0 +1,22 @@
+{
+  "id": "c4dcdcdf-10dd-4bf4-b4a0-8f6239e6aaa0",
+  "queryName": "SSH access is not restricted",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Allowing SSH access (TCP port 22) from the internet (such as setting `source_ranges = [\"0.0.0.0/0\"]` in a `google_compute_firewall` resource) exposes virtual machine instances to potential unauthorized access and brute-force attacks, violating the principle of least privilege. Attackers scanning public IP ranges can exploit this misconfiguration to gain direct access to your systems, increasing the risk of compromise. A secure configuration should restrict SSH access to trusted IP addresses or private networks, as shown below:\n\n```\nresource \"google_compute_firewall\" \"secure_example\" {\n  name    = \"restricted-ssh\"\n  network = google_compute_network.default.name\n\n  allow {\n    protocol = \"tcp\"\n    ports    = [\"22\"]\n  }\n  source_ranges = [\"203.0.113.0/24\"] // Replace with trusted IP range\n  source_tags = [\"admin\"]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/ssh_access_is_not_restricted",
+  "platform": "Terraform",
+  "descriptionID": "c0e4fb6f",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldDescriptionText": "Google Firewall should not allow SSH access (port 22) from the Internet (public CIDR block) to ensure the principle of least privileges",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall",
+  "defaultFrameworks": [
+    {
+      "control": "3.9",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "gcp"
+    }
+  ]
+}

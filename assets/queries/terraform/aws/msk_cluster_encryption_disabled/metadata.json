@@ -1,0 +1,14 @@
+{
+  "id": "6db52fa6-d4da-4608-908a-89f0c59e743e",
+  "queryName": "MSK cluster encryption disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon MSK clusters store sensitive data that should be protected both at rest and in transit through encryption. When encryption is disabled, data may be exposed to unauthorized users during storage or transmission, creating significant security vulnerabilities. To properly secure an MSK cluster, specify both `encryption_at_rest_kms_key_arn` (for data at rest) and `encryption_in_transit` with `client_broker` set to `TLS` and in_cluster set to true (for data in transit). The following example demonstrates a secure configuration:\n\n```terraform\nresource \"aws_msk_cluster\" \"example\" {\n  cluster_name           = \"example\"\n  kafka_version          = \"2.4.1\"\n  number_of_broker_nodes = 3\n  \n  encryption_info {\n    encryption_at_rest_kms_key_arn = aws_kms_key.kms.arn\n    encryption_in_transit {\n      client_broker = \"TLS\"\n      in_cluster = true\n    }\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/msk_cluster_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "343faf8d",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "Ensure MSK Cluster encryption in rest and transit is enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/msk_cluster#encryption_info"
+}

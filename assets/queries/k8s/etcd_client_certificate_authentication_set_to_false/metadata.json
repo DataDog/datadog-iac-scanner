@@ -1,0 +1,20 @@
+{
+  "id": "9391103a-d8d7-4671-ac5d-606ba7ccb0ac",
+  "queryName": "etcd client certificate authentication set to false",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "When containers run `etcd`, the `--client-cert-auth` flag must be set to `true`. This enforces client certificate authentication to prevent unauthenticated access to the etcd server. The rule reports `IncorrectValue` when the flag is explicitly set to `false`, and `MissingAttribute` when the flag is not defined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/etcd_client_certificate_authentication_set_to_false",
+  "platform": "Kubernetes",
+  "descriptionID": "e79812fb",
+  "cwe": "287",
+  "defaultFrameworks": [
+    {
+      "control": "4.6",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "48a5beba-e4c0-4584-a2aa-e6894e4cf424",
+  "queryName": "Pod or container without ResourceQuota",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Each namespace must have a ResourceQuota that limits the total resources consumed by Pods, containers, and PersistentVolumeClaims. The rule checks common workload kinds (Pod, Deployment, DaemonSet, StatefulSet, ReplicaSet, ReplicationController, Job, CronJob) and PersistentVolumeClaims and flags resources whose namespace does not have an associated ResourceQuota. If a resource omits a namespace, it is treated as belonging to the \"default\" namespace.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/pod_or_container_without_resource_quota",
+  "platform": "Kubernetes",
+  "descriptionID": "86499ed5",
+  "cwe": "400",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/resource-quotas/"
+}

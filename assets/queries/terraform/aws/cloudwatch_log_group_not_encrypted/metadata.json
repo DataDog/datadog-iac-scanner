@@ -1,0 +1,14 @@
+{
+  "id": "0afbcfe9-d341-4b92-a64c-7e6de0543879",
+  "queryName": "CloudWatch log group without KMS",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "AWS CloudWatch log groups should use KMS encryption to protect sensitive log data at rest. When the `aws_cloudwatch_log_group` resource is defined without the `kms_key_id` attribute, as in the following example, logs are stored unencrypted or with default encryption, making them vulnerable to unauthorized access if AWS accounts or storage is compromised:\n\n```\nresource \"aws_cloudwatch_log_group\" \"negative1\" {\n  name = \"Yada\"\n  retention_in_days = 1\n}\n```\n\nBy specifying the `kms_key_id` attribute, you ensure that log data is encrypted with a customer-managed AWS KMS key, reducing the risk of data exposure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudwatch_log_group_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "4258abe6",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "AWS CloudWatch Log groups should be encrypted using KMS",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_group"
+}

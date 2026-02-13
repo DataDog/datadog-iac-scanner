@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Cloud Storage bucket logging not enabled",
+    "severity": "MEDIUM",
+    "line": 1
+  }
+]

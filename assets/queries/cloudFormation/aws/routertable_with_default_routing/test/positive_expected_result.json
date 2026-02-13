@@ -1,0 +1,38 @@
+[
+  {
+    "severity": "LOW",
+    "line": 54,
+    "fileName": "positive1.yaml",
+    "queryName": "Route table with default routing"
+  },
+  {
+    "queryName": "Route table with default routing",
+    "severity": "LOW",
+    "line": 66,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Route table with default routing",
+    "severity": "LOW",
+    "line": 61,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "severity": "LOW",
+    "line": 37,
+    "fileName": "positive2.json",
+    "queryName": "Route table with default routing"
+  },
+  {
+    "line": 108,
+    "fileName": "positive2.json",
+    "queryName": "Route table with default routing",
+    "severity": "LOW"
+  },
+  {
+    "queryName": "Route table with default routing",
+    "severity": "LOW",
+    "line": 43,
+    "fileName": "positive2.json"
+  }
+]

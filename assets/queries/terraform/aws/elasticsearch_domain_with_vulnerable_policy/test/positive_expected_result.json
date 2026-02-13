@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Elasticsearch domain with vulnerable policy",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Elasticsearch domain with vulnerable policy",
+    "severity": "MEDIUM",
+    "line": 16,
+    "fileName": "positive_module.tf"
+  }
+]

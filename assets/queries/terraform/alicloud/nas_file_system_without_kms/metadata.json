@@ -1,0 +1,13 @@
+{
+  "id": "5f670f9d-b1b4-4c90-8618-2288f1ab9676",
+  "queryName": "NAS file system without KMS",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "NAS file system resources (`alicloud_nas_file_system`) must include the `encrypt_type` attribute set to `\"2\"` to enable user-managed KMS encryption. The rule reports a `MissingAttribute` issue when `encrypt_type` is absent, and an `IncorrectValue` issue when it is present but not set to `\"2\"`. To remediate, ensure that `encrypt_type` is explicitly set to `\"2\"`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/nas_file_system_without_kms",
+  "platform": "Terraform",
+  "descriptionID": "5fb1326b",
+  "cloudProvider": "alicloud",
+  "cwe": "311",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/nas_file_system#kms_key_id"
+}

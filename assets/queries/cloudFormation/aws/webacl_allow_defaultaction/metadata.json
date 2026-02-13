@@ -1,0 +1,13 @@
+{
+  "id": "6d64f311-3da6-45f3-80f1-14db9771ea40",
+  "queryName": "Permissive Web ACL default action",
+  "severity": "HIGH",
+  "category": "Insecure Defaults",
+  "descriptionText": "Setting a Web ACL default action to `ALLOW` causes any request that does not match a rule to be permitted. This can let unhandled or malicious traffic reach your application and undermines the intent of defensive rules.\n\nFor `AWS::WAF::WebACL` resources, `Properties.DefaultAction.Type` must not be set to `ALLOW`. It should be set to `BLOCK` to deny requests that do not match allow rules. This rule flags resources where `DefaultAction.Type` is explicitly `ALLOW`. Review such Web ACLs and change the default to `BLOCK` or otherwise ensure rules comprehensively cover allowed traffic.\n\nSecure configuration example:\n\n```yaml\nMyWebACL:\n  Type: AWS::WAF::WebACL\n  Properties:\n    Name: my-web-acl\n    MetricName: myWebACL\n    DefaultAction:\n      Type: BLOCK\n    Rules: []\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/webacl_allow_defaultaction",
+  "platform": "CloudFormation",
+  "descriptionID": "e4327168",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-waf-webacl.html"
+}

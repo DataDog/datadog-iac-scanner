@@ -1,0 +1,14 @@
+{
+  "id": "1c8eef02-17b1-4a3e-b01d-dcc3292d2c38",
+  "queryName": "GKE using default service account",
+  "severity": "MEDIUM",
+  "category": "Insecure Defaults",
+  "descriptionText": "Kubernetes Engine Clusters should not be configured to use the default service account. Using the default service account (`node_config.service_account` not set) can grant workloads excessive permissions, increasing the risk of privilege escalation and unauthorized access to other Google Cloud resources if a node is compromised. To mitigate this, assign a dedicated and minimally privileged service account as shown below:\n\n```\nresource \"google_container_cluster\" \"example\" {\n  // ...\n  node_config {\n    service_account = google_service_account.custom_sa.email\n    // ...\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/gke_using_default_service_account",
+  "platform": "Terraform",
+  "descriptionID": "efe7e7b0",
+  "cloudProvider": "gcp",
+  "cwe": "250",
+  "oldDescriptionText": "Kubernetes Engine Clusters should not be configured to use the default service account",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/container_cluster#node_config"
+}

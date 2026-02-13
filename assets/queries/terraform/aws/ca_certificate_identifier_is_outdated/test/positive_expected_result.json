@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "CA certificate identifier is outdated",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "CA certificate identifier is outdated",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive2.tf"
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Remote Desktop port open to internet",
+    "severity": "HIGH",
+    "line": 1,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Remote Desktop port open to internet",
+    "severity": "HIGH",
+    "line": 14,
+    "fileName": "positive.tf"
+  }
+]

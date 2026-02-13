@@ -1,0 +1,15 @@
+{
+  "id": "bcd3fc01-5902-4f2a-b05a-227f9bbf5450",
+  "queryName": "SQL server predictable Active Directory admin account name",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Azure SQL Servers should not use predictable Active Directory Administrator account names, such as `Admin`, for the `login` attribute, as this increases the risk of brute-force or dictionary attacks. Using easily guessed usernames, such as `login = \"Admin\"`, increases the risk of unauthorized access by making accounts more susceptible to targeted attacks. To enhance security, use a unique and hard-to-guess login name, such as:\n\n```\nlogin = \"NotEasyToPredictAdmin\"\n```\nThis helps reduce the likelihood of successful account compromise.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/sql_server_predictable_active_directory_admin_account_name",
+  "platform": "Terraform",
+  "descriptionID": "6ed21e26",
+  "cloudProvider": "azure",
+  "cwe": "522",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Azure SQL Server must avoid using predictable Active Directory Administrator Account names, like 'Admin', which means the attribute 'login' must be set to a name that is not easy to predict",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/sql_active_directory_administrator"
+}

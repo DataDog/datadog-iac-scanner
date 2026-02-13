@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Shared service account",
+    "severity": "MEDIUM",
+    "line": 6
+  },
+  {
+    "queryName": "Shared service account",
+    "severity": "MEDIUM",
+    "line": 16
+  }
+]

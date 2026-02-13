@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "IAM password policy does not require uppercase letter",
+    "severity": "MEDIUM",
+    "line": 6,
+    "filename": "positive.tf"
+  }
+]

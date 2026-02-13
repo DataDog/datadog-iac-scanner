@@ -1,0 +1,14 @@
+{
+  "id": "5e0fb613-ba9b-44c3-88f0-b44188466bfd",
+  "queryName": "RAM account password policy not require at least one uppercase character",
+  "severity": "LOW",
+  "category": "Secret Management",
+  "descriptionText": "The RAM account password policy attribute `require_uppercase_characters` should be set to `true`. If set to `false`, passwords may not require uppercase letters, weakening password complexity and increasing risk. Ensure the `alicloud_ram_account_password_policy` resource defines `require_uppercase_characters` as `true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_password_security_policy_not_require_at_least_one_uppercase_character",
+  "platform": "Terraform",
+  "descriptionID": "5adbc73e",
+  "cloudProvider": "alicloud",
+  "cwe": "521",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ram_account_password_policy#require_uppercase_characters"
+}

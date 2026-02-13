@@ -1,0 +1,15 @@
+{
+  "id": "e9dee01f-2505-4df2-b9bf-7804d1fd9082",
+  "queryName": "Sensitive port is exposed to small public network",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Allowing sensitive ports, such as port 23 (Telnet) or port 110 (POP3), to be open on public-facing network security groups exposes your resources to potential attacks that target these outdated and insecure protocols. Attackers can exploit these open ports to gain unauthorized access, intercept unencrypted communications, or conduct brute-force attacks against your infrastructure. To mitigate this risk, network security rules should explicitly deny traffic on sensitive ports, as in the following secure configuration:\n\n```\nresource \"azurerm_network_security_rule\" \"secure_example\" {\n     name                        = \"deny_telnet\"\n     priority                    = 100\n     direction                   = \"Inbound\"\n     access                      = \"Deny\"\n     protocol                    = \"TCP\"\n     source_port_range           = \"*\"\n     destination_port_range      = \"23\"\n     source_address_prefix       = \"*\"\n     destination_address_prefix  = \"*\"\n     resource_group_name         = azurerm_resource_group.example.name\n     network_security_group_name = azurerm_network_security_group.example.name\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/sensitive_port_is_exposed_to_small_public_network",
+  "platform": "Terraform",
+  "descriptionID": "c09ca1eb",
+  "aggregation": 63,
+  "cloudProvider": "azure",
+  "cwe": "200",
+  "oldDescriptionText": "A sensitive port, such as port 23 or port 110, is open for small public network in either TCP or UDP protocol",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_rule"
+}

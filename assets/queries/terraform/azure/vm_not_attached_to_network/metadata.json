@@ -1,0 +1,15 @@
+{
+  "id": "bbf6b3df-4b65-4f87-82cc-da9f30f8c033",
+  "queryName": "VM not attached to network",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Attaching a Network Security Group (NSG) to a virtual machine in Azure is essential for defining and restricting inbound and outbound traffic. Without an NSG, as in the configuration below where `network_interface_ids` is set to an empty list and no NSG is associated, the virtual machine is left exposed to unrestricted network access, increasing the risk of unauthorized access and potential security breaches.\n\n```\nresource \"azurerm_virtual_machine\" \"example\" {\n  name                  = \"example-vm\"\n  location              = azurerm_resource_group.example.location\n  resource_group_name   = azurerm_resource_group.example.name\n  network_interface_ids = []\n  vm_size               = \"Standard_DS1_v2\"\n}\n```\n\nTo mitigate this risk, ensure NSGs are attached by associating them with the network interface connected to the VM, as shown below:\n\n```\nresource \"azurerm_network_interface\" \"example\" {\n  name                = \"example-nic\"\n  location            = azurerm_resource_group.example.location\n  resource_group_name = azurerm_resource_group.example.name\n\n  ip_configuration {\n    name                          = \"internal\"\n    subnet_id                     = azurerm_subnet.example.id\n    private_ip_address_allocation = \"Dynamic\"\n  }\n}\n\nresource \"azurerm_network_interface_security_group_association\" \"example\" {\n  network_interface_id      = azurerm_network_interface.example.id\n  network_security_group_id = azurerm_network_security_group.example.id\n}\n```\n\nNeglecting to configure and attach an NSG can result in unrestricted network exposure for the VM, leading to increased vulnerability to attacks, unauthorized access, and data breaches.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/vm_not_attached_to_network",
+  "platform": "Terraform",
+  "descriptionID": "9f51f6b1",
+  "cloudProvider": "azure",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "No Network Security Group is attached to the Virtual Machine",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine#network_interface_ids"
+}

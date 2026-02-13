@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "RDS cluster with backup disabled",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "RDS cluster with backup disabled",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive_module.tf"
+  }
+]

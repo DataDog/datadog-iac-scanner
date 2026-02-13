@@ -1,0 +1,21 @@
+name: per-job-true-positive
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    uses: ./.github/workflows/pr-test.yml
+    with:
+      repo: core
+    secrets: inherit
+    permissions:
+      contents: read
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2

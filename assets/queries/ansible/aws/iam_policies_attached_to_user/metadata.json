@@ -1,0 +1,13 @@
+{
+  "id": "eafe4bc3-1042-4f88-b988-1939e64bf060",
+  "queryName": "IAM Policies Attached To User",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IAM policies should be attached only to groups or roles",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_policies_attached_to_user",
+  "platform": "Ansible",
+  "descriptionID": "cd4d500d",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/iam_policy_module.html"
+}

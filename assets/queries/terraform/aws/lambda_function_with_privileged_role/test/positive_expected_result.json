@@ -1,0 +1,32 @@
+[
+  {
+    "queryName": "Lambda function with privileged role",
+    "severity": "HIGH",
+    "line": 4,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Lambda function with privileged role",
+    "severity": "HIGH",
+    "line": 4,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Lambda function with privileged role",
+    "severity": "HIGH",
+    "line": 4,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Lambda function with privileged role",
+    "severity": "HIGH",
+    "line": 4,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Lambda function with privileged role",
+    "severity": "HIGH",
+    "line": 23,
+    "fileName": "positive.tf"
+  }
+]

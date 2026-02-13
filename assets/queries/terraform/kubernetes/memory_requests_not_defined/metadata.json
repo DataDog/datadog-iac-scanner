@@ -1,0 +1,13 @@
+{
+  "id": "21719347-d02b-497d-bda4-04a03c8e5b61",
+  "queryName": "Memory requests not defined",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Memory requests should be defined for each container. This allows the kubelet to reserve the requested amount of memory and prevents over-provisioning of individual nodes. Each container must set resources.requests.memory so the scheduler can make informed placement decisions and the kubelet can enforce reservations. Missing memory requests can lead to resource contention and unpredictable behavior on nodes.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/memory_requests_not_defined",
+  "platform": "Terraform",
+  "descriptionID": "a77e5da7",
+  "cwe": "400",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#requests"
+}

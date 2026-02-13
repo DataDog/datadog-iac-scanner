@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Elasticsearch without slow logs",
+    "severity": "LOW",
+    "line": 4,
+    "filename": "positive1.tf"
+  }
+]

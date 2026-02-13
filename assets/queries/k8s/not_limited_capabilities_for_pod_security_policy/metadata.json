@@ -1,0 +1,13 @@
+{
+  "id": "caa93370-791f-4fc6-814b-ba6ce0cb4032",
+  "queryName": "Unrestricted capabilities in PodSecurityPolicy",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Limits capabilities for PodSecurityPolicy. This rule checks that PodSecurityPolicy resources define spec.requiredDropCapabilities, which specifies Linux capabilities that must be dropped to reduce container privileges. A MissingAttribute issue is reported if this field is not defined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/not_limited_capabilities_for_pod_security_policy",
+  "platform": "Kubernetes",
+  "descriptionID": "eaf6d4ba",
+  "cwe": "770",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+}

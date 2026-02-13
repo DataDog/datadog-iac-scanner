@@ -1,0 +1,14 @@
+{
+  "id": "316278b3-87ac-444c-8f8f-a733a28da60f",
+  "queryName": "Amazon MQ broker encryption disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon MQ brokers must have encryption options defined so message data, broker storage, and snapshots are encrypted at rest and protected from unauthorized access if storage media or backups are compromised. In CloudFormation, the `AWS::AmazonMQ::Broker` resource must include the `EncryptionOptions` property configured to enable AWS KMS encryption. For example, set `KmsKeyId` to a customer-managed KMS key or setting `UseAwsOwnedKey` to `true` to rely on an AWS-owned key. Resources missing the `EncryptionOptions` property will be flagged. Use a customer-managed KMS key (`KmsKeyId`) when you need full control over key rotation and access policies.\n\nSecure configuration example (CloudFormation YAML):\n\n```yaml\nMyBroker:\n  Type: AWS::AmazonMQ::Broker\n  Properties:\n    BrokerName: my-broker\n    EngineType: ActiveMQ\n    EngineVersion: 5.15.0\n    HostInstanceType: mq.t3.micro\n    EncryptionOptions:\n      KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd-ef01-2345-6789\n      UseAwsOwnedKey: false\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/amazon_mq_broker_encryption_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "c5d562da",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-amazonmq-broker.html#cfn-amazonmq-broker-encryptionoptions"
+}

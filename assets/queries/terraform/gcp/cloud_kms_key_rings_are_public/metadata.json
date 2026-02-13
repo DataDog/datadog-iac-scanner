@@ -1,0 +1,14 @@
+{
+  "id": "d4e5f6g7-h8i9-0jkl-mnop-qrstuvwx1234",
+  "queryName": "Cloud KMS key ring is anonymously or publicly accessible",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Cloud KMS Key Rings store and manage cryptographic keys used for data encryption in Google Cloud. Making them publicly accessible creates severe security risks that could lead to unauthorized access to sensitive encrypted data. When IAM policies grant permissions to `allUsers` or `allAuthenticatedUsers`, it allows anyone on the internet or any authenticated Google account to access and potentially use these cryptographic keys. To properly secure key rings, ensure IAM members are specific identities (such as `user:someone@example.com`) rather than public principals (`allUsers` or `allAuthenticatedUsers`). For example, use `member = \"user:someone@example.com\"` instead of `member = \"allUsers\"` or `members = [\"allAuthenticatedUsers\", \"user:someone@example.com\"]`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/cloud_kms_key_rings_are_public",
+  "platform": "Terraform",
+  "descriptionID": "d4e5f6g7",
+  "cloudProvider": "gcp",
+  "cwe": "311",
+  "oldDescriptionText": "Cloud KMS Key Rings must not be publicly accessible. Public principals like 'allUsers' or 'allAuthenticatedUsers' should not be assigned in IAM member or binding configurations for key rings.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/kms_key_ring"
+}

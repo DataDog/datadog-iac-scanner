@@ -1,0 +1,13 @@
+{
+  "id": "4ac0e2b7-d2d2-4af7-8799-e8de6721ccda",
+  "queryName": "CPU limits not set",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "CPU limits should be set to ensure fair resource allocation and to prevent containers from consuming excessive CPU. Each container and initContainer should include a `resources.limits.cpu` value. This rule verifies that `resources`, `resources.limits`, and `resources.limits.cpu` are defined for each container.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/cpu_limits_not_set",
+  "platform": "Kubernetes",
+  "descriptionID": "9a2ef763",
+  "cwe": "400",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
+}

@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "CodeBuild project encrypted with AWS managed key",
+    "severity": "LOW",
+    "line": 35
+  }
+]

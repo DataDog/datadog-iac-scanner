@@ -1,0 +1,14 @@
+{
+  "id": "85138beb-ce7c-4ca3-a09f-e8fbcc57ddd7",
+  "queryName": "Cross-account IAM assume role policy without external ID or MFA",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Cross-account IAM role trust policies must require either an external ID or MFA to prevent confused-deputy attacks and reduce the risk of unauthorized cross-account access.\n\n Check `AWS::IAM::Role` resources' `AssumeRolePolicyDocument` for `Allow` statements that grant `sts:AssumeRole` to external AWS principals. Those statements must include a `Condition` requiring either the `sts:ExternalId` condition key (for example, `StringEquals`) or `aws:MultiFactorAuthPresent` set to `true`. Resources missing a `Condition` with `sts:ExternalId` or `aws:MultiFactorAuthPresent` will be flagged.\n\n Acceptable secure configurations include requiring an external ID or enforcing MFA in the trust policy, for example:\n\n```yaml\nMyRoleWithExternalId:\n  Type: AWS::IAM::Role\n  Properties:\n    AssumeRolePolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:root\n          Action: sts:AssumeRole\n          Condition:\n            StringEquals:\n              sts:ExternalId: my-external-id\n```\n\n```yaml\nMyRoleWithMFA:\n  Type: AWS::IAM::Role\n  Properties:\n    AssumeRolePolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:root\n          Action: sts:AssumeRole\n          Condition:\n            Bool:\n              aws:MultiFactorAuthPresent: \"true\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cross_account_iam_assume_role_policy_without_external_id_or_mfa",
+  "platform": "CloudFormation",
+  "descriptionID": "8fca679f",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iam-role.html#cfn-iam-role-assumerolepolicydocument"
+}

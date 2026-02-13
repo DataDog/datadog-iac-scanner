@@ -1,0 +1,21 @@
+{
+  "id": "33fc6923-6553-4fe6-9d3a-4efa51eb874b",
+  "queryName": "Node restriction admission control plugin not set",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "When a container runs `kube-apiserver`, the `--enable-admission-plugins` flag should include `NodeRestriction`. This rule checks container command lines and reports resources where `--enable-admission-plugins` does not contain `NodeRestriction`. The `NodeRestriction` plugin must also be enabled in the cluster admission control configuration.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/node_restriction_admission_control_plugin_not_set",
+  "platform": "Kubernetes",
+  "descriptionID": "2a03f1ec",
+  "cwe": "269",
+  "oldSeverity": "HIGH",
+  "defaultFrameworks": [
+    {
+      "control": "4.15",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

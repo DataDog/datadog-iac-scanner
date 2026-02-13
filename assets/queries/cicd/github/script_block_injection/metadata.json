@@ -1,0 +1,13 @@
+{
+  "id": "62ff6823-927a-427f-acf9-f1ea2932d616",
+  "queryName": "Script block injection",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "GitHub Actions workflows can be triggered by a variety of events. Each trigger includes a GitHub context with details about the event, such as the user who triggered it, the branch name, and other relevant information. Some of this data, like the base repository name, changeset hash, or pull request number, is typically not controlled by the user and is unlikely to be used for injection.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/script_block_injection",
+  "platform": "CICD",
+  "descriptionID": "63e215f4",
+  "cloudProvider": "common",
+  "cwe": "94",
+  "providerUrl": "https://securitylab.github.com/research/github-actions-untrusted-input/"
+}

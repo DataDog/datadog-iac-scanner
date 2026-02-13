@@ -1,0 +1,21 @@
+[
+  {
+    "queryName": "PSP with unrestricted access to host path",
+    "severity": "HIGH",
+    "line": 5,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "_comment": "Goal: 8 with array support",
+    "queryName": "PSP with unrestricted access to host path",
+    "severity": "HIGH",
+    "line": 8,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "PSP with unrestricted access to host path",
+    "severity": "HIGH",
+    "line": 11,
+    "fileName": "positive3.yaml"
+  }
+]

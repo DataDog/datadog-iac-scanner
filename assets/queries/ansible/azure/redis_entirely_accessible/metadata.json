@@ -1,0 +1,14 @@
+{
+  "id": "0d0c12b9-edce-4510-9065-13f6a758750c",
+  "queryName": "Redis Entirely Accessible",
+  "severity": "CRITICAL",
+  "category": "Networking and Firewall",
+  "descriptionText": "Firewall rule allowing unrestricted access to Redis from the Internet",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/redis_entirely_accessible",
+  "platform": "Ansible",
+  "descriptionID": "30a0bdeb",
+  "cloudProvider": "azure",
+  "cwe": "829",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_rediscachefirewallrule_module.html#parameter-start_ip_address"
+}

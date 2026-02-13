@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Storage share file allows all ACL permissions",
+    "severity": "MEDIUM",
+    "line": 10
+  }
+]

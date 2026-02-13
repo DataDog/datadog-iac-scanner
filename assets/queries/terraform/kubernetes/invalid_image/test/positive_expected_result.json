@@ -1,0 +1,20 @@
+[
+	{
+		"queryName": "Invalid image",
+		"severity": "LOW",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "Invalid image",
+		"severity": "LOW",
+		"line": 60,
+		"fileName": ""
+	},
+	{
+		"queryName": "Invalid image",
+		"severity": "LOW",
+		"line": 115,
+		"fileName": ""
+	}
+]

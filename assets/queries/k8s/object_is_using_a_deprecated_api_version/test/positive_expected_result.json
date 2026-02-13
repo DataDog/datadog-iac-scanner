@@ -1,0 +1,27 @@
+[
+  {
+    "queryName": "Object is using a deprecated API version",
+    "severity": "LOW",
+    "line": 1
+  },
+  {
+    "queryName": "Object is using a deprecated API version",
+    "severity": "LOW",
+    "line": 23
+  },
+  {
+    "queryName": "Object is using a deprecated API version",
+    "severity": "LOW",
+    "line": 58
+  },
+  {
+    "queryName": "Object is using a deprecated API version",
+    "severity": "LOW",
+    "line": 76
+  },
+  {
+    "queryName": "Object is using a deprecated API version",
+    "severity": "LOW",
+    "line": 94
+  }
+]

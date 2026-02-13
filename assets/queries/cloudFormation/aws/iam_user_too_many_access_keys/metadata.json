@@ -1,0 +1,13 @@
+{
+  "id": "48677914-6fdf-40ec-80c4-2b0e94079f54",
+  "queryName": "IAM user has too many access keys",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "IAM users should have at most one access key because multiple keys increase the risk of credential exposure and make secure rotation and revocation more difficult. In AWS CloudFormation, each `AWS::IAM::AccessKey` resource’s `Properties.UserName` should be unique per IAM user so a user is not associated with more than one access key. This rule flags templates where more than one `AWS::IAM::AccessKey` resource references the same `UserName`. Remove extra keys, consolidate usage, or rotate and delete unused keys to remediate.\n\nSecure example with a single access key for a user:\n\n```yaml\nMyUserAccessKey:\n  Type: AWS::IAM::AccessKey\n  Properties:\n    UserName: MyIamUser\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_user_too_many_access_keys",
+  "platform": "CloudFormation",
+  "descriptionID": "90135931",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-iam-accesskey.html"
+}

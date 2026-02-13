@@ -1,0 +1,12 @@
+{
+  "id": "a77f4d07-c6e0-4a48-8b35-0eeb51576f4f",
+  "queryName": "Always pull images admission control plugin not set",
+  "severity": "MEDIUM",
+  "category": "Build Process",
+  "descriptionText": "When running `kube-apiserver`, the `--enable-admission-plugins` flag should include `AlwaysPullImages`. The plugin must be enabled on the `kube-apiserver` command line and configured correctly in the admission control configuration file. If `AlwaysPullImages` is not present, image pull behavior may not be enforced.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/always_pull_images_admission_control_plugin_not_set",
+  "platform": "Kubernetes",
+  "descriptionID": "503bf412",
+  "cwe": "829",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

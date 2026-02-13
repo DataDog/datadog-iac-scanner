@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Beta - TKE cluster encryption protection disabled",
+		"severity": "HIGH",
+		"line": 6,
+		"fileName": "positive1.tf"
+	}
+]

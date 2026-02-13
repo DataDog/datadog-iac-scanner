@@ -1,0 +1,15 @@
+{
+  "id": "741f1291-47ac-4a85-a07b-3d32a9d6bd3e",
+  "queryName": "DynamoDB table Point-in-Time Recovery disabled",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "It is a best practice to enable Point-in-Time Recovery (PITR) for DynamoDB tables to protect against accidental or malicious data loss. In Terraform, this is configured using the `point_in_time_recovery { enabled = true }` block. Leaving it as `enabled = false` means that deleted or corrupted data cannot be recovered to a previous state. Without PITR enabled, any accidental overwrite or deletion of table data can result in permanent loss, potentially impacting application availability or causing irreparable data integrity issues.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/dynamodb_table_point_in_time_recovery_disabled",
+  "platform": "Terraform",
+  "descriptionID": "205ac3d1",
+  "cloudProvider": "aws",
+  "cwe": "754",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "It's considered a best practice to have point in time recovery enabled for DynamoDB Table",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/dynamodb_table#point_in_time_recovery"
+}

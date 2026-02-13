@@ -1,0 +1,13 @@
+{
+  "id": "375cdab9-3f94-4ae0-b1e3-8fbdf9cdf4d7",
+  "queryName": "Beta - job's task is legacy (spark_submit_task)",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "This rule detects `databricks_job` resources with `task.spark_submit_task` and reports an `IncorrectValue` issue.\nUse of `spark_submit_task` in job tasks is not allowed.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/use_spark_submit_task",
+  "platform": "Terraform",
+  "descriptionID": "fcfdfbd3",
+  "cloudProvider": "common",
+  "cwe": "477",
+  "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/job#spark_submit_task-configuration-block"
+}

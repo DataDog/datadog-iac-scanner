@@ -1,0 +1,12 @@
+{
+  "id": "6b6bdfb3-c3ae-44cb-88e4-7405c1ba2c8a",
+  "queryName": "Shared host network namespace",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Containers should not share the host network namespace. Setting `spec.hostNetwork` to true causes a pod's containers to use the node's network namespace, exposing host network interfaces and reducing network isolation. This rule flags resources where `spec.hostNetwork` is true; it expects `spec.hostNetwork` to be false or undefined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/shared_host_network_namespace",
+  "platform": "Kubernetes",
+  "descriptionID": "50e5de80",
+  "cwe": "200",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+}

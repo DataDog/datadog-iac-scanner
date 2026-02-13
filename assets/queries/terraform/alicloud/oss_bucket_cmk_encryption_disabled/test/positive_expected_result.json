@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "OSS bucket encryption using CMK disabled",
+		"severity": "MEDIUM",
+		"line": 5,
+		"fileName": "positive1.tf"
+	},
+	{
+		"queryName": "OSS bucket encryption using CMK disabled",
+		"severity": "MEDIUM",
+		"line": 1,
+		"fileName": "positive2.tf"
+	}
+]

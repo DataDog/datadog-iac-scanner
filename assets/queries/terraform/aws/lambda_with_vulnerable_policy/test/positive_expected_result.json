@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Lambda with vulnerable policy",
+    "severity": "HIGH",
+    "line": 35,
+    "fileName": "positive.tf"
+  }
+]

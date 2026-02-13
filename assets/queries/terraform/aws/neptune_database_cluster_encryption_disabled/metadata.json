@@ -1,0 +1,23 @@
+{
+  "id": "98d59056-f745-4ef5-8613-32bca8d40b7e",
+  "queryName": "Neptune database cluster encryption disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon Neptune is a fully managed graph database service that makes it easy to build and run applications working with highly connected datasets. When Neptune database cluster storage encryption is disabled, sensitive data stored in these clusters is vulnerable to unauthorized access if the underlying storage is compromised. Without encryption, data is stored in plaintext, posing a significant security risk.\n\nTo properly secure Neptune clusters, always set the `storage_encrypted parameter` to true, as shown in this example: `storage_encrypted = true`. Avoid configurations that either omit this parameter or explicitly set it to `false`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/neptune_database_cluster_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "06036045",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Neptune database cluster storage should have encryption enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/neptune_cluster#storage_encrypted",
+  "customFrameworks": [
+    {
+      "control": "aws.1.31",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

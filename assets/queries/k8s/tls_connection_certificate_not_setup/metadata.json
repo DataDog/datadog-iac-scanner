@@ -1,0 +1,13 @@
+{
+  "id": "fa750c81-93c2-4fab-9c6d-d3fd3ce3b89f",
+  "queryName": "TLS connection certificate not set up",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "TLS certificate files for TLS connections should be set.\n\nFor API server containers, the rule verifies that the `--tls-cert-file` and `--tls-private-key-file` flags are included in their command.\nFor `KubeletConfiguration` documents, the rule verifies that the `tlsCertFile` and `tlsPrivateKeyFile` fields are present.\nIf any of these are absent, the rule reports a MissingAttribute issue with the expected and actual values.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/tls_connection_certificate_not_setup",
+  "platform": "Kubernetes",
+  "descriptionID": "c8b75f30",
+  "cwe": "295",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+}

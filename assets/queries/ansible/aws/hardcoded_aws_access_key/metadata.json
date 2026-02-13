@@ -1,0 +1,14 @@
+{
+  "id": "c2f15af3-66a0-4176-a56e-e4711e502e5c",
+  "queryName": "Hardcoded AWS Access Key",
+  "severity": "HIGH",
+  "category": "Secret Management",
+  "descriptionText": "AWS Access Key should not be hardcoded",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/hardcoded_aws_access_key",
+  "platform": "Ansible",
+  "descriptionID": "d764256e",
+  "cloudProvider": "aws",
+  "cwe": "798",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/ec2_instance_module.html"
+}

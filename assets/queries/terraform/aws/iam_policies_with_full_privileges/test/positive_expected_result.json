@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 5,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 19,
+    "fileName": "positive.tf"
+  }
+]

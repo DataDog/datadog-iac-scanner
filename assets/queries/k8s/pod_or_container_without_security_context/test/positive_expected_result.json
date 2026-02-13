@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Pod or container without security context",
+    "severity": "LOW",
+    "line": 5
+  },
+  {
+    "queryName": "Pod or container without security context",
+    "severity": "LOW",
+    "line": 19
+  }
+]

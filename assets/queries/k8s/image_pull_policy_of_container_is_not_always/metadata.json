@@ -1,0 +1,12 @@
+{
+  "id": "caa3479d-885d-4882-9aac-95e5e78ef5c2",
+  "queryName": "Image pull policy of the container is not set to always",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "The container `imagePullPolicy` must be set to `Always`. This requirement applies when the image is referenced with an explicit tag (contains ':') and is not referenced by digest (`@...`) or by the `:latest` tag. Setting `imagePullPolicy` to `Always` ensures the image is pulled on every start and prevents relying on mutable images cached locally.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/image_pull_policy_of_container_is_not_always",
+  "platform": "Kubernetes",
+  "descriptionID": "201e3c8d",
+  "cwe": "665",
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/#updating-images"
+}

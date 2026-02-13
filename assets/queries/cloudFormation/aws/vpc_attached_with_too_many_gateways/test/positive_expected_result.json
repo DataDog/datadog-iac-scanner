@@ -1,0 +1,14 @@
+[
+  {
+    "line": 3,
+    "fileName": "positive1.yaml",
+    "queryName": "VPC attached with too many gateways",
+    "severity": "LOW"
+  },
+  {
+    "severity": "LOW",
+    "line": 7,
+    "fileName": "positive2.json",
+    "queryName": "VPC attached with too many gateways"
+  }
+]

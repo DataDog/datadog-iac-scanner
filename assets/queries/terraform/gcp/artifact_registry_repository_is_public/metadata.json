@@ -1,0 +1,14 @@
+{
+  "id": "a7b8c9d0-e1f2-3a4b-5c6d-7e8f90123456",
+  "queryName": "Artifact Registry repo is public",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Google Cloud Artifact Registry repositories store container images, language packages, and other artifacts that may contain sensitive code or data. When IAM bindings or members include public principals like `allUsers` or `allAuthenticatedUsers`, these artifacts become accessible to anyone on the internet or any authenticated Google account, respectively, potentially exposing proprietary code or sensitive configurations.\n\nThis security risk could lead to intellectual property theft, discovery of hardcoded secrets, or provide attackers information about your infrastructure that could be used in further attacks. To properly secure your artifact repositories, specify only the necessary users and groups that require access, as shown in the following example:\n\n```terraform\nresource \"google_artifact_registry_repository_iam_binding\" \"good_example_binding\" {\n  repository = \"example-repo\"\n  members    = [\"user:someone@example.com\", \"group:admins@example.com\"]\n  role       = \"roles/artifactregistry.admin\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/artifact_registry_repository_is_public",
+  "platform": "Terraform",
+  "descriptionID": "a7b8c9d0",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldDescriptionText": "Artifact Registry repositories must not be publicly accessible. IAM members or bindings should not use public principals such as 'allUsers' or 'allAuthenticatedUsers'.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/artifact_registry_repository_iam"
+}

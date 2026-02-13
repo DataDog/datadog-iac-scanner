@@ -1,0 +1,14 @@
+{
+  "id": "c8ae9ba9-c2f7-4e5c-b32e-a4b7712d4d22",
+  "queryName": "Secrets manager should specify KmsKeyId",
+  "severity": "LOW",
+  "category": "Secret Management",
+  "descriptionText": "Secrets stored in AWS Secrets Manager should explicitly specify a customer-managed KMS key to ensure you control key policies, enable audited key usage, and allow cross-account access when required.\n\nFor `AWS::SecretsManager::Secret` resources, `Properties.KmsKeyId` must be defined and should reference a customer-managed KMS key (key ARN, alias, or a `Ref`/`GetAtt` to an `AWS::KMS::Key`). Omitting `KmsKeyId` causes Secrets Manager to use the AWS-managed key, which does not support granting cross-account decrypt permissions. If you need to share secrets across accounts, ensure the referenced KMS key's policy grants the necessary `kms:Decrypt` and `kms:GenerateDataKey` permissions to the target principals. Resources missing `KmsKeyId` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyKmsKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Description: KMS key for Secrets Manager\n\nMySecret:\n  Type: AWS::SecretsManager::Secret\n  Properties:\n    Name: my-secret\n    KmsKeyId: !Ref MyKmsKey\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/secrets_manager_should_specify_kms_key_id",
+  "platform": "CloudFormation",
+  "descriptionID": "d78bb871",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-secretsmanager-secret.html"
+}

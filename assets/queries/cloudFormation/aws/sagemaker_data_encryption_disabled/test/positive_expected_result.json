@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "SageMaker data encryption disabled",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "line": 20,
+    "fileName": "positive1.yaml",
+    "queryName": "SageMaker data encryption disabled",
+    "severity": "HIGH"
+  },
+  {
+    "queryName": "SageMaker data encryption disabled",
+    "severity": "HIGH",
+    "line": 59,
+    "fileName": "positive2.json"
+  },
+  {
+    "line": 16,
+    "fileName": "positive2.json",
+    "queryName": "SageMaker data encryption disabled",
+    "severity": "HIGH"
+  }
+]

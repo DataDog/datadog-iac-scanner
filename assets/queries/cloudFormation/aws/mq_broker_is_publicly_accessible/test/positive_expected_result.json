@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Amazon MQ broker is publicly accessible",
+    "severity": "HIGH",
+    "line": 15,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Amazon MQ broker is publicly accessible",
+    "severity": "HIGH",
+    "line": 31,
+    "fileName": "positive2.json"
+  }
+]

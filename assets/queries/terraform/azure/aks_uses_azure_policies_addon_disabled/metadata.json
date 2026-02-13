@@ -1,0 +1,14 @@
+{
+  "id": "43789711-161b-4708-b5bb-9d1c626f7492",
+  "queryName": "Azure Policy Add-on Disabled in AKS Cluster",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Enabling the Azure Policy Add-On for Azure Kubernetes Service (AKS) clusters helps enforce organizational standards and compliance at scale by applying policy controls directly to the cluster. If the `addon_profile.azure_policy.enabled` attribute is set to `false`, as shown below, the cluster will not have Azure Policy integration, leaving it vulnerable to resource misconfigurations and violating compliance policies.\n\n```\naddon_profile {\n  azure_policy {\n    enabled = false\n  }\n}\n```\n\nTo mitigate this vulnerability, the policy add-on should be enabled by setting `enabled = true`, ensuring that security and compliance policies are consistently enforced within the AKS environment.\n\n```\naddon_profile {\n  azure_policy {\n    enabled = true\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/aks_uses_azure_policies_addon_disabled",
+  "platform": "Terraform",
+  "descriptionID": "df6d2dcb",
+  "cloudProvider": "azure",
+  "cwe": "710",
+  "oldDescriptionText": "Azure Container Service (AKS) should use Azure Policies Add-On",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/kubernetes_cluster#azure_policy"
+}

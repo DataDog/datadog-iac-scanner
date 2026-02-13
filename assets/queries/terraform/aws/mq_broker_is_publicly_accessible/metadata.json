@@ -1,0 +1,15 @@
+{
+  "id": "4eb5f791-c861-4afd-9f94-f2a6a3fe49cb",
+  "queryName": "MQ broker is publicly accessible",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check verifies if AWS MQ brokers have the `publicly_accessible` attribute set to `true`, which makes them accessible from the internet. When an MQ broker is publicly accessible, it increases the attack surface and the risk of unauthorized access, potentially leading to data breaches or service disruption. To secure your MQ broker, omit the `publicly_accessible` attribute or explicitly set it to false, as shown below:\n\n```\nresource \"aws_mq_broker\" \"secure_broker\" {\n  broker_name = \"example\"\n  engine_type = \"ActiveMQ\"\n  // Other configurations\n  \n  // Either omit this line completely or set to false\n  publicly_accessible = false\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/mq_broker_is_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "8ac7fe7e",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Check if any MQ Broker is not publicly accessible",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/mq_broker"
+}

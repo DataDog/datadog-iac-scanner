@@ -1,0 +1,13 @@
+{
+  "id": "fe771ff7-ba15-4f8f-ad7a-8aa232b49a28",
+  "queryName": "Containers with added capabilities",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should not include added capabilities. This rule checks both `container` and `init_container` entries and ensures `security_context.capabilities.add` is not defined. If the `add` list is set, the rule reports an `IncorrectValue` with the resource location and the expected vs actual values.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/container_with_added_capabilities",
+  "platform": "Terraform",
+  "descriptionID": "4422c052",
+  "cwe": "269",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#capabilities-1"
+}

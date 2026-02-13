@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "ElastiCache Without VPC",
+		"severity": "LOW",
+		"line": 2,
+		"fileName": "positive.yaml"
+	}
+]

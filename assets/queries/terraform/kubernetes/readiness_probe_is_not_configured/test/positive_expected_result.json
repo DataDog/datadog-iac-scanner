@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Readiness probe is not configured",
+		"severity": "MEDIUM",
+		"line": 7,
+		"fileName": ""
+	}
+]

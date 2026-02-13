@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Containers with added capabilities",
+    "severity": "MEDIUM",
+    "line": 12
+  },
+  {
+    "queryName": "Containers with added capabilities",
+    "severity": "MEDIUM",
+    "line": 43
+  }
+]

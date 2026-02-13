@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "CronJob deadline not configured",
+		"severity": "LOW",
+		"line": 5,
+		"fileName": ""
+	}
+]

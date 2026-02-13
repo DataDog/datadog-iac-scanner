@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "CronJob deadline not configured",
+    "severity": "LOW",
+    "line": 6
+  }
+]

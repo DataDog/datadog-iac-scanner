@@ -1,0 +1,14 @@
+{
+  "id": "03b38885-8f4e-480c-a0e4-12c1affd15db",
+  "queryName": "Amplify app OAuth token exposed",
+  "severity": "HIGH",
+  "category": "Secret Management",
+  "descriptionText": "Amplify app OAuth tokens must not be embedded directly in templates or supplied as parameters with a `Default` value because plaintext or defaulted tokens can be exposed via source control, template snapshots, or CI/CD logs and would allow unauthorized access to linked source repositories and deployment pipelines.\n\n This rule checks resources of type `AWS::Amplify::App` and the `Properties.OauthToken` value.\n\n - `OauthToken` must not be a literal token string.\n - `OauthToken` must not be a `Ref`/value that resolves to a parameter which defines a `Default`.\n\n Instead, supply the token via a secrets service (for example, an AWS Secrets Manager or AWS Systems Manager Parameter Store (`SecureString`) dynamic reference) or via a parameter that has no `Default` and is injected at deploy time.\n\n This rule flags token-like literal values or parameter references where the referenced `Parameters.<name>.Default` is defined and does not consider Secrets Manager/SSM dynamic references as violations.\n\nSecure examples (CloudFormation YAML):\n\nUsing Secrets Manager dynamic reference:\n\n```yaml\nMyAmplifyApp:\n  Type: AWS::Amplify::App\n  Properties:\n    Name: my-app\n    OauthToken: \"{{resolve:secretsmanager:my-secret-id:SecretString:oauth_token}}\"\n```\n\nUsing a Parameter without a Default (supply at deploy time, set NoEcho=true):\n\n```yaml\nParameters:\n  GithubTokenParam:\n    Type: String\n    NoEcho: true\n\nResources:\n  MyAmplifyApp:\n    Type: AWS::Amplify::App\n    Properties:\n      Name: my-app\n      OauthToken: !Ref GithubTokenParam\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/amplify_app_oauth_token_exposed",
+  "platform": "CloudFormation",
+  "descriptionID": "c9abb2c8",
+  "cloudProvider": "aws",
+  "cwe": "798",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-amplify-app-basicauthconfig.html"
+}

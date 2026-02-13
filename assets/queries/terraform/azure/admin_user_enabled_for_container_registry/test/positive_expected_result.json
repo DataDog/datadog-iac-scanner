@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Admin user enabled for container registry",
+    "severity": "MEDIUM",
+    "line": 11
+  }
+]

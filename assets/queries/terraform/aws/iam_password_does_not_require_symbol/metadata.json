@@ -1,0 +1,22 @@
+{
+  "id": "bts2c3d4-e5f6-7890-ab12-cd34ef567890",
+  "queryName": "IAM password policy does not require symbol",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "This check ensures that the AWS IAM account password policy enforces the use of at least one symbol in user passwords by setting `require_symbols = true`. If `require_symbols` is set to `false`, as shown below it weakens password complexity, making user accounts more susceptible to brute-force or password guessing attacks. Failing to enforce symbol usage increases the risk of unauthorized access to AWS resources.\n\n```\nresource \"aws_iam_account_password_policy\" \"bad_example\" {\n  minimum_password_length      = 14\n  require_symbols              = false\n  require_numbers              = true\n  require_lowercase_characters = true\n  require_uppercase_characters = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/iam_password_does_not_require_symbol",
+  "platform": "Terraform",
+  "descriptionID": "bts2c3d4",
+  "cloudProvider": "aws",
+  "cwe": "521",
+  "oldDescriptionText": "Ensures that the AWS IAM password policy requires at least one symbol. Without this setting, passwords may be easier to guess, leading to security vulnerabilities.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_account_password_policy#require_symbols",
+  "customFrameworks": [
+    {
+      "control": "aws.1.13",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

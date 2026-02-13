@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "CPU limits not set",
+    "severity": "LOW",
+    "line": 10,
+    "fineName": "positive.yaml"
+  },
+  {
+    "queryName": "CPU limits not set",
+    "severity": "LOW",
+    "line": 14,
+    "fineName": "positive.yaml"
+  },
+  {
+    "queryName": "CPU limits not set",
+    "severity": "LOW",
+    "line": 31,
+    "fineName": "positive.yaml"
+  },
+  {
+    "queryName": "CPU limits not set",
+    "severity": "LOW",
+    "line": 35,
+    "fineName": "positive.yaml"
+  }
+]

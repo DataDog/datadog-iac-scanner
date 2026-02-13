@@ -1,0 +1,13 @@
+{
+  "id": "44034eda-1c3f-486a-831d-e09a7dd94354",
+  "queryName": "SageMaker endpoint config should specify KmsKeyId attribute",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "SageMaker endpoint configurations should specify a customer-managed AWS KMS key to ensure model artifacts, cached data, and inference outputs are encrypted at rest. This also helps retain control over key rotation, access policies, and audit logging.\n\nWithout a defined `KmsKeyId`, the endpoint may fall back to AWS-managed keys or lack explicit encryption control. This reduces your ability to enforce access restrictions and perform key-specific auditing. For `AWS::SageMaker::EndpointConfig` resources, `Properties.KmsKeyId` must be defined and set to a KMS key ARN, alias, or key ID (for example, a `Ref` to an `AWS::KMS::Key`). Resources missing `KmsKeyId` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyEndpointConfig:\n  Type: AWS::SageMaker::EndpointConfig\n  Properties:\n    EndpointConfigName: my-endpoint-config\n    KmsKeyId: !Ref MyKmsKey\n    ProductionVariants:\n      - VariantName: AllTraffic\n        ModelName: my-model\n        InitialInstanceCount: 1\n        InstanceType: ml.m5.large\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sagemaker_endpoint_config_should_specify_kms_key_id_attribute",
+  "platform": "CloudFormation",
+  "descriptionID": "7c9fa4bf",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-sagemaker-endpointconfig.html"
+}

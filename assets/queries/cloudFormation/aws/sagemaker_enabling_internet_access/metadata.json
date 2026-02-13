@@ -1,0 +1,13 @@
+{
+  "id": "88d55d94-315d-4564-beee-d2d725feab11",
+  "queryName": "SageMaker enabling internet access",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "SageMaker notebook instances must have direct internet access disabled to prevent notebooks from initiating outbound connections. Outbound access can be used to exfiltrate sensitive data or download and execute malicious code.\n\nIn CloudFormation, `AWS::SageMaker::NotebookInstance` resources must include `Properties.DirectInternetAccess` set to `Disabled`. Resources that omit `DirectInternetAccess`, or set it to any other value, will be flagged.\n\n```yaml\nMyNotebook:\n  Type: AWS::SageMaker::NotebookInstance\n  Properties:\n    NotebookInstanceName: my-notebook\n    InstanceType: ml.t2.medium\n    RoleArn: arn:aws:iam::123456789012:role/SageMakerExecutionRole\n    DirectInternetAccess: Disabled\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sagemaker_enabling_internet_access",
+  "platform": "CloudFormation",
+  "descriptionID": "6e8543a2",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#sagemaker-condition-nbi-lockdown"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "af173fde-95ea-4584-b904-bb3923ac4bda",
+  "queryName": "Redshift publicly accessible",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Amazon Redshift clusters with public accessibility enabled can be accessed from the internet, creating a significant security risk by potentially exposing sensitive data to unauthorized users. By default, the `publicly_accessible` parameter is set to `true` if not explicitly defined, meaning your cluster is publicly accessible unless specifically configured otherwise. To secure your Redshift cluster, always set `publicly_accessible = false`, as shown below:\n\n```hcl\nresource \"aws_redshift_cluster\" \"secure_example\" {\n  cluster_identifier = \"tf-redshift-cluster\"\n  database_name      = \"mydb\"\n  master_username    = \"foo\"\n  master_password    = \"Mustbe8characters\"\n  node_type          = \"dc1.large\"\n  cluster_type       = \"single-node\"\n  publicly_accessible = false\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/redshift_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "9a581503",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldDescriptionText": "AWS Redshift Clusters must not be publicly accessible. Check if 'publicly_accessible' field is true or undefined (default is true)",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/redshift_cluster"
+}

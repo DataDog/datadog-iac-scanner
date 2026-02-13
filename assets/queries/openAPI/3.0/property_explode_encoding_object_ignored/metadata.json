@@ -1,0 +1,12 @@
+{
+  "id": "a4dd69b8-49fa-45d2-a060-c76655405b05",
+  "queryName": "Property 'explode' of Encoding Object Ignored",
+  "severity": "INFO",
+  "category": "Best Practices",
+  "descriptionText": "Property 'explode' of the encoding object should be defined when the media type of the request body is 'application/x-www-form-urlencoded'. If not, it will be ignored.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/property_explode_encoding_object_ignored",
+  "platform": "OpenAPI",
+  "descriptionID": "927e421b",
+  "cwe": "665",
+  "providerUrl": "https://swagger.io/specification/#encoding-object"
+}

@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Automatic Minor Upgrades Disabled",
+    "severity": "LOW",
+    "line": 4,
+    "fileName": "./module/inputs.tf"
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "id": "bc1f9009-84a0-490f-ae09-3e0ea6d74ad6",
+  "queryName": "DocumentDB cluster not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "This check verifies whether Amazon DocumentDB cluster storage encryption is enabled. DocumentDB clusters store sensitive data and should have storage encryption enabled to protect data at rest. When storage encryption is disabled or not configured, data stored in the cluster is vulnerable to unauthorized access if the underlying storage is compromised.\n\nTo properly secure a DocumentDB cluster, ensure the `storage_encrypted` attribute is explicitly set to `true`, as shown in the example below:\n```terraform\nresource \"aws_docdb_cluster\" \"docdb\" {\n  cluster_identifier = \"my-docdb-cluster\"\n  // ... other configuration ...\n  storage_encrypted = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/docdb_cluster_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "aaec5c7c",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "AWS DOCDB Cluster storage should be encrypted",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/docdb_cluster#storage_encrypted",
+  "customFrameworks": [
+    {
+      "control": "aws.1.15",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

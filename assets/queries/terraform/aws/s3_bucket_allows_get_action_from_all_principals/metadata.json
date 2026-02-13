@@ -1,0 +1,14 @@
+{
+  "id": "1df37f4b-7197-45ce-83f8-9994d2fcf885",
+  "queryName": "S3 bucket allows get action from all principals",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "When S3 bucket policies allow the `GetObject` action from all principals (using `\"Principal: \"*\"` or `\"Principal\": {\"AWS\": \"*\"}`), they expose private data to anyone on the internet, creating a significant data breach risk. This vulnerability could lead to unauthorized access to sensitive information, intellectual property theft, or compliance violations with regulations like GDPR or HIPAA. Instead of using permissive policies, such as the ones shown below, implement restrictive policies with explicit denials or properly scoped permissions that limit access to specific authenticated principals.\n```\n\"Effect\": \"Allow\",\n\"Principal\": \"*\",\n\"Action\": \"s3:GetObject\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_allows_get_action_from_all_principals",
+  "platform": "Terraform",
+  "descriptionID": "2ac6911f",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldDescriptionText": "S3 Buckets must not allow Get Action From All Principals, as to prevent leaking private information to the entire internet or allow unauthorized data tampering / deletion. This means the 'Effect' must not be 'Allow' when the 'Action' is Get, for all Principals.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy"
+}

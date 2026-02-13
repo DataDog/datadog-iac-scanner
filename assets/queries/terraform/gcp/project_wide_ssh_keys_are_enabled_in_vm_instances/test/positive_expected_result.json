@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Project-wide SSH keys are enabled in VM instances",
+    "severity": "MEDIUM",
+    "line": 29
+  },
+  {
+    "queryName": "Project-wide SSH keys are enabled in VM instances",
+    "severity": "MEDIUM",
+    "line": 39
+  }
+]

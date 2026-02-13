@@ -1,0 +1,14 @@
+{
+  "id": "4a800e14-c94a-442d-9067-5a2e9f6c0a4c",
+  "queryName": "ELB using weak ciphers",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Elastic Load Balancers (ELBs) with weak cipher configurations present a significant security vulnerability as they can be exploited through various attacks like BEAST, POODLE, or FREAK, potentially leading to data breaches and session hijacking. Weak ciphers such as DES-CBC3-SHA or TLS_RSA_ARCFOUR_128_SHA1 are considered cryptographically insufficient by modern standards and may be exploited by attackers to decrypt sensitive data passing through the load balancer. To mitigate this risk, configure your ELB with strong cipher suites, as shown below:\n\n```hcl\npolicy_attribute {\n  name  = \"ECDHE-ECDSA-AES128-GCM-SHA256\"\n  value = \"true\"\n}\n\npolicy_attribute {\n  name  = \"Protocol-TLSv1.2\"\n  value = \"true\"\n}\n```\n\nAlternatively, use a predefined security policy that enforces strong ciphers:\n\n```hcl\npolicy_attribute {\n  name  = \"Reference-Security-Policy\"\n  value = \"ELBSecurityPolicy-TLS-1-2-2017-01\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elb_using_weak_ciphers",
+  "platform": "Terraform",
+  "descriptionID": "546bf472",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldDescriptionText": "ELB Predefined or Custom Security Policies must not use weak ciphers, to reduce the risk of the SSL connection between the client and the load balancer being exploited. That means the 'name' of 'policy_attributes' must not coincide with any of a predefined list of weak ciphers.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/load_balancer_policy"
+}

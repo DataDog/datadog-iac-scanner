@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "API Gateway with invalid compression",
+    "severity": "LOW",
+    "line": 1
+  },
+  {
+    "queryName": "API Gateway with invalid compression",
+    "severity": "LOW",
+    "line": 17
+  },
+  {
+    "queryName": "API Gateway with invalid compression",
+    "severity": "LOW",
+    "line": 28
+  }
+]

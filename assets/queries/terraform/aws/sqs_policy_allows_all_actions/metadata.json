@@ -1,0 +1,15 @@
+{
+  "id": "816ea8cf-d589-442d-a917-2dd0ce0e45e3",
+  "queryName": "SQS policy allows all actions",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "When SQS policies use the wildcard (`*`) for actions, they grant excessive permissions that violate the principle of least privilege, potentially allowing unauthorized entities to perform any operation on the queue. This vulnerability creates a significant security risk where attackers could read sensitive messages, delete messages, or modify queue configurations if they gain access. To avoid excessive permissions, replace wildcards with specific actions, such as `\"Action\": \"sqs:SendMessage\"` instead of the insecure `\"Action\": \"*\"`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sqs_policy_allows_all_actions",
+  "platform": "Terraform",
+  "descriptionID": "afcb58e6",
+  "cloudProvider": "aws",
+  "cwe": "285",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "SQS policy allows ALL (*) actions",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sqs_queue_policy"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "1828a670-5957-4bc5-9974-47da228f75e2",
+  "queryName": "Audit policy does not cover key security concerns",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "The audit policy should cover key security concerns about sensitive data logged in Kubernetes audit logs.\nThe policy requires rules for specific resources to be defined at the required audit levels (Metadata, Request, RequestResponse). These resources include: secrets, tokenreviews, configmaps, pods, deployments, and pod/service sub-resources (pods/exec, pods/portforward, pods/proxy, services/proxy).\nMissing any required level for a listed resource indicates the policy may not adequately prevent sensitive information from being recorded or exposed via audit events.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/audit_policy_not_cover_key_security_concerns",
+  "platform": "Kubernetes",
+  "descriptionID": "4a720a0c",
+  "cwe": "532",
+  "providerUrl": "https://kubernetes.io/docs/tasks/debug-application-cluster/audit/"
+}

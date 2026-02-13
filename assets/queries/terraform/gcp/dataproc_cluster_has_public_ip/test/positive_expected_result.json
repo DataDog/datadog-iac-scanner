@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Dataproc clusters has public IPs",
+    "severity": "HIGH",
+    "line": 7
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "ECS cluster not encrypted at rest",
+    "severity": "HIGH",
+    "line": 37,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "severity": "HIGH",
+    "line": 26,
+    "fileName": "positive2.yaml",
+    "queryName": "ECS cluster not encrypted at rest"
+  },
+  {
+    "severity": "HIGH",
+    "line": 122,
+    "fileName": "positive3.json",
+    "queryName": "ECS cluster not encrypted at rest"
+  },
+  {
+    "queryName": "ECS cluster not encrypted at rest",
+    "severity": "HIGH",
+    "line": 54,
+    "fileName": "positive4.json"
+  }
+]

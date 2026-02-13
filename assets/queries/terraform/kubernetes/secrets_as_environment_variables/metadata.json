@@ -1,0 +1,13 @@
+{
+  "id": "6d8f1a10-b6cd-48f0-b960-f7c535d5cdb8",
+  "queryName": "Secrets as environment variables",
+  "severity": "LOW",
+  "category": "Secret Management",
+  "descriptionText": "`Containers` should not include secrets as environment variables.\nThe rule detects any use of `env.value_from.secret_key_ref` or `env_from.secret_ref` in `container` and `init_container` entries and flags them as `IncorrectValue`.\nIt checks both array and object forms of `env` and `env_from` and reports the resource path where the secret reference is set.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/secrets_as_environment_variables",
+  "platform": "Terraform",
+  "descriptionID": "f5c43d1e",
+  "cwe": "526",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#secret_key_ref"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "5a443297-19d4-4381-9e5b-24faf947ec22",
+  "queryName": "Certificate Has Expired",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Expired SSL/TLS certificates should be removed",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/certificate_has_expired",
+  "platform": "Ansible",
+  "descriptionID": "3f6a85e8",
+  "cloudProvider": "aws",
+  "cwe": "298",
+  "providerUrl": "https://docs.ansible.com/ansible/2.10/collections/community/aws/aws_acm_module.html"
+}

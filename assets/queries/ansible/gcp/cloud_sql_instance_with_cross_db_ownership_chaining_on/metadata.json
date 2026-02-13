@@ -1,0 +1,13 @@
+{
+  "id": "9e0c33ed-97f3-4ed6-8be9-bcbf3f65439f",
+  "queryName": "Cloud SQL Instance With Cross DB Ownership Chaining On",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "GCP SQL Instance should not have Cross DB Ownership Chaining On",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cloud_sql_instance_with_cross_db_ownership_chaining_on",
+  "platform": "Ansible",
+  "descriptionID": "2a2f1164",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_sql_instance_module.html#parameter-settings/database_flags"
+}

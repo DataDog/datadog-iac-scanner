@@ -1,0 +1,12 @@
+{
+  "id": "49113af4-29ca-458e-b8d4-724c01a4a24f",
+  "queryName": "Terminated pod garbage collector threshold not properly set",
+  "severity": "MEDIUM",
+  "category": "Availability",
+  "descriptionText": "For containers running `kube-controller-manager`, the `--terminated-pod-gc-threshold` flag must be set to a value between `0` and `12501`. The rule checks the `command` fields in both `initContainers` and `containers` and reports when the flag is missing or set to an incorrect value.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/terminated_pod_garbage_collector_threshold_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "19ea96ee",
+  "cwe": "460",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/"
+}

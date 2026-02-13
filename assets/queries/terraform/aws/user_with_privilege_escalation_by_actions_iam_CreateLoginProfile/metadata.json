@@ -1,0 +1,14 @@
+{
+  "id": "0fd7d920-4711-46bd-aff2-d307d82cd8b7",
+  "queryName": "User with privilege escalation by actions 'iam:CreateLoginProfile'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Allowing users the `iam:CreateLoginProfile` action with the `Resource` set to `\"*\"` in AWS IAM policies permits them to set a password for any IAM user, thereby enabling direct console access. This creates a privilege escalation vulnerability, as the user can potentially assign login profiles to high-privilege accounts, leading to unauthorized access and control over critical AWS resources. To mitigate this risk, restrict the `Resource` to specific user ARNs and avoid assigning broad permissions, as shown in the following secure Terraform configuration:\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"ec2:Describe*\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_CreateLoginProfile",
+  "platform": "Terraform",
+  "descriptionID": "43ba4982",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "User with privilege escalation by actions 'iam:CreateLoginProfile' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_user_policy#policy"
+}

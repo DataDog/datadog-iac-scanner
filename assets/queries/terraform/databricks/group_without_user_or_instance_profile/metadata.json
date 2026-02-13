@@ -1,0 +1,13 @@
+{
+  "id": "23c3067a-8cc9-480c-b645-7c1e0ad4bf60",
+  "queryName": "Beta - Databricks group without user or instance profile",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Each `databricks_group` must be associated with at least one user or one instance profile. This rule checks for:\n\n- A `databricks_group_member` with a non-empty member_id, or\n- A `databricks_group_instance_profile` with a non-empty `instance_profile_id`\n\nIf neither is found referencing the group's `group_id`, the `databricks_group` is flagged.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/group_without_user_or_instance_profile",
+  "platform": "Terraform",
+  "descriptionID": "4bb78f12",
+  "cloudProvider": "common",
+  "cwe": "284",
+  "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/group"
+}

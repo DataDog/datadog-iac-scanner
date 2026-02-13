@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "SQL Server cross DB ownership chaining enabled",
+    "severity": "HIGH",
+    "line": 10
+  }
+]

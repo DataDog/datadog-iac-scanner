@@ -1,0 +1,14 @@
+{
+  "id": "8f957abd-9703-413d-87d3-c578950a753c",
+  "queryName": "IAM group without users",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IAM groups should have at least one user assigned so that group permissions are actively used and auditable. Empty groups can hide orphaned or over-permissive permission sets and increase the risk of unintended access if the group is later reused.\n \n This rule checks CloudFormation templates and requires each `AWS::IAM::Group` to be referenced by at least one `AWS::IAM::User` via the user's `Groups` property. `AWS::IAM::Group` resources with no such references will be flagged.\n \n If group membership is managed outside CloudFormation (for example, by an external identity provider) or a group is intentionally created empty for future use, document that intent or manage membership through IaC to avoid false positives.\n\nSecure example with a user assigned to the group:\n\n```yaml\nMyGroup:\n  Type: AWS::IAM::Group\n  Properties:\n    GroupName: my-group\n\nAliceUser:\n  Type: AWS::IAM::User\n  Properties:\n    UserName: alice\n    Groups:\n      - !Ref MyGroup\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_group_without_users",
+  "platform": "CloudFormation",
+  "descriptionID": "c23dca47",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-iam-group.html"
+}

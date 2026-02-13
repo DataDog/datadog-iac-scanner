@@ -1,0 +1,14 @@
+{
+  "id": "ee7b93c1-b3f8-4a3b-9588-146d481814f5",
+  "queryName": "Google Compute subnetwork with private Google access disabled",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Enabling Private Google Access for a Google Compute Subnetwork by setting the `private_ip_google_access` attribute to `true` allows resources with only internal IP addresses to access Google APIs and services securely, without requiring external IP addresses. If this setting is not enabled, resources within the subnetwork are unable to directly reach Google services without public internet routes, increasing the risk of misconfigurations that may expose internal resources or disrupt service communications. To address this, ensure the configuration includes `private_ip_google_access = true`:\n\n```\nresource \"google_compute_subnetwork\" \"example\" {\n  name                     = \"secure-subnetwork\"\n  ip_cidr_range            = \"10.2.0.0/16\"\n  region                   = \"us-central1\"\n  network                  = google_compute_network.custom-test.id\n  private_ip_google_access = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/google_compute_subnetwork_with_private_google_access_disabled",
+  "platform": "Terraform",
+  "descriptionID": "87e8a4f7",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldDescriptionText": "Google Compute Subnetwork should have Private Google Access enabled, which means 'private_ip_google_access' should be set to true",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_subnetwork#private_ip_google_access"
+}

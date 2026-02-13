@@ -1,0 +1,14 @@
+{
+  "id": "5c0b06d5-b7a4-484c-aeb0-75a836269ff0",
+  "queryName": "CloudTrail logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "CloudTrail must have logging enabled to provide an audit trail of API activity. Without logging, you cannot reliably detect unauthorized actions, investigate incidents, or meet audit and compliance requirements. The `IsLogging` property on `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources missing `IsLogging` or with `IsLogging` set to `false` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyTrail:\n  Type: AWS::CloudTrail::Trail\n  Properties:\n    IsLogging: true\n    S3BucketName: my-trail-bucket\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudtrail_logging_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "8cabc568",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-cloudtrail-trail.html#cfn-cloudtrail-trail-islogging"
+}

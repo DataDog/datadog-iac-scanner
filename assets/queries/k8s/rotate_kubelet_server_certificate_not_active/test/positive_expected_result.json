@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "Rotate Kubelet server certificate not active",
+    "severity": "MEDIUM",
+    "line": 8,
+    "filename": "positive1.yaml"
+  },
+  {
+    "queryName": "Rotate Kubelet server certificate not active",
+    "severity": "MEDIUM",
+    "line": 11,
+    "filename": "positive2.yaml"
+  },
+  {
+    "queryName": "Rotate Kubelet server certificate not active",
+    "severity": "MEDIUM",
+    "line": 8,
+    "filename": "positive3.json"
+  },
+  {
+    "queryName": "Rotate Kubelet server certificate not active",
+    "severity": "MEDIUM",
+    "line": 11,
+    "filename": "positive4.yaml"
+  }
+]

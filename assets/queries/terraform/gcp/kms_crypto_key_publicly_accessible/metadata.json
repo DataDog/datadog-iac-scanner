@@ -1,0 +1,14 @@
+{
+  "id": "16cc87d1-dd47-4f46-b3ce-4dfcac8fd2f5",
+  "queryName": "KMS CryptoKey is publicly accessible",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Google Cloud KMS CryptoKeys provide cryptographic functionality for encrypting and decrypting sensitive data in Google Cloud. When KMS CryptoKey IAM policies include `allUsers` or `allAuthenticatedUsers`, they become publicly accessible, creating a serious security vulnerability that could lead to unauthorized access to encryption capabilities, data breaches, or compromised encrypted information.\n\nInsecure configuration example:\n```\ndata \"google_iam_policy\" {\n  binding {\n    role = \"roles/cloudkms.cryptoKeyEncrypter\"\n    members = [\"allUsers\"]\n  }\n}\n```\n\nSecure configuration with specific user access:\n```\ndata \"google_iam_policy\" {\n  binding {\n    role = \"roles/cloudkms.cryptoKeyEncrypter\"\n    members = [\n      \"user:jane@example.com\",\n    ]\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/kms_crypto_key_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "b1146d1f",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldDescriptionText": "KMS Crypto Key should not be publicly accessible. In other words, the KMS Crypto Key policy should not set 'allUsers' or 'allAuthenticatedUsers' in the attribute 'member'/'members'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_kms_crypto_key_iam#google_kms_crypto_key_iam_policy"
+}

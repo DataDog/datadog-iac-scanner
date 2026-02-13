@@ -1,0 +1,15 @@
+{
+  "id": "d6cabc3a-d57e-48c2-b341-bf3dd4f4a120",
+  "queryName": "Cloud Storage bucket logging not enabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Cloud storage buckets should have logging enabled to capture access and usage data for auditing and monitoring purposes. If the `logging` block is not configured in the Terraform resource, access to and modifications of storage objects may go unnoticed, making it difficult to detect unauthorized activities or investigate security incidents.\n\nA secure configuration includes a `logging` block, as shown below:\n\n```\nresource \"google_storage_bucket\" \"auto_expiring_bucket\" {\n  name          = \"auto-expiring-bucket\"\n  location      = \"US\"\n  force_destroy = true\n\n  logging {\n    logBucket = \"example-logs-bucket\"\n  }\n\n  lifecycle_rule {\n    condition {\n      age = 3\n    }\n    action {\n      type = \"Delete\"\n    }\n  }\n}\n```\n\nEnabling logging helps improve visibility into data access and can aid in compliance efforts.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/cloud_storage_bucket_logging_not_enabled",
+  "platform": "Terraform",
+  "descriptionID": "9e9984aa",
+  "cloudProvider": "gcp",
+  "cwe": "778",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Cloud storage bucket should have logging enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket#log_bucket"
+}

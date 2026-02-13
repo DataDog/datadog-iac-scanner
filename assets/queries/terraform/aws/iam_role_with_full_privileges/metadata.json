@@ -1,0 +1,14 @@
+{
+  "id": "b1ffa705-19a3-4b73-b9d0-0c97d0663842",
+  "queryName": "IAM role with full privileges",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "IAM roles with full administrative privileges (using wildcard actions like `*`) grant unrestricted access to AWS resources, creating a significant security risk. If compromised, these roles could be exploited to access sensitive data, modify infrastructure, or launch attacks across your entire AWS environment. Instead of using wildcard permissions in the `Action` field, specify only the required permissions, as shown in the secure example:\n\n```\n\"Action\": [\"some:action\"]\n```\n\nAvoid insecure patterns such as the following:\n\n```\n\"Action\": [\"*\"] or \"Action\": \"*\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/iam_role_with_full_privileges",
+  "platform": "Terraform",
+  "descriptionID": "81321ef4",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "oldDescriptionText": "IAM role policy that allow full administrative privileges (for all resources)",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role"
+}

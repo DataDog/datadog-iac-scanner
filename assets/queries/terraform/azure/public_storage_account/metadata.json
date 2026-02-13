@@ -1,0 +1,22 @@
+{
+  "id": "17f75827-0684-48f4-8747-61129c7e4198",
+  "queryName": "Public storage account",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Public Azure storage accounts represent a significant security risk as they potentially expose sensitive data to unauthorized access from the internet. When storage accounts have their default_action set to `Allow` or include overly permissive IP rules (`0.0.0.0/0`), attackers can potentially access, exfiltrate, or manipulate stored data including PII, credentials, or business-critical information.\n\nTo secure storage accounts, configure network rules with `default_action` set to `Deny` and explicitly allow only specific IP addresses or virtual networks that require access. For example:\n\n```\nresource \"azurerm_storage_account\" \"secure_example\" {\n  // Required properties\n  name                = \"storageaccountname\"\n  resource_group_name = azurerm_resource_group.example.name\n  location            = azurerm_resource_group.example.location\n  account_tier        = \"Standard\"\n  account_replication_type = \"LRS\"\n\n  network_rules {\n    default_action             = \"Deny\"\n    ip_rules                   = [\"100.0.0.1\"]  // Only specific IPs, not 0.0.0.0/0\n    virtual_network_subnet_ids = [azurerm_subnet.example.id]\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/public_storage_account",
+  "platform": "Terraform",
+  "descriptionID": "88948514",
+  "cloudProvider": "azure",
+  "cwe": "285",
+  "oldDescriptionText": "Storage Account should not be public to grant the principle of least privileges",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account",
+  "defaultFrameworks": [
+    {
+      "control": "2.8",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "azure"
+    }
+  ]
+}

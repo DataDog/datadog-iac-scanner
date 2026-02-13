@@ -1,0 +1,13 @@
+{
+  "id": "905f4741-f965-45c1-98db-f7a00a0e5c73",
+  "queryName": "SNS Topic is Publicly Accessible",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "SNS Topic Policy should not allow any principal to access",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/sns_topic_is_publicly_accessible",
+  "platform": "Ansible",
+  "descriptionID": "956322cf",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/sns_topic_module.html"
+}

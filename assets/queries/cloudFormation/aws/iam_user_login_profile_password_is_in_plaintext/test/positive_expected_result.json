@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive1.yaml",
+    "queryName": "IAM user LoginProfile password is in plaintext"
+  },
+  {
+    "queryName": "IAM user LoginProfile password is in plaintext",
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive2.json"
+  }
+]

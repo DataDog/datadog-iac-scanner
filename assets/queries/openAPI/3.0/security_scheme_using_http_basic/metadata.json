@@ -1,0 +1,13 @@
+{
+  "id": "68e5fcac-390c-4939-a373-6074b7be7c71",
+  "queryName": "Security Scheme Using HTTP Basic",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Security Scheme HTTP should not be using basic authentication",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/security_scheme_using_http_basic",
+  "platform": "OpenAPI",
+  "descriptionID": "2aa53f7c",
+  "cwe": "285",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://swagger.io/specification/#security-scheme-object"
+}

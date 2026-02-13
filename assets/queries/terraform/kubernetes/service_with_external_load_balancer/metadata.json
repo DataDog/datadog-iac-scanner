@@ -1,0 +1,13 @@
+{
+  "id": "2a52567c-abb8-4651-a038-52fa27c77aed",
+  "queryName": "Service with external load balancer",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "This rule applies to `kubernetes_service` resources with `spec.type == \"LoadBalancer\"`, which exposes the service via an external load balancer and can make it accessible from other networks and the Internet.\n`metadata.annotations` should be set to indicate an internal load balancer when the service must not be externally exposed.\nSupported internal annotation keys include `networking.gke.io/load-balancer-type: Internal`, `cloud.google.com/load-balancer-type: Internal`, `service.beta.kubernetes.io/aws-load-balancer-internal: \"true\"`, and `service.beta.kubernetes.io/azure-load-balancer-internal: \"true\"`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/service_with_external_load_balancer",
+  "platform": "Terraform",
+  "descriptionID": "18a78d03",
+  "cwe": "552",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/service"
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "IAM Database Auth Not Enabled",
+    "severity": "MEDIUM",
+    "line": 9
+  },
+  {
+    "queryName": "IAM Database Auth Not Enabled",
+    "severity": "MEDIUM",
+    "line": 22
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "id": "1db3a5a5-bf75-44e5-9e44-c56cfc8b1ac5",
+  "queryName": "StatefulSet without PodDisruptionBudget",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "StatefulSets with more than one replica should have a PodDisruptionBudget that targets the StatefulSet's pod selector (`spec.selector.matchLabels`) to ensure high availability.  \nThis prevents simultaneous voluntary evictions from reducing the number of available replicas and helps maintain service continuity.  \nThe rule flags StatefulSets where no PodDisruptionBudget matches the StatefulSet's selector.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/statefulset_without_pod_disruption_budget",
+  "platform": "Kubernetes",
+  "descriptionID": "f3c77130",
+  "cwe": "754",
+  "providerUrl": "https://kubernetes.io/docs/tasks/run-application/configure-pdb/"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "982aa526-6970-4c59-8b9b-2ce7e019fe36",
+  "queryName": "API Gateway with CloudWatch logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Enabling AWS CloudWatch Logs for API Gateway stages is critical for capturing execution logs and monitoring API access and activity. If the log group name is misconfigured and does not follow the required naming convention, such as using an incorrect variable (`${var.stage_names}` instead of `${var.stage_name}`), logs may not be associated correctly with their respective API Gateway stages, resulting in reduced visibility and hampering incident response efforts. The `aws_cloudwatch_log_group` resource should have its `name` attribute follow the pattern `\"API-Gateway-Execution-Logs_${aws_api_gateway_rest_api.example.id}/${var.stage_name}\"` to ensure proper alignment with AWS best practices and support effective auditing and troubleshooting.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/api_gateway_with_cloudwatch_logging_disabled",
+  "platform": "Terraform",
+  "descriptionID": "48b9d186",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "AWS CloudWatch Logs for APIs should be enabled and using the naming convention described in documentation",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/api_gateway_stage#managing-the-api-logging-cloudwatch-log-group"
+}

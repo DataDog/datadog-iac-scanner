@@ -1,0 +1,13 @@
+{
+  "id": "94e47f3f-b90b-43a1-a36d-521580bae863",
+  "queryName": "Beta - Nifcloud LB use HTTP port",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "The `nifcloud_load_balancer` is configured to use the HTTP port (`load_balancer_port` is set to `80`).\nIt should be switched to HTTPS to benefit from TLS security features.\nThe rule reports an `IncorrectValue` issue when `load_balancer_port` equals `80`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/load_balancer_use_http",
+  "platform": "Terraform",
+  "descriptionID": "fc3831f9",
+  "cloudProvider": "nifcloud",
+  "cwe": "319",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/load_balancer#load_balancer_port"
+}

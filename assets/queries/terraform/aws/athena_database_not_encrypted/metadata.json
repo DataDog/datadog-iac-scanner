@@ -1,0 +1,14 @@
+{
+  "id": "b2315cae-b110-4426-81e0-80bb8640cdd3",
+  "queryName": "Athena database not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS Athena databases store query results in S3 buckets, and when not encrypted, sensitive data may be exposed to unauthorized access, potentially leading to data breaches and compliance violations. Encryption at rest protects this data using keys managed either by AWS or customer-managed KMS keys. To secure your implementation, add an `encryption_configuration` block to your `aws_athena_database` resource, as shown below:\n\n```terraform\nresource \"aws_athena_database\" \"secure_example\" {\n  name   = \"database_name\"\n  bucket = aws_s3_bucket.example.bucket\n\n  encryption_configuration {\n    encryption_option = \"SSE_KMS\"\n    kms_key           = \"your_kms_key_arn\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/athena_database_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "c90feea8",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "AWS Athena Database data in S3 should be encrypted",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/athena_database#encryption_configuration"
+}

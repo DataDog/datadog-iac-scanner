@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "HIGH",
+    "line": 15,
+    "fileName": "positive1.yaml",
+    "queryName": "Security groups with exposed admin ports"
+  },
+  {
+    "queryName": "Security groups with exposed admin ports",
+    "severity": "HIGH",
+    "line": 19,
+    "fileName": "positive2.json"
+  }
+]

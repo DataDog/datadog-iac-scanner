@@ -1,0 +1,22 @@
+[
+  {
+    "queryName": "SQS With SSE Disabled",
+    "severity": "MEDIUM",
+    "line": 2
+  },
+  {
+    "queryName": "SQS With SSE Disabled",
+    "severity": "MEDIUM",
+    "line": 16
+  },
+  {
+    "queryName": "SQS With SSE Disabled",
+    "severity": "MEDIUM",
+    "line": 22
+  },
+  {
+    "queryName": "SQS With SSE Disabled",
+    "severity": "MEDIUM",
+    "line": 29
+  }
+]

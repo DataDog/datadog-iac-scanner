@@ -1,0 +1,13 @@
+{
+  "id": "149fa56c-4404-4f90-9e25-d34b676d5b39",
+  "queryName": "AKS RBAC Disabled",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Azure Container Service (AKS) instance should have role-based access control (RBAC) enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/aks_rbac_disabled",
+  "platform": "Ansible",
+  "descriptionID": "16276251",
+  "cloudProvider": "azure",
+  "cwe": "285",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_aks_module.html"
+}

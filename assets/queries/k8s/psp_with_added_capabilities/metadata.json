@@ -1,0 +1,13 @@
+{
+  "id": "7307579a-3abb-46ad-9ce5-2a915634d5c8",
+  "queryName": "PSP with added capabilities",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "PodSecurityPolicy should not include allowed capabilities. The presence of the allowedCapabilities field grants containers additional privileges that increase the attack surface and may enable privilege escalation. Remove the allowedCapabilities key or leave it unset to enforce least privilege.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/psp_with_added_capabilities",
+  "platform": "Kubernetes",
+  "descriptionID": "2889da19",
+  "cwe": "250",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+}

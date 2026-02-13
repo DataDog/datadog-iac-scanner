@@ -1,0 +1,13 @@
+{
+  "id": "c878abb4-cca5-4724-92b9-289be68bd47c",
+  "queryName": "Privilege escalation allowed",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should not include `security_context.allow_privilege_escalation` set to `true`.  \nPreventing `allow_privilege_escalation` from being enabled ensures containers cannot gain more privileges than their parent process.  \nSet `security_context.allow_privilege_escalation` to `false` or omit the field to avoid privilege escalation.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/privilege_escalation_allowed",
+  "platform": "Terraform",
+  "descriptionID": "e693ddd6",
+  "cwe": "269",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#allow_privilege_escalation"
+}

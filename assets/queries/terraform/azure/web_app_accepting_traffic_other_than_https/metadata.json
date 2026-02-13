@@ -1,0 +1,15 @@
+{
+  "id": "11e9a948-c6c3-4a0f-8dcf-b5cf1763cdbe",
+  "queryName": "Web app accepting traffic other than HTTPS",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check ensures that Azure Web App Services are configured to accept only HTTPS traffic by setting the `https_only` attribute to `true`. Allowing HTTP traffic by setting `https_only = false` exposes the web application to potential security risks, including interception of sensitive data through unencrypted connections. To enforce secure communications, configure your Terraform resource as follows:\n\n```\nresource \"azurerm_app_service\" \"example\" {\n  name                = \"example-app-service\"\n  location            = azurerm_resource_group.example.location\n  resource_group_name = azurerm_resource_group.example.name\n  app_service_plan_id = azurerm_app_service_plan.example.id\n\n  site_config {\n    dotnet_framework_version = \"v4.0\"\n    scm_type                 = \"LocalGit\"\n  }\n\n  https_only = true\n\n  connection_string {\n    name  = \"Database\"\n    type  = \"SQLServer\"\n    value = \"Server=some-server.mydomain.com;Integrated Security=SSPI\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/web_app_accepting_traffic_other_than_https",
+  "platform": "Terraform",
+  "descriptionID": "74140c3d",
+  "cloudProvider": "azure",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Web app should only accept HTTPS traffic in Azure Web App Service.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/app_service#https_only"
+}

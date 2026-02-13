@@ -1,0 +1,14 @@
+{
+  "id": "bf9d42c7-c2f9-4dfe-942c-c8cc8249a081",
+  "queryName": "User with privilege escalation by actions 'iam:AddUserToGroup'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting the `iam:AddUserToGroup` permission with a resource scope of `\"*\"` allows the associated IAM user to add themselves or any other user to any group in the AWS account, regardless of the group's assigned permissions. This effectively enables privilege escalation, as the user could insert themselves into groups with administrative or other high-privilege roles, circumventing intended policy boundaries. If left unaddressed, this misconfiguration undermines the principle of least privilege and opens the door to unauthorized access, potentially leading to full compromise of the AWS environment. It is important to restrict such permissions to only trusted users and limit the resources they can affect to mitigate this risk.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_AddUserToGroup",
+  "platform": "Terraform",
+  "descriptionID": "b201d168",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "User with privilege escalation by actions 'iam:AddUserToGroup' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_user_policy#policy"
+}

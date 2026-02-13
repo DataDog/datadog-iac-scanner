@@ -1,0 +1,13 @@
+{
+  "id": "2263b286-2fe9-4747-a0ae-8b4768a2bbd2",
+  "queryName": "BigQuery Dataset Is Public",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "BigQuery dataset is anonymously or publicly accessible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/bigquery_dataset_is_public",
+  "platform": "Ansible",
+  "descriptionID": "72ba0b75",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_bigquery_dataset_module.html#parameter-access/special_group"
+}

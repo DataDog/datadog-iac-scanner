@@ -1,0 +1,13 @@
+{
+  "id": "6107c530-7178-464a-88bc-df9cdd364ac8",
+  "queryName": "OSS bucket IP restriction disabled",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "OSS bucket policies should restrict access by IP address.\nThis rule checks the `policy` attribute of `alicloud_oss_bucket` resources for statements that include a `Condition` with `acs:SourceIp`.\nResources without an IP restriction in their `policy` are reported.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_ip_restriction_disabled",
+  "platform": "Terraform",
+  "descriptionID": "93cebe21",
+  "cloudProvider": "alicloud",
+  "cwe": "285",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/oss_bucket#policy"
+}

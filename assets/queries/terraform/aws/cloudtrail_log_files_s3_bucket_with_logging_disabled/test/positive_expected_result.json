@@ -1,0 +1,20 @@
+[
+  {
+    "queryName": "CloudTrail log files S3 bucket with logging disabled",
+    "severity": "MEDIUM",
+    "line": 23,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "CloudTrail log files S3 bucket with logging disabled",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "CloudTrail log files S3 bucket with logging disabled",
+    "severity": "MEDIUM",
+    "line": 21,
+    "fileName": "positive3.tf"
+  }
+]

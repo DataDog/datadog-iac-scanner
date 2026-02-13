@@ -1,0 +1,12 @@
+{
+  "id": "249328b8-5f0f-409f-b1dd-029f07882e11",
+  "queryName": "Cluster admin rolebinding with superuser permissions",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Ensure that the `cluster-admin` role is used only where required (RBAC). This rule detects ClusterRoleBinding resources that bind to the `cluster-admin` role, which grants superuser permissions across the cluster. Such bindings increase risk and should be limited to adhere to the principle of least privilege.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/cluster_admin_role_binding_with_super_user_permissions",
+  "platform": "Kubernetes",
+  "descriptionID": "567eee7e",
+  "cwe": "269",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/#user-facing-roles"
+}

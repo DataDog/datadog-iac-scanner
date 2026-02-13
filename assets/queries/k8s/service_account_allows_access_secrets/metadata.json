@@ -1,0 +1,12 @@
+{
+  "id": "056ac60e-fe07-4acc-9b34-8e1d51716ab9",
+  "queryName": "ServiceAccount allows access to secrets",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "Roles and ClusterRoles that are bound to a ServiceAccount should not include the `get`, `list`, `watch`, or `*` verbs on the `secrets` resource.  \nThe rule triggers when a Role or ClusterRole contains a rule for the `secrets` resource and a corresponding RoleBinding or ClusterRoleBinding references a ServiceAccount.  \nThis prevents unintended or broad access to secrets by disallowing these read or wildcard verbs for bound roles.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_account_allows_access_secrets",
+  "platform": "Kubernetes",
+  "descriptionID": "79619280",
+  "cwe": "522",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/"
+}

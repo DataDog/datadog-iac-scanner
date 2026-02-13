@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "App Service FTPS enforce disabled",
+    "severity": "MEDIUM",
+    "line": 10,
+    "fileName": "positive1.tf"
+  }
+]

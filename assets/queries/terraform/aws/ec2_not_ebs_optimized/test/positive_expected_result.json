@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "EC2 not EBS optimized",
+    "severity": "LOW",
+    "line": 17,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "EC2 not EBS optimized",
+    "severity": "LOW",
+    "line": 20,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "EC2 not EBS optimized",
+    "severity": "LOW",
+    "line": 1,
+    "filename": "positive3.tf"
+  },
+  {
+    "queryName": "EC2 not EBS optimized",
+    "severity": "LOW",
+    "line": 9,
+    "filename": "positive4.tf"
+  }
+]

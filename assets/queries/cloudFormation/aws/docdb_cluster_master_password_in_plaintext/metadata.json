@@ -1,0 +1,14 @@
+{
+  "id": "39423ce4-9011-46cd-b6b1-009edcd9385d",
+  "queryName": "DocDB cluster master password in plaintext",
+  "severity": "HIGH",
+  "category": "Secret Management",
+  "descriptionText": "Amazon DocumentDB (`AWS::DocDB::DBCluster`) master user passwords must not be embedded as plaintext in the template or stored as parameter `Default` values. Exposed credentials in IaC or parameter defaults can be checked into source control or viewed in consoles and lead to unauthorized database access.\n\n For `AWS::DocDB::DBCluster` resources, validate `Resources.<name>.Properties.MasterUserPassword`. It must reference an AWS Secrets Manager secret or a parameter that does not define a `Default`. When using a parameter for passwords, set `NoEcho: true` and omit `Default`. Alternatively, use a Secrets Manager dynamic reference or an `AWS::SecretsManager::Secret` resource and reference its secret value.\n\n Resources with `MasterUserPassword` set to a literal string, or parameters that include a password-like `Default`, will be flagged.\n\nSecure examples:\n\n```yaml\nParameters:\n  DBPassword:\n    Type: String\n    NoEcho: true\n\nResources:\n  MyDBCluster:\n    Type: AWS::DocDB::DBCluster\n    Properties:\n      MasterUsername: admin\n      MasterUserPassword: !Ref DBPassword\n```\n\n```yaml\nResources:\n  MyDBCluster:\n    Type: AWS::DocDB::DBCluster\n    Properties:\n      MasterUsername: admin\n      MasterUserPassword: '{{resolve:secretsmanager:my-db-secret:SecretString:password}}'\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/docdb_cluster_master_password_in_plaintext",
+  "platform": "CloudFormation",
+  "descriptionID": "37fb585f",
+  "cloudProvider": "aws",
+  "cwe": "256",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-docdb-dbcluster.html"
+}

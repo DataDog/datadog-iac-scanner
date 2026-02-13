@@ -1,0 +1,38 @@
+[
+  {
+    "queryName": "Directory service Microsoft AD password set to plaintext or default ref",
+    "severity": "HIGH",
+    "line": 5,
+    "fileName": "positive3.yaml"
+  },
+  {
+    "queryName": "Directory service Microsoft AD password set to plaintext or default ref",
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Directory service Microsoft AD password set to plaintext or default ref",
+    "severity": "HIGH",
+    "line": 14,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Directory service Microsoft AD password set to plaintext or default ref",
+    "severity": "HIGH",
+    "line": 17,
+    "fileName": "positive4.json"
+  },
+  {
+    "severity": "HIGH",
+    "line": 11,
+    "queryName": "Directory service Microsoft AD password set to plaintext or default ref",
+    "fileName": "positive5.json"
+  },
+  {
+    "queryName": "Directory service Microsoft AD password set to plaintext or default ref",
+    "severity": "HIGH",
+    "line": 5,
+    "fileName": "positive6.json"
+  }
+]

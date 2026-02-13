@@ -1,0 +1,15 @@
+{
+  "id": "f83121ea-03da-434f-9277-9cd247ab3047",
+  "queryName": "VPC Flow Logs disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Enabling VPC Flow Logs ensures that all network traffic within a Virtual Private Cloud (VPC) is captured and monitored for security and compliance purposes. Without the `vpc_id` attribute set for each `aws_flow_log` resource, as shown below, critical visibility into network traffic can be lost, making it difficult to detect suspicious activity or troubleshoot networking issues. To ensure accountability and monitoring, every VPC resource should have an associated flow log defined as follows:\n\n```\nresource \"aws_vpc\" \"main\" {\n  cidr_block = \"10.0.0.0/16\"\n}\n\nresource \"aws_flow_log\" \"main\" {\n  iam_role_arn    = aws_iam_role.example.arn\n  log_destination = aws_cloudwatch_log_group.example.arn\n  traffic_type    = \"ALL\"\n  vpc_id          = aws_vpc.main.id\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/vpc_flowlogs_disabled",
+  "platform": "Terraform",
+  "descriptionID": "cdbdeb30",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "Every VPC resource should have an associated Flow Log",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc"
+}

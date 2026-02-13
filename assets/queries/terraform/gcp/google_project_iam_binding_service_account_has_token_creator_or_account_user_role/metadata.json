@@ -1,0 +1,15 @@
+{
+  "id": "617ef6ff-711e-4bd7-94ae-e965911b1b40",
+  "queryName": "Google project IAM binding service account has token creator or account user role",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "This check identifies if a Google Project IAM binding grants `serviceAccountTokenCreator` or `serviceAccountUser` roles, which provide excessive privileges to service accounts. These roles allow the specified members to impersonate service accounts, creating security risks through privilege escalation paths and potential lateral movement across your GCP environment.\n\nMembers with the `serviceAccountTokenCreator` role can create OAuth2 access tokens, while those with `serviceAccountUser` role can use service accounts for their operations. To remediate this issue, assign more restrictive roles that follow the principle of least privilege instead, as shown in the following example:\n\n```\nresource \"google_project_iam_binding\" \"secure_example\" {\n  project = \"your-project-id\"\n  role    = \"roles/editor\"\n\n  members = [\n    \"user:jane@example.com\",\n  ]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/google_project_iam_binding_service_account_has_token_creator_or_account_user_role",
+  "platform": "Terraform",
+  "descriptionID": "2b311b42",
+  "cloudProvider": "gcp",
+  "cwe": "285",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Verifies if Google Project IAM Binding Service Account doesn't have an Account User or Token Creator Role associated",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project_iam#google_project_iam_binding"
+}

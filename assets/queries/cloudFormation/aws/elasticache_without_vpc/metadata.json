@@ -1,0 +1,13 @@
+{
+  "id": "ba766c53-fe71-4bbb-be35-b6803f2ef13e",
+  "queryName": "ElastiCache without VPC",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Amazon ElastiCache clusters must be launched inside a VPC to provide network isolation and reduce the risk of unintended public or cross-account access.\n \n In CloudFormation, `AWS::ElastiCache::CacheCluster` resources must include the `CacheSubnetGroupName` property. Resources with this property missing or set to `null` will be flagged because they may be created outside a VPC.\n \n Ensure `CacheSubnetGroupName` references an `AWS::ElastiCache::SubnetGroup` (or a valid subnet group name) that contains only VPC subnet IDs so the cluster is deployed into the intended VPC subnets.\n\nSecure configuration example:\n\n```yaml\nMyCacheSubnetGroup:\n  Type: AWS::ElastiCache::SubnetGroup\n  Properties:\n    Description: Subnet group for ElastiCache\n    SubnetIds:\n      - subnet-01234567\n      - subnet-89abcdef\n\nMyCacheCluster:\n  Type: AWS::ElastiCache::CacheCluster\n  Properties:\n    CacheSubnetGroupName: !Ref MyCacheSubnetGroup\n    Engine: redis\n    CacheNodeType: cache.t3.micro\n    NumCacheNodes: 1\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elasticache_without_vpc",
+  "platform": "CloudFormation",
+  "descriptionID": "68db93b8",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-elasticache-cache-cluster.html#cfn-elasticache-cachecluster-cachesubnetgroupname"
+}

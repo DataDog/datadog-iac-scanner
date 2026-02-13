@@ -1,0 +1,13 @@
+{
+  "id": "944439c7-b4b8-476a-8f83-14641ea876ba",
+  "queryName": "Beta - Nifcloud LB use insecure TLS policy ID",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "The load balancer uses an insecure TLS policy. This rule flags `nifcloud_load_balancer` resources that either omit `ssl_policy_id` or set `ssl_policy_id` to an outdated policy identifier (`1`, `2`, `3`, `5`, `8`). Resources must use `TLS v1.2+` for secure encryption.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/load_balancer_use_insecure_tls_policy_id",
+  "platform": "Terraform",
+  "descriptionID": "4e6e920b",
+  "cloudProvider": "nifcloud",
+  "cwe": "295",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/load_balancer#ssl_policy_id"
+}

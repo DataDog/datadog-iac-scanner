@@ -1,0 +1,15 @@
+{
+  "id": "2134641d-30a4-4b16-8ffc-2cd4c4ffd15d",
+  "queryName": "DocumentDB cluster encrypted with AWS managed key",
+  "severity": "LOW",
+  "category": "Encryption",
+  "descriptionText": "Amazon DocumentDB clusters should be encrypted using customer-managed AWS Key Management Service (KMS) keys rather than default AWS-managed keys. When the `kms_key_id` attribute in the `aws_docdb_cluster` resource is set to an AWS-managed key such as `alias/aws/rds`, as in the configuration below, it limits the organization's ability to control, rotate, and audit the usage of encryption keys, potentially weakening the security posture:\n\n```\ndata \"aws_kms_key\" \"test\" {\n  key_id = \"alias/aws/rds\"\n}\n\nresource \"aws_docdb_cluster\" \"test2\" {\n  ...\n  storage_encrypted   = true\n  kms_key_id          = data.aws_kms_key.test.arn\n}\n```\n\nIf this misconfiguration is left unaddressed, sensitive data stored in the DocumentDB cluster may be at risk because AWS retains full control of the KMS key, making it difficult to restrict or monitor access and respond to compliance requirements. Using customer-managed KMS keys allows for finer-grained access control, detailed key usage logging, and key lifecycle management, helping protect data from unauthorized access and achieving regulatory compliance.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/docdb_cluster_encrypted_with_aws_managed_key",
+  "platform": "Terraform",
+  "descriptionID": "984ebbd4",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "DOCDB Cluster should be encrypted with customer-managed KMS keys instead of AWS managed keys",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/docdb_cluster#kms_key_id"
+}

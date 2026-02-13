@@ -1,0 +1,12 @@
+{
+  "id": "8b36775e-183d-4d46-b0f7-96a6f34a723f",
+  "queryName": "Missing AppArmor profile",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Containers should be configured with an AppArmor profile to enforce fine-grained access control over low-level system resources. This rule requires each container to have the annotation `container.apparmor.security.beta.kubernetes.io/<container>` set to `runtime/default` or to a `localhost/<profile>` value. Missing or invalid annotations are reported as MissingAttribute or IncorrectValue issues. The rule validates annotations on Pod templates, Job templates, and top-level Pod resources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/missing_app_armor_config",
+  "platform": "Kubernetes",
+  "descriptionID": "59c17c0a",
+  "cwe": "284",
+  "providerUrl": "https://kubernetes.io/docs/tutorials/clusters/apparmor/"
+}

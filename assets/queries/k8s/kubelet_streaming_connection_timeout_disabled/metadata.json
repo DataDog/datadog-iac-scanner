@@ -1,0 +1,12 @@
+{
+  "id": "ed89b97d-04e9-4fd4-919f-ee5b27e555e9",
+  "queryName": "Kubelet streaming connection timeout disabled",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "The `--streaming-connection-idle-timeout` flag should not be set to `0`. The rule also checks container `command` entries in `containers` and `initContainers`, and the `KubeletConfiguration` field `streamingConnectionIdleTimeout` should not be set to `0s`. Setting the timeout to zero disables the idle timeout and can allow connections to remain open indefinitely, increasing the risk of resource exhaustion or unintended exposure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_streaming_connection_timeout_disabled",
+  "platform": "Kubernetes",
+  "descriptionID": "f0a2431d",
+  "cwe": "754",
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+}

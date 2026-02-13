@@ -1,0 +1,13 @@
+{
+  "id": "050f085f-a8db-4072-9010-2cca235cc02f",
+  "queryName": "Auto Scaling Group With No Associated ELB",
+  "severity": "MEDIUM",
+  "category": "Availability",
+  "descriptionText": "AWS Auto Scaling Groups must have associated ELBs to ensure high availability and improve application performance. This means the attribute 'load_balancers' must be defined and not empty.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/auto_scaling_group_with_no_associated_elb",
+  "platform": "Ansible",
+  "descriptionID": "57b5fbca",
+  "cloudProvider": "aws",
+  "cwe": "400",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/ec2_asg_module.html#parameter-load_balancers"
+}

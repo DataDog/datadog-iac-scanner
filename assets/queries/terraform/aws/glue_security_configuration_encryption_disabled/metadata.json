@@ -1,0 +1,14 @@
+{
+  "id": "ad5b4e97-2850-4adf-be17-1d293e0b85ee",
+  "queryName": "Glue security configuration encryption disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS Glue Security Configuration requires proper encryption settings for all three components (CloudWatch, job bookmarks, and S3) with valid KMS key ARNs to ensure comprehensive data protection. When any of these components lacks proper encryption configuration or is missing the required KMS key ARN, it creates security vulnerabilities that could expose sensitive data. The impact of this misconfiguration includes potential unauthorized access to data, compliance violations, and increased risk of data breaches.\n\nSecure configuration example:\n```terraform\nencryption_configuration {\n  cloudwatch_encryption {\n    cloudwatch_encryption_mode = \"SSE-KMS\"\n    kms_key_arn = data.aws_kms_key.example.arn\n  }\n  job_bookmarks_encryption {\n    job_bookmarks_encryption_mode = \"CSE-KMS\"\n    kms_key_arn = data.aws_kms_key.example.arn\n  }\n  s3_encryption {\n    s3_encryption_mode = \"SSE-KMS\"\n    kms_key_arn = data.aws_kms_key.example.arn\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/glue_security_configuration_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "839261d5",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "Glue Security Configuration Encryption should have 'cloudwatch_encryption', 'job_bookmarks_encryption' and 's3_encryption' enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/glue_security_configuration#encryption_configuration"
+}

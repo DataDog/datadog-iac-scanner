@@ -1,0 +1,15 @@
+{
+  "id": "22fbfeac-7b5a-421a-8a27-7a2178bb910b",
+  "queryName": "CMK rotation disabled",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "Customer Master Keys (CMKs) created using AWS Key Management Service (KMS) should have automatic key rotation enabled to enhance cryptographic security. Failing to set the `enable_key_rotation` attribute to `true` may increase the risk of key compromise, as cryptographic keys used over extended periods are more susceptible to brute-force or other attacks. Enabling rotation ensures the key material is automatically replaced annually, reducing exposure and supporting compliance with security best practices.\n\n```\nresource \"aws_kms_key\" \"example\" {\n  description         = \"KMS key with rotation enabled\"\n  is_enabled          = true\n  enable_key_rotation = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cmk_rotation_disabled",
+  "platform": "Terraform",
+  "descriptionID": "64cfa70f",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Customer Master Keys (CMK) must have rotation enabled, which means the attribute 'enable_key_rotation' must be set to 'true' when the key is enabled.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key#enable_key_rotation"
+}

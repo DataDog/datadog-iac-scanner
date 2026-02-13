@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Beta - Databricks OBO token has indefinite lifetime",
+		"severity": "MEDIUM",
+		"line": 1,
+		"fileName": "positive.tf"
+	}
+]

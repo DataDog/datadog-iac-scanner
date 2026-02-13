@@ -1,0 +1,14 @@
+{
+  "id": "40430747-442d-450a-a34f-dc57149f4609",
+  "queryName": "Google Compute subnetwork logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "This check verifies whether VPC flow logs are enabled for a `google_compute_subnetwork` resource by ensuring a `log_config` block is included in the Terraform configuration. Without flow logs enabled, as shown below, critical network traffic information is not captured, making it difficult to monitor, detect, or investigate suspicious activity within the network.  \n\n```\nresource \"google_compute_subnetwork\" \"example\" {\n  // ...subnetwork configuration...\n\n  log_config {\n    aggregation_interval = \"INTERVAL_10_MIN\"\n    flow_sampling        = 0.5\n    metadata             = \"INCLUDE_ALL_METADATA\"\n  }\n}\n```\n\nFailure to enable logging can lead to security gaps, reducing visibility into potential breaches and making compliance with auditing requirements more challenging.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/google_compute_subnetwork_logging_disabled",
+  "platform": "Terraform",
+  "descriptionID": "689ef05b",
+  "cloudProvider": "gcp",
+  "cwe": "788",
+  "oldDescriptionText": "This query checks if logs are enabled for a Google Compute Subnetwork resource.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_subnetwork"
+}

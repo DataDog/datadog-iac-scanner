@@ -1,0 +1,14 @@
+{
+  "id": "f80e3aa7-7b34-4185-954e-440a6894dde6",
+  "queryName": "IAM role allows all principals to assume",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IAM role trust policies must not grant account-root or wildcard principals permission to assume the role, because allowing principals like an account root ARN (`arn:aws:iam::123456789012:root`) or `*` effectively trusts every principal in an account or every AWS account and can enable privilege escalation or unintended cross-account access. Check `AWS::IAM::Role` resources' `Properties.AssumeRolePolicyDocument.Statement[].Principal.AWS`. The principal value must not be `*` or contain `:root`. Only statements with `Effect: Allow` are evaluated. Resources with `Principal.AWS` containing `:root` or `*` will be flagged and should be replaced with explicit principal ARNs or specific service principals.\n\nSecure example with an explicit principal ARN:\n\n```yaml\nMyRole:\n  Type: AWS::IAM::Role\n  Properties:\n    AssumeRolePolicyDocument:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:role/TrustedRole\n          Action: sts:AssumeRole\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_role_allows_all_principals_to_assume",
+  "platform": "CloudFormation",
+  "descriptionID": "13e52bb7",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iam-role.html#cfn-iam-role-assumerolepolicydocument"
+}

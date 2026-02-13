@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Encryption provider config is not defined",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive1.yaml"
+  }
+]

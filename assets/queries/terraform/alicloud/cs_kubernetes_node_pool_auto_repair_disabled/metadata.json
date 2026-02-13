@@ -1,0 +1,13 @@
+{
+  "id": "81ce9394-013d-4731-8fcc-9d229b474073",
+  "queryName": "CS Kubernetes node pool auto repair disabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Verifies that Alicloud Container Service node pools (`alicloud_cs_kubernetes_node_pool`) have `management.auto_repair` set to `true`. The `auto_repair` setting periodically detects and repairs failing nodes to maintain a healthy, running cluster. The rule reports when the `management` block is missing, when `auto_repair` is not present, or when `auto_repair` is explicitly set to `false`. Remediation is to add a `management` block with `auto_repair = true`, or to update the existing `auto_repair` value to `true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/cs_kubernetes_node_pool_auto_repair_disabled",
+  "platform": "Terraform",
+  "descriptionID": "3096639c",
+  "cloudProvider": "alicloud",
+  "cwe": "693",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/cs_kubernetes_node_pool#auto_repair"
+}

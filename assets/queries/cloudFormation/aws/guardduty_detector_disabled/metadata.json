@@ -1,0 +1,13 @@
+{
+  "id": "a25cd877-375c-4121-a640-730929936fac",
+  "queryName": "GuardDuty detector disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Amazon GuardDuty must be enabled to provide continuous threat detection and alerting. Disabling it can allow malicious activity to go undetected and delay incident response.\n \n The `Enable` property on `AWS::GuardDuty::Detector` resources must be set to `true`. This rule flags `AWS::GuardDuty::Detector` resources where `Enable` is explicitly set to `false`.\n\nSecure configuration example:\n\n```yaml\nMyDetector:\n  Type: AWS::GuardDuty::Detector\n  Properties:\n    Enable: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/guardduty_detector_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "cae19394",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-guardduty-detector.html"
+}

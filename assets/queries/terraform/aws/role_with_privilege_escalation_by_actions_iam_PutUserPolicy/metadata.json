@@ -1,0 +1,14 @@
+{
+  "id": "8f75840d-9ee7-42f3-b203-b40e3979eb12",
+  "queryName": "Role with privilege escalation by actions 'iam:PutUserPolicy'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Allowing the `iam:PutUserPolicy` action with a `Resource` value of `\"*\"` in a Terraform AWS IAM role or policy configuration allows any user assigned the role to attach arbitrary policies to any users in the AWS account. This creates a significant privilege escalation vulnerability, as an attacker could grant themselves or others increased permissions, potentially leading to full administrative access. To mitigate this risk, the scope of the `PutUserPolicy` action should be strictly restricted to only the necessary resources and users.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_PutUserPolicy",
+  "platform": "Terraform",
+  "descriptionID": "48764f87",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Role with privilege escalation by actions 'iam:PutUserPolicy' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy#policy"
+}

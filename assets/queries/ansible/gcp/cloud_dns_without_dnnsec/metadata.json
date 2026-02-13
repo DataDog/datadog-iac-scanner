@@ -1,0 +1,13 @@
+{
+  "id": "80b15fb1-6207-40f4-a803-6915ae619a03",
+  "queryName": "Cloud DNS Without DNSSEC",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "DNSSEC must be enabled for Cloud DNS",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cloud_dns_without_dnnsec",
+  "platform": "Ansible",
+  "descriptionID": "1797efc5",
+  "cloudProvider": "gcp",
+  "cwe": "350",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_dns_managed_zone_module.html#return-dnssecConfig/state"
+}

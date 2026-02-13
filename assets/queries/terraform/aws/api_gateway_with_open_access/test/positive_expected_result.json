@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "API Gateway with open access",
+    "severity": "MEDIUM",
+    "line": 4,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "API Gateway with open access",
+    "severity": "MEDIUM",
+    "line": 26,
+    "filename": "positive_module.tf"
+  }
+]

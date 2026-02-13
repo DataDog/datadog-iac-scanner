@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Google Storage bucket level access disabled",
+    "severity": "HIGH",
+    "line": 6
+  },
+  {
+    "queryName": "Google Storage bucket level access disabled",
+    "severity": "HIGH",
+    "line": 20
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "id": "054d07b5-941b-4c28-8eef-18989dc62323",
+  "queryName": "PostgreSQL Log Disconnections Not Set",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Make sure that for PostgreSQL Database, server parameter 'log_disconnections' is set to 'ON'",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/postgresql_log_disconnections_not_set",
+  "platform": "Ansible",
+  "descriptionID": "8d159e5e",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_postgresqlconfiguration_module.html"
+}

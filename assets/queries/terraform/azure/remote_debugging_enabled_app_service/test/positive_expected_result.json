@@ -1,0 +1,56 @@
+[
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 8,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 20,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 29,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 40,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 53,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 64,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 73,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 85,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "Ensure web app is not remotely debuggable",
+    "severity": "HIGH",
+    "line": 95,
+    "filename": "positive.tf"
+  }
+]

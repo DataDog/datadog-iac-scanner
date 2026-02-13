@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Amazon DMS replication instance is publicly accessible",
+    "severity": "CRITICAL",
+    "line": 10,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Amazon DMS replication instance is publicly accessible",
+    "severity": "CRITICAL",
+    "line": 8,
+    "filename": "positive_module.tf"
+  }
+]

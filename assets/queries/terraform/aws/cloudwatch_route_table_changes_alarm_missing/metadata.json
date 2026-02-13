@@ -1,0 +1,14 @@
+{
+  "id": "2285e608-ddbc-47f3-ba54-ce7121e31216",
+  "queryName": "CloudWatch route table changes alarm missing",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "This check ensures that a CloudWatch log metric filter and corresponding alarm are configured to detect and alert on changes to AWS VPC route tables. Without associating the alarm's `metric_name` with the correct CloudWatch log metric filter, as in `metric_name = \"XXXX NOT YOUR FILTER XXXX\"`, changes to route tables may go unmonitored, potentially allowing unauthorized modifications to routing paths without triggering any notifications. This oversight increases the risk of undetected network misconfigurations or malicious activity that could compromise the integrity and security of cloud network traffic flows.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudwatch_route_table_changes_alarm_missing",
+  "platform": "Terraform",
+  "descriptionID": "de601959",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "Ensure a log metric filter and alarm exist for route table changes",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_metric_filter#pattern"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "5d820574-4a60-4916-b049-0810b8629731",
+  "queryName": "Beta - CDB instance internet service enabled",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "CDB instances (`tencentcloud_mysql_instance`) should have the `internet_service` attribute disabled. The rule detects resources where `internet_service` is set to `1`. The expected value for `internet_service` is `0` or undefined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/cdb_instance_internet_service_enabled",
+  "platform": "Terraform",
+  "descriptionID": "2d49b723",
+  "cloudProvider": "tencentcloud",
+  "cwe": "284",
+  "providerUrl": "https://registry.terraform.io/providers/tencentcloudstack/tencentcloud/latest/docs/resources/mysql_instance#internet_service"
+}

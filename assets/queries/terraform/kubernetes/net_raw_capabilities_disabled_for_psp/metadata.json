@@ -1,0 +1,13 @@
+{
+  "id": "9aa32890-ac1a-45ee-81ca-5164e2098556",
+  "queryName": "NET_RAW capabilities disabled for PSP",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "`spec.required_drop_capabilities` on `kubernetes_pod_security_policy` resources must be set to `['ALL', 'NET_RAW']`. If `spec.required_drop_capabilities` is not `['ALL', 'NET_RAW']`, the rule reports an `IncorrectValue` issue for the `kubernetes_pod_security_policy` resource.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/net_raw_capabilities_disabled_for_psp",
+  "platform": "Terraform",
+  "descriptionID": "631e9c61",
+  "cwe": "250",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#required_drop_capabilities"
+}

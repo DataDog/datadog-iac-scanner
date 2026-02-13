@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "App Service not using latest TLS encryption version",
+    "severity": "MEDIUM",
+    "line": 10,
+    "fileName": "positive1.tf"
+  }
+]

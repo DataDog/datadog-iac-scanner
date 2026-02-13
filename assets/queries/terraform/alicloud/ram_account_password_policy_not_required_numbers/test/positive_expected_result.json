@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "RAM account password policy does not require numbers",
+		"severity": "LOW",
+		"line": 5,
+		"fileName": "positive1.tf"
+	}
+]

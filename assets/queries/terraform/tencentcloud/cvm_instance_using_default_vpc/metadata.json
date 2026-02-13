@@ -1,0 +1,13 @@
+{
+  "id": "b4e75c5c-83d5-4568-90e3-57ed5ec4051b",
+  "queryName": "Beta - CVM instance using default VPC",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "CVM instances should not be configured in the default VPC network. The `vpc_id` attribute of a `tencentcloud_instance` should not be set to `default`. Additionally, the `subnet_id` should not reference a default subnet.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/cvm_instance_using_default_vpc",
+  "platform": "Terraform",
+  "descriptionID": "347414ba",
+  "cloudProvider": "tencentcloud",
+  "cwe": "200",
+  "providerUrl": "https://registry.terraform.io/providers/tencentcloudstack/tencentcloud/latest/docs/resources/instance#vpc_id"
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "HIGH",
+    "line": 27,
+    "fileName": "positive1.yaml",
+    "queryName": "Neptune database cluster encryption disabled"
+  },
+  {
+    "line": 21,
+    "fileName": "positive2.json",
+    "queryName": "Neptune database cluster encryption disabled",
+    "severity": "HIGH"
+  }
+]

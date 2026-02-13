@@ -1,0 +1,15 @@
+{
+  "id": "ed35928e-195c-4405-a252-98ccb664ab7b",
+  "queryName": "API Gateway with invalid compression",
+  "severity": "LOW",
+  "category": "Encryption",
+  "descriptionText": "This check ensures that the `minimum_compression_size` attribute is set to a value greater than -1 and less than 10485760 for the `aws_api_gateway_rest_api` resource, enabling proper payload compression. Without valid configuration, API data transfer can be inefficient, leading to increased bandwidth costs and a slower experience for API consumers. Setting a secure configuration, such as shown below, ensures that response payloads are compressed appropriately, improving performance and security by preventing the misuse or neglect of compression settings.\n\n```\nresource \"aws_api_gateway_rest_api\" \"example\" {\n  name = \"regional-example\"\n\n  endpoint_configuration {\n    types = [\"REGIONAL\"]\n  }\n\n  minimum_compression_size = 0\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/api_gateway_with_invalid_compression",
+  "platform": "Terraform",
+  "descriptionID": "fc02b8db",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "API Gateway should have valid compression, which means attribute 'minimum_compression_size' should be set and its value should be greater than -1 and smaller than 10485760.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/api_gateway_rest_api"
+}

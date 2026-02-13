@@ -1,0 +1,14 @@
+{
+  "id": "a21c8da9-41bf-40cf-941d-330cf0d11fc7",
+  "queryName": "Azure Active Directory authentication",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Azure Service Fabric clusters should be configured to use Azure Active Directory (AAD) for authentication to ensure secure identity management and access control. Omitting the `tenant_id` attribute in the `azure_active_directory` block, as shown below, may result in incomplete AAD integration, potentially allowing unauthorized access to the Service Fabric cluster:\n\n```\nazure_active_directory {\n  cluster_application_id = \"id\"\n  client_application_id = \"id\"\n}\n```\n\nTo enforce proper authentication, always specify the `tenant_id` alongside the application IDs:\n\n```\nazure_active_directory {\n  tenant_id = \"id\"\n  cluster_application_id = \"id\"\n  client_application_id = \"id\"\n}\n```\n\nFailure to correctly implement AAD authentication increases the risk of unauthorized cluster access and potential exposure of sensitive workloads and management endpoints.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/azure_active_directory_authentication",
+  "platform": "Terraform",
+  "descriptionID": "2c27e24e",
+  "cloudProvider": "azure",
+  "cwe": "284",
+  "oldDescriptionText": "Azure Active Directory must be used for authentication for Service Fabric",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/service_fabric_cluster#tenant_id"
+}

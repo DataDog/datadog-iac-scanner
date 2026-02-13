@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Cosmos DB account without tags",
+    "severity": "LOW",
+    "line": 1
+  }
+]

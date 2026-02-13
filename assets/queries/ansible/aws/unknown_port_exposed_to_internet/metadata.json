@@ -1,0 +1,13 @@
+{
+  "id": "722b0f24-5a64-4cca-aa96-cfc26b7e3a5b",
+  "queryName": "Unknown Port Exposed To Internet",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "AWS Security Group should not have an unknown port exposed to the entire Internet",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/unknown_port_exposed_to_internet",
+  "platform": "Ansible",
+  "descriptionID": "f6437a28",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_group_module.html"
+}

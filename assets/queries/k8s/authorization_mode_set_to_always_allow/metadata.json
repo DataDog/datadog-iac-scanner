@@ -1,0 +1,27 @@
+{
+  "id": "f1f4d8da-1ac4-47d0-b1aa-91e69d33f7d5",
+  "queryName": "Authorization mode set to always allow",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "When using `kubelet` or `kube-apiserver`, the `--authorization-mode` flag should not be set to `AlwaysAllow`. The rule also checks `KubeletConfiguration` resources and flags an `authorization.mode` equal to `AlwaysAllow`. The `AlwaysAllow` mode grants unrestricted access to all requests and bypasses cluster authorization controls.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/authorization_mode_set_to_always_allow",
+  "platform": "Kubernetes",
+  "descriptionID": "f5c66471",
+  "cwe": "285",
+  "oldSeverity": "MEDIUM",
+  "defaultFrameworks": [
+    {
+      "control": "4.16",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    },
+    {
+      "control": "4.18",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+}

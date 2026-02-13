@@ -1,0 +1,13 @@
+{
+  "id": "59312e8a-a64e-41e7-a252-618533dd1ea8",
+  "queryName": "Output without description",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "`output` entries must contain a valid `description`.\nThe `description` must be defined, non-null, and not empty or whitespace-only.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/general/output_without_description",
+  "platform": "Terraform",
+  "descriptionID": "81535d16",
+  "cloudProvider": "common",
+  "cwe": "710",
+  "providerUrl": "https://www.terraform.io/docs/language/values/outputs.html#description-output-value-documentation"
+}

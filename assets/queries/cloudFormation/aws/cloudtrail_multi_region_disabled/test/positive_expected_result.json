@@ -1,0 +1,26 @@
+[
+  {
+    "line": 70,
+    "fileName": "positive1.yaml",
+    "queryName": "CloudTrail multi-region disabled",
+    "severity": "LOW"
+  },
+  {
+    "severity": "LOW",
+    "line": 76,
+    "fileName": "positive1.yaml",
+    "queryName": "CloudTrail multi-region disabled"
+  },
+  {
+    "queryName": "CloudTrail multi-region disabled",
+    "severity": "LOW",
+    "line": 17,
+    "fileName": "positive2.json"
+  },
+  {
+    "severity": "LOW",
+    "line": 32,
+    "fileName": "positive2.json",
+    "queryName": "CloudTrail multi-region disabled"
+  }
+]

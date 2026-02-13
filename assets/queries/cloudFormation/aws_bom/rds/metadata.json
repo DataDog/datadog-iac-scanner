@@ -1,0 +1,13 @@
+{
+  "id": "6ef03ff6-a2bd-483c-851f-631f248bc0ea",
+  "queryName": "BOM - AWS RDS",
+  "severity": "TRACE",
+  "category": "Bill Of Materials",
+  "descriptionText": "This rule inventories Amazon RDS DB instances and highlights their network accessibility and storage encryption so teams can quickly find databases that are publicly reachable or lack at‑rest encryption, both of which increase the risk of data exposure and regulatory non‑compliance. It inspects `AWS::RDS::DBInstance` resources and records the resource name, `Engine`, and accessibility derived from `PubliclyAccessible` (or inferred from `DBSubnetGroupName` and `VPCGatewayAttachment` relationships). Storage encryption is determined from the `StorageEncrypted` property on the DB instance; for Aurora engines the rule checks the linked `AWS::RDS::DBCluster` `StorageEncrypted` value, and when `StorageEncrypted` is not present the rule attempts to inherit encryption state from `SourceDBInstanceIdentifier`, `SnapshotIdentifier`, `SourceDBClusterIdentifier`, or referenced snapshot/instance resources. The output is a BillOfMaterials entry containing `resource_type`, `resource_name`, `resource_engine`, `resource_accessibility`, and `resource_encryption` to help prioritize remediation and compliance checks.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/rds",
+  "platform": "CloudFormation",
+  "descriptionID": "77215b57",
+  "cloudProvider": "aws",
+  "cwe": "532",
+  "providerUrl": "https://kics.io"
+}

@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Google Compute network using firewall rule that allows port range",
+    "severity": "LOW",
+    "line": 17,
+    "fileName": "positive.tf"
+  }
+]

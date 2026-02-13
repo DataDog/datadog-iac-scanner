@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "RAM account password policy max login attempts not recommended",
+		"severity": "MEDIUM",
+		"line": 10,
+		"fileName": "positive1.tf"
+	}
+]

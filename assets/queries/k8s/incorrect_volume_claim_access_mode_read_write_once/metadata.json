@@ -1,0 +1,12 @@
+{
+  "id": "3878dc92-8e5d-47cf-9cdd-7590f71d21b9",
+  "queryName": "Incorrect volume claim access mode ReadWriteOnce",
+  "severity": "MEDIUM",
+  "category": "Build Process",
+  "descriptionText": "Kubernetes StatefulSets must include exactly one volume claim template with the access mode `ReadWriteOnce`. The rule flags StatefulSets that either do not include any `spec.volumeClaimTemplates` with `accessModes` containing `ReadWriteOnce` (issue type: MissingAttribute) or include more than one such template (issue type: IncorrectValue). The check inspects each entry in `spec.volumeClaimTemplates[].spec.accessModes` to determine the presence of `ReadWriteOnce`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/incorrect_volume_claim_access_mode_read_write_once",
+  "platform": "Kubernetes",
+  "descriptionID": "f4e48914",
+  "cwe": "732",
+  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/"
+}

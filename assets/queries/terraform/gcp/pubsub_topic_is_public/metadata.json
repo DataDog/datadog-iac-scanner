@@ -1,0 +1,14 @@
+{
+  "id": "7sdj7dsj8-f348-4f95-845c-1090e41a615c",
+  "queryName": "Pub/Sub Topics are anonymously or publicly accessible",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Google Cloud Pub/Sub Topics should not be configured to allow public access by assigning IAM roles to the special principals `allUsers` or `allAuthenticatedUsers`. Granting roles to these principals makes the topic accessible to anyone on the internet or to any authenticated Google user, exposing your data to unauthorized access or misuse. For example:\n\n```\nresource \"google_pubsub_topic_iam_member\" \"bad_example\" {\n  topic  = \"example-topic\"\n  member = \"allUsers\"\n  role   = \"roles/pubsub.publisher\"\n}\n```\n\nTo prevent this, restrict the `member` attribute to specific users or service accounts, as shown below:\n\n```\nresource \"google_pubsub_topic_iam_member\" \"good_example\" {\n  topic  = \"example-topic\"\n  member = \"user:someone@example.com\"\n  role   = \"roles/pubsub.publisher\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/pubsub_topic_is_public",
+  "platform": "Terraform",
+  "descriptionID": "7sdj7dsj8",
+  "cloudProvider": "gcp",
+  "oldDescriptionText": "Pub/Sub Topics must not be publicly accessible. IAM members or bindings should not use 'allUsers' or 'allAuthenticatedUsers'.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/pubsub_topic_iam",
+  "cwe": ""
+}

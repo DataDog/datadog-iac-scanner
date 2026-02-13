@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Function App managed identity disabled",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.tf"
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "id": "15d8a7fd-465a-4d15-a868-add86552f17b",
+  "queryName": "GitHub repository set to public",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Repositories must be set to private. This requires the `visibility` attribute to be set to `private` and/or the `private` attribute to be `true`. If both are defined, `visibility` takes precedence over `private`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/github/github_repository_set_to_public",
+  "platform": "Terraform",
+  "descriptionID": "4df8b842",
+  "cwe": "668",
+  "cloudProvider": "common",
+  "providerUrl": "https://www.terraform.io/docs/providers/github/r/repository.html"
+}

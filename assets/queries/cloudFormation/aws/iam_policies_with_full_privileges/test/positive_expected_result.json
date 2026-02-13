@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 8,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 21,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive2.json"
+  },
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 31,
+    "fileName": "positive2.json"
+  }
+]

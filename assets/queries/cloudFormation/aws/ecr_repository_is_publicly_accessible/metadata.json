@@ -1,0 +1,14 @@
+{
+  "id": "75be209d-1948-41f6-a8c8-e22dd0121134",
+  "queryName": "ECR repository is publicly accessible",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "Amazon ECR repository policies that allow wildcard principals (`*`) grant public access to container images, enabling any AWS account or unauthenticated user to pull or push images. This increases the risk of data exposure, unauthorized deployments, and supply-chain compromise.\n \n The `RepositoryPolicyText` property of `AWS::ECR::Repository` resources must not contain `Statement` entries where `Effect` is `Allow` and the `Principal` includes `*`. This rule flags repository policy statements with `Principal` set to `*` and `Effect` set to `Allow`. Instead, specify explicit principals such as AWS account ARNs, IAM roles, or service principals and apply least-privilege actions and conditions.\n\nSecure configuration example (restrict to a specific AWS account):\n\n```yaml\nMyRepository:\n  Type: AWS::ECR::Repository\n  Properties:\n    RepositoryName: my-repo\n    RepositoryPolicyText:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: \"arn:aws:iam::123456789012:root\"\n          Action:\n            - \"ecr:GetDownloadUrlForLayer\"\n            - \"ecr:BatchGetImage\"\n            - \"ecr:BatchCheckLayerAvailability\"\n          Resource: !Sub \"arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/my-repo\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecr_repository_is_publicly_accessible",
+  "platform": "CloudFormation",
+  "descriptionID": "a85a7099",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecr-repository.html"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "8bfbf7ab-d5e8-4100-8618-798956e101e0",
+  "queryName": "User with privilege escalation by actions 'iam:PutGroupPolicy'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting an IAM user the `iam:PutGroupPolicy` action with `\"Resource\": \"*\"` allows them to attach arbitrary inline policies to any IAM group in the AWS account, leading to potential privilege escalation. With this permission, a user could assign powerful or administrative permissions to groups they belong to, effectively bypassing intended security boundaries. To prevent this, it's important to restrict IAM user actions to the minimum necessary and avoid using wildcards in sensitive permissions, as shown below:\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"ec2:Describe*\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_PutGroupPolicy",
+  "platform": "Terraform",
+  "descriptionID": "024a2d0d",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "User with privilege escalation by actions 'iam:PutGroupPolicy' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_user_policy#policy"
+}

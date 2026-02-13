@@ -1,0 +1,21 @@
+{
+  "id": "1aa4a1ae-5dbb-48a1-9aa2-630ea4be208e",
+  "queryName": "Authorization mode RBAC not set",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Resources that run `kube-apiserver` should set the `--authorization-mode` flag to include `RBAC`. If `--authorization-mode=RBAC` is not present, RBAC authorization will not be enforced and access control may be insufficient. This rule checks `containers` and `initContainers` commands for `kube-apiserver` and flags those missing the `--authorization-mode` `RBAC` mode.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/authorization_mode_rbac_not_set",
+  "platform": "Kubernetes",
+  "descriptionID": "5298aafe",
+  "cwe": "285",
+  "oldSeverity": "MEDIUM",
+  "defaultFrameworks": [
+    {
+      "control": "4.14",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

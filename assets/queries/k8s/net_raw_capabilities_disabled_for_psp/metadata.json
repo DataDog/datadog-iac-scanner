@@ -1,0 +1,12 @@
+{
+  "id": "2270987f-bb51-479f-b8be-3ca73e5ad648",
+  "queryName": "NET_RAW capabilities disabled for PSP",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should drop `NET_RAW` or `ALL` capabilities. This rule inspects the PodSecurityPolicy `spec.requiredDropCapabilities` field. It flags the resource when `spec.requiredDropCapabilities` is not set to `[\"ALL\", \"NET_RAW\"]`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/net_raw_capabilities_disabled_for_psp",
+  "platform": "Kubernetes",
+  "descriptionID": "e72d5579",
+  "cwe": "250",
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+}

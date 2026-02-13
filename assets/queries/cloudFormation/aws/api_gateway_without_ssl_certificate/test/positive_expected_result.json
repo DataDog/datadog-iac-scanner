@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "API Gateway without SSL certificate",
+    "severity": "MEDIUM",
+    "line": 5,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "API Gateway without SSL certificate",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive2.json"
+  }
+]

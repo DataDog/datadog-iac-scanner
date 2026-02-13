@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Default service account in use",
+		"severity": "LOW",
+		"line": 1,
+		"fileName": ""
+	},
+	{
+		"queryName": "Default service account in use",
+		"severity": "LOW",
+		"line": 12,
+		"fileName": ""
+	}
+]

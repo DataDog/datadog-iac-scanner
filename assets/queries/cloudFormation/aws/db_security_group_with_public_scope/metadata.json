@@ -1,0 +1,14 @@
+{
+  "id": "9564406d-e761-4e61-b8d7-5926e3ab8e79",
+  "queryName": "DB security group with public scope",
+  "severity": "CRITICAL",
+  "category": "Networking and Firewall",
+  "descriptionText": "Databases and their associated security groups must not allow ingress from the entire internet. When a publicly accessible Amazon RDS instance allows `CidrIp` set to `0.0.0.0/0` or `CidrIpv6` set to `::/0`, it exposes the database to unauthorized access, brute-force attacks, and data exfiltration.\n\n This rule applies when an `AWS::RDS::DBInstance` has `Properties.PubliclyAccessible` set to `true`. It flags:\n - `AWS::EC2::SecurityGroup` resources with `Properties.SecurityGroupIngress` entries where `CidrIp` is `0.0.0.0/0` or `CidrIpv6` is `::/0`.\n - `AWS::RDS::DBSecurityGroup` resources with `Properties.DBSecurityGroupIngress[]` entries where `CIDRIP` is `0.0.0.0/0`.\n\n Resources matching these values will be flagged. Instead, restrict ingress to specific trusted CIDR ranges or reference other security group IDs as the source so only known hosts can connect.\n\nSecure examples (restrict to a trusted CIDR or a security group):\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: \"Allow DB access from trusted network\"\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 5432\n        ToPort: 5432\n        CidrIp: 203.0.113.0/24\n```\n\n```yaml\nMyDBSecurityGroup:\n  Type: AWS::RDS::DBSecurityGroup\n  Properties:\n    DBSecurityGroupIngress:\n      - CIDRIP: 203.0.113.5/32\n    DBSecurityGroupName: my-db-sg\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/db_security_group_with_public_scope",
+  "platform": "CloudFormation",
+  "descriptionID": "3ddca0cc",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-rds-database-instance.html"
+}

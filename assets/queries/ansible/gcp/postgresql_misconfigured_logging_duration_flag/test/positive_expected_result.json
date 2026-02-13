@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "PostgreSQL Misconfigured Logging Duration Flag",
+    "severity": "LOW",
+    "line": 10
+  }
+]

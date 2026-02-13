@@ -1,0 +1,13 @@
+{
+  "id": "b2e8752c-3497-4255-98d2-e4ae5b46bbf5",
+  "queryName": "S3 bucket without server-side encryption",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "S3 buckets should have server-side encryption enabled to protect data at rest from unauthorized access. Encryption also helps ensure objects remain encrypted if underlying storage media or backups are compromised.\n\nIn CloudFormation, `AWS::S3::Bucket` resources must define `Properties.BucketEncryption.ServerSideEncryptionConfiguration` as a non-empty list. Each entry should include `ServerSideEncryptionByDefault.SSEAlgorithm` set to `AES256` or `aws:kms`. If using `aws:kms`, also specify `ServerSideEncryptionByDefault.KMSMasterKeyID`. Resources missing this property, or with an empty `ServerSideEncryptionConfiguration`, will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    BucketEncryption:\n      ServerSideEncryptionConfiguration:\n        - ServerSideEncryptionByDefault:\n            SSEAlgorithm: AES256\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_without_server_side_encryption",
+  "platform": "CloudFormation",
+  "descriptionID": "314a460b",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "providerUrl": "https://docs.aws.amazon.com/AmazonS3/latest/user-guide/default-bucket-encryption.html"
+}

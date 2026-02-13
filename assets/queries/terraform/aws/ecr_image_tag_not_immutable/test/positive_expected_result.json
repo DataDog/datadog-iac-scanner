@@ -1,0 +1,20 @@
+[
+  {
+    "queryName": "ECR image tag not immutable",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "ECR image tag not immutable",
+    "severity": "MEDIUM",
+    "line": 10,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "ECR image tag not immutable",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive_module.tf"
+  }
+]

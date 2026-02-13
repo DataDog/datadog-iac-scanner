@@ -1,0 +1,12 @@
+{
+  "id": "bf36b900-b5ef-4828-adb7-70eb543b7cfb",
+  "queryName": "Kubelet hostname override is set",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Hostnames should not be overridden.\nThis rule detects containers (including `initContainers`) whose command invokes `kubelet` and includes the `--hostname-override=` flag.\nOverriding the node hostname can create duplicate or incorrect hostnames and may disrupt node identity and cluster operations.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_hostname_override_is_set",
+  "platform": "Kubernetes",
+  "descriptionID": "a3adb557",
+  "cwe": "269",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/"
+}

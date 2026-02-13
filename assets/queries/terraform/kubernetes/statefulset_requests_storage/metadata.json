@@ -1,0 +1,13 @@
+{
+  "id": "fcc2612a-1dfe-46e4-8ce6-0320959f0040",
+  "queryName": "StatefulSet requests storage",
+  "severity": "LOW",
+  "category": "Build Process",
+  "descriptionText": "A `kubernetes_stateful_set` can declare a PersistentVolumeClaim template to request storage. The `spec.volume_claim_template.spec.resources.requests.storage` field should not be set; if present it is flagged. When flagged, the rule records `documentId`, `resourceType`, `resourceName`, and `searchKey`, and reports an `IncorrectValue` using `keyActualValue` and `keyExpectedValue`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/statefulset_requests_storage",
+  "platform": "Terraform",
+  "descriptionID": "3a82ccdb",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/stateful_set#volume_claim_template"
+}

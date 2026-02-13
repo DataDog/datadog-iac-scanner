@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "PostgreSQL server without connection throttling",
+    "severity": "MEDIUM",
+    "line": 5
+  },
+  {
+    "queryName": "PostgreSQL server without connection throttling",
+    "severity": "MEDIUM",
+    "line": 12
+  },
+  {
+    "queryName": "PostgreSQL server without connection throttling",
+    "severity": "MEDIUM",
+    "line": 19
+  }
+]

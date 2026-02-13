@@ -1,0 +1,12 @@
+{
+  "id": "3ba0cca1-b815-47bf-ac62-1e584eb64a05",
+  "queryName": "Invalid OAuth2 Token URL (v3)",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "OAuth2 security scheme flow requires a valid URL in the tokenUrl field",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/invalid_oauth2_token_url",
+  "platform": "OpenAPI",
+  "descriptionID": "78304c48",
+  "cwe": "285",
+  "providerUrl": "https://swagger.io/specification/#oauth-flow-object"
+}

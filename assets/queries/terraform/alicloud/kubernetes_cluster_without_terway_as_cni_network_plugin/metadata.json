@@ -1,0 +1,14 @@
+{
+  "id": "b9b7ada8-3868-4a35-854e-6100a2bb863d",
+  "queryName": "Kubernetes cluster without Terway as CNI network plugin",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Kubernetes clusters (`alicloud_cs_kubernetes`) must include the Terway CNI network plugin and define `pod_vswitch_ids`. Specifically, the `addons` block must include an entry for `terway-eniip`, and the `pod_vswitch_ids` attribute must be defined and not null. Terway enables ENI-based networking required for advanced network policies and proper pod communication. This rule flags `alicloud_cs_kubernetes` resources missing either the required `addons` entry or the `pod_vswitch_ids` attribute.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/kubernetes_cluster_without_terway_as_cni_network_plugin",
+  "platform": "Terraform",
+  "descriptionID": "7c27643e",
+  "cloudProvider": "alicloud",
+  "cwe": "693",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/cs_kubernetes#cluster_network_type"
+}

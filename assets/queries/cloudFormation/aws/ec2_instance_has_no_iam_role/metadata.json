@@ -1,0 +1,13 @@
+{
+  "id": "f914357d-8386-4d56-9ba6-456e5723f9a6",
+  "queryName": "EC2 instance has no IAM role",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Amazon EC2 instances must be associated with an IAM instance profile so the instance can assume a temporary IAM role. Without a profile, workloads may require embedded long‑lived credentials or run without least‑privilege access, increasing the risk of credential exposure and excessive privileges.\n \n In CloudFormation, every `AWS::EC2::Instance` should define `Resources.<Name>.Properties.IamInstanceProfile`. That value must reference an existing `AWS::IAM::InstanceProfile` resource in the template (either a `Ref` or the resource logical name). The referenced `AWS::IAM::InstanceProfile` resource must include `Properties.Roles` with one or more role names or `Ref`s so the instance actually receives an IAM role.\n \n This rule flags EC2 instances missing `IamInstanceProfile`, instances whose `IamInstanceProfile` does not match any resource in the template, and instance profile resources that do not define `Roles`.\n\nSecure CloudFormation example:\n\n```yaml\nMyRole:\n  Type: AWS::IAM::Role\n  Properties:\n    AssumeRolePolicyDocument:\n      Statement:\n        - Effect: Allow\n          Principal:\n            Service: ec2.amazonaws.com\n          Action: sts:AssumeRole\n\nMyInstanceProfile:\n  Type: AWS::IAM::InstanceProfile\n  Properties:\n    Roles:\n      - Ref: MyRole\n\nMyInstance:\n  Type: AWS::EC2::Instance\n  Properties:\n    IamInstanceProfile: Ref: MyInstanceProfile\n    ImageId: ami-0123456789abcdef0\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ec2_instance_has_no_iam_role",
+  "platform": "CloudFormation",
+  "descriptionID": "bf34b145",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance.html"
+}

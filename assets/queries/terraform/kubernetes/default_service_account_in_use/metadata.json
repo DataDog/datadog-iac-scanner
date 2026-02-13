@@ -1,0 +1,14 @@
+{
+  "id": "737a0dd9-0aaa-4145-8118-f01778262b8a",
+  "queryName": "Default service account in use",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Default service accounts should not be actively used. The `kubernetes_service_account` resource named `default` must include the `automount_service_account_token` attribute and it must be set to `false`. If `automount_service_account_token` is missing, add `automount_service_account_token = false`; if it is set to `true`, replace it with `false`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/default_service_account_in_use",
+  "platform": "Terraform",
+  "descriptionID": "b0822187",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/service_account#automount_service_account_token"
+}

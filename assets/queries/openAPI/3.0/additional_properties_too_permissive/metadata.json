@@ -1,0 +1,13 @@
+{
+  "id": "9f88c88d-824d-4d9a-b985-e22977046042",
+  "queryName": "Additional Properties Too Permissive",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Objects should not accept 'additionalProperties' if it is possible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/additional_properties_too_permissive",
+  "platform": "OpenAPI",
+  "descriptionID": "3623f181",
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://swagger.io/specification/#schema-object"
+}

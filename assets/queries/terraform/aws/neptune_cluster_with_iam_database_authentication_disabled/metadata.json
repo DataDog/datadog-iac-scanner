@@ -1,0 +1,15 @@
+{
+  "id": "c91d7ea0-d4d1-403b-8fe1-c9961ac082c5",
+  "queryName": "Neptune cluster with IAM database authentication disabled",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "AWS Neptune clusters should have IAM database authentication enabled to enhance security by using IAM users and roles instead of standard username and password credentials. When disabled, an attacker who gains access to the database credentials could directly connect to the database without additional IAM verification. To secure your Neptune cluster, add the `iam_database_authentication_enabled = true` parameter, as shown in the following example:\n\n```terraform\nresource \"aws_neptune_cluster\" \"example\" {\n  cluster_identifier = \"neptune-cluster-demo\"\n  // other configuration...\n  iam_database_authentication_enabled = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/neptune_cluster_with_iam_database_authentication_disabled",
+  "platform": "Terraform",
+  "descriptionID": "88b26e61",
+  "cloudProvider": "aws",
+  "cwe": "285",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Neptune Cluster should have IAM Database Authentication enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/neptune_cluster#storage_encrypted"
+}

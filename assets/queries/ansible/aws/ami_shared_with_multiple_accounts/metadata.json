@@ -1,0 +1,13 @@
+{
+  "id": "a19b2942-142e-4e2b-93b7-6cf6a6c8d90f",
+  "queryName": "AMI Shared With Multiple Accounts",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Limits access to AWS AMIs by checking if more than one account is using the same image",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ami_shared_with_multiple_accounts",
+  "platform": "Ansible",
+  "descriptionID": "2117f1c7",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_ami_module.html"
+}

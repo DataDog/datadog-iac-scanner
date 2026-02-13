@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Google Compute network using default firewall rule",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive.tf"
+  }
+]

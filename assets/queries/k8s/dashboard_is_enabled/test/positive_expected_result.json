@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Dashboard is enabled",
+    "severity": "LOW",
+    "line": 22
+  },
+  {
+    "queryName": "Dashboard is enabled",
+    "severity": "LOW",
+    "line": 67
+  }
+]

@@ -1,0 +1,20 @@
+[
+	{
+		"queryName": "Privilege escalation allowed",
+		"severity": "HIGH",
+		"line": 14,
+		"fileName": ""
+	},
+	{
+		"queryName": "Privilege escalation allowed",
+		"severity": "HIGH",
+		"line": 47,
+		"fileName": ""
+	},
+	{
+		"queryName": "Privilege escalation allowed",
+		"severity": "HIGH",
+		"line": 108,
+		"fileName": ""
+	}
+]

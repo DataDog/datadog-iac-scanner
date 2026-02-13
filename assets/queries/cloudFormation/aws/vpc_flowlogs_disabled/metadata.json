@@ -1,0 +1,14 @@
+{
+  "id": "f6d299d2-21eb-41cc-b1e1-fe12d857500b",
+  "queryName": "VPC Flow Logs disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "VPCs must have VPC Flow Logs enabled so network traffic metadata is recorded for detecting suspicious activity and supporting incident investigation and compliance audits.\n\nFor each `AWS::EC2::VPC` resource, ensure there is an `AWS::EC2::FlowLog` resource whose `Properties.ResourceId` references that VPC (for example, `Ref: MyVPC`) so traffic for that VPC is captured. Resources missing a flow log, or where the flow log's `ResourceId` does not reference the VPC, will be flagged. The flow log should also specify a valid destination (CloudWatch Logs or S3) via `LogDestination`/`LogDestinationType`.\n\nSecure example (CloudFormation YAML):\n\n```yaml\nMyVPC:\n  Type: AWS::EC2::VPC\n  Properties:\n    CidrBlock: 10.0.0.0/16\n\nFlowLogGroup:\n  Type: AWS::Logs::LogGroup\n\nVPCFlowLog:\n  Type: AWS::EC2::FlowLog\n  Properties:\n    ResourceType: VPC\n    ResourceId: !Ref MyVPC\n    TrafficType: ALL\n    LogDestinationType: cloud-watch-logs\n    LogDestination: !GetAtt FlowLogGroup.Arn\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/vpc_flowlogs_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "0fb02ca5",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-flowlog.html"
+}

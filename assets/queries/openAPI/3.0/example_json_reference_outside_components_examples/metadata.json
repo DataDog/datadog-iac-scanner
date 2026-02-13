@@ -1,0 +1,12 @@
+{
+  "id": "bac56e3c-1f71-4a74-8ae6-2fba07efcddb",
+  "queryName": "Example JSON Reference Outside Components Examples",
+  "severity": "INFO",
+  "category": "Structure and Semantics",
+  "descriptionText": "Reference to examples should point to #/components/examples",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/example_json_reference_outside_components_examples",
+  "platform": "OpenAPI",
+  "descriptionID": "8984393e",
+  "cwe": "20",
+  "providerUrl": "https://swagger.io/specification/#reference-object"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "dd706080-b7a8-47dc-81fb-3e8184430ec0",
+  "queryName": "Public security group rule unknown port",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "An unknown port, such as `24` or `111`, is open to the public on the `tcp`, `udp`, or `all` protocol. This occurs when `port_range` includes ports not present in the known ports map and `cidr_ip` is set to `0.0.0.0/0`. Such security group rules expose services to the entire Internet and should be avoided.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/public_security_group_rule_unknown_port",
+  "platform": "Terraform",
+  "descriptionID": "a2097952",
+  "cloudProvider": "alicloud",
+  "cwe": "284",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/security_group_rule#port_range"
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "queryName": "Elasticsearch not encrypted at rest",
+    "severity": "HIGH",
+    "line": 1
+  },
+  {
+    "queryName": "Elasticsearch not encrypted at rest",
+    "severity": "HIGH",
+    "line": 11
+  },
+  {
+    "queryName": "Elasticsearch not encrypted at rest",
+    "severity": "HIGH",
+    "line": 1,
+    "fileName": "positive_module.tf"
+  }
+]

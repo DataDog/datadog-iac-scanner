@@ -1,0 +1,12 @@
+{
+  "id": "b14d1bc4-a208-45db-92f0-e21f8e2588e9",
+  "queryName": "Memory limits not defined",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Memory limits (`resources.limits.memory`) should be defined for each container (including `initContainers`) to prevent resource exhaustion by ensuring containers cannot consume more memory than allotted. Defining memory limits helps maintain cluster stability and predictable resource scheduling.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/memory_limits_not_defined",
+  "platform": "Kubernetes",
+  "descriptionID": "e0ba95cc",
+  "cwe": "400",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/"
+}

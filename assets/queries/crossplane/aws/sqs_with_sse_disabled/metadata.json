@@ -1,0 +1,13 @@
+{
+  "id": "9296f1cc-7a40-45de-bd41-f31745488a0e",
+  "queryName": "SQS With SSE Disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Amazon Simple Queue Service (SQS) queue should protect the contents of their messages using Server-Side Encryption (SSE)",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/sqs_with_sse_disabled",
+  "platform": "Crossplane",
+  "descriptionID": "ed3868e0",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "providerUrl": "https://doc.crds.dev/github.com/crossplane/provider-aws/sqs.aws.crossplane.io/Queue/v1beta1@v0.29.0#spec-forProvider-kmsMasterKeyId"
+}

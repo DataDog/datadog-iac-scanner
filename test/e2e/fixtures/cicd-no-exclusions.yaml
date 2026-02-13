@@ -1,0 +1,17 @@
+name: Test Workflow
+on:
+  pull_request:
+    types: [opened]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Test step
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          comment_tag: test
+          message: Test message
+      - name: Run script with injection
+        run: echo "${{ github.event.issue.title }}"

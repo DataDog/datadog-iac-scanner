@@ -1,0 +1,14 @@
+{
+  "id": "babdedcf-d859-43da-9a7b-6d72e661a8fd",
+  "queryName": "IAM Role Allows All Principals To Assume",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IAM role allows all services or principals to assume it",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_role_allows_all_principals_to_assume",
+  "platform": "Ansible",
+  "descriptionID": "58219ae0",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/iam_managed_policy_module.html"
+}

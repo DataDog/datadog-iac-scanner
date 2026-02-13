@@ -1,0 +1,14 @@
+{
+  "id": "5f4735ce-b9ba-4d95-a089-a37a767b716f",
+  "queryName": "CPU limits not set",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "`resources.limits.cpu` should be set because if the system has free CPU time, a container is guaranteed to be allocated as much CPU as it requests. Setting a CPU limit prevents a container from consuming unbounded CPU and helps ensure fair, predictable resource allocation. This rule checks the `spec` for both `container` and `init_container` entries and verifies that `resources`, `resources.limits`, and `resources.limits.cpu` are present; it reports when any of these keys are missing.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/cpu_limits_not_set",
+  "platform": "Terraform",
+  "descriptionID": "9dd8e356",
+  "cwe": "400",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#limits"
+}

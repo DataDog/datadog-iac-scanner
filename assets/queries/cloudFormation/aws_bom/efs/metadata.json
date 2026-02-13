@@ -1,0 +1,13 @@
+{
+  "id": "ef05a925-8568-4054-8ff1-f5ba82631c16",
+  "queryName": "BOM - AWS EFS",
+  "severity": "TRACE",
+  "category": "Bill Of Materials",
+  "descriptionText": "EFS file systems with policies that grant an Allow effect to any principal or otherwise expose the filesystem can permit unauthorized public access to file data, and unencrypted file systems increase the risk of data exposure if storage is compromised. This check inspects `AWS::EFS::FileSystem` resources and evaluates the `FileSystemPolicy` property; it marks accessibility as `public` when the policy contains an Allow effect with an any-principal (for example `Principal=\"*\"`), `hasPolicy` when a policy exists but is not public, and `unknown` when no `FileSystemPolicy` is defined, and it also records the resource encryption state. Resources are listed in a Bill of Materials so reviewers can quickly identify public or policy-bearing EFS resources and confirm whether encryption is enabled.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/efs",
+  "platform": "CloudFormation",
+  "descriptionID": "f6d4e4b8",
+  "cloudProvider": "aws",
+  "cwe": "532",
+  "providerUrl": "https://kics.io"
+}

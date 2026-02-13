@@ -1,0 +1,13 @@
+{
+  "id": "e4610872-0b1c-4fb7-ab57-d81c0afdb291",
+  "queryName": "Beta - Nifcloud computing undefined description to security group rule",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "The `nifcloud_security_group_rule` resource must include a `description` attribute for auditing and traceability. This rule identifies `nifcloud_security_group_rule` instances that do not include a `description` and reports them as `MissingAttribute`. The rule returns `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue` in the result.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/computing_security_group_rule_description_undefined",
+  "platform": "Terraform",
+  "descriptionID": "66ed83ab",
+  "cloudProvider": "nifcloud",
+  "cwe": "665",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/security_group_rule#description"
+}

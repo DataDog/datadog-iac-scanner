@@ -1,0 +1,14 @@
+{
+  "id": "4bc4dd4c-7d8d-405e-a0fb-57fa4c31b4d9",
+  "queryName": "S3 bucket policy accepts HTTP requests",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "S3 bucket policies should explicitly deny unencrypted (HTTP) requests by using the `\"Condition\": { \"Bool\": { \"aws:SecureTransport\": \"false\" } }` block. Without this condition, users can transmit sensitive data over unencrypted HTTP connections, exposing objects in the bucket to interception and man-in-the-middle attacks. To ensure all traffic uses HTTPS, set the following policy condition:\n\n```\n\"Condition\": {\n  \"Bool\": {\n    \"aws:SecureTransport\": \"false\"\n  }\n}\n```\nThis prevents insecure access and protects data integrity during transmission.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_policy_accepts_http_requests",
+  "platform": "Terraform",
+  "descriptionID": "edbcd7bc",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "oldDescriptionText": "S3 Bucket policy should not accept HTTP Requests",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy#policy"
+}

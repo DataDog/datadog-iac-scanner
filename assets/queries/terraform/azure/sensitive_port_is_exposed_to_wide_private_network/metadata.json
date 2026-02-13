@@ -1,0 +1,16 @@
+{
+  "id": "c6c7b33d-d7f6-4ab8-8c82-ca0431ecdb7e",
+  "queryName": "Sensitive port is exposed to wide private network",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Opening sensitive ports such as port 23 (Telnet) or port 110 (POP3) to wide private network ranges (for example, `10.0.0.0/8`, `172.16.0.0/12`, or `192.168.0.0/16`) in either TCP or UDP protocols increases the attack surface and exposes resources to unnecessary risk, as these ports are often targeted by attackers due to weak authentication and lack of encryption. If left unaddressed, this misconfiguration can lead to potential unauthorized access, credential theft, or exploitation of legacy services, especially if the associated services are enabled and unpatched. To remediate, network security rules should deny inbound access to such sensitive ports. For example:\n\n```\nresource \"azurerm_network_security_rule\" \"secure_example\" {\n  name                        = \"deny_telnet\"\n  priority                    = 100\n  direction                   = \"Inbound\"\n  access                      = \"Deny\"\n  protocol                    = \"TCP\"\n  source_port_range           = \"*\"\n  destination_port_range      = \"23\"\n  source_address_prefix       = \"*\"\n  destination_address_prefix  = \"*\"\n  resource_group_name         = azurerm_resource_group.example.name\n  network_security_group_name = azurerm_network_security_group.example.name\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/sensitive_port_is_exposed_to_wide_private_network",
+  "platform": "Terraform",
+  "descriptionID": "6b1bfbd5",
+  "aggregation": 63,
+  "cloudProvider": "azure",
+  "cwe": "200",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "A sensitive port, such as port 23 or port 110, is open for wide private network in either TCP or UDP protocol",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_rule"
+}

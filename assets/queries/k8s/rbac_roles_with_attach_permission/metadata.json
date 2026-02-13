@@ -1,0 +1,12 @@
+{
+  "id": "d45330fd-f58d-45fb-a682-6481477a0f84",
+  "queryName": "RBAC roles with attach permission",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Roles or ClusterRoles that permit attaching to containers via `kubectl attach` can be abused by attackers to read process output (stdout, stderr) and send input (stdin) to running processes.\nThey can also allow a malicious user to attach to a privileged container, resulting in privilege escalation.\nFor this reason, the `pods/attach` resource should not be included in production Role or ClusterRole rules. This rule flags Role or ClusterRole documents whose rules include the `pods/attach` resource (and related verb entries such as `create` or `*`). Findings support least-privilege enforcement by identifying and removing attach permissions from cluster roles.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/rbac_roles_with_attach_permission",
+  "platform": "Kubernetes",
+  "descriptionID": "d45330fd",
+  "cwe": "732",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/"
+}

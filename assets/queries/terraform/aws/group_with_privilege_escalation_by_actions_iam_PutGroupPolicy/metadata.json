@@ -1,0 +1,14 @@
+{
+  "id": "e77c89f6-9c85-49ea-b95b-5f960fe5be92",
+  "queryName": "Group with privilege escalation by actions 'iam:PutGroupPolicy'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "This check identifies IAM group policies that grant the action `iam:PutGroupPolicy` with a resource set to `\"*\"`, allowing anyone in the group to attach arbitrary inline policies to any IAM group. This presents a privilege escalation risk, as users with this permission could assign themselves broader or unauthorized permissions by updating policies on other groups. To mitigate this, restrict the `Action` and `Resource` fields in policies and avoid assigning sensitive permissions to groups broadly.\n\nA secure Terraform configuration should limit permissions to only what is necessary. For example:\n\n```\nresource \"aws_iam_user_policy\" \"inline_policy_run_instances2\" {\n  name = \"inline_policy_run_instances\"\n  user = aws_iam_user.cosmic2.name\n\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [\n      {\n        Action = [\n          \"ec2:Describe*\",\n        ]\n        Effect   = \"Allow\"\n        Resource = \"*\"\n      },\n    ]\n  })\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_PutGroupPolicy",
+  "platform": "Terraform",
+  "descriptionID": "6ee8a28a",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Group with privilege escalation by actions 'iam:PutGroupPolicy' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_group_policy#policy"
+}

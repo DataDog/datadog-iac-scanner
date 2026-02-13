@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Beta - Nifcloud router undefined security group to router",
+		"severity": "HIGH",
+		"line": 1,
+		"fileName": "positive.tf"
+	}
+]

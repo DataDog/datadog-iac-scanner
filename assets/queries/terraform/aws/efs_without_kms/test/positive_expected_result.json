@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "EFS without KMS",
+    "severity": "LOW",
+    "line": 1
+  }
+]

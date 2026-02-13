@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Beta - Nifcloud VPN gateway undefined security group to VPN gateway",
+		"severity": "HIGH",
+		"line": 1,
+		"fileName": "positive.tf"
+	}
+]

@@ -1,0 +1,15 @@
+{
+  "id": "ef0b316a-211e-42f1-888e-64efe172b755",
+  "queryName": "CloudWatch without retention period specified",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "CloudWatch log groups in AWS should explicitly specify the `retention_in_days` attribute to control how long log data is stored. If this attribute is omitted or set to `0`, as shown below, logs are retained indefinitely, increasing storage costs and the risk of sensitive data exposure over time:\n\n```\nresource \"aws_cloudwatch_log_group\" \"example\" {\n  name = \"application-logs\"\n  retention_in_days = 0\n}\n```\n\nA secure configuration, specifying `retention_in_days`, ensures log data is automatically deleted after the defined period, reducing unnecessary data retention and helping meet compliance requirements:\n\n```\nresource \"aws_cloudwatch_log_group\" \"example\" {\n  name = \"application-logs\"\n  retention_in_days = 7\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudwatch_without_retention_period_specified",
+  "platform": "Terraform",
+  "descriptionID": "64f08509",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "AWS CloudWatch Log groups should have retention days specified",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_group"
+}

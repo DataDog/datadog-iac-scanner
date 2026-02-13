@@ -1,0 +1,14 @@
+{
+  "id": "1c07bfaf-663c-4f6f-b22b-8e2d481e4df5",
+  "queryName": "CMK rotation disabled",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "AWS KMS Customer Master Keys (CMKs) must have automatic key rotation enabled to limit the exposure of long-lived cryptographic keys and reduce the impact if a key is compromised.\n\n This rule applies to `AWS::KMS::Key` resources that are enabled (`Properties.Enabled` set to `true`) and not pending deletion. Such keys must define `Properties.EnableKeyRotation` set to `true`. Resources missing `EnableKeyRotation` or with `EnableKeyRotation` set to `false` will be flagged. Keys that have `Properties.PendingWindowInDays` defined (indicating pending deletion) are excluded from this requirement.\n\nSecure configuration example:\n\n```yaml\nMyKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Enabled: true\n    EnableKeyRotation: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cmk_rotation_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "64ffeb9f",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-kms-key.html"
+}

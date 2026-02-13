@@ -1,0 +1,13 @@
+{
+  "id": "3641d5b4-d339-4bc2-bfb9-208fe8d3477f",
+  "queryName": "API Gateway method does not contain an API key",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "API Gateway methods must require an API key to prevent unauthenticated or uncontrolled usage that can lead to abuse, unexpected costs, or bypassing usage plans. For CloudFormation, `AWS::ApiGateway::Method` resources must define `Properties.ApiKeyRequired` and set it to `true`. Resources missing `ApiKeyRequired` or with `ApiKeyRequired` set to `false` will be flagged. Note that API keys help enforce usage plans and quotas but are not a substitute for strong authentication or authorization.\n\nSecure configuration example:\n\n```yaml\nMyMethod:\n  Type: AWS::ApiGateway::Method\n  Properties:\n    RestApiId: !Ref MyApi\n    ResourceId: !Ref MyResource\n    HttpMethod: GET\n    AuthorizationType: NONE\n    ApiKeyRequired: true\n    Integration:\n      Type: MOCK\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/api_gateway_method_does_not_contains_an_api_key",
+  "platform": "CloudFormation",
+  "descriptionID": "43a06e88",
+  "cloudProvider": "aws",
+  "cwe": "285",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-apigateway-method.html"
+}

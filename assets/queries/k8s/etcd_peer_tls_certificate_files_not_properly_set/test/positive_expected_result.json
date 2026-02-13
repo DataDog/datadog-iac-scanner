@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "etcd peer TLS certificate files not properly set",
+    "severity": "HIGH",
+    "line": 21,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "etcd peer TLS certificate files not properly set",
+    "severity": "HIGH",
+    "line": 21,
+    "fileName": "positive2.yaml"
+  }
+]

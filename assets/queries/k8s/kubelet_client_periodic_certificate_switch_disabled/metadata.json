@@ -1,0 +1,12 @@
+{
+  "id": "52d70f2e-3257-474c-b3dc-8ad9ba6a061a",
+  "queryName": "Kubelet client periodic certificate switch disabled",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "The kubelet argument `--rotate-certificates` should be set to `true`.\nThis rule flags kubelet containers (`containers` or `initContainers`) whose command is `kubelet` and include `--rotate-certificates=false`, and KubeletConfiguration resources where `rotateCertificates` is `false` or not set (default is false).\nEnabling certificate rotation allows automatic renewal of kubelet client certificates and prevents certificate expiration-related failures.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_client_periodic_certificate_switch_disabled",
+  "platform": "Kubernetes",
+  "descriptionID": "1a17c91a",
+  "cwe": "295",
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+}

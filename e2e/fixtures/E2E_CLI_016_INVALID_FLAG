@@ -1,0 +1,4 @@
+Incorrect Usage: flag provided but not defined: -invalid-flag
+
+{{.Help -}}
+Program failed: flag provided but not defined: -invalid-flag

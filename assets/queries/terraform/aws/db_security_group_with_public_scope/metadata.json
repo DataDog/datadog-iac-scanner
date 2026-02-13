@@ -1,0 +1,15 @@
+{
+  "id": "1e0ef61b-ad85-4518-a3d3-85eaad164885",
+  "queryName": "DB security group with public scope",
+  "severity": "CRITICAL",
+  "category": "Networking and Firewall",
+  "descriptionText": "AWS DB security groups with overly permissive ingress rules (`0.0.0.0/0` or `::/0`) expose database instances to potential unauthorized access from any IP address on the internet. This critical security vulnerability could lead to data breaches, unauthorized data manipulation, or complete database compromise. Instead of using public CIDR ranges, restrict access to specific IP ranges that require database connectivity.\n\nInsecure example:\n```terraform\nresource \"aws_db_security_group\" \"insecure\" {\n  name = \"rds_sg\"\n  ingress {\n    cidr = \"0.0.0.0/0\"\n  }\n}\n```\n\nSecure example:\n```terraform\nresource \"aws_db_security_group\" \"secure\" {\n  name = \"rds_sg\"\n  ingress {\n    cidr = \"10.0.0.0/25\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/db_security_group_with_public_scope",
+  "platform": "Terraform",
+  "descriptionID": "97108586",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "The IP address in a DB Security Group should not be '0.0.0.0/0' (IPv4) or '::/0' (IPv6). If so, any IP can access it",
+  "providerUrl": "https://registry.terraform.io/providers/rgeraskin/aws3/latest/docs/resources/db_security_group"
+}

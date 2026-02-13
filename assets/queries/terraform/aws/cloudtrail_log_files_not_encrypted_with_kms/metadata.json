@@ -1,0 +1,14 @@
+{
+  "id": "5d9e3164-9265-470c-9a10-57ae454ac0c7",
+  "queryName": "CloudTrail log files not encrypted with KMS",
+  "severity": "LOW",
+  "category": "Encryption",
+  "descriptionText": "CloudTrail logs contain sensitive information about account activity and should be protected from unauthorized access. If the `kms_key_id` attribute is not specified in the `aws_cloudtrail` resource block, as shown below, then the logs stored in S3 are not encrypted with a customer-managed KMS key, leaving them vulnerable to exposure or tampering:\n\n```\nresource \"aws_cloudtrail\" \"positive1\" {\n  name           = \"npositive_1\"\n  s3_bucket_name = \"bucketlog_1\"\n}\n```\n\nUsing the `kms_key_id` attribute, as in the example below, ensures that the logs are protected with strong encryption, reducing the risk of unauthorized access and helping meet compliance requirements:\n\n```\nresource \"aws_cloudtrail\" \"negative1\" {\n  name           = \"negative1\"\n  s3_bucket_name = \"bucketlog1\"\n  kms_key_id     = \"arn:aws:kms:us-east-2:123456789012:key/12345678-1234-1234-1234-123456789012\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudtrail_log_files_not_encrypted_with_kms",
+  "platform": "Terraform",
+  "descriptionID": "ee8a4d47",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldDescriptionText": "Logs delivered by CloudTrail should be encrypted using KMS to increase security of your CloudTrail",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudtrail#kms_key_id"
+}

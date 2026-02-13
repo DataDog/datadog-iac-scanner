@@ -1,0 +1,12 @@
+{
+  "id": "5da47109-f8d6-4585-9e2b-96a8958a12f5",
+  "queryName": "Basic auth file is set",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "When running `kube-apiserver`, the `--basic-auth-file` flag should not be set. The rule inspects `containers` and `initContainers` whose command includes `kube-apiserver` and reports the resource if the `--basic-auth-file` flag is present. Basic auth files are insecure and deprecated; use supported authentication mechanisms (for example, client certificates or tokens) instead.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/basic_auth_file_is_set",
+  "platform": "Kubernetes",
+  "descriptionID": "e021b84c",
+  "cwe": "1390",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

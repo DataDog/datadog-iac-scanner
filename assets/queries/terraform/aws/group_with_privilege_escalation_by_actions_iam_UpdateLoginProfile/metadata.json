@@ -1,0 +1,14 @@
+{
+  "id": "ad296c0d-8131-4d6b-b030-1b0e73a99ad3",
+  "queryName": "Group with privilege escalation by actions 'iam:UpdateLoginProfile'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Allowing an IAM group the `iam:UpdateLoginProfile` action on all resources (`\"Resource\": \"*\"`) is a significant privilege escalation risk. With this permission, any user in the group can reset or change the console password of any IAM user in the AWS account, effectively taking over their credentials. If left unaddressed, malicious or compromised users could gain access to higher privileges, potentially leading to unauthorized access, data exfiltration, or service disruption.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_UpdateLoginProfile",
+  "platform": "Terraform",
+  "descriptionID": "06985b1b",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Group with privilege escalation by actions 'iam:UpdateLoginProfile' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_group_policy#policy"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "4e203a65-c8d8-49a2-b749-b124d43c9dc1",
+  "queryName": "Docker daemon socket is exposed to containers",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Detects when the Docker daemon socket is exposed to containers. Checks `kubernetes_pod` and workload kinds `kubernetes_deployment`, `kubernetes_daemonset`, `kubernetes_job`, `kubernetes_stateful_set`, `kubernetes_replication_controller`, and `kubernetes_cron_job` for volumes where `host_path.path` is `/var/run/docker.sock`. Reports an `IncorrectValue` issue and populates `keyExpectedValue` and `keyActualValue` showing that the `spec...volume[n].host_path.path` should not be `/var/run/docker.sock` and indicating the offending value.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/docker_daemon_socket_is_exposed_to_containers",
+  "platform": "Terraform",
+  "descriptionID": "836d927e",
+  "cwe": "668",
+  "cloudProvider": "common",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#host_path"
+}

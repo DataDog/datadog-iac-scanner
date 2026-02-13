@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Secrets Manager secret encrypted with AWS-managed key",
+    "severity": "MEDIUM",
+    "line": 3,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Secrets Manager secret encrypted with AWS-managed key",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive2.tf"
+  }
+]

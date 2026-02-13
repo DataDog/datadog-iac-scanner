@@ -1,0 +1,13 @@
+{
+  "id": "f74b9c43-161a-4799-bc95-0b0ec81801b9",
+  "queryName": "Shared service account",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "The `service_account_name` specified in the workload is set to an existing `kubernetes_service_account`, causing the Service Account token to be shared across workloads. Sharing a `ServiceAccount` token grants identical permissions to multiple workloads and increases the blast radius if a workload is compromised. Distinct `ServiceAccount` resources or scoped credentials limit permission exposure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/shared_service_account",
+  "platform": "Terraform",
+  "descriptionID": "a13adbaa",
+  "cwe": "200",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#service_account_name"
+}

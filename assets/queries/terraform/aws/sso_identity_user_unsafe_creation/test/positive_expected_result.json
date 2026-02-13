@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "SSO identity user unsafe creation",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive.tf"
+  }
+]

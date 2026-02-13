@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "CloudFront without minimum protocol TLS 1.2",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "CloudFront without minimum protocol TLS 1.2",
+    "severity": "MEDIUM",
+    "line": 25,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "CloudFront without minimum protocol TLS 1.2",
+    "severity": "MEDIUM",
+    "line": 24,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "CloudFront without minimum protocol TLS 1.2",
+    "severity": "MEDIUM",
+    "line": 23,
+    "fileName": "positive4.tf"
+  }
+]

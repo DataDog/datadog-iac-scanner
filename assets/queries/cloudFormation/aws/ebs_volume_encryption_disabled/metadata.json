@@ -1,0 +1,14 @@
+{
+  "id": "80b7ac3f-d2b7-4577-9b10-df7913497162",
+  "queryName": "EBS volume encryption disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon EBS volumes must be encrypted to protect data at rest from unauthorized access and to prevent sensitive information from being exposed via unencrypted snapshots or compromised storage. In CloudFormation, the `Encrypted` property on `AWS::EC2::Volume` resources must be defined and set to `true`. Resources that omit the `Encrypted` property or have `Encrypted` set to `false` will be flagged. Optionally specify `KmsKeyId` to use a customer-managed AWS KMS key for encryption and key rotation policies.\n\nSecure configuration example:\n\n```yaml\nMyVolume:\n  Type: AWS::EC2::Volume\n  Properties:\n    AvailabilityZone: us-east-1a\n    Size: 100\n    Encrypted: true\n    KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd-1234-ef56-...\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ebs_volume_encryption_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "8a51c141",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-ebs-volume.html"
+}

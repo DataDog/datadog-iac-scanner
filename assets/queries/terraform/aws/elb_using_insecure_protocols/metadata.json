@@ -1,0 +1,15 @@
+{
+  "id": "126c1788-23c2-4a10-906c-ef179f4f96ec",
+  "queryName": "ELB using insecure protocols",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Elastic Load Balancer (ELB) security policies should not enable insecure protocols such as SSLv3, TLSv1, or TLSv1.1, as these older protocols are vulnerable to well-known exploits that can compromise the confidentiality and integrity of data transmitted between clients and the load balancer. In Terraform, this means avoiding policy attributes such as `name = \"Protocol-SSLv3\"` or `name = \"Protocol-TLSv1\"` with a value of `\"true\"`. A secure configuration should explicitly allow only newer protocols such as TLSv1.2. For example:\n\n```\npolicy_attribute {\n  name  = \"Protocol-TLSv1.2\"\n  value = \"true\"\n}\n```\n\nLeaving insecure protocols enabled increases the risk of man-in-the-middle (MITM) attacks and data breaches for all applications using the ELB.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elb_using_insecure_protocols",
+  "platform": "Terraform",
+  "descriptionID": "88f4d79a",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "ELB Predefined or Custom Security Policies must not use insecure protocols, to reduce the risk of the SSL connection between the client and the load balancer being exploited. That means the 'name' of 'policy_attributes' must not coincide with any of a predefined list of insecure protocols.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/load_balancer_policy"
+}

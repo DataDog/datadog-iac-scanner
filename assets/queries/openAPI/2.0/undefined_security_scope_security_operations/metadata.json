@@ -1,0 +1,12 @@
+{
+  "id": "3847280c-9193-40bc-8009-76168e822ce2",
+  "queryName": "Undefined Scope 'securityDefinition' On 'security' Field On Operations",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Using an scope on security of operations that is undefined on 'securityDefinitions' can be defined by an attacker",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/undefined_security_scope_security_operations",
+  "platform": "OpenAPI",
+  "descriptionID": "c5094b21",
+  "cwe": "284",
+  "providerUrl": "https://swagger.io/specification/v2/#security-scheme-object"
+}

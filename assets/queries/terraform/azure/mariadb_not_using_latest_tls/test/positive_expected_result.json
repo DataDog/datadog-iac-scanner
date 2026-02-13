@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Ensure Azure MariaDB server is using latest TLS (1.2)",
+    "severity": "HIGH",
+    "line": 7
+  },
+  {
+    "queryName": "Ensure Azure MariaDB server is using latest TLS (1.2)",
+    "severity": "HIGH",
+    "line": 18
+  }
+]

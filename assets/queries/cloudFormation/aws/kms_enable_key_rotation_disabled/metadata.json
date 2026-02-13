@@ -1,0 +1,13 @@
+{
+  "id": "235ca980-eb71-48f4-9030-df0c371029eb",
+  "queryName": "KMS key rotation disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "KMS keys should have automatic key rotation enabled to limit the lifetime of cryptographic material, reduce the impact of a compromised key, and meet common compliance requirements. In AWS CloudFormation, `AWS::KMS::Key` resources must define the `EnableKeyRotation` property and set it to `true`. Resources missing this property or with `EnableKeyRotation` set to `false` will be flagged. Enabling rotation activates AWS-managed annual rotation of the key material.\n\nSecure configuration example:\n\n```yaml\nMyKMSKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Description: KMS key with rotation enabled\n    EnableKeyRotation: true\n    KeyPolicy:\n      Version: '2012-10-17'\n      Statement:\n        - Sid: Enable IAM User Permissions\n          Effect: Allow\n          Principal:\n            AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'\n          Action: 'kms:*'\n          Resource: '*'\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/kms_enable_key_rotation_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "323313bc",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-kms-key.html"
+}

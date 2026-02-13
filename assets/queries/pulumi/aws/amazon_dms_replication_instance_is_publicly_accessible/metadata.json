@@ -1,0 +1,14 @@
+{
+  "id": "bccb296f-362c-4b05-9221-86d1437a1016",
+  "queryName": "Amazon DMS Replication Instance Is Publicly Accessible",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "Amazon DMS is publicly accessible, therefore exposing possible sensitive information. To prevent such a scenario, update the attribute 'PubliclyAccessible' to false.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/amazon_dms_replication_instance_is_publicly_accessible",
+  "platform": "Pulumi",
+  "descriptionID": "fdd6a212",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://www.pulumi.com/registry/packages/aws/api-docs/dms/replicationinstance/"
+}

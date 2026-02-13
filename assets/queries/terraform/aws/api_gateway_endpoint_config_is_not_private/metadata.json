@@ -1,0 +1,14 @@
+{
+  "id": "6b2739db-9c49-4db7-b980-7816e0c248c1",
+  "queryName": "API Gateway endpoint config is not private",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check ensures that the `endpoint_configuration.types` attribute for `aws_api_gateway_rest_api` resources is set to `\"PRIVATE\"`, rather than `\"REGIONAL\"` or `\"EDGE\"`. By exposing API Gateway endpoints to the public internet (for example, with `\"REGIONAL\"`), sensitive services can be accessed or exploited by unauthorized parties. Setting the endpoint type to `\"PRIVATE\"` restricts access to only sources within your VPC, mitigating the risk of data exposure or malicious traffic.\n\n```\nresource \"aws_api_gateway_rest_api\" \"secure_example\" {\n  name = \"private-endpoint\"\n\n  endpoint_configuration {\n    types = [\"PRIVATE\"]\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/api_gateway_endpoint_config_is_not_private",
+  "platform": "Terraform",
+  "descriptionID": "baf9a6d6",
+  "cloudProvider": "aws",
+  "cwe": "285",
+  "oldDescriptionText": "The API Endpoint type in API Gateway should be set to PRIVATE so it's not exposed to the public internet",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/api_gateway_rest_api"
+}

@@ -1,0 +1,80 @@
+[
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 8,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 22,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 36,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 50,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 64,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 78,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 92,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 106,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 120,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 134,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 148,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 162,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "RDP is exposed to the internet",
+    "severity": "HIGH",
+    "line": 176,
+    "filename": "positive.tf"
+  }
+]

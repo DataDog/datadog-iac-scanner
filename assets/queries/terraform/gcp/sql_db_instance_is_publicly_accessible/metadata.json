@@ -1,0 +1,23 @@
+{
+  "id": "b187edca-b81e-4fdc-aff4-aab57db45edb",
+  "queryName": "SQL DB instance publicly accessible",
+  "severity": "CRITICAL",
+  "category": "Insecure Configurations",
+  "descriptionText": "A Google Cloud SQL instance becomes publicly accessible when it has public IP addressing enabled without proper network restrictions, creating a potential attack vector for unauthorized access. This can occur when `ipv4_enabled` is set to `true` (default), or when `authorized_networks` is configured with overly permissive CIDR ranges such as `0.0.0.0/0`, which allows connections from any IP address.\n\nTo secure Cloud SQL instances, either disable public IP by setting ipv4_enabled to false and specifying a private_network (for example, `ipv4_enabled = false` and `private_network = \"your-network-id\"`), or restrict `authorized_networks` to specific trusted IP ranges (for example, `authorized_networks { name = \"trusted-network\", value = \"10.0.0.0/24\" }`) rather than using `0.0.0.0/0`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/sql_db_instance_is_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "9beef444",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Cloud SQL instances should not be publicly accessible.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database_instance",
+  "defaultFrameworks": [
+    {
+      "control": "3.10",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "gcp"
+    }
+  ]
+}

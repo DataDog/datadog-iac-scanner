@@ -1,0 +1,15 @@
+{
+  "id": "8e75e431-449f-49e9-b56a-c8f1378025cf",
+  "queryName": "Role assignment not limit guest user permissions",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Role assignments in Terraform should strictly limit permissions granted to guest users. If the `actions` attribute in the `azurerm_role_definition` resource is set to `[\"*\"]`, guest users receive unrestricted permissions within the scope, potentially allowing them to perform any action, escalate privileges, or exfiltrate data. It is recommended to set `actions = []` and `not_actions = [\"*\"]` to ensure that guest users have no actionable privileges, thereby protecting critical resources from unauthorized access.\n\n```\npermissions {\n  actions     = []\n  not_actions = [\"*\"]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/role_assignment_not_limit_guest_users_permissions",
+  "platform": "Terraform",
+  "descriptionID": "a827491d",
+  "cloudProvider": "azure",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Role Assignment should limit guest user permissions",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment"
+}

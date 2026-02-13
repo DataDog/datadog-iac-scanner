@@ -1,0 +1,15 @@
+{
+  "id": "ce60d060-efb8-4bfd-9cf7-ff8945d00d90",
+  "queryName": "Misconfigured password policy expiration",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "A password expiration policy enforces regular password changes, reducing the risk of compromised credentials being exploited over long periods. If the `aws_iam_account_password_policy` resource does not set the `max_password_age` attribute, as shown below, passwords may remain valid indefinitely, increasing the chance that leaked or weak passwords can be used for unauthorized access. This exposes your AWS environment to persistent credential-related threats if not addressed. \n\n```\nresource \"aws_iam_account_password_policy\" \"example\" {\n  minimum_password_length        = 8\n  require_lowercase_characters   = true\n  require_numbers                = true\n  require_uppercase_characters   = true\n  require_symbols                = true\n  allow_users_to_change_password = true\n  // max_password_age not set\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/misconfigured_password_policy_expiration",
+  "platform": "Terraform",
+  "descriptionID": "23788841",
+  "cloudProvider": "aws",
+  "cwe": "521",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "No password expiration policy",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_account_password_policy"
+}

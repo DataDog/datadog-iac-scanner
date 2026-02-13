@@ -1,0 +1,12 @@
+{
+  "id": "a97a340a-0063-418e-b3a1-3028941d0995",
+  "queryName": "Pod or container without security context",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "A security context defines privilege and access control settings for a Pod or container. This policy requires that a Pod's spec include a `securityContext` and that each container in `containers` and `initContainers` include a `securityContext`. The rule flags Pod resources and individual containers missing a `securityContext`, since absent contexts can allow containers to run with default or elevated privileges and increase security risk.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/pod_or_container_without_security_context",
+  "platform": "Kubernetes",
+  "descriptionID": "68a1650b",
+  "cwe": "285",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "AMI not encrypted",
+    "severity": "MEDIUM",
+    "line": 29,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "AMI not encrypted",
+    "severity": "MEDIUM",
+    "line": 25,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "AMI not encrypted",
+    "severity": "MEDIUM",
+    "line": 7,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "AMI not encrypted",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive_module.tf"
+  }
+]

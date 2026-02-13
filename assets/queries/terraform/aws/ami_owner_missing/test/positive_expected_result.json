@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "AMI most recent without owner or filter",
+    "severity": "HIGH",
+    "line": 3
+  }
+]

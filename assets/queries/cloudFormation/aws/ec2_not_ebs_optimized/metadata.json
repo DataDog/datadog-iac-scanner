@@ -1,0 +1,13 @@
+{
+  "id": "8dd0ff1f-0da4-48df-9bb3-7f338ae36a40",
+  "queryName": "EC2 not EBS optimized",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "EC2 instances should be EBS-optimized to ensure dedicated throughput and reduced I/O contention between instance network traffic and Amazon EBS volumes. This improves disk performance, lowers latency spikes, and helps maintain application availability under load.\n \n For `AWS::EC2::Instance` resources, the `Properties.EbsOptimized` property must be defined and set to `true` for instance types that are not EBS-optimized by default. Resources missing `EbsOptimized` or with `EbsOptimized` set to `false` will be flagged. Instance types that are EBS-optimized by default are exempt.\n \n **Note**: If `InstanceType` is omitted, CloudFormation defaults to `m1.small`, which is not EBS-optimized by default and should have `EbsOptimized` set to `true` explicitly set.\n\nSecure configuration example:\n\n```yaml\nMyInstance:\n  Type: AWS::EC2::Instance\n  Properties:\n    InstanceType: m5.large\n    EbsOptimized: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ec2_not_ebs_optimized",
+  "platform": "CloudFormation",
+  "descriptionID": "4d5e32ad",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance.html#cfn-ec2-instance-ebsoptimized"
+}

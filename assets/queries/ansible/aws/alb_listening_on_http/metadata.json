@@ -1,0 +1,14 @@
+{
+  "id": "f81d63d2-c5d7-43a4-a5b5-66717a41c895",
+  "queryName": "ALB Listening on HTTP",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "AWS Application Load Balancer (alb) should not listen on HTTP",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/alb_listening_on_http",
+  "platform": "Ansible",
+  "descriptionID": "3a7576e5",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/elb_application_lb_module.html"
+}

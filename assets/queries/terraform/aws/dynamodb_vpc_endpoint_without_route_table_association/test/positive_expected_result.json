@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Dynamodb VPC endpoint without route table association",
+    "severity": "LOW",
+    "line": 31
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "id": "0a494a6a-ebe2-48a0-9d77-cf9d5125e1b3",
+  "queryName": "Redshift cluster without VPC",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Amazon Redshift clusters should be deployed within an Amazon VPC to ensure network isolation and control over access to the cluster. If the `vpc_security_group_ids` and `cluster_subnet_group_name` attributes are not specified, the cluster is created outside a VPC and could be exposed to the public internet, increasing the risk of unauthorized access and data breaches. A secure configuration includes the following attributes:\n\n```\nresource \"aws_redshift_cluster\" \"secure_example\" {\n  // other attributes\n  vpc_security_group_ids     = [aws_security_group.redshift.id]\n  cluster_subnet_group_name  = aws_redshift_subnet_group.redshift_subnet_group.id\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/redshift_cluster_without_vpc",
+  "platform": "Terraform",
+  "descriptionID": "6fd531fa",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Redshift Cluster should be configured in VPC (Virtual Private Cloud)",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/redshift_cluster#vpc_security_group_ids"
+}

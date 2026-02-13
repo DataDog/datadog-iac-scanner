@@ -1,0 +1,14 @@
+{
+  "id": "3e09413f-471e-40f3-8626-990c79ae63f3",
+  "queryName": "CloudTrail SNS topic name undefined",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "CloudTrail trails should be configured to publish notifications to an Amazon SNS topic so that security teams receive real-time alerts for suspicious events and automated workflows can be triggered for faster detection and response.\n\n This rule checks `AWS::CloudTrail::Trail` resources to ensure the `SnsTopicName` property is defined and non-empty. Resources missing `SnsTopicName` or with `SnsTopicName` set to `\"\"` will be flagged. Ensure the property references a valid Amazon SNS topic that allows CloudTrail to publish. \n \n Secure example (CloudFormation YAML):\n\n```yaml\nAuditTopic:\n  Type: AWS::SNS::Topic\n\nMyTrail:\n  Type: AWS::CloudTrail::Trail\n  Properties:\n    S3BucketName: my-audit-bucket\n    IsLogging: true\n    SnsTopicName: !Ref AuditTopic\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudtrail_sns_topic_name_undefined",
+  "platform": "CloudFormation",
+  "descriptionID": "69327f38",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-cloudtrail-trail.html#cfn-cloudtrail-trail-snstopicname"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "50de3b5b-6465-4e06-a9b0-b4c2ba34326b",
+  "queryName": "Header Object Without Schema",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "The header object should have schema defined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/header_object_without_schema",
+  "platform": "OpenAPI",
+  "descriptionID": "c1c481e4",
+  "cwe": "20",
+  "providerUrl": "https://swagger.io/specification/#header-object"
+}

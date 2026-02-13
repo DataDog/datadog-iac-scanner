@@ -1,0 +1,15 @@
+{
+  "id": "fae52418-bb8b-4ac2-b287-0b9082d6a3fd",
+  "queryName": "EFS with vulnerable policy",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "AWS EFS file system policies should avoid the use of wildcards (`*`) in the `Action` and `Principal` fields, as shown below, because this grants broad permissions to all users and all actions:\n\n```\n\"Principal\": { \"AWS\": \"*\" },\n\"Action\": [\"elasticfilesystem:*\"]\n```\n\nSuch overly permissive policies can allow any AWS account to perform any action on the EFS resource, leading to potential unauthorized data access, deletion, or modification. To mitigate this risk, restrict the `Principal` to specific IAM identities and limit `Action` to only what is necessary. For example:\n\n```\n\"Principal\": { \"AWS\": \"arn:aws:iam::111122223333:user/Carlos\" },\n\"Action\": [\"elasticfilesystem:ClientMount\", \"elasticfilesystem:ClientWrite\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/efs_with_vulnerable_policy",
+  "platform": "Terraform",
+  "descriptionID": "d2017b69",
+  "cloudProvider": "aws",
+  "cwe": "155",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "EFS (Elastic File System) policy should avoid wildcard in 'Action' and 'Principal'.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/efs_file_system_policy#policy"
+}

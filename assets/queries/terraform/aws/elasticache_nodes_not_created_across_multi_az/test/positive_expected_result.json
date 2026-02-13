@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "ElastiCache nodes not created across multi AZ",
+    "severity": "MEDIUM",
+    "line": 1
+  },
+  {
+    "queryName": "ElastiCache nodes not created across multi AZ",
+    "severity": "MEDIUM",
+    "line": 12
+  }
+]

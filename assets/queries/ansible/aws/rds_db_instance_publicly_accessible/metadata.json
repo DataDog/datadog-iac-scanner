@@ -1,0 +1,14 @@
+{
+  "id": "c09e3ca5-f08a-4717-9c87-3919c5e6d209",
+  "queryName": "RDS DB Instance Publicly Accessible",
+  "severity": "CRITICAL",
+  "category": "Insecure Configurations",
+  "descriptionText": "RDS must not be defined with public interface, which means the field 'publicly_accessible' should not be set to 'true' (default is 'false').",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/rds_db_instance_publicly_accessible",
+  "platform": "Ansible",
+  "descriptionID": "e1b53fb6",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-auto_minor_version_upgrade"
+}

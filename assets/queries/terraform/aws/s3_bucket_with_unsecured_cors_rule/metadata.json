@@ -1,0 +1,15 @@
+{
+  "id": "98a8f708-121b-455b-ae2f-da3fb59d17e1",
+  "queryName": "S3 bucket with unsecured CORS rule",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "When defining a Cross-Origin Resource Sharing (CORS) rule in an S3 bucket, it is important to ensure that the `allowed_headers` attribute is not overly permissive, for example, by setting `allowed_headers = [\"*\"]`. Allowing all headers to be accepted from any origin can expose the bucket to potential cross-origin attacks, enabling malicious sites to interact with S3 resources in unintended ways. This misconfiguration increases the risk of data exfiltration or manipulation by allowing arbitrary clients to send any HTTP headers, which can compromise sensitive data and security controls. To mitigate this vulnerability, it is recommended to specify only the necessary headers in `allowed_headers` and restrict origins to trusted domains.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_with_unsecured_cors_rule",
+  "platform": "Terraform",
+  "descriptionID": "28051a7f",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "If the CORS (Cross-Origin Resource Sharing) rule is defined in an S3 bucket, it should be secure",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket#cors_rule"
+}

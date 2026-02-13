@@ -1,0 +1,22 @@
+[
+  {
+    "queryName": "SQL DB instance publicly accessible",
+    "severity": "CRITICAL",
+    "line": 6
+  },
+  {
+    "queryName": "SQL DB instance publicly accessible",
+    "severity": "CRITICAL",
+    "line": 24
+  },
+  {
+    "queryName": "SQL DB instance publicly accessible",
+    "severity": "CRITICAL",
+    "line": 41
+  },
+  {
+    "queryName": "SQL DB instance publicly accessible",
+    "severity": "CRITICAL",
+    "line": 56
+  }
+]

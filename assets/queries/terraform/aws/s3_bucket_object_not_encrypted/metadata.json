@@ -1,0 +1,14 @@
+{
+  "id": "5fb49a69-8d46-4495-a2f8-9c8c622b2b6e",
+  "queryName": "S3 bucket object not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "This check verifies that S3 bucket objects have server-side encryption enabled to protect sensitive data at rest. Unencrypted S3 objects could expose confidential information if unauthorized access occurs, potentially leading to data breaches and compliance violations. Server-side encryption is a critical security control that should be implemented for all objects stored in S3 buckets.\n\nThe vulnerability occurs when the `server_side_encryption` attribute is missing in an `aws_s3_bucket_object` resource, as shown in this insecure example:\n```hcl\nresource \"aws_s3_bucket_object\" \"examplebucket_object\" {\n  key    = \"someobject\"\n  bucket = aws_s3_bucket.examplebucket.id\n  source = \"index.html\"\n}\n```\n\nTo remediate this issue, add the `server_side_encryption` attribute with an appropriate encryption algorithm such as `AES256` or `aws:kms`:\n```hcl\nresource \"aws_s3_bucket_object\" \"examplebucket_object\" {\n  key                    = \"someobject\"\n  bucket                 = aws_s3_bucket.examplebucket.id\n  source                 = \"index.html\"\n  server_side_encryption = \"AES256\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_object_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "e6b92744",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "S3 Bucket Object should have server-side encryption enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_object#server_side_encryption"
+}

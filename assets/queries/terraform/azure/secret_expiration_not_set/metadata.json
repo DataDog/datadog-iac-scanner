@@ -1,0 +1,15 @@
+{
+  "id": "dfa20ffa-f476-428f-a490-424b41e91c7f",
+  "queryName": "Secret expiration not set",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "Secrets stored in Azure Key Vault using the `azurerm_key_vault_secret` resource should always have an `expiration_date` set to ensure that sensitive credentials are not usable indefinitely. Failing to set an expiration date may result in forgotten or stale secrets lingering in your environment, increasing the risk of those secrets being misused if an account is compromised or a process changes. For a more secure configuration, explicitly specify the `expiration_date` attribute, as shown below:\n\n```\nresource \"azurerm_key_vault_secret\" \"example\" {\n    name             = \"api-key\"\n    value            = \"supersecret\"\n    key_vault_id     = azurerm_key_vault.example.id\n\n    expiration_date  = \"2025-01-01T00:00:00Z\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/secret_expiration_not_set",
+  "platform": "Terraform",
+  "descriptionID": "172cf4e6",
+  "cloudProvider": "azure",
+  "cwe": "521",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Make sure that for all secrets the expiration date is set",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault_secret"
+}

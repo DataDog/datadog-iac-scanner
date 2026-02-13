@@ -1,0 +1,12 @@
+{
+  "id": "1de5cc51-f376-4638-a940-20f2e85ae238",
+  "queryName": "Anonymous auth is not set to false",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "When `kubelet` or `kube-apiserver` are used, the `--anonymous-auth` flag should be set to `false`.  \nThe rule checks container `command` entries for those components and the `KubeletConfiguration.authentication.anonymous.enabled` attribute.  \nAn IncorrectValue issue is reported when `--anonymous-auth` is set to `true` or `authentication.anonymous.enabled` is not `false`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/anonymous_auth_is_not_set_to_false",
+  "platform": "Kubernetes",
+  "descriptionID": "2e5b19cc",
+  "cwe": "1390",
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+}

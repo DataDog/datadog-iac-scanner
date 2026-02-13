@@ -1,0 +1,13 @@
+{
+  "id": "39750e32-3fe9-453b-8c33-dd277acdb2cc",
+  "queryName": "Disk encryption disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Alicloud disks (`alicloud_disk`) should have encryption enabled.\n\nThe rule flags resources where the `encrypted` attribute is explicitly set to `false` (issue type `IncorrectValue`) or where both the `encrypted` and `snapshot_id` attributes are missing (issue type `MissingAttribute`).\n\nRemediation is to set `encrypted` to `true` (replacement) or add `encrypted = true` (addition).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/disk_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "68bbdfee",
+  "cloudProvider": "alicloud",
+  "cwe": "311",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/disk#encrypted"
+}

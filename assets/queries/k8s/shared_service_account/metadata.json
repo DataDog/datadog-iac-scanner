@@ -1,0 +1,12 @@
+{
+  "id": "c1032cf7-3628-44e2-bd53-38c17cf31b6b",
+  "queryName": "Shared service account",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "A service account token is shared between workloads. The rule detects multiple workload manifests that reference the same `serviceAccountName` in their spec. Sharing a service account increases the blast radius and can violate least-privilege principles by causing credentials and permissions to be shared across workloads.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/shared_service_account",
+  "platform": "Kubernetes",
+  "descriptionID": "f1c94544",
+  "cwe": "200",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/"
+}

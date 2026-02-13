@@ -1,0 +1,12 @@
+{
+  "id": "b9380fd3-5ffe-4d10-9290-13e18e71eee1",
+  "queryName": "Insecure bind address set",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "When using `kube-apiserver`, the `--insecure-bind-address` flag should not be set. This flag causes the API server to listen on an unauthenticated HTTP endpoint, bypassing TLS and potentially exposing the API to unauthenticated access. This rule inspects the `command` fields of `containers` and `initContainers` for invocations of `kube-apiserver` and flags that start with `--insecure-bind-address`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/insecure_bind_address_set",
+  "platform": "Kubernetes",
+  "descriptionID": "5b1eb26c",
+  "cwe": "665",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

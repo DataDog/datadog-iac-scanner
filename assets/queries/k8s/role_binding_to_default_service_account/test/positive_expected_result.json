@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Role binding to default service account",
+    "severity": "MEDIUM",
+    "line": 11
+  }
+]

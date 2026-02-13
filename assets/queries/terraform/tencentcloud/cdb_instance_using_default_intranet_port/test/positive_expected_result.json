@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "Beta - CDB instance internet using default intranet port",
+		"severity": "LOW",
+		"line": 34,
+		"fileName": "positive1.tf"
+	},
+	{
+		"queryName": "Beta - CDB instance internet using default intranet port",
+		"severity": "LOW",
+		"line": 23,
+		"fileName": "positive2.tf"
+	}
+]

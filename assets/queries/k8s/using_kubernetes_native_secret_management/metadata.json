@@ -1,0 +1,12 @@
+{
+  "id": "b9c83569-459b-4110-8f79-6305aa33cb37",
+  "queryName": "Using Kubernetes native secret management",
+  "severity": "LOW",
+  "category": "Secret Management",
+  "descriptionText": "Use of an external secret storage and management system should be considered for complex secret management needs, instead of using Kubernetes Secrets directly.\nIn Kubernetes clusters, prefer solutions that integrate external stores via SecretProviderClass (CSI) or external secret operators rather than embedding secrets in resource manifests.\nAdditionally, apply least-privilege access, enable encryption at rest, and enforce rotation and auditing of secret material.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/using_kubernetes_native_secret_management",
+  "platform": "Kubernetes",
+  "descriptionID": "3d7b569c",
+  "cwe": "311",
+  "providerUrl": "https://kubernetes.io/docs/concepts/configuration/secret/"
+}

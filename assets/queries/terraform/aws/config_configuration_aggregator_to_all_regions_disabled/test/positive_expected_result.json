@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Configuration aggregator to all regions disabled",
+    "severity": "LOW",
+    "line": 4,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Configuration aggregator to all regions disabled",
+    "severity": "LOW",
+    "line": 16,
+    "fileName": "positive.tf"
+  }
+]

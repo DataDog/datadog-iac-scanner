@@ -1,0 +1,15 @@
+{
+  "id": "56dad03e-e94f-4dd6-93a4-c253a03ff7a0",
+  "queryName": "Cosmos DB account without tags",
+  "severity": "LOW",
+  "category": "Build Process",
+  "descriptionText": "Cosmos DB accounts should be configured with appropriate tags to ensure resources are identifiable, manageable, and auditable within an Azure environment. Without tags, as shown below, critical contextual information—such as environment, owner, or cost center—is missing, making resource management and cost tracking difficult:\n\n```\nresource \"azurerm_cosmosdb_account\" \"example\" {\n  // ...other configuration...\n}\n```\n\nBy specifying the `tags` attribute, as demonstrated here, organizations can better enforce governance, automate resource management, and control costs:\n\n```\nresource \"azurerm_cosmosdb_account\" \"example\" {\n  // ...other configuration...\n  tags = {\n    Environment = \"Production\"\n    Owner       = \"AppTeam\"\n  }\n}\n```\n\nLeaving tags unconfigured can lead to unmanaged resources, increased risk of misconfiguration, and operational inefficiencies.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/cosmos_db_account_without_tags",
+  "platform": "Terraform",
+  "descriptionID": "f0bce814",
+  "cloudProvider": "azure",
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Cosmos DB Account must have a mapping of tags.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/cosmosdb_account"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "1123031a-f921-4c5b-bd86-ef354ecfd37a",
+  "queryName": "Invalid metadata label",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Metadata labels must be valid and conform to the pattern `^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$`.\nThis requires label values to start and end with an alphanumeric character and may include dashes, underscores, or dots in the middle; labels that do not match this pattern are reported as `IncorrectValue` with the resource and label details.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/metadata_label_is_invalid",
+  "platform": "Kubernetes",
+  "descriptionID": "a6921416",
+  "cwe": "710",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/"
+}

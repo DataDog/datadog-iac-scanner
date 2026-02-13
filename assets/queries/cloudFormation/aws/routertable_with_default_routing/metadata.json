@@ -1,0 +1,14 @@
+{
+  "id": "4f0908b9-eb66-433f-9145-134274e1e944",
+  "queryName": "Route table with default routing",
+  "severity": "LOW",
+  "category": "Insecure Defaults",
+  "descriptionText": "Default routes that use IPv4 `0.0.0.0/0` or IPv6 `::/0` can expose subnets and instances to the public internet. This increases the risk of unauthorized access, data exfiltration, and lateral movement.\n\nIn CloudFormation, inspect `AWS::EC2::Route` resources. If `DestinationCidrBlock` equals `0.0.0.0/0` or `DestinationIpv6CidrBlock` equals `::/0`, the route must explicitly target a NAT gateway so outbound traffic from private subnets is proxied rather than directly exposed. Ensure the `NatGatewayId` property is defined on routes that provide internet-bound access. Resources missing `NatGatewayId`, or with a default destination but no NAT gateway, will be flagged.\n\nSecure configuration example (route to a NAT gateway):\n\n```yaml\nPrivateRoute:\n  Type: AWS::EC2::Route\n  Properties:\n    RouteTableId: !Ref PrivateRouteTable\n    DestinationCidrBlock: 0.0.0.0/0\n    NatGatewayId: !Ref MyNatGateway\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/routertable_with_default_routing",
+  "platform": "CloudFormation",
+  "descriptionID": "1f341247",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-route-table.html"
+}

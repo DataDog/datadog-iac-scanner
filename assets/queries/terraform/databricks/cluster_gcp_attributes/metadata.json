@@ -1,0 +1,14 @@
+{
+  "id": "539e4557-d2b5-4d57-a001-cb01140a4e2d",
+  "queryName": "Beta - check Databricks cluster GCP attribute best practices",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "The rule flags `databricks_cluster` resources where `gcp_attributes.availability` is set to `PREEMPTIBLE_GCP`, which violates best practices. Clusters should use a non-preemptible availability setting.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/cluster_gcp_attributes",
+  "platform": "Terraform",
+  "descriptionID": "c1fe1954",
+  "cloudProvider": "common",
+  "cwe": "710",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.databricks.com/clusters/cluster-config-best-practices.html"
+}

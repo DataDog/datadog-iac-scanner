@@ -1,0 +1,23 @@
+{
+  "id": "3e3c175e-aadf-4e2b-a464-3fdac5748d24",
+  "queryName": "SSH is exposed to the Internet",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Allowing inbound access to port 22 (SSH) from any source address (for example, `source_address_prefix = \"*\"`, `source_address_prefix = \"/0\"`, or `source_address_prefix = \"internet\"`) exposes the server to the public internet, making it highly susceptible to brute force attacks and unauthorized access. If left unaddressed, this misconfiguration significantly increases the risk of remote compromise and could result in full administrative control by attackers. To mitigate this risk, restrict SSH access to specific trusted IP addresses and deny all others. For example:\n\n```\nresource \"azurerm_network_security_rule\" \"secure_ssh\" {\n  name                        = \"restrict_ssh\"\n  priority                    = 100\n  direction                   = \"Inbound\"\n  access                      = \"Allow\"\n  protocol                    = \"TCP\"\n  source_port_range           = \"*\"\n  destination_port_range      = \"22\"\n  source_address_prefix       = \"203.0.113.0/24\" // Replace with a trusted IP range\n  destination_address_prefix  = \"*\"\n  resource_group_name         = azurerm_resource_group.example.name\n  network_security_group_name = azurerm_network_security_group.example.name\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/ssh_is_exposed_to_the_internet",
+  "platform": "Terraform",
+  "descriptionID": "f98cf1dc",
+  "cloudProvider": "azure",
+  "cwe": "668",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Port 22 (SSH) is exposed to the internet",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_rule",
+  "defaultFrameworks": [
+    {
+      "control": "2.4",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "azure"
+    }
+  ]
+}

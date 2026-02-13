@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "EKS cluster logging is not enabled",
+    "severity": "MEDIUM",
+    "line": 6,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "EKS cluster logging is not enabled",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive_module.tf"
+  }
+]

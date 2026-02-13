@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Web app accepting traffic other than HTTPS",
+    "severity": "MEDIUM",
+    "line": 28
+  },
+  {
+    "queryName": "Web app accepting traffic other than HTTPS",
+    "severity": "MEDIUM",
+    "line": 37
+  }
+]

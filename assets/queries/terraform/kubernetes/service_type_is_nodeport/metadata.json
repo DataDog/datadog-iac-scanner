@@ -1,0 +1,13 @@
+{
+  "id": "5c281bf8-d9bb-47f2-b909-3f6bb11874ad",
+  "queryName": "Service type is NodePort",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Service `spec.type` should not be `NodePort`. This rule flags Kubernetes Service resources where `spec.type` is set to `NodePort`, because exposing node ports can bypass load balancers and introduce security and networking risks. The rule returns the following attributes to identify the affected resource and the mismatch: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/service_type_is_nodeport",
+  "platform": "Terraform",
+  "descriptionID": "50e2c36f",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/service#type"
+}

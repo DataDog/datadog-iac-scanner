@@ -1,0 +1,15 @@
+{
+  "id": "0bc534c5-13d1-4353-a7fe-b8665d5c1d7d",
+  "queryName": "Dynamodb VPC endpoint without route table association",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "AWS VPC endpoints for DynamoDB provide secure and private connectivity between VPC resources and DynamoDB without traversing the public internet. For a VPC endpoint to function correctly, it must be associated with one or more route tables using the `aws_route_table_association` resource, which ensures the correct routes (`route_table_id` and `subnet_id`) direct DynamoDB traffic through the endpoint. If this association is missing, instances within the VPC will not be able to route requests to DynamoDB over the VPC endpoint, potentially forcing traffic through the public internet or causing connectivity failures. This misconfiguration can expose sensitive data to unnecessary network risk and violates best practices for securing internal AWS service communications.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/dynamodb_vpc_endpoint_without_route_table_association",
+  "platform": "Terraform",
+  "descriptionID": "e4334087",
+  "cloudProvider": "aws",
+  "cwe": "285",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Dynamodb VPC Endpoint should be associated with Route Table Association",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_endpoint#vpc_id"
+}

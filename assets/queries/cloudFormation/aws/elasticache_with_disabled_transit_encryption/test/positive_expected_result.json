@@ -1,0 +1,26 @@
+[
+  {
+    "fileName": "positive2.yaml",
+    "queryName": "ElastiCache with disabled transit encryption",
+    "severity": "MEDIUM",
+    "line": 26
+  },
+  {
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive1.yaml",
+    "queryName": "ElastiCache with disabled transit encryption"
+  },
+  {
+    "line": 4,
+    "fileName": "positive3.json",
+    "queryName": "ElastiCache with disabled transit encryption",
+    "severity": "MEDIUM"
+  },
+  {
+    "queryName": "ElastiCache with disabled transit encryption",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive4.json"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "id": "b161c11b-a59b-4431-9a29-4e19f63e6b27",
+  "queryName": "REST API with vulnerable policy",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "This check ensures that REST API policies do not use wildcard values for the `Action` and `Principal` fields. Using a wildcard (`\"*\"`) in the `Principal` field allows any AWS user to invoke the API, and a wildcard in the `Action` field grants permissions for all possible API Gateway actions. This overly permissive configuration introduces a critical security vulnerability, as it permits unauthorized users to execute any API Gateway action, potentially leading to data exposure, unauthorized system manipulation, or service disruption. Restricting these fields to specific users and actions is necessary to enforce least privilege and mitigate the risk of API abuse or compromise.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/rest_api_with_vulnerable_policy",
+  "platform": "Terraform",
+  "descriptionID": "fb6080ac",
+  "cloudProvider": "aws",
+  "cwe": "155",
+  "oldDescriptionText": "REST API policy should avoid wildcard in 'Action' and 'Principal'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/api_gateway_rest_api_policy#policy"
+}

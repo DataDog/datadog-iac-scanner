@@ -1,0 +1,12 @@
+{
+  "id": "3d24b204-b73d-42cb-b0bf-1a5438c5f71e",
+  "queryName": "Secure port set to zero",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "When using `kube-apiserver`, the `--secure-port` flag should not be set to `0`. Setting `--secure-port=0` disables the API server's secure (HTTPS) listener, which can prevent encrypted communication and potentially expose the server to insecure access. This rule inspects container command arguments in `containers` and `initContainers` for `kube-apiserver` and flags any occurrence of `--secure-port=0`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/secure_port_set_to_zero",
+  "platform": "Kubernetes",
+  "descriptionID": "adf24d20",
+  "cwe": "665",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

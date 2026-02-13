@@ -1,0 +1,38 @@
+[
+	{
+		"queryName": "Docker daemon socket is exposed to containers",
+		"severity": "MEDIUM",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "Docker daemon socket is exposed to containers",
+		"severity": "MEDIUM",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "Docker daemon socket is exposed to containers",
+		"severity": "MEDIUM",
+		"line": 98,
+		"fileName": ""
+	},
+	{
+		"queryName": "Docker daemon socket is exposed to containers",
+		"severity": "MEDIUM",
+		"line": 98,
+		"fileName": ""
+	},
+	{
+		"queryName": "Docker daemon socket is exposed to containers",
+		"severity": "MEDIUM",
+		"line": 169,
+		"fileName": ""
+	},
+	{
+		"queryName": "Docker daemon socket is exposed to containers",
+		"severity": "MEDIUM",
+		"line": 169,
+		"fileName": ""
+	}
+]

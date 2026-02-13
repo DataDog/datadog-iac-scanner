@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Root account has active access keys",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Root account has active access keys",
+    "severity": "HIGH",
+    "line": 4,
+    "fileName": "positive2.tf"
+  }
+]

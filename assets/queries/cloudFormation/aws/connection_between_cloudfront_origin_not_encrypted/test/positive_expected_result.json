@@ -1,0 +1,26 @@
+[
+  {
+    "line": 13,
+    "fileName": "positive1.yaml",
+    "queryName": "Connection between CloudFront origin not encrypted",
+    "severity": "MEDIUM"
+  },
+  {
+    "queryName": "Connection between CloudFront origin not encrypted",
+    "severity": "MEDIUM",
+    "line": 30,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Connection between CloudFront origin not encrypted",
+    "severity": "MEDIUM",
+    "line": 19,
+    "fileName": "positive2.json"
+  },
+  {
+    "severity": "MEDIUM",
+    "line": 56,
+    "fileName": "positive2.json",
+    "queryName": "Connection between CloudFront origin not encrypted"
+  }
+]

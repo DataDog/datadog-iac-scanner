@@ -1,0 +1,14 @@
+{
+  "id": "e8f4d3c2-b1a0-4e5f-8d7c-9a0b1c2d3e4f",
+  "queryName": "Ensure that Azure cloud resource has a team tag",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "To ensure proper resource ownership and management accountability in Azure environments, all resources should include a `team` tag within their `tags` block. Without this tag, as shown below, it becomes difficult to identify who is responsible for the resource, increasing the risk of unmanaged assets, security oversights, and operational inefficiencies:\n\n```\nresource \"azurerm_storage_account\" \"bad_example_no_tags\" {\n  name                     = \"badstorageacct\"\n  resource_group_name      = \"example-rg\"\n  location                 = \"East US\"\n  account_tier             = \"Standard\"\n  account_replication_type = \"LRS\"\n}\n```\n\nProperly tagging resources with a `team` value, such as in this example, helps organizations implement cost controls, streamline incident response, and maintain compliance by ensuring every asset has clear ownership:\n\n```\nresource \"azurerm_storage_account\" \"good_example\" {\n  name                     = \"goodstorageacct\"\n  resource_group_name      = \"example-rg\"\n  location                 = \"East US\"\n  account_tier             = \"Standard\"\n  account_replication_type = \"LRS\"\n  tags = {\n    team = \"DevOps\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/team_tag_not_present",
+  "platform": "Terraform",
+  "descriptionID": "e8f4d3c2",
+  "cloudProvider": "azure",
+  "cwe": "200",
+  "oldDescriptionText": "All Azure resources must include a 'team' tag in their tags block to ensure proper ownership and accountability.",
+  "providerUrl": "https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources"
+}

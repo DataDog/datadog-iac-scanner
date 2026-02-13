@@ -1,0 +1,50 @@
+[
+  {
+    "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+    "severity": "HIGH",
+    "line": 5,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+    "severity": "HIGH",
+    "line": 14,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+    "severity": "HIGH",
+    "line": 15,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+    "severity": "HIGH",
+    "line": 24,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+    "severity": "HIGH",
+    "line": 32,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+    "severity": "HIGH",
+    "line": 37,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+    "severity": "HIGH",
+    "line": 15,
+    "fileName": "positive_module.tf"
+  }
+]

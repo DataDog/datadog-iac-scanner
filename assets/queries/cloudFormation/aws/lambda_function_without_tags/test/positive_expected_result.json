@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Lambda function without tags",
+    "severity": "LOW",
+    "line": 52,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "fileName": "positive2.json",
+    "queryName": "Lambda function without tags",
+    "severity": "LOW",
+    "line": 75
+  }
+]

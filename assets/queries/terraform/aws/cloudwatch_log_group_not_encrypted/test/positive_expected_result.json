@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "CloudWatch log group without KMS",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "CloudWatch log group without KMS",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive_module.tf"
+  }
+]

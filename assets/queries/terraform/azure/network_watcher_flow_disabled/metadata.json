@@ -1,0 +1,15 @@
+{
+  "id": "b90842e5-6779-44d4-9760-972f4c03ba1c",
+  "queryName": "Network watcher flow disabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check ensures that the `enabled` attribute in the `azurerm_network_watcher_flow_log` resource is set to `true`, which activates flow logging for the associated network security group. Disabling flow logs by setting `enabled = false` can result in a lack of visibility into network traffic, making it difficult to detect and investigate security incidents and unauthorized access attempts in Azure environments. To maintain proper monitoring and auditing, the flow log should be enabled, as shown below:\n\n```\nresource \"azurerm_network_watcher_flow_log\" \"secure_example\" {\n  network_watcher_name       = azurerm_network_watcher.test.name\n  resource_group_name        = azurerm_resource_group.test.name\n  network_security_group_id  = azurerm_network_security_group.test.id\n  storage_account_id         = azurerm_storage_account.test.id\n  enabled                    = true\n\n  retention_policy {\n    enabled = true\n    days    = 7\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/network_watcher_flow_disabled",
+  "platform": "Terraform",
+  "descriptionID": "fd29818c",
+  "cloudProvider": "azure",
+  "cwe": "779",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Check if enable field in the resource azurerm_network_watcher_flow_log is false.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_watcher_flow_log"
+}

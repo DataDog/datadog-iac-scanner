@@ -1,0 +1,13 @@
+{
+  "id": "ffe0fd52-7a8b-4a5c-8fc7-49844418e6c9",
+  "queryName": "No Stack Policy",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "AWS CloudFormation Stack should have a stack policy in order to protect stack resources from update actions",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/no_stack_policy",
+  "platform": "Ansible",
+  "descriptionID": "327969ac",
+  "cloudProvider": "aws",
+  "cwe": "829",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudformation_module.html"
+}

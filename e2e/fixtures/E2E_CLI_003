@@ -1,0 +1,8 @@
+NAME:
+   datadog-iac-scanner scan - Analyzes the content of a repository
+
+USAGE:
+   datadog-iac-scanner scan
+
+{{.ScanHelp -}}
+Program failed: Required flag "path" not set

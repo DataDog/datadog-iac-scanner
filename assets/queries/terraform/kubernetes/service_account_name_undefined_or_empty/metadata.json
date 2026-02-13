@@ -1,0 +1,13 @@
+{
+  "id": "24b132df-5cc7-4823-8029-f898e1c50b72",
+  "queryName": "Service account name undefined or empty",
+  "severity": "MEDIUM",
+  "category": "Insecure Defaults",
+  "descriptionText": "A Kubernetes Pod must have a Service Account defined to restrict access to the Kubernetes API. The pod spec attribute `service_account_name` must be defined and not empty or null. Pods missing a valid `service_account_name` can have excessive permissions or fail to authenticate when accessing the API.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/service_account_name_undefined_or_empty",
+  "platform": "Terraform",
+  "descriptionID": "ce3648b0",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#service_account_name"
+}

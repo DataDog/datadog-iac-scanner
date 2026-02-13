@@ -1,0 +1,14 @@
+{
+  "id": "704fcc44-a58f-4af5-82e2-93f2a58ef918",
+  "queryName": "User with IAM role",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Assigning an IAM role directly to a user rather than to a group is considered a misconfiguration, as it reduces flexibility and scalability in managing permissions. This practice can also lead to security risks; if the user leaves the organization or changes roles, their individual permissions may be overlooked and not revoked, resulting in excessive access. Using a group-based assignment, as shown below, ensures a more centralized and manageable permission structure:\n\n```\ndata \"google_iam_policy\" \"secure\" {\n  binding {\n    role = \"roles/apigee.runtimeAgent\"\n\n    members = [\n      \"group:jane@example.com\",\n    ]\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/user_with_iam_role",
+  "platform": "Terraform",
+  "descriptionID": "256939e9",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldDescriptionText": "As a best practice, it is better to assign an IAM Role to a group than to a user",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/data-sources/iam_policy#role"
+}

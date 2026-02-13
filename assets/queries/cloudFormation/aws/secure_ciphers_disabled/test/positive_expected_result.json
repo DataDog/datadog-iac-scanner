@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Secure ciphers disabled",
+    "severity": "MEDIUM",
+    "line": 26,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Secure ciphers disabled",
+    "severity": "MEDIUM",
+    "line": 44,
+    "fileName": "positive2.json"
+  }
+]

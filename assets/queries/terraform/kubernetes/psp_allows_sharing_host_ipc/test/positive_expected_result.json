@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "PSP allows sharing host IPC",
+		"severity": "HIGH",
+		"line": 8,
+		"fileName": ""
+	}
+]

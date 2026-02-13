@@ -1,0 +1,13 @@
+{
+  "id": "aa737abf-6b1d-4aba-95aa-5c160bd7f96e",
+  "queryName": "Image pull policy of the container is not set to always",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "The container's `image_pull_policy` must be defined and set to `Always`.\nThe container image must not use the `:latest` tag.\nThis rule checks container paths in `kubernetes_pod` (`spec.container`) and `kubernetes_deployment` (`spec.template.spec.container`) resources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/image_pull_policy_of_container_is_not_always",
+  "platform": "Terraform",
+  "descriptionID": "d2abf21b",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#image_pull_policy"
+}

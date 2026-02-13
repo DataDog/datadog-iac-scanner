@@ -1,0 +1,22 @@
+{
+  "id": "f0d8781f-99bf-4958-9917-d39283b168a0",
+  "queryName": "DB security group has public interface",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "AWS DB security groups control access to RDS database instances by defining which IP addresses or Amazon EC2 instances can connect to them. Configuring a DB security group with a public interface (`0.0.0.0/0`) allows unrestricted access from any IP address, potentially exposing your database to unauthorized access and attacks from the internet.\n\nThis vulnerability significantly increases the risk of data breaches, unauthorized data access, and potential compromise of sensitive information stored in your database. Instead of using public interfaces, you should restrict access to specific IP ranges or VPC CIDR blocks.\n\nSecure example:\n```\nresource \"aws_db_security_group\" \"example\" {\n  name = \"rds_sg\"\n\n  ingress {\n    cidr = \"10.0.0.0/8\"\n  }\n}\n```\n\nInsecure example:\n```\nresource \"aws_db_security_group\" \"example\" {\n  name = \"rds_sg\"\n\n  ingress {\n    cidr = \"0.0.0.0/0\"\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/db_security_group_has_public_interface",
+  "platform": "Terraform",
+  "descriptionID": "ddaf8c0b",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldDescriptionText": "The CIDR IP should not be a public interface",
+  "providerUrl": "https://registry.terraform.io/providers/rgeraskin/aws3/latest/docs/resources/db_security_group",
+  "customFrameworks": [
+    {
+      "control": "aws.1.8",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

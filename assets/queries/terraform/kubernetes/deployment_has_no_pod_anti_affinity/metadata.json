@@ -1,0 +1,13 @@
+{
+  "id": "461ed7e4-f8d5-4bc1-b3c6-64ddb4fd00a3",
+  "queryName": "Deployment has no podAntiAffinity",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "Checks whether Deployment resources with `replicas > 2` include a `podAntiAffinity` policy to prevent multiple pods from being scheduled on the same node. The rule verifies that `.spec.template.spec.affinity.pod_anti_affinity` is present and that either `required_during_scheduling_ignored_during_execution` or `preferred_during_scheduling_ignored_during_execution` is configured. It also ensures the `topology_key` is set to `kubernetes.io/hostname` and that the `label_selector.match_labels` entries match labels on the Pod template.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/deployment_has_no_pod_anti_affinity",
+  "platform": "Terraform",
+  "descriptionID": "4a5ad90d",
+  "cwe": "710",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/deployment#affinity"
+}

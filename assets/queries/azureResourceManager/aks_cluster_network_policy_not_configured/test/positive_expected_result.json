@@ -1,0 +1,50 @@
+[
+  {
+    "queryName": "AKS Cluster Network Policy Not Configured",
+    "severity": "MEDIUM",
+    "line": 6,
+    "filename": "positive1.json"
+  },
+  {
+    "queryName": "AKS Cluster Network Policy Not Configured",
+    "severity": "MEDIUM",
+    "line": 37,
+    "filename": "positive2.json"
+  },
+  {
+    "queryName": "AKS Cluster Network Policy Not Configured",
+    "severity": "MEDIUM",
+    "line": 8,
+    "filename": "positive3.json"
+  },
+  {
+    "queryName": "AKS Cluster Network Policy Not Configured",
+    "severity": "MEDIUM",
+    "line": 39,
+    "filename": "positive4.json"
+  },
+  {
+    "queryName": "AKS Cluster Network Policy Not Configured",
+    "severity": "MEDIUM",
+    "line": 2,
+    "filename": "positive1.bicep"  
+  },
+  {
+    "queryName": "AKS Cluster Network Policy Not Configured",
+    "severity": "MEDIUM",
+    "line": 31,
+    "filename": "positive2.bicep"
+  },
+  {
+    "queryName": "AKS Cluster Network Policy Not Configured",
+    "severity": "MEDIUM",
+    "line": 2,
+    "filename": "positive3.bicep"
+  },
+  {
+    "queryName": "AKS Cluster Network Policy Not Configured",
+    "severity": "MEDIUM",
+    "line": 31,
+    "filename": "positive4.bicep"
+  }
+]

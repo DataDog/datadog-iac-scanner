@@ -1,0 +1,23 @@
+{
+  "id": "28545147-2fc6-42d5-a1f9-cf226658e591",
+  "queryName": "SNS topic not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon SNS topics should be encrypted at rest using AWS KMS to protect sensitive message content. Without encryption, data stored in SNS topics is vulnerable to unauthorized access if the service or underlying storage is compromised. Use the `kms_master_key_id` attribute to specify a KMS key for encryption, as shown in this example: `kms_master_key_id = \"alias/MyAlias\"`. Leaving this attribute empty or unspecified (as in `kms_master_key_id = \"\"`) results in unencrypted SNS topics, exposing sensitive data to potential security breaches.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sns_topic_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "2f15b2d0",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "SNS (Simple Notification Service) Topic should be encrypted",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sns_topic#kms_master_key_id",
+  "customFrameworks": [
+    {
+      "control": "aws.1.29",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

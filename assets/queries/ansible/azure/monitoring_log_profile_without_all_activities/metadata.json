@@ -1,0 +1,13 @@
+{
+  "id": "89f84a1e-75f8-47c5-83b5-bee8e2de4168",
+  "queryName": "Monitoring Log Profile Without All Activities",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Monitoring log profile captures all the activities (Action, Write, Delete)",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/monitoring_log_profile_without_all_activities",
+  "platform": "Ansible",
+  "descriptionID": "cb93f630",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_monitorlogprofile_module.html"
+}

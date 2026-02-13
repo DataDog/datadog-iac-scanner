@@ -1,0 +1,14 @@
+{
+  "id": "4de9de27-254e-424f-bd70-4c1e95790838",
+  "queryName": "Launch configuration is not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS Launch Configurations with unencrypted EBS volumes expose sensitive data to potential unauthorized access if the physical storage is compromised or the volume is improperly decommissioned. When data is stored unencrypted, it could allow attackers who gain access to the raw storage to extract sensitive information without needing additional credentials. To properly secure your data, always set the `encrypted` parameter to true in all block device configurations, as shown below:\n\n```hcl\nebs_block_device {\n  device_name = \"/dev/xvda1\"\n  encrypted = true\n}\n```\n\nThe following is an example of a vulnerable configuration:\n\n```hcl\nebs_block_device {\n  device_name = \"/dev/xvda1\"\n  encrypted = false  // or parameter omitted entirely\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/launch_configuration_is_not_encrypted",
+  "platform": "Terraform",
+  "descriptionID": "d11b3649",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "Launch Configurations should have the data in the volumes encrypted. To encrypt the data, the 'encrypted' parameter should be set to true in each volume",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/launch_configuration#encrypted"
+}

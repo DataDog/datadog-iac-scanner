@@ -1,0 +1,14 @@
+{
+  "id": "86f92117-eed8-4614-9c6c-b26da20ff37f",
+  "queryName": "AKS RBAC disabled",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Role Based Access Control (RBAC) should be enabled on Azure Kubernetes Service (AKS) clusters to enforce fine-grained authorization and restrict access to cluster resources. If `role_based_access_control_enabled = false` or `role_based_access_control { enabled = false }` is present in the Terraform configuration, users may gain excessive or unauthorized permissions within the cluster, increasing risk of accidental or malicious actions. Properly configuring RBAC (for example, by using `role_based_access_control_enabled = true`) helps ensure only authorized identities can perform sensitive operations within the AKS environment.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/aks_rbac_disabled",
+  "platform": "Terraform",
+  "descriptionID": "d27166a7",
+  "cloudProvider": "azure",
+  "cwe": "285",
+  "oldDescriptionText": "Azure Container Service (AKS) instance should have role-based access control (RBAC) enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/kubernetes_cluster#role_based_access_control"
+}

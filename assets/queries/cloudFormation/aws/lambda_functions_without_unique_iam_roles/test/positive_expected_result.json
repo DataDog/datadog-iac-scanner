@@ -1,0 +1,26 @@
+[
+  {
+    "severity": "HIGH",
+    "line": 8,
+    "fileName": "positive1.yaml",
+    "queryName": "Lambda functions without unique IAM roles"
+  },
+  {
+    "severity": "HIGH",
+    "line": 41,
+    "fileName": "positive1.yaml",
+    "queryName": "Lambda functions without unique IAM roles"
+  },
+  {
+    "line": 7,
+    "fileName": "positive2.json",
+    "queryName": "Lambda functions without unique IAM roles",
+    "severity": "HIGH"
+  },
+  {
+    "fileName": "positive2.json",
+    "queryName": "Lambda functions without unique IAM roles",
+    "severity": "HIGH",
+    "line": 24
+  }
+]

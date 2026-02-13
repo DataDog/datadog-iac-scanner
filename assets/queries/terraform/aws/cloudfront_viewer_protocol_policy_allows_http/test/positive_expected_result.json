@@ -1,0 +1,18 @@
+[
+  {
+    "queryName": "Cloudfront viewer protocol policy allows HTTP",
+    "severity": "MEDIUM",
+    "line": 27
+  },
+  {
+    "queryName": "Cloudfront viewer protocol policy allows HTTP",
+    "severity": "MEDIUM",
+    "line": 96
+  },
+  {
+    "queryName": "Cloudfront viewer protocol policy allows HTTP",
+    "severity": "MEDIUM",
+    "line": 73,
+    "fileName": "positive2.tf"
+  }
+]

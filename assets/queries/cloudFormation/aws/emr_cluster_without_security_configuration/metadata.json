@@ -1,0 +1,13 @@
+{
+  "id": "48af92a5-c89b-4936-bc62-1086fe2bab23",
+  "queryName": "EMR cluster without security configuration",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "EMR clusters must reference an EMR security configuration so cluster-level security settings (such as encryption and authentication controls) are applied. Without a security configuration, data at rest or in transit and access controls may not be enforced, increasing the risk of data exposure or unauthorized access.\n \n In CloudFormation, the `SecurityConfiguration` property on `AWS::EMR::Cluster` must be defined and set to the logical name (string) of a resource of type `AWS::EMR::SecurityConfiguration`. Resources missing this property, or where the `SecurityConfiguration` value does not match an `AWS::EMR::SecurityConfiguration` resource in the same template, will be flagged. \n \n Secure configuration example:\n\n```yaml\nEMRSecurityConfig:\n  Type: AWS::EMR::SecurityConfiguration\n  Properties:\n    Name: my-emr-security-config\n    SecurityConfiguration: |\n      {\n        \"EncryptionConfiguration\": { \"EnableAtRestEncryption\": true }\n      }\n\nEMRCluster:\n  Type: AWS::EMR::Cluster\n  Properties:\n    Name: my-emr-cluster\n    ReleaseLabel: emr-6.3.0\n    Instances: {}\n    SecurityConfiguration: !Ref EMRSecurityConfig\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/emr_cluster_without_security_configuration",
+  "platform": "CloudFormation",
+  "descriptionID": "17e140e2",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticmapreduce-cluster.html#cfn-elasticmapreduce-cluster-securityconfiguration"
+}

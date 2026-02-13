@@ -1,0 +1,14 @@
+{
+  "id": "2b3c671f-1b76-4741-8789-ed1fe0785dc4",
+  "queryName": "PostgreSQL server without connection throttling",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "PostgreSQL servers should have connection throttling enabled by setting the `connection_throttling` configuration value to `\"on\"`. Without connection throttling (for example, `value = \"off\"`), the server is more vulnerable to connection floods and denial-of-service attacks, as there is no mechanism to limit the rate of incoming connections. Enabling this option reduces the risk of service disruption by preventing excessive connection attempts from overloading the database.\n\nA secure Terraform configuration example is shown below:\n  \n```\nresource \"azurerm_postgresql_configuration\" \"example\" {\n    name                = \"connection_throttling\"\n    resource_group_name = data.azurerm_resource_group.example.name\n    server_name         = azurerm_postgresql_server.example.name\n    value               = \"on\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/postgresql_server_without_connection_throttling",
+  "platform": "Terraform",
+  "descriptionID": "6f6649db",
+  "cloudProvider": "azure",
+  "cwe": "770",
+  "oldDescriptionText": "Ensure that Connection Throttling is set for the PostgreSQL server",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_configuration"
+}

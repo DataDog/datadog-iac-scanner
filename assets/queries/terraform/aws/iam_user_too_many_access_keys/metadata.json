@@ -1,0 +1,14 @@
+{
+  "id": "3561130e-9c5f-485b-9e16-2764c82763e5",
+  "queryName": "IAM user has too many access keys",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "IAM users should not have more than one active access key at a time, as shown by multiple `aws_iam_access_key` resources provisioned for the same user. Allowing more than one access key per user increases the attack surface by providing additional credentials that might be lost, leaked, or forgotten, making unauthorized access and credential compromise more likely if keys are not properly rotated or managed. To mitigate this risk, limit each IAM user to a single access key and revoke any unused or unnecessary keys to maintain strong security hygiene.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/iam_user_too_many_access_keys",
+  "platform": "Terraform",
+  "descriptionID": "387e9522",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "Any IAM User should not have more than one access key since it increases the risk of unauthorized access and compromise credentials",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_access_key#user"
+}

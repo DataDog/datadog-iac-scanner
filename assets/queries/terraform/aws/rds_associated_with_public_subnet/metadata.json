@@ -1,0 +1,15 @@
+{
+  "id": "2f737336-b18a-4602-8ea0-b200312e1ac1",
+  "queryName": "RDS associated with public subnet",
+  "severity": "CRITICAL",
+  "category": "Networking and Firewall",
+  "descriptionText": "Amazon RDS instances should not be associated with public subnets to prevent potential unauthorized access from the internet. When an RDS instance is placed in a subnet group containing a public subnet (with a CIDR such as `0.0.0.0/0)`, it creates an attack vector for malicious actors to exploit your database. \n\nInstead, RDS instances should only be deployed in private subnets with specific CIDR blocks. In the secure example, subnets use specific CIDR blocks such as `172.2.0.0/24` and `176.2.0.0/24`, while the vulnerable example uses `0.0.0.0/0` which allows traffic from any IP address. Properly securing your database network configuration helps prevent data breaches and unauthorized access to sensitive information.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/rds_associated_with_public_subnet",
+  "platform": "Terraform",
+  "descriptionID": "425d310e",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "RDS should not run in public subnet",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/db_instance#db_subnet_group_name"
+}

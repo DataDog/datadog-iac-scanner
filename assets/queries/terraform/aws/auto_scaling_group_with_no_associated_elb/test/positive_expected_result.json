@@ -1,0 +1,38 @@
+[
+  {
+    "queryName": "Auto scaling group with no associated ELB",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Auto scaling group with no associated ELB",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "Auto scaling group with no associated ELB",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "Auto scaling group with no associated ELB",
+    "severity": "MEDIUM",
+    "line": 14,
+    "fileName": "positive4.tf"
+  },
+  {
+    "queryName": "Auto scaling group with no associated ELB",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive5.tf"
+  },
+  {
+    "queryName": "Auto scaling group with no associated ELB",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive6.tf"
+  }
+]

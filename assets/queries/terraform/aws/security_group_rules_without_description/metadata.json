@@ -1,0 +1,14 @@
+{
+  "id": "68eb4bf3-f9bf-463d-b5cf-e029bb446d2e",
+  "queryName": "Security group rule without description",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "All rules within an AWS security group should have descriptive text provided for each rule. Including a `description` for both `ingress` and `egress` rules makes it easier to understand the purpose and intent behind each rule, improving the maintainability and auditability of your security configurations. Without descriptive annotations, security teams may struggle to identify the rationale for specific rules, increasing the risk of misconfigurations or inadvertent exposure of resources. Leaving descriptions blank can lead to confusion, make incident response more difficult, and may undermine compliance efforts that require clear documentation of network security controls.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/security_group_rules_without_description",
+  "platform": "Terraform",
+  "descriptionID": "cee242dd",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "oldDescriptionText": "It's considered a best practice for all rules in AWS Security Group to have a description",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group#description"
+}

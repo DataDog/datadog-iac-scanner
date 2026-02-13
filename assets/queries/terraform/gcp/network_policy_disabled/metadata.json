@@ -1,0 +1,15 @@
+{
+  "id": "11e7550e-c4b6-472e-adff-c698f157cdd7",
+  "queryName": "Network policy disabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Kubernetes Engine clusters must have network policies enabled to restrict traffic between pods and control communication within the cluster. In Terraform, this requires setting `network_policy.enabled = true` and `addons_config.network_policy_config.disabled = false`, as shown below:\n\n```\nnetwork_policy {\n  enabled = true\n}\naddons_config {\n  network_policy_config {\n    disabled = false\n  }\n}\n```\n\nIf these settings are not properly configured, unauthorized traffic between pods may be allowed, increasing the risk of lateral movement and potential compromise of sensitive applications or data within the cluster.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/network_policy_disabled",
+  "platform": "Terraform",
+  "descriptionID": "afcf7c4b",
+  "cloudProvider": "gcp",
+  "cwe": "1188",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Kubernetes Engine Clusters must have Network Policy enabled, meaning that the attribute 'network_policy.enabled' must be true and the attribute 'addons_config.network_policy_config.disabled' must be false ",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/container_cluster"
+}

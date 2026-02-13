@@ -1,0 +1,12 @@
+{
+  "id": "a31b7b82-d994-48c4-bd21-3bab6c31827a",
+  "queryName": "Deployment without podAntiAffinity",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "Deployments with more than two replicas should include a `podAntiAffinity` policy to prevent multiple Pods from being scheduled on the same node. The policy must be defined under `spec.template.spec.affinity.podAntiAffinity` and include at least one of `preferredDuringSchedulingIgnoredDuringExecution` or `requiredDuringSchedulingIgnoredDuringExecution`. Each affinity term's `podAffinityTerm.topologyKey` must be set to 'kubernetes.io/hostname', and its `labelSelector.matchLabels` must match labels on the pod template.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/deployment_has_no_pod_anti_affinity",
+  "platform": "Kubernetes",
+  "descriptionID": "22146f41",
+  "cwe": "710",
+  "providerUrl": "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/"
+}

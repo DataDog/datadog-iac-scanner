@@ -1,0 +1,13 @@
+{
+  "id": "8d7758a7-d9cd-499a-a83e-c9bdcbff728d",
+  "queryName": "Beta - Nifcloud NAS has public ingress NAS security group rule",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "An ingress `nifcloud_nas_security_group` rule allows traffic from `/0`. This permits access from the entire Internet and is overly permissive. Use a more restrictive CIDR range to limit allowed sources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/nas_security_group_has_public_ingress_sgr",
+  "platform": "Terraform",
+  "descriptionID": "5cf1f2e2",
+  "cloudProvider": "nifcloud",
+  "cwe": "285",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/nas_security_group#cidr_ip"
+}

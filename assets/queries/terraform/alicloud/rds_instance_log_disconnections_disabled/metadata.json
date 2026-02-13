@@ -1,0 +1,14 @@
+{
+  "id": "d53f4123-f8d8-4224-8cb3-f920b151cc98",
+  "queryName": "RDS instance log disconnections disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "The `log_disconnections` parameter must be set to `ON` for RDS instances. The rule inspects `alicloud_db_instance` resources and their `parameters` array for an entry where `name` is `log_disconnections` and `value` is `ON`. If the parameter exists with `value = OFF`, the policy reports an `IncorrectValue` issue. If the `parameters` array is missing or the parameter is absent, the policy reports a `MissingAttribute` issue and suggests adding or updating the entry to set `value = ON` (for example, `parameters = [{ name = \"log_disconnections\", value = \"ON\" }]`).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_log_disconnections_disabled",
+  "platform": "Terraform",
+  "descriptionID": "67ec659b",
+  "cloudProvider": "alicloud",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/db_instance#parameters"
+}

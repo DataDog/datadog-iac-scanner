@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "ELB without secure protocol",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "ELB without secure protocol",
+    "severity": "MEDIUM",
+    "line": 13,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "ELB without secure protocol",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive2.json"
+  },
+  {
+    "queryName": "ELB without secure protocol",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive2.json"
+  }
+]

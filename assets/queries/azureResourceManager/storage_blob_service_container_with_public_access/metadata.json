@@ -1,0 +1,12 @@
+{
+  "id": "a0ab985d-660b-41f7-ac81-70957ee8e627",
+  "queryName": "Storage Blob Service Container With Public Access",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "The Storage Blob Service Container should not be publicly accessible",
+  "descriptionUrl": "https://docs.microsoft.com/en-us/azure/templates/microsoft.storage/storageaccounts/blobservices/containers?tabs=json#containerproperties-object",
+  "platform": "AzureResourceManager",
+  "descriptionID": "49e52e15",
+  "cloudProvider": "azure",
+  "cwe": "284"
+}

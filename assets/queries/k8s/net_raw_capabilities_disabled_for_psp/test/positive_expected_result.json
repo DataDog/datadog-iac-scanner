@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "NET_RAW capabilities disabled for PSP",
+    "severity": "MEDIUM",
+    "line": 13
+  },
+  {
+    "queryName": "NET_RAW capabilities disabled for PSP",
+    "severity": "MEDIUM",
+    "line": 57
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "id": "086ea2eb-14a6-4fd4-914b-38e0bc8703e8",
+  "queryName": "Elasticsearch without slow logs",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "Elasticsearch domains must publish slow logs to detect and investigate performance anomalies and suspicious query activity. Without slow logs, you cannot audit slow or resource-intensive queries that may indicate abuse, data exfiltration, or misconfiguration.\n \n In CloudFormation, `AWS::Elasticsearch::Domain` resources must define `Properties.LogPublishingOptions` and include `INDEX_SLOW_LOGS` and/or `SEARCH_SLOW_LOGS` entries with their `Enabled` property set to `true`. Resources missing `LogPublishingOptions`, missing the slow-log keys, or with `Enabled` set to `false` will be flagged. \n \n Secure configuration example:\n\n```yaml\nMyDomain:\n  Type: AWS::Elasticsearch::Domain\n  Properties:\n    DomainName: my-domain\n    LogPublishingOptions:\n      INDEX_SLOW_LOGS:\n        CloudWatchLogsLogGroupArn: arn:aws:logs:us-east-1:123456789012:log-group:/aws/elasticsearch/index-slow\n        Enabled: true\n      SEARCH_SLOW_LOGS:\n        CloudWatchLogsLogGroupArn: arn:aws:logs:us-east-1:123456789012:log-group:/aws/elasticsearch/search-slow\n        Enabled: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elasticsearch_without_slow_logs",
+  "platform": "CloudFormation",
+  "descriptionID": "72d32380",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticsearch-domain.html#cfn-elasticsearch-domain-logpublishingoptions"
+}

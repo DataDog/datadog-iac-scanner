@@ -1,0 +1,14 @@
+{
+  "id": "77b6f1e2-bde4-4a6a-ae7e-a40659ff1576",
+  "queryName": "EC2 network ACL overlapping ports",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Network ACL entries with overlapping port ranges can make rules ineffective or cause unintended allow/deny behavior, increasing the risk of unauthorized access or service disruption. This check inspects `AWS::EC2::NetworkAclEntry` resources and their `Properties.PortRange.From` and `Properties.PortRange.To` values. Each entry must define a port range that does not intersect with any other `AWS::EC2::NetworkAclEntry` port range in the same template.\n \n Resources missing `PortRange`, with `From` greater than `To`, or with ranges that share any port will be flagged as a misconfiguration. \n \n Secure configuration example with distinct, non-overlapping port ranges:\n\n```yaml\nAclEntry1:\n  Type: AWS::EC2::NetworkAclEntry\n  Properties:\n    NetworkAclId: acl-01234567\n    Protocol: 6\n    RuleAction: allow\n    Egress: false\n    PortRange:\n      From: 80\n      To: 80\n\nAclEntry2:\n  Type: AWS::EC2::NetworkAclEntry\n  Properties:\n    NetworkAclId: acl-01234567\n    Protocol: 6\n    RuleAction: allow\n    Egress: false\n    PortRange:\n      From: 443\n      To: 443\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ec2_network_acl_overlapping_ports",
+  "platform": "CloudFormation",
+  "descriptionID": "cb7c8980",
+  "cloudProvider": "aws",
+  "cwe": "385",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-networkaclentry-portrange.html"
+}

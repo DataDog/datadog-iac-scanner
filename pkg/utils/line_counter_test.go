@@ -1,0 +1,40 @@
+package utils
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestLineCounter(t *testing.T) {
+	tests := []struct {
+		name      string
+		want      int
+		filePath  string
+		wantError bool
+	}{
+
+		{
+			name:      "Get lines from a yaml file",
+			want:      25,
+			filePath:  "../../test/assets/sample_K8S_CONFIG_FILE.yaml",
+			wantError: false,
+		},
+	}
+
+	ctx := context.Background()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := LineCounter(ctx, test.filePath)
+			if test.wantError {
+				require.NotEqual(t, err, nil)
+				require.Equal(t, test.want, got)
+			} else {
+				require.Equal(t, test.want, got)
+				require.Equal(t, err, nil)
+			}
+
+		})
+	}
+}

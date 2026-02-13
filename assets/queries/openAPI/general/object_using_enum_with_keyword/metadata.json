@@ -1,0 +1,21 @@
+{
+  "id": "2e9b6612-8f69-42e0-a5b8-ed17739c2f3a",
+  "queryName": "Object Using Enum With Keyword (v3)",
+  "severity": "INFO",
+  "category": "Best Practices",
+  "descriptionText": "Schema Object properties should not contain 'enum' and schema keywords",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/object_using_enum_with_keyword",
+  "platform": "OpenAPI",
+  "descriptionID": "96b60dc9",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "7f15962a-d862-451c-ac9b-84ec13747aa6",
+      "queryName": "Object Using Enum With Keyword (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#schemaObject",
+      "descriptionText": "Schema/Parameter/Header Object properties should not contain 'enum' and schema keywords"
+    }
+  },
+  "cwe": "20",
+  "providerUrl": "https://swagger.io/specification/#schema-object"
+}

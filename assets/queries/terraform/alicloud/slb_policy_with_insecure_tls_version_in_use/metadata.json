@@ -1,0 +1,13 @@
+{
+  "id": "dbfc834a-56e5-4750-b5da-73fda8e73f70",
+  "queryName": "SLB policy with insecure TLS version in use",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "An SLB policy should not include insecure TLS protocol versions. Specifically, `alicloud_slb_tls_cipher_policy` resources must not specify `TLSv1.0` or `TLSv1.1` in the `tls_versions` attribute. This rule detects resources whose `tls_versions` contains insecure entries and reports details using the attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`, and `searchLine`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/slb_policy_with_insecure_tls_version_in_use",
+  "platform": "Terraform",
+  "descriptionID": "dcc71406",
+  "cloudProvider": "alicloud",
+  "cwe": "326",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/slb_tls_cipher_policy"
+}

@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "PodSecurityPolicy allows host network sharing",
+    "severity": "HIGH",
+    "line": 14
+  }
+]

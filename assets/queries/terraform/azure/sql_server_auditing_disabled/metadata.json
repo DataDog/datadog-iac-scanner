@@ -1,0 +1,14 @@
+{
+  "id": "f7e296b0-6660-4bc5-8f87-22ac4a815edf",
+  "queryName": "SQL server auditing disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "SQL Server auditing should be enabled to ensure that all database events and activities are properly logged for security monitoring and compliance purposes. Without the `extended_auditing_policy` block set as shown below, malicious or unauthorized actions may go undetected, increasing the risk of data breaches and making forensic analysis difficult. For example, secure Terraform configuration includes the following:\n\n```\nextended_auditing_policy {\n   storage_endpoint           = azurerm_storage_account.example.primary_blob_endpoint\n   storage_account_access_key = azurerm_storage_account.example.primary_access_key\n   storage_account_access_key_is_secondary = true\n   retention_in_days                       = 90\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/sql_server_auditing_disabled",
+  "platform": "Terraform",
+  "descriptionID": "609638cc",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldDescriptionText": "Make sure that for SQL Servers, 'Auditing' is set to 'On'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/3.6.0/docs/resources/sql_firewall_rule"
+}

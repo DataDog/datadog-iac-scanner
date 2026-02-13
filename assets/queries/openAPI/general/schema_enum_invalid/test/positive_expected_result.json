@@ -1,0 +1,50 @@
+[
+  {
+    "queryName": "Schema Enum Invalid (v3)",
+    "severity": "INFO",
+    "line": 20,
+    "filename": "positive1.json"
+  },
+  {
+    "queryName": "Schema Enum Invalid (v3)",
+    "severity": "INFO",
+    "line": 20,
+    "filename": "positive2.json"
+  },
+  {
+    "queryName": "Schema Enum Invalid (v3)",
+    "severity": "INFO",
+    "line": 18,
+    "filename": "positive3.yaml"
+  },
+  {
+    "queryName": "Schema Enum Invalid (v3)",
+    "severity": "INFO",
+    "line": 18,
+    "filename": "positive4.yaml"
+  },
+  {
+    "queryName": "Schema Enum Invalid (v2)",
+    "severity": "INFO",
+    "line": 50,
+    "filename": "positive5.json"
+  },
+  {
+    "queryName": "Schema Enum Invalid (v2)",
+    "severity": "INFO",
+    "line": 35,
+    "filename": "positive6.yaml"
+  },
+  {
+    "queryName": "Schema Enum Invalid (v2)",
+    "severity": "INFO",
+    "line": 14,
+    "filename": "positive5.json"
+  },
+  {
+    "queryName": "Schema Enum Invalid (v2)",
+    "severity": "INFO",
+    "line": 12,
+    "filename": "positive6.yaml"
+  }
+]

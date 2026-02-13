@@ -1,0 +1,14 @@
+{
+  "id": "4766d3ea-241c-4ee6-93ff-c380c996bd1a",
+  "queryName": "DocumentDB cluster without KMS",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS DocumentDB clusters should be encrypted with a KMS encryption key to protect sensitive data at rest. Without proper encryption, your database contents could be exposed if unauthorized access to the storage occurs, potentially leading to data breaches and compliance violations. To secure your DocumentDB cluster, you must enable storage encryption and specify a KMS key ID, as shown in the following secure example:\n\n```terraform\nresource \"aws_docdb_cluster\" \"docdb\" {\n  cluster_identifier = \"my-docdb-cluster\"\n  storage_encrypted = true\n  kms_key_id = \"arn:aws:kms:us-west-2:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab\"\n  // other configuration...\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/docdb_cluster_without_kms",
+  "platform": "Terraform",
+  "descriptionID": "35efd407",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldDescriptionText": "AWS DOCDB Cluster should be encrypted with a KMS encryption key",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/docdb_cluster#kms_key_id"
+}

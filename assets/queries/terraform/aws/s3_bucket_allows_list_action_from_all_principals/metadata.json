@@ -1,0 +1,14 @@
+{
+  "id": "66c6f96f-2d9e-417e-a998-9058aeeecd44",
+  "queryName": "S3 bucket allows list action from all principals",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "When S3 bucket policies allow List actions (such as `s3:ListObjects`) from all principals (`*`), they create a significant security risk by potentially exposing sensitive data to unauthorized users. This configuration can lead to information disclosure vulnerabilities where private files, folder structures, and metadata become publicly accessible, potentially revealing confidential information or intellectual property. To remediate this issue, either deny the list actions explicitly or restrict them to specific trusted principals and IP addresses. Compare the insecure configuration, `\"Effect\": \"Allow\", \"Principal\": \"*\", \"Action\": \"s3:ListObjects\"`, with the secure approach, `\"Effect\": \"Deny\", \"Action\": \"s3:*\"`, using appropriate conditions to limit access.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_allows_list_action_from_all_principals",
+  "platform": "Terraform",
+  "descriptionID": "5f5c9e38",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldDescriptionText": "S3 Buckets must not allow List Action From All Principals, as to prevent leaking private information to the entire internet or allow unauthorized data tampering / deletion. This means the 'Effect' must not be 'Allow' when the 'Action' is List, for all Principals.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy"
+}

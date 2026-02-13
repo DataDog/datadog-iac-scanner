@@ -1,0 +1,38 @@
+[
+  {
+    "queryName": "Cross-account IAM assume role policy without external ID or MFA",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Cross-account IAM assume role policy without external ID or MFA",
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive2.json"
+  },
+  {
+    "queryName": "Cross-account IAM assume role policy without external ID or MFA",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive3.yaml"
+  },
+  {
+    "queryName": "Cross-account IAM assume role policy without external ID or MFA",
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive4.json"
+  },
+  {
+    "queryName": "Cross-account IAM assume role policy without external ID or MFA",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive5.yaml"
+  },
+  {
+    "queryName": "Cross-account IAM assume role policy without external ID or MFA",
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive6.json"
+  }
+]

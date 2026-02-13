@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "DMS endpoints without SSL",
+    "severity": "HIGH",
+    "line": 5
+  },
+  {
+    "queryName": "DMS endpoints without SSL",
+    "severity": "HIGH",
+    "line": 12
+  }
+]

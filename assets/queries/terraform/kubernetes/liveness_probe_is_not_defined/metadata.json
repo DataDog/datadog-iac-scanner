@@ -1,0 +1,14 @@
+{
+  "id": "5b6d53dd-3ba3-4269-b4d7-f82e880e43c3",
+  "queryName": "Liveness probe is not defined",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "A `livenessProbe` allows Kubernetes to restart an unresponsive container, improving application availability. This rule checks `kubernetes_pod` and `kubernetes_deployment` resources to ensure containers include a non-null `livenessProbe` attribute (`spec.container` or `spec.template.spec.container`). Define a `livenessProbe` only when necessary because improper probes can cause cascading failures.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/liveness_probe_is_not_defined",
+  "platform": "Terraform",
+  "descriptionID": "e5105a57",
+  "cwe": "754",
+  "cloudProvider": "common",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#liveness_probe"
+}

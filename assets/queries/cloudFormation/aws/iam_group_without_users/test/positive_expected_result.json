@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "IAM group without users",
+    "severity": "MEDIUM",
+    "line": 4,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "IAM group without users",
+    "severity": "MEDIUM",
+    "line": 5,
+    "fileName": "positive2.json"
+  }
+]

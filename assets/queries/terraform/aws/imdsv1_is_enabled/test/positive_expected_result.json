@@ -1,0 +1,23 @@
+[
+  {
+    "queryName": "IMDSv1 enabled",
+    "severity": "HIGH",
+    "line": 7
+  },
+  {
+    "queryName": "IMDSv1 enabled",
+    "severity": "HIGH",
+    "line": 18
+  },
+  {
+    "queryName": "IMDSv1 enabled",
+    "severity": "HIGH",
+    "line": 23
+  },
+  {
+    "queryName": "IMDSv1 enabled",
+    "severity": "HIGH",
+    "line": 17,
+    "fileName": "positive_module.tf"
+  }
+]

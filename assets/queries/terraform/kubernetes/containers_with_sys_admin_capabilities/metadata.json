@@ -1,0 +1,14 @@
+{
+  "id": "3f55386d-75cd-4e9a-ac47-167b26c04724",
+  "queryName": "Containers with sys admin capabilities",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should not include the CAP_SYS_ADMIN Linux capability. Granting CAP_SYS_ADMIN gives processes elevated system-administration privileges and can enable container escape or host compromise. Container security contexts must not add 'SYS_ADMIN' to capabilities.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/containers_with_sys_admin_capabilities",
+  "platform": "Terraform",
+  "descriptionID": "03622ad2",
+  "cwe": "732",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#capabilities-1"
+}

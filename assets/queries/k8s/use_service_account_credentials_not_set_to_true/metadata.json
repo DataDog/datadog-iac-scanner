@@ -1,0 +1,21 @@
+{
+  "id": "1acd93f1-5a37-45c0-aaac-82ece818be7d",
+  "queryName": "Use service account credentials not set to true",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "When running `kube-controller-manager`, the `--use-service-account-credentials` flag should be set to `true`. If the flag is set to `false` or omitted, the controller manager will not use service account credentials to authenticate to the API server, which can cause controllers to operate with incorrect or elevated permissions. This rule reports `IncorrectValue` when the flag is explicitly set to `false` and `MissingAttribute` when the flag is not present.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/use_service_account_credentials_not_set_to_true",
+  "platform": "Kubernetes",
+  "descriptionID": "f6b4d617",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "defaultFrameworks": [
+    {
+      "control": "4.12",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/"
+}

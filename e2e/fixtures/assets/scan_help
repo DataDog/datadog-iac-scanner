@@ -1,0 +1,12 @@
+OPTIONS:
+   --path string, -p string [ --path string, -p string ]  names of files or directories to scan
+   --output-path string, -o string                        directory to write the results to
+   --output-name string                                   name for the results file (default: "datadog-iac-scanner-result.sarif")
+   --payload-path string, -d string                       file name to store the internal payload JSON representation
+   --metadata-path string                                 file name to store the scan metadata JSON
+   --max-file-size int                                    maximum file size that will be scanned, in MB (default: 5)
+   --max-resolver-depth int                               maximum depth that the scanner will resolve files in (default: 15)
+   --timeout int                                          query timeout, in seconds (default: 60)
+   --exclude-queries string [ --exclude-queries string ]  ids of queries to exclude
+   --type string, -t string [ --type string, -t string ]  a list of platform types to scan (default: "CICD", "Terraform", "Kubernetes", "CloudFormation")
+   --help, -h                                             show help

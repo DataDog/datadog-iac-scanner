@@ -1,0 +1,14 @@
+{
+  "id": "f465fff1-0a0f-457d-aa4d-1bddb6f204ff",
+  "queryName": "Role with privilege escalation by actions 'iam:AttachRolePolicy'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting an IAM role permission to perform `iam:AttachRolePolicy` with `Resource = \"*\"` allows the role to attach any policy to any role in the AWS environment, including itself. This enables privilege escalation, as a user or process with this permission can grant themselves full administrative privileges or access beyond what was originally intended. If left unaddressed, such a configuration could lead to unauthorized access, data breaches, or full compromise of the AWS account.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_AttachRolePolicy",
+  "platform": "Terraform",
+  "descriptionID": "aaf96d6e",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Role with privilege escalation by actions 'iam:AttachRolePolicy' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy#policy"
+}

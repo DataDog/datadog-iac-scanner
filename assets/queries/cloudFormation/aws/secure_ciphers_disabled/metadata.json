@@ -1,0 +1,14 @@
+{
+  "id": "be96849c-3df6-49c2-bc16-778a7be2519c",
+  "queryName": "Secure ciphers disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "CloudFront distributions that use a custom TLS certificate should enforce a modern TLS protocol version. This prevents negotiation of weak or deprecated protocols that enable downgrade attacks or compromise confidentiality and integrity.\n\nFor `AWS::CloudFront::Distribution` resources where `ViewerCertificate.CloudFrontDefaultCertificate` is `false`, `ViewerCertificate.MinimumProtocolVersion` must be set to `TLSv1.1` or `TLSv1.2`. Resources missing `MinimumProtocolVersion`, or configured with any other value, will be flagged. Distributions using the default CloudFront certificate (`CloudFrontDefaultCertificate: true`) are not evaluated by this rule.\n\nSecure configuration example:\n\n```yaml\nMyDistribution:\n  Type: AWS::CloudFront::Distribution\n  Properties:\n    DistributionConfig:\n      Enabled: true\n      Origins: []\n      DefaultCacheBehavior:\n        TargetOriginId: origin1\n        ViewerProtocolPolicy: allow-all\n    ViewerCertificate:\n      CloudFrontDefaultCertificate: false\n      MinimumProtocolVersion: TLSv1.2\n      AcmCertificateArn: arn:aws:acm:region:account:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/secure_ciphers_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "9ce51226",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-cloudfront-distribution-viewercertificate.html"
+}

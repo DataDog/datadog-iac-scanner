@@ -1,0 +1,13 @@
+{
+  "id": "e76cca7c-c3f9-4fc9-884c-b2831168ebd8",
+  "queryName": "Invalid image",
+  "severity": "LOW",
+  "category": "Supply-Chain",
+  "descriptionText": "The `image` attribute must be set and must not be empty or equal to `latest`.\nThe rule evaluates both `container` and `init_container` entries in resource specs and supports array and object forms.\nIt reports `MissingAttribute` when `image` is absent and `IncorrectValue` when `image` is empty or set to `latest`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/invalid_image",
+  "platform": "Terraform",
+  "descriptionID": "56713716",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#image"
+}

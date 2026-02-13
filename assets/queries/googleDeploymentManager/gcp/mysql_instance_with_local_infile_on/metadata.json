@@ -1,0 +1,13 @@
+{
+  "id": "c759d6f2-4dd3-4160-82d3-89202ef10d87",
+  "queryName": "MySQL Instance With Local Infile On",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "MySQL Instance should not have Local Infile On",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/mysql_instance_with_local_infile_on",
+  "platform": "GoogleDeploymentManager",
+  "descriptionID": "66f8ba25",
+  "cloudProvider": "gcp",
+  "cwe": "119",
+  "providerUrl": "https://cloud.google.com/sql/docs/mysql/admin-api/rest/v1beta4/instances"
+}

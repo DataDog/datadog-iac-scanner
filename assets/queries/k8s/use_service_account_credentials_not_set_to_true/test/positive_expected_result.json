@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Use service account credentials not set to true",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Use service account credentials not set to true",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive2.yaml"
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Redshift cluster without a KMS CMK",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "fileName": "positive2.json",
+    "queryName": "Redshift cluster without a KMS CMK",
+    "severity": "MEDIUM",
+    "line": 12
+  }
+]

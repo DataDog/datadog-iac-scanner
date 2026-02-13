@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "ELB using weak ciphers",
+    "severity": "HIGH",
+    "line": 41
+  },
+  {
+    "queryName": "ELB using weak ciphers",
+    "severity": "HIGH",
+    "line": 63
+  },
+  {
+    "queryName": "ELB using weak ciphers",
+    "severity": "HIGH",
+    "line": 74
+  }
+]

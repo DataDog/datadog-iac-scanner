@@ -1,0 +1,14 @@
+{
+  "id": "1743f5f1-0bb0-4934-acef-c80baa5dadfa",
+  "queryName": "User with privilege escalation by actions 'iam:CreatePolicyVersion'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Allowing a user the `iam:CreatePolicyVersion` action with the resource set to `\"*\"` in Terraform, as shown in the policy statement below, enables them to update any IAM policy in the AWS account. This privilege can be exploited for privilege escalation, as the user could create a new policy version attaching elevated permissions to themselves or others.\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"iam:CreatePolicyVersion\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```\n\nIf left unaddressed, this misconfiguration could allow an attacker to gain unauthorized administrative access or perform malicious actions across your AWS environment by changing permissions on any IAM policy.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_CreatePolicyVersion",
+  "platform": "Terraform",
+  "descriptionID": "e894d408",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "User with privilege escalation by actions 'iam:CreatePolicyVersion' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_user_policy#policy"
+}

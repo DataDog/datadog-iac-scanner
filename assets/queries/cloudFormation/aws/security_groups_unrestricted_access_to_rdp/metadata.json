@@ -1,0 +1,13 @@
+{
+  "id": "3ae83918-7ec7-4cb8-80db-b91ef0f94002",
+  "queryName": "Security group unrestricted access to RDP",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "Allowing RDP (TCP port `3389`) from the public internet (`0.0.0.0/0`) exposes hosts to automated scanning, brute-force attacks, and unauthorized remote access. This rule flags `AWS::EC2::SecurityGroup` resources whose `Properties.SecurityGroupIngress` entries have `CidrIp: 0.0.0.0/0` and either `FromPort` or `ToPort` set to `3389`.\n\nTo remediate, restrict ingress to specific trusted CIDR ranges or reference a trusted security group (using `SourceSecurityGroupId`), or require access via a bastion host or VPN. Any ingress entry with `CidrIp: \"0.0.0.0/0\"` for port `3389` will be reported.\n\nSecure configuration examples:\n\n```yaml\nMyRdpSg:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: RDP access restricted to corporate network\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 3389\n        ToPort: 3389\n        CidrIp: 203.0.113.0/24\n```\n\n```yaml\nMyRdpSg:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: RDP access via internal bastion\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 3389\n        ToPort: 3389\n        SourceSecurityGroupId: sg-0123456789abcdef0\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_groups_unrestricted_access_to_rdp",
+  "platform": "CloudFormation",
+  "descriptionID": "ee6a21e3",
+  "cloudProvider": "aws",
+  "cwe": "1188",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html"
+}

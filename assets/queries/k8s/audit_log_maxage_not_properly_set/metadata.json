@@ -1,0 +1,12 @@
+{
+  "id": "da9f3aa8-fbfb-472f-b5a1-576127944218",
+  "queryName": "Audit log maxage not properly set",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "When a container runs `kube-apiserver`, the `--audit-log-maxage` flag should be set to 30 days or more. This rule flags containers (including `initContainers`) where the flag is missing or set to a value less than 30. It reports the resource and the command location when the flag is absent or incorrectly configured.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/audit_log_maxage_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "a5bc6d07",
+  "cwe": "778",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

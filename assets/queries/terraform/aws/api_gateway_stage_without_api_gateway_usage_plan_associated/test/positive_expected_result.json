@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "API Gateway stage without API Gateway usage plan associated",
+    "severity": "LOW",
+    "line": 1
+  },
+  {
+    "queryName": "API Gateway stage without API Gateway usage plan associated",
+    "severity": "LOW",
+    "line": 10
+  }
+]

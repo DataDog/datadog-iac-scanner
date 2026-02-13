@@ -1,0 +1,22 @@
+[
+  {
+    "queryName": "MQ broker logging disabled",
+    "severity": "MEDIUM",
+    "line": 1
+  },
+  {
+    "queryName": "MQ broker logging disabled",
+    "severity": "MEDIUM",
+    "line": 8
+  },
+  {
+    "queryName": "MQ broker logging disabled",
+    "severity": "MEDIUM",
+    "line": 17
+  },
+  {
+    "queryName": "MQ broker logging disabled",
+    "severity": "MEDIUM",
+    "line": 27
+  }
+]

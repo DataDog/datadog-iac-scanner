@@ -1,0 +1,12 @@
+{
+  "id": "5f89001f-6dd9-49ff-9b15-d8cd71b617f4",
+  "queryName": "Kubelet not managing IP tables",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "The kubelet argument `--make-iptables-util-chains` should be set to `true`. This policy identifies kubelet invocations that explicitly include `--make-iptables-util-chains=false` (for example in `initContainers` or `containers` command arrays) or `KubeletConfiguration` resources where `makeIPTablesUtilChains` is set to `false`. Disabling this option prevents the kubelet from creating required iptables utility chains, which can disrupt network routing and kube-proxy behavior.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_not_managing_ip_tables",
+  "platform": "Kubernetes",
+  "descriptionID": "1bd198ea",
+  "cwe": "924",
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+}

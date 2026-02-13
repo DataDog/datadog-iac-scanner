@@ -1,0 +1,23 @@
+{
+  "id": "bcdcbdc6-a350-4855-ae7c-d1e6436f7c97",
+  "queryName": "IAM policy grants 'AssumeRole' permission across all services",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IAM Policies should not grant the `AssumeRole` permission across all services by using wildcard principals, such as `\"AWS\": \"*\"`. Allowing any AWS account or principal to assume a role poses a significant security risk, as it removes any restriction over who can gain the role's permissions. If left unaddressed, this misconfiguration could enable unauthorized users or malicious actors to assume sensitive roles and gain elevated privileges within your AWS environment, resulting in potential data loss, privilege escalation, or compromise of critical cloud resources. Restricting the principals allowed to assume a role to only trusted services or accounts is essential for maintaining a secure cloud infrastructure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/iam_policy_grants_assumerole_permission_across_all_services",
+  "platform": "Terraform",
+  "descriptionID": "948aa2ac",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "IAM Policy should not grant 'AssumeRole' permission across all services.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role",
+  "defaultFrameworks": [
+    {
+      "control": "1.10",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "aws"
+    }
+  ]
+}

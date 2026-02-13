@@ -1,0 +1,12 @@
+{
+  "id": "d89a15bb-8dba-4c71-9529-bef6729b9c09",
+  "queryName": "Request timeout not properly set",
+  "severity": "MEDIUM",
+  "category": "Availability",
+  "descriptionText": "When `kube-apiserver` is used, the `--request-timeout` flag must not be set to more than 300 seconds. Values parsed as greater than 300 seconds are reported as incorrect.\nThe rule inspects `containers` and `initContainers`, checking both `command` and `args`, and converts duration values with `h`, `m`, and `s` suffixes (for example `1h30m`, `45m`, `30s`) into seconds for comparison.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/request_timeout_not_properly_set",
+  "platform": "Kubernetes",
+  "descriptionID": "592c7cba",
+  "cwe": "754",
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

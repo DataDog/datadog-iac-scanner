@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Security group is not configured",
+    "severity": "HIGH",
+    "line": 7
+  },
+  {
+    "queryName": "Security group is not configured",
+    "severity": "HIGH",
+    "line": 21
+  }
+]

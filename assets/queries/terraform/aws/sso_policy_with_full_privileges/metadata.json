@@ -1,0 +1,15 @@
+{
+  "id": "132a8c31-9837-4203-9fd1-15ca210c7b73",
+  "queryName": "SSO policy with full privileges",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Single Sign-On (SSO) policies should be configured to grant only the specific administrative privileges necessary, rather than granting unrestricted access to all AWS resources. If the inline policy uses broad permissions such as `\"Action\": [\"*\"]` and `\"Resource\": [\"*\"]`, as seen in the example below, it grants users full administrative rights, bypassing the principles of least privilege:\n\n```\ninline_policy = <<POLICY\n{\n  \"Statement\": [\n    {\n      \"Action\": [\n        \"*\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"*\"\n      ],\n      \"Sid\": \"\"\n    }\n  ],\n  \"Version\": \"2012-10-17\"\n}\nPOLICY\n```\n\nThis misconfiguration exposes the environment to significant security risks, as any user assigned this policy could perform destructive actions or gain unauthorized access to sensitive data. Properly scoping permissions is crucial to minimize potential damage in the event of compromised credentials or malicious insiders. Failure to address this issue can lead to data breaches, accidental resource deletion, and loss of control over the cloud environment.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sso_policy_with_full_privileges",
+  "platform": "Terraform",
+  "descriptionID": "cae7c4fc",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "SSO policies should be configured to grant limited administrative privileges, rather than full access to all resources. This approach allows for better security and control over the resources being accessed.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssoadmin_permission_set_inline_policy"
+}

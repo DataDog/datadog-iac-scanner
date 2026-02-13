@@ -1,0 +1,13 @@
+{
+  "id": "e4ee3903-9225-4b6a-bdfb-e62dbadef821",
+  "queryName": "ElastiCache with disabled at-rest encryption",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon ElastiCache Redis replication groups must have encryption at rest enabled to protect cached data, snapshots, and backups from unauthorized access if storage media or snapshots are compromised. This can also help satisfy common data protection requirements.\n \n In CloudFormation, the `AWS::ElastiCache::ReplicationGroup` resource must define `AtRestEncryptionEnabled` and set it to `true` when the `Engine` property is `redis` (case-insensitive). Resources missing this property or with `AtRestEncryptionEnabled` set to `false` will be flagged. \n \n Secure configuration example:\n\n```yaml\nMyRedisReplicationGroup:\n  Type: AWS::ElastiCache::ReplicationGroup\n  Properties:\n    Engine: redis\n    AtRestEncryptionEnabled: true\n    ReplicationGroupDescription: \"Secure Redis replication group with encryption at rest enabled\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elasticache_with_disabled_at_rest_encryption",
+  "platform": "CloudFormation",
+  "descriptionID": "86353328",
+  "cloudProvider": "aws",
+  "cwe": "312",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticache-replicationgroup.html#cfn-elasticache-replicationgroup-atrestencryptionenabled"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "b592ffd4-0577-44b6-bd35-8c5ee81b5918",
+  "queryName": "No password policy enabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Ensuring strong AWS IAM password security involves configuring both the `password_length` and `password_reset_required` attributes in the `aws_iam_user_login_profile` resource. Failing to set a sufficient `password_length` or omitting the `password_reset_required = true` option, as shown below, can lead to accounts being protected by weak or reused passwords, which increases the risk of unauthorized access.\n\n```\nresource \"aws_iam_user_login_profile\" \"example\" {\n  user    = aws_iam_user.example.name\n  pgp_key = \"keybase:some_person_that_exists\"\n  password_length = 13\n  password_reset_required = false\n}\n```\n\nBy requiring users to reset passwords on first use and enforcing adequate password length, as in the following example, organizations can better defend against brute-force attacks and reduce credential compromise risk.\n\n```\nresource \"aws_iam_user_login_profile\" \"example\" {\n  user    = aws_iam_user.example.name\n  pgp_key = \"keybase:some_person_that_exists\"\n  password_length = 15\n  password_reset_required = true\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/no_password_policy_enabled",
+  "platform": "Terraform",
+  "descriptionID": "fc3e0d4f",
+  "cloudProvider": "aws",
+  "cwe": "521",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "IAM password policies should be set through the password minimum length and reset password attributes",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_user_login_profile"
+}

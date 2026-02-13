@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Neptune cluster instance is publicly accessible",
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Neptune cluster instance is publicly accessible",
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive_module.tf"
+  }
+]

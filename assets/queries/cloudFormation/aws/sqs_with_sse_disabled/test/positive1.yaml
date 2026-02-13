@@ -1,0 +1,10 @@
+Resources:
+  MyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: "SampleQueue"
+  MyQueue2:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: "SampleQueue"
+      SqsManagedSseEnabled: false

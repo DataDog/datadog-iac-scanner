@@ -1,0 +1,15 @@
+{
+  "id": "9356962e-4a4f-4d06-ac59-dc8008775eaa",
+  "queryName": "Not proper email account in use",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Using personal Gmail accounts instead of corporate credentials in IAM bindings introduces a security risk by granting project access to external, non-managed identities that are not subject to company oversight, monitoring, or access controls. For example:\n\n```\nresource \"google_project_iam_binding\" \"positive1\" {\n  project = \"your-project-id\"\n  role    = \"roles/editor\"\n\n  members = [\n    \"user:jane@gmail.com\",\n  ]\n}\n```\n\nIf left unaddressed, this vulnerability can enable unauthorized users to retain access even after leaving the organization or becoming compromised, significantly increasing the risk of data leaks and unauthorized modifications.\n\nUsing organization-managed accounts, as in the following configuration, ensures better control and the ability to revoke access when necessary:\n\n```\nresource \"google_project_iam_binding\" \"negative1\" {\n  project = \"your-project-id\"\n  role    = \"roles/editor\"\n\n  members = [\n    \"user:jane@example.com\",\n  ]\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/not_proper_email_account_in_use",
+  "platform": "Terraform",
+  "descriptionID": "55ff1131",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Gmail accounts are being used instead of corporate credentials",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project_iam#google_project_iam_binding"
+}

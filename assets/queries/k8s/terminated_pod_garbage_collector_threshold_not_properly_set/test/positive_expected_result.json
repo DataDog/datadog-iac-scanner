@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Terminated pod garbage collector threshold not properly set",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Terminated pod garbage collector threshold not properly set",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive2.yaml"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "id": "86a947ea-f577-4efb-a8b0-5fc00257d521",
+  "queryName": "Non kube system pod with host mount",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Workloads and persistent volumes outside the `kube-system` namespace should not include `hostPath` mounts. This rule evaluates `kubernetes_pod` and `kubernetes_persistent_volume` resources and flags any `spec.volume.host_path.path` entries; when `metadata.namespace` is unset it is treated as `default`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/non_kube_system_pod_with_host_mount",
+  "platform": "Terraform",
+  "descriptionID": "5b17fdb1",
+  "cwe": "668",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod"
+}

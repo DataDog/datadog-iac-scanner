@@ -1,0 +1,14 @@
+{
+  "id": "d2731f3d-a992-44ed-812e-f4f1c2747d71",
+  "queryName": "VPC flow logs disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Every `alicloud_vpc` resource should have an associated `alicloud_vpc_flow_log`. If a VPC lacks a flow log, the rule reports an `IncorrectValue` issue on the `alicloud_vpc` resource. Requiring `alicloud_vpc_flow_log` ensures VPC network traffic is captured for auditing and troubleshooting.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/vpc_flow_logs_disabled",
+  "platform": "Terraform",
+  "descriptionID": "2841dac6",
+  "cloudProvider": "alicloud",
+  "cwe": "778",
+  "oldSeverity": "LOW",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/vpc_flow_log"
+}

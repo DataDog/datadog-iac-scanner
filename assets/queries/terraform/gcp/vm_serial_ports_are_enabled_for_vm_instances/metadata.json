@@ -1,0 +1,14 @@
+{
+  "id": "97fa667a-d05b-4f16-9071-58b939f34751",
+  "queryName": "Serial ports are enabled for VM instances",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Google Compute Engine VM instances should not have serial ports enabled. Enabling serial ports by setting the `serial-port-enable` metadata attribute to `true` (as shown below) can allow anyone with the username, project ID, SSH key, instance name, and zone to directly access the VM, increasing the risk of unauthorized access and potential compromise.\n\n```\nmetadata = {\n  serial-port-enable = true\n}\n```\n\nTo mitigate this risk, set `serial-port-enable` to `false` to ensure that serial port access is disabled and remote attackers cannot exploit this vector:\n\n```\nmetadata = {\n  serial-port-enable = false\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/vm_serial_ports_are_enabled_for_vm_instances",
+  "platform": "Terraform",
+  "descriptionID": "2967cde6",
+  "cloudProvider": "gcp",
+  "cwe": "732",
+  "oldDescriptionText": "Google Compute Engine VM instances should not enable serial ports. When enabled, anyone can access your VM, if they know the username, project ID, SSH key, instance name and zone",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance"
+}

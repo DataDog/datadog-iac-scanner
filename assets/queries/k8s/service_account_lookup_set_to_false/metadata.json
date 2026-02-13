@@ -1,0 +1,20 @@
+{
+  "id": "a5530bd7-225a-48f9-91bb-f40b04200165",
+  "queryName": "Service account lookup set to false",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "When using `kube-apiserver`, the `--service-account-lookup` flag should be set to `true`. This rule flags containers (including `initContainers`) that run `kube-apiserver` and explicitly set `--service-account-lookup=false`. Disabling this lookup skips verification that a token's service account still exists, which can allow tokens for deleted or revoked service accounts to be accepted; therefore the flag should be enabled (`true`).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_account_lookup_set_to_false",
+  "platform": "Kubernetes",
+  "descriptionID": "c957c855",
+  "cwe": "287",
+  "defaultFrameworks": [
+    {
+      "control": "4.4",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+}

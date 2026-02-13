@@ -1,0 +1,13 @@
+{
+  "id": "ca94be07-7de3-4ae7-85ef-67e0462ec694",
+  "queryName": "Beta - CDB instance without backup policy",
+  "severity": "MEDIUM",
+  "category": "Backup",
+  "descriptionText": "A CDB instance should include a `tencentcloud_mysql_backup_policy`. This rule verifies that each `tencentcloud_mysql_instance` has a matching `tencentcloud_mysql_backup_policy` whose `mysql_id` references the instance name. Instances without a matching backup policy are reported as `MissingAttribute`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/cdb_instance_without_backup_policy",
+  "platform": "Terraform",
+  "descriptionID": "f0daf852",
+  "cloudProvider": "tencentcloud",
+  "cwe": "754",
+  "providerUrl": "https://registry.terraform.io/providers/tencentcloudstack/tencentcloud/latest/docs/resources/mysql_backup_policy"
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Azure instance using basic authentication",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Azure instance using basic authentication",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive2.tf"
+  }
+]

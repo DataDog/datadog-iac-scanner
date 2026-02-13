@@ -1,0 +1,14 @@
+{
+  "id": "7dbba512-e244-42dc-98bb-422339827967",
+  "queryName": "CloudWatch logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "This check verifies whether Amazon Route53 hosted zones have CloudWatch logging enabled by ensuring an `aws_route53_query_log` resource is associated with the hosted zone and correctly configured. Without query logging, DNS queries to the hosted zone are not captured, making it difficult to detect potential misuse, troubleshoot DNS issues, or comply with audit requirements. Enable logging using the `aws_route53_query_log` resource, and specify the `cloudwatch_log_group_arn` and `zone_id` attributes, as in the following example:\n\n```\nresource \"aws_route53_query_log\" \"example_com\" {\n  cloudwatch_log_group_arn = aws_cloudwatch_log_group.aws_route53_example_com.arn\n  zone_id                  = aws_route53_zone.example_com.zone_id\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/cloudwatch_logging_disabled",
+  "platform": "Terraform",
+  "descriptionID": "b4a8c275",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "Check if CloudWatch logging is disabled for Route53 hosted zones",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route53_query_log"
+}

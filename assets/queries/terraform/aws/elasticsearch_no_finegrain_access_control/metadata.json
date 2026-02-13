@@ -1,0 +1,22 @@
+{
+  "id": "b4c6d7e8-f9a1-4bcd-89ef-01234abcd567",
+  "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Fine-grained access control in AWS OpenSearch and Elasticsearch domains enables administrators to restrict access to specific indices, documents, and fields based on user permissions, significantly enhancing security. Without this control enabled, your domain could be vulnerable to unauthorized access, data breaches, and potential exfiltration of sensitive information stored in your search clusters. Both the `enabled` and `internal_user_database_enabled` parameters must be set to `true` within the `advanced_security_options` block to properly secure the domain, as shown in the following secure configuration:\n\n```terraform\nresource \"aws_opensearch_domain\" \"good_example\" {\n  domain_name = \"example\"\n\n  advanced_security_options {\n    enabled                        = true\n    internal_user_database_enabled = true\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elasticsearch_no_finegrain_access_control",
+  "platform": "Terraform",
+  "descriptionID": "b4c6d7e8",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "Ensures that AWS OpenSearch and Elasticsearch domains have fine-grained access control enabled. Without this setting, access permissions cannot be enforced at a granular level, potentially leading to unauthorized access.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/opensearch_domain#advanced_security_options",
+  "customFrameworks": [
+    {
+      "control": "aws.1.19",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

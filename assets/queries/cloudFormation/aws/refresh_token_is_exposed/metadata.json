@@ -1,0 +1,14 @@
+{
+  "id": "5b48c507-0d1f-41b0-a630-76817c6b4189",
+  "queryName": "Refresh token is exposed",
+  "severity": "HIGH",
+  "category": "Secret Management",
+  "descriptionText": "Storing an Alexa skill's refresh token as a plaintext value in an AWS CloudFormation template exposes a sensitive credential to source control, CI/CD logs, and anyone with template access. This can enable unauthorized skill access or account compromise. For `Alexa::ASK::Skill` resources, `AuthenticationConfiguration.RefreshToken` must be a string that uses a CloudFormation dynamic reference to a secure store. It should start with `{{resolve:secretsmanager:` or `{{resolve:ssm-secure:`. Resources missing this property, with a non-string value, or with a literal token will be flagged as insecure.\n\nSecure examples using dynamic references:\n\n```yaml\nMyAlexaSkillWithSecretsManager:\n  Type: Alexa::ASK::Skill\n  Properties:\n    AuthenticationConfiguration:\n      RefreshToken: \"{{resolve:secretsmanager:my/alexa/refresh:SecretString:refresh_token}}\"\n```\n\n```yaml\nMyAlexaSkillWithSsm:\n  Type: Alexa::ASK::Skill\n  Properties:\n    AuthenticationConfiguration:\n      RefreshToken: \"{{resolve:ssm-secure:/alexa/refresh-token:1}}\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/refresh_token_is_exposed",
+  "platform": "CloudFormation",
+  "descriptionID": "c752c5a6",
+  "cloudProvider": "aws",
+  "cwe": "522",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ask-skill.html#cfn-ask-skill-authenticationconfiguration"
+}

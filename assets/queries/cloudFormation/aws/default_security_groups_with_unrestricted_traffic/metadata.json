@@ -1,0 +1,13 @@
+{
+  "id": "ea33fcf7-394b-4d11-a228-985c5d08f205",
+  "queryName": "Default security groups with unrestricted traffic",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "The default Amazon EC2 security group must not define inbound or outbound rules because permissive rules on the default group can expose instances to unauthorized access and enable lateral movement between resources.\n\n In CloudFormation, this rule checks `AWS::EC2::SecurityGroup` resources with `Properties.GroupName` set to `\"default\"` and requires that `Properties.SecurityGroupIngress` and `Properties.SecurityGroupEgress` are either absent or empty. Resources with non-empty ingress or egress arrays will be flagged.\n\n If you need to allow specific traffic, create a separate security group with explicit least-privilege rules and attach that group to instances instead of modifying the default group.\n\nSecure example:\n\n```yaml\nDefaultSecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupName: default\n    VpcId: vpc-01234567\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/default_security_groups_with_unrestricted_traffic",
+  "platform": "CloudFormation",
+  "descriptionID": "50b0269e",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html"
+}

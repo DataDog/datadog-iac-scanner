@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Missing Zypper Clean",
+    "severity": "LOW",
+    "line": 2
+  }
+]

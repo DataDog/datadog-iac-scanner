@@ -1,0 +1,14 @@
+{
+  "id": "9fcd0a0a-9b6f-4670-a215-d94e6bf3f184",
+  "queryName": "IAM database auth not enabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Amazon RDS instances should have IAM database authentication enabled for engines and versions that support it to avoid embedding long‑lived database credentials in application code or configuration and to enable centralized credential management and rotation.\n \n For CloudFormation, the `EnableIAMDatabaseAuthentication` property on `AWS::RDS::DBInstance` must be defined and set to `true` when the template's `Engine`, `EngineVersion`, and `DBInstanceClass` indicate IAM authentication compatibility. Resources missing `EnableIAMDatabaseAuthentication` or with `EnableIAMDatabaseAuthentication` set to `false` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyDBInstance:\n  Type: AWS::RDS::DBInstance\n  Properties:\n    Engine: mysql\n    EngineVersion: \"8.0\"\n    DBInstanceClass: db.t3.medium\n    EnableIAMDatabaseAuthentication: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_database_auth_not_enabled",
+  "platform": "CloudFormation",
+  "descriptionID": "e4c2c085",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-rds-database-instance.html#cfn-rds-dbinstance-enableiamdatabaseauthentication"
+}

@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Ensure MySQL is using the latest version of TLS encryption",
+    "severity": "HIGH",
+    "line": 6
+  }
+]

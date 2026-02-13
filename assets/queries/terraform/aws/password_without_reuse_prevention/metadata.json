@@ -1,0 +1,15 @@
+{
+  "id": "89806cdc-9c2e-4bd1-a0dc-53f339bcfb2a",
+  "queryName": "Password without reuse prevention",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "This check ensures that the IAM account password policy's `password_reuse_prevention` attribute is set to at least 24, preventing users from reusing any of their last 24 passwords. Without this configuration, as seen when `password_reuse_prevention = 20` or when the attribute is omitted, users may repeatedly cycle through a small set of previously used passwords, increasing the risk of password-related attacks. Configuring a secure password policy, as in the following example, helps to enforce strong password hygiene and mitigates the likelihood of compromised credentials being reused:\n\n```\nresource \"aws_iam_account_password_policy\" \"secure\" {\n  minimum_password_length        = 8\n  require_lowercase_characters   = true\n  require_numbers                = true\n  require_uppercase_characters   = true\n  require_symbols                = true\n  allow_users_to_change_password = true\n  password_reuse_prevention      = 24\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/password_without_reuse_prevention",
+  "platform": "Terraform",
+  "descriptionID": "37be9529",
+  "cloudProvider": "aws",
+  "cwe": "521",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Check if IAM account password has the reuse password configured with 24",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_account_password_policy#password_reuse_prevention"
+}

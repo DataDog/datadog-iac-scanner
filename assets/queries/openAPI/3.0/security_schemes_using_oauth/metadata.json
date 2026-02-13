@@ -1,0 +1,12 @@
+{
+  "id": "1bc3205c-0d60-44e6-84f3-44fbf4dac5b3",
+  "queryName": "Security Scheme Using Oauth 1.0",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Oauth 1.0 is deprecated, OAuth2 should be used instead",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/security_schemes_using_oauth",
+  "platform": "OpenAPI",
+  "descriptionID": "8cff8206",
+  "cwe": "284",
+  "providerUrl": "https://swagger.io/specification/#security-scheme-object"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "ca469dd4-c736-448f-8ac1-30a642705e0a",
+  "queryName": "CPU requests not set",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "CPU requests should be set to ensure the total resource requests of scheduled containers are less than the node's capacity. This rule checks both `initContainers` and `containers` for the presence of a `resources` field, a `resources.requests` map, and a `cpu` entry within `requests`. It reports a MissingAttribute issue when any container is missing `resources`, missing `requests`, or missing CPU requests to help enforce proper schedulability and capacity planning.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/cpu_requests_not_set",
+  "platform": "Kubernetes",
+  "descriptionID": "ac7ad5df",
+  "cwe": "400",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#"
+}

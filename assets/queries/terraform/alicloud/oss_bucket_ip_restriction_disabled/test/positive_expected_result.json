@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "OSS bucket IP restriction disabled",
+		"severity": "HIGH",
+		"line": 5,
+		"fileName": "positive1.tf"
+	}
+]

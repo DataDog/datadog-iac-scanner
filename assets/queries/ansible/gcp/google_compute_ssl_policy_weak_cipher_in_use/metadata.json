@@ -1,0 +1,13 @@
+{
+  "id": "b28bcd2f-c309-490e-ab7c-35fc4023eb26",
+  "queryName": "Google Compute SSL Policy Weak Cipher In Use",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "This query confirms if Google Compute SSL Policy Weak Chyper Suits is Enabled, to do so we need to check if TLS is TLS_1_2, because other version have Weak Chypers",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/google_compute_ssl_policy_weak_cipher_in_use",
+  "platform": "Ansible",
+  "descriptionID": "bb785f44",
+  "cloudProvider": "gcp",
+  "cwe": "326",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_compute_ssl_policy_module.html"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "fe08b81c-12e9-4b5e-9006-4218fca750fd",
+  "queryName": "Beta - CLB listener using insecure protocols",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "The CLB listener `protocol` must not be set to insecure protocols such as `TCP`, `UDP`, or `HTTP`.\nThis rule checks `tencentcloud_clb_listener` resources and flags any instance where the `protocol` is one of these insecure values.\nResources configured with these protocols are considered insecure and are reported.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/clb_listener_using_insecure_protocols",
+  "platform": "Terraform",
+  "descriptionID": "e129d0f1",
+  "cloudProvider": "tencentcloud",
+  "cwe": "284",
+  "providerUrl": "https://registry.terraform.io/providers/tencentcloudstack/tencentcloud/latest/docs/resources/clb_listener#protocol"
+}

@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Network policy is not targeting any pod",
+		"severity": "LOW",
+		"line": 14,
+		"fileName": ""
+	}
+]

@@ -1,0 +1,14 @@
+{
+  "id": "a8b7c6d5-e4f3-2109-8a7b-6c5d4e3f2109",
+  "queryName": "Ensure SQL database instance has skip show database flag",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "The absence of the `skip_show_database` flag, or its incorrect setting within a `google_sql_database_instance` resource, can allow users to view a list of all databases on a MySQL server instance, potentially exposing sensitive schema information to unauthorized individuals. This misconfiguration increases the risk of information disclosure and can aid attackers in reconnaissance activities by providing insight into database names and structures. To mitigate this risk, ensure the configuration includes `database_flags { name = \"skip_show_database\" value = \"on\" }`, as shown below:\n\n```\nresource \"google_sql_database_instance\" \"good_example\" {\n  name             = \"good-instance\"\n  database_version = \"MYSQL_8\"\n  region           = \"us-central1\"\n\n  settings {\n    tier = \"db-custom-2-13312\"\n    database_flags {\n      name  = \"skip_show_database\"\n      value = \"on\"\n    }\n    database_flags {\n      name  = \"cross db ownership chaining\"\n      value = \"on\"\n    }\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/sql_database_instance_does_not_have_skip_show_database",
+  "platform": "Terraform",
+  "descriptionID": "a8b7c6d5",
+  "cloudProvider": "gcp",
+  "cwe": "200",
+  "oldDescriptionText": "SQL Database Instances should include the 'skip_show_database' flag in their settings to prevent unintended exposure of database details. Its absence indicates a potential misconfiguration.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database_instance"
+}

@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "Shared host network namespace",
+		"severity": "MEDIUM",
+		"line": 7,
+		"fileName": ""
+	}
+]

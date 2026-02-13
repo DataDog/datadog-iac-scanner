@@ -1,0 +1,23 @@
+{
+  "id": "1ec253ab-c220-4d63-b2de-5b40e0af9293",
+  "queryName": "S3 bucket without restriction of public bucket",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check verifies whether public access to an Amazon S3 bucket is properly restricted using the `restrict_public_buckets` attribute within the `aws_s3_bucket_public_access_block` resource. If `restrict_public_buckets` is set to `false` or omitted, as shown below, the bucket may still be publicly accessible through policies, even if other public access blocks are enabled:\n\n```\nresource \"aws_s3_bucket_public_access_block\" \"example\" {\n  bucket                  = aws_s3_bucket.example.id\n  block_public_acls       = true\n  block_public_policy     = true\n  restrict_public_buckets = false\n}\n```\n\nLeaving public bucket restriction disabled increases the risk of unintended data exposure, as users could still attach bucket policies that override ACLs and grant public access. To mitigate this vulnerability and ensure S3 buckets cannot be made public by any means, the `restrict_public_buckets` attribute should be explicitly set to `true`:\n\n```\nresource \"aws_s3_bucket_public_access_block\" \"example\" {\n  bucket                  = aws_s3_bucket.example.id\n  block_public_acls       = true\n  block_public_policy     = true\n  restrict_public_buckets = true\n}\n```\nFailure to enforce this protection may lead to unauthorized access to sensitive data stored in S3, resulting in data breaches and compliance violations.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_without_restriction_of_public_bucket",
+  "platform": "Terraform",
+  "descriptionID": "a6e86c32",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "S3 bucket without restriction of public bucket",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block",
+  "defaultFrameworks": [
+    {
+      "control": "1.18",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "aws"
+    }
+  ]
+}

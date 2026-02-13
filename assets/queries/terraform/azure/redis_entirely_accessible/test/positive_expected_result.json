@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Redis entirely accessible",
+    "severity": "CRITICAL",
+    "line": 22
+  }
+]

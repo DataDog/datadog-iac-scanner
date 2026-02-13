@@ -1,0 +1,13 @@
+{
+  "id": "06933df4-0ea7-461c-b9b5-104d27390e0e",
+  "queryName": "IAM user with no group",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "IAM users should be assigned to IAM groups to enforce least privilege and simplify permission and lifecycle management. Users not placed in groups are harder to audit and more likely to receive excessive or inconsistent permissions. The `Groups` property on `AWS::IAM::User` resources must be defined and include at least one group name. Resources missing the `Groups` property or where `Groups` is empty will be flagged.\n\nSecure example:\n\n```yaml\nMyUser:\n  Type: AWS::IAM::User\n  Properties:\n    UserName: johndoe\n    Groups:\n      - Admins\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_user_with_no_group",
+  "platform": "CloudFormation",
+  "descriptionID": "d7e9b179",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-iam.html#scenario-iam-policy"
+}

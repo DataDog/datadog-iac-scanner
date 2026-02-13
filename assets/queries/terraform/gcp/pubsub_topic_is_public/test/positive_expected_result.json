@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Pub/Sub Topics are anonymously or publicly accessible",
+    "severity": "MEDIUM",
+    "line": 4
+  },
+  {
+    "queryName": "Pub/Sub Topics are anonymously or publicly accessible",
+    "severity": "MEDIUM",
+    "line": 11
+  }
+]

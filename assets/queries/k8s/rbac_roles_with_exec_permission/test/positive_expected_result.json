@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "RBAC roles with exec permission",
+    "severity": "MEDIUM",
+    "line": 8
+  }
+]

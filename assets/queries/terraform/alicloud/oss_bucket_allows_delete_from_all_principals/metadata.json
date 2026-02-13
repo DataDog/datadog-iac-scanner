@@ -1,0 +1,14 @@
+{
+  "id": "8c0695d8-2378-4cd6-8243-7fd5894fa574",
+  "queryName": "OSS bucket allows delete action from all principals",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "An `alicloud_oss_bucket` should not allow the `DeleteBucket` action from all principals. Allowing this action may expose private data or enable unauthorized deletion or tampering. This rule asserts that `Effect` must not be `Allow` when `Action` is `DeleteBucket` and `Principal` is set to `\"*\"`. The policy evaluated is the `policy` attribute on the `alicloud_oss_bucket` resource.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_allows_delete_from_all_principals",
+  "platform": "Terraform",
+  "descriptionID": "ee07e6f5",
+  "cloudProvider": "alicloud",
+  "cwe": "732",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/oss_bucket#policy"
+}

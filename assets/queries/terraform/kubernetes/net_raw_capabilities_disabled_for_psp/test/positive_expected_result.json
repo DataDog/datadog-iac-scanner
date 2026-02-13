@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "NET_RAW capabilities disabled for PSP",
+		"severity": "MEDIUM",
+		"line": 17,
+		"fileName": ""
+	}
+]

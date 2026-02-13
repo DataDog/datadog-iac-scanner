@@ -1,0 +1,14 @@
+{
+  "id": "8df8e857-bd59-44fa-9f4c-d77594b95b46",
+  "queryName": "Lambda function without tags",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Lambda functions must be tagged so resources can be reliably identified, assigned ownership, and included in incident response, access reviews, and automated security workflows. The `Tags` property on `AWS::Lambda::Function` resources must be defined and contain tag objects (`Key` and `Value` pairs). Resources missing the `Tags` property will be flagged. Tags should be provided as an array of objects with `Key` and `Value` fields.\n\nSecure configuration example:\n\n```yaml\nMyFunction:\n  Type: AWS::Lambda::Function\n  Properties:\n    FunctionName: my-function\n    Runtime: python3.9\n    Handler: index.handler\n    Role: arn:aws:iam::123456789012:role/lambda-exec\n    Code:\n      S3Bucket: my-bucket\n      S3Key: my-function.zip\n    Tags:\n      - Key: Environment\n        Value: production\n      - Key: Owner\n        Value: team-security\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/lambda_function_without_tags",
+  "platform": "CloudFormation",
+  "descriptionID": "664675e7",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-lambda-function.html"
+}

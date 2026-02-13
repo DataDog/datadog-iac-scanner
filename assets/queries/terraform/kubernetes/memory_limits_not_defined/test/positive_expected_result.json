@@ -1,0 +1,20 @@
+[
+	{
+		"queryName": "Memory limits not defined",
+		"severity": "MEDIUM",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "Memory limits not defined",
+		"severity": "MEDIUM",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "Memory limits not defined",
+		"severity": "MEDIUM",
+		"line": 106,
+		"fileName": ""
+	}
+]

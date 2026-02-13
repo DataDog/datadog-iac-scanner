@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "SQS policy with public access",
+    "severity": "MEDIUM",
+    "fileName": "positive1.yaml",
+    "line": 7
+  },
+  {
+    "queryName": "SQS policy with public access",
+    "severity": "MEDIUM",
+    "fileName": "positive2.yaml",
+    "line": 7
+  },
+  {
+    "queryName": "SQS policy with public access",
+    "severity": "MEDIUM",
+    "fileName": "positive3.json",
+    "line": 9
+  },
+  {
+    "queryName": "SQS policy with public access",
+    "severity": "MEDIUM",
+    "fileName": "positive4.json",
+    "line": 9
+  }
+]

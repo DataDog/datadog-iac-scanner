@@ -1,0 +1,14 @@
+{
+  "id": "b80b14c6-aaa2-4876-b651-8a48b6c32fbf",
+  "queryName": "Network policy is not targeting any pod",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "Checks whether any `kubernetes_network_policy` does not target any pod.  \nValidates that `spec.pod_selector.match_labels` contains concrete label key/value pairs that match at least one pod's `metadata.labels` and not unresolved references like `kubernetes_<resource>.<name>`.  \nIf no pod matches the selector or the label value appears to be a reference, the rule reports an `IncorrectValue` issue.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/network_policy_is_not_targeting_any_pod",
+  "platform": "Terraform",
+  "descriptionID": "1598c368",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/network_policy#match_labels"
+}

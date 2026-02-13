@@ -1,0 +1,12 @@
+{
+  "id": "6d173be7-545a-46c6-a81d-2ae52ed1605d",
+  "queryName": "Tiller (Helm v2) deployed",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Tiller (Helm v2) must not be deployed because it is deprecated and no longer supported. This rule detects resources that reference Tiller by resource name or labels (for example, `metadata.name`, `metadata.labels.app == \"helm\"`, or a `metadata.labels.name` containing \"tiller\"). It also detects Tiller container images by name in `containers` or `initContainers`, including within pod templates (`spec.template`).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/tiller_is_deployed",
+  "platform": "Kubernetes",
+  "descriptionID": "b0a009b5",
+  "cwe": "200",
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "e38a8e0a-b88b-4902-b3fe-b0fcb17d5c10",
+  "queryName": "Resource not using tags",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "AWS resource tagging is an essential best practice that supports resource management, cost tracking, automation, and security enforcement. If only the default `Name` tag is applied and no additional metadata tags (such as `Environment`, `Owner`, or `Project`) are defined, resources may become difficult to identify, audit, and manage at scale, increasing the risk of misconfiguration or unintended resource exposure. For example, a secure configuration should use a `tags` block with descriptive tags:\n\n```\ntags = {\n  Name        = \"example-cert\"\n  Environment = \"production\"\n  Owner       = \"devops-team\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/resource_not_using_tags",
+  "platform": "Terraform",
+  "descriptionID": "09db2d52",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "oldDescriptionText": "AWS services resource tags are an essential part of managing components. As a best practice, the field 'tags' should have additional tags defined other than 'Name'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/guides/resource-tagging"
+}

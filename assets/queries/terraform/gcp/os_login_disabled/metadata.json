@@ -1,0 +1,15 @@
+{
+  "id": "32ecd6eb-0711-421f-9627-1a28d9eff217",
+  "queryName": "OSLogin disabled",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "This check verifies whether the `enable-oslogin` metadata key is set to `true` in Google Cloud project or instance metadata, as shown below:\n\n```\nresource \"google_compute_project_metadata\" \"secure_example\" {\n  metadata = {\n    enable-oslogin = true\n  }\n}\n```\n\nIf OS Login is not enabled, user and SSH key management is handled by instance-level metadata, which can lead to inconsistent access policies and increased risk of unauthorized access. Enabling OS Login centralizes and streamlines IAM-based SSH access, reducing the attack surface of compute resources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/os_login_disabled",
+  "platform": "Terraform",
+  "descriptionID": "3ed07bfa",
+  "cloudProvider": "gcp",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Verifies that the OSLogin is enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_project_metadata#metadata"
+}

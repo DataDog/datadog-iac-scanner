@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Elasticsearch without IAM authentication",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Elasticsearch without IAM authentication",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive2.tf"
+  }
+]

@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "SSH access is not restricted",
+    "severity": "MEDIUM",
+    "line": 13
+  },
+  {
+    "queryName": "SSH access is not restricted",
+    "severity": "MEDIUM",
+    "line": 31
+  },
+  {
+    "queryName": "SSH access is not restricted",
+    "severity": "MEDIUM",
+    "line": 43
+  }
+]

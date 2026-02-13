@@ -1,0 +1,12 @@
+{
+  "id": "d172a060-8569-4412-8045-3560ebd477e8",
+  "queryName": "Object Without Required Property (v3)",
+  "severity": "INFO",
+  "category": "Structure and Semantics",
+  "descriptionText": "OpenAPI Object should contain all of its required fields",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/object_without_required_property",
+  "platform": "OpenAPI",
+  "descriptionID": "a6b935a6",
+  "cwe": "665",
+  "providerUrl": "https://swagger.io/specification/"
+}

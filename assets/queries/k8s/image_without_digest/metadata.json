@@ -1,0 +1,12 @@
+{
+  "id": "7c81d34c-8e5a-402b-9798-9f442630e678",
+  "queryName": "Image without digest",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Images should be specified with their digests to ensure integrity. The policy checks `containers` and `initContainers` entries in the resource spec and flags any image value that does not include a digest (i.e., missing the '@' separator). Specifying images by digest enforces immutability and helps ensure consistent, repeatable, and trusted deployments.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/image_without_digest",
+  "platform": "Kubernetes",
+  "descriptionID": "3f9f8d78",
+  "cwe": "665",
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/#updating-images"
+}

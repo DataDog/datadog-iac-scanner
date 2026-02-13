@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "OSS bucket transfer acceleration disabled",
+		"severity": "LOW",
+		"line": 5,
+		"fileName": "positive1.tf"
+	},
+	{
+		"queryName": "OSS bucket transfer acceleration disabled",
+		"severity": "LOW",
+		"line": 1,
+		"fileName": "positive2.tf"
+	}
+]

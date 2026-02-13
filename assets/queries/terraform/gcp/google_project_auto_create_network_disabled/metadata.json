@@ -1,0 +1,14 @@
+{
+  "id": "59571246-3f62-4965-a96f-c7d97e269351",
+  "queryName": "Google project auto create network disabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check ensures that the `auto_create_network` attribute in the `google_project` resource is set to `false`. When `auto_create_network` is set to `true` or left unset (the default), Google Cloud automatically creates a default network with permissive firewall rules, potentially exposing resources to unauthorized access. Secure configuration requires explicitly setting `auto_create_network = false`, as shown below:\n\n```\nresource \"google_project\" \"example\" {\n  name                = \"My Project\"\n  project_id          = \"your-project-id\"\n  org_id              = \"1234567\"\n  auto_create_network = false\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/google_project_auto_create_network_disabled",
+  "platform": "Terraform",
+  "descriptionID": "9bcdbe82",
+  "cloudProvider": "gcp",
+  "cwe": "799",
+  "oldDescriptionText": "Verifies if the Google Project Auto Create Network is Disabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project"
+}

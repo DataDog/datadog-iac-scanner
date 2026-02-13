@@ -1,0 +1,14 @@
+{
+  "id": "0264093f-6791-4475-af34-4b8102dcbcd0",
+  "queryName": "EC2 instance monitoring disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "EC2 instances should have detailed (1-minute) monitoring enabled to improve detection and response to performance and security incidents and to provide higher-resolution metrics for investigations and alerting. In CloudFormation, the `AWS::EC2::Instance` resource must include the `Monitoring` property set to `true`. Resources missing `Monitoring` or with `Monitoring` set to `false` will be flagged.\n\n```yaml\nMyInstance:\n  Type: AWS::EC2::Instance\n  Properties:\n    InstanceType: t3.micro\n    ImageId: ami-0123456789abcdef0\n    Monitoring: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ec2_instance_monitoring_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "81e4f520",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldSeverity": "INFO",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance.html#cfn-ec2-instance-monitoring"
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Serverless function without X-Ray tracing",
+    "severity": "LOW",
+    "line": 7,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Serverless function without X-Ray tracing",
+    "severity": "LOW",
+    "line": 19,
+    "fileName": "positive2.yaml"
+  }
+]

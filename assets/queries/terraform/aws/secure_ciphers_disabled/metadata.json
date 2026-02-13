@@ -1,0 +1,15 @@
+{
+  "id": "5c0003fb-9aa0-42c1-9da3-eb0e332bef21",
+  "queryName": "Secure ciphers disabled",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "This check verifies whether Amazon CloudFront distributions are configured to use secure TLS protocols and ciphers by examining the `viewer_certificate` block and its `minimum_protocol_version` attribute. CloudFront distributions that specify weak or outdated protocol versions, such as `SSLv3` (for example, `minimum_protocol_version = \"SSLv3\"`), expose transmitted data to vulnerabilities such as man-in-the-middle attacks and eavesdropping, as these protocols have known security flaws and are no longer considered safe. Failing to enforce secure cipher suites can allow attackers to decrypt, tamper with, or intercept sensitive information in transit between CloudFront and clients. To mitigate this risk, the attribute should be set to a secure value (such as \"TLSv1.2_2019\" or higher), or use the default CloudFront certificate which enforces modern standards.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/secure_ciphers_disabled",
+  "platform": "Terraform",
+  "descriptionID": "72ee1fe2",
+  "cloudProvider": "aws",
+  "cwe": "326",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Check if secure ciphers aren't used in CloudFront",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution"
+}

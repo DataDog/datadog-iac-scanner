@@ -1,0 +1,13 @@
+{
+  "id": "66505003-7aba-45a1-8d83-5162d5706ef5",
+  "queryName": "RAM policy attached to user",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "RAM policies should not be attached directly to users. The Terraform resource `alicloud_ram_user_policy_attachment` must be `undefined` or omitted from the configuration. This rule flags any `alicloud_ram_user_policy_attachment` defined for users as incorrect.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_policy_attached_to_user",
+  "platform": "Terraform",
+  "descriptionID": "c3be65a4",
+  "cloudProvider": "alicloud",
+  "cwe": "284",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ram_user_policy_attachment"
+}

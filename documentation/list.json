@@ -1,0 +1,4486 @@
+[
+  {
+    "name": "cicd",
+    "providers": [
+      {
+        "name": "github",
+        "short_description": "GITHUB Rules",
+        "rules": [
+          {
+            "name": "run_block_injection",
+            "short_description": "Run block injection"
+          },
+          {
+            "name": "script_block_injection",
+            "short_description": "Script block injection"
+          },
+          {
+            "name": "unpinned_actions_full_length_commit_sha",
+            "short_description": "Unpinned actions full length commit SHA"
+          },
+          {
+            "name": "unsecured_commands",
+            "short_description": "Unsecured commands"
+          },
+          {
+            "name": "unspecified_workflows_permissions",
+            "short_description": "Unspecified Workflows Level Permissions"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "cloudFormation",
+    "providers": [
+      {
+        "name": "aws",
+        "short_description": "AWS Rules",
+        "rules": [
+          {
+            "name": "access_key_not_rotated_within_90_days",
+            "short_description": "High access key rotation period"
+          },
+          {
+            "name": "alb_is_not_integrated_with_waf",
+            "short_description": "ALB is not integrated with WAF"
+          },
+          {
+            "name": "alb_listening_on_http",
+            "short_description": "ALB listening on HTTP"
+          },
+          {
+            "name": "alexa_skill_plaintext_client_secret_exposed",
+            "short_description": "Alexa skill plaintext client secret exposed"
+          },
+          {
+            "name": "amazon_dms_replication_instance_is_publicly_accessible",
+            "short_description": "AWS DMS replication instance is publicly accessible"
+          },
+          {
+            "name": "amazon_mq_broker_encryption_disabled",
+            "short_description": "Amazon MQ broker encryption disabled"
+          },
+          {
+            "name": "amplify_app_access_token_exposed",
+            "short_description": "Amplify app access token exposed"
+          },
+          {
+            "name": "amplify_app_basic_auth_config_password_exposed",
+            "short_description": "Amplify app basic auth config password exposed"
+          },
+          {
+            "name": "amplify_app_oauth_token_exposed",
+            "short_description": "Amplify app OAuth token exposed"
+          },
+          {
+            "name": "amplify_branch_basic_auth_config_password_exposed",
+            "short_description": "Amplify branch basic auth config password exposed"
+          },
+          {
+            "name": "api_gateway_access_logging_disabled",
+            "short_description": "API Gateway V2 stage access logging settings not defined"
+          },
+          {
+            "name": "api_gateway_cache_cluster_disabled",
+            "short_description": "API Gateway cache cluster disabled"
+          },
+          {
+            "name": "api_gateway_cache_encrypted_disabled",
+            "short_description": "API Gateway cache encrypted disabled"
+          },
+          {
+            "name": "api_gateway_deployment_without_access_log_setting",
+            "short_description": "API Gateway deployment without access log setting"
+          },
+          {
+            "name": "api_gateway_deployment_without_api_gateway_usage_plan_associated",
+            "short_description": "API Gateway deployment without usage plan associated"
+          },
+          {
+            "name": "api_gateway_endpoint_config_is_not_private",
+            "short_description": "API Gateway endpoint config is not private"
+          },
+          {
+            "name": "api_gateway_method_does_not_contains_an_api_key",
+            "short_description": "API Gateway method does not contain an API key"
+          },
+          {
+            "name": "api_gateway_stage_without_api_gateway_usage_plan_associated",
+            "short_description": "API Gateway stage without usage plan associated"
+          },
+          {
+            "name": "api_gateway_with_invalid_compression",
+            "short_description": "API Gateway with invalid compression"
+          },
+          {
+            "name": "api_gateway_with_open_access",
+            "short_description": "API Gateway with open access"
+          },
+          {
+            "name": "api_gateway_without_configured_authorizer",
+            "short_description": "API Gateway without configured authorizer"
+          },
+          {
+            "name": "api_gateway_without_security_policy",
+            "short_description": "API Gateway without security policy"
+          },
+          {
+            "name": "api_gateway_without_ssl_certificate",
+            "short_description": "API Gateway without SSL certificate"
+          },
+          {
+            "name": "api_gateway_without_waf",
+            "short_description": "API Gateway without WAF"
+          },
+          {
+            "name": "api_gateway_xray_disabled",
+            "short_description": "API Gateway X-Ray disabled"
+          },
+          {
+            "name": "auto_scaling_group_with_no_associated_elb",
+            "short_description": "Auto Scaling group with no associated ELB"
+          },
+          {
+            "name": "automatic_minor_upgrades_disabled",
+            "short_description": "Automatic minor upgrades disabled"
+          },
+          {
+            "name": "batch_job_definition_with_privileged_container_properties",
+            "short_description": "Batch job definition with privileged container properties"
+          },
+          {
+            "name": "cdn_configuration_is_missing",
+            "short_description": "CDN configuration is missing"
+          },
+          {
+            "name": "cloudformation_specifying_credentials_not_safe",
+            "short_description": "CloudFormation metadata contains plaintext credentials"
+          },
+          {
+            "name": "cloudfront_logging_disabled",
+            "short_description": "CloudFront logging disabled"
+          },
+          {
+            "name": "cloudfront_viewer_protocol_policy_allows_http",
+            "short_description": "CloudFront viewer protocol policy allows HTTP"
+          },
+          {
+            "name": "cloudfront_without_minimum_protocol_tls_1.2",
+            "short_description": "CloudFront without minimum protocol TLS 1.2"
+          },
+          {
+            "name": "cloudfront_without_waf",
+            "short_description": "CloudFront without WAF"
+          },
+          {
+            "name": "cloudtrail_log_file_validation_disabled",
+            "short_description": "CloudTrail log file validation disabled"
+          },
+          {
+            "name": "cloudtrail_log_files_not_encrypted_with_kms",
+            "short_description": "CloudTrail log files not encrypted with KMS"
+          },
+          {
+            "name": "cloudtrail_logging_disabled",
+            "short_description": "CloudTrail logging disabled"
+          },
+          {
+            "name": "cloudtrail_multi_region_disabled",
+            "short_description": "CloudTrail multi-region disabled"
+          },
+          {
+            "name": "cloudtrail_not_integrated_with_cloudwatch",
+            "short_description": "CloudTrail not integrated with CloudWatch"
+          },
+          {
+            "name": "cloudtrail_sns_topic_name_undefined",
+            "short_description": "CloudTrail SNS topic name undefined"
+          },
+          {
+            "name": "cloudwatch_logging_disabled",
+            "short_description": "CloudWatch logging disabled"
+          },
+          {
+            "name": "cloudwatch_metrics_disabled",
+            "short_description": "CloudWatch metrics disabled"
+          },
+          {
+            "name": "cmk_is_unusable",
+            "short_description": "CMK is unusable"
+          },
+          {
+            "name": "cmk_rotation_disabled",
+            "short_description": "CMK rotation disabled"
+          },
+          {
+            "name": "cmk_unencrypted_storage",
+            "short_description": "CMK unencrypted storage"
+          },
+          {
+            "name": "codebuild_not_encrypted",
+            "short_description": "CodeBuild not encrypted"
+          },
+          {
+            "name": "cognito_userpool_without_mfa",
+            "short_description": "Cognito user pool without MFA"
+          },
+          {
+            "name": "config_configuration_aggregator_to_all_regions_disabled",
+            "short_description": "Configuration aggregator to all regions disabled"
+          },
+          {
+            "name": "config_rule_for_encryption_volumes_disabled",
+            "short_description": "Config rule for encrypted volumes disabled"
+          },
+          {
+            "name": "connection_between_cloudfront_origin_not_encrypted",
+            "short_description": "Connection between CloudFront origin not encrypted"
+          },
+          {
+            "name": "cross_account_iam_assume_role_policy_without_external_id_or_mfa",
+            "short_description": "Cross-account IAM assume role policy without external ID or MFA"
+          },
+          {
+            "name": "db_security_group_open_to_large_scope",
+            "short_description": "DB security group open to large scope"
+          },
+          {
+            "name": "db_security_group_with_public_scope",
+            "short_description": "DB security group with public scope"
+          },
+          {
+            "name": "default_kms_key_usage",
+            "short_description": "Default KMS key usage"
+          },
+          {
+            "name": "default_security_groups_with_unrestricted_traffic",
+            "short_description": "Default security groups with unrestricted traffic"
+          },
+          {
+            "name": "directory_service_microsoft_ad_password_set_to_plaintext_or_default_ref",
+            "short_description": "Directory service Microsoft AD password set to plaintext or default ref"
+          },
+          {
+            "name": "directory_service_simple_ad_password_exposed",
+            "short_description": "Directory service simple AD password exposed"
+          },
+          {
+            "name": "dms_endpoint_mongo_db_settings_password_exposed",
+            "short_description": "DMS endpoint MongoDB settings password exposed"
+          },
+          {
+            "name": "dms_endpoint_password_exposed",
+            "short_description": "DMS endpoint password exposed"
+          },
+          {
+            "name": "docdb_cluster_master_password_in_plaintext",
+            "short_description": "DocDB cluster master password in plaintext"
+          },
+          {
+            "name": "docdb_logging_disabled",
+            "short_description": "DocDB logging is disabled"
+          },
+          {
+            "name": "dynamodb_table_not_encrypted",
+            "short_description": "DynamoDB table not encrypted"
+          },
+          {
+            "name": "dynamodb_table_point_in_time_recovery_disabled",
+            "short_description": "DynamoDB table point-in-time recovery disabled"
+          },
+          {
+            "name": "dynamodb_with_aws_owned_cmk",
+            "short_description": "DynamoDB with AWS-owned CMK"
+          },
+          {
+            "name": "dynamodb_with_table_billing_mode_not_recommended",
+            "short_description": "DynamoDB with non-recommended table billing mode"
+          },
+          {
+            "name": "ebs_volume_encryption_disabled",
+            "short_description": "EBS volume encryption disabled"
+          },
+          {
+            "name": "ebs_volume_not_attached_to_instances",
+            "short_description": "EBS volume not attached to instances"
+          },
+          {
+            "name": "ebs_volume_without_kms_key_id",
+            "short_description": "EBS volume without KmsKeyId"
+          },
+          {
+            "name": "ec2_instance_has_no_iam_role",
+            "short_description": "EC2 instance has no IAM role"
+          },
+          {
+            "name": "ec2_instance_monitoring_disabled",
+            "short_description": "EC2 instance monitoring disabled"
+          },
+          {
+            "name": "ec2_instance_subnet_has_public_ip_mapping_on_launch",
+            "short_description": "EC2 instance subnet has public IP mapping on launch"
+          },
+          {
+            "name": "ec2_instance_using_default_security_group",
+            "short_description": "EC2 instance using default security group"
+          },
+          {
+            "name": "ec2_instance_using_default_vpc",
+            "short_description": "EC2 instance using default VPC"
+          },
+          {
+            "name": "ec2_network_acl_duplicate_rule",
+            "short_description": "EC2 network ACL duplicate rule"
+          },
+          {
+            "name": "ec2_network_acl_ineffective_denied_traffic",
+            "short_description": "EC2 Network ACL Deny rule not blocking all traffic"
+          },
+          {
+            "name": "ec2_network_acl_overlapping_ports",
+            "short_description": "EC2 network ACL overlapping ports"
+          },
+          {
+            "name": "ec2_not_ebs_optimized",
+            "short_description": "EC2 not EBS optimized"
+          },
+          {
+            "name": "ec2_permissive_network_acl_protocols",
+            "short_description": "EC2 permissive network ACL protocols"
+          },
+          {
+            "name": "ec2_public_instance_exposed_through_subnet",
+            "short_description": "EC2 public instance exposed through subnet"
+          },
+          {
+            "name": "ec2_sensitive_port_is_publicly_exposed",
+            "short_description": "EC2 sensitive port is publicly exposed"
+          },
+          {
+            "name": "ecr_image_tag_not_immutable",
+            "short_description": "ECR image tag not immutable"
+          },
+          {
+            "name": "ecr_repository_is_publicly_accessible",
+            "short_description": "ECR repository is publicly accessible"
+          },
+          {
+            "name": "ecs_cluster_container_insights_disabled",
+            "short_description": "ECS cluster with Container Insights disabled"
+          },
+          {
+            "name": "ecs_cluster_not_encrypted_at_rest",
+            "short_description": "ECS cluster not encrypted at rest"
+          },
+          {
+            "name": "ecs_no_load_balancer_attached",
+            "short_description": "ECS no load balancer attached"
+          },
+          {
+            "name": "ecs_service_admin_role_is_present",
+            "short_description": "ECS service admin role is present"
+          },
+          {
+            "name": "ecs_service_without_running_tasks",
+            "short_description": "ECS service without running tasks"
+          },
+          {
+            "name": "ecs_task_definition_healthcheck_missing",
+            "short_description": "ECS task definition health check missing"
+          },
+          {
+            "name": "ecs_task_definition_invalid_cpu_or_memory",
+            "short_description": "ECS task definition invalid CPU or memory"
+          },
+          {
+            "name": "ecs_task_definition_network_mode_not_recommended",
+            "short_description": "ECS task definition network mode not recommended"
+          },
+          {
+            "name": "efs_not_encrypted",
+            "short_description": "EFS not encrypted"
+          },
+          {
+            "name": "efs_volume_with_disabled_transit_encryption",
+            "short_description": "EFS volume with disabled transit encryption"
+          },
+          {
+            "name": "efs_without_kms",
+            "short_description": "EFS without KMS"
+          },
+          {
+            "name": "efs_without_tags",
+            "short_description": "EFS without tags"
+          },
+          {
+            "name": "eks_node_group_remote_access",
+            "short_description": "EKS node group remote access"
+          },
+          {
+            "name": "elasticache_nodes_not_created_across_multi_az",
+            "short_description": "ElastiCache nodes not created across multi-AZ"
+          },
+          {
+            "name": "elasticache_using_default_port",
+            "short_description": "ElastiCache using default port"
+          },
+          {
+            "name": "elasticache_with_disabled_at_rest_encryption",
+            "short_description": "ElastiCache with disabled at-rest encryption"
+          },
+          {
+            "name": "elasticache_with_disabled_transit_encryption",
+            "short_description": "ElastiCache with disabled transit encryption"
+          },
+          {
+            "name": "elasticache_without_vpc",
+            "short_description": "ElastiCache without VPC"
+          },
+          {
+            "name": "elasticsearch_domain_encryption_with_kms_disabled",
+            "short_description": "Elasticsearch encryption with KMS disabled"
+          },
+          {
+            "name": "elasticsearch_logs_disabled",
+            "short_description": "Elasticsearch logs disabled"
+          },
+          {
+            "name": "elasticsearch_not_encrypted_at_rest",
+            "short_description": "Elasticsearch not encrypted at rest"
+          },
+          {
+            "name": "elasticsearch_with_https_disabled",
+            "short_description": "Elasticsearch with HTTPS disabled"
+          },
+          {
+            "name": "elasticsearch_without_iam_authentication",
+            "short_description": "Elasticsearch without IAM authentication"
+          },
+          {
+            "name": "elasticsearch_without_slow_logs",
+            "short_description": "Elasticsearch without slow logs"
+          },
+          {
+            "name": "elb_access_log_disabled",
+            "short_description": "ELB access log disabled"
+          },
+          {
+            "name": "elb_sensitive_port_is_exposed_to_entire_network",
+            "short_description": "ELB sensitive port is exposed to entire network"
+          },
+          {
+            "name": "elb_using_insecure_protocols",
+            "short_description": "ELB using insecure protocols"
+          },
+          {
+            "name": "elb_using_weak_ciphers",
+            "short_description": "ELB using weak ciphers"
+          },
+          {
+            "name": "elb_v2_alb_access_log_disabled",
+            "short_description": "ELBv2 ALB access log disabled"
+          },
+          {
+            "name": "elb_with_security_group_without_inbound_rules",
+            "short_description": "ELB with security group without inbound rules"
+          },
+          {
+            "name": "elb_with_security_group_without_outbound_rules",
+            "short_description": "ELB with security group without outbound rules"
+          },
+          {
+            "name": "elb_without_secure_protocol",
+            "short_description": "ELB without secure protocol"
+          },
+          {
+            "name": "empty_roles_for_ecs_cluster_task_definitions",
+            "short_description": "Empty roles for ECS cluster task definitions"
+          },
+          {
+            "name": "emr_cluster_without_security_configuration",
+            "short_description": "EMR cluster without security configuration"
+          },
+          {
+            "name": "emr_security_configuration_encryptions_enabled",
+            "short_description": "EMR security configuration encryption disabled"
+          },
+          {
+            "name": "emr_wihout_vpc",
+            "short_description": "EMR without VPC"
+          },
+          {
+            "name": "fully_open_ingress",
+            "short_description": "Fully open ingress"
+          },
+          {
+            "name": "gamelift_fleet_ec2_inbound_permissions_with_port_range",
+            "short_description": "GameLift fleet EC2 inbound permissions with port range"
+          },
+          {
+            "name": "geo_restriction_disabled",
+            "short_description": "Geo restriction disabled"
+          },
+          {
+            "name": "github_repository_set_to_public",
+            "short_description": "GitHub repository set to public"
+          },
+          {
+            "name": "guardduty_detector_disabled",
+            "short_description": "GuardDuty detector disabled"
+          },
+          {
+            "name": "hardcoded_aws_access_key_in_lambda",
+            "short_description": "Hardcoded AWS access key in Lambda"
+          },
+          {
+            "name": "http_port_open",
+            "short_description": "HTTP port open to internet"
+          },
+          {
+            "name": "iam_access_analyzer_not_enabled",
+            "short_description": "IAM Access Analyzer not enabled"
+          },
+          {
+            "name": "iam_database_auth_not_enabled",
+            "short_description": "IAM database auth not enabled"
+          },
+          {
+            "name": "iam_group_without_users",
+            "short_description": "IAM group without users"
+          },
+          {
+            "name": "iam_groups_inline_policies",
+            "short_description": "IAM group inline policies"
+          },
+          {
+            "name": "iam_managed_policy_applied_to_a_user",
+            "short_description": "IAM managed policy applied to a user"
+          },
+          {
+            "name": "iam_password_without_minimum_length",
+            "short_description": "IAM password without minimum length"
+          },
+          {
+            "name": "iam_policies_attached_to_user",
+            "short_description": "IAM policies attached to a user"
+          },
+          {
+            "name": "iam_policies_with_full_privileges",
+            "short_description": "IAM policies with full privileges"
+          },
+          {
+            "name": "iam_policies_without_groups",
+            "short_description": "IAM policies without groups"
+          },
+          {
+            "name": "iam_policy_grants_assumerole_permission_across_all_services",
+            "short_description": "IAM policy grants AssumeRole permission across all services"
+          },
+          {
+            "name": "iam_policy_grants_full_permissions",
+            "short_description": "IAM policy grants full permissions"
+          },
+          {
+            "name": "iam_policy_on_user",
+            "short_description": "IAM policy on user"
+          },
+          {
+            "name": "iam_role_allows_all_principals_to_assume",
+            "short_description": "IAM role allows all principals to assume"
+          },
+          {
+            "name": "iam_user_login_profile_password_is_in_plaintext",
+            "short_description": "IAM user LoginProfile password is in plaintext"
+          },
+          {
+            "name": "iam_user_too_many_access_keys",
+            "short_description": "IAM user has too many access keys"
+          },
+          {
+            "name": "iam_user_with_no_group",
+            "short_description": "IAM user with no group"
+          },
+          {
+            "name": "inline_policies_are_attached_to_ecs_service",
+            "short_description": "Inline policies are attached to an ECS service"
+          },
+          {
+            "name": "instance_with_no_vpc",
+            "short_description": "Instance with no VPC"
+          },
+          {
+            "name": "iot_policy_allows_action_as_wildcard",
+            "short_description": "IoT policy allows action as a wildcard"
+          },
+          {
+            "name": "iot_policy_allows_wildcard_resource",
+            "short_description": "IoT policy allows a wildcard resource"
+          },
+          {
+            "name": "kinesis_sse_not_configured",
+            "short_description": "Kinesis SSE not configured"
+          },
+          {
+            "name": "kms_allows_wildcard_principal",
+            "short_description": "KMS allows a wildcard principal"
+          },
+          {
+            "name": "kms_enable_key_rotation_disabled",
+            "short_description": "KMS key rotation disabled"
+          },
+          {
+            "name": "kms_key_with_full_permissions",
+            "short_description": "KMS key with a vulnerable policy"
+          },
+          {
+            "name": "lambda_function_without_dead_letter_queue",
+            "short_description": "Lambda function without dead-letter queue"
+          },
+          {
+            "name": "lambda_function_without_tags",
+            "short_description": "Lambda function without tags"
+          },
+          {
+            "name": "lambda_functions_with_full_privileges",
+            "short_description": "Lambda functions with full privileges"
+          },
+          {
+            "name": "lambda_functions_without_unique_iam_roles",
+            "short_description": "Lambda functions without unique IAM roles"
+          },
+          {
+            "name": "lambda_functions_without_x-ray_tracing",
+            "short_description": "Lambda functions without X-Ray tracing"
+          },
+          {
+            "name": "lambda_permission_misconfigured",
+            "short_description": "Lambda permission misconfigured"
+          },
+          {
+            "name": "lambda_permission_principal_is_wildcard",
+            "short_description": "Lambda permission principal is a wildcard"
+          },
+          {
+            "name": "low_rds_backup_retention_period",
+            "short_description": "Low RDS backup retention period"
+          },
+          {
+            "name": "mq_broker_is_publicly_accessible",
+            "short_description": "Amazon MQ broker is publicly accessible"
+          },
+          {
+            "name": "mq_broker_logging_disabled",
+            "short_description": "Amazon MQ broker logging disabled"
+          },
+          {
+            "name": "msk_broker_is_publicly_accessible",
+            "short_description": "MSK broker is publicly accessible"
+          },
+          {
+            "name": "msk_cluster_encryption_disabled",
+            "short_description": "MSK cluster encryption disabled"
+          },
+          {
+            "name": "msk_cluster_logging_disabled",
+            "short_description": "MSK cluster logging disabled"
+          },
+          {
+            "name": "neptune_cluster_with_iam_database_authentication_disabled",
+            "short_description": "Neptune cluster with IAM database authentication disabled"
+          },
+          {
+            "name": "neptune_database_cluster_encryption_disabled",
+            "short_description": "Neptune database cluster encryption disabled"
+          },
+          {
+            "name": "public_lambda_via_api_gateway",
+            "short_description": "Public Lambda function via API Gateway"
+          },
+          {
+            "name": "rds_associated_with_public_subnet",
+            "short_description": "RDS associated with a public subnet"
+          },
+          {
+            "name": "rds_db_instance_publicly_accessible",
+            "short_description": "RDS DB instance publicly accessible"
+          },
+          {
+            "name": "rds_db_instance_with_deletion_protection_disabled",
+            "short_description": "RDS DB instance with deletion protection disabled"
+          },
+          {
+            "name": "rds_multi_az_deployment_disabled",
+            "short_description": "RDS Multi-AZ deployment disabled"
+          },
+          {
+            "name": "rds_storage_encryption_disabled",
+            "short_description": "RDS storage encryption disabled"
+          },
+          {
+            "name": "rds_storage_not_encrypted",
+            "short_description": "RDS storage not encrypted"
+          },
+          {
+            "name": "rds_using_default_port",
+            "short_description": "RDS using default port"
+          },
+          {
+            "name": "rds_with_backup_disabled",
+            "short_description": "RDS with backup disabled"
+          },
+          {
+            "name": "redshift_cluster_logging_disabled",
+            "short_description": "Redshift cluster logging disabled"
+          },
+          {
+            "name": "redshift_cluster_without_kms_cmk",
+            "short_description": "Redshift cluster without a KMS CMK"
+          },
+          {
+            "name": "redshift_not_encrypted",
+            "short_description": "Redshift not encrypted"
+          },
+          {
+            "name": "redshift_publicly_accessible",
+            "short_description": "Redshift publicly accessible"
+          },
+          {
+            "name": "redshift_using_default_port",
+            "short_description": "Redshift using default port"
+          },
+          {
+            "name": "refresh_token_is_exposed",
+            "short_description": "Refresh token is exposed"
+          },
+          {
+            "name": "remote_desktop_port_open_to_internet",
+            "short_description": "Remote Desktop port open to the internet"
+          },
+          {
+            "name": "root_account_has_active_access_keys",
+            "short_description": "Root account has active access keys"
+          },
+          {
+            "name": "route53_record_undefined",
+            "short_description": "Route53 record undefined"
+          },
+          {
+            "name": "routertable_with_default_routing",
+            "short_description": "Route table with default routing"
+          },
+          {
+            "name": "s3_bucket_access_to_any_principal",
+            "short_description": "S3 bucket access to any principal"
+          },
+          {
+            "name": "s3_bucket_acl_allows_read_or_write_to_all_users",
+            "short_description": "S3 bucket ACL allows read or write to all users"
+          },
+          {
+            "name": "s3_bucket_acl_allows_read_to_all_users",
+            "short_description": "S3 bucket ACL allows read to all users"
+          },
+          {
+            "name": "s3_bucket_acl_allows_read_to_any_authenticated_user",
+            "short_description": "S3 bucket ACL allows read to any authenticated user"
+          },
+          {
+            "name": "s3_bucket_allows_delete_actions_from_all_principals",
+            "short_description": "S3 bucket allows delete action from all principals"
+          },
+          {
+            "name": "s3_bucket_allows_get_actions_from_all_principals",
+            "short_description": "S3 bucket allows get action from all principals"
+          },
+          {
+            "name": "s3_bucket_allows_list_actions_from_all_principals",
+            "short_description": "S3 bucket allows list action from all principals"
+          },
+          {
+            "name": "s3_bucket_allows_public_acl",
+            "short_description": "S3 bucket allows public ACL"
+          },
+          {
+            "name": "s3_bucket_allows_put_actions_from_all_principals",
+            "short_description": "S3 bucket allows put action from all principals"
+          },
+          {
+            "name": "s3_bucket_allows_restore_actions_from_all_principals",
+            "short_description": "S3 bucket allows restore actions from all principals"
+          },
+          {
+            "name": "s3_bucket_cloudtrail_logging_disabled",
+            "short_description": "S3 bucket CloudTrail logging disabled"
+          },
+          {
+            "name": "s3_bucket_logging_disabled",
+            "short_description": "S3 bucket logging disabled"
+          },
+          {
+            "name": "s3_bucket_should_have_bucket_policy",
+            "short_description": "S3 bucket should have bucket policy"
+          },
+          {
+            "name": "s3_bucket_with_all_permissions",
+            "short_description": "S3 bucket with all permissions"
+          },
+          {
+            "name": "s3_bucket_with_public_policy",
+            "short_description": "S3 bucket allows public policy"
+          },
+          {
+            "name": "s3_bucket_with_unsecured_cors_rule",
+            "short_description": "S3 bucket with unsecured CORS rule"
+          },
+          {
+            "name": "s3_bucket_without_ignore_public_acl",
+            "short_description": "S3 bucket without ignore public ACL"
+          },
+          {
+            "name": "s3_bucket_without_restriction_of_public_bucket",
+            "short_description": "S3 bucket without restriction of public bucket"
+          },
+          {
+            "name": "s3_bucket_without_server_side_encryption",
+            "short_description": "S3 bucket without server-side encryption"
+          },
+          {
+            "name": "s3_bucket_without_ssl_in_write_actions",
+            "short_description": "S3 bucket without SSL in write actions"
+          },
+          {
+            "name": "s3_bucket_without_versioning",
+            "short_description": "S3 bucket without versioning"
+          },
+          {
+            "name": "s3_static_website_host_enabled",
+            "short_description": "S3 static website host enabled"
+          },
+          {
+            "name": "sagemaker_data_encryption_disabled",
+            "short_description": "SageMaker data encryption disabled"
+          },
+          {
+            "name": "sagemaker_enabling_internet_access",
+            "short_description": "SageMaker enabling internet access"
+          },
+          {
+            "name": "sagemaker_endpoint_config_should_specify_kms_key_id_attribute",
+            "short_description": "SageMaker endpoint config should specify KmsKeyId attribute"
+          },
+          {
+            "name": "sagemaker_notebook_not_placed_in_vpc",
+            "short_description": "SageMaker notebook not placed in VPC"
+          },
+          {
+            "name": "sdb_domain_declared_as_a_resource",
+            "short_description": "SDB domain declared as a resource"
+          },
+          {
+            "name": "secrets_manager_should_specify_kms_key_id",
+            "short_description": "Secrets manager should specify KmsKeyId"
+          },
+          {
+            "name": "secure_ciphers_disabled",
+            "short_description": "Secure ciphers disabled"
+          },
+          {
+            "name": "security_group_egress_cidr_open_to_world",
+            "short_description": "Security group egress CIDR open to world"
+          },
+          {
+            "name": "security_group_egress_with_all_protocols",
+            "short_description": "Security group egress with all protocols"
+          },
+          {
+            "name": "security_group_egress_with_port_range",
+            "short_description": "Security group egress with port range"
+          },
+          {
+            "name": "security_group_ingress_has_cidr_not_recommended",
+            "short_description": "Security group ingress has CIDR not recommended"
+          },
+          {
+            "name": "security_group_ingress_with_all_protocols",
+            "short_description": "Security group ingress with all protocols"
+          },
+          {
+            "name": "security_group_ingress_with_port_range",
+            "short_description": "Security group ingress with port range"
+          },
+          {
+            "name": "security_group_rule_without_description",
+            "short_description": "Security group rule without description"
+          },
+          {
+            "name": "security_groups_allows_unrestricted_outbound_traffic",
+            "short_description": "Security groups allows unrestricted outbound traffic"
+          },
+          {
+            "name": "security_groups_unrestricted_access_to_rdp",
+            "short_description": "Security group unrestricted access to RDP"
+          },
+          {
+            "name": "security_groups_with_exhibited_admin_ports",
+            "short_description": "Security groups with exposed admin ports"
+          },
+          {
+            "name": "security_groups_with_meta_ip",
+            "short_description": "Security groups with meta IP"
+          },
+          {
+            "name": "security_groups_with_unrestricted_access_to_ssh",
+            "short_description": "Security group with unrestricted access to SSH"
+          },
+          {
+            "name": "security_groups_without_vpc_attached",
+            "short_description": "Security groups without VPC attached"
+          },
+          {
+            "name": "shield_advanced_not_in_use",
+            "short_description": "Shield Advanced not in use"
+          },
+          {
+            "name": "sns_topic_is_publicly_accessible",
+            "short_description": "SNS topic is publicly accessible"
+          },
+          {
+            "name": "sns_topic_publicity_has_allow_and_not_action_simultaneously",
+            "short_description": "SNS topic publicity has Allow and NotAction simultaneously"
+          },
+          {
+            "name": "sns_topic_without_kms_master_key_id",
+            "short_description": "SNS topic without KmsMasterKeyId"
+          },
+          {
+            "name": "sqs_policy_with_public_access",
+            "short_description": "SQS policy with public access"
+          },
+          {
+            "name": "sqs_with_sse_disabled",
+            "short_description": "SQS with SSE disabled"
+          },
+          {
+            "name": "stack_notifications_disabled",
+            "short_description": "Stack notifications disabled"
+          },
+          {
+            "name": "stack_retention_disabled",
+            "short_description": "Stack retention disabled"
+          },
+          {
+            "name": "support_has_no_role_associated",
+            "short_description": "Support has no role associated"
+          },
+          {
+            "name": "tcp_or_udp_protocol_network_acl_entry_allows_all_ports",
+            "short_description": "TCP UDP protocol network ACL entry allows all ports"
+          },
+          {
+            "name": "unknown_port_exposed_to_internet",
+            "short_description": "Unknown port exposed to internet"
+          },
+          {
+            "name": "unrestricted_security_group_ingress",
+            "short_description": "Unrestricted security group ingress"
+          },
+          {
+            "name": "unscanned_ecr_image",
+            "short_description": "Unscanned ECR image"
+          },
+          {
+            "name": "user_data_contains_encoded_private_key",
+            "short_description": "User data contains encoded private key"
+          },
+          {
+            "name": "user_iam_missing_password_reset_required",
+            "short_description": "IAM user without password reset"
+          },
+          {
+            "name": "vpc_attached_with_too_many_gateways",
+            "short_description": "VPC attached with too many gateways"
+          },
+          {
+            "name": "vpc_flowlogs_disabled",
+            "short_description": "VPC Flow Logs disabled"
+          },
+          {
+            "name": "vpc_without_attached_subnet",
+            "short_description": "VPC without attached subnet"
+          },
+          {
+            "name": "vpc_without_network_firewall",
+            "short_description": "VPC without Network Firewall"
+          },
+          {
+            "name": "vulnerable_default_ssl_certificate",
+            "short_description": "Vulnerable default SSL certificate"
+          },
+          {
+            "name": "webacl_allow_defaultaction",
+            "short_description": "Permissive Web ACL default action"
+          },
+          {
+            "name": "wildcard_in_acm_certificate_domain_name",
+            "short_description": "Wildcard in ACM certificate domain name"
+          },
+          {
+            "name": "workspace_without_encryption",
+            "short_description": "Workspace without encryption"
+          }
+        ]
+      },
+      {
+        "name": "aws_sam",
+        "short_description": "AWS_SAM Rules",
+        "rules": [
+          {
+            "name": "serverless_api_access_logging_setting_undefined",
+            "short_description": "Serverless API access logging setting undefined"
+          },
+          {
+            "name": "serverless_api_cache_cluster_disabled",
+            "short_description": "Serverless API cache cluster disabled"
+          },
+          {
+            "name": "serverless_api_endpoint_config_not_private",
+            "short_description": "Serverless API endpoint config not private"
+          },
+          {
+            "name": "serverless_api_without_content_encoding",
+            "short_description": "Serverless API without content encoding"
+          },
+          {
+            "name": "serverless_api_xray_tracing_disabled",
+            "short_description": "Serverless API X-Ray tracing disabled"
+          },
+          {
+            "name": "serverless_function_environment_variables_not_encrypted",
+            "short_description": "Serverless function environment variables not encrypted"
+          },
+          {
+            "name": "serverless_function_without_dead_letter_queue",
+            "short_description": "Serverless function without dead-letter queue"
+          },
+          {
+            "name": "serverless_function_without_tags",
+            "short_description": "Serverless function without tags"
+          },
+          {
+            "name": "serverless_function_without_unique_iam_role",
+            "short_description": "Serverless function without unique IAM role"
+          },
+          {
+            "name": "serverless_function_without_x-ray_tracing",
+            "short_description": "Serverless function without X-Ray tracing"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "k8s",
+    "providers": [
+      {
+        "name": "k8s",
+        "short_description": "K8S Rules",
+        "rules": [
+          {
+            "name": "always_admit_admission_control_plugin_set",
+            "short_description": "Always admit admission control plugin set"
+          },
+          {
+            "name": "always_pull_images_admission_control_plugin_not_set",
+            "short_description": "Always pull images admission control plugin not set"
+          },
+          {
+            "name": "anonymous_auth_is_not_set_to_false",
+            "short_description": "Anonymous auth is not set to false"
+          },
+          {
+            "name": "audit_log_maxage_not_properly_set",
+            "short_description": "Audit log maxage not properly set"
+          },
+          {
+            "name": "audit_log_maxbackup_not_properly_set",
+            "short_description": "Audit log maxbackup not properly set"
+          },
+          {
+            "name": "audit_log_maxsize_not_properly_set",
+            "short_description": "Audit log maxsize not properly set"
+          },
+          {
+            "name": "audit_log_path_not_set",
+            "short_description": "Audit log path not set"
+          },
+          {
+            "name": "audit_policy_file_not_defined",
+            "short_description": "Audit policy file not defined"
+          },
+          {
+            "name": "audit_policy_not_cover_key_security_concerns",
+            "short_description": "Audit policy does not cover key security concerns"
+          },
+          {
+            "name": "authorization_mode_node_not_set",
+            "short_description": "Authorization mode node not set"
+          },
+          {
+            "name": "authorization_mode_rbac_not_set",
+            "short_description": "Authorization mode RBAC not set"
+          },
+          {
+            "name": "authorization_mode_set_to_always_allow",
+            "short_description": "Authorization mode set to always allow"
+          },
+          {
+            "name": "auto_tls_set_to_true",
+            "short_description": "Auto TLS set to true"
+          },
+          {
+            "name": "basic_auth_file_is_set",
+            "short_description": "Basic auth file is set"
+          },
+          {
+            "name": "bind_address_not_properly_set",
+            "short_description": "Bind address not properly set"
+          },
+          {
+            "name": "client_certificate_authentication_not_setup_properly",
+            "short_description": "Client certificate authentication not set up properly"
+          },
+          {
+            "name": "cluster_admin_role_binding_with_super_user_permissions",
+            "short_description": "Cluster admin rolebinding with superuser permissions"
+          },
+          {
+            "name": "cluster_allows_unsafe_sysctls",
+            "short_description": "Cluster allows unsafe sysctls"
+          },
+          {
+            "name": "cni_plugin_does_not_support_network_policies",
+            "short_description": "CNI plugin does not support network policies"
+          },
+          {
+            "name": "container_is_privileged",
+            "short_description": "Container is privileged"
+          },
+          {
+            "name": "container_runs_unmasked",
+            "short_description": "Container with unmasked /proc access"
+          },
+          {
+            "name": "containers_run_with_low_uid",
+            "short_description": "Container with low UID"
+          },
+          {
+            "name": "containers_running_as_root",
+            "short_description": "Container running as root"
+          },
+          {
+            "name": "containers_with_added_capabilities",
+            "short_description": "Containers with added capabilities"
+          },
+          {
+            "name": "containers_with_sys_admin_capabilities",
+            "short_description": "Containers with sys admin capabilities"
+          },
+          {
+            "name": "cpu_limits_not_set",
+            "short_description": "CPU limits not set"
+          },
+          {
+            "name": "cpu_requests_not_set",
+            "short_description": "CPU requests not set"
+          },
+          {
+            "name": "cronjob_deadline_not_configured",
+            "short_description": "CronJob deadline not configured"
+          },
+          {
+            "name": "dashboard_is_enabled",
+            "short_description": "Dashboard is enabled"
+          },
+          {
+            "name": "deployment_has_no_pod_anti_affinity",
+            "short_description": "Deployment without podAntiAffinity"
+          },
+          {
+            "name": "deployment_without_pod_disruption_budget",
+            "short_description": "Deployment without PodDisruptionBudget"
+          },
+          {
+            "name": "docker_daemon_socket_is_exposed_to_containers",
+            "short_description": "Docker daemon socket is exposed to containers"
+          },
+          {
+            "name": "encryption_provider_config_is_not_defined",
+            "short_description": "Encryption provider config is not defined"
+          },
+          {
+            "name": "encryption_provider_not_properly_configured",
+            "short_description": "Encryption provider not properly configured"
+          },
+          {
+            "name": "ensure_administrative_boundaries_between_resources",
+            "short_description": "Ensure administrative boundaries between resources"
+          },
+          {
+            "name": "etcd_client_certificate_authentication_set_to_false",
+            "short_description": "etcd client certificate authentication set to false"
+          },
+          {
+            "name": "etcd_client_certificate_file_not_defined",
+            "short_description": "etcd client certificate file not defined"
+          },
+          {
+            "name": "etcd_peer_client_certificate_authentication_set_to_false",
+            "short_description": "etcd peer client certificate authentication set to false"
+          },
+          {
+            "name": "etcd_peer_tls_certificate_files_not_properly_set",
+            "short_description": "etcd peer TLS certificate files not properly set"
+          },
+          {
+            "name": "etcd_tls_certificate_files_not_properly_set",
+            "short_description": "etcd TLS certificate files not properly set"
+          },
+          {
+            "name": "etcd_tls_certificate_not_properly_configured",
+            "short_description": "etcd TLS certificate not properly configured"
+          },
+          {
+            "name": "event_rate_limit_admission_control_plugin_not_set",
+            "short_description": "Event rate limit admission control plugin not set"
+          },
+          {
+            "name": "hpa_targeted_deployments_with_configured_replica_count",
+            "short_description": "HPA targeted deployments with configured replica count"
+          },
+          {
+            "name": "hpa_targets_invalid_object",
+            "short_description": "HPA targets invalid object"
+          },
+          {
+            "name": "image_policy_webhook_admission_control_plugin_not_set",
+            "short_description": "Image policy webhook admission control plugin not set"
+          },
+          {
+            "name": "image_pull_policy_of_container_is_not_always",
+            "short_description": "Image pull policy of the container is not set to always"
+          },
+          {
+            "name": "image_without_digest",
+            "short_description": "Image without digest"
+          },
+          {
+            "name": "incorrect_volume_claim_access_mode_read_write_once",
+            "short_description": "Incorrect volume claim access mode ReadWriteOnce"
+          },
+          {
+            "name": "ingress_controller_exposes_workload",
+            "short_description": "Ingress controller exposes workload"
+          },
+          {
+            "name": "insecure_bind_address_set",
+            "short_description": "Insecure bind address set"
+          },
+          {
+            "name": "insecure_port_not_properly_set",
+            "short_description": "Insecure port not properly set"
+          },
+          {
+            "name": "invalid_image",
+            "short_description": "Invalid image tag"
+          },
+          {
+            "name": "kubelet_certificate_authority_not_set",
+            "short_description": "Kubelet certificate authority not set"
+          },
+          {
+            "name": "kubelet_client_certificate_or_key_not_set",
+            "short_description": "Kubelet client certificate or key not set"
+          },
+          {
+            "name": "kubelet_client_periodic_certificate_switch_disabled",
+            "short_description": "Kubelet client periodic certificate switch disabled"
+          },
+          {
+            "name": "kubelet_event_qps_not_properly_set",
+            "short_description": "Kubelet event QPS not properly set"
+          },
+          {
+            "name": "kubelet_hostname_override_is_set",
+            "short_description": "Kubelet hostname override is set"
+          },
+          {
+            "name": "kubelet_https_set_to_false",
+            "short_description": "Kubelet HTTPS set to false"
+          },
+          {
+            "name": "kubelet_not_managing_ip_tables",
+            "short_description": "Kubelet not managing IP tables"
+          },
+          {
+            "name": "kubelet_protect_kernel_defaults_set_to_false",
+            "short_description": "Kubelet protect-kernel-defaults set to false"
+          },
+          {
+            "name": "kubelet_read_only_port_is_not_set_to_zero",
+            "short_description": "Kubelet read-only port is not set to zero"
+          },
+          {
+            "name": "kubelet_streaming_connection_timeout_disabled",
+            "short_description": "Kubelet streaming connection timeout disabled"
+          },
+          {
+            "name": "liveness_probe_is_not_defined",
+            "short_description": "Liveness probe is not defined"
+          },
+          {
+            "name": "memory_limits_not_defined",
+            "short_description": "Memory limits not defined"
+          },
+          {
+            "name": "memory_requests_not_defined",
+            "short_description": "Memory requests not defined"
+          },
+          {
+            "name": "metadata_label_is_invalid",
+            "short_description": "Invalid metadata label"
+          },
+          {
+            "name": "missing_app_armor_config",
+            "short_description": "Missing AppArmor profile"
+          },
+          {
+            "name": "namespace_lifecycle_admission_control_plugin_disabled",
+            "short_description": "Namespace lifecycle admission control plugin disabled"
+          },
+          {
+            "name": "net_raw_capabilities_disabled_for_psp",
+            "short_description": "NET_RAW capabilities disabled for PSP"
+          },
+          {
+            "name": "net_raw_capabilities_not_being_dropped",
+            "short_description": "NET_RAW capabilities not dropped"
+          },
+          {
+            "name": "network_policy_is_not_targeting_any_pod",
+            "short_description": "Network policy without Pod target"
+          },
+          {
+            "name": "no_drop_capabilities_for_containers",
+            "short_description": "Containers missing drop capabilities"
+          },
+          {
+            "name": "node_restriction_admission_control_plugin_not_set",
+            "short_description": "Node restriction admission control plugin not set"
+          },
+          {
+            "name": "non_kube_system_pod_with_host_mount",
+            "short_description": "Non kube-system pod with host mount"
+          },
+          {
+            "name": "not_limited_capabilities_for_pod_security_policy",
+            "short_description": "Unrestricted capabilities in PodSecurityPolicy"
+          },
+          {
+            "name": "not_unique_certificate_authority",
+            "short_description": "Certificate authority is not unique"
+          },
+          {
+            "name": "object_is_using_a_deprecated_api_version",
+            "short_description": "Object is using a deprecated API version"
+          },
+          {
+            "name": "peer_auto_tls_set_to_true",
+            "short_description": "Peer auto TLS set to true"
+          },
+          {
+            "name": "permissive_access_to_create_pods",
+            "short_description": "Permissive access to create Pods"
+          },
+          {
+            "name": "pod_misconfigured_network_policy",
+            "short_description": "Pod misconfigured network policy"
+          },
+          {
+            "name": "pod_or_container_without_limit_range",
+            "short_description": "Pod or container without LimitRange"
+          },
+          {
+            "name": "pod_or_container_without_resource_quota",
+            "short_description": "Pod or container without ResourceQuota"
+          },
+          {
+            "name": "pod_or_container_without_security_context",
+            "short_description": "Pod or container without security context"
+          },
+          {
+            "name": "pod_security_policy_admission_control_plugin_not_set",
+            "short_description": "Pod security policy admission control plugin not set"
+          },
+          {
+            "name": "privilege_escalation_allowed",
+            "short_description": "Privilege escalation allowed"
+          },
+          {
+            "name": "profiling_not_set_to_false",
+            "short_description": "Profiling not set to false"
+          },
+          {
+            "name": "psp_allows_privilege_escalation",
+            "short_description": "PSP allows privilege escalation"
+          },
+          {
+            "name": "psp_allows_sharing_host_ipc",
+            "short_description": "PSP allows sharing host IPC"
+          },
+          {
+            "name": "psp_allows_sharing_host_pid",
+            "short_description": "PSP allows sharing host PID"
+          },
+          {
+            "name": "psp_containers_share_host_network_namespace",
+            "short_description": "PodSecurityPolicy allows host network sharing"
+          },
+          {
+            "name": "psp_set_to_privileged",
+            "short_description": "PSP set to privileged"
+          },
+          {
+            "name": "psp_with_added_capabilities",
+            "short_description": "PSP with added capabilities"
+          },
+          {
+            "name": "psp_with_unrestricted_access_to_host_path",
+            "short_description": "PSP with unrestricted access to host path"
+          },
+          {
+            "name": "rbac_roles_allow_privilege_escalation",
+            "short_description": "RBAC roles allow privilege escalation"
+          },
+          {
+            "name": "rbac_roles_with_attach_permission",
+            "short_description": "RBAC roles with attach permission"
+          },
+          {
+            "name": "rbac_roles_with_exec_permission",
+            "short_description": "RBAC roles with exec permission"
+          },
+          {
+            "name": "rbac_roles_with_impersonate_permission",
+            "short_description": "RBAC roles with impersonate permission"
+          },
+          {
+            "name": "rbac_roles_with_portforwarding_permissions",
+            "short_description": "RBAC roles with port-forwarding permission"
+          },
+          {
+            "name": "rbac_roles_with_read_secrets_permissions",
+            "short_description": "RBAC roles with read secrets permissions"
+          },
+          {
+            "name": "rbac_wildcard_in_rule",
+            "short_description": "RBAC wildcard in rule"
+          },
+          {
+            "name": "readiness_probe_is_not_configured",
+            "short_description": "Readiness probe is not configured"
+          },
+          {
+            "name": "request_timeout_not_properly_set",
+            "short_description": "Request timeout not properly set"
+          },
+          {
+            "name": "role_binding_to_default_service_account",
+            "short_description": "Role binding to default service account"
+          },
+          {
+            "name": "root_ca_file_not_defined",
+            "short_description": "Root CA file not defined"
+          },
+          {
+            "name": "root_container_not_mounted_as_read_only",
+            "short_description": "Root container not mounted as read-only"
+          },
+          {
+            "name": "root_containers_admitted",
+            "short_description": "Root containers admitted"
+          },
+          {
+            "name": "rotate_kubelet_server_certificate_not_active",
+            "short_description": "Rotate Kubelet server certificate not active"
+          },
+          {
+            "name": "seccomp_profile_is_not_configured",
+            "short_description": "Seccomp profile is not configured"
+          },
+          {
+            "name": "secrets_as_environment_variables",
+            "short_description": "Secrets used as environment variables"
+          },
+          {
+            "name": "secure_port_set_to_zero",
+            "short_description": "Secure port set to zero"
+          },
+          {
+            "name": "security_context_deny_admission_control_plugin_not_set",
+            "short_description": "Security context deny admission control plugin not set"
+          },
+          {
+            "name": "service_account_admission_control_plugin_disabled",
+            "short_description": "Service account admission control plugin disabled"
+          },
+          {
+            "name": "service_account_allows_access_secrets",
+            "short_description": "ServiceAccount allows access to secrets"
+          },
+          {
+            "name": "service_account_key_file_not_properly_set",
+            "short_description": "Service account key file not properly set"
+          },
+          {
+            "name": "service_account_lookup_set_to_false",
+            "short_description": "Service account lookup set to false"
+          },
+          {
+            "name": "service_account_name_undefined_or_empty",
+            "short_description": "Service account name undefined or empty"
+          },
+          {
+            "name": "service_account_private_key_file_not_defined",
+            "short_description": "Service account private key file not defined"
+          },
+          {
+            "name": "service_account_token_automount_not_disabled",
+            "short_description": "Service account token auto-mount not disabled"
+          },
+          {
+            "name": "service_does_not_target_pod",
+            "short_description": "Service does not target a Pod"
+          },
+          {
+            "name": "service_type_is_nodeport",
+            "short_description": "Service type is NodePort"
+          },
+          {
+            "name": "service_with_external_load_balancer",
+            "short_description": "Service with external load balancer"
+          },
+          {
+            "name": "shared_host_ipc_namespace",
+            "short_description": "Shared host IPC namespace"
+          },
+          {
+            "name": "shared_host_network_namespace",
+            "short_description": "Shared host network namespace"
+          },
+          {
+            "name": "shared_host_pid_namespace",
+            "short_description": "Shared host PID namespace"
+          },
+          {
+            "name": "shared_service_account",
+            "short_description": "Shared service account"
+          },
+          {
+            "name": "statefulset_has_no_pod_anti_affinity",
+            "short_description": "StatefulSet without podAntiAffinity"
+          },
+          {
+            "name": "statefulset_requests_storage",
+            "short_description": "StatefulSet requests storage"
+          },
+          {
+            "name": "statefulset_without_pod_disruption_budget",
+            "short_description": "StatefulSet without PodDisruptionBudget"
+          },
+          {
+            "name": "statefulset_without_service_name",
+            "short_description": "StatefulSet without service name"
+          },
+          {
+            "name": "terminated_pod_garbage_collector_threshold_not_properly_set",
+            "short_description": "Terminated pod garbage collector threshold not properly set"
+          },
+          {
+            "name": "tiller_deployment_is_accessible_from_within_the_cluster",
+            "short_description": "Tiller Deployment accessible within cluster"
+          },
+          {
+            "name": "tiller_is_deployed",
+            "short_description": "Tiller (Helm v2) deployed"
+          },
+          {
+            "name": "tiller_service_is_not_deleted",
+            "short_description": "Tiller Service present"
+          },
+          {
+            "name": "tls_connection_certificate_not_setup",
+            "short_description": "TLS connection certificate not set up"
+          },
+          {
+            "name": "token_auth_file_is_set",
+            "short_description": "Token auth file is set"
+          },
+          {
+            "name": "use_service_account_credentials_not_set_to_true",
+            "short_description": "Use service account credentials not set to true"
+          },
+          {
+            "name": "using_kubernetes_native_secret_management",
+            "short_description": "Using Kubernetes native secret management"
+          },
+          {
+            "name": "using_unrecommended_namespace",
+            "short_description": "Using unrecommended namespace"
+          },
+          {
+            "name": "volume_mount_with_os_directory_write_permissions",
+            "short_description": "Volume mount with OS directory write permissions"
+          },
+          {
+            "name": "weak_tls_cipher_suites",
+            "short_description": "Weak TLS cipher suites"
+          },
+          {
+            "name": "workload_host_port_not_specified",
+            "short_description": "Workload host port not specified"
+          },
+          {
+            "name": "workload_mounting_with_sensitive_os_directory",
+            "short_description": "Workload mounting with sensitive OS directory"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "terraform",
+    "providers": [
+      {
+        "name": "alicloud",
+        "short_description": "ALICLOUD Rules",
+        "rules": [
+          {
+            "name": "action_trail_logging_all_regions_disabled",
+            "short_description": "Action trail logging for all regions disabled"
+          },
+          {
+            "name": "actiontrail_trail_oss_bucket_is_publicly_accessible",
+            "short_description": "ActionTrail trail OSS bucket is publicly accessible"
+          },
+          {
+            "name": "alb_listening_on_http",
+            "short_description": "ALB listening on HTTP"
+          },
+          {
+            "name": "api_gateway_api_protocol_not_https",
+            "short_description": "API gateway API protocol not HTTPS"
+          },
+          {
+            "name": "cmk_is_unusable",
+            "short_description": "CMK is unusable"
+          },
+          {
+            "name": "cs_kubernetes_node_pool_auto_repair_disabled",
+            "short_description": "CS Kubernetes node pool auto repair disabled"
+          },
+          {
+            "name": "disk_encryption_disabled",
+            "short_description": "Disk encryption disabled"
+          },
+          {
+            "name": "ecs_data_disk_kms_key_id_undefined",
+            "short_description": "ECS data disk KMS key ID undefined"
+          },
+          {
+            "name": "high_kms_key_rotation_period",
+            "short_description": "High KMS key rotation period"
+          },
+          {
+            "name": "kubernetes_cluster_without_terway_as_cni_network_plugin",
+            "short_description": "Kubernetes cluster without Terway as CNI network plugin"
+          },
+          {
+            "name": "launch_template_is_not_encrypted",
+            "short_description": "Launch template is not encrypted"
+          },
+          {
+            "name": "log_retention_is_not_greater_than_90_days",
+            "short_description": "Log retention is not greater than 90 days"
+          },
+          {
+            "name": "nas_file_system_not_encrypted",
+            "short_description": "NAS file system not encrypted"
+          },
+          {
+            "name": "nas_file_system_without_kms",
+            "short_description": "NAS file system without KMS"
+          },
+          {
+            "name": "no_ros_stack_policy",
+            "short_description": "No ROS stack policy"
+          },
+          {
+            "name": "oss_bucket_allows_all_actions_from_all_principals",
+            "short_description": "OSS bucket allows all actions from all principals"
+          },
+          {
+            "name": "oss_bucket_allows_delete_from_all_principals",
+            "short_description": "OSS bucket allows delete action from all principals"
+          },
+          {
+            "name": "oss_bucket_allows_list_action_from_all_principals",
+            "short_description": "OSS bucket allows list action from all principals"
+          },
+          {
+            "name": "oss_bucket_allows_put_action_from_all_principals",
+            "short_description": "OSS bucket allows put action from all principals"
+          },
+          {
+            "name": "oss_bucket_cmk_encryption_disabled",
+            "short_description": "OSS bucket encryption using CMK disabled"
+          },
+          {
+            "name": "oss_bucket_has_static_website",
+            "short_description": "OSS bucket has static website"
+          },
+          {
+            "name": "oss_bucket_ip_restriction_disabled",
+            "short_description": "OSS bucket IP restriction disabled"
+          },
+          {
+            "name": "oss_bucket_lifecycle_disabled",
+            "short_description": "OSS bucket lifecycle rule disabled"
+          },
+          {
+            "name": "oss_bucket_logging_disabled",
+            "short_description": "OSS bucket logging disabled"
+          },
+          {
+            "name": "oss_bucket_public_access_enabled",
+            "short_description": "OSS bucket public access enabled"
+          },
+          {
+            "name": "oss_bucket_transfer_acceleration_disabled",
+            "short_description": "OSS bucket transfer acceleration disabled"
+          },
+          {
+            "name": "oss_bucket_versioning_disabled",
+            "short_description": "OSS bucket versioning disabled"
+          },
+          {
+            "name": "oss_buckets_securetransport_disabled",
+            "short_description": "OSS buckets secure transport disabled"
+          },
+          {
+            "name": "public_security_group_rule_all_ports_or_protocols",
+            "short_description": "Public security group rule all ports or protocols"
+          },
+          {
+            "name": "public_security_group_rule_sensitive_port",
+            "short_description": "Public security group rule sensitive port"
+          },
+          {
+            "name": "public_security_group_rule_unknown_port",
+            "short_description": "Public security group rule unknown port"
+          },
+          {
+            "name": "ram_account_password_policy_max_login_attempts_unrecommended",
+            "short_description": "RAM account password policy max login attempts not recommended"
+          },
+          {
+            "name": "ram_account_password_policy_max_password_age_unrecommended",
+            "short_description": "RAM account password policy max password age not recommended"
+          },
+          {
+            "name": "ram_account_password_policy_not_required_minimum_length",
+            "short_description": "RAM account password policy does not enforce minimum password length"
+          },
+          {
+            "name": "ram_account_password_policy_not_required_numbers",
+            "short_description": "RAM account password policy does not require numbers"
+          },
+          {
+            "name": "ram_account_password_policy_not_required_symbols",
+            "short_description": "RAM account password policy does not require symbols"
+          },
+          {
+            "name": "ram_account_password_policy_without_reuse_prevention",
+            "short_description": "RAM account password policy without reuse prevention"
+          },
+          {
+            "name": "ram_password_security_policy_not_require_at_least_one_lowercase_character",
+            "short_description": "RAM account password policy not require at least one lowercase character"
+          },
+          {
+            "name": "ram_password_security_policy_not_require_at_least_one_uppercase_character",
+            "short_description": "RAM account password policy not require at least one uppercase character"
+          },
+          {
+            "name": "ram_policy_admin_access_not_attached_to_users_groups_roles",
+            "short_description": "RAM policy admin access not attached to users groups roles"
+          },
+          {
+            "name": "ram_policy_attached_to_user",
+            "short_description": "RAM policy attached to user"
+          },
+          {
+            "name": "ram_security_preference_not_enforce_mfa",
+            "short_description": "RAM security preference does not enforce MFA login"
+          },
+          {
+            "name": "rds_instance_address_publicly_accessible",
+            "short_description": "RDS DB instance publicly accessible"
+          },
+          {
+            "name": "rds_instance_events_not_logged",
+            "short_description": "RDS instance events not logged"
+          },
+          {
+            "name": "rds_instance_log_connections_disabled",
+            "short_description": "RDS instance log connections disabled"
+          },
+          {
+            "name": "rds_instance_log_disconnections_disabled",
+            "short_description": "RDS instance log disconnections disabled"
+          },
+          {
+            "name": "rds_instance_log_duration_disabled",
+            "short_description": "RDS instance log duration disabled"
+          },
+          {
+            "name": "rds_instance_publicly_accessible",
+            "short_description": "RDS DB instance publicly accessible"
+          },
+          {
+            "name": "rds_instance_retention_not_recommended",
+            "short_description": "RDS instance retention period not recommended"
+          },
+          {
+            "name": "rds_instance_ssl_action_disabled",
+            "short_description": "RDS instance SSL action disabled"
+          },
+          {
+            "name": "rds_instance_tde_status_disabled",
+            "short_description": "RDS instance TDE status disabled"
+          },
+          {
+            "name": "ros_stack_notifications_disabled",
+            "short_description": "ROS stack notifications disabled"
+          },
+          {
+            "name": "ros_stack_retention_disabled",
+            "short_description": "ROS stack retention disabled"
+          },
+          {
+            "name": "ros_stack_without_template",
+            "short_description": "ROS stack without template"
+          },
+          {
+            "name": "slb_policy_with_insecure_tls_version_in_use",
+            "short_description": "SLB policy with insecure TLS version in use"
+          },
+          {
+            "name": "vpc_flow_logs_disabled",
+            "short_description": "VPC flow logs disabled"
+          }
+        ]
+      },
+      {
+        "name": "aws",
+        "short_description": "AWS Rules",
+        "rules": [
+          {
+            "name": "alb_deletion_protection_disabled",
+            "short_description": "ALB deletion protection disabled"
+          },
+          {
+            "name": "alb_is_not_integrated_with_waf",
+            "short_description": "ALB is not integrated with WAF"
+          },
+          {
+            "name": "alb_listening_on_http",
+            "short_description": "ALB listening on HTTP"
+          },
+          {
+            "name": "alb_not_dropping_invalid_headers",
+            "short_description": "ALB not dropping invalid headers"
+          },
+          {
+            "name": "amazon_dms_replication_instance_is_publicly_accessible",
+            "short_description": "Amazon DMS replication instance is publicly accessible"
+          },
+          {
+            "name": "amazon_mq_broker_encryption_disabled",
+            "short_description": "AmazonMQ broker encryption disabled"
+          },
+          {
+            "name": "ami_not_encrypted",
+            "short_description": "AMI not encrypted"
+          },
+          {
+            "name": "ami_owner_missing",
+            "short_description": "AMI most recent without owner or filter"
+          },
+          {
+            "name": "ami_shared_with_multiple_accounts",
+            "short_description": "AMI shared with multiple accounts"
+          },
+          {
+            "name": "api_gateway_access_logging_disabled",
+            "short_description": "API Gateway access logging disabled"
+          },
+          {
+            "name": "api_gateway_deployment_without_access_log_setting",
+            "short_description": "API Gateway deployment without access log setting"
+          },
+          {
+            "name": "api_gateway_deployment_without_api_gateway_usage_plan_associated",
+            "short_description": "API gateway deployment without API gateway usage plan associated"
+          },
+          {
+            "name": "api_gateway_endpoint_config_is_not_private",
+            "short_description": "API Gateway endpoint config is not private"
+          },
+          {
+            "name": "api_gateway_method_does_not_contains_an_api_key",
+            "short_description": "API Gateway method does not contains an API key"
+          },
+          {
+            "name": "api_gateway_method_settings_cache_not_encrypted",
+            "short_description": "API Gateway method settings cache not encrypted"
+          },
+          {
+            "name": "api_gateway_stage_without_api_gateway_usage_plan_associated",
+            "short_description": "API Gateway stage without API Gateway usage plan associated"
+          },
+          {
+            "name": "api_gateway_with_cloudwatch_logging_disabled",
+            "short_description": "API Gateway with CloudWatch logging disabled"
+          },
+          {
+            "name": "api_gateway_with_invalid_compression",
+            "short_description": "API Gateway with invalid compression"
+          },
+          {
+            "name": "api_gateway_with_open_access",
+            "short_description": "API Gateway with open access"
+          },
+          {
+            "name": "api_gateway_without_configured_authorizer",
+            "short_description": "API Gateway without configured authorizer"
+          },
+          {
+            "name": "api_gateway_without_security_policy",
+            "short_description": "API Gateway without security policy"
+          },
+          {
+            "name": "api_gateway_without_ssl_certificate",
+            "short_description": "API Gateway without SSL certificate"
+          },
+          {
+            "name": "api_gateway_without_waf",
+            "short_description": "API Gateway without WAF"
+          },
+          {
+            "name": "api_gateway_xray_disabled",
+            "short_description": "API Gateway X-Ray disabled"
+          },
+          {
+            "name": "athena_database_not_encrypted",
+            "short_description": "Athena database not encrypted"
+          },
+          {
+            "name": "athena_workgroup_not_encrypted",
+            "short_description": "Athena workgroup not encrypted"
+          },
+          {
+            "name": "aurora_with_disabled_at_rest_encryption",
+            "short_description": "Aurora with disabled at rest encryption"
+          },
+          {
+            "name": "authentication_without_mfa",
+            "short_description": "Authentication without MFA"
+          },
+          {
+            "name": "auto_scaling_group_with_no_associated_elb",
+            "short_description": "Auto scaling group with no associated ELB"
+          },
+          {
+            "name": "automatic_minor_upgrades_disabled",
+            "short_description": "Automatic minor upgrades disabled"
+          },
+          {
+            "name": "autoscaling_groups_supply_tags",
+            "short_description": "Autoscaling groups supply tags"
+          },
+          {
+            "name": "aws_password_policy_with_unchangeable_passwords",
+            "short_description": "AWS password policy with unchangeable passwords"
+          },
+          {
+            "name": "batch_job_definition_with_privileged_container_properties",
+            "short_description": "Batch job definition with privileged container properties"
+          },
+          {
+            "name": "ca_certificate_identifier_is_outdated",
+            "short_description": "CA certificate identifier is outdated"
+          },
+          {
+            "name": "cdn_configuration_is_missing",
+            "short_description": "CDN configuration is missing"
+          },
+          {
+            "name": "certificate_has_expired",
+            "short_description": "Certificate has expired"
+          },
+          {
+            "name": "certificate_rsa_key_bytes_lower_than_256",
+            "short_description": "Certificate RSA key bytes lower than 256"
+          },
+          {
+            "name": "cloudfront_logging_disabled",
+            "short_description": "CloudFront logging disabled"
+          },
+          {
+            "name": "cloudfront_viewer_protocol_policy_allows_http",
+            "short_description": "Cloudfront viewer protocol policy allows HTTP"
+          },
+          {
+            "name": "cloudfront_without_minimum_protocol_tls_1.2",
+            "short_description": "CloudFront without minimum protocol TLS 1.2"
+          },
+          {
+            "name": "cloudfront_without_waf",
+            "short_description": "CloudFront without WAF"
+          },
+          {
+            "name": "cloudtrail_log_file_validation_disabled",
+            "short_description": "CloudTrail log file validation disabled"
+          },
+          {
+            "name": "cloudtrail_log_files_not_encrypted_with_kms",
+            "short_description": "CloudTrail log files not encrypted with KMS"
+          },
+          {
+            "name": "cloudtrail_log_files_s3_bucket_is_publicly_accessible",
+            "short_description": "CloudTrail log files S3 bucket is publicly accessible"
+          },
+          {
+            "name": "cloudtrail_log_files_s3_bucket_with_logging_disabled",
+            "short_description": "CloudTrail log files S3 bucket with logging disabled"
+          },
+          {
+            "name": "cloudtrail_logging_disabled",
+            "short_description": "CloudTrail logging disabled"
+          },
+          {
+            "name": "cloudtrail_multi_region_disabled",
+            "short_description": "CloudTrail multi region disabled"
+          },
+          {
+            "name": "cloudtrail_not_integrated_with_cloudwatch",
+            "short_description": "CloudTrail not integrated with CloudWatch"
+          },
+          {
+            "name": "cloudtrail_sns_topic_name_undefined",
+            "short_description": "CloudTrail SNS topic name undefined"
+          },
+          {
+            "name": "cloudwatch_aws_config_configuration_changes_alarm_missing",
+            "short_description": "CloudWatch AWS Config configuration changes alarm missing"
+          },
+          {
+            "name": "cloudwatch_aws_organizations_changes_missing_alarm",
+            "short_description": "CloudWatch AWS organizations changes missing alarm"
+          },
+          {
+            "name": "cloudwatch_changes_to_nacl_alarm_missing",
+            "short_description": "CloudWatch changes to NACL alarm missing"
+          },
+          {
+            "name": "cloudwatch_cloudtrail_configuration_changes_alarm_missing",
+            "short_description": "Cloudwatch CloudTrail configuration changes alarm missing"
+          },
+          {
+            "name": "cloudwatch_disabling_or_scheduled_deletion_of_customer_created_cmk_alarm_missing",
+            "short_description": "CloudWatch disabling or scheduled deletion of customer created CMK alarm missing"
+          },
+          {
+            "name": "cloudwatch_iam_policy_changes_alarm_missing",
+            "short_description": "CloudWatch IAM policy changes alarm missing"
+          },
+          {
+            "name": "cloudwatch_log_group_not_encrypted",
+            "short_description": "CloudWatch log group without KMS"
+          },
+          {
+            "name": "cloudwatch_logging_disabled",
+            "short_description": "CloudWatch logging disabled"
+          },
+          {
+            "name": "cloudwatch_logs_destination_with_vulnerable_policy",
+            "short_description": "CloudWatch logs destination with vulnerable policy"
+          },
+          {
+            "name": "cloudwatch_management_console_auth_failed_alarm_missing",
+            "short_description": "CloudWatch management console auth failed alarm missing"
+          },
+          {
+            "name": "cloudwatch_management_console_sign_in_without_mfa_alarm_missing",
+            "short_description": "CloudWatch console sign-in without MFA alarm missing"
+          },
+          {
+            "name": "cloudwatch_metrics_disabled",
+            "short_description": "CloudWatch metrics disabled"
+          },
+          {
+            "name": "cloudwatch_network_gateways_changes_alarm_missing",
+            "short_description": "CloudWatch network gateways changes alarm missing"
+          },
+          {
+            "name": "cloudwatch_root_account_use_alarm_missing",
+            "short_description": "CloudWatch root account use missing"
+          },
+          {
+            "name": "cloudwatch_route_table_changes_alarm_missing",
+            "short_description": "CloudWatch route table changes alarm missing"
+          },
+          {
+            "name": "cloudwatch_s3_policy_change_alarm_missing",
+            "short_description": "CloudWatch S3 policy change alarm missing"
+          },
+          {
+            "name": "cloudwatch_security_group_changes_alarm_missing",
+            "short_description": "Cloudwatch security group changes alarm missing"
+          },
+          {
+            "name": "cloudwatch_unauthorized_access_defined_alarm_missing",
+            "short_description": "CloudWatch unauthorized access alarm missing"
+          },
+          {
+            "name": "cloudwatch_vpc_changes_alarm_missing",
+            "short_description": "CloudWatch VPC changes alarm missing"
+          },
+          {
+            "name": "cloudwatch_without_retention_period_specified",
+            "short_description": "CloudWatch without retention period specified"
+          },
+          {
+            "name": "cmk_is_unusable",
+            "short_description": "CMK is unusable"
+          },
+          {
+            "name": "cmk_rotation_disabled",
+            "short_description": "CMK rotation disabled"
+          },
+          {
+            "name": "codebuild_project_encrypted_with_aws_managed_key",
+            "short_description": "CodeBuild project encrypted with AWS managed key"
+          },
+          {
+            "name": "cognito_userpool_without_mfa",
+            "short_description": "Cognito user pool without MFA"
+          },
+          {
+            "name": "config_configuration_aggregator_to_all_regions_disabled",
+            "short_description": "Configuration aggregator to all regions disabled"
+          },
+          {
+            "name": "config_rule_for_encrypted_volumes_is_disabled",
+            "short_description": "Config rule for encrypted volumes disabled"
+          },
+          {
+            "name": "cross_account_iam_assume_role_policy_without_external_id_or_mfa",
+            "short_description": "Cross-account IAM assume role policy without external id or MFA"
+          },
+          {
+            "name": "dax_cluster_not_encrypted",
+            "short_description": "DAX cluster not encrypted"
+          },
+          {
+            "name": "db_instance_storage_not_encrypted",
+            "short_description": "DB instance storage not encrypted"
+          },
+          {
+            "name": "db_security_group_has_public_interface",
+            "short_description": "DB security group has public interface"
+          },
+          {
+            "name": "db_security_group_open_to_large_scope",
+            "short_description": "DB security group open to large scope"
+          },
+          {
+            "name": "db_security_group_with_public_scope",
+            "short_description": "DB security group with public scope"
+          },
+          {
+            "name": "db_snapshot_public",
+            "short_description": "DB snapshot is public"
+          },
+          {
+            "name": "default_security_groups_with_unrestricted_traffic",
+            "short_description": "Default security groups with unrestricted traffic"
+          },
+          {
+            "name": "default_vpc_exists",
+            "short_description": "Default VPC exists"
+          },
+          {
+            "name": "dms_endpoint_no_ssl_configured",
+            "short_description": "DMS endpoints without SSL"
+          },
+          {
+            "name": "docdb_cluster_encrypted_with_aws_managed_key",
+            "short_description": "DocumentDB cluster encrypted with AWS managed key"
+          },
+          {
+            "name": "docdb_cluster_not_encrypted",
+            "short_description": "DocumentDB cluster not encrypted"
+          },
+          {
+            "name": "docdb_cluster_without_kms",
+            "short_description": "DocumentDB cluster without KMS"
+          },
+          {
+            "name": "docdb_logging_disabled",
+            "short_description": "DocumentDB logging is disabled"
+          },
+          {
+            "name": "dynamodb_table_not_encrypted",
+            "short_description": "DynamoDB table not encrypted"
+          },
+          {
+            "name": "dynamodb_table_point_in_time_recovery_disabled",
+            "short_description": "DynamoDB table Point-in-Time Recovery disabled"
+          },
+          {
+            "name": "dynamodb_vpc_endpoint_without_route_table_association",
+            "short_description": "Dynamodb VPC endpoint without route table association"
+          },
+          {
+            "name": "ebs_default_encryption_disabled",
+            "short_description": "EBS default encryption disabled"
+          },
+          {
+            "name": "ebs_volume_encryption_disabled",
+            "short_description": "EBS volume encryption disabled"
+          },
+          {
+            "name": "ebs_volume_snapshot_not_encrypted",
+            "short_description": "EBS volume snapshot not encrypted"
+          },
+          {
+            "name": "ec2_instance_has_public_ip",
+            "short_description": "EC2 instance has public IP"
+          },
+          {
+            "name": "ec2_instance_monitoring_disabled",
+            "short_description": "EC2 instance monitoring disabled"
+          },
+          {
+            "name": "ec2_instance_using_api_keys",
+            "short_description": "EC2 instance using API keys"
+          },
+          {
+            "name": "ec2_instance_using_default_security_group",
+            "short_description": "EC2 instance using default security group"
+          },
+          {
+            "name": "ec2_instance_using_default_vpc",
+            "short_description": "EC2 instance using default VPC"
+          },
+          {
+            "name": "ec2_not_ebs_optimized",
+            "short_description": "EC2 not EBS optimized"
+          },
+          {
+            "name": "ecr_image_tag_not_immutable",
+            "short_description": "ECR image tag not immutable"
+          },
+          {
+            "name": "ecr_repository_is_publicly_accessible",
+            "short_description": "ECR repository is publicly accessible"
+          },
+          {
+            "name": "ecr_repository_not_encrypted",
+            "short_description": "ECR repository not encrypted with CMK"
+          },
+          {
+            "name": "ecr_repository_without_policy",
+            "short_description": "ECR repository without policy"
+          },
+          {
+            "name": "ecs_cluster_container_insights_disabled",
+            "short_description": "ECS cluster with container insights disabled"
+          },
+          {
+            "name": "ecs_service_admin_role_is_present",
+            "short_description": "ECS service admin role is present"
+          },
+          {
+            "name": "ecs_service_without_running_tasks",
+            "short_description": "ECS service without running tasks"
+          },
+          {
+            "name": "ecs_task_definition_network_mode_not_recommended",
+            "short_description": "ECS task definition network mode not recommended"
+          },
+          {
+            "name": "ecs_task_definition_volume_not_encrypted",
+            "short_description": "ECS task definition volume not encrypted"
+          },
+          {
+            "name": "efs_not_encrypted",
+            "short_description": "EFS not encrypted"
+          },
+          {
+            "name": "efs_with_vulnerable_policy",
+            "short_description": "EFS with vulnerable policy"
+          },
+          {
+            "name": "efs_without_kms",
+            "short_description": "EFS without KMS"
+          },
+          {
+            "name": "eks_cluster_encryption_disabled",
+            "short_description": "EKS cluster encryption disabled"
+          },
+          {
+            "name": "eks_cluster_has_public_access",
+            "short_description": "EKS cluster has public access"
+          },
+          {
+            "name": "eks_cluster_has_public_access_cidrs",
+            "short_description": "EKS cluster has public access CIDRs"
+          },
+          {
+            "name": "eks_cluster_log_disabled",
+            "short_description": "EKS cluster logging is not enabled"
+          },
+          {
+            "name": "eks_node_group_remote_access_disabled",
+            "short_description": "EKS node group remote access disabled"
+          },
+          {
+            "name": "elasticache_nodes_not_created_across_multi_az",
+            "short_description": "ElastiCache nodes not created across multi AZ"
+          },
+          {
+            "name": "elasticache_redis_cluster_without_backup",
+            "short_description": "ElastiCache Redis cluster without backup"
+          },
+          {
+            "name": "elasticache_replication_group_not_encrypted_at_rest",
+            "short_description": "ElastiCache replication group not encrypted at rest"
+          },
+          {
+            "name": "elasticache_replication_group_not_encrypted_at_transit",
+            "short_description": "ElastiCache replication group not encrypted at transit"
+          },
+          {
+            "name": "elasticache_using_default_port",
+            "short_description": "ElastiCache using default port"
+          },
+          {
+            "name": "elasticache_without_vpc",
+            "short_description": "ElastiCache without VPC"
+          },
+          {
+            "name": "elasticsearch_domain_not_encrypted_node_to_node",
+            "short_description": "Elasticsearch domain not encrypted node to node"
+          },
+          {
+            "name": "elasticsearch_domain_with_vulnerable_policy",
+            "short_description": "Elasticsearch domain with vulnerable policy"
+          },
+          {
+            "name": "elasticsearch_encryption_with_kms_is_disabled",
+            "short_description": "Elasticsearch encryption with KMS disabled"
+          },
+          {
+            "name": "elasticsearch_logs_disabled",
+            "short_description": "Elasticsearch log disabled"
+          },
+          {
+            "name": "elasticsearch_no_finegrain_access_control",
+            "short_description": "Fine-grained access control disabled for OpenSearch/Elasticsearch"
+          },
+          {
+            "name": "elasticsearch_not_encrypted_at_rest",
+            "short_description": "Elasticsearch not encrypted at rest"
+          },
+          {
+            "name": "elasticsearch_using_default_security_group",
+            "short_description": "Elasticsearch uses default security group"
+          },
+          {
+            "name": "elasticsearch_with_https_disabled",
+            "short_description": "Elasticsearch with HTTPS disabled"
+          },
+          {
+            "name": "elasticsearch_without_iam_authentication",
+            "short_description": "Elasticsearch without IAM authentication"
+          },
+          {
+            "name": "elasticsearch_without_slow_logs",
+            "short_description": "Elasticsearch without slow logs"
+          },
+          {
+            "name": "elb_access_logging_disabled",
+            "short_description": "ELB access log disabled"
+          },
+          {
+            "name": "elb_using_insecure_protocols",
+            "short_description": "ELB using insecure protocols"
+          },
+          {
+            "name": "elb_using_weak_ciphers",
+            "short_description": "ELB using weak ciphers"
+          },
+          {
+            "name": "emr_without_vpc",
+            "short_description": "EMR without VPC"
+          },
+          {
+            "name": "global_accelerator_flow_logs_disabled",
+            "short_description": "Global Accelerator flow logs disabled"
+          },
+          {
+            "name": "glue_data_catalog_encryption_disabled",
+            "short_description": "Glue Data Catalog encryption disabled"
+          },
+          {
+            "name": "glue_security_configuration_encryption_disabled",
+            "short_description": "Glue security configuration encryption disabled"
+          },
+          {
+            "name": "glue_with_vulnerable_policy",
+            "short_description": "Glue with vulnerable policy"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_glue_UpdateDevEndpoint",
+            "short_description": "Group with privilege escalation by actions 'glue:UpdateDevEndpoint'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_AddUserToGroup",
+            "short_description": "Group with privilege escalation by actions 'iam:AddUserToGroup'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_AttachGroupPolicy",
+            "short_description": "Group with privilege escalation by actions 'iam:AttachGroupPolicy'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_AttachRolePolicy",
+            "short_description": "Group with privilege escalation by actions 'iam:AttachRolePolicy'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_AttachUserPolicy",
+            "short_description": "Group with privilege escalation by actions 'iam:AttachUserPolicy'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_CreateAccessKey",
+            "short_description": "Group with privilege escalation by actions 'iam:CreateAccessKey'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_CreateLoginProfile",
+            "short_description": "Group with privilege escalation by actions 'iam:CreateLoginProfile'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_CreatePolicyVersion",
+            "short_description": "Group with privilege escalation by actions 'iam:CreatePolicyVersion'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_PassRole_and_cloudformation_CreateStack",
+            "short_description": "Group with privilege escalation by actions 'cloudformation:CreateStack' and 'iam:PassRole'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_PassRole_and_ec2_RunInstances",
+            "short_description": "Group with privilege escalation by actions 'ec2:RunInstances' and 'iam:PassRole'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_PassRole_and_glue_CreateDevEndpoint",
+            "short_description": "Group with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_PassRole_and_lambda_CreateFunction_and_lambda_InvokeFunction",
+            "short_description": "Group with privilege escalation by actions 'lambda:CreateFunction' and 'iam:PassRole' and 'lambda:InvokeFunction'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_PutGroupPolicy",
+            "short_description": "Group with privilege escalation by actions 'iam:PutGroupPolicy'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_PutRolePolicy",
+            "short_description": "Group with privilege escalation by actions 'iam:PutRolePolicy'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_PutUserPolicy",
+            "short_description": "Group with privilege escalation by actions 'iam:PutUserPolicy'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_SetDefaultPolicyVersion",
+            "short_description": "Group with privilege escalation by actions 'iam:SetDefaultPolicyVersion'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_UpdateAssumeRolePolicy_and_sts_AssumeRole",
+            "short_description": "Group with privilege escalation by actions 'iam:UpdateAssumeRolePolicy' and 'sts:AssumeRole'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_iam_UpdateLoginProfile",
+            "short_description": "Group with privilege escalation by actions 'iam:UpdateLoginProfile'"
+          },
+          {
+            "name": "group_with_privilege_escalation_by_actions_lambda_UpdateFunctionCode",
+            "short_description": "Group with privilege escalation by actions 'lambda:UpdateFunctionCode'"
+          },
+          {
+            "name": "guardduty_detector_disabled",
+            "short_description": "GuardDuty detector disabled"
+          },
+          {
+            "name": "hardcoded_aws_access_key",
+            "short_description": "Hardcoded AWS access key"
+          },
+          {
+            "name": "hardcoded_aws_access_key_in_lambda",
+            "short_description": "Hardcoded AWS access key in Lambda"
+          },
+          {
+            "name": "http_port_open",
+            "short_description": "HTTP port open to internet"
+          },
+          {
+            "name": "iam_access_key_is_exposed",
+            "short_description": "IAM access key is exposed"
+          },
+          {
+            "name": "iam_database_auth_not_enabled",
+            "short_description": "IAM database auth not enabled"
+          },
+          {
+            "name": "iam_group_without_users",
+            "short_description": "IAM group without users"
+          },
+          {
+            "name": "iam_password_does_not_require_lowercase",
+            "short_description": "IAM password policy does not require lowercase letter"
+          },
+          {
+            "name": "iam_password_does_not_require_number",
+            "short_description": "IAM password policy does not require numbers"
+          },
+          {
+            "name": "iam_password_does_not_require_symbol",
+            "short_description": "IAM password policy does not require symbol"
+          },
+          {
+            "name": "iam_password_does_not_require_uppercase",
+            "short_description": "IAM password policy does not require uppercase letter"
+          },
+          {
+            "name": "iam_password_without_minimum_length",
+            "short_description": "IAM password without minimum length"
+          },
+          {
+            "name": "iam_policies_attached_to_user",
+            "short_description": "IAM policies attached to user"
+          },
+          {
+            "name": "iam_policies_with_full_privileges",
+            "short_description": "IAM policies with full privileges"
+          },
+          {
+            "name": "iam_policy_grants_assumerole_permission_across_all_services",
+            "short_description": "IAM policy grants 'AssumeRole' permission across all services"
+          },
+          {
+            "name": "iam_policy_grants_full_permissions",
+            "short_description": "IAM policy grants full permissions"
+          },
+          {
+            "name": "iam_role_allows_all_principals_to_assume",
+            "short_description": "IAM role allows all principals to assume"
+          },
+          {
+            "name": "iam_role_policy_passrole_allows_all",
+            "short_description": "IAM role policy passrole allows all"
+          },
+          {
+            "name": "iam_role_with_full_privileges",
+            "short_description": "IAM role with full privileges"
+          },
+          {
+            "name": "iam_user_policy_without_mfa",
+            "short_description": "IAM user policy without MFA"
+          },
+          {
+            "name": "iam_user_too_many_access_keys",
+            "short_description": "IAM user has too many access keys"
+          },
+          {
+            "name": "iam_user_with_access_to_console",
+            "short_description": "IAM user with access to console"
+          },
+          {
+            "name": "imdsv1_is_enabled",
+            "short_description": "IMDSv1 enabled"
+          },
+          {
+            "name": "instance_with_no_vpc",
+            "short_description": "Instance with no VPC"
+          },
+          {
+            "name": "kinesis_not_encrypted_with_kms",
+            "short_description": "Kinesis not encrypted with KMS"
+          },
+          {
+            "name": "kinesis_sse_not_configured",
+            "short_description": "Kinesis SSE not configured"
+          },
+          {
+            "name": "kms_key_with_full_permissions",
+            "short_description": "KMS key with vulnerable policy"
+          },
+          {
+            "name": "kms_key_with_no_deletion_window",
+            "short_description": "KMS key with no deletion window"
+          },
+          {
+            "name": "lambda_function_publicly_accessible",
+            "short_description": "Lambda function publicly accessible"
+          },
+          {
+            "name": "lambda_function_with_privileged_role",
+            "short_description": "Lambda function with privileged role"
+          },
+          {
+            "name": "lambda_functions_without_x-ray_tracing",
+            "short_description": "Lambda functions without X-Ray tracing"
+          },
+          {
+            "name": "lambda_iam_invokefunction_misconfigured",
+            "short_description": "Lambda IAM InvokeFunction misconfigured"
+          },
+          {
+            "name": "lambda_permission_misconfigured",
+            "short_description": "Lambda permission misconfigured"
+          },
+          {
+            "name": "lambda_permission_principal_is_wildcard",
+            "short_description": "Lambda permission principal is wildcard"
+          },
+          {
+            "name": "lambda_with_vulnerable_policy",
+            "short_description": "Lambda with vulnerable policy"
+          },
+          {
+            "name": "launch_configuration_is_not_encrypted",
+            "short_description": "Launch configuration is not encrypted"
+          },
+          {
+            "name": "misconfigured_password_policy_expiration",
+            "short_description": "Misconfigured password policy expiration"
+          },
+          {
+            "name": "missing_cluster_log_types",
+            "short_description": "Missing cluster log types"
+          },
+          {
+            "name": "mq_broker_is_publicly_accessible",
+            "short_description": "MQ broker is publicly accessible"
+          },
+          {
+            "name": "mq_broker_logging_disabled",
+            "short_description": "MQ broker logging disabled"
+          },
+          {
+            "name": "msk_broker_is_publicly_accessible",
+            "short_description": "MSK broker is publicly accessible"
+          },
+          {
+            "name": "msk_cluster_encryption_disabled",
+            "short_description": "MSK cluster encryption disabled"
+          },
+          {
+            "name": "msk_cluster_logging_disabled",
+            "short_description": "MSK cluster logging disabled"
+          },
+          {
+            "name": "neptune_cluster_instance_is_publicly_accessible",
+            "short_description": "Neptune cluster instance is publicly accessible"
+          },
+          {
+            "name": "neptune_cluster_with_iam_database_authentication_disabled",
+            "short_description": "Neptune cluster with IAM database authentication disabled"
+          },
+          {
+            "name": "neptune_database_cluster_encryption_disabled",
+            "short_description": "Neptune database cluster encryption disabled"
+          },
+          {
+            "name": "neptune_logging_disabled",
+            "short_description": "Neptune logging is disabled"
+          },
+          {
+            "name": "neptune_snapshots_not_encrypted",
+            "short_description": "Neptune cluster snapshot not encrypted"
+          },
+          {
+            "name": "network_acl_with_unrestricted_access_to_rdp",
+            "short_description": "Network ACL with unrestricted access to RDP"
+          },
+          {
+            "name": "network_acl_with_unrestricted_access_to_ssh",
+            "short_description": "Network ACL with unrestricted access to SSH"
+          },
+          {
+            "name": "no_password_policy_enabled",
+            "short_description": "No password policy enabled"
+          },
+          {
+            "name": "no_stack_policy",
+            "short_description": "No stack policy"
+          },
+          {
+            "name": "password_without_reuse_prevention",
+            "short_description": "Password without reuse prevention"
+          },
+          {
+            "name": "policy_without_principal",
+            "short_description": "Policy without principal"
+          },
+          {
+            "name": "public_and_private_ec2_share_role",
+            "short_description": "Public and private EC2 share role"
+          },
+          {
+            "name": "public_lambda_via_api_gateway",
+            "short_description": "Public Lambda via API Gateway"
+          },
+          {
+            "name": "rds_associated_with_public_subnet",
+            "short_description": "RDS associated with public subnet"
+          },
+          {
+            "name": "rds_cluster_with_backup_disabled",
+            "short_description": "RDS cluster with backup disabled"
+          },
+          {
+            "name": "rds_database_cluster_not_encrypted",
+            "short_description": "RDS database cluster not encrypted"
+          },
+          {
+            "name": "rds_db_instance_publicly_accessible",
+            "short_description": "RDS DB instance publicly accessible"
+          },
+          {
+            "name": "rds_storage_not_encrypted",
+            "short_description": "RDS storage not encrypted"
+          },
+          {
+            "name": "rds_using_default_port",
+            "short_description": "RDS using default port"
+          },
+          {
+            "name": "rds_with_backup_disabled",
+            "short_description": "RDS with backup disabled"
+          },
+          {
+            "name": "rds_without_logging",
+            "short_description": "RDS without logging"
+          },
+          {
+            "name": "redis_disabled",
+            "short_description": "Redis disabled"
+          },
+          {
+            "name": "redis_not_compliant",
+            "short_description": "Redis not compliant"
+          },
+          {
+            "name": "redshift_cluster_logging_disabled",
+            "short_description": "Redshift cluster logging disabled"
+          },
+          {
+            "name": "redshift_cluster_without_vpc",
+            "short_description": "Redshift cluster without VPC"
+          },
+          {
+            "name": "redshift_not_encrypted",
+            "short_description": "Redshift not encrypted"
+          },
+          {
+            "name": "redshift_publicly_accessible",
+            "short_description": "Redshift publicly accessible"
+          },
+          {
+            "name": "redshift_using_default_port",
+            "short_description": "Redshift using default port"
+          },
+          {
+            "name": "remote_desktop_port_open_to_internet",
+            "short_description": "Remote Desktop port open to internet"
+          },
+          {
+            "name": "resource_not_using_tags",
+            "short_description": "Resource not using tags"
+          },
+          {
+            "name": "rest_api_with_vulnerable_policy",
+            "short_description": "REST API with vulnerable policy"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_glue_UpdateDevEndpoint",
+            "short_description": "Role with privilege escalation by actions 'glue:UpdateDevEndpoint'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_AddUserToGroup",
+            "short_description": "Role with privilege escalation by actions 'iam:AddUserToGroup'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_AttachGroupPolicy",
+            "short_description": "Role with privilege escalation by actions 'iam:AttachGroupPolicy'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_AttachRolePolicy",
+            "short_description": "Role with privilege escalation by actions 'iam:AttachRolePolicy'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_AttachUserPolicy",
+            "short_description": "Role with privilege escalation by actions 'iam:AttachUserPolicy'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_CreateAccessKey",
+            "short_description": "Role with privilege escalation by actions 'iam:CreateAccessKey'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_CreateLoginProfile",
+            "short_description": "Role with privilege escalation by actions 'iam:CreateLoginProfile'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_CreatePolicyVersion",
+            "short_description": "Role with privilege escalation by actions 'iam:CreatePolicyVersion'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_PassRole_and_cloudformation_CreateStack",
+            "short_description": "Role with privilege escalation by actions 'cloudformation:CreateStack' and 'iam:PassRole'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_PassRole_and_ec2_RunInstances",
+            "short_description": "Role with privilege escalation by actions 'ec2:RunInstances' and 'iam:PassRole'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_PassRole_and_glue_CreateDevEndpoint",
+            "short_description": "Role with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_PassRole_and_lambda_CreateFunction_lambda_InvokeFunction",
+            "short_description": "Role with privilege escalation by actions 'lambda:CreateFunction' and 'iam:PassRole' and 'lambda:InvokeFunction'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_PutGroupPolicy",
+            "short_description": "Role with privilege escalation by actions 'iam:PutGroupPolicy'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_PutRolePolicy",
+            "short_description": "Role with privilege escalation by actions 'iam:PutRolePolicy'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_PutUserPolicy",
+            "short_description": "Role with privilege escalation by actions 'iam:PutUserPolicy'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_SetDefaultPolicyVersion",
+            "short_description": "Role with privilege escalation by actions 'iam:SetDefaultPolicyVersion'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_UpdateAssumeRolePolicy_and_sts_AssumeRole",
+            "short_description": "Role with privilege escalation by actions 'iam:UpdateAssumeRolePolicy' and 'sts:AssumeRole'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_iam_UpdateLoginProfile",
+            "short_description": "Role with privilege escalation by actions 'iam:UpdateLoginProfile'"
+          },
+          {
+            "name": "role_with_privilege_escalation_by_actions_lambda_UpdateFunctionCode",
+            "short_description": "Role with privilege escalation by actions 'lambda:UpdateFunctionCode'"
+          },
+          {
+            "name": "root_account_has_active_access_keys",
+            "short_description": "Root account has active access keys"
+          },
+          {
+            "name": "route53_record_undefined",
+            "short_description": "Route53 record undefined"
+          },
+          {
+            "name": "s3_bucket_access_to_any_principal",
+            "short_description": "S3 bucket access to any principal"
+          },
+          {
+            "name": "s3_bucket_acl_allows_read_or_write_to_all_users",
+            "short_description": "S3 bucket ACL allows read or write to all users"
+          },
+          {
+            "name": "s3_bucket_acl_allows_read_to_any_authenticated_user",
+            "short_description": "S3 bucket ACL allows read to any authenticated user"
+          },
+          {
+            "name": "s3_bucket_acl_grants_write_acp_permission",
+            "short_description": "S3 bucket ACL grants WRITE_ACP permission"
+          },
+          {
+            "name": "s3_bucket_allows_access_to_all_authenticated_users",
+            "short_description": "S3 bucket allows authenticated users access"
+          },
+          {
+            "name": "s3_bucket_allows_delete_action_from_all_principals",
+            "short_description": "S3 bucket allows delete action from all principals"
+          },
+          {
+            "name": "s3_bucket_allows_get_action_from_all_principals",
+            "short_description": "S3 bucket allows get action from all principals"
+          },
+          {
+            "name": "s3_bucket_allows_list_action_from_all_principals",
+            "short_description": "S3 bucket allows list action from all principals"
+          },
+          {
+            "name": "s3_bucket_allows_public_acl",
+            "short_description": "S3 bucket allows public ACL"
+          },
+          {
+            "name": "s3_bucket_allows_put_action_from_all_principals",
+            "short_description": "S3 bucket allows put action from all principals"
+          },
+          {
+            "name": "s3_bucket_logging_disabled",
+            "short_description": "S3 bucket logging disabled"
+          },
+          {
+            "name": "s3_bucket_object_level_cloudtrail_logging_disabled",
+            "short_description": "S3 bucket object-level CloudTrail logging disabled"
+          },
+          {
+            "name": "s3_bucket_object_not_encrypted",
+            "short_description": "S3 bucket object not encrypted"
+          },
+          {
+            "name": "s3_bucket_policy_accepts_http_requests",
+            "short_description": "S3 bucket policy accepts HTTP requests"
+          },
+          {
+            "name": "s3_bucket_public_acl_overridden_by_public_access_block",
+            "short_description": "S3 bucket public ACL overridden by public access block"
+          },
+          {
+            "name": "s3_bucket_with_all_permissions",
+            "short_description": "S3 bucket with all permissions"
+          },
+          {
+            "name": "s3_bucket_with_public_policy",
+            "short_description": "S3 bucket allows public policy"
+          },
+          {
+            "name": "s3_bucket_with_unsecured_cors_rule",
+            "short_description": "S3 bucket with unsecured CORS rule"
+          },
+          {
+            "name": "s3_bucket_without_enabled_mfa_delete",
+            "short_description": "S3 bucket without enabled MFA delete"
+          },
+          {
+            "name": "s3_bucket_without_ignore_public_acl",
+            "short_description": "S3 bucket without ignore public ACL"
+          },
+          {
+            "name": "s3_bucket_without_restriction_of_public_bucket",
+            "short_description": "S3 bucket without restriction of public bucket"
+          },
+          {
+            "name": "s3_bucket_without_versioning",
+            "short_description": "S3 bucket without versioning"
+          },
+          {
+            "name": "s3_static_website_host_enabled",
+            "short_description": "S3 static website host enabled"
+          },
+          {
+            "name": "sagemaker_direct_internet_access_enabled",
+            "short_description": "SageMaker notebook internet access enabled"
+          },
+          {
+            "name": "sagemaker_endpoint_configuration_encryption_disabled",
+            "short_description": "SageMaker endpoint configuration encryption disabled"
+          },
+          {
+            "name": "sagemaker_notebook_instance_without_kms",
+            "short_description": "SageMaker notebook instance without KMS"
+          },
+          {
+            "name": "secrets_manager_with_vulnerable_policy",
+            "short_description": "Secrets Manager with vulnerable policy"
+          },
+          {
+            "name": "secretsmanager_secret_encrypted_with_aws_managed_key",
+            "short_description": "Secrets Manager secret encrypted with AWS-managed key"
+          },
+          {
+            "name": "secretsmanager_secret_without_kms",
+            "short_description": "Secrets Manager secret without KMS"
+          },
+          {
+            "name": "secure_ciphers_disabled",
+            "short_description": "Secure ciphers disabled"
+          },
+          {
+            "name": "security_group_rules_without_description",
+            "short_description": "Security group rule without description"
+          },
+          {
+            "name": "security_group_with_unrestricted_access_to_ssh",
+            "short_description": "Security group with unrestricted access to SSH"
+          },
+          {
+            "name": "security_group_without_description",
+            "short_description": "Security group rule without description"
+          },
+          {
+            "name": "security_groups_not_used",
+            "short_description": "Security group not used"
+          },
+          {
+            "name": "sensitive_port_is_exposed_to_entire_network",
+            "short_description": "Sensitive port is exposed to entire network"
+          },
+          {
+            "name": "sensitive_port_is_exposed_to_small_public_network",
+            "short_description": "Sensitive port is exposed to small public network"
+          },
+          {
+            "name": "sensitive_port_is_exposed_to_wide_private_network",
+            "short_description": "Sensitive port is exposed to wide private network"
+          },
+          {
+            "name": "service_control_policies_disabled",
+            "short_description": "Service control policies disabled"
+          },
+          {
+            "name": "ses_policy_with_allowed_iam_actions",
+            "short_description": "SES policy with allowed IAM actions"
+          },
+          {
+            "name": "shield_advanced_not_in_use",
+            "short_description": "Shield Advanced not in use"
+          },
+          {
+            "name": "sns_topic_encrypted_with_aws_managed_key",
+            "short_description": "SNS topic encrypted with AWS managed key"
+          },
+          {
+            "name": "sns_topic_is_publicly_accessible",
+            "short_description": "SNS topic is publicly accessible"
+          },
+          {
+            "name": "sns_topic_not_encrypted",
+            "short_description": "SNS topic not encrypted"
+          },
+          {
+            "name": "sns_topic_publicity_has_allow_and_not_action_simultaneously",
+            "short_description": "SNS topic publicity has allow and NotAction simultaneously"
+          },
+          {
+            "name": "sql_analysis_services_port_2383_is_publicly_accessible",
+            "short_description": "SQL analysis services port 2383 (TCP) is publicly accessible"
+          },
+          {
+            "name": "sqs_policy_allows_all_actions",
+            "short_description": "SQS policy allows all actions"
+          },
+          {
+            "name": "sqs_policy_with_public_access",
+            "short_description": "SQS policy with public access"
+          },
+          {
+            "name": "sqs_queue_exposed",
+            "short_description": "SQS queue exposed"
+          },
+          {
+            "name": "sqs_vpc_endpoint_without_dns_resolution",
+            "short_description": "SQS VPC endpoint without DNS resolution"
+          },
+          {
+            "name": "sqs_with_sse_disabled",
+            "short_description": "SQS with SSE disabled"
+          },
+          {
+            "name": "ssm_session_transit_encryption_disabled",
+            "short_description": "SSM session transit encryption disabled"
+          },
+          {
+            "name": "sso_identity_user_unsafe_creation",
+            "short_description": "SSO identity user unsafe creation"
+          },
+          {
+            "name": "sso_permission_with_inadequate_user_session_duration",
+            "short_description": "SSO permission with inadequate user session duration"
+          },
+          {
+            "name": "sso_policy_with_full_privileges",
+            "short_description": "SSO policy with full privileges"
+          },
+          {
+            "name": "stack_notifications_disabled",
+            "short_description": "Stack notifications disabled"
+          },
+          {
+            "name": "stack_retention_disabled",
+            "short_description": "Stack retention disabled"
+          },
+          {
+            "name": "stack_without_template",
+            "short_description": "Stack without template"
+          },
+          {
+            "name": "team_tag_not_present",
+            "short_description": "Team tag missing on AWS resource"
+          },
+          {
+            "name": "unknown_port_exposed_to_internet",
+            "short_description": "Unknown port exposed to internet"
+          },
+          {
+            "name": "unrestricted_security_group_ingress",
+            "short_description": "Unrestricted security group ingress"
+          },
+          {
+            "name": "unscanned_ecr_image",
+            "short_description": "Unscanned ECR image"
+          },
+          {
+            "name": "user_data_contains_encoded_private_key",
+            "short_description": "User data contains encoded private key"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_glue_UpdateDevEndpoint",
+            "short_description": "User with privilege escalation by actions 'glue:UpdateDevEndpoint'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_AddUserToGroup",
+            "short_description": "User with privilege escalation by actions 'iam:AddUserToGroup'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_AttachGroupPolicy",
+            "short_description": "User with privilege escalation by actions 'iam:AttachGroupPolicy'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_AttachRolePolicy",
+            "short_description": "User with privilege escalation by actions 'iam:AttachRolePolicy'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_AttachUserPolicy",
+            "short_description": "User with privilege escalation by actions 'iam:AttachUserPolicy'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_CreateAccessKey",
+            "short_description": "User with privilege escalation by actions 'iam:CreateAccessKey'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_CreateLoginProfile",
+            "short_description": "User with privilege escalation by actions 'iam:CreateLoginProfile'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_CreatePolicyVersion",
+            "short_description": "User with privilege escalation by actions 'iam:CreatePolicyVersion'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_PassRole_and_cloudformation_CreateStack",
+            "short_description": "User with privilege escalation by actions 'cloudformation:CreateStack' and 'iam:PassRole'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_PassRole_and_ec2_RunInstances",
+            "short_description": "User with privilege escalation by actions 'ec2:RunInstances' and 'iam:PassRole'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_PassRole_and_glue_CreateDevEndpoint",
+            "short_description": "User with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_PassRole_and_lambda_CreateFunction_and_lambda_InvokeFunction",
+            "short_description": "User with privilege escalation by actions 'lambda:CreateFunction' and 'iam:PassRole' and 'lambda:InvokeFunction'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_PutGroupPolicy",
+            "short_description": "User with privilege escalation by actions 'iam:PutGroupPolicy'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_PutRolePolicy",
+            "short_description": "User with privilege escalation by actions 'iam:PutRolePolicy'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_PutUserPolicy",
+            "short_description": "User with privilege escalation by actions 'iam:PutUserPolicy'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_SetDefaultPolicyVersion",
+            "short_description": "User with privilege escalation by actions 'iam:SetDefaultPolicyVersion'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_UpdateAssumeRolePolicy_and_sts_AssumeRole",
+            "short_description": "User with privilege escalation by actions 'iam:UpdateAssumeRolePolicy' and 'sts:AssumeRole'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_iam_UpdateLoginProfile",
+            "short_description": "User with privilege escalation by actions 'iam:UpdateLoginProfile'"
+          },
+          {
+            "name": "user_with_privilege_escalation_by_actions_lambda_UpdateFunctionCode",
+            "short_description": "User with privilege escalation by actions 'lambda:UpdateFunctionCode'"
+          },
+          {
+            "name": "vpc_default_security_group_accepts_all_traffic",
+            "short_description": "VPC default security group accepts all traffic"
+          },
+          {
+            "name": "vpc_flowlogs_disabled",
+            "short_description": "VPC Flow Logs disabled"
+          },
+          {
+            "name": "vpc_peering_route_table_with_unrestricted_cidr",
+            "short_description": "VPC peering route table with unrestricted CIDR"
+          },
+          {
+            "name": "vpc_subnet_assigns_public_ip",
+            "short_description": "VPC subnet assigns public IP"
+          },
+          {
+            "name": "vpc_without_network_firewall",
+            "short_description": "VPC without Network Firewall"
+          },
+          {
+            "name": "vulnerable_default_ssl_certificate",
+            "short_description": "Vulnerable default SSL certificate"
+          },
+          {
+            "name": "workspaces_workspace_volume_not_encrypted",
+            "short_description": "Workspaces workspace volume not encrypted"
+          }
+        ]
+      },
+      {
+        "name": "azure",
+        "short_description": "AZURE Rules",
+        "rules": [
+          {
+            "name": "ad_admin_not_configured_for_sql_server",
+            "short_description": "AD admin not configured for SQL server"
+          },
+          {
+            "name": "admin_user_enabled_for_container_registry",
+            "short_description": "Admin user enabled for container registry"
+          },
+          {
+            "name": "aks_disk_encryption_set_id_undefined",
+            "short_description": "AKS disk encryption set ID undefined"
+          },
+          {
+            "name": "aks_network_policy_misconfigured",
+            "short_description": "AKS network policy misconfigured"
+          },
+          {
+            "name": "aks_private_cluster_disabled",
+            "short_description": "AKS private cluster disabled"
+          },
+          {
+            "name": "aks_rbac_disabled",
+            "short_description": "AKS RBAC disabled"
+          },
+          {
+            "name": "aks_uses_azure_policies_addon_disabled",
+            "short_description": "Azure Policy Add-on Disabled in AKS Cluster"
+          },
+          {
+            "name": "app_service_authentication_disabled",
+            "short_description": "App Service authentication disabled"
+          },
+          {
+            "name": "app_service_ftps_enforce_disabled",
+            "short_description": "App Service FTPS enforce disabled"
+          },
+          {
+            "name": "app_service_http2_disabled",
+            "short_description": "App Service HTTP2 disabled"
+          },
+          {
+            "name": "app_service_managed_identity_disabled",
+            "short_description": "App Service managed identity disabled"
+          },
+          {
+            "name": "app_service_not_using_latest_tls_encryption_version",
+            "short_description": "App Service not using latest TLS encryption version"
+          },
+          {
+            "name": "app_service_without_latest_php_version",
+            "short_description": "App Service without latest PHP version"
+          },
+          {
+            "name": "app_service_without_latest_python_version",
+            "short_description": "App Service without latest Python version"
+          },
+          {
+            "name": "azure_active_directory_authentication",
+            "short_description": "Azure Active Directory authentication"
+          },
+          {
+            "name": "azure_app_service_client_certificate_disabled",
+            "short_description": "Azure App Service client certificate disabled"
+          },
+          {
+            "name": "azure_cognitive_search_public_network_access_enabled",
+            "short_description": "Azure Cognitive Search public network access enabled"
+          },
+          {
+            "name": "azure_container_registry_with_no_locks",
+            "short_description": "Azure Container Registry with no locks"
+          },
+          {
+            "name": "azure_front_door_waf_disabled",
+            "short_description": "Azure Front Door WAF disabled"
+          },
+          {
+            "name": "azure_instance_using_basic_authentication",
+            "short_description": "Azure instance using basic authentication"
+          },
+          {
+            "name": "cosmos_db_account_without_tags",
+            "short_description": "Cosmos DB account without tags"
+          },
+          {
+            "name": "cosmosdb_account_ip_range_filter_not_set",
+            "short_description": "CosmosDB account IP range filter not set"
+          },
+          {
+            "name": "dashboard_is_enabled",
+            "short_description": "Dashboard is enabled"
+          },
+          {
+            "name": "default_azure_storage_account_network_access_is_too_permissive",
+            "short_description": "Default Azure storage account network access is too permissive"
+          },
+          {
+            "name": "email_alerts_disabled",
+            "short_description": "Email alerts disabled"
+          },
+          {
+            "name": "encryption_on_managed_disk_disabled",
+            "short_description": "Encryption on managed disk disabled"
+          },
+          {
+            "name": "firewall_rule_allows_too_many_hosts_to_access_redis_cache",
+            "short_description": "Firewall rule allows too many hosts to access Redis Cache"
+          },
+          {
+            "name": "function_app_authentication_disabled",
+            "short_description": "Function App authentication disabled"
+          },
+          {
+            "name": "function_app_client_certificates_unrequired",
+            "short_description": "Function App client certificates not required"
+          },
+          {
+            "name": "function_app_ftps_enforce_disabled",
+            "short_description": "Function App FTPS enforce disabled"
+          },
+          {
+            "name": "function_app_http2_disabled",
+            "short_description": "Function App HTTP2 disabled"
+          },
+          {
+            "name": "function_app_managed_identity_disabled",
+            "short_description": "Function App managed identity disabled"
+          },
+          {
+            "name": "function_app_not_using_latest_tls_encryption_version",
+            "short_description": "Function App not using latest TLS encryption version"
+          },
+          {
+            "name": "geo_redundancy_is_disabled",
+            "short_description": "Geo redundancy is disabled"
+          },
+          {
+            "name": "key_expiration_not_set",
+            "short_description": "Key expiration not set"
+          },
+          {
+            "name": "key_vault_secrets_content_type_undefined",
+            "short_description": "Key Vault secrets content type undefined"
+          },
+          {
+            "name": "log_retention_is_not_set",
+            "short_description": "Log retention is not set"
+          },
+          {
+            "name": "mariadb_not_using_latest_tls",
+            "short_description": "Ensure Azure MariaDB server is using latest TLS (1.2)"
+          },
+          {
+            "name": "mariadb_public_network_access_enabled",
+            "short_description": "MariaDB server public network access enabled"
+          },
+          {
+            "name": "mariadb_server_georedundant_backup_disabled",
+            "short_description": "MariaDB server geo-redundant backup disabled"
+          },
+          {
+            "name": "mssql_server_auditing_disabled",
+            "short_description": "MSSQL server auditing disabled"
+          },
+          {
+            "name": "mssql_server_public_network_access_enabled",
+            "short_description": "MSSQL server public network access enabled"
+          },
+          {
+            "name": "mysql_enforce_ssl_connection_disabled",
+            "short_description": "ssl_enforcement_enabled is not set to ENABLED for MySQL database server"
+          },
+          {
+            "name": "mysql_not_using_latest_tls",
+            "short_description": "Ensure MySQL is using the latest version of TLS encryption"
+          },
+          {
+            "name": "mysql_server_public_access_enabled",
+            "short_description": "MySQL server public access enabled"
+          },
+          {
+            "name": "mysql_ssl_connection_disabled",
+            "short_description": "MySQL SSL connection disabled"
+          },
+          {
+            "name": "network_interfaces_ip_forwarding_enabled",
+            "short_description": "Network interfaces IP forwarding enabled"
+          },
+          {
+            "name": "network_interfaces_with_public_ip",
+            "short_description": "Network interfaces with public IP"
+          },
+          {
+            "name": "network_watcher_flow_disabled",
+            "short_description": "Network watcher flow disabled"
+          },
+          {
+            "name": "postgres_enforce_ssl_connection_disabled",
+            "short_description": "ssl_enforcement_enabled is not set to ENABLED for PostgreSQL database server"
+          },
+          {
+            "name": "postgres_sql_server_enables_public_access",
+            "short_description": "Ensure that PostgreSQL server disables public network access"
+          },
+          {
+            "name": "postgresql_log_checkpoints_disabled",
+            "short_description": "PostgreSQL log checkpoints disabled"
+          },
+          {
+            "name": "postgresql_log_connections_not_set",
+            "short_description": "PostgreSQL log connections not set"
+          },
+          {
+            "name": "postgresql_log_disconnections_not_set",
+            "short_description": "PostgreSQL log disconnections not set"
+          },
+          {
+            "name": "postgresql_log_duration_not_set",
+            "short_description": "PostgreSQL log duration not set"
+          },
+          {
+            "name": "postgresql_server_infrastructure_encryption_disabled",
+            "short_description": "PostgreSQL server infrastructure encryption disabled"
+          },
+          {
+            "name": "postgresql_server_threat_detection_policy_disabled",
+            "short_description": "PostgreSQL Server threat detection policy disabled"
+          },
+          {
+            "name": "postgresql_server_without_connection_throttling",
+            "short_description": "PostgreSQL server without connection throttling"
+          },
+          {
+            "name": "public_storage_account",
+            "short_description": "Public storage account"
+          },
+          {
+            "name": "rdp_is_exposed_to_the_internet",
+            "short_description": "RDP is exposed to the internet"
+          },
+          {
+            "name": "redis_cache_allows_non_ssl_connections",
+            "short_description": "Redis cache allows non SSL connections"
+          },
+          {
+            "name": "redis_entirely_accessible",
+            "short_description": "Redis entirely accessible"
+          },
+          {
+            "name": "redis_not_updated_regularly",
+            "short_description": "Redis not updated regularly"
+          },
+          {
+            "name": "redis_publicly_accessible",
+            "short_description": "Redis publicly accessible"
+          },
+          {
+            "name": "remote_debugging_enabled_app_service",
+            "short_description": "Ensure web app is not remotely debuggable"
+          },
+          {
+            "name": "role_assignment_not_limit_guest_users_permissions",
+            "short_description": "Role assignment not limit guest user permissions"
+          },
+          {
+            "name": "role_definition_allows_custom_role_creation",
+            "short_description": "Role definition allows custom role creation"
+          },
+          {
+            "name": "secret_expiration_not_set",
+            "short_description": "Secret expiration not set"
+          },
+          {
+            "name": "security_center_pricing_tier_is_not_standard",
+            "short_description": "Security center pricing tier is not standard"
+          },
+          {
+            "name": "security_contact_email",
+            "short_description": "Security contact email"
+          },
+          {
+            "name": "security_group_is_not_configured",
+            "short_description": "Security group is not configured"
+          },
+          {
+            "name": "sensitive_port_is_exposed_to_entire_network",
+            "short_description": "Sensitive port is exposed to entire network"
+          },
+          {
+            "name": "sensitive_port_is_exposed_to_small_public_network",
+            "short_description": "Sensitive port is exposed to small public network"
+          },
+          {
+            "name": "sensitive_port_is_exposed_to_wide_private_network",
+            "short_description": "Sensitive port is exposed to wide private network"
+          },
+          {
+            "name": "small_activity_log_retention_period",
+            "short_description": "Small activity log retention period"
+          },
+          {
+            "name": "small_flow_logs_retention_period",
+            "short_description": "Small flow logs retention period"
+          },
+          {
+            "name": "small_msql_server_audit_retention",
+            "short_description": "Small MSSQL server audit retention"
+          },
+          {
+            "name": "small_mssql_audit_retention_period",
+            "short_description": "Small MSSQL audit retention period"
+          },
+          {
+            "name": "small_postgresql_db_server_log_retention_period",
+            "short_description": "Small PostgreSQL DB server log retention period"
+          },
+          {
+            "name": "sql_database_audit_disabled",
+            "short_description": "SQL database audit disabled"
+          },
+          {
+            "name": "sql_server_alert_email_disabled",
+            "short_description": "SQL server alert email disabled"
+          },
+          {
+            "name": "sql_server_auditing_disabled",
+            "short_description": "SQL server auditing disabled"
+          },
+          {
+            "name": "sql_server_ingress_from_any_ip",
+            "short_description": "Sqlserver ingress from any IP"
+          },
+          {
+            "name": "sql_server_predictable_active_directory_admin_account_name",
+            "short_description": "SQL server predictable Active Directory admin account name"
+          },
+          {
+            "name": "sql_server_predictable_admin_account_name",
+            "short_description": "SQL server predictable admin account name"
+          },
+          {
+            "name": "ssh_is_exposed_to_the_internet",
+            "short_description": "SSH is exposed to the Internet"
+          },
+          {
+            "name": "ssl_enforce_is_disabled",
+            "short_description": "SSL enforce disabled"
+          },
+          {
+            "name": "storage_account_not_forcing_https",
+            "short_description": "Storage account not forcing HTTPS"
+          },
+          {
+            "name": "storage_account_not_using_latest_tls_encryption_version",
+            "short_description": "Storage account not using latest TLS encryption version"
+          },
+          {
+            "name": "storage_container_is_publicly_accessible",
+            "short_description": "Storage container is publicly accessible"
+          },
+          {
+            "name": "storage_share_file_allows_all_acl_permissions",
+            "short_description": "Storage share file allows all ACL permissions"
+          },
+          {
+            "name": "storage_table_allows_all_acl_permissions",
+            "short_description": "Storage table allows all ACL permissions"
+          },
+          {
+            "name": "team_tag_not_present",
+            "short_description": "Ensure that Azure cloud resource has a team tag"
+          },
+          {
+            "name": "trusted_microsoft_services_not_enabled",
+            "short_description": "Trusted Microsoft services not enabled"
+          },
+          {
+            "name": "udp_services_not_restricted_from_internet",
+            "short_description": "Ensure that UDP services are restricted from the Internet"
+          },
+          {
+            "name": "unrestricted_sql_server_access",
+            "short_description": "Unrestricted SQL server access"
+          },
+          {
+            "name": "vault_auditing_disabled",
+            "short_description": "Vault auditing disabled"
+          },
+          {
+            "name": "virtual_network_with_ddos_protection_plan_disabled",
+            "short_description": "Virtual network with DDoS protection plan disabled"
+          },
+          {
+            "name": "vm_not_attached_to_network",
+            "short_description": "VM not attached to network"
+          },
+          {
+            "name": "waf_is_disabled_for_azure_application_gateway",
+            "short_description": "WAF is disabled for Azure application gateway"
+          },
+          {
+            "name": "web_app_accepting_traffic_other_than_https",
+            "short_description": "Web app accepting traffic other than HTTPS"
+          }
+        ]
+      },
+      {
+        "name": "databricks",
+        "short_description": "DATABRICKS Rules",
+        "rules": [
+          {
+            "name": "autoscale_badly_setup",
+            "short_description": "Beta - Databricks autoscale configuration incomplete"
+          },
+          {
+            "name": "cluster_aws_attributes",
+            "short_description": "Beta - check Databricks cluster AWS attribute best practices"
+          },
+          {
+            "name": "cluster_azure_attributes",
+            "short_description": "Beta - check Databricks cluster Azure attribute best practices"
+          },
+          {
+            "name": "cluster_gcp_attributes",
+            "short_description": "Beta - check Databricks cluster GCP attribute best practices"
+          },
+          {
+            "name": "databricks_permissions",
+            "short_description": "Beta - Databricks cluster or job with none or insecure permissions"
+          },
+          {
+            "name": "group_without_user_or_instance_profile",
+            "short_description": "Beta - Databricks group without user or instance profile"
+          },
+          {
+            "name": "indefinitely_obo_token",
+            "short_description": "Beta - Databricks OBO token has indefinite lifetime"
+          },
+          {
+            "name": "indefinitely_token",
+            "short_description": "Beta - Databricks token has indefinite lifetime"
+          },
+          {
+            "name": "unrestricted_acl",
+            "short_description": "Beta - unrestricted Databricks ACL"
+          },
+          {
+            "name": "use_lts_spark_version",
+            "short_description": "Beta - Databricks cluster uses non-LTS Spark version"
+          },
+          {
+            "name": "use_spark_submit_task",
+            "short_description": "Beta - job's task is legacy (spark_submit_task)"
+          }
+        ]
+      },
+      {
+        "name": "gcp",
+        "short_description": "GCP Rules",
+        "rules": [
+          {
+            "name": "artifact_registry_repository_is_public",
+            "short_description": "Artifact Registry repo is public"
+          },
+          {
+            "name": "bigquery_dataset_is_public",
+            "short_description": "BigQuery dataset is public"
+          },
+          {
+            "name": "bigquery_table_is_public",
+            "short_description": "BigQuery table is public"
+          },
+          {
+            "name": "cloud_dns_without_dnssec",
+            "short_description": "Cloud DNS without DNSSEC"
+          },
+          {
+            "name": "cloud_kms_key_rings_are_public",
+            "short_description": "Cloud KMS key ring is anonymously or publicly accessible"
+          },
+          {
+            "name": "cloud_run_service_is_public",
+            "short_description": "Cloud Run service is public"
+          },
+          {
+            "name": "cloud_storage_anonymous_or_publicly_accessible",
+            "short_description": "Cloud Storage is anonymous or publicly accessible"
+          },
+          {
+            "name": "cloud_storage_bucket_is_publicly_accessible",
+            "short_description": "Cloud Storage bucket is publicly accessible"
+          },
+          {
+            "name": "cloud_storage_bucket_logging_not_enabled",
+            "short_description": "Cloud Storage bucket logging not enabled"
+          },
+          {
+            "name": "cloud_storage_bucket_versioning_disabled",
+            "short_description": "Cloud Storage bucket versioning disabled"
+          },
+          {
+            "name": "cluster_labels_disabled",
+            "short_description": "Cluster labels disabled"
+          },
+          {
+            "name": "container_registry_repository_is_public",
+            "short_description": "Container Registry repo is public"
+          },
+          {
+            "name": "cos_node_image_not_used",
+            "short_description": "COS node image not used"
+          },
+          {
+            "name": "dataproc_cluster_has_public_ip",
+            "short_description": "Dataproc clusters has public IPs"
+          },
+          {
+            "name": "dataproc_clusters_is_public",
+            "short_description": "Dataproc clusters publicly accessible"
+          },
+          {
+            "name": "disk_encryption_disabled",
+            "short_description": "Disk encryption disabled"
+          },
+          {
+            "name": "dnssec_using_rsasha1",
+            "short_description": "DNSSEC using RSASHA1"
+          },
+          {
+            "name": "firewall_ingress_allows_unrestricted_ftp_access",
+            "short_description": "Google Compute firewall ingress allows unrestricted FTP access"
+          },
+          {
+            "name": "firewall_ingress_allows_unrestricted_mysql_access",
+            "short_description": "Google Compute firewall ingress allows unrestricted MySQL access"
+          },
+          {
+            "name": "gke_control_plane_is_public",
+            "short_description": "GKE control plane is public"
+          },
+          {
+            "name": "gke_legacy_authorization_enabled",
+            "short_description": "GKE legacy authorization enabled"
+          },
+          {
+            "name": "gke_using_default_service_account",
+            "short_description": "GKE using default service account"
+          },
+          {
+            "name": "google_compute_network_using_default_firewall_rule",
+            "short_description": "Google Compute network using default firewall rule"
+          },
+          {
+            "name": "google_compute_network_using_firewall_rule_allows_all_ports",
+            "short_description": "Google Compute network using firewall rule that allows all ports"
+          },
+          {
+            "name": "google_compute_network_using_firewall_rule_allows_port_range",
+            "short_description": "Google Compute network using firewall rule that allows port range"
+          },
+          {
+            "name": "google_compute_ssl_policy_weak_cipher_in_use",
+            "short_description": "Google Compute SSL policy weak cipher in use"
+          },
+          {
+            "name": "google_compute_subnetwork_logging_disabled",
+            "short_description": "Google Compute subnetwork logging disabled"
+          },
+          {
+            "name": "google_compute_subnetwork_with_private_google_access_disabled",
+            "short_description": "Google Compute subnetwork with private Google access disabled"
+          },
+          {
+            "name": "google_container_node_pool_auto_repair_disabled",
+            "short_description": "Google Container node pool auto repair disabled"
+          },
+          {
+            "name": "google_project_auto_create_network_disabled",
+            "short_description": "Google project auto create network disabled"
+          },
+          {
+            "name": "google_project_iam_binding_service_account_has_token_creator_or_account_user_role",
+            "short_description": "Google project IAM binding service account has token creator or account user role"
+          },
+          {
+            "name": "google_project_iam_member_service_account_has_admin_role",
+            "short_description": "Google project IAM member service account has admin role"
+          },
+          {
+            "name": "google_project_iam_member_service_account_has_token_creator_or_account_user_role",
+            "short_description": "Google project IAM member service account has token creator or account user role"
+          },
+          {
+            "name": "google_storage_bucket_level_access_disabled",
+            "short_description": "Google Storage bucket level access disabled"
+          },
+          {
+            "name": "high_google_kms_crypto_key_rotation_period",
+            "short_description": "High Google KMS crypto key rotation period"
+          },
+          {
+            "name": "iam_audit_not_properly_configured",
+            "short_description": "IAM audit not properly configured"
+          },
+          {
+            "name": "ip_aliasing_disabled",
+            "short_description": "IP aliasing disabled"
+          },
+          {
+            "name": "ip_forwarding_enabled",
+            "short_description": "IP forwarding enabled"
+          },
+          {
+            "name": "kms_admin_and_crypto_key_roles_in_use",
+            "short_description": "KMS admin and CryptoKey roles in use"
+          },
+          {
+            "name": "kms_crypto_key_publicly_accessible",
+            "short_description": "KMS CryptoKey is publicly accessible"
+          },
+          {
+            "name": "legacy_client_certificate_auth_enabled",
+            "short_description": "Legacy client certificate auth enabled"
+          },
+          {
+            "name": "legacy_networks_exist_for_project",
+            "short_description": "Ensure legacy networks do not exist for a project"
+          },
+          {
+            "name": "network_policy_disabled",
+            "short_description": "Network policy disabled"
+          },
+          {
+            "name": "node_auto_upgrade_disabled",
+            "short_description": "Node auto upgrade disabled"
+          },
+          {
+            "name": "not_proper_email_account_in_use",
+            "short_description": "Not proper email account in use"
+          },
+          {
+            "name": "os_login_disabled",
+            "short_description": "OSLogin disabled"
+          },
+          {
+            "name": "os_login_is_disabled_for_vm_instance",
+            "short_description": "OSLogin is disabled for VM instance"
+          },
+          {
+            "name": "outdated_gke_version",
+            "short_description": "Outdated GKE version"
+          },
+          {
+            "name": "pod_security_policy_disabled",
+            "short_description": "Pod security policy disabled"
+          },
+          {
+            "name": "private_cluster_disabled",
+            "short_description": "Private cluster disabled"
+          },
+          {
+            "name": "project_wide_ssh_keys_are_enabled_in_vm_instances",
+            "short_description": "Project-wide SSH keys are enabled in VM instances"
+          },
+          {
+            "name": "pubsub_topic_is_public",
+            "short_description": "Pub/Sub Topics are anonymously or publicly accessible"
+          },
+          {
+            "name": "rdp_access_is_not_restricted",
+            "short_description": "RDP access is not restricted"
+          },
+          {
+            "name": "service_account_with_improper_privileges",
+            "short_description": "Service account with improper privileges"
+          },
+          {
+            "name": "service_has_non_gcp_managed_service_account_keys",
+            "short_description": "There are non GCP-managed service account keys for a service account"
+          },
+          {
+            "name": "shielded_gke_nodes_disabled",
+            "short_description": "Shielded GKE nodes disabled"
+          },
+          {
+            "name": "shielded_vm_disabled",
+            "short_description": "Shielded VM disabled"
+          },
+          {
+            "name": "sql_database_has_cross_db_ownership_chaining",
+            "short_description": "SQL Server cross DB ownership chaining enabled"
+          },
+          {
+            "name": "sql_database_instance_does_not_have_skip_show_database",
+            "short_description": "Ensure SQL database instance has skip show database flag"
+          },
+          {
+            "name": "sql_db_instance_backup_disabled",
+            "short_description": "SQL DB instance backup disabled"
+          },
+          {
+            "name": "sql_db_instance_is_publicly_accessible",
+            "short_description": "SQL DB instance publicly accessible"
+          },
+          {
+            "name": "sql_db_instance_with_ssl_disabled",
+            "short_description": "SQL DB instance with SSL disabled"
+          },
+          {
+            "name": "ssh_access_is_not_restricted",
+            "short_description": "SSH access is not restricted"
+          },
+          {
+            "name": "stackdriver_logging_disabled",
+            "short_description": "Stackdriver Logging disabled"
+          },
+          {
+            "name": "stackdriver_monitoring_disabled",
+            "short_description": "Stackdriver Monitoring disabled"
+          },
+          {
+            "name": "team_label_not_present",
+            "short_description": "Team label missing on GCP resource"
+          },
+          {
+            "name": "user_with_iam_role",
+            "short_description": "User with IAM role"
+          },
+          {
+            "name": "using_default_service_account",
+            "short_description": "Using default service account"
+          },
+          {
+            "name": "vm_serial_ports_are_enabled_for_vm_instances",
+            "short_description": "Serial ports are enabled for VM instances"
+          },
+          {
+            "name": "vm_with_full_cloud_access",
+            "short_description": "VM with full cloud access"
+          }
+        ]
+      },
+      {
+        "name": "general",
+        "short_description": "GENERAL Rules",
+        "rules": [
+          {
+            "name": "generic_git_module_without_revision",
+            "short_description": "Generic Git module without revision"
+          },
+          {
+            "name": "output_without_description",
+            "short_description": "Output without description"
+          },
+          {
+            "name": "variable_without_description",
+            "short_description": "Variable without description"
+          },
+          {
+            "name": "variable_without_type",
+            "short_description": "Variable without type"
+          }
+        ]
+      },
+      {
+        "name": "github",
+        "short_description": "GITHUB Rules",
+        "rules": [
+          {
+            "name": "github_organization_webhook_with_ssl_disabled",
+            "short_description": "Github organization webhook with SSL disabled"
+          },
+          {
+            "name": "github_repository_set_to_public",
+            "short_description": "GitHub repository set to public"
+          }
+        ]
+      },
+      {
+        "name": "kubernetes",
+        "short_description": "KUBERNETES Rules",
+        "rules": [
+          {
+            "name": "cluster_admin_role_binding_with_super_user_permissions",
+            "short_description": "Cluster admin rolebinding with superuser permissions"
+          },
+          {
+            "name": "cluster_allows_unsafe_sysctls",
+            "short_description": "Cluster allows unsafe sysctls"
+          },
+          {
+            "name": "container_host_pid_is_true",
+            "short_description": "Container host PID is true"
+          },
+          {
+            "name": "container_is_privileged",
+            "short_description": "Container is privileged"
+          },
+          {
+            "name": "container_resources_limits_undefined",
+            "short_description": "Container resources limits undefined"
+          },
+          {
+            "name": "container_runs_unmasked",
+            "short_description": "Container runs unmasked"
+          },
+          {
+            "name": "container_with_added_capabilities",
+            "short_description": "Containers with added capabilities"
+          },
+          {
+            "name": "containers_with_sys_admin_capabilities",
+            "short_description": "Containers with sys admin capabilities"
+          },
+          {
+            "name": "cpu_limits_not_set",
+            "short_description": "CPU limits not set"
+          },
+          {
+            "name": "cpu_requests_not_set",
+            "short_description": "CPU requests not set"
+          },
+          {
+            "name": "cronjob_deadline_not_configured",
+            "short_description": "CronJob deadline not configured"
+          },
+          {
+            "name": "default_service_account_in_use",
+            "short_description": "Default service account in use"
+          },
+          {
+            "name": "deployment_has_no_pod_anti_affinity",
+            "short_description": "Deployment has no podAntiAffinity"
+          },
+          {
+            "name": "deployment_without_pod_disruption_budget",
+            "short_description": "Deployment without PodDisruptionBudget"
+          },
+          {
+            "name": "docker_daemon_socket_is_exposed_to_containers",
+            "short_description": "Docker daemon socket is exposed to containers"
+          },
+          {
+            "name": "hpa_targets_invalid_object",
+            "short_description": "HPA targets invalid object"
+          },
+          {
+            "name": "image_pull_policy_of_container_is_not_always",
+            "short_description": "Image pull policy of the container is not set to always"
+          },
+          {
+            "name": "image_without_digest",
+            "short_description": "Image without digest"
+          },
+          {
+            "name": "incorrect_volume_claim_access_mode_read_write_once",
+            "short_description": "Incorrect volume claim access mode ReadWriteOnce"
+          },
+          {
+            "name": "ingress_controller_exposes_workload",
+            "short_description": "Ingress controller exposes workload"
+          },
+          {
+            "name": "invalid_image",
+            "short_description": "Invalid image"
+          },
+          {
+            "name": "liveness_probe_is_not_defined",
+            "short_description": "Liveness probe is not defined"
+          },
+          {
+            "name": "memory_limits_not_defined",
+            "short_description": "Memory limits not defined"
+          },
+          {
+            "name": "memory_requests_not_defined",
+            "short_description": "Memory requests not defined"
+          },
+          {
+            "name": "metadata_label_is_invalid",
+            "short_description": "Metadata label is invalid"
+          },
+          {
+            "name": "missing_app_armor_config",
+            "short_description": "Missing AppArmor config"
+          },
+          {
+            "name": "net_raw_capabilities_disabled_for_psp",
+            "short_description": "NET_RAW capabilities disabled for PSP"
+          },
+          {
+            "name": "net_raw_capabilities_not_being_dropped",
+            "short_description": "NET_RAW capabilities not being dropped"
+          },
+          {
+            "name": "network_policy_is_not_targeting_any_pod",
+            "short_description": "Network policy is not targeting any pod"
+          },
+          {
+            "name": "no_drop_capabilities_for_containers",
+            "short_description": "No drop capabilities for containers"
+          },
+          {
+            "name": "non_kube_system_pod_with_host_mount",
+            "short_description": "Non kube system pod with host mount"
+          },
+          {
+            "name": "permissive_access_to_create_pods",
+            "short_description": "Permissive access to create pods"
+          },
+          {
+            "name": "pod_or_container_without_security_context",
+            "short_description": "Pod or container without security context"
+          },
+          {
+            "name": "privilege_escalation_allowed",
+            "short_description": "Privilege escalation allowed"
+          },
+          {
+            "name": "psp_allows_containers_to_share_the_host_network_namespace",
+            "short_description": "PSP allows containers to share the host network namespace"
+          },
+          {
+            "name": "psp_allows_privilege_escalation",
+            "short_description": "PSP allows privilege escalation"
+          },
+          {
+            "name": "psp_allows_sharing_host_ipc",
+            "short_description": "PSP allows sharing host IPC"
+          },
+          {
+            "name": "psp_set_to_privileged",
+            "short_description": "PSP set to privileged"
+          },
+          {
+            "name": "psp_with_added_capabilities",
+            "short_description": "PSP with added capabilities"
+          },
+          {
+            "name": "rbac_roles_with_read_secrets_permissions",
+            "short_description": "RBAC roles with read secrets permissions"
+          },
+          {
+            "name": "readiness_probe_is_not_configured",
+            "short_description": "Readiness probe is not configured"
+          },
+          {
+            "name": "role_binding_to_default_service_account",
+            "short_description": "Role binding to default service account"
+          },
+          {
+            "name": "root_container_not_mounted_as_read_only",
+            "short_description": "Root container not mounted as read-only"
+          },
+          {
+            "name": "root_containers_admitted",
+            "short_description": "Root containers admitted"
+          },
+          {
+            "name": "secoomp_profile_is_not_configured",
+            "short_description": "Seccomp profile is not configured"
+          },
+          {
+            "name": "secrets_as_environment_variables",
+            "short_description": "Secrets as environment variables"
+          },
+          {
+            "name": "service_account_allows_access_secrets",
+            "short_description": "Service account allows access secrets"
+          },
+          {
+            "name": "service_account_name_undefined_or_empty",
+            "short_description": "Service account name undefined or empty"
+          },
+          {
+            "name": "service_account_token_automount_not_disabled",
+            "short_description": "Service account token automount not disabled"
+          },
+          {
+            "name": "service_type_is_nodeport",
+            "short_description": "Service type is NodePort"
+          },
+          {
+            "name": "service_with_external_load_balancer",
+            "short_description": "Service with external load balancer"
+          },
+          {
+            "name": "shared_host_ipc_namespace",
+            "short_description": "Shared host IPC namespace"
+          },
+          {
+            "name": "shared_host_network_namespace",
+            "short_description": "Shared host network namespace"
+          },
+          {
+            "name": "shared_service_account",
+            "short_description": "Shared service account"
+          },
+          {
+            "name": "statefulset_requests_storage",
+            "short_description": "StatefulSet requests storage"
+          },
+          {
+            "name": "statefulset_without_pod_disruption_budget",
+            "short_description": "StatefulSet without PodDisruptionBudget"
+          },
+          {
+            "name": "statefulset_without_service_name",
+            "short_description": "StatefulSet without service name"
+          },
+          {
+            "name": "tiller_is_deployed",
+            "short_description": "Tiller (Helm v2) is deployed"
+          },
+          {
+            "name": "using_default_namespace",
+            "short_description": "Using default namespace"
+          },
+          {
+            "name": "volume_mount_with_os_directory_write_permissions",
+            "short_description": "Volume mount with OS directory write permissions"
+          },
+          {
+            "name": "workload_host_port_not_specified",
+            "short_description": "Workload host port not specified"
+          },
+          {
+            "name": "workload_mounting_with_sensitive_os_directory",
+            "short_description": "Workload mounting with sensitive OS directory"
+          }
+        ]
+      },
+      {
+        "name": "nifcloud",
+        "short_description": "NIFCLOUD Rules",
+        "rules": [
+          {
+            "name": "computing_instance_has_common_private",
+            "short_description": "Beta - Nifcloud computing has common private network"
+          },
+          {
+            "name": "computing_instance_has_public_ingress_sgr",
+            "short_description": "Beta - Nifcloud computing has public ingress security group rule"
+          },
+          {
+            "name": "computing_instance_security_group_undefined",
+            "short_description": "Beta - Nifcloud computing undefined security group to instance"
+          },
+          {
+            "name": "computing_security_group_description_undefined",
+            "short_description": "Beta - Nifcloud computing undefined description to security group"
+          },
+          {
+            "name": "computing_security_group_rule_description_undefined",
+            "short_description": "Beta - Nifcloud computing undefined description to security group rule"
+          },
+          {
+            "name": "db_does_not_have_long_backup_retention",
+            "short_description": "Beta - Nifcloud RDB has backup retention less than 2 days"
+          },
+          {
+            "name": "db_has_public_access",
+            "short_description": "Beta - Nifcloud RDB has public DB access"
+          },
+          {
+            "name": "db_instance_has_common_private",
+            "short_description": "Beta - Nifcloud RDB has common private network"
+          },
+          {
+            "name": "db_security_group_description_undefined",
+            "short_description": "Beta - Nifcloud RDB undefined description to DB security group"
+          },
+          {
+            "name": "db_security_group_has_public_ingress_sgr",
+            "short_description": "Beta - Nifcloud RDB has public DB ingress security group rule"
+          },
+          {
+            "name": "dns_has_verified_record",
+            "short_description": "Beta - Nifcloud DNS has verified record"
+          },
+          {
+            "name": "elb_has_common_private",
+            "short_description": "Beta - Nifcloud ELB has common private network"
+          },
+          {
+            "name": "elb_listener_use_http",
+            "short_description": "Beta - Nifcloud ELB listener use HTTP protocol"
+          },
+          {
+            "name": "elb_use_http",
+            "short_description": "Beta - Nifcloud ELB use HTTP protocol"
+          },
+          {
+            "name": "load_balancer_listener_use_http",
+            "short_description": "Beta - Nifcloud LB listener use HTTP port"
+          },
+          {
+            "name": "load_balancer_use_http",
+            "short_description": "Beta - Nifcloud LB use HTTP port"
+          },
+          {
+            "name": "load_balancer_use_insecure_tls_policy_id",
+            "short_description": "Beta - Nifcloud LB use insecure TLS policy ID"
+          },
+          {
+            "name": "load_balancer_use_insecure_tls_policy_name",
+            "short_description": "Beta - Nifcloud LB use insecure TLS policy name"
+          },
+          {
+            "name": "nas_instance_has_common_private",
+            "short_description": "Beta - Nifcloud NAS has common private network"
+          },
+          {
+            "name": "nas_security_group_description_undefined",
+            "short_description": "Beta - Nifcloud NAS undefined description to NAS security group"
+          },
+          {
+            "name": "nas_security_group_has_public_ingress_sgr",
+            "short_description": "Beta - Nifcloud NAS has public ingress NAS security group rule"
+          },
+          {
+            "name": "router_has_common_private",
+            "short_description": "Beta - Nifcloud router has common private network"
+          },
+          {
+            "name": "router_security_group_undefined",
+            "short_description": "Beta - Nifcloud router undefined security group to router"
+          },
+          {
+            "name": "vpn_gateway_security_group_undefined",
+            "short_description": "Beta - Nifcloud VPN gateway undefined security group to VPN gateway"
+          }
+        ]
+      },
+      {
+        "name": "tencentcloud",
+        "short_description": "TENCENTCLOUD Rules",
+        "rules": [
+          {
+            "name": "cdb_instance_internet_service_enabled",
+            "short_description": "Beta - CDB instance internet service enabled"
+          },
+          {
+            "name": "cdb_instance_using_default_intranet_port",
+            "short_description": "Beta - CDB instance internet using default intranet port"
+          },
+          {
+            "name": "cdb_instance_without_backup_policy",
+            "short_description": "Beta - CDB instance without backup policy"
+          },
+          {
+            "name": "clb_instance_log_setting_disabled",
+            "short_description": "Beta - CLB instance log setting disabled"
+          },
+          {
+            "name": "clb_listener_using_insecure_protocols",
+            "short_description": "Beta - CLB listener using insecure protocols"
+          },
+          {
+            "name": "cvm_instance_disable_monitor_service",
+            "short_description": "Beta - CVM instance disable monitor service"
+          },
+          {
+            "name": "cvm_instance_has_public_ip",
+            "short_description": "Beta - CVM instance has public IP"
+          },
+          {
+            "name": "cvm_instance_using_default_security_group",
+            "short_description": "Beta - CVM instance using default security group"
+          },
+          {
+            "name": "cvm_instance_using_default_vpc",
+            "short_description": "Beta - CVM instance using default VPC"
+          },
+          {
+            "name": "cvm_instance_using_user_data",
+            "short_description": "Beta - CVM instance using user data"
+          },
+          {
+            "name": "disk_encryption_disabled",
+            "short_description": "Beta - disk encryption disabled"
+          },
+          {
+            "name": "security_group_rule_set_accepts_all_traffic",
+            "short_description": "Beta - security group rule set accepts all traffic"
+          },
+          {
+            "name": "tke_cluster_encryption_protection_disabled",
+            "short_description": "Beta - TKE cluster encryption protection disabled"
+          },
+          {
+            "name": "tke_cluster_has_public_access",
+            "short_description": "Beta - TKE cluster has public access"
+          },
+          {
+            "name": "tke_cluster_log_disabled",
+            "short_description": "Beta - TKE cluster log agent is not enabled"
+          },
+          {
+            "name": "vpc_flow_log_disabled",
+            "short_description": "Beta - VPC flow logs disabled"
+          }
+        ]
+      }
+    ]
+  }
+]

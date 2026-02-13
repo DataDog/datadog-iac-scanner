@@ -1,0 +1,10 @@
+NAME:
+   datadog-iac-scanner scan - Analyzes the content of a repository
+
+USAGE:
+   datadog-iac-scanner scan [options]
+
+{{.ScanHelp}}
+GLOBAL OPTIONS:
+   --log-format string  log format (pretty, json) (default: "pretty")
+   --log-level string   minimum log level to display (trace, debug, info, warn, error, fatal, panic, disable) (default: "error")

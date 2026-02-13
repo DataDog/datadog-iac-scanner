@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "Cognito user pool without MFA",
+    "severity": "LOW",
+    "line": 1
+  },
+  {
+    "queryName": "Cognito user pool without MFA",
+    "severity": "LOW",
+    "line": 16
+  },
+  {
+    "queryName": "Cognito user pool without MFA",
+    "severity": "LOW",
+    "line": 32
+  }
+]

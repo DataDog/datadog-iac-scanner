@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "SNS topic is publicly accessible",
+    "severity": "CRITICAL",
+    "line": 2,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "SNS topic is publicly accessible",
+    "severity": "CRITICAL",
+    "line": 12,
+    "fileName": "positive_module.tf"
+  }
+]

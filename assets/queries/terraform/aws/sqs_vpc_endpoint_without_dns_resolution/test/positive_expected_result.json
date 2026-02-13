@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "SQS VPC endpoint without DNS resolution",
+    "severity": "LOW",
+    "line": 95,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "SQS VPC endpoint without DNS resolution",
+    "severity": "LOW",
+    "line": 13,
+    "fileName": "positive2.tf"
+  }
+]

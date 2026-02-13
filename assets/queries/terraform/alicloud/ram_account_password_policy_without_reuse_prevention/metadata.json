@@ -1,0 +1,13 @@
+{
+  "id": "a8128dd2-89b0-464b-98e9-5d629041dfe0",
+  "queryName": "RAM account password policy without reuse prevention",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "The RAM account password policy attribute `password_reuse_prevention` should be defined and set to `24` or less. If `password_reuse_prevention` is missing, the rule reports a `MissingAttribute` issue and recommends adding `password_reuse_prevention = 24`. If it is present but set to a value greater than `24`, the rule reports an `IncorrectValue` issue and recommends replacing it with `24`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_account_password_policy_without_reuse_prevention",
+  "platform": "Terraform",
+  "descriptionID": "2210f1f7",
+  "cloudProvider": "alicloud",
+  "cwe": "521",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ram_account_password_policy#password_reuse_prevention"
+}

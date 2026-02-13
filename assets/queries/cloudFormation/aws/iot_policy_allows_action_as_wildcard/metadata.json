@@ -1,0 +1,13 @@
+{
+  "id": "4d32780f-43a4-424a-a06d-943c543576a5",
+  "queryName": "IoT policy allows action as a wildcard",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "IoT policies that grant the wildcard action `*` with an `Allow` effect are overly permissive and can enable principals to perform any IoT operation. This increases the risk of device takeover, unauthorized message publishing or subscribing, and configuration changes.\n\nIn AWS CloudFormation, inspect `AWS::IoT::Policy` resources' `Properties.PolicyDocument.Statement` entries. A `Statement` with `Effect: Allow` and `Action` equal to `*` (or containing `*` in an action array) is a misconfiguration. This rule flags those statements. Follow least privilege by enumerating only the specific `iot:*` actions required and scoping the `Resource` ARNs to the minimum necessary. \n\nExample secure configuration restricting actions and resources:\n\n```yaml\nMyIotPolicy:\n  Type: AWS::IoT::Policy\n  Properties:\n    PolicyDocument:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Action:\n            - \"iot:Connect\"\n            - \"iot:Publish\"\n            - \"iot:Subscribe\"\n            - \"iot:Receive\"\n          Resource: \"arn:aws:iot:us-west-2:123456789012:client/my-device-*\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iot_policy_allows_action_as_wildcard",
+  "platform": "CloudFormation",
+  "descriptionID": "e4417496",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iot-policy.html"
+}

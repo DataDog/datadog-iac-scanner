@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Cloud KMS key ring is anonymously or publicly accessible",
+    "severity": "HIGH",
+    "line": 4
+  },
+  {
+    "queryName": "Cloud KMS key ring is anonymously or publicly accessible",
+    "severity": "HIGH",
+    "line": 11
+  }
+]

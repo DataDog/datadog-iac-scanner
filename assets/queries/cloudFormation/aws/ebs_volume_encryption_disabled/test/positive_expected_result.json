@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "EBS volume encryption disabled",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "EBS volume encryption disabled",
+    "severity": "HIGH",
+    "line": 8,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "EBS volume encryption disabled",
+    "severity": "HIGH",
+    "line": 15,
+    "fileName": "positive3.json"
+  },
+  {
+    "queryName": "EBS volume encryption disabled",
+    "severity": "HIGH",
+    "line": 6,
+    "fileName": "positive4.json"
+  }
+]

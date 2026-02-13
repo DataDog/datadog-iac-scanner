@@ -1,0 +1,13 @@
+{
+  "id": "ffee2785-c347-451e-89f3-11aeb08e5c84",
+  "queryName": "CMK unencrypted storage",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Storage encryption must be enabled for database and analytics clusters to protect data at rest and prevent exposure of sensitive data in volumes, snapshots, and backups if storage media or snapshots are compromised. In CloudFormation, the `StorageEncrypted` property must be defined and set to `true` for `AWS::RDS::DBInstance`, `AWS::RDS::DBCluster`, `AWS::RDS::GlobalCluster`, `AWS::DocDB::DBCluster`, and `AWS::Neptune::DBCluster`. For `AWS::Redshift::Cluster`, the `Encrypted` property must be defined and set to `true`. Resources missing these properties or with the properties set to `false` will be flagged.\n\nSecure configuration examples:\n\n```yaml\nMyRdsInstance:\n  Type: AWS::RDS::DBInstance\n  Properties:\n    DBInstanceIdentifier: my-db\n    StorageEncrypted: true\n```\n\n```yaml\nMyRedshiftCluster:\n  Type: AWS::Redshift::Cluster\n  Properties:\n    ClusterIdentifier: my-redshift\n    Encrypted: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cmk_unencrypted_storage",
+  "platform": "CloudFormation",
+  "descriptionID": "ba38e42e",
+  "cloudProvider": "aws",
+  "cwe": "312",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-rds-database-instance.html"
+}

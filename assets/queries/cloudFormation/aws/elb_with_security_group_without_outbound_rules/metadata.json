@@ -1,0 +1,13 @@
+{
+  "id": "01d5a458-a6c4-452a-ac50-054d59275b7c",
+  "queryName": "ELB with security group without outbound rules",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Load balancers that are attached to security groups with no outbound rules, or without explicitly defined egress, may be unable to reach backend targets, perform health checks, or connect to logging and monitoring services. This can cause availability and operational failures.\n \n For load balancer resources (`AWS::ElasticLoadBalancing::LoadBalancer` and `AWS::ElasticLoadBalancingV2::LoadBalancer`), examine each security group referenced in the resource’s `SecurityGroups` list and validate the corresponding `AWS::EC2::SecurityGroup` defines the `SecurityGroupEgress` property. Resources missing `SecurityGroupEgress` or with `SecurityGroupEgress` set to an empty list will be flagged. The `SecurityGroupEgress` list must contain at least one egress rule that permits the required outbound traffic and should use narrow CIDRs, ports, or security-group destinations rather than broad `0.0.0.0/0` when possible.\n\nSecure example with an explicit outbound rule allowing HTTPS egress:\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Allow load balancer outbound HTTPS to targets\n    VpcId: vpc-01234567\n    SecurityGroupEgress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        CidrIp: 10.0.0.0/16\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elb_with_security_group_without_outbound_rules",
+  "platform": "CloudFormation",
+  "descriptionID": "7b876844",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html#cfn-ec2-securitygroup-securitygroupegress"
+}

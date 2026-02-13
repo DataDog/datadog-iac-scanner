@@ -1,0 +1,20 @@
+[
+  {
+    "queryName": "Kubelet not managing IP tables",
+    "severity": "MEDIUM",
+    "line": 11,
+    "filename": "positive1.yaml"
+  },
+  {
+    "queryName": "Kubelet not managing IP tables",
+    "severity": "MEDIUM",
+    "line": 8,
+    "filename": "positive2.yaml"
+  },
+  {
+    "queryName": "Kubelet not managing IP tables",
+    "severity": "MEDIUM",
+    "line": 7,
+    "filename": "positive3.json"
+  }
+]

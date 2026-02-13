@@ -1,0 +1,13 @@
+{
+  "id": "0461b4fd-21ef-4687-929e-484ee4796785",
+  "queryName": "Log Retention Is Not Set",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Make sure that for PostgreSQL Database, server parameter 'log_retention' is set to 'ON'",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/log_retention_is_not_set",
+  "platform": "Ansible",
+  "descriptionID": "bf371036",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_postgresqlconfiguration_module.html"
+}

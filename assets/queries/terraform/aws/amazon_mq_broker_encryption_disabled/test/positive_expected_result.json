@@ -1,0 +1,13 @@
+[
+  {
+    "queryName": "AmazonMQ broker encryption disabled",
+    "severity": "HIGH",
+    "line": 1
+  },
+  {
+    "queryName": "AmazonMQ broker encryption disabled",
+    "severity": "HIGH",
+    "line": 1,
+    "filename": "positive_module.tf"
+  }
+]

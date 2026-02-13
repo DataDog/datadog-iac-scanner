@@ -1,0 +1,13 @@
+{
+  "id": "2a3560fe-52ca-4443-b34f-bf0ed5eb74c8",
+  "queryName": "CloudTrail log file validation disabled",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "CloudTrail log file validation must be enabled to detect tampering or unauthorized modification of delivered log files and to support reliable forensic investigations and compliance auditing. The `EnableLogFileValidation` property on `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources that omit `EnableLogFileValidation` or set it to `false` will be flagged as a security risk. Enabling validation causes CloudTrail to create digest files that allow verification of the integrity of log files stored in the S3 bucket.\n\nSecure CloudFormation example:\n\n```yaml\nMyTrail:\n  Type: AWS::CloudTrail::Trail\n  Properties:\n    TrailName: my-trail\n    S3BucketName: my-trail-bucket\n    IsLogging: true\n    EnableLogFileValidation: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudtrail_log_file_validation_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "66ab1b20",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-cloudtrail-trail.html#cfn-cloudtrail-trail-enablelogfilevalidation"
+}

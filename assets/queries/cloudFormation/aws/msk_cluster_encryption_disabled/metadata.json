@@ -1,0 +1,13 @@
+{
+  "id": "a976d63f-af0e-46e8-b714-8c1a9c4bf768",
+  "queryName": "MSK cluster encryption disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "MSK clusters must have encryption enabled for data at rest and in transit to prevent unauthorized access, eavesdropping, and tampering of Kafka messages and backups. In AWS CloudFormation, `AWS::MSK::Cluster` resources must define `EncryptionInfo`. `EncryptionInfo.EncryptionInTransit.ClientBroker` must be set to `TLS` and `EncryptionInfo.EncryptionInTransit.InCluster` must be set to `true`. Resources missing `EncryptionInfo`, with `ClientBroker` set to other values (for example, `PLAINTEXT` or `TLS_PLAINTEXT`), or with `InCluster` set to `false` will be flagged as insecure. \n \n Secure configuration example:\n\n```yaml\nMyMSKCluster:\n  Type: AWS::MSK::Cluster\n  Properties:\n    ClusterName: my-msk-cluster\n    EncryptionInfo:\n      EncryptionInTransit:\n        ClientBroker: TLS\n        InCluster: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/msk_cluster_encryption_disabled",
+  "platform": "CloudFormation",
+  "descriptionID": "c8e65b67",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-msk-cluster.html"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "b9c524a4-fe76-4021-a6a2-cb978fb4fde1",
+  "queryName": "RDS instance events not logged",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "All RDS instance event trackers should be set to `true`.\nThe rule verifies the `alicloud_log_audit` resource `variable_map` contains the parameters `rds_enabled`, `rds_ti_enabled`, `rds_slow_enabled`, and `rds_perf_enabled`.\nIt reports a `MissingAttribute` when a parameter is not defined and an `IncorrectValue` when a parameter is set to `false`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_events_not_logged",
+  "platform": "Terraform",
+  "descriptionID": "c731d8ad",
+  "cloudProvider": "alicloud",
+  "cwe": "778",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/log_audit"
+}

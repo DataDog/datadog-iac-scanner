@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Network policy without Pod target",
+    "severity": "LOW",
+    "line": 22
+  }
+]

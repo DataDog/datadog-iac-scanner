@@ -1,0 +1,13 @@
+{
+  "id": "e2de2b80-2fc2-4502-a764-40930dfcc70a",
+  "queryName": "Beta - Nifcloud ELB use HTTP protocol",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "The ELB uses the HTTP protocol. This rule detects NIFCLOUD ELBs attached to the \"net-COMMON_GLOBAL\" VIP network (network_id == \"net-COMMON_GLOBAL\" and is_vip_network == true) that are configured with `protocol == \"HTTP\"`. Such ELBs should use HTTPS to benefit from TLS security features; the rule reports the resource with issueType `IncorrectValue` and indicates the expected and actual values.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/elb_use_http",
+  "platform": "Terraform",
+  "descriptionID": "051c06d1",
+  "cloudProvider": "nifcloud",
+  "cwe": "319",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/elb#protocol"
+}

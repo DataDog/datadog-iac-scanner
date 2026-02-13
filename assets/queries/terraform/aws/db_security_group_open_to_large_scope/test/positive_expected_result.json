@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "DB security group open to large scope",
+    "severity": "HIGH",
+    "line": 5
+  }
+]

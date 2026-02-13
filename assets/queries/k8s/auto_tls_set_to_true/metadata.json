@@ -1,0 +1,21 @@
+{
+  "id": "98ce8b81-7707-4734-aa39-627c6db3d84b",
+  "queryName": "Auto TLS set to true",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "When a container runs `etcd`, the `--auto-tls` flag should be set to `false` or omitted. Enabling `--auto-tls=true` enables automatic certificate management and can introduce security risks. This rule checks `containers` and `initContainers` for commands that invoke `etcd` and reports when `--auto-tls` is present and set to `true`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/auto_tls_set_to_true",
+  "platform": "Kubernetes",
+  "descriptionID": "81883f01",
+  "cwe": "311",
+  "oldSeverity": "HIGH",
+  "defaultFrameworks": [
+    {
+      "control": "4.3",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+}

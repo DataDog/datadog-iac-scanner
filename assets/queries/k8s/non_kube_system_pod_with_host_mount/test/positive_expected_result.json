@@ -1,0 +1,47 @@
+[
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 40
+  },
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 43
+  },
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 59
+  },
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 76
+  },
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 106
+  },
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 136
+  },
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 153
+  },
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 168
+  },
+  {
+    "queryName": "Non kube-system pod with host mount",
+    "severity": "HIGH",
+    "line": 185
+  }
+]

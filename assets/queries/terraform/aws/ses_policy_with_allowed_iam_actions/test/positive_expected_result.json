@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "SES policy with allowed IAM actions",
+    "severity": "HIGH",
+    "line": 4,
+    "fileName": "positive.tf"
+  }
+]

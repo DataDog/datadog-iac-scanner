@@ -1,0 +1,18 @@
+[
+  {
+    "queryName": "Redshift cluster logging disabled",
+    "severity": "MEDIUM",
+    "line": 9
+  },
+  {
+    "queryName": "Redshift cluster logging disabled",
+    "severity": "MEDIUM",
+    "line": 13
+  },
+  {
+    "queryName": "Redshift cluster logging disabled",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive_module.tf"
+  }
+]

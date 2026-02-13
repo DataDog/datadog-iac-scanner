@@ -1,0 +1,14 @@
+{
+  "id": "54c417bf-c762-48b9-9d31-b3d87047e3f0",
+  "queryName": "SQL analysis services port 2383 (TCP) is publicly accessible",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check verifies whether TCP port 2383 is publicly accessible by inspecting the `cidr_blocks` attribute in security group ingress rules for overly broad IP ranges, such as `[\"0.0.0.0/0\"]`. Allowing public access to this port exposes the associated resource to the internet, increasing the risk of unauthorized access or attacks. Restricting access to trusted networks is recommended to minimize the attack surface and protect sensitive services listening on that port.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/sql_analysis_services_port_2383_is_publicly_accessible",
+  "platform": "Terraform",
+  "descriptionID": "37ce6c0d",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "oldDescriptionText": "Check if port 2383 on TCP is publicly accessible by checking the CIDR block range that can access it.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group"
+}

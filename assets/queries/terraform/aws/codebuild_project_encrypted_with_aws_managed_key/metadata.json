@@ -1,0 +1,15 @@
+{
+  "id": "3deec14b-03d2-4d27-9670-7d79322e3340",
+  "queryName": "CodeBuild project encrypted with AWS managed key",
+  "severity": "LOW",
+  "category": "Encryption",
+  "descriptionText": "This check ensures that AWS CodeBuild projects are encrypted using customer-managed KMS keys rather than the default AWS-managed keys. Using the default AWS-managed key (for example, `encryption_key = data.aws_kms_key.by_alias.arn` with `key_id = \"alias/aws/s3\"`) limits your control over key rotation, access policies, and audit logging, potentially increasing the risk of unauthorized data access. To maximize security and compliance, the `encryption_key` attribute should reference a customer-managed KMS key (such as `key_id = \"alias/myAlias\"`), allowing organizations to fully manage encryption controls for sensitive CodeBuild project data.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/codebuild_project_encrypted_with_aws_managed_key",
+  "platform": "Terraform",
+  "descriptionID": "1034fb5a",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "CodeBuild Project should be encrypted with customer-managed KMS keys instead of AWS managed keys",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/codebuild_project#encryption_key"
+}

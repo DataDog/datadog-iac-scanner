@@ -1,0 +1,13 @@
+{
+  "id": "60587dbd-6b67-432e-90f7-a8cf1892d968",
+  "queryName": "Public security group rule all ports or protocols",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "Alicloud security group rules must not expose all ports or all protocols to the public. This rule flags `alicloud_security_group_rule` resources where:\n\n- `cidr_ip` is `0.0.0.0/0` and `ip_protocol` is `all`, or\n- `ip_protocol` is `tcp` or `udp` and `port_range` is `1/65535`, or\n- `ip_protocol` is `icmp` or `gre` and `port_range` is `-1/-1`\n\nThese configurations expose resources to the public internet and significantly increase the attack surface.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/public_security_group_rule_all_ports_or_protocols",
+  "platform": "Terraform",
+  "descriptionID": "6dcb70e8",
+  "cloudProvider": "alicloud",
+  "cwe": "284",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/security_group_rule#cidr_ip"
+}

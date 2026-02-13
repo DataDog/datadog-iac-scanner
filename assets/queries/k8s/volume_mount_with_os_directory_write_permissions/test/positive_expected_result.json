@@ -1,0 +1,22 @@
+[
+  {
+    "queryName": "Volume mount with OS directory write permissions",
+    "severity": "HIGH",
+    "line": 14
+  },
+  {
+    "queryName": "Volume mount with OS directory write permissions",
+    "severity": "HIGH",
+    "line": 40
+  },
+  {
+    "queryName": "Volume mount with OS directory write permissions",
+    "severity": "HIGH",
+    "line": 11
+  },
+  {
+    "queryName": "Volume mount with OS directory write permissions",
+    "severity": "HIGH",
+    "line": 37
+  }
+]

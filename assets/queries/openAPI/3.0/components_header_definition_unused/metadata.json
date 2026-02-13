@@ -1,0 +1,12 @@
+{
+  "id": "a68da022-e95a-4bc2-97d3-481e0bd6d446",
+  "queryName": "Components Header Definition Is Unused",
+  "severity": "INFO",
+  "category": "Best Practices",
+  "descriptionText": "Components headers definitions should be referenced or removed from Open API definition",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/components_header_definition_unused",
+  "platform": "OpenAPI",
+  "descriptionID": "cc73d7db",
+  "cwe": "710",
+  "providerUrl": "https://swagger.io/specification/#components-object"
+}

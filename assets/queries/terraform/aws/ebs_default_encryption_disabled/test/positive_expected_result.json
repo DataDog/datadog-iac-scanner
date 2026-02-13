@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "EBS default encryption disabled",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "EBS default encryption disabled",
+    "severity": "HIGH",
+    "line": 5,
+    "fileName": "positive_module.tf"
+  }
+]

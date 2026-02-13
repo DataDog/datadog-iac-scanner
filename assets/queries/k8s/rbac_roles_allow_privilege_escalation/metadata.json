@@ -1,0 +1,12 @@
+{
+  "id": "8320826e-7a9c-4b0b-9535-578333193432",
+  "queryName": "RBAC roles allow privilege escalation",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Roles or ClusterRoles that include `bind` or `escalate` permissions allow subjects to create new bindings with other roles. These permissions enable privilege escalation, because users with them can bind to roles that may exceed their own privileges and gain unauthorized elevated access. This rule flags Role and ClusterRole objects whose rules include `bind` or `escalate` for the `roles` or `clusterroles` resources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/rbac_roles_allow_privilege_escalation",
+  "platform": "Kubernetes",
+  "descriptionID": "8320826e",
+  "cwe": "288",
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/#restrictions-on-role-binding-creation-or-update"
+}

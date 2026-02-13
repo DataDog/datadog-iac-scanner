@@ -1,0 +1,20 @@
+[
+  {
+    "queryName": "Neptune logging is disabled",
+    "severity": "MEDIUM",
+    "line": 1,
+    "filename": "positive1.tf"
+  },
+  {
+    "queryName": "Neptune logging is disabled",
+    "severity": "MEDIUM",
+    "line": 9,
+    "filename": "positive2.tf"
+  },
+  {
+    "queryName": "Neptune logging is disabled",
+    "severity": "MEDIUM",
+    "line": 9,
+    "filename": "positive3.tf"
+  }
+]

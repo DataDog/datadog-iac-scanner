@@ -1,0 +1,13 @@
+{
+  "id": "92d65c51-5d82-4507-a2a1-d252e9706855",
+  "queryName": "ROS stack without template",
+  "severity": "MEDIUM",
+  "category": "Build Process",
+  "descriptionText": "An `alicloud_ros_stack` resource must define a template using either the `template_url` or `template_body` attribute. At least one of these must be present to describe the stack template. If both are missing, the rule reports a `MissingAttribute` issue indicating that one of the two must be set. This ensures ROS has a template to provision resources.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ros_stack_without_template",
+  "platform": "Terraform",
+  "descriptionID": "29378f62",
+  "cloudProvider": "aws",
+  "cwe": "20",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ros_stack"
+}

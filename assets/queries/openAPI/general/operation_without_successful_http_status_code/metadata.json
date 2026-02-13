@@ -1,0 +1,21 @@
+{
+  "id": "48e9e1fe-cf79-45b5-93e6-8b55ae5dadfd",
+  "queryName": "Operation Without Successful HTTP Status Code (v3)",
+  "severity": "INFO",
+  "category": "Best Practices",
+  "descriptionText": "Operation Object should have at least one successful HTTP status code defined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/operation_without_successful_http_status_code",
+  "platform": "OpenAPI",
+  "descriptionID": "a452c68a",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "a1ee6ebe-3877-42ec-b9a6-e524e7d06aa2",
+      "queryName": "Operation Without Successful HTTP Status Code (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/#operationObject",
+      "descriptionText": ""
+    }
+  },
+  "cwe": "710",
+  "providerUrl": "https://swagger.io/specification/#operation-object"
+}

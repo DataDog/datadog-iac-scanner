@@ -1,0 +1,15 @@
+{
+  "id": "f1adc521-f79a-4d71-b55b-a68294687432",
+  "queryName": "EC2 instance using default security group",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Amazon EC2 instances should not use the default security group, as this group is open by default and permits unrestricted inbound and outbound traffic (`security_groups = [aws_security_group.default.id]`). Using the default security group increases the risk of unauthorized access, lateral movement, and exposure of sensitive workloads. To reduce this attack surface, instances should be assigned to tightly controlled, custom security groups with explicit ingress and egress rules.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/ec2_instance_using_default_security_group",
+  "platform": "Terraform",
+  "descriptionID": "d263cf13",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "EC2 instances should not use default security group(s)",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance#security_groups"
+}

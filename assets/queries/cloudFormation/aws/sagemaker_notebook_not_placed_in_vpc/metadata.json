@@ -1,0 +1,14 @@
+{
+  "id": "9c7028d9-04c2-45be-b8b2-1188ccaefb36",
+  "queryName": "SageMaker notebook not placed in VPC",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "SageMaker notebook instances must be launched inside a VPC to prevent unintended public network exposure. This also enables network controls such as security groups, VPC endpoints, and flow logging.\n\nIn CloudFormation, `AWS::SageMaker::NotebookInstance` resources must include the `Properties.SubnetId` property and reference a subnet in the intended VPC. Also specify `Properties.SecurityGroupIds` to restrict inbound access, and configure any required VPC endpoints (for example, for S3 and ECR). Resources missing `SubnetId` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyNotebook:\n  Type: AWS::SageMaker::NotebookInstance\n  Properties:\n    NotebookInstanceName: my-notebook\n    InstanceType: ml.t2.medium\n    SubnetId: subnet-0123456789abcdef0\n    SecurityGroupIds:\n      - sg-0123456789abcdef0\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sagemaker_notebook_not_placed_in_vpc",
+  "platform": "CloudFormation",
+  "descriptionID": "d062ca53",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#sagemaker-condition-nbi-lockdown"
+}

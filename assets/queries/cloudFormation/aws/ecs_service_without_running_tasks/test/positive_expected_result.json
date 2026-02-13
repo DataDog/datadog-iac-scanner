@@ -1,0 +1,14 @@
+[
+  {
+    "fileName": "positive1.yaml",
+    "queryName": "ECS service without running tasks",
+    "severity": "LOW",
+    "line": 64
+  },
+  {
+    "queryName": "ECS service without running tasks",
+    "severity": "LOW",
+    "line": 152,
+    "fileName": "positive2.json"
+  }
+]

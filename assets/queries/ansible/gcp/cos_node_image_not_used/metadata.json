@@ -1,0 +1,14 @@
+{
+  "id": "be41f891-96b1-4b9d-b74f-b922a918c778",
+  "queryName": "COS Node Image Not Used",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "The node image should be Container-Optimized OS(COS)",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cos_node_image_not_used",
+  "platform": "Ansible",
+  "descriptionID": "1bcc90d0",
+  "cloudProvider": "gcp",
+  "cwe": "1021",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_container_node_pool_module.html#parameter-config/image_type"
+}

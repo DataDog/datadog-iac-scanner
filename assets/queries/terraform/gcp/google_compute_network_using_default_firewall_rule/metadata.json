@@ -1,0 +1,14 @@
+{
+  "id": "40abce54-95b1-478c-8e5f-ea0bf0bb0e33",
+  "queryName": "Google Compute network using default firewall rule",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Google Compute Network resources should avoid using the default firewall rule, as it typically allows overly permissive access to network resources and does not restrict traffic according to least-privilege principles. If left unaddressed, using the default firewall may expose internal resources to unauthorized external access, increasing the risk of lateral movement or compromise within a project. Instead, firewall rules should be defined explicitly with restricted protocols, source ranges, and tags, as shown below:\n\n```\nresource \"google_compute_firewall\" \"secure_example\" {\n  name    = \"restricted-firewall\"\n  network = google_compute_network.secure_example.name\n\n  allow {\n    protocol = \"tcp\"\n    ports    = [\"80\", \"443\"]\n  }\n\n  source_ranges = [\"203.0.113.0/24\"]\n}\n\nresource \"google_compute_network\" \"secure_example\" {\n  name = \"test-network\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/google_compute_network_using_default_firewall_rule",
+  "platform": "Terraform",
+  "descriptionID": "68898cf7",
+  "cloudProvider": "gcp",
+  "cwe": "1188",
+  "oldDescriptionText": "Google Compute Network should not use default firewall rule",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall#name"
+}

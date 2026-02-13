@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "CloudFront without WAF",
+    "severity": "MEDIUM",
+    "line": 6,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "fileName": "positive2.json",
+    "queryName": "CloudFront without WAF",
+    "severity": "MEDIUM",
+    "line": 13
+  },
+  {
+    "fileName": "positive3.yaml",
+    "queryName": "CloudFront without WAF",
+    "severity": "MEDIUM",
+    "line": 21
+  },
+  {
+    "fileName": "positive4.json",
+    "queryName": "CloudFront without WAF",
+    "severity": "MEDIUM",
+    "line": 36
+  }
+]

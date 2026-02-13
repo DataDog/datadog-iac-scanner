@@ -1,0 +1,13 @@
+{
+  "id": "4b801c38-ebb4-4c81-984b-1ba525d43adf",
+  "queryName": "Beta - Nifcloud NAS has common private network",
+  "severity": "LOW",
+  "category": "Networking and Firewall",
+  "descriptionText": "The NAS instance uses the shared private network `net-COMMON_PRIVATE` rather than an isolated private LAN. `nifcloud_nas_instance` resources should use a dedicated private LAN to isolate the private-side network from the shared network. This rule flags `nifcloud_nas_instance` resources that reference `net-COMMON_PRIVATE`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/nas_instance_has_common_private",
+  "platform": "Terraform",
+  "descriptionID": "a54c489c",
+  "cloudProvider": "nifcloud",
+  "cwe": "285",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/nas_instance#network_id"
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "queryName": "Small MSSQL server audit retention",
+    "severity": "LOW",
+    "line": 7
+  },
+  {
+    "queryName": "Small MSSQL server audit retention",
+    "severity": "LOW",
+    "line": 28
+  },
+  {
+    "queryName": "Small MSSQL server audit retention",
+    "severity": "LOW",
+    "line": 46
+  },
+  {
+    "queryName": "Small MSSQL server audit retention",
+    "severity": "LOW",
+    "line": 66
+  }
+]

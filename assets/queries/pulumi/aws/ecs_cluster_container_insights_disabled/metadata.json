@@ -1,0 +1,13 @@
+{
+  "id": "abcefee4-a0c1-4245-9f82-a473f79a9e2f",
+  "queryName": "ECS Cluster with Container Insights Disabled",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "ECS Cluster should enable container insights",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/ecs_cluster_container_insights_disabled",
+  "platform": "Pulumi",
+  "descriptionID": "6fd99865",
+  "cloudProvider": "aws",
+  "providerUrl": "https://www.pulumi.com/registry/packages/aws/api-docs/ecs/cluster/#settings_yaml",
+  "cwe": "778"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "7a1ee8a9-71be-4b11-bb70-efb62d16863b",
+  "queryName": "RDS instance SSL action disabled",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "The `ssl_action` parameter must be set to `Open` for `alicloud_db_instance` resources. This rule flags instances where `ssl_action` is set to `Close` or is not defined.\nSetting `ssl_action = \"Open\"` enforces SSL/TLS for database connections; leaving it unset or set to `Close` may expose data in transit.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_ssl_action_disabled",
+  "platform": "Terraform",
+  "descriptionID": "4a568dd7",
+  "cloudProvider": "alicloud",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/db_instance#ssl_action"
+}

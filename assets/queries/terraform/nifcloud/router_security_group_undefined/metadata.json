@@ -1,0 +1,13 @@
+{
+  "id": "e7dada38-af20-4899-8955-dabea84ab1f0",
+  "queryName": "Beta - Nifcloud router undefined security group to router",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "`nifcloud_router` resources must include a `security_group` attribute.\nRouters without a `security_group` lack explicit network access controls and may be insecure.\nThis rule flags any `nifcloud_router` missing `security_group` and reports attributes: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/router_security_group_undefined",
+  "platform": "Terraform",
+  "descriptionID": "4cd22b80",
+  "cloudProvider": "nifcloud",
+  "cwe": "285",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/router#security_group"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "ed6cf6ff-9a1f-491c-9f88-e03c0807f390",
+  "queryName": "Log retention is not greater than 90 days",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "The OSS Log Store must have `retention_period` set to at least 90 days to ensure sufficient visibility into resource and object activity.  \nIf `retention_period` is undefined, the default is 30 days, which is insufficient.  \nResources of type `alicloud_log_store` should explicitly set `retention_period` to 90 or more days (for example, `100`).  \nThis rule flags `alicloud_log_store` resources that either omit `retention_period` or set it to less than 90 days.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/log_retention_is_not_greater_than_90_days",
+  "platform": "Terraform",
+  "descriptionID": "11d4fc85",
+  "cloudProvider": "alicloud",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/log_store#retention_period"
+}

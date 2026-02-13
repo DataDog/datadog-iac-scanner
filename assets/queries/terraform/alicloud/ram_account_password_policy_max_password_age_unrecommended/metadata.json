@@ -1,0 +1,13 @@
+{
+  "id": "2bb13841-7575-439e-8e0a-cccd9ede2fa8",
+  "queryName": "RAM account password policy max password age not recommended",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "The `alicloud_ram_account_password_policy` attribute `max_password_age` must be greater than `0` and less than `91`. A missing `max_password_age`, a value of `0`, or any value greater than `90` is noncompliant. Recommended remediation: set `max_password_age` to `12`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_account_password_policy_max_password_age_unrecommended",
+  "platform": "Terraform",
+  "descriptionID": "6056f5ca",
+  "cloudProvider": "alicloud",
+  "cwe": "521",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ram_account_password_policy#max_password_age"
+}

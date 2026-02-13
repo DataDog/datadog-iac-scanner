@@ -1,0 +1,21 @@
+{
+  "id": "d929c031-078f-4241-b802-e224656ad890",
+  "queryName": "Invalid Format (v3)",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "The format should be valid for the type defined. For integer type must be int32 or int64 and number type must be float or double",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/invalid_format",
+  "platform": "OpenAPI",
+  "descriptionID": "b8284333",
+  "aggregation": 2,
+  "override": {
+    "2.0": {
+      "id": "caf1793e-95dd-4b18-8d90-8f3c0ab5bddf",
+      "queryName": "Invalid Format (v2)",
+      "descriptionUrl": "https://swagger.io/specification/v2/",
+      "descriptionText": ""
+    }
+  },
+  "cwe": "665",
+  "providerUrl": "https://swagger.io/docs/specification/data-models/data-types/"
+}

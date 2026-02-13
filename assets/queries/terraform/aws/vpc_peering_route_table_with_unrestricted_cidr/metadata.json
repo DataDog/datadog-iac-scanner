@@ -1,0 +1,14 @@
+{
+  "id": "b3a41501-f712-4c4f-81e5-db9a7dc0e34e",
+  "queryName": "VPC peering route table with unrestricted CIDR",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "VPC Peering Route Tables with unrestricted CIDR blocks (`0.0.0.0/0`) create a significant security vulnerability by allowing all IP addresses to route through the VPC peering connection. This configuration effectively bypasses network isolation between VPCs and exposes your resources to potential unauthorized access from any IP address that can reach the peering connection.\n\nInstead of using unrestricted CIDR blocks, you should always limit the route to the specific IP range of the peered VPC or a minimum required subset. For example, use `cidr_block = \"10.0.0.0/8\"` or the exact VPC CIDR such as `cidr_block = aws_vpc.vpc2.cidr_block`, instead of `cidr_block = \"0.0.0.0/0\"`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/vpc_peering_route_table_with_unrestricted_cidr",
+  "platform": "Terraform",
+  "descriptionID": "3a60c60e",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "VPC Peering Route Table should restrict CIDR",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "26763a1c-5dda-4772-b507-5fca7fb5f165",
+  "queryName": "Service with external load balancer",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "This Service uses a LoadBalancer and therefore creates an external load balancer, which may allow access from other networks and the internet. Annotations must be set to indicate an internal load balancer for supported cloud providers (for example, `networking.gke.io/load-balancer-type=Internal`, `cloud.google.com/load-balancer-type=Internal`, `service.beta.kubernetes.io/aws-load-balancer-internal=true`, `service.beta.kubernetes.io/azure-load-balancer-internal=true`) to avoid external exposure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_with_external_load_balancer",
+  "platform": "Kubernetes",
+  "descriptionID": "2e090344",
+  "cwe": "552",
+  "providerUrl": "https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "0a592060-8166-49f5-8e65-99ac6dce9871",
+  "queryName": "Role with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole'",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Granting an AWS IAM role permissions for both `glue:CreateDevEndpoint` and `iam:PassRole` with the `Resource` attribute set to `\"*\"` allows for privilege escalation within an AWS environment. With these permissions, a user or attacker could create Glue DevEndpoints and assign any AWS IAM role to the endpoint, effectively running arbitrary code with higher privileges by passing roles they may not otherwise have access to. The use of the `\"iam:PassRole\"` action combined with a resource wildcard means that the role can be used to assign any role in the account, potentially including administrative or sensitive roles. If left unaddressed, this misconfiguration can lead to an attacker gaining full control over AWS resources, resulting in data breaches or the compromise of critical cloud infrastructure.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_PassRole_and_glue_CreateDevEndpoint",
+  "platform": "Terraform",
+  "descriptionID": "0bc279fe",
+  "cloudProvider": "aws",
+  "cwe": "269",
+  "oldDescriptionText": "Role with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole' and Resource set to '*'. For more information see https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy#policy"
+}

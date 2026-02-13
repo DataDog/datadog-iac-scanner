@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Unrestricted capabilities in PodSecurityPolicy",
+    "severity": "LOW",
+    "line": 10
+  }
+]

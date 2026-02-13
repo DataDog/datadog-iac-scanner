@@ -1,0 +1,13 @@
+{
+  "id": "aa8f7a35-9923-4cad-bd61-a19b7f6aac91",
+  "queryName": "Non kube-system pod with host mount",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Non `kube-system` workloads should not include a `hostPath` volume mount. The rule detects `hostPath.path` in pod specs (including pod template specs) and in `PersistentVolume` resources and reports an issue when present. If `metadata.namespace` is not set, the resource is treated as being in the `default` namespace.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/non_kube_system_pod_with_host_mount",
+  "platform": "Kubernetes",
+  "descriptionID": "e8553157",
+  "cwe": "668",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://kubernetes.io/docs/concepts/storage/volumes/"
+}

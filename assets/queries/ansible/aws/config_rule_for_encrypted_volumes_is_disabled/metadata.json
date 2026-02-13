@@ -1,0 +1,14 @@
+{
+  "id": "7674a686-e4b1-4a95-83d4-1fd53c623d84",
+  "queryName": "Config Rule For Encrypted Volumes Disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Check if AWS config rules do not identify Encrypted Volumes as a source.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/config_rule_for_encrypted_volumes_is_disabled",
+  "platform": "Ansible",
+  "descriptionID": "5b434d3f",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/aws_config_rule_module.html#parameter-source/identifier"
+}

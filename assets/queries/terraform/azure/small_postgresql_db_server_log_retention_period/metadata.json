@@ -1,0 +1,15 @@
+{
+  "id": "261a83f8-dd72-4e8c-b5e1-ebf06e8fe606",
+  "queryName": "Small PostgreSQL DB server log retention period",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "This check verifies whether the `log_retention_days` configuration for an Azure PostgreSQL Database Server retains logs for at least 3 days. Insufficient log retention, such as setting `value = 2` in the Terraform resource, as shown below, can hinder the ability to investigate security incidents or troubleshoot issues, as critical audit and activity logs may be deleted too quickly.\n\n```\nresource \"azurerm_postgresql_configuration\" \"positive1\" {\n  name                = \"log_retention_days\"\n  resource_group_name = azurerm_resource_group.example.name\n  server_name         = azurerm_postgresql_server.example.name\n  value               = 2\n}\n```\n\nIncreasing the retention period to a secure value (such as `value = 5`) helps ensure logs are available for effective monitoring and forensic analysis.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/small_postgresql_db_server_log_retention_period",
+  "platform": "Terraform",
+  "descriptionID": "1ec96250",
+  "cloudProvider": "azure",
+  "cwe": "778",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "Check if PostgreSQL Database Server retains logs for less than 3 Days",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_configuration"
+}

@@ -1,0 +1,13 @@
+[
+  {
+    "queryName": "GuardDuty detector disabled",
+    "severity": "MEDIUM",
+    "line": 2
+  },
+  {
+    "queryName": "GuardDuty detector disabled",
+    "severity": "MEDIUM",
+    "line": 5,
+    "fileName": "positive_module.tf"
+  }
+]

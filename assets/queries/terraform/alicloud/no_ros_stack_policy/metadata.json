@@ -1,0 +1,13 @@
+{
+  "id": "72ceb736-0aee-43ea-a191-3a69ab135681",
+  "queryName": "No ROS stack policy",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "A ROS stack should define a stack policy to protect resources from unintended changes during creation and update actions. Each `alicloud_ros_stack` resource must include either `stack_policy_body` or `stack_policy_url` for creation protection. For update protection, it must include either `stack_policy_during_update_body` or `stack_policy_during_update_url`. This rule reports a `MissingAttribute` issue when the corresponding attribute is not defined.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/no_ros_stack_policy",
+  "platform": "Terraform",
+  "descriptionID": "199b3f61",
+  "cloudProvider": "alicloud",
+  "cwe": "829",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ros_stack"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "2e9e0729-66d5-4148-9d39-5e6fb4bf2a4e",
+  "queryName": "Elasticsearch with HTTPS disabled",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Amazon Elasticsearch domains should enforce HTTPS by setting the `enforce_https` attribute to `true` in the `domain_endpoint_options` block. If `enforce_https` is left set to `false`, as shown below, communication with the Elasticsearch domain can occur over unencrypted HTTP, exposing data to interception and increasing the risk of man-in-the-middle attacks.\n\n```\ndomain_endpoint_options {\n  enforce_https = false\n}\n```\n\nTo mitigate this, always configure:\n\n```\ndomain_endpoint_options {\n  enforce_https = true\n}\n```\n\nEnforcing HTTPS ensures that all data transmitted between clients and the Elasticsearch service is encrypted, protecting sensitive information from unauthorized access.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elasticsearch_with_https_disabled",
+  "platform": "Terraform",
+  "descriptionID": "069080cd",
+  "cloudProvider": "aws",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Amazon Elasticsearch does not have encryption for its domains enabled. To prevent such a scenario, update the attribute 'EnforceHTTPS' to true.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticsearch_domain#enforce_https",
+  "customFrameworks": [
+    {
+      "control": "aws.1.22",
+      "framework": "dcsb-m-v2",
+      "framework_version": "0.0.1",
+      "requirement": "aws"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "a74b4602-a62c-4a02-956a-e19f86ea24b5",
+  "queryName": "Beta - CVM instance has public IP",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "A CVM instance should not include a public IP address.\nThis rule flags Tencent Cloud CVM instances where the `allocate_public_ip` attribute is set to `true`; it must be set to `false` to prevent assignment of a public IP.\nThe rule returns the attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`, and `searchLine`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/cvm_instance_has_public_ip",
+  "platform": "Terraform",
+  "descriptionID": "9e543437",
+  "cloudProvider": "tencentcloud",
+  "cwe": "200",
+  "providerUrl": "https://registry.terraform.io/providers/tencentcloudstack/tencentcloud/latest/docs/resources/instance#allocate_public_ip"
+}

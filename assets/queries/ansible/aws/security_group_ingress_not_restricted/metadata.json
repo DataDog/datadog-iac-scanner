@@ -1,0 +1,13 @@
+{
+  "id": "ea6bc7a6-d696-4dcf-a788-17fa03c17c81",
+  "queryName": "Security Group Ingress Not Restricted",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "AWS Security Group should restrict ingress access",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/security_group_ingress_not_restricted",
+  "platform": "Ansible",
+  "descriptionID": "7e47368a",
+  "cloudProvider": "aws",
+  "cwe": "668",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_group_module.html"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "01d50b14-e933-4c99-b314-6d08cd37ad35",
+  "queryName": "Glue Data Catalog encryption disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "AWS Glue Data Catalog contains metadata about AWS resources and should be properly encrypted to protect sensitive information. When encryption is disabled for connection passwords or data at rest, it could expose sensitive connection credentials and metadata to unauthorized access, potentially leading to data breaches or unauthorized resource access. Enabling both connection password encryption (with `return_connection_password_encrypted` set to `true`) and encryption at rest with SSE-KMS ensures that all sensitive metadata is properly protected with AWS KMS keys.\n\nExample of secure configuration:\n```\nresource \"aws_glue_data_catalog_encryption_settings\" \"secure_example\" {\n  data_catalog_encryption_settings {\n    connection_password_encryption {\n      aws_kms_key_id                       = aws_kms_key.test.arn\n      return_connection_password_encrypted = true\n    }\n\n    encryption_at_rest {\n      catalog_encryption_mode = \"SSE-KMS\"\n      sse_aws_kms_key_id      = aws_kms_key.test.arn\n    }\n  }\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/glue_data_catalog_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "c6b6fc2e",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldDescriptionText": "Glue Data Catalog Encryption Settings should have 'connection_password_encryption' and 'encryption_at_rest' enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/glue_data_catalog_encryption_settings#data_catalog_encryption_settings"
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "Docker daemon socket is exposed to containers",
+    "severity": "MEDIUM",
+    "line": 15
+  },
+  {
+    "queryName": "Docker daemon socket is exposed to containers",
+    "severity": "MEDIUM",
+    "line": 43
+  },
+  {
+    "queryName": "Docker daemon socket is exposed to containers",
+    "severity": "MEDIUM",
+    "line": 67
+  }
+]

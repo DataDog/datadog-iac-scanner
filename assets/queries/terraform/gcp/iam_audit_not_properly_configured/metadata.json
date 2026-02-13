@@ -1,0 +1,15 @@
+{
+  "id": "89fe890f-b480-460c-8b6b-7d8b1468adb4",
+  "queryName": "IAM audit not properly configured",
+  "severity": "LOW",
+  "category": "Observability",
+  "descriptionText": "A defective audit logging configuration in Terraform, as defined by the `google_project_iam_audit_config` resource, can lead to incomplete or incorrect logging of critical activities within your cloud environment. For example, omitting required `log_type` values or specifying exempted members, as shown below, allows certain user actions to go unrecorded, potentially bypassing audit trails and hampering incident investigations:\n\n```\nresource \"google_project_iam_audit_config\" \"example\" {\n  project = \"your-project-id\"\n  service = \"allServices\"\n  audit_log_config {\n    log_type = \"DATA_READ\"\n    exempted_members = [\"user:joebloggs@hashicorp.com\"]\n  }\n}\n```\n\nWithout comprehensive audit logs, organizations may be unable to detect or investigate unauthorized access or changes, increasing the risk of undetected misuse or data breaches. A secure configuration should ensure that all required log types (such as `ADMIN_READ` and `DATA_READ`) are enabled and that no users or accounts are unnecessarily exempted from logging.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/iam_audit_not_properly_configured",
+  "platform": "Terraform",
+  "descriptionID": "dd31f3ec",
+  "cloudProvider": "gcp",
+  "cwe": "778",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Audit Logging Configuration is defective",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project_iam#google_project_iam_audit_config"
+}

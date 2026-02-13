@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Secret expiration not set",
+    "severity": "MEDIUM",
+    "line": 1
+  }
+]

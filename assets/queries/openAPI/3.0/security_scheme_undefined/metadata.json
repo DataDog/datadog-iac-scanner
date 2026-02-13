@@ -1,0 +1,13 @@
+{
+  "id": "8db5544e-4874-4baa-9322-e9f75a2d219e",
+  "queryName": "Field 'securityScheme' On Components Is Undefined",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Components' securityScheme field must have a valid scheme",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/security_scheme_undefined",
+  "platform": "OpenAPI",
+  "descriptionID": "61dba06b",
+  "cwe": "284",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://swagger.io/specification/#security-scheme-object"
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Root container not mounted as read-only",
+    "severity": "LOW",
+    "line": 12
+  },
+  {
+    "queryName": "Root container not mounted as read-only",
+    "severity": "LOW",
+    "line": 24
+  }
+]

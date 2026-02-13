@@ -1,0 +1,14 @@
+{
+  "id": "c3e073c1-f65e-4d18-bd67-4a8f20ad1ab9",
+  "queryName": "S3 Bucket With Public Access",
+  "severity": "CRITICAL",
+  "category": "Access Control",
+  "descriptionText": "S3 Bucket allows public access",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_with_public_access",
+  "platform": "Ansible",
+  "descriptionID": "d7a19b7e",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/aws_s3_module.html#parameter-permission"
+}

@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "IAM Policies With Full Privileges",
+    "severity": "MEDIUM",
+    "line": 4,
+    "fileName": "positive.yaml"
+  }
+]

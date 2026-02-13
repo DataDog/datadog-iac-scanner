@@ -1,0 +1,8 @@
+[
+	{
+		"queryName": "PSP allows containers to share the host network namespace",
+		"severity": "HIGH",
+		"line": 8,
+		"fileName": ""
+	}
+]

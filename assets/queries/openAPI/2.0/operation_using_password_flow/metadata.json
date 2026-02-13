@@ -1,0 +1,12 @@
+{
+  "id": "2e44e632-d617-43cb-b294-6bfe72a08938",
+  "queryName": "Operation Using Password Flow",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Operation Object should not use 'password' Flow in OAuth2 authentication",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/operation_using_password_flow",
+  "platform": "OpenAPI",
+  "descriptionID": "e0279bb3",
+  "cwe": "798",
+  "providerUrl": "https://swagger.io/specification/v2/#operation-object"
+}

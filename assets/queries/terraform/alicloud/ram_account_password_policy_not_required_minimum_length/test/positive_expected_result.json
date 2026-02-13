@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "RAM account password policy does not enforce minimum password length",
+		"severity": "LOW",
+		"line": 2,
+		"fileName": "positive1.tf"
+	},
+	{
+		"queryName": "RAM account password policy does not enforce minimum password length",
+		"severity": "LOW",
+		"line": 1,
+		"fileName": "positive2.tf"
+	}
+]

@@ -1,0 +1,14 @@
+{
+  "id": "ee3b1557-9fb5-4685-a95d-93f1edf2a0d7",
+  "queryName": "ALB listening on HTTP",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Application Load Balancer (`alb`) listeners should not use `HTTP`.\nListeners configured with `listener_protocol = \"HTTP\"` expose unencrypted traffic. In Terraform, set `listener_protocol = \"HTTPS\"` for `alicloud_alb_listener` resources to enforce TLS termination and secure data in transit.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/alb_listening_on_http",
+  "platform": "Terraform",
+  "descriptionID": "75d71dc8",
+  "cloudProvider": "alicloud",
+  "cwe": "319",
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/alb_listener"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "71493c8b-3014-404c-9802-078b74496fb7",
+  "queryName": "Amplify app basic auth config password exposed",
+  "severity": "HIGH",
+  "category": "Secret Management",
+  "descriptionText": "Amplify apps with BasicAuth enabled must not embed the password as a plaintext string or as a parameter `Default` because embedded secrets in templates or defaults can be exposed via source control, CloudFormation templates/stack history, or the AWS Console and enable unauthorized access.\n\n This rule checks resources of type `AWS::Amplify::App` where `Properties.BasicAuthConfig.EnableBasicAuth` is set to `true`.\n\n - `Resources.<name>.Properties.BasicAuthConfig.Password` must not be a literal string.\n - `Resources.<name>.Properties.BasicAuthConfig.Password` must not be a `Ref` to a parameter whose `Parameters.<param>.Default` contains the secret.\n\n Instead, store the credential in a secrets service and reference it from the template (or supply the value at deploy time without a `Default`). Templates that reference AWS Secrets Manager for the password or omit embedded/default secrets will satisfy this requirement.\n\nSecure example using AWS Secrets Manager dynamic reference:\n\n```yaml\nMySecret:\n  Type: AWS::SecretsManager::Secret\n  Properties:\n    Name: my-amplify-basic-auth\n    SecretString: '{\"password\":\"REPLACE_WITH_SECURE_VALUE\"}'\n\nMyAmplifyApp:\n  Type: AWS::Amplify::App\n  Properties:\n    BasicAuthConfig:\n      EnableBasicAuth: true\n      Username: admin\n      Password: '{{resolve:secretsmanager:my-amplify-basic-auth:SecretString:password}}'\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/amplify_app_basic_auth_config_password_exposed",
+  "platform": "CloudFormation",
+  "descriptionID": "20573b94",
+  "cloudProvider": "aws",
+  "cwe": "798",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-amplify-app-basicauthconfig.html"
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "queryName": "No password policy enabled",
+    "severity": "MEDIUM",
+    "line": 5
+  },
+  {
+    "queryName": "No password policy enabled",
+    "severity": "MEDIUM",
+    "line": 16
+  },
+  {
+    "queryName": "No password policy enabled",
+    "severity": "MEDIUM",
+    "line": 23
+  },
+  {
+    "queryName": "No password policy enabled",
+    "severity": "MEDIUM",
+    "line": 30
+  },
+  {
+    "queryName": "No password policy enabled",
+    "severity": "MEDIUM",
+    "line": 31
+  }
+]

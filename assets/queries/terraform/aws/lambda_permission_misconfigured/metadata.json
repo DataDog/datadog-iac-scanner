@@ -1,0 +1,14 @@
+{
+  "id": "75ec6890-83af-4bf1-9f16-e83726df0bd0",
+  "queryName": "Lambda permission misconfigured",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "This check verifies whether the `action` field in the `aws_lambda_permission` resource is set to `\"lambda:InvokeFunction\"`. When the field is misconfigured to allow actions beyond what is necessary, such as \"lambda:DeleteFunction\", it grants overly permissive access to the Lambda function. This can enable third-party AWS services or principals to perform destructive or unintended operations on the function, increasing the risk of unauthorized deletion, modification, or misuse. If left unaddressed, this misconfiguration could result in loss of critical business logic, disruption of service, or escalation of privileges within your cloud environment.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/lambda_permission_misconfigured",
+  "platform": "Terraform",
+  "descriptionID": "8fb6f06e",
+  "cloudProvider": "aws",
+  "cwe": "710",
+  "oldDescriptionText": "Lambda permission may be misconfigured if the action field is not filled in by 'lambda:InvokeFunction'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission"
+}

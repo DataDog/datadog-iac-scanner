@@ -1,0 +1,18 @@
+[
+  {
+    "queryName": "Neptune cluster with IAM database authentication disabled",
+    "severity": "HIGH",
+    "line": 1
+  },
+  {
+    "queryName": "Neptune cluster with IAM database authentication disabled",
+    "severity": "HIGH",
+    "line": 17
+  },
+  {
+    "queryName": "Neptune cluster with IAM database authentication disabled",
+    "severity": "HIGH",
+    "line": 1,
+    "fileName": "positive_module.tf"
+  }
+]

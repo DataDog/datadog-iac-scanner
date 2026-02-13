@@ -1,0 +1,12 @@
+{
+  "id": "19ebaa28-fc86-4a58-bcfa-015c9e22fe40",
+  "queryName": "Containers with added capabilities",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers and initContainers should not include added capabilities other than NET_BIND_SERVICE. The rule checks container.securityContext.capabilities.add and reports an IncorrectValue when any capability other than NET_BIND_SERVICE is present. It applies to both containers and initContainers found in the pod spec.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/containers_with_added_capabilities",
+  "platform": "Kubernetes",
+  "descriptionID": "719acefd",
+  "cwe": "269",
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+}

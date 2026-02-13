@@ -1,0 +1,32 @@
+[
+	{
+		"queryName": "Container resources limits undefined",
+		"severity": "MEDIUM",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "Container resources limits undefined",
+		"severity": "MEDIUM",
+		"line": 8,
+		"fileName": ""
+	},
+	{
+		"queryName": "Container resources limits undefined",
+		"severity": "MEDIUM",
+		"line": 106,
+		"fileName": ""
+	},
+	{
+		"queryName": "Container resources limits undefined",
+		"severity": "MEDIUM",
+		"line": 167,
+		"fileName": ""
+	},
+	{
+		"queryName": "Container resources limits undefined",
+		"severity": "MEDIUM",
+		"line": 224,
+		"fileName": ""
+	}
+]

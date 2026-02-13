@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "Azure Policy Add-on Disabled in AKS Cluster",
+    "severity": "LOW",
+    "line": 11,
+    "fileName": "positive1.tf"
+  },
+  {
+    "queryName": "Azure Policy Add-on Disabled in AKS Cluster",
+    "severity": "LOW",
+    "line": 7,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "Azure Policy Add-on Disabled in AKS Cluster",
+    "severity": "LOW",
+    "line": 7,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "Azure Policy Add-on Disabled in AKS Cluster",
+    "severity": "LOW",
+    "line": 1,
+    "fileName": "positive4.tf"
+  }
+]

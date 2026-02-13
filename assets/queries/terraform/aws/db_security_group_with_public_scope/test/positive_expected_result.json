@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "DB security group with public scope",
+    "severity": "CRITICAL",
+    "line": 5,
+    "filename": "positive.tf"
+  },
+  {
+    "queryName": "DB security group with public scope",
+    "severity": "CRITICAL",
+    "line": 85,
+    "filename": "positive_module.tf"
+  }
+]

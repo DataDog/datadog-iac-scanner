@@ -1,0 +1,15 @@
+{
+  "id": "4c7ebcb2-eae2-461e-bc83-456ee2d4f694",
+  "queryName": "Stackdriver Logging disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Google Kubernetes Engine (GKE) clusters should have Stackdriver Logging enabled to ensure that logs from the cluster are collected and available for monitoring and auditing. Failing to set the `logging_service` attribute, or setting it to `\"none\"`, means critical cluster activity and security logs will not be captured, potentially leaving malicious or accidental changes undetected. For secure configuration, set `logging_service = \"logging.googleapis.com/kubernetes\"` or simply omit the attribute to use the default, as shown below:\n\n```\nresource \"google_container_cluster\" \"secure\" {\n  name               = \"example-cluster\"\n  location           = \"us-central1-a\"\n  initial_node_count = 3\n  logging_service    = \"logging.googleapis.com/kubernetes\"\n}\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/stackdriver_logging_disabled",
+  "platform": "Terraform",
+  "descriptionID": "b292106d",
+  "cloudProvider": "gcp",
+  "cwe": "778",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Kubernetes Engine Clusters must have Stackdriver Logging enabled, which means the attribute 'logging_service' must be defined and different from 'none'",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/container_cluster#logging_service"
+}

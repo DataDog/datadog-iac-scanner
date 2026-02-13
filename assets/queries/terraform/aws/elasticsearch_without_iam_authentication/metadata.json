@@ -1,0 +1,14 @@
+{
+  "id": "e7530c3c-b7cf-4149-8db9-d037a0b5268e",
+  "queryName": "Elasticsearch without IAM authentication",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "AWS Elasticsearch domains should enforce IAM authentication to restrict access to authorized users only. Without proper IAM policies—such as using `\"Principal\": \"*\"` in the `aws_elasticsearch_domain_policy` resource—unauthorized users could gain access to sensitive data by connecting from approved IP addresses. To mitigate this risk, the `Principal` field should be set to reference specific IAM principals, as shown below:\n\n```\n\"Principal\" : {\n  \"AWS\": [\n    \"arn:aws:iam::123456789012:root\",\n    \"arn:aws:iam::555555555555:root\"\n    ]\n}\n```\n\nFailing to enforce IAM authentication can expose your Elasticsearch domain to unauthorized access and potential data breaches.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elasticsearch_without_iam_authentication",
+  "platform": "Terraform",
+  "descriptionID": "7677c71c",
+  "cloudProvider": "aws",
+  "cwe": "285",
+  "oldDescriptionText": "AWS Elasticsearch should ensure IAM Authentication",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticsearch_domain"
+}

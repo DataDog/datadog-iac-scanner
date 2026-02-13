@@ -1,0 +1,12 @@
+{
+  "id": "be3e170e-1572-461e-a8b6-d963def581ec",
+  "queryName": "Operation Object Without 'produces'",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Operation Object should have 'produces' feild defined for 'GET'operation",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/operation_object_without_produces",
+  "platform": "OpenAPI",
+  "descriptionID": "1736226c",
+  "cwe": "665",
+  "providerUrl": "https://swagger.io/specification/v2/#operation-object"
+}

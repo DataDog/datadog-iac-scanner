@@ -1,0 +1,15 @@
+{
+  "id": "34b921bd-90a0-402e-a0a5-dc73371fd963",
+  "queryName": "SES policy with allowed IAM actions",
+  "severity": "HIGH",
+  "category": "Access Control",
+  "descriptionText": "Amazon SES identity policies that allow access to all principals ('AWS': '*') create a significant security risk by granting any AWS account permissions to perform the specified actions on your SES resources. This overly permissive configuration can lead to unauthorized email sending, potential data breaches, and could be exploited for phishing campaigns or reputation damage.\n\nInstead, SES policies should explicitly specify the ARNs of trusted principals that require access. For example, replace `\"AWS\": \"*\"` with `\"AWS\": \"arn:aws:iam::ACCOUNT_ID:root\"` or a more specific IAM role or user to implement the principle of least privilege.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/ses_policy_with_allowed_iam_actions",
+  "platform": "Terraform",
+  "descriptionID": "3b263662",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "SES policy should not allow IAM actions to all principals",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ses_identity_policy#policy"
+}

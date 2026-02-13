@@ -1,0 +1,12 @@
+{
+  "id": "e84eaf4d-2f45-47b2-abe8-e581b06deb66",
+  "queryName": "Ensure administrative boundaries between resources",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "As a best practice, ensure namespaces are used correctly to group and administer resources. Kubernetes authorization mechanisms, such as RBAC, can enforce policies that segregate or restrict user access to namespaces. This rule scans cluster manifests for resources that specify a namespace and aggregates the namespaces in use, reporting them for review. Review the reported namespaces to confirm they are required, appropriately configured, and governed by suitable access controls (for example, RoleBindings, NetworkPolicies, or admission controllers).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/ensure_administrative_boundaries_between_resources",
+  "platform": "Kubernetes",
+  "descriptionID": "8182d7cf",
+  "cwe": "284",
+  "providerUrl": "https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/"
+}

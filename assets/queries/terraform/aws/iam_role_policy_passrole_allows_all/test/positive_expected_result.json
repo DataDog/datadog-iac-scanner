@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "IAM role policy passrole allows all",
+    "severity": "MEDIUM",
+    "line": 5,
+    "fileName": "positive1.tf"
+  }
+]

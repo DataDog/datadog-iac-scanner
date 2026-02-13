@@ -1,0 +1,22 @@
+{
+  "terraform": [
+      "alicloud",
+      "aws",
+      "azure",
+      "databricks",
+      "gcp",
+      "general",
+      "github",
+      "kubernetes",
+      "nifcloud",
+      "tencentcloud"
+    ],
+  "cloudFormation": [
+    "aws",
+    "aws_sam"
+  ],
+  "cicd": [
+    "github"
+  ],
+  "k8s": []
+}

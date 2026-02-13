@@ -1,0 +1,15 @@
+{
+  "id": "3db3f534-e3a3-487f-88c7-0a9fbf64b702",
+  "queryName": "AmazonMQ broker encryption disabled",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "Amazon MQ brokers should have encryption options defined to ensure messages are encrypted at rest. Without proper encryption, sensitive data in message queues could be exposed if storage is compromised. To secure your broker, add an encryption_options block to your aws_mq_broker resource, either with a custom KMS key (recommended) or with the default AWS owned keys. Example of secure configuration: `encryption_options { kms_key_id = \"your-kms-key-arn\" use_aws_owned_key = false }` or simply `encryption_options {}` to use AWS-owned keys.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/amazon_mq_broker_encryption_disabled",
+  "platform": "Terraform",
+  "descriptionID": "81fb6220",
+  "cloudProvider": "aws",
+  "cwe": "311",
+  "oldSeverity": "MEDIUM",
+  "oldDescriptionText": "AmazonMQ Broker should have Encryption Options defined",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/mq_broker"
+}

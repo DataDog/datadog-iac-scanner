@@ -1,0 +1,15 @@
+{
+  "id": "cf3c7631-cd1e-42f3-8801-a561214a6e79",
+  "queryName": "SQL DB instance backup disabled",
+  "severity": "MEDIUM",
+  "category": "Backup",
+  "descriptionText": "This check verifies whether automated backups are enabled for all Google Cloud SQL database instances by ensuring the `backup_configuration` block has the `enabled = true` attribute. If automated backups are disabled or the `backup_configuration` block is missing, databases are at risk of unrecoverable data loss in the event of accidental deletion, corruption, or other failures. When automated backups are disabled, the configuration appears as follows:\n\n```\nsettings {\n    backup_configuration {\n        enabled = false\n    }\n}\n```\n\nTo mitigate this risk, ensure backups are enabled using the following configuration:\n\n```\nsettings {\n    backup_configuration {\n        enabled = true\n    }\n}\n```\n\nThis ensures that point-in-time recovery is possible and critical business data can be restored when needed.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/sql_db_instance_backup_disabled",
+  "platform": "Terraform",
+  "descriptionID": "ab1d4131",
+  "cloudProvider": "gcp",
+  "cwe": "799",
+  "oldSeverity": "HIGH",
+  "oldDescriptionText": "Checks if backup configuration is enabled for all Cloud SQL Database instances",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database_instance"
+}

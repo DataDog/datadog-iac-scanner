@@ -1,0 +1,13 @@
+{
+  "id": "5beacce3-4020-4a3d-9e1d-a36f953df630",
+  "queryName": "RDS storage not encrypted",
+  "severity": "HIGH",
+  "category": "Encryption",
+  "descriptionText": "RDS database instances must have storage encryption enabled to protect data at rest and to ensure snapshots and automated backups are encrypted. Without it, sensitive database contents can be exposed if storage media or backups are compromised. In AWS CloudFormation, the `AWS::RDS::DBInstance` resource must define the `StorageEncrypted` property and set it to `true`. Resources missing `StorageEncrypted` or with `StorageEncrypted` set to `false` will be flagged. Optionally set `KmsKeyId` to use a customer-managed KMS key when you require specific key control.\n\nSecure configuration example:\n\n```yaml\nMyDBInstance:\n  Type: AWS::RDS::DBInstance\n  Properties:\n    DBInstanceIdentifier: my-encrypted-db\n    Engine: postgres\n    EngineVersion: '14.7'\n    DBInstanceClass: db.t3.micro\n    AllocatedStorage: 20\n    MasterUsername: admin\n    MasterUserPassword: !Ref DBPassword\n    StorageEncrypted: true\n    KmsKeyId: !Ref MyKMSKey\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/rds_storage_not_encrypted",
+  "platform": "CloudFormation",
+  "descriptionID": "f052de92",
+  "cloudProvider": "aws",
+  "cwe": "312",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-rds-database-instance.html"
+}

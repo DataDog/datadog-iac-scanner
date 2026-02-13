@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Glue with vulnerable policy",
+    "severity": "MEDIUM",
+    "line": 15,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "Glue with vulnerable policy",
+    "severity": "MEDIUM",
+    "line": 22,
+    "fileName": "positive_module.tf"
+  }
+]

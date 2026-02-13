@@ -1,0 +1,14 @@
+{
+  "id": "0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
+  "queryName": "ALB is not integrated with WAF",
+  "severity": "MEDIUM",
+  "category": "Networking and Firewall",
+  "descriptionText": "Application Load Balancers (ALBs) should always be protected by a Web Application Firewall (WAF) to defend against common web exploits and vulnerabilities, such as SQL injection and cross-site scripting (XSS) attacks. Without an associated WAF, ALBs are left exposed to the internet with no filter or mitigation in place for potentially malicious traffic targeting applications. This misconfiguration can lead to unauthorized access, data breaches, and disruptions to application availability, compromising the security and integrity of hosted applications. Ensuring that ALBs have an active WAF association is a critical best practice for reducing the risk of successful web-based attacks.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/alb_is_not_integrated_with_waf",
+  "platform": "Terraform",
+  "descriptionID": "4e4c668d",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "All Application Load Balancers (ALB) must be protected with Web Application Firewall (WAF) service",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/wafregional_web_acl_association"
+}

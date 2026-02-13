@@ -1,0 +1,20 @@
+{
+  "id": "b7d0181d-0a9b-4611-9d1c-1ad4f0b620ff",
+  "queryName": "etcd peer client certificate authentication set to false",
+  "severity": "MEDIUM",
+  "category": "Secret Management",
+  "descriptionText": "When using `etcd`, the `--peer-client-cert-auth` flag should be set to `true`. If the flag is set to `false` or not defined, peer client certificate authentication will be disabled, reducing cluster security.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/etcd_peer_client_certificate_authentication_set_to_false",
+  "platform": "Kubernetes",
+  "descriptionID": "00b0e7f2",
+  "cwe": "287",
+  "defaultFrameworks": [
+    {
+      "control": "4.2",
+      "framework": "essential-cloud-security-controls",
+      "framework_version": "v2",
+      "requirement": "kubernetes"
+    }
+  ],
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+}

@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Elasticsearch encryption with KMS disabled",
+    "severity": "HIGH",
+    "line": 5
+  }
+]

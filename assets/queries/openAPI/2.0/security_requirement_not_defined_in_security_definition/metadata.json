@@ -1,0 +1,13 @@
+{
+  "id": "a599b0d1-ff89-4cb8-9ece-9951854c06f6",
+  "queryName": "Security Requirement Not Defined In Security Definition",
+  "severity": "HIGH",
+  "category": "Structure and Semantics",
+  "descriptionText": "All security requirement objects must be defined in 'securityDefinitions'",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/security_requirement_not_defined_in_security_definition",
+  "platform": "OpenAPI",
+  "descriptionID": "44fec7d0",
+  "aggregation": 2,
+  "cwe": "284",
+  "providerUrl": "https://swagger.io/specification/v2/#securityRequirementObject"
+}

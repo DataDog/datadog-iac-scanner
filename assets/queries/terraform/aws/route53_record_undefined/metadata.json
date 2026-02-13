@@ -1,0 +1,14 @@
+{
+  "id": "25db74bf-fa3b-44da-934e-8c3e005c0453",
+  "queryName": "Route53 record undefined",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "This check verifies that Route53 record resources have defined values in the `records` array. Empty `record` arrays in Route53 configurations may result in DNS resolution failures, causing service disruptions and potentially breaking application functionality that depends on proper name resolution.\n\nA properly configured Route53 record should include appropriate values in the `records` array, as shown in the secure example below:\n\n```terraform\nrecords = [\n  aws_route53_zone.example.name_servers[0],\n  aws_route53_zone.example.name_servers[1],\n  aws_route53_zone.example.name_servers[2],\n  aws_route53_zone.example.name_servers[3],\n]\n```\n\nInsecure configurations leave the records array empty:\n\n```terraform\nrecords = [\n  \n]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/route53_record_undefined",
+  "platform": "Terraform",
+  "descriptionID": "91562f39",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "Check if Record is set",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route53_record"
+}

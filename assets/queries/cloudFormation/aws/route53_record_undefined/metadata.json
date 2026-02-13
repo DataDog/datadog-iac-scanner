@@ -1,0 +1,13 @@
+{
+  "id": "24d932e1-91f0-46ea-836f-fdbd81694151",
+  "queryName": "Route53 record undefined",
+  "severity": "HIGH",
+  "category": "Networking and Firewall",
+  "descriptionText": "A Route 53 hosted zone without any DNS record sets can lead to service outages from missing DNS entries. It also increases the risk of unmanaged or manual record additions that bypass infrastructure-as-code controls.\n\nIn CloudFormation, every `AWS::Route53::HostedZone` should be accompanied by one or more `AWS::Route53::RecordSet` resources. Record sets should reference the hosted zone via `HostedZoneId` or `HostedZoneName`, and define `Name` and `Type` (plus appropriate record data such as `TTL` and `ResourceRecords`. Templates that create an `AWS::Route53::HostedZone` but contain no `AWS::Route53::RecordSet` resources in the same template will be flagged.\n\nSecure example referencing the hosted zone ID:\n\n```yaml\nMyHostedZone:\n  Type: AWS::Route53::HostedZone\n  Properties:\n    Name: example.internal\n\nMyRecordSet:\n  Type: AWS::Route53::RecordSet\n  Properties:\n    HostedZoneId: !Ref MyHostedZone\n    Name: service.example.internal.\n    Type: A\n    TTL: '300'\n    ResourceRecords:\n      - 10.0.0.10\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/route53_record_undefined",
+  "platform": "CloudFormation",
+  "descriptionID": "268f1d77",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-route53-hostedzone.html"
+}

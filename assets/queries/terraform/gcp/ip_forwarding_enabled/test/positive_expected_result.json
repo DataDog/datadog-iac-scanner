@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "IP forwarding enabled",
+    "severity": "MEDIUM",
+    "line": 4
+  }
+]

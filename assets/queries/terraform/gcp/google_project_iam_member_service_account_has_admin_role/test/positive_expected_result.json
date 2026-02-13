@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Google project IAM member service account has admin role",
+    "severity": "HIGH",
+    "line": 3
+  },
+  {
+    "queryName": "Google project IAM member service account has admin role",
+    "severity": "HIGH",
+    "line": 9
+  }
+]

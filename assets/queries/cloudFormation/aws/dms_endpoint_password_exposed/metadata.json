@@ -1,0 +1,14 @@
+{
+  "id": "5f700072-b7ce-4e84-b3f3-497bf1c24a4d",
+  "queryName": "DMS endpoint password exposed",
+  "severity": "HIGH",
+  "category": "Secret Management",
+  "descriptionText": "Storing AWS DMS endpoint passwords as plaintext in a template or embedding them as a parameter `Default` exposes credentials in source control, CloudFormation templates, and stack metadata. This increases the risk of unauthorized access to database resources.\n\n For `AWS::DMS::Endpoint` resources, `Properties.Password` must not be a plain string literal or a `Ref` to a `Parameters.<Name>` that defines a `Default` value. Instead, `Password` should reference an AWS Secrets Manager secret or be supplied via a CloudFormation parameter without a `Default` (use `NoEcho` set to `true` to avoid echoing).\n\n Resources that contain plaintext passwords or parameter references with defaults will be flagged as insecure. Acceptable secure patterns include dynamic Secrets Manager references or parameters provided at deployment time.\n\nSecure examples (CloudFormation YAML):\n\n```yaml\nParameters:\n  DbPassword:\n    Type: String\n    NoEcho: true\n\nMyDmsEndpoint:\n  Type: AWS::DMS::Endpoint\n  Properties:\n    EndpointIdentifier: my-endpoint\n    EngineName: mysql\n    Username: dbuser\n    Password: !Ref DbPassword\n```\n\n```yaml\nMyDmsEndpoint:\n  Type: AWS::DMS::Endpoint\n  Properties:\n    EndpointIdentifier: my-endpoint\n    EngineName: mysql\n    Username: dbuser\n    Password: \"{{resolve:secretsmanager:my-db-secret:SecretString:password}}\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/dms_endpoint_password_exposed",
+  "platform": "CloudFormation",
+  "descriptionID": "a48ba75f",
+  "cloudProvider": "aws",
+  "cwe": "256",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-dms-endpoint.html"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "0b93729a-d882-4803-bdc3-ac429a21f158",
+  "queryName": "EC2 instance using API keys",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "EC2 instances should use IAM roles to be granted access to other AWS services. Storing AWS credentials directly in user data or on the instance, for example with environment variables such as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, as shown below, exposes sensitive credentials to anyone with access to the instance or the AWS console:\n\n```\nuser_data = <<EOF\n//!/bin/bash\napt-get install -y awscli\nexport AWS_ACCESS_KEY_ID=your_access_key_id_here\nexport AWS_SECRET_ACCESS_KEY=your_secret_access_key_here\nEOF\n```\n\nThis misconfiguration creates a significant security risk, as leaked credentials can be used by attackers to gain unauthorized access to AWS resources and potentially compromise the wider AWS environment. Instead, EC2 instances should be granted permissions using IAM roles via the `iam_instance_profile` attribute, which securely delivers temporary credentials to the instance and removes the need to manually manage or expose AWS keys.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/ec2_instance_using_api_keys",
+  "platform": "Terraform",
+  "descriptionID": "ffd8ce80",
+  "cloudProvider": "aws",
+  "cwe": "284",
+  "oldDescriptionText": "EC2 instances should use roles to be granted access to other AWS services",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance#iam_instance_profile"
+}

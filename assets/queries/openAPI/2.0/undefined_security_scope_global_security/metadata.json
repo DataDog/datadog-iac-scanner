@@ -1,0 +1,12 @@
+{
+  "id": "9aa6e95c-d964-4239-a3a8-9f37a3c5a31f",
+  "queryName": "Undefined Scope 'securityDefinition' On Global 'security' Field",
+  "severity": "LOW",
+  "category": "Access Control",
+  "descriptionText": "Using an scope on global security field that is undefined on 'securityDefinitions' can be defined by an attacker",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/undefined_security_scope_global_security",
+  "platform": "OpenAPI",
+  "descriptionID": "13115433",
+  "cwe": "284",
+  "providerUrl": "https://swagger.io/specification/v2/#security-scheme-object"
+}

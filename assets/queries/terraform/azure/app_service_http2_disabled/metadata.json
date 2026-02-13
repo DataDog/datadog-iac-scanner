@@ -1,0 +1,15 @@
+{
+  "id": "525b53be-62ed-4244-b4df-41aecfcb4071",
+  "queryName": "App Service HTTP2 disabled",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Enabling HTTP/2 for Azure App Service is essential for improved security and performance, as HTTP/2 offers better data encryption, reduced latency, and protection against certain protocol-level attacks. If the `http2_enabled` attribute is not set to `true` in the `site_config` block, as shown below, the app service will only support HTTP/1.1, making it more vulnerable to downgrade attacks and less efficient in handling modern web traffic.\n\n```\nsite_config {\n  http2_enabled = true\n}\n```\nNeglecting to enable HTTP/2 may expose applications to increased risks and degrade the overall performance and user experience.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/app_service_http2_disabled",
+  "platform": "Terraform",
+  "descriptionID": "dee0c164",
+  "cloudProvider": "azure",
+  "cwe": "311",
+  "oldSeverity": "LOW",
+  "oldDescriptionText": "App Service should have 'http2_enabled' enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/app_service#http2_enabled"
+}

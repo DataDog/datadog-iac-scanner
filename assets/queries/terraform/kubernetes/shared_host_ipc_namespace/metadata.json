@@ -1,0 +1,13 @@
+{
+  "id": "e94d3121-c2d1-4e34-a295-139bfeb73ea3",
+  "queryName": "Shared host IPC namespace",
+  "severity": "MEDIUM",
+  "category": "Resource Management",
+  "descriptionText": "Containers must not share the host IPC namespace.\n\nThis rule detects resources where the `host_ipc` attribute is set to `true`; the attribute should be undefined or `false` to prevent sharing the host IPC namespace.\n\nThe rule's result includes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`, `searchLine`, `remediation`, and `remediationType` to help locate and remediate the issue; remediation replaces `true` with `false`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/shared_host_ipc_namespace",
+  "platform": "Terraform",
+  "descriptionID": "e76243f6",
+  "cwe": "200",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#host_ipc"
+}

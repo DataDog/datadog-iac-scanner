@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "SQS Queue Exposed",
+    "severity": "HIGH",
+    "line": 10,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "SQS Queue Exposed",
+    "severity": "HIGH",
+    "line": 31,
+    "fileName": "positive.yaml"
+  }
+]

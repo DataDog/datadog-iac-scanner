@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "Security group ingress with all protocols",
+    "severity": "MEDIUM",
+    "line": 9,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "fileName": "positive1.yaml",
+    "queryName": "Security group ingress with all protocols",
+    "severity": "MEDIUM",
+    "line": 35
+  },
+  {
+    "queryName": "Security group ingress with all protocols",
+    "severity": "MEDIUM",
+    "line": 51,
+    "fileName": "positive2.json"
+  },
+  {
+    "queryName": "Security group ingress with all protocols",
+    "severity": "MEDIUM",
+    "line": 11,
+    "fileName": "positive2.json"
+  }
+]

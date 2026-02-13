@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Peer auto TLS set to true",
+    "severity": "MEDIUM",
+    "line": 21,
+    "fileName": "positive1.yaml"
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "id": "228c4c19-feeb-4c18-848c-800ac70fdfb7",
+  "queryName": "Image without digest",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Images should be specified with their digests to ensure integrity and immutability. This rule verifies that the `image` attribute is present for `container` and `init_container` entries and that the image includes a digest (contains '@'). It reports `MissingAttribute` when the `image` field is undefined and `IncorrectValue` when the `image` field does not contain a digest.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/image_without_digest",
+  "platform": "Terraform",
+  "descriptionID": "fec9b353",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#image"
+}

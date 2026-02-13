@@ -1,0 +1,14 @@
+{
+  "id": "acb6b4e2-a086-4f35-aefd-4db6ea51ada2",
+  "queryName": "Elasticsearch log disabled",
+  "severity": "MEDIUM",
+  "category": "Observability",
+  "descriptionText": "Elasticsearch domains in AWS should have logging enabled to capture important audit and performance data. The attribute `enabled` within the `log_publishing_options` block should be set to `true` to ensure that logs, such as `\"INDEX_SLOW_LOGS\"`, are published to the associated CloudWatch log group. If log publishing is disabled (for example, `enabled = false`), critical operational and security events may go undetected, making it difficult to troubleshoot issues, monitor for suspicious activity, or meet compliance requirements. Failing to enable logging increases the risk of undetected data breaches or operational failures due to limited visibility into Elasticsearch domain activity.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/elasticsearch_logs_disabled",
+  "platform": "Terraform",
+  "descriptionID": "e0526e1b",
+  "cloudProvider": "aws",
+  "cwe": "778",
+  "oldDescriptionText": "AWS Elasticsearch should have logs enabled",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticsearch_domain#log_publishing_options"
+}

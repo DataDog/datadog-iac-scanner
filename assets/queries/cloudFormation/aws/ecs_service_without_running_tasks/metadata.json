@@ -1,0 +1,14 @@
+{
+  "id": "79d745f0-d5f3-46db-9504-bef73e9fd528",
+  "queryName": "ECS service without running tasks",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "Amazon ECS services must define deployment controls so deployments do not reduce the number of healthy tasks to zero and so failed deployments can be rolled back automatically.\n \n In CloudFormation, the `AWS::ECS::Service` resource must include a non-`null` `Properties.DeploymentConfiguration` object that contains one or more of the deployment control properties: `MinimumHealthyPercent`, `MaximumPercent`, or `DeploymentCircuitBreaker`. Resources missing `DeploymentConfiguration` or lacking all of these properties will be flagged.\n \n `MinimumHealthyPercent` ensures a minimum number of tasks remain healthy during updates, `MaximumPercent` limits how many tasks may run during deployments, and `DeploymentCircuitBreaker` can enable automatic rollback on failed deployments.\n\nSecure configuration example:\n\n```yaml\nMyService:\n  Type: AWS::ECS::Service\n  Properties:\n    ServiceName: my-service\n    TaskDefinition: my-task\n    DesiredCount: 2\n    DeploymentConfiguration:\n      MinimumHealthyPercent: 100\n      MaximumPercent: 200\n      DeploymentCircuitBreaker:\n        Enable: true\n        Rollback: true\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecs_service_without_running_tasks",
+  "platform": "CloudFormation",
+  "descriptionID": "cd242bdd",
+  "cloudProvider": "aws",
+  "cwe": "665",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-service.html#cfn-ecs-service-deploymentconfiguration"
+}

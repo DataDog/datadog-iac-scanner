@@ -1,0 +1,12 @@
+{
+  "id": "b23e9b98-0cb6-4fc9-b257-1f3270442678",
+  "queryName": "Deployment without PodDisruptionBudget",
+  "severity": "LOW",
+  "category": "Availability",
+  "descriptionText": "Deployments with more than one replica should be targeted by a PodDisruptionBudget to ensure high availability during voluntary disruptions. This rule flags Deployment resources that have replicas > 1 but are not selected by any PodDisruptionBudget. A PodDisruptionBudget helps maintain the desired number of available pods during node drains or other disruptions.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/deployment_without_pod_disruption_budget",
+  "platform": "Kubernetes",
+  "descriptionID": "df941cb9",
+  "cwe": "400",
+  "providerUrl": "https://kubernetes.io/docs/tasks/run-application/configure-pdb/"
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Ensure that PostgreSQL server disables public network access",
+    "severity": "HIGH",
+    "resourceType": "azurerm_postgresql_server",
+    "line": 7
+  },
+  {
+    "queryName": "Ensure that PostgreSQL server disables public network access",
+    "severity": "HIGH",
+    "resourceType": "azurerm_postgresql_server",
+    "line": 15
+  }
+]

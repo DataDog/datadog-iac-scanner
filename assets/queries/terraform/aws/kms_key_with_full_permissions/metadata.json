@@ -1,0 +1,14 @@
+{
+  "id": "7ebc9038-0bde-479a-acc4-6ed7b6758899",
+  "queryName": "KMS key with vulnerable policy",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "This check identifies AWS KMS keys with overly permissive policies that grant full access to all AWS services or users. KMS keys with policies allowing `kms:*` actions to all principals (`AWS:*`) create a significant security risk, potentially allowing unauthorized users to access, modify, or delete encrypted data across your AWS environment.\n\nVulnerable policies typically include a statement with `Effect:Allow`, `Principal:{\"AWS\":\"*\"}`, and `Action:[\"kms:*\"]`, as shown in this insecure example:\n```\n\"Statement\":[{\n  \"Effect\":\"Allow\",\n  \"Principal\": {\"AWS\":\"*\"},\n  \"Action\":[\"kms:*\"],\n  \"Resource\":\"*\"\n}]\n```\n\nSecure your KMS keys by using least privilege principless—restrict access to specific IAM roles/users, limit actions to only those needed, and use explicit `Deny` statements where appropriate as shown in the following example:\n```\n\"Statement\":[{\n  \"Effect\":\"Deny\",\n  \"Principal\": {\"AWS\": [\"arn:aws:iam::111122223333:user/CMKUser\"]},\n  \"Action\": [\"kms:Encrypt\", \"kms:Decrypt\", \"kms:ReEncrypt*\", \"kms:GenerateDataKey*\", \"kms:DescribeKey\"],\n  \"Resource\":\"*\"\n}]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/kms_key_with_full_permissions",
+  "platform": "Terraform",
+  "descriptionID": "32b2985e",
+  "cloudProvider": "aws",
+  "cwe": "732",
+  "oldDescriptionText": "Checks if the policy is vulnerable and needs updating.",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key"
+}

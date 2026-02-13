@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Workload host port not specified",
+    "severity": "LOW",
+    "line": 9
+  },
+  {
+    "queryName": "Workload host port not specified",
+    "severity": "LOW",
+    "line": 24
+  }
+]

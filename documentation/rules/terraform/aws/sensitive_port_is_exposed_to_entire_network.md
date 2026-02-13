@@ -1,0 +1,804 @@
+---
+title: "Sensitive port is exposed to entire network"
+group_id: "Terraform / AWS"
+meta:
+  name: "aws/sensitive_port_is_exposed_to_entire_network"
+  id: "381c3f2a-ef6f-4eff-99f7-b169cda3422c"
+  display_name: "Sensitive port is exposed to entire network"
+  cloud_provider: "AWS"
+  platform: "Terraform"
+  severity: "HIGH"
+  category: "Networking and Firewall"
+---
+## Metadata
+
+**Id:** `381c3f2a-ef6f-4eff-99f7-b169cda3422c`
+
+**Cloud Provider:** AWS
+
+**Platform:** Terraform
+
+**Severity:** High
+
+**Category:** Networking and Firewall
+
+#### Learn More
+
+ - [Provider Reference](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group)
+
+### Description
+
+ This vulnerability occurs when security groups allow inbound traffic to sensitive ports (such as SSH, RDP, database, or administrative service ports) from the entire internet (`0.0.0.0/0` or `/0`). Exposing sensitive ports to the internet creates a significant security risk as it allows attackers from anywhere to attempt connections, potentially resulting in unauthorized access, data breaches, or service exploitation.
+
+To remediate this issue, restrict access to sensitive ports by specifying narrower CIDR ranges or specific IP addresses in your security group rules. For example, instead of using `cidr_blocks = ["0.0.0.0/0"]`, use specific IP ranges such as `cidr_blocks = [aws_vpc.main.cidr_block]` or `cidr_blocks = ["10.0.0.0/16"]` that only allow traffic from trusted networks.
+
+
+## Compliant Code Examples
+```json
+{
+  "format_version": "0.2",
+  "terraform_version": "1.0.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_security_group.invalid",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "invalid",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "description": "invalid",
+            "egress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [
+                  "::/0"
+                ],
+                "prefix_list_ids": [],
+                "protocol": "-1",
+                "security_groups": [],
+                "self": false,
+                "to_port": 0
+              }
+            ],
+            "ingress": [
+              {
+                "cidr_blocks": [
+                  "192.168.0.0/24"
+                ],
+                "description": "invalid",
+                "from_port": 443,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": false,
+                "to_port": 443
+              }
+            ],
+            "name": "invalid",
+            "revoke_rules_on_delete": false,
+            "tags": {
+              "Name": "invalid"
+            },
+            "tags_all": {
+              "Name": "invalid"
+            },
+            "timeouts": null
+          },
+          "sensitive_values": {
+            "egress": [
+              {
+                "cidr_blocks": [
+                  false
+                ],
+                "ipv6_cidr_blocks": [
+                  false
+                ],
+                "prefix_list_ids": [],
+                "security_groups": []
+              }
+            ],
+            "ingress": [
+              {
+                "cidr_blocks": [
+                  false
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": []
+              }
+            ],
+            "tags": {},
+            "tags_all": {}
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_security_group.invalid",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "invalid",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "description": "invalid",
+          "egress": [
+            {
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ],
+              "description": "",
+              "from_port": 0,
+              "ipv6_cidr_blocks": [
+                "::/0"
+              ],
+              "prefix_list_ids": [],
+              "protocol": "-1",
+              "security_groups": [],
+              "self": false,
+              "to_port": 0
+            }
+          ],
+          "ingress": [
+            {
+              "cidr_blocks": [
+                "192.168.0.0/24"
+              ],
+              "description": "invalid",
+              "from_port": 443,
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "protocol": "tcp",
+              "security_groups": [],
+              "self": false,
+              "to_port": 443
+            }
+          ],
+          "name": "invalid",
+          "revoke_rules_on_delete": false,
+          "tags": {
+            "Name": "invalid"
+          },
+          "tags_all": {
+            "Name": "invalid"
+          },
+          "timeouts": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "egress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [
+                false
+              ],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "id": true,
+          "ingress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "name_prefix": true,
+          "owner_id": true,
+          "tags": {},
+          "tags_all": {},
+          "vpc_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "egress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [
+                false
+              ],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "ingress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_security_group.invalid",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "invalid",
+          "provider_config_key": "aws",
+          "expressions": {
+            "description": {
+              "constant_value": "invalid"
+            },
+            "egress": {
+              "constant_value": [
+                {
+                  "cidr_blocks": [
+                    "0.0.0.0/0"
+                  ],
+                  "description": null,
+                  "from_port": 0,
+                  "ipv6_cidr_blocks": [
+                    "::/0"
+                  ],
+                  "prefix_list_ids": null,
+                  "protocol": "-1",
+                  "security_groups": null,
+                  "self": null,
+                  "to_port": 0
+                }
+              ]
+            },
+            "ingress": {
+              "constant_value": [
+                {
+                  "cidr_blocks": [
+                    "192.168.0.0/24"
+                  ],
+                  "description": "invalid",
+                  "from_port": 443,
+                  "ipv6_cidr_blocks": null,
+                  "prefix_list_ids": null,
+                  "protocol": "tcp",
+                  "security_groups": null,
+                  "self": null,
+                  "to_port": 443
+                }
+              ]
+            },
+            "name": {
+              "constant_value": "invalid"
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "invalid"
+              }
+            },
+            "vpc_id": {
+              "references": [
+                "aws_vpc.vpc-a.id",
+                "aws_vpc.vpc-a"
+              ]
+            }
+          },
+          "schema_version": 1
+        }
+      ]
+    }
+  }
+}
+
+```
+
+```terraform
+resource "aws_security_group" "negative1" {
+  name        = "allow_tls1"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 2383
+    to_port     = 2383
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+}
+
+
+resource "aws_security_group" "negative2" {
+  name        = "allow_tls2"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 2384
+    to_port     = 2386
+    protocol    = "tcp"
+    cidr_blocks = ["/0"]
+  }
+}
+
+
+resource "aws_security_group" "negative3" {
+  name        = "allow_tls3"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 25
+    to_port     = 2500
+    protocol    = "tcp"
+    cidr_blocks = ["1.2.3.4/5"]
+  }
+}
+
+
+resource "aws_security_group" "negative4" {
+  name        = "allow_tls4"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 25
+    to_port     = 2500
+    protocol    = "tcp"
+    cidr_blocks = ["1.2.3.4/5"]
+  }
+}
+
+
+resource "aws_security_group" "negative5" {
+  name        = "allow_tls5"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 25
+    to_port     = 2500
+    protocol    = "udp"
+    cidr_blocks = ["1.2.3.4/5","0.0.0.0/12"]
+  }
+}
+
+
+resource "aws_security_group" "negative6" {
+  name        = "allow_tls6"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["1.2.3.4/5","0.0.0.0/12"]
+  }
+}
+```
+## Non-Compliant Code Examples
+```json
+{
+  "format_version": "0.2",
+  "terraform_version": "1.0.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_security_group.invalid",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "invalid",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "description": "invalid",
+            "egress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [
+                  "::/0"
+                ],
+                "prefix_list_ids": [],
+                "protocol": "-1",
+                "security_groups": [],
+                "self": false,
+                "to_port": 0
+              }
+            ],
+            "ingress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "invalid",
+                "from_port": 443,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": false,
+                "to_port": 443
+              }
+            ],
+            "name": "invalid",
+            "revoke_rules_on_delete": false,
+            "tags": {
+              "Name": "invalid"
+            },
+            "tags_all": {
+              "Name": "invalid"
+            },
+            "timeouts": null
+          },
+          "sensitive_values": {
+            "egress": [
+              {
+                "cidr_blocks": [
+                  false
+                ],
+                "ipv6_cidr_blocks": [
+                  false
+                ],
+                "prefix_list_ids": [],
+                "security_groups": []
+              }
+            ],
+            "ingress": [
+              {
+                "cidr_blocks": [
+                  false
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": []
+              }
+            ],
+            "tags": {},
+            "tags_all": {}
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_security_group.invalid",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "invalid",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "description": "invalid",
+          "egress": [
+            {
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ],
+              "description": "",
+              "from_port": 0,
+              "ipv6_cidr_blocks": [
+                "::/0"
+              ],
+              "prefix_list_ids": [],
+              "protocol": "-1",
+              "security_groups": [],
+              "self": false,
+              "to_port": 0
+            }
+          ],
+          "ingress": [
+            {
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ],
+              "description": "invalid",
+              "from_port": 443,
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "protocol": "tcp",
+              "security_groups": [],
+              "self": false,
+              "to_port": 443
+            }
+          ],
+          "name": "invalid",
+          "revoke_rules_on_delete": false,
+          "tags": {
+            "Name": "invalid"
+          },
+          "tags_all": {
+            "Name": "invalid"
+          },
+          "timeouts": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "egress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [
+                false
+              ],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "id": true,
+          "ingress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "name_prefix": true,
+          "owner_id": true,
+          "tags": {},
+          "tags_all": {},
+          "vpc_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "egress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [
+                false
+              ],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "ingress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_security_group.invalid",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "invalid",
+          "provider_config_key": "aws",
+          "expressions": {
+            "description": {
+              "constant_value": "invalid"
+            },
+            "egress": {
+              "constant_value": [
+                {
+                  "cidr_blocks": [
+                    "0.0.0.0/0"
+                  ],
+                  "description": null,
+                  "from_port": 0,
+                  "ipv6_cidr_blocks": [
+                    "::/0"
+                  ],
+                  "prefix_list_ids": null,
+                  "protocol": "-1",
+                  "security_groups": null,
+                  "self": null,
+                  "to_port": 0
+                }
+              ]
+            },
+            "ingress": {
+              "constant_value": [
+                {
+                  "cidr_blocks": [
+                    "0.0.0.0/0"
+                  ],
+                  "description": "invalid",
+                  "from_port": 443,
+                  "ipv6_cidr_blocks": null,
+                  "prefix_list_ids": null,
+                  "protocol": "tcp",
+                  "security_groups": null,
+                  "self": null,
+                  "to_port": 443
+                }
+              ]
+            },
+            "name": {
+              "constant_value": "invalid"
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "invalid"
+              }
+            },
+            "vpc_id": {
+              "references": [
+                "aws_vpc.vpc-a.id",
+                "aws_vpc.vpc-a"
+              ]
+            }
+          },
+          "schema_version": 1
+        }
+      ]
+    }
+  }
+}
+
+```
+
+```terraform
+resource "aws_security_group" "positive1" {
+  name        = "allow_tls1"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 2200
+    to_port     = 2500
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+
+resource "aws_security_group" "positive2" {
+  name        = "allow_tls2"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 20
+    to_port     = 60
+    protocol    = "tcp"
+    cidr_blocks = ["/0"]
+  }
+}
+
+
+resource "aws_security_group" "positive3" {
+  name        = "allow_tls3"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 5000
+    to_port     = 6000
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+
+resource "aws_security_group" "positive4" {
+  name        = "allow_tls4"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 20
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["/0"]
+  }
+}
+
+
+resource "aws_security_group" "positive5" {
+  name        = "allow_tls5"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 445
+    to_port     = 500
+    protocol    = "udp"
+    cidr_blocks = ["1.1.1.1/1","0.0.0.0/0",  "2.2.3.4/12"]
+  }
+}
+
+
+resource "aws_security_group" "positive6" {
+  name        = "allow_tls6"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 135
+    to_port     = 170
+    protocol    = "udp"
+    cidr_blocks = ["10.68.0.0", "0.0.0.0/0"]
+  }
+}
+
+
+resource "aws_security_group" "positive7" {
+  name        = "allow_tls7"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 2383
+    to_port     = 2383
+    protocol    = "udp"
+    cidr_blocks = ["/0", "1.2.3.4/12"]
+  }
+}
+
+
+resource "aws_security_group" "positive8" {
+  name        = "allow_tls8"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TLS from VPC"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["/0"]
+  }
+}
+
+```

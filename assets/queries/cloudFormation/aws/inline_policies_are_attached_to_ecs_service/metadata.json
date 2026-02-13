@@ -1,0 +1,14 @@
+{
+  "id": "9e8c89b3-7997-4d15-93e4-7911b9db99fd",
+  "queryName": "Inline policies are attached to an ECS service",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "ECS services must reference an IAM role, not an IAM policy, because pointing the service `Role` property to a policy resource can break permission binding, make access controls harder to manage and audit, and increase the chance of privilege misconfiguration. Check `AWS::ECS::Service` resources' `Properties.Role`. The value must be a reference to an `AWS::IAM::Role` (logical ID or ARN) and must not be the logical ID of an `AWS::IAM::Policy` resource. Attach permissions to that role using `ManagedPolicyArns`, an `AWS::IAM::ManagedPolicy`, or inline policies defined on the `AWS::IAM::Role` itself. ECS services whose `Role` property refers to an `AWS::IAM::Policy` logical ID will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyEcsRole:\n  Type: AWS::IAM::Role\n  Properties:\n    AssumeRolePolicyDocument:\n      Statement:\n        - Effect: Allow\n          Principal:\n            Service: ecs-tasks.amazonaws.com\n          Action: sts:AssumeRole\n    ManagedPolicyArns:\n      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy\n\nMyEcsService:\n  Type: AWS::ECS::Service\n  Properties:\n    Role: !Ref MyEcsRole\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/inline_policies_are_attached_to_ecs_service",
+  "platform": "CloudFormation",
+  "descriptionID": "4706b78f",
+  "cloudProvider": "aws",
+  "cwe": "286",
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-service.html"
+}

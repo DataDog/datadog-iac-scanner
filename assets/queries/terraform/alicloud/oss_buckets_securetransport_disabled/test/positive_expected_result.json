@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "OSS buckets secure transport disabled",
+		"severity": "MEDIUM",
+		"line": 2,
+		"fileName": "positive1.tf"
+	},
+	{
+		"queryName": "OSS buckets secure transport disabled",
+		"severity": "MEDIUM",
+		"line": 5,
+		"fileName": "positive2.tf"
+	}
+]

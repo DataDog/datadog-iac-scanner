@@ -1,0 +1,14 @@
+[
+	{
+		"queryName": "HPA targets invalid object",
+		"severity": "LOW",
+		"line": 15,
+		"fileName": ""
+	},
+	{
+		"queryName": "HPA targets invalid object",
+		"severity": "LOW",
+		"line": 49,
+		"fileName": ""
+	}
+]

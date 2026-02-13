@@ -1,0 +1,13 @@
+{
+  "id": "58876b44-a690-4e9f-9214-7735fa0dd15d",
+  "queryName": "CronJob deadline not configured",
+  "severity": "LOW",
+  "category": "Resource Management",
+  "descriptionText": "CronJobs must include a configured deadline. The `starting_deadline_seconds` attribute in the resource spec (`kubernetes_cron_job[].spec.starting_deadline_seconds`) must be defined. This ensures missed job executions have a bounded retry window and are not indefinitely retried.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/cronjob_deadline_not_configured",
+  "platform": "Terraform",
+  "descriptionID": "030edc62",
+  "cwe": "400",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/cron_job#starting_deadline_seconds"
+}

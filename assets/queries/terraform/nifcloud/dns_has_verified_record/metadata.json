@@ -1,0 +1,13 @@
+{
+  "id": "a1defcb6-55e8-4511-8c2a-30b615b0e057",
+  "queryName": "Beta - Nifcloud DNS has verified record",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Remove the verification TXT record used for DNS authentication (records containing `nifty-dns-verify=`) after verification is complete. If the authentication record remains, others could reuse it to claim or re-register the zone, exposing DNS control to unauthorized parties. This rule flags `nifcloud_dns_record` resources that include `nifty-dns-verify=` and returns attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/dns_has_verified_record",
+  "platform": "Terraform",
+  "descriptionID": "578a5e6b",
+  "cloudProvider": "nifcloud",
+  "cwe": "285",
+  "providerUrl": "https://registry.terraform.io/providers/nifcloud/nifcloud/latest/docs/resources/dns_record#record"
+}

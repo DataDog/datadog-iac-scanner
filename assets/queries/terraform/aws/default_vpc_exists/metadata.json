@@ -1,0 +1,14 @@
+{
+  "id": "96ed3526-0179-4c73-b1b2-372fde2e0d13",
+  "queryName": "Default VPC exists",
+  "severity": "MEDIUM",
+  "category": "Insecure Defaults",
+  "descriptionText": "Using the default VPC in AWS is not recommended, as it is a shared environment with default configurations that may not align with an organization's security and networking requirements. Resources created in the default VPC are more susceptible to unintended access, misconfiguration, or exposure. To mitigate this risk, it is best to define a custom VPC, as in the following example:\n\n```\nresource \"aws_vpc\" \"main\" {\n  cidr_block       = \"10.0.0.0/16\"\n  instance_tenancy = \"default\"\n\n  tags = {\n    Name = \"main\"\n  }\n}\n```\n\nThis ensures network isolation and enables more granular control over security settings.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/default_vpc_exists",
+  "platform": "Terraform",
+  "descriptionID": "d4f171f3",
+  "cloudProvider": "aws",
+  "cwe": "200",
+  "oldDescriptionText": "It isn't recommended to use resources in default VPC",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/default_vpc"
+}

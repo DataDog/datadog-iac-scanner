@@ -1,0 +1,14 @@
+{
+  "id": "1dc73fb4-5b51-430c-8c5f-25dcf9090b02",
+  "queryName": "RDS with backup disabled",
+  "severity": "MEDIUM",
+  "category": "Backup",
+  "descriptionText": "This check ensures that Amazon RDS instances have automatic backups enabled by setting the `backup_retention_period` to a value greater than zero. When `backup_retention_period` is set to `0`, no automated backups are created for the database instance, leaving data unprotected against accidental deletion, corruption, or operational incidents. Without automated backups, it is impossible to restore the database to a previous point in time, significantly increasing the risk of permanent data loss. Enabling and properly configuring the backup retention period helps ensure data durability and business continuity for critical database workloads.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/rds_with_backup_disabled",
+  "platform": "Terraform",
+  "descriptionID": "73fdfe55",
+  "cloudProvider": "aws",
+  "cwe": "754",
+  "oldDescriptionText": "Make sure the AWS RDS configuration has automatic backup configured. If the retention period is equal to 0 there is no backup",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/db_instance"
+}

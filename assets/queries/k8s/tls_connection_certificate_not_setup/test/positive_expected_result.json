@@ -1,0 +1,26 @@
+[
+  {
+    "queryName": "TLS connection certificate not set up",
+    "severity": "MEDIUM",
+    "line": 11,
+    "filename": "positive1.yaml"
+  },
+  {
+    "queryName": "TLS connection certificate not set up",
+    "severity": "MEDIUM",
+    "line": 11,
+    "filename": "positive1.yaml"
+  },
+  {
+    "queryName": "TLS connection certificate not set up",
+    "severity": "MEDIUM",
+    "line": 2,
+    "filename": "positive2.yaml"
+  },
+  {
+    "queryName": "TLS connection certificate not set up",
+    "severity": "MEDIUM",
+    "line": 2,
+    "filename": "positive2.yaml"
+  }
+]
