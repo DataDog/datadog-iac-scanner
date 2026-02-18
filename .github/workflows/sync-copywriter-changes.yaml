@@ -104,6 +104,8 @@ jobs:
 
       - name: Commit and push changes
         if: steps.sync.outputs.updated == 'true'
+        env:
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
@@ -116,7 +118,7 @@ jobs:
 
           Co-authored-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
 
-          git push origin temp-sync-branch:${{ steps.pr.outputs.head_ref }} --force
+          git push origin "temp-sync-branch:$HEAD_REF" --force
 
       - name: Comment on PR
         if: steps.sync.outputs.updated == 'true'
