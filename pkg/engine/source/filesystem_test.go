@@ -21,7 +21,7 @@ import (
 
 // BenchmarkFilesystemSource_GetQueries benchmarks getQueries to see improvements
 func BenchmarkFilesystemSource_GetQueries(b *testing.B) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		b.Fatal(err)
 	}
 	type fields struct {
@@ -67,7 +67,7 @@ func BenchmarkFilesystemSource_GetQueries(b *testing.B) {
 
 // TestFilesystemSource_GetQueriesWithExclude test the function GetQuery with QuerySelectionFilter set for Exclude queries
 func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 	contentByte, err := os.ReadFile(filepath.FromSlash("./assets/queries/terraform/aws/alb_deletion_protection_disabled/query.rego"))
@@ -166,7 +166,7 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 
 // TestFilesystemSource_GetQueriesWithInclude test the function GetQuery with QuerySelectionFilter set for include queries
 func TestFilesystemSource_GetQueriesWithInclude(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -265,7 +265,7 @@ func TestFilesystemSource_GetQueriesWithInclude(t *testing.T) {
 
 // TestFilesystemSource_GetQueryLibrary tests the functions [GetQueryLibrary()] and all the methods called by them
 func TestFilesystemSource_GetQueryLibrary(t *testing.T) { //nolint
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 	type fields struct {
@@ -395,7 +395,7 @@ func TestFilesystemSource_GetQueryLibrary(t *testing.T) { //nolint
 
 // TestFilesystemSource_GetQueries tests the functions [GetQueries()] and all the methods called by them
 func TestFilesystemSource_GetQueries(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -484,7 +484,7 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 
 // Test_ReadMetadata tests the functions [ReadMetadata()] and all the methods called by them
 func Test_ReadMetadata(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 	type args struct {
@@ -648,7 +648,7 @@ func TestSource_validateMetadata(t *testing.T) {
 }
 
 func TestSource_getLibraryInDir(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 

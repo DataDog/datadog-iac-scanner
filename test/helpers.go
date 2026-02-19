@@ -2,7 +2,6 @@ package test
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,21 +19,22 @@ const (
 // ChangeCurrentDir gets current working directory and changes to its parent until finds the desired directory
 // or fail
 func ChangeCurrentDir(desiredDir string) error {
-	for currentDir, err := os.Getwd(); GetCurrentDirName(currentDir) != desiredDir; currentDir, err = os.Getwd() {
-		if err == nil {
-			if err = os.Chdir(".."); err != nil {
-				fmt.Print(formatCurrentDirError(err))
-				return errors.New(formatCurrentDirError(err))
-			}
-		} else {
-			return errors.New(formatCurrentDirError(err))
+	startDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("error getting current directory: %w", err)
+	}
+	currentDir := startDir
+	for filepath.Base(currentDir) != desiredDir {
+		newDir := filepath.Dir(currentDir)
+		if newDir == currentDir || newDir == "." {
+			return fmt.Errorf("could not find a `%s` subdirectory in path `%s`", desiredDir, startDir)
 		}
+		currentDir = newDir
+	}
+	if err = os.Chdir(currentDir); err != nil {
+		return fmt.Errorf("could not change working directory to `%s`: %w", currentDir, err)
 	}
 	return nil
-}
-
-func formatCurrentDirError(err error) string {
-	return fmt.Sprintf("change path error = %v", err)
 }
 
 // GetCurrentDirName returns current working directory

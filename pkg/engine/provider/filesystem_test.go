@@ -78,7 +78,7 @@ func TestNewFileSystemSourceProvider(t *testing.T) {
 
 // TestFileSystemSourceProvider_GetSources tests the functions [GetSources()] and all the methods called by them
 func TestFileSystemSourceProvider_GetSources(t *testing.T) { //nolint
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 	type fields struct {
@@ -128,7 +128,7 @@ func TestFileSystemSourceProvider_GetSources(t *testing.T) { //nolint
 }
 
 func TestFileSystemSourceProvider_GetBasePath(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Errorf("failed to change dir: %s", err)
 	}
 	fsystem, err := initFs([]string{filepath.FromSlash("test")}, []string{})
@@ -175,7 +175,7 @@ func TestFileSystemSourceProvider_GetBasePath(t *testing.T) {
 
 // TestFileSystemSourceProvider_checkConditions tests the functions [checkConditions()] and all the methods called by them
 func TestFileSystemSourceProvider_checkConditions(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Errorf("failed to change dir: %s", err)
 	}
 	infoHelm, errHelm := os.Stat(filepath.FromSlash("test/fixtures/test_helm"))
@@ -478,7 +478,7 @@ func TestFileSystemSourceProvider_checkConditions(t *testing.T) {
 
 // TestFileSystemSourceProvider_AddExcluded tests the functions [AddExcluded()] and all the methods called by them
 func TestFileSystemSourceProvider_AddExcluded(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Errorf("failed to change dir: %s", err)
 	}
 	fsystem, err := initFs([]string{filepath.FromSlash("test")}, []string{})
