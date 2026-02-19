@@ -1,8 +1,8 @@
-name: KICS Test Gate
+name: Test Gate
 
-# This workflow blocks PRs from being merged to main if tests in critical KICS packagesfail.
-# TODO: Expand gate to include all critical KICS packages once their tests are fixed
-# TODO: Expand gate to run ALL tests within KICS packages once their tests are fixed
+# This workflow blocks PRs from being merged to main if tests in critical packages fail.
+# TODO: Expand gate to include all critical packages once their tests are fixed
+# TODO: Expand gate to run ALL tests once their tests are fixed
 on:
   pull_request:
     branches: [main]
@@ -14,8 +14,8 @@ permissions:
   pull-requests: write  # Write access to post PR comments
 
 jobs:
-  kics-tests:
-    name: Critical KICS Tests
+  critical-tests:
+    name: Critical Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -37,13 +37,12 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@latest
 
-      - name: Run critical KICS tests
+      - name: Run critical tests
         id: engine-tests
-        # TODO: ./pkg/scanner is not included, takes too long to run in Github. Add it back when we have a faster way to run it in CI.
         run: |
-          echo "🔍 Running critical KICS tests..."
-          gotestsum --format testname -- -v -short -timeout 15m ./pkg/engine ./pkg/analyzer ./pkg/parser ./pkg/parser/terraform/... ./pkg/parser/yaml ./pkg/engine/source ./pkg/scan ./pkg/builder/... ./pkg/kics ./test/e2e ./pkg/utils ./test/... ./pkg/report/model
-          echo "✅ All critical KICS tests passed!"
+          echo "🔍 Running critical tests..."
+          gotestsum --format testname -- -v -short -timeout 15m ./pkg/engine ./pkg/analyzer ./pkg/parser ./pkg/parser/terraform/... ./pkg/parser/yaml ./pkg/engine/source ./pkg/scan ./pkg/scanner ./pkg/builder/... ./pkg/kics ./test/e2e ./pkg/utils ./test/... ./pkg/report/model
+          echo "✅ All critical tests passed!"
 
       - name: Comment on PR (on failure)
         if: failure() && github.event_name == 'pull_request'
@@ -54,11 +53,11 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '❌ **Critical Tests Failed**\n\nOne or more critical test suites failed. These packages are critical to KICS security scanning functionality.\n\n**This PR cannot be merged until these tests pass.**\n\nPlease review the test failures and fix the issues.\n\n[View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})'
+              body: '❌ **Critical Tests Failed**\n\nOne or more critical test suites failed. These packages are critical to the security scanning functionality.\n\n**This PR cannot be merged until these tests pass.**\n\nPlease review the test failures and fix the issues.\n\n[View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})'
             })
 
       - name: Set status
         if: failure()
         run: |
-          echo "::error::Critical KICS tests failed - blocking merge"
+          echo "::error::Critical tests failed - blocking merge"
           exit 1
