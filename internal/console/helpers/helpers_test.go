@@ -18,7 +18,7 @@ import (
 )
 
 func TestFileAnalyzer(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -190,7 +190,7 @@ func TestHelpers_GenerateReport(t *testing.T) {
 }
 
 func TestHelpers_GetDefaultQueryPath(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 

@@ -1,0 +1,63 @@
+name: Test Gate
+
+# This workflow blocks PRs from being merged to main if tests in critical packages fail.
+# TODO: Expand gate to include all critical packages once their tests are fixed
+# TODO: Expand gate to run ALL tests once their tests are fixed
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:  # Allow manual trigger from Actions tab
+
+permissions:
+  contents: read        # Read access to checkout code
+  pull-requests: write  # Write access to post PR comments
+
+jobs:
+  critical-tests:
+    name: Critical Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
+      - name: Run critical tests
+        id: engine-tests
+        run: |
+          echo "🔍 Running critical tests..."
+          gotestsum --format testname -- -v -short -timeout 15m ./pkg/engine ./pkg/analyzer ./pkg/parser ./pkg/parser/terraform/... ./pkg/parser/yaml ./pkg/engine/source ./pkg/scan ./pkg/scanner ./pkg/builder/... ./pkg/kics ./test/e2e ./pkg/utils ./test/... ./pkg/report/model
+          echo "✅ All critical tests passed!"
+
+      - name: Comment on PR (on failure)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Critical Tests Failed**\n\nOne or more critical test suites failed. These packages are critical to the security scanning functionality.\n\n**This PR cannot be merged until these tests pass.**\n\nPlease review the test failures and fix the issues.\n\n[View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})'
+            })
+
+      - name: Set status
+        if: failure()
+        run: |
+          echo "::error::Critical tests failed - blocking merge"
+          exit 1

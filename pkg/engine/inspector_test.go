@@ -127,7 +127,7 @@ func TestInspector_GetCoverageReport(t *testing.T) {
 
 // TestNewInspector tests the functions [NewInspector()] and all the methods called by them
 func TestNewInspector(t *testing.T) { //nolint
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 	contentByte, err := os.ReadFile(filepath.FromSlash("./test/fixtures/get_queries_test/content_get_queries.rego"))
@@ -320,7 +320,7 @@ func TestEngine_contains(t *testing.T) {
 }
 
 func TestEngine_LenQueriesByPlat(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -367,7 +367,7 @@ func TestEngine_LenQueriesByPlat(t *testing.T) {
 }
 
 func TestEngine_GetFailedQueries(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 	type args struct {

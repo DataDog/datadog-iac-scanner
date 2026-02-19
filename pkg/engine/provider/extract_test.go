@@ -14,7 +14,7 @@ import (
 )
 
 func TestProvider_GetSources(t *testing.T) {
-	if err := test.ChangeCurrentDir("kics"); err != nil {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
 

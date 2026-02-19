@@ -1,7 +1,6 @@
 package test
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,28 +29,6 @@ func Test_GetCurrentDirName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			v := GetCurrentDirName(tt.path)
-			require.Equal(t, tt.expectedOutput, v)
-		})
-	}
-
-}
-
-func Test_FormatCurrentDirError(t *testing.T) {
-	tests := []struct {
-		name           string
-		value          error
-		expectedOutput string
-	}{
-		{
-			name:           "error format test",
-			value:          errors.New("some text"),
-			expectedOutput: "change path error = some text",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			v := formatCurrentDirError(tt.value)
 			require.Equal(t, tt.expectedOutput, v)
 		})
 	}

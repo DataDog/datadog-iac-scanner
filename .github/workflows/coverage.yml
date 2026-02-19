@@ -27,5 +27,4 @@ jobs:
           /usr/local/bin/datadog-ci coverage upload cover.out
         env:
           DD_API_KEY: ${{ secrets.DD_API_KEY }}
-          DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
           DD_SITE: ${{ vars.DD_SITE }}
