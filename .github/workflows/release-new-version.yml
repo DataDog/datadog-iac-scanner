@@ -3,7 +3,8 @@ name: Release new version
 on:
   push:
     tags:
-      - "*" # triggers only if push new tag version, like `v0.8.4`
+      - "v[0-9]+.[0-9]+.[0-9]+"   # release versions, like `v0.8.4`
+      - "v[0-9]+.[0-9]+.[0-9]+-*" # pre-release versions, like `v0.8.4-alpha`
 
 # Restrict jobs in this workflow to have no permissions by default; permissions
 # should be granted per job as needed using a dedicated `permissions` block
