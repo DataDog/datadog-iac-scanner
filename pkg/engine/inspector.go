@@ -27,12 +27,12 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/open-policy-agent/opa/ast"
-	"github.com/open-policy-agent/opa/cover"
-	"github.com/open-policy-agent/opa/rego"
-	"github.com/open-policy-agent/opa/storage/inmem"
-	"github.com/open-policy-agent/opa/topdown"
-	"github.com/open-policy-agent/opa/util"
+	"github.com/open-policy-agent/opa/ast"           // nolint:staticcheck
+	"github.com/open-policy-agent/opa/cover"         // nolint:staticcheck
+	"github.com/open-policy-agent/opa/rego"          // nolint:staticcheck
+	"github.com/open-policy-agent/opa/storage/inmem" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/topdown"       // nolint:staticcheck
+	"github.com/open-policy-agent/opa/util"          // nolint:staticcheck
 	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 )
