@@ -8,5 +8,5 @@ OPTIONS:
    --max-resolver-depth int                               maximum depth that the scanner will resolve files in (default: 15)
    --timeout int                                          query timeout, in seconds (default: 60)
    --exclude-queries string [ --exclude-queries string ]  ids of queries to exclude
-   --type string, -t string [ --type string, -t string ]  a list of platform types to scan (default: "CICD", "Terraform", "Kubernetes", "CloudFormation")
+   --type string, -t string [ --type string, -t string ]  a list of platform types to scan (default: "CICD", "Terraform", "Kubernetes", "CloudFormation", "Dockerfile")
    --help, -h                                             show help
