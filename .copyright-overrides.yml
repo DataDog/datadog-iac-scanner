@@ -299,5 +299,4 @@ deps.dev/api/v3alpha: Copyright 2023 Google LLC
 github.com/kr/pretty: Copyright 2012 Keith Rarick
 github.com/kr/text: Copyright 2012 Keith Rarick
 github.com/anchore/go-struct-converter: "" # At date, this repository have no copyright
-github.com/moby/buildkit/*: Copyright 2012-2017 Docker, Inc.
 github.com/santhosh-tekuri/jsonschema/*: Copyright Santhosh Tekuri
