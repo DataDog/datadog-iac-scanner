@@ -77,7 +77,6 @@ func (s *Service) PrepareSources(ctx context.Context,
 	contextLogger := logger.FromContext(ctx)
 	defer wg.Done()
 	// CxSAST query under review
-	data := make([]byte, mbConst)
 	contextLogger.Info().Msgf("Getting sources")
 	var err error
 	// TODO: Remove this if / else upon finishing dogfooding phase
@@ -86,6 +85,8 @@ func (s *Service) PrepareSources(ctx context.Context,
 			ctx,
 			s.Parser.SupportedExtensions(),
 			func(ctx context.Context, filename string, rc io.ReadCloser) error {
+				// data will be used as buffer as the sink is used multiple times concurrently
+				data := make([]byte, mbConst)
 				return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
 			},
 			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
@@ -97,6 +98,7 @@ func (s *Service) PrepareSources(ctx context.Context,
 			ctx,
 			s.Parser.SupportedExtensions(),
 			func(ctx context.Context, filename string, rc io.ReadCloser) error {
+				data := make([]byte, mbConst)
 				return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
 			},
 			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
