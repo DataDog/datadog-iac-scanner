@@ -8,6 +8,9 @@ on:
     - "assets/queries/cloudFormation/**/test/*.json"
     - "!assets/queries/cloudFormation/**/test/*_expected_result.json" # exclude expected result files
 
+permissions:
+  contents: read
+
 jobs:
   validate-cfn-syntax:
     runs-on: ubuntu-latest

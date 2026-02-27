@@ -7,6 +7,9 @@ on:
     - "assets/queries/ansible/azure/**/test/*.yaml"
     - "assets/queries/ansible/gcp/**/test/*.yaml"
 
+permissions:
+  contents: read
+
 jobs:
   lint-samples:
     runs-on: ubuntu-latest
