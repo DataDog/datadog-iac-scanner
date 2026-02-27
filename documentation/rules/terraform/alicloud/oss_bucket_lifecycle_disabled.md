@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- `alicloud_oss_bucket` resources should include a `lifecycle_rule` block with `enabled` set to `true`. If the `lifecycle_rule` block is missing, the policy reports a `MissingAttribute` issue. If the block exists but `enabled` is `false`, the policy reports an `IncorrectValue` issue and recommends changing `enabled` from `false` to `true`.
-
+`alicloud_oss_bucket` resources should include a `lifecycle_rule` block with `enabled` set to `true`. If the `lifecycle_rule` block is missing, the policy reports a `MissingAttribute` issue. If the block exists but `enabled` is `false`, the policy reports an `IncorrectValue` issue and recommends changing `enabled` from `false` to `true`.
 
 ## Compliant Code Examples
 ```terraform

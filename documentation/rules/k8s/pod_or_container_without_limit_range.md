@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Each namespace must include an associated LimitRange policy to ensure resource allocations for Pods, containers, and PersistentVolumeClaims remain within defined boundaries. The rule checks resources of kinds Pod, Deployment, DaemonSet, StatefulSet, ReplicaSet, ReplicationController, Job, CronJob, and PersistentVolumeClaim and reports when no LimitRange exists in the same namespace (or in 'default' when the namespace is not set).
-
+Each namespace must include an associated LimitRange policy to ensure resource allocations for Pods, containers, and PersistentVolumeClaims remain within defined boundaries. The rule checks resources of kinds Pod, Deployment, DaemonSet, StatefulSet, ReplicaSet, ReplicationController, Job, CronJob, and PersistentVolumeClaim and reports when no LimitRange exists in the same namespace (or in 'default' when the namespace is not set).
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFormation stacks should send notifications for stack events so operators are promptly alerted to failed or unexpected stack creations, updates, or deletions.
+CloudFormation stacks should send notifications for stack events so operators are promptly alerted to failed or unexpected stack creations, updates, or deletions.
 
 For `AWS::CloudFormation::Stack` resources, `Properties.NotificationARNs` must be defined and set to a list of SNS topic ARNs (or CloudFormation references to `AWS::SNS::Topic` resources) so events are forwarded to your alerting channels. Resources missing `NotificationARNs`, or configured with an empty list, will be flagged because lack of notifications delays detection of provisioning failures and security-relevant changes.
 
@@ -45,7 +45,6 @@ MyStack:
     NotificationARNs:
       - !Ref NotificationTopic
 ```
-
 
 ## Compliant Code Examples
 ```yaml

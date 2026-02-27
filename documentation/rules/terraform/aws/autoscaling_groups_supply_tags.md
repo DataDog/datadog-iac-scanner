@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Autoscaling groups in AWS should be configured with appropriate tags to ensure proper resource management, cost allocation, and identification. When the `tags` attribute is omitted, as in the following example, it becomes difficult to track and manage autoscaling resources, increasing the risk of orphaned or mismanaged infrastructure.
+Autoscaling groups in AWS should be configured with appropriate tags to ensure proper resource management, cost allocation, and identification. When the `tags` attribute is omitted, as in the following example, it becomes difficult to track and manage autoscaling resources, increasing the risk of orphaned or mismanaged infrastructure.
 
 ```
 resource "aws_autoscaling_group" "example" {
@@ -54,7 +54,6 @@ resource "aws_autoscaling_group" "example" {
   ]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

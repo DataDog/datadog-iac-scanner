@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Enabling the Amazon EKS public endpoint and allowing access from all IP addresses (`0.0.0.0/0`) exposes the Kubernetes cluster's API server to the entire internet. This configuration creates a significant security risk, as it allows unauthorized parties to attempt authentication or exploit vulnerabilities in the API server from anywhere in the world. If left unaddressed, this could lead to unauthorized access, data breaches, or disruption of workloads orchestrated by the cluster. Limiting public access to trusted IP address ranges greatly reduces the attack surface and helps safeguard sensitive operations and cluster resources.
-
+Enabling the Amazon EKS public endpoint and allowing access from all IP addresses (`0.0.0.0/0`) exposes the Kubernetes cluster's API server to the entire internet. This configuration creates a significant security risk, as it allows unauthorized parties to attempt authentication or exploit vulnerabilities in the API server from anywhere in the world. If left unaddressed, this could lead to unauthorized access, data breaches, or disruption of workloads orchestrated by the cluster. Limiting public access to trusted IP address ranges greatly reduces the attack surface and helps safeguard sensitive operations and cluster resources.
 
 ## Compliant Code Examples
 ```terraform

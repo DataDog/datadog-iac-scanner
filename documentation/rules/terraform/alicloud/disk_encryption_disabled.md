@@ -28,12 +28,11 @@ meta:
 
 ### Description
 
- Alicloud disks (`alicloud_disk`) should have encryption enabled.
+Alicloud disks (`alicloud_disk`) should have encryption enabled.
 
 The rule flags resources where the `encrypted` attribute is explicitly set to `false` (issue type `IncorrectValue`) or where both the `encrypted` and `snapshot_id` attributes are missing (issue type `MissingAttribute`).
 
 Remediation is to set `encrypted` to `true` (replacement) or add `encrypted = true` (addition).
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Neptune DB cluster storage must be encrypted to protect data at rest, including cluster volumes, automated snapshots, and backups, from unauthorized access or disclosure. In AWS CloudFormation, the `StorageEncrypted` property on `AWS::Neptune::DBCluster` must be defined and set to `true`. Resources missing this property or with `StorageEncrypted` set to `false` will be flagged. Optionally specify a customer-managed KMS key with `KmsKeyId` if you need control over encryption keys.
+Neptune DB cluster storage must be encrypted to protect data at rest, including cluster volumes, automated snapshots, and backups, from unauthorized access or disclosure. In AWS CloudFormation, the `StorageEncrypted` property on `AWS::Neptune::DBCluster` must be defined and set to `true`. Resources missing this property or with `StorageEncrypted` set to `false` will be flagged. Optionally specify a customer-managed KMS key with `KmsKeyId` if you need control over encryption keys.
 
 Secure configuration example:
 
@@ -39,7 +39,6 @@ MyNeptuneCluster:
     StorageEncrypted: true
     KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd1234-ef56-7890-abcd-1234ef567890
 ```
-
 
 ## Compliant Code Examples
 ```yaml

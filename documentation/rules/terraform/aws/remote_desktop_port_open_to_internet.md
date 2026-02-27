@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies AWS Security Groups that have Remote Desktop ports (commonly in ranges 3380-3450) exposed to the internet via '0.0.0.0/0' or similar CIDR blocks. Exposing Remote Desktop ports to the public internet creates a significant security risk as it allows potential attackers to attempt brute-force attacks against your instances. Instead, restrict access to specific trusted IP ranges or use a bastion host/VPN for secure remote access.
+This check identifies AWS Security Groups that have Remote Desktop ports (commonly in ranges 3380-3450) exposed to the internet via '0.0.0.0/0' or similar CIDR blocks. Exposing Remote Desktop ports to the public internet creates a significant security risk as it allows potential attackers to attempt brute-force attacks against your instances. Instead, restrict access to specific trusted IP ranges or use a bastion host/VPN for secure remote access.
 
 Secure example:
 ```terraform
@@ -51,7 +51,6 @@ ingress {
   cidr_blocks = ["0.0.0.0/0"]  // Open to the internet
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

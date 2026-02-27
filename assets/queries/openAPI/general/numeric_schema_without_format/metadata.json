@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "Numeric schema (type set to 'integer' or 'number') should have 'format' defined.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/numeric_schema_without_format",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/numeric_schema_without_format",
   "platform": "OpenAPI",
   "descriptionID": "7fe69742",
   "aggregation": 2,

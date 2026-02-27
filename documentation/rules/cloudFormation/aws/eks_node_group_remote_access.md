@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon EKS node groups that configure an EC2 SSH key permit SSH access to worker nodes. If that access is not limited to specific security groups, it can be reachable from untrusted networks, enabling unauthorized access and lateral movement.
+Amazon EKS node groups that configure an EC2 SSH key permit SSH access to worker nodes. If that access is not limited to specific security groups, it can be reachable from untrusted networks, enabling unauthorized access and lateral movement.
  
  For `AWS::EKS::Nodegroup` resources, when `Properties.RemoteAccess.Ec2SshKey` is set, `Properties.RemoteAccess.SourceSecurityGroups` must be defined and not `null` to explicitly restrict SSH ingress to trusted security groups. Resources missing `RemoteAccess.SourceSecurityGroups` or with it set to `null` will be flagged.
 
@@ -43,7 +43,6 @@ MyNodeGroup:
       SourceSecurityGroups:
         - sg-0123456789abcdef0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

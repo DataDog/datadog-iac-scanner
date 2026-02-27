@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When `kube-controller-manager` is used, the `--service-account-private-key-file` flag should be set. This rule checks the `containers` and `initContainers` `command` fields for `kube-controller-manager` and verifies the presence of the `--service-account-private-key-file` flag. Setting this flag ensures the controller manager has a private key to sign service account tokens.
-
+When `kube-controller-manager` is used, the `--service-account-private-key-file` flag should be set. This rule checks the `containers` and `initContainers` `command` fields for `kube-controller-manager` and verifies the presence of the `--service-account-private-key-file` flag. Setting this flag ensures the controller manager has a private key to sign service account tokens.
 
 ## Compliant Code Examples
 ```yaml

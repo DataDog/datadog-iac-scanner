@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies IAM group policies that grant the `glue:UpdateDevEndpoint` action with the resource set to `"*"`, as shown in the following insecure example:
+This check identifies IAM group policies that grant the `glue:UpdateDevEndpoint` action with the resource set to `"*"`, as shown in the following insecure example:
 
 ```
 policy = jsonencode({
@@ -46,7 +46,6 @@ policy = jsonencode({
 ```
 
 Allowing unrestricted access to `glue:UpdateDevEndpoint` enables users in the group to potentially attach arbitrary IAM roles to a Glue development endpoint, which can be leveraged for privilege escalation. If left unaddressed, attackers with this permission may exploit it to gain elevated permissions or access sensitive resources by executing malicious code or gaining unauthorized access to other AWS services. This misconfiguration can result in significant security risks, including compromise of AWS account resources and loss of sensitive information.
-
 
 ## Compliant Code Examples
 ```terraform

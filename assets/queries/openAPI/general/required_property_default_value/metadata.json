@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "Required properties receive value from requests, which makes unnecessary declare a default value",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/required_property_default_value",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/required_property_default_value",
   "platform": "OpenAPI",
   "descriptionID": "84476388",
   "aggregation": 2,

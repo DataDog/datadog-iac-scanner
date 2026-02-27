@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The PostgreSQL `log_checkpoints` parameter controls whether checkpoint activities are logged, which is critical for monitoring and troubleshooting database performance and reliability. If `log_checkpoints` is set to `off`, important information about checkpoint events will not be recorded, making it more difficult to detect or respond to potential issues or attacks. To mitigate this risk, the parameter should be enabled, as shown below:
+The PostgreSQL `log_checkpoints` parameter controls whether checkpoint activities are logged, which is critical for monitoring and troubleshooting database performance and reliability. If `log_checkpoints` is set to `off`, important information about checkpoint events will not be recorded, making it more difficult to detect or respond to potential issues or attacks. To mitigate this risk, the parameter should be enabled, as shown below:
 
 ```
 resource "azurerm_postgresql_configuration" "secure_example" {
@@ -40,7 +40,6 @@ resource "azurerm_postgresql_configuration" "secure_example" {
 ```
 
 Failing to enable this logging may leave administrators unaware of problems that can impact data durability or signal malicious activity, increasing the risk of unnoticed outages or data loss.
-
 
 ## Compliant Code Examples
 ```terraform

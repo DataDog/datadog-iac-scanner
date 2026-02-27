@@ -13,6 +13,8 @@ CxPolicy[result] {
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": sprintf("FROM %s:'version'", [resource.Value[0]]),
 		"keyActualValue": sprintf("FROM %s'", [resource.Value[0]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

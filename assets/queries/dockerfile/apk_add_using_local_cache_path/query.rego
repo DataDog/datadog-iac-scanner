@@ -16,6 +16,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'RUN' should not contain 'apk add' command without '--no-cache' switch",
 		"keyActualValue": "'RUN' contains 'apk add' command without '--no-cache' switch",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

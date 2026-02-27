@@ -35,7 +35,7 @@ func (console *console) preScan(params *scan.Parameters) {
 
 	versionMsg := fmt.Sprintf("\nScanning with %s\n\n", constants.GetVersion())
 	fmt.Println(versionMsg)
-	log.Info().Msgf(strings.ReplaceAll(versionMsg, "\n", ""))
+	log.Info().Msgf("%s", strings.ReplaceAll(versionMsg, "\n", ""))
 
 	log.Info().Msgf("Operating system: %s", runtime.GOOS)
 

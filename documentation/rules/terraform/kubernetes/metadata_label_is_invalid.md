@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Checks whether any label in the resource metadata is invalid. The rule validates each label key against the regular expression `^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$`; when a label key does not match, the rule returns a result containing `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`. The `issueType` is `IncorrectValue` and `searchKey` points to the labels location (for example, `<resourceType>[<name>].metadata.labels`).
-
+Checks whether any label in the resource metadata is invalid. The rule validates each label key against the regular expression `^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$`; when a label key does not match, the rule returns a result containing `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`. The `issueType` is `IncorrectValue` and `searchKey` points to the labels location (for example, `<resourceType>[<name>].metadata.labels`).
 
 ## Compliant Code Examples
 ```terraform

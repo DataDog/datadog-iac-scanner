@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Use recommended flags with useradd",
+    "severity": "MEDIUM",
+    "line": 21
+  }
+]

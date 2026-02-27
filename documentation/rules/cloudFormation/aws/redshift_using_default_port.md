@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Redshift clusters must not use the default TCP port `5439` because predictable ports make it easier for attackers and automated scanners to discover and target database endpoints, increasing the risk of unauthorized access attempts. In AWS CloudFormation, the `AWS::Redshift::Cluster` resource must include the `Port` property and set it to a non-default value (not `5439`). Resources missing `Port` or with `Port` set to `5439` will be flagged. Choose a port within Redshift's valid range (`1024`–`65535`) and update security groups and client configurations to allow only trusted sources. This is a defense-in-depth control and does not replace proper network access restrictions and authentication controls.
+Redshift clusters must not use the default TCP port `5439` because predictable ports make it easier for attackers and automated scanners to discover and target database endpoints, increasing the risk of unauthorized access attempts. In AWS CloudFormation, the `AWS::Redshift::Cluster` resource must include the `Port` property and set it to a non-default value (not `5439`). Resources missing `Port` or with `Port` set to `5439` will be flagged. Choose a port within Redshift's valid range (`1024`–`65535`) and update security groups and client configurations to allow only trusted sources. This is a defense-in-depth control and does not replace proper network access restrictions and authentication controls.
 
 Secure configuration example:
 
@@ -38,7 +38,6 @@ MyRedshiftCluster:
   Properties:
     Port: 15432
 ```
-
 
 ## Compliant Code Examples
 ```yaml

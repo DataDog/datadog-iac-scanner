@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- StatefulSets should define a `podAntiAffinity` policy to prevent scheduling multiple Pods from the same StatefulSet onto the same node.
+StatefulSets should define a `podAntiAffinity` policy to prevent scheduling multiple Pods from the same StatefulSet onto the same node.
 The `spec.template.spec.affinity.podAntiAffinity` field must be set with either `preferredDuringSchedulingIgnoredDuringExecution` or `requiredDuringSchedulingIgnoredDuringExecution`. Each term must use `topologyKey: kubernetes.io/hostname` with a label selector that matches the Pod template labels.
 This rule applies when `spec.replicas` is greater than 2.
-
 
 ## Compliant Code Examples
 ```yaml

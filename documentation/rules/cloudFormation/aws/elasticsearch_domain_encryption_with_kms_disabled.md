@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Elasticsearch domains must use AWS KMS-backed encryption at rest to protect indexed data, snapshots, and backups from unauthorized access and to provide customer control and auditability of encryption keys.
+Elasticsearch domains must use AWS KMS-backed encryption at rest to protect indexed data, snapshots, and backups from unauthorized access and to provide customer control and auditability of encryption keys.
  
  In CloudFormation, the `AWS::Elasticsearch::Domain` resource must include the `EncryptionAtRestOptions` property with `KmsKeyId` defined and not `null`. Resources missing `EncryptionAtRestOptions` or with `EncryptionAtRestOptions.KmsKeyId` undefined will be flagged. The `KmsKeyId` value should reference a customer-managed AWS KMS key ARN or a `Ref` to an `AWS::KMS::Key`, rather than relying solely on the service default key.
 
@@ -48,7 +48,6 @@ MyKmsKey:
   Properties:
     Description: KMS key for Elasticsearch encryption
 ```
-
 
 ## Compliant Code Examples
 ```yaml

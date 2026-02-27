@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When creating an `aws_ssm_document` of type `Session`, session data should be encrypted in transit to protect sensitive information from interception or exposure. By omitting critical encryption-related attributes such as `"s3EncryptionEnabled": true`, `"cloudWatchEncryptionEnabled": true`, and specifying a KMS key with `"kmsKeyId"`, unencrypted data could be transferred between AWS resources and users, increasing the risk of unauthorized access or data leakage. Ensuring encryption for SSM Session Manager sessions mitigates these risks by enforcing secure data transport and proper visibility restrictions.
+When creating an `aws_ssm_document` of type `Session`, session data should be encrypted in transit to protect sensitive information from interception or exposure. By omitting critical encryption-related attributes such as `"s3EncryptionEnabled": true`, `"cloudWatchEncryptionEnabled": true`, and specifying a KMS key with `"kmsKeyId"`, unencrypted data could be transferred between AWS resources and users, increasing the risk of unauthorized access or data leakage. Ensuring encryption for SSM Session Manager sessions mitigates these risks by enforcing secure data transport and proper visibility restrictions.
 
 A secure Terraform configuration looks like the following:
 
@@ -52,7 +52,6 @@ resource "aws_ssm_document" "secure_session" {
 DOC
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

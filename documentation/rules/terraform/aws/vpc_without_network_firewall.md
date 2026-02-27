@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that every Amazon Virtual Private Cloud (VPC) has an AWS Network Firewall associated with it for advanced network traffic filtering and threat protection. Without a Network Firewall, the VPC is left vulnerable to attacks such as unauthorized access, data exfiltration, and propagation of malware between workloads and subnets. Associating a Network Firewall with the VPC allows administrators to define and enforce rules that control both inbound and outbound traffic, enhancing security posture. Failing to implement this safeguard can result in greater exposure to network-based attacks or unmonitored lateral movement within the cloud environment.
-
+This check ensures that every Amazon Virtual Private Cloud (VPC) has an AWS Network Firewall associated with it for advanced network traffic filtering and threat protection. Without a Network Firewall, the VPC is left vulnerable to attacks such as unauthorized access, data exfiltration, and propagation of malware between workloads and subnets. Associating a Network Firewall with the VPC allows administrators to define and enforce rules that control both inbound and outbound traffic, enhancing security posture. Failing to implement this safeguard can result in greater exposure to network-based attacks or unmonitored lateral movement within the cloud environment.
 
 ## Compliant Code Examples
 ```terraform

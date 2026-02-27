@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Operation Object should have 'consumes' feild defined for 'POST', 'PUT' and 'PATCH' operations",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/operation_object_without_consumes",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/operation_object_without_consumes",
   "platform": "OpenAPI",
   "descriptionID": "de859594",
   "cwe": "710",

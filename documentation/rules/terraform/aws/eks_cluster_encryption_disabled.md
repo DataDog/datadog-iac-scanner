@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon EKS clusters store sensitive information including certificate authorities and service account tokens. When encryption is disabled, this sensitive data is stored in plaintext, potentially exposing it to unauthorized access and data breaches. Enabling encryption using KMS keys for EKS clusters adds an essential layer of security by encrypting Kubernetes secrets stored in etcd.
+Amazon EKS clusters store sensitive information including certificate authorities and service account tokens. When encryption is disabled, this sensitive data is stored in plaintext, potentially exposing it to unauthorized access and data breaches. Enabling encryption using KMS keys for EKS clusters adds an essential layer of security by encrypting Kubernetes secrets stored in etcd.
 
 Insecure example without encryption:
 ```
@@ -53,7 +53,6 @@ resource "aws_eks_cluster" "negative1" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

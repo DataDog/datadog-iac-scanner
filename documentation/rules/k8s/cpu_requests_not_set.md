@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CPU requests should be set to ensure the total resource requests of scheduled containers are less than the node's capacity. This rule checks both `initContainers` and `containers` for the presence of a `resources` field, a `resources.requests` map, and a `cpu` entry within `requests`. It reports a MissingAttribute issue when any container is missing `resources`, missing `requests`, or missing CPU requests to help enforce proper schedulability and capacity planning.
-
+CPU requests should be set to ensure the total resource requests of scheduled containers are less than the node's capacity. This rule checks both `initContainers` and `containers` for the presence of a `resources` field, a `resources.requests` map, and a `cpu` entry within `requests`. It reports a MissingAttribute issue when any container is missing `resources`, missing `requests`, or missing CPU requests to help enforce proper schedulability and capacity planning.
 
 ## Compliant Code Examples
 ```yaml

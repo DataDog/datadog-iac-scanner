@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling deletion protection for an Application Load Balancer (ALB) helps prevent accidental or unauthorized deletion of the ALB resource, which could cause significant downtime or impact application availability. If the `enable_deletion_protection` attribute is set to `false`, as shown below, malicious or inadvertent actions could destroy the ALB and disrupt traffic flow to critical applications:
+Enabling deletion protection for an Application Load Balancer (ALB) helps prevent accidental or unauthorized deletion of the ALB resource, which could cause significant downtime or impact application availability. If the `enable_deletion_protection` attribute is set to `false`, as shown below, malicious or inadvertent actions could destroy the ALB and disrupt traffic flow to critical applications:
 
 ```
 resource "aws_alb" "example" {
@@ -46,7 +46,6 @@ resource "aws_alb" "example" {
 ```
 
 Enabling this setting minimizes the risk of outages by requiring an extra step to delete the load balancer, thereby safeguarding essential network infrastructure.
-
 
 ## Compliant Code Examples
 ```terraform

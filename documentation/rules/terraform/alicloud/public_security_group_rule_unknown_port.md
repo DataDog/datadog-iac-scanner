@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- An unknown port, such as `24` or `111`, is open to the public on the `tcp`, `udp`, or `all` protocol. This occurs when `port_range` includes ports not present in the known ports map and `cidr_ip` is set to `0.0.0.0/0`. Such security group rules expose services to the entire Internet and should be avoided.
-
+An unknown port, such as `24` or `111`, is open to the public on the `tcp`, `udp`, or `all` protocol. This occurs when `port_range` includes ports not present in the known ports map and `cidr_ip` is set to `0.0.0.0/0`. Such security group rules expose services to the entire Internet and should be avoided.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Kubernetes Service (AKS) clusters should have a proper network policy configured using the `network_profile.network_policy` attribute to enforce the principle of least privilege and restrict unnecessary network traffic between pods. If this attribute is omitted or misconfigured, as shown below, it leaves the cluster vulnerable to unrestricted communication between pods, increasing the risk of lateral movement and exposure if one pod is compromised:
+Azure Kubernetes Service (AKS) clusters should have a proper network policy configured using the `network_profile.network_policy` attribute to enforce the principle of least privilege and restrict unnecessary network traffic between pods. If this attribute is omitted or misconfigured, as shown below, it leaves the cluster vulnerable to unrestricted communication between pods, increasing the risk of lateral movement and exposure if one pod is compromised:
 
 ```
 network_profile {
@@ -44,7 +44,6 @@ network_profile {
 }
 ```
 Without strict network policies, attackers could exploit insecure inter-pod communications to access sensitive resources or escalate privileges within the Kubernetes environment.
-
 
 ## Compliant Code Examples
 ```terraform

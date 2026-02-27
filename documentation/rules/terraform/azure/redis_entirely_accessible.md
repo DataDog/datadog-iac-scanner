@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies Azure Redis Cache instances with firewall rules that permit access from any IP address (`0.0.0.0/0`), effectively exposing the Redis cache to the entire internet. When firewall rules are configured with `start_ip` and `end_ip` set to `0.0.0.0`, it creates a significant security vulnerability by allowing unrestricted access to your Redis cache. Instead, restrict access by specifying a limited IP range, as shown below:
+This check identifies Azure Redis Cache instances with firewall rules that permit access from any IP address (`0.0.0.0/0`), effectively exposing the Redis cache to the entire internet. When firewall rules are configured with `start_ip` and `end_ip` set to `0.0.0.0`, it creates a significant security vulnerability by allowing unrestricted access to your Redis cache. Instead, restrict access by specifying a limited IP range, as shown below:
 
 ```
 // Insecure configuration
@@ -43,7 +43,6 @@ resource "azurerm_redis_firewall_rule" "secure" {
   end_ip   = "10.3.4.5"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

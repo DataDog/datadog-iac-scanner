@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "There is a 'securityDefinition' using implicit flow on OAuth2, which is deprecated",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/implicit_flow_oauth2",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/implicit_flow_oauth2",
   "platform": "OpenAPI",
   "descriptionID": "a879610a",
   "cwe": "285",

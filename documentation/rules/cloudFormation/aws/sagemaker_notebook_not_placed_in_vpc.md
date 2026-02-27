@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SageMaker notebook instances must be launched inside a VPC to prevent unintended public network exposure. This also enables network controls such as security groups, VPC endpoints, and flow logging.
+SageMaker notebook instances must be launched inside a VPC to prevent unintended public network exposure. This also enables network controls such as security groups, VPC endpoints, and flow logging.
 
 In CloudFormation, `AWS::SageMaker::NotebookInstance` resources must include the `Properties.SubnetId` property and reference a subnet in the intended VPC. Also specify `Properties.SecurityGroupIds` to restrict inbound access, and configure any required VPC endpoints (for example, for S3 and ECR). Resources missing `SubnetId` will be flagged.
 
@@ -44,7 +44,6 @@ MyNotebook:
     SecurityGroupIds:
       - sg-0123456789abcdef0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

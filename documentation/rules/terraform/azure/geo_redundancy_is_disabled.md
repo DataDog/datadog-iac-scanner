@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Geo-redundant backups should be enabled on Azure PostgreSQL servers to ensure critical data is protected and recoverable even if a regional outage occurs. The `geo_redundant_backup_enabled` attribute should be set to `true` for high availability; otherwise, setting it to `false` can leave backups vulnerable to loss in disaster recovery scenarios. For example, a secure configuration would look like the following:
+Geo-redundant backups should be enabled on Azure PostgreSQL servers to ensure critical data is protected and recoverable even if a regional outage occurs. The `geo_redundant_backup_enabled` attribute should be set to `true` for high availability; otherwise, setting it to `false` can leave backups vulnerable to loss in disaster recovery scenarios. For example, a secure configuration would look like the following:
 
 ```
 resource "azurerm_postgresql_server" "example" {
@@ -52,7 +52,6 @@ resource "azurerm_postgresql_server" "example" {
 }
 ```
 Without geo-redundant backups enabled, business-critical data may become unrecoverable if the primary region experiences a catastrophic failure, risking significant data loss and service disruption.
-
 
 ## Compliant Code Examples
 ```terraform

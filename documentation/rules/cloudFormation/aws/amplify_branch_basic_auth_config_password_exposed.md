@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Storing an Amplify branch basic auth password in the template or as a parameter `Default` exposes credentials in source control, template history, and stack artifacts and can allow unauthorized access to your branch.
+Storing an Amplify branch basic auth password in the template or as a parameter `Default` exposes credentials in source control, template history, and stack artifacts and can allow unauthorized access to your branch.
 
  This rule checks `AWS::Amplify::Branch` resources where `BasicAuthConfig.EnableBasicAuth` is set to `true`.
 
@@ -46,7 +46,6 @@ MyBranch:
       Username: basic-user
       Password: "{{resolve:secretsmanager:my-secret-id:SecretString:password}}"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

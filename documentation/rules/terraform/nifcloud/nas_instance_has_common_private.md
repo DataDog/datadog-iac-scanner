@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The NAS instance uses the shared private network `net-COMMON_PRIVATE` rather than an isolated private LAN. `nifcloud_nas_instance` resources should use a dedicated private LAN to isolate the private-side network from the shared network. This rule flags `nifcloud_nas_instance` resources that reference `net-COMMON_PRIVATE`.
-
+The NAS instance uses the shared private network `net-COMMON_PRIVATE` rather than an isolated private LAN. `nifcloud_nas_instance` resources should use a dedicated private LAN to isolate the private-side network from the shared network. This rule flags `nifcloud_nas_instance` resources that reference `net-COMMON_PRIVATE`.
 
 ## Compliant Code Examples
 ```terraform

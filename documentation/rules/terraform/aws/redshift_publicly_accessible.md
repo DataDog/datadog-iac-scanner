@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon Redshift clusters with public accessibility enabled can be accessed from the internet, creating a significant security risk by potentially exposing sensitive data to unauthorized users. By default, the `publicly_accessible` parameter is set to `true` if not explicitly defined, meaning your cluster is publicly accessible unless specifically configured otherwise. To secure your Redshift cluster, always set `publicly_accessible = false`, as shown below:
+Amazon Redshift clusters with public accessibility enabled can be accessed from the internet, creating a significant security risk by potentially exposing sensitive data to unauthorized users. By default, the `publicly_accessible` parameter is set to `true` if not explicitly defined, meaning your cluster is publicly accessible unless specifically configured otherwise. To secure your Redshift cluster, always set `publicly_accessible = false`, as shown below:
 
 ```hcl
 resource "aws_redshift_cluster" "secure_example" {
@@ -41,7 +41,6 @@ resource "aws_redshift_cluster" "secure_example" {
   publicly_accessible = false
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

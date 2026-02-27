@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudTrail log file validation should be enabled by setting the `enable_log_file_validation` attribute to `true` in the `aws_cloudtrail` resource. This ensures that CloudTrail computes and stores a hash for every log file it delivers, allowing detection of any tampering or unauthorized modifications of log files. If log file validation is not enabled, malicious actors could alter or delete logs without detection, undermining the integrity of audit trails and hampering forensic investigations.
+CloudTrail log file validation should be enabled by setting the `enable_log_file_validation` attribute to `true` in the `aws_cloudtrail` resource. This ensures that CloudTrail computes and stores a hash for every log file it delivers, allowing detection of any tampering or unauthorized modifications of log files. If log file validation is not enabled, malicious actors could alter or delete logs without detection, undermining the integrity of audit trails and hampering forensic investigations.
 
 ```
 resource "aws_cloudtrail" "example" {
@@ -37,7 +37,6 @@ resource "aws_cloudtrail" "example" {
   enable_log_file_validation = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

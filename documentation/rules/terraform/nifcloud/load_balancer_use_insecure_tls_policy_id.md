@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The load balancer uses an insecure TLS policy. This rule flags `nifcloud_load_balancer` resources that either omit `ssl_policy_id` or set `ssl_policy_id` to an outdated policy identifier (`1`, `2`, `3`, `5`, `8`). Resources must use `TLS v1.2+` for secure encryption.
-
+The load balancer uses an insecure TLS policy. This rule flags `nifcloud_load_balancer` resources that either omit `ssl_policy_id` or set `ssl_policy_id` to an outdated policy identifier (`1`, `2`, `3`, `5`, `8`). Resources must use `TLS v1.2+` for secure encryption.
 
 ## Compliant Code Examples
 ```terraform

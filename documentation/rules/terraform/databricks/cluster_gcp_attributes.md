@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The rule flags `databricks_cluster` resources where `gcp_attributes.availability` is set to `PREEMPTIBLE_GCP`, which violates best practices. Clusters should use a non-preemptible availability setting.
-
+The rule flags `databricks_cluster` resources where `gcp_attributes.availability` is set to `PREEMPTIBLE_GCP`, which violates best practices. Clusters should use a non-preemptible availability setting.
 
 ## Compliant Code Examples
 ```terraform

@@ -77,36 +77,29 @@ def get_licenses_list(ctx):
         shutil.rmtree("vendor/")
 
 
-def is_valid_quote(copyright):
-    stack = []
-    quotes_to_check = ["'", '"']
-    for c in copyright:
-        if c in quotes_to_check:
-            if stack and stack[-1] == c:
-                stack.pop()
-            else:
-                stack.append(c)
-    return len(stack) == 0
+def unquote_str(copyright):
+    if len(copyright) == 0:
+      return ""
+    if copyright[0] == '"' and copyright[-1] == '"':
+      return copyright[1:-1].replace('""', '"')
+    if copyright[0] == "'" and copyright[-1] == "'":
+      return copyright[1:-1].replace("''", "'")
+    return copyright
 
 
 def licenses_csv(licenses):
     licenses.sort(key=lambda lic: lic["package"])
 
     def fmt_copyright(lic):
-        # discards copyright with invalid quotes to ensure generated csv is valid
+        # removes start and end quotes
         filtered_copyright = []
         for copyright in lic["copyright"]:
-            if is_valid_quote(copyright):
-                filtered_copyright.append(copyright)
-            else:
-                print(
-                    f'The copyright `{copyright}` of `{lic["component"]},{lic["package"]}` was discarded because its copyright contains invalid quotes. To fix the discarded copyright, modify `.copyright-overrides.yml` to fix the bad-quotes copyright'
-                )
+            filtered_copyright.append(unquote_str(copyright))
         if len(copyright) == 0:
-            copyright = "UNKNOWN"
+            return "UNKNOWN"
         copyright = ' | '.join(sorted(filtered_copyright))
         # quote for inclusion in CSV, if necessary
-        if ',' in copyright:
+        if ',' in copyright or '"' in copyright:
             copyright = copyright.replace('"', '""')
             copyright = f'"{copyright}"'
         return copyright

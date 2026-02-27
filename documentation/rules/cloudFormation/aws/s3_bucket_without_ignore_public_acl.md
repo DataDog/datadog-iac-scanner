@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should ignore public ACLs to prevent object or bucket-level ACLs from granting unintended public access. Public ACLs can lead to accidental data exposure.
+S3 buckets should ignore public ACLs to prevent object or bucket-level ACLs from granting unintended public access. Public ACLs can lead to accidental data exposure.
 
 In CloudFormation, the `AWS::S3::Bucket` resource must include `PublicAccessBlockConfiguration.IgnorePublicAcls` and it must be set to `true`. Resources missing `PublicAccessBlockConfiguration`, missing the `IgnorePublicAcls` property, or with `IgnorePublicAcls: false` will be flagged.
 
@@ -42,7 +42,6 @@ MyBucket:
     PublicAccessBlockConfiguration:
       IgnorePublicAcls: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

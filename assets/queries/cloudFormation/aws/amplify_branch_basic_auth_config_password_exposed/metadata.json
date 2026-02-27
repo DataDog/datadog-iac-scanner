@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Secret Management",
   "descriptionText": "Storing an Amplify branch basic auth password in the template or as a parameter `Default` exposes credentials in source control, template history, and stack artifacts and can allow unauthorized access to your branch.\n\n This rule checks `AWS::Amplify::Branch` resources where `BasicAuthConfig.EnableBasicAuth` is set to `true`.\n\n - `BasicAuthConfig.Password` must not be a plain string value.\n - `BasicAuthConfig.Password` must not be a `Ref` to a `Parameters` entry that defines a `Default` containing the secret.\n\n Instead, store the credential in a secret management service or a secure AWS Systems Manager Parameter Store parameter and reference it from the template. This rule flags `Password` values that look like plaintext passwords (for example, >=`8` characters) or parameter defaults and that are not backed by a Secrets Manager reference. Secure example using a Secrets Manager dynamic reference:\n\n```yaml\nMyBranch:\n  Type: AWS::Amplify::Branch\n  Properties:\n    BasicAuthConfig:\n      EnableBasicAuth: true\n      Username: basic-user\n      Password: \"{{resolve:secretsmanager:my-secret-id:SecretString:password}}\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/amplify_branch_basic_auth_config_password_exposed",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/amplify_branch_basic_auth_config_password_exposed",
   "platform": "CloudFormation",
   "descriptionID": "f68a0ad6",
   "cloudProvider": "aws",

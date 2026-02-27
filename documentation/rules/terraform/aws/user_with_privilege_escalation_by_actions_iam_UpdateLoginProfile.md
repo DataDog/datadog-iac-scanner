@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing a user the `iam:UpdateLoginProfile` permission with the `Resource` set to `"*"` in Terraform, as in the following example, enables that user to change the passwords of any IAM user in the AWS account:
+Allowing a user the `iam:UpdateLoginProfile` permission with the `Resource` set to `"*"` in Terraform, as in the following example, enables that user to change the passwords of any IAM user in the AWS account:
 
 ```
 Action = [
@@ -38,7 +38,6 @@ Resource = "*"
 ```
 
 This creates a privilege escalation risk, as the user could assign themselves or others passwords to high-privilege accounts, resulting in unauthorized access or control over critical resources. If left unaddressed, this misconfiguration can lead to account compromise and the potential for significant security incidents.
-
 
 ## Compliant Code Examples
 ```terraform

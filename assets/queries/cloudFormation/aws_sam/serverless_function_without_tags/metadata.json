@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "AWS Serverless Application Model (AWS SAM) functions should include tags to support asset inventory and incident response. Check `AWS::Serverless::Function` resources and ensure the `Properties.Tags` map is defined and not `null`. Resources missing the `Tags` property or with `Tags: null` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyFunction:\n  Type: AWS::Serverless::Function\n  Properties:\n    Handler: index.handler\n    Runtime: nodejs14.x\n    Tags:\n      Environment: production\n      Owner: devops\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_sam/serverless_function_without_tags",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_sam/serverless_function_without_tags",
   "platform": "CloudFormation",
   "descriptionID": "fa1b224c",
   "cloudProvider": "aws",

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When running `kube-controller-manager`, the `--use-service-account-credentials` flag should be set to `true`. If the flag is set to `false` or omitted, the controller manager will not use service account credentials to authenticate to the API server, which can cause controllers to operate with incorrect or elevated permissions. This rule reports `IncorrectValue` when the flag is explicitly set to `false` and `MissingAttribute` when the flag is not present.
-
+When running `kube-controller-manager`, the `--use-service-account-credentials` flag should be set to `true`. If the flag is set to `false` or omitted, the controller manager will not use service account credentials to authenticate to the API server, which can cause controllers to operate with incorrect or elevated permissions. This rule reports `IncorrectValue` when the flag is explicitly set to `false` and `MissingAttribute` when the flag is not present.
 
 ## Compliant Code Examples
 ```yaml

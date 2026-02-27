@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Google Compute Engine instances should not be configured to use the default service account, which has broad permissions and full access to all Cloud APIs. If the attribute `service_account`—specifically the `email` sub-attribute—is missing, empty, or set to the default Google Compute Engine service account, it increases the risk of privilege escalation and unauthorized access to sensitive resources. Instead, instances should explicitly specify a custom service account with only the necessary permissions, such as in the following example:
+Google Compute Engine instances should not be configured to use the default service account, which has broad permissions and full access to all Cloud APIs. If the attribute `service_account`—specifically the `email` sub-attribute—is missing, empty, or set to the default Google Compute Engine service account, it increases the risk of privilege escalation and unauthorized access to sensitive resources. Instead, instances should explicitly specify a custom service account with only the necessary permissions, such as in the following example:
 
 ```
 service_account {
@@ -36,7 +36,6 @@ service_account {
   scopes = ["userinfo-email", "compute-ro", "storage-ro"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

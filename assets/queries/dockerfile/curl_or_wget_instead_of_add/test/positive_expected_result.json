@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Curl or Wget Instead of Add",
+    "queryName": "curl or wget instead of ADD",
     "severity": "LOW",
     "line": 3
   }

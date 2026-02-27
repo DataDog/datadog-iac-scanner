@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EMR clusters must reference an EMR security configuration so cluster-level security settings (such as encryption and authentication controls) are applied. Without a security configuration, data at rest or in transit and access controls may not be enforced, increasing the risk of data exposure or unauthorized access.
+EMR clusters must reference an EMR security configuration so cluster-level security settings (such as encryption and authentication controls) are applied. Without a security configuration, data at rest or in transit and access controls may not be enforced, increasing the risk of data exposure or unauthorized access.
  
  In CloudFormation, the `SecurityConfiguration` property on `AWS::EMR::Cluster` must be defined and set to the logical name (string) of a resource of type `AWS::EMR::SecurityConfiguration`. Resources missing this property, or where the `SecurityConfiguration` value does not match an `AWS::EMR::SecurityConfiguration` resource in the same template, will be flagged. 
  
@@ -52,7 +52,6 @@ EMRCluster:
     Instances: {}
     SecurityConfiguration: !Ref EMRSecurityConfig
 ```
-
 
 ## Compliant Code Examples
 ```yaml

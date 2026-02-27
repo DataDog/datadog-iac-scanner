@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing all Access Control List (ACL) permissions(`rwdl` for read, write, delete, and list) on an Azure storage file share grants overly broad access, increasing the risk of unauthorized access, data leakage, or malicious data manipulation. This misconfiguration could allow any user or process with the relevant access policy to not only read and list files, but also modify or delete important data, potentially leading to service disruption or data loss. To mitigate this risk, permissions should be set according to the principle of least privilege, For example, grant only `r` (read) permissions when read-only access is required, as shown below:
+Allowing all Access Control List (ACL) permissions(`rwdl` for read, write, delete, and list) on an Azure storage file share grants overly broad access, increasing the risk of unauthorized access, data leakage, or malicious data manipulation. This misconfiguration could allow any user or process with the relevant access policy to not only read and list files, but also modify or delete important data, potentially leading to service disruption or data loss. To mitigate this risk, permissions should be set according to the principle of least privilege, For example, grant only `r` (read) permissions when read-only access is required, as shown below:
 
 ```
 resource "azurerm_storage_share" "example" {
@@ -53,7 +53,6 @@ resource "azurerm_storage_share_file" "example" {
   source           = "some-local-file.zip"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

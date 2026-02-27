@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The kubelet argument `--rotate-certificates` should be set to `true`.
+The kubelet argument `--rotate-certificates` should be set to `true`.
 This rule flags kubelet containers (`containers` or `initContainers`) whose command is `kubelet` and include `--rotate-certificates=false`, and KubeletConfiguration resources where `rotateCertificates` is `false` or not set (default is false).
 Enabling certificate rotation allows automatic renewal of kubelet client certificates and prevents certificate expiration-related failures.
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that DB security groups aren't configured with overly broad CIDR ranges that could expose your database to unnecessary network access. When a CIDR block with more than 256 hosts (such as /24 or lower) is configured in the ingress rules, it increases the attack surface and potential for unauthorized access to your database instances.
+This check ensures that DB security groups aren't configured with overly broad CIDR ranges that could expose your database to unnecessary network access. When a CIDR block with more than 256 hosts (such as /24 or lower) is configured in the ingress rules, it increases the attack surface and potential for unauthorized access to your database instances.
 
 In the insecure example below, the security group allows access from a /24 CIDR block (256 hosts):
 ```
@@ -51,7 +51,6 @@ resource "aws_db_security_group" "negative1" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

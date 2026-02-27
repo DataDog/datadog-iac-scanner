@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When an S3 bucket policy allows PUT actions from all principals (`*`), it creates a significant security risk by permitting anyone on the internet to upload files to your bucket. This vulnerability can lead to data tampering, malicious file uploads, increased storage costs, and potentially serve as an attack vector for distributing malware or other harmful content through your infrastructure. To secure your S3 bucket, explicitly deny open PUT permissions, as shown below, or restrict access to specific principals:
+When an S3 bucket policy allows PUT actions from all principals (`*`), it creates a significant security risk by permitting anyone on the internet to upload files to your bucket. This vulnerability can lead to data tampering, malicious file uploads, increased storage costs, and potentially serve as an attack vector for distributing malware or other harmful content through your infrastructure. To secure your S3 bucket, explicitly deny open PUT permissions, as shown below, or restrict access to specific principals:
 
 ```hcl
 // Insecure configuration
@@ -48,7 +48,6 @@ Statement: [
   }
 ]
 ```
-
 
 ## Compliant Code Examples
 ```terraform

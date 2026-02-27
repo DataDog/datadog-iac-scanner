@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- ElastiCache clusters should avoid using the default ports (`6379` for Redis, `11211` for Memcached), as attackers commonly scan these ports to find and exploit exposed services. By explicitly configuring a non-default port in the `port` attribute of the `aws_elasticache_cluster` resource, you reduce the risk of automated attacks or unauthorized access. Leaving the default port unchanged makes it easier for malicious actors to guess the service endpoint and attempt brute force or exploitation attempts.
+ElastiCache clusters should avoid using the default ports (`6379` for Redis, `11211` for Memcached), as attackers commonly scan these ports to find and exploit exposed services. By explicitly configuring a non-default port in the `port` attribute of the `aws_elasticache_cluster` resource, you reduce the risk of automated attacks or unauthorized access. Leaving the default port unchanged makes it easier for malicious actors to guess the service endpoint and attempt brute force or exploitation attempts.
 
 A secure Terraform example:
 
@@ -42,7 +42,6 @@ resource "aws_elasticache_cluster" "secure_example" {
   port                 = 6380
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

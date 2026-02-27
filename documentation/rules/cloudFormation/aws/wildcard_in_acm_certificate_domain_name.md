@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Using a bare wildcard (`*`) as an ACM certificate `DomainName` creates overly broad trust and can enable certificate issuance or use that is not tied to a specific domain. This increases the risk of impersonation and unauthorized TLS termination.
+Using a bare wildcard (`*`) as an ACM certificate `DomainName` creates overly broad trust and can enable certificate issuance or use that is not tied to a specific domain. This increases the risk of impersonation and unauthorized TLS termination.
 
 For `AWS::CertificateManager::Certificate` resources, `Properties.DomainName` must be a valid domain or a properly scoped wildcard subdomain (for example, `example.com` or `*.example.com`) and must not be the single character `*`. Resources where `DomainName` is exactly `*` will be flagged. Use explicit hostnames or scoped wildcard names and, if you need multiple names, list them in `SubjectAlternativeNames` rather than using a universal wildcard.
 
@@ -41,7 +41,6 @@ MyCertificate:
     DomainName: www.example.com
     ValidationMethod: DNS
 ```
-
 
 ## Compliant Code Examples
 ```yaml

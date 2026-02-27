@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the AWS IAM password policy requires users to include at least one uppercase letter in their passwords. Without enforcing uppercase characters, passwords become more susceptible to brute-force or dictionary attacks, as the possible character space is significantly reduced. This weakens account security and increases the risk of unauthorized access to critical resources. Enforcing a strong password policy, including uppercase letter requirements, helps protect sensitive AWS environments from compromise due to easily guessed or weak passwords.
-
+This check ensures that the AWS IAM password policy requires users to include at least one uppercase letter in their passwords. Without enforcing uppercase characters, passwords become more susceptible to brute-force or dictionary attacks, as the possible character space is significantly reduced. This weakens account security and increases the risk of unauthorized access to critical resources. Enforcing a strong password policy, including uppercase letter requirements, helps protect sensitive AWS environments from compromise due to easily guessed or weak passwords.
 
 ## Compliant Code Examples
 ```terraform

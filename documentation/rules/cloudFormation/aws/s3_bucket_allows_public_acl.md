@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should block public ACLs to prevent objects from being granted public access via ACLs. Public ACLs can lead to unintended data exposure. For `AWS::S3::Bucket` resources, `Properties.PublicAccessBlockConfiguration.BlockPublicAcls` must be set to `true`. Resources missing `PublicAccessBlockConfiguration`, or with `BlockPublicAcls: false`, will be flagged. Consider also enabling other `PublicAccessBlockConfiguration` flags (for example, `IgnorePublicAcls`, `BlockPublicPolicy`, and `RestrictPublicBuckets`) for broader protection.
+S3 buckets should block public ACLs to prevent objects from being granted public access via ACLs. Public ACLs can lead to unintended data exposure. For `AWS::S3::Bucket` resources, `Properties.PublicAccessBlockConfiguration.BlockPublicAcls` must be set to `true`. Resources missing `PublicAccessBlockConfiguration`, or with `BlockPublicAcls: false`, will be flagged. Consider also enabling other `PublicAccessBlockConfiguration` flags (for example, `IgnorePublicAcls`, `BlockPublicPolicy`, and `RestrictPublicBuckets`) for broader protection.
 
 Secure configuration example:
 
@@ -40,7 +40,6 @@ MyBucket:
     PublicAccessBlockConfiguration:
       BlockPublicAcls: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -1,0 +1,12 @@
+{
+  "id": "9e13082c-2e00-278b-8ee9-34f43fffc791",
+  "queryName": "Run yarn clean after yarn install",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "Dockerfiles that run `yarn install` must remove the Yarn package cache afterward, because leftover cache files increase image size and may retain build-time artifacts in image layers, expanding the attack surface.  \n\nThis rule inspects Dockerfile `RUN` instructions (resource type `dockerfile_container`) and flags cases where a `RUN` executes `yarn install` without a corresponding `yarn cache clean`.  \n\nTo remediate, chain the cleanup in the same `RUN` instruction (for example, `RUN yarn install && yarn cache clean`) so the cache is removed within the same layer. Running `yarn cache clean` in a later `RUN` may not eliminate cache files stored in earlier layers.\n\nSecure example:\n\n```dockerfile\nRUN yarn install --production && yarn cache clean --force\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/run_yarn_clean_after_yarn_install",
+  "platform": "Dockerfile",
+  "descriptionID": "9e13082c",
+  "cwe": "710",
+  "providerUrl": "https://classic.yarnpkg.com/en/docs/cli/cache/"
+}

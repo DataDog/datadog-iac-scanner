@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- This check ensures that Google Compute Engine VM instances have project-wide SSH keys blocked by setting the metadata attribute `block-project-ssh-keys` to `"TRUE"`. Without this setting, anyone with project-level SSH key access can connect to the VM, increasing the risk of unauthorized access and making it harder to manage individual SSH permissions. For a secure configuration, define the attribute in your Terraform configuration as follows:
+This check ensures that Google Compute Engine VM instances have project-wide SSH keys blocked by setting the metadata attribute `block-project-ssh-keys` to `"TRUE"`. Without this setting, anyone with project-level SSH key access can connect to the VM, increasing the risk of unauthorized access and making it harder to manage individual SSH permissions. For a secure configuration, define the attribute in your Terraform configuration as follows:
 
 ```
 metadata = {
   block-project-ssh-keys = "TRUE"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

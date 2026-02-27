@@ -1,11 +1,12 @@
 {
   "id": "b86987e1-6397-4619-81d5-8807f2387c79",
-  "queryName": "Not Using JSON In CMD And ENTRYPOINT Arguments",
+  "queryName": "Not using JSON for CMD and ENTRYPOINT arguments",
   "severity": "MEDIUM",
   "category": "Build Process",
-  "descriptionText": "Ensure that we are using JSON in the CMD and ENTRYPOINT Arguments",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#entrypoint",
+  "descriptionText": "`CMD` and `ENTRYPOINT` should use the JSON (exec) form so commands are executed directly without invoking a shell. The shell/string form runs via `/bin/sh -c` which increases risk of command injection and can cause unpredictable argument parsing and improper signal forwarding (affecting graceful shutdown).\n\nIn Dockerfiles, check the `CMD` and `ENTRYPOINT` directives and require they be written as JSON arrays (exec form), for example, `CMD [\"executable\", \"arg1\"]` or `ENTRYPOINT [\"executable\", \"arg\"]`. If you need shell features, explicitly invoke a shell in the exec form (for example, `[\"sh\",\"-c\",\"...\"]`) so the use of a shell is intentional.\n\nSecure examples:\n\n```Dockerfile\nCMD [\"nginx\", \"-g\", \"daemon off;\"]\nENTRYPOINT [\"java\", \"-jar\", \"app.jar\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/not_using_json_in_cmd_and_entrypoint_arguments",
   "platform": "Dockerfile",
   "descriptionID": "070b84da",
-  "cwe": "573"
+  "cwe": "573",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#entrypoint"
 }

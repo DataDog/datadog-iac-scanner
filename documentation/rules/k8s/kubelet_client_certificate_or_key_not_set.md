@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When a container runs `kube-apiserver`, the `--kubelet-client-key` and `--kubelet-client-certificate` flags should be set. These flags configure the TLS client certificate and key the kube-apiserver uses to authenticate to kubelets; omitting them may prevent secure communication with kubelets. This rule checks both `containers` and `initContainers` for a `kube-apiserver` command and reports when one or both flags are not present in the command arguments.
-
+When a container runs `kube-apiserver`, the `--kubelet-client-key` and `--kubelet-client-certificate` flags should be set. These flags configure the TLS client certificate and key the kube-apiserver uses to authenticate to kubelets; omitting them may prevent secure communication with kubelets. This rule checks both `containers` and `initContainers` for a `kube-apiserver` command and reports when one or both flags are not present in the command arguments.
 
 ## Compliant Code Examples
 ```yaml

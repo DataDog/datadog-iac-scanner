@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS DB security groups with overly permissive ingress rules (`0.0.0.0/0` or `::/0`) expose database instances to potential unauthorized access from any IP address on the internet. This critical security vulnerability could lead to data breaches, unauthorized data manipulation, or complete database compromise. Instead of using public CIDR ranges, restrict access to specific IP ranges that require database connectivity.
+AWS DB security groups with overly permissive ingress rules (`0.0.0.0/0` or `::/0`) expose database instances to potential unauthorized access from any IP address on the internet. This critical security vulnerability could lead to data breaches, unauthorized data manipulation, or complete database compromise. Instead of using public CIDR ranges, restrict access to specific IP ranges that require database connectivity.
 
 Insecure example:
 ```terraform
@@ -49,7 +49,6 @@ resource "aws_db_security_group" "secure" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

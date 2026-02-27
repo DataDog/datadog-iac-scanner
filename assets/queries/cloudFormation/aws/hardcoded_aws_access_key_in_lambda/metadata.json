@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Secret Management",
   "descriptionText": "Lambda functions must not include hardcoded AWS access keys or secret access keys in environment variables because embedded credentials can be exposed via function configuration, logs, snapshots, or code and allow unauthorized access to other AWS resources.\n \n This rule inspects `AWS::Lambda::Function` resources and verifies the `Properties.Environment.Variables` map does not contain values matching common AWS access key ID patterns (`20` uppercase alphanumeric characters) or secret access key patterns (`40` base64-like characters). Use IAM execution roles for permissions or store secrets in AWS Secrets Manager or AWS Systems Manager Parameter Store `SecureString` parameters and reference them from the function. Resources with environment variable values that match the access-key regex will be flagged. \n \n Secure example using a Secrets Manager dynamic reference:\n\n```yaml\nMyFunction:\n  Type: AWS::Lambda::Function\n  Properties:\n    FunctionName: my-function\n    Role: arn:aws:iam::123456789012:role/lambda-exec-role\n    Handler: index.handler\n    Runtime: nodejs14.x\n    Environment:\n      Variables:\n        DB_PASSWORD: '{{resolve:secretsmanager:my-db-secret:SecretString:password}}'\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/hardcoded_aws_access_key_in_lambda",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/hardcoded_aws_access_key_in_lambda",
   "platform": "CloudFormation",
   "descriptionID": "ff065e3b",
   "cloudProvider": "aws",

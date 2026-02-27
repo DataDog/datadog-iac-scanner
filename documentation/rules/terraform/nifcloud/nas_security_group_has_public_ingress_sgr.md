@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- An ingress `nifcloud_nas_security_group` rule allows traffic from `/0`. This permits access from the entire Internet and is overly permissive. Use a more restrictive CIDR range to limit allowed sources.
-
+An ingress `nifcloud_nas_security_group` rule allows traffic from `/0`. This permits access from the entire Internet and is overly permissive. Use a more restrictive CIDR range to limit allowed sources.
 
 ## Compliant Code Examples
 ```terraform

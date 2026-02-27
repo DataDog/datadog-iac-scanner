@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- It is recommended to specify the latest supported Python version for the `python_version` attribute in the `site_config` block of the `azurerm_app_service` resource. Using outdated Python versions, such as `"python_version = \"2.7\""`, exposes your application to known security vulnerabilities and prevents access to important features and security updates available in newer releases. To reduce risk, configure the resource with an up-to-date version. For example:
+It is recommended to specify the latest supported Python version for the `python_version` attribute in the `site_config` block of the `azurerm_app_service` resource. Using outdated Python versions, such as `"python_version = \"2.7\""`, exposes your application to known security vulnerabilities and prevents access to important features and security updates available in newer releases. To reduce risk, configure the resource with an up-to-date version. For example:
 
 ```
 site_config {
   python_version = "3.10"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

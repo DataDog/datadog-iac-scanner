@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that Amazon EC2 instances are not deployed within the default VPC (`aws_vpc.default`) in AWS environments. Default VPCs are automatically created by AWS and often have broader, pre-configured network permissions and less restrictive security controls, increasing the attack surface and risk of unauthorized access. By explicitly defining and using custom VPCs (for example, `aws_vpc.main`), organizations can enforce tailored network segmentation and security group rules, reducing the likelihood of exploitation due to overly permissive defaults.
-
+This check ensures that Amazon EC2 instances are not deployed within the default VPC (`aws_vpc.default`) in AWS environments. Default VPCs are automatically created by AWS and often have broader, pre-configured network permissions and less restrictive security controls, increasing the attack surface and risk of unauthorized access. By explicitly defining and using custom VPCs (for example, `aws_vpc.main`), organizations can enforce tailored network segmentation and security group rules, reducing the likelihood of exploitation due to overly permissive defaults.
 
 ## Compliant Code Examples
 ```terraform

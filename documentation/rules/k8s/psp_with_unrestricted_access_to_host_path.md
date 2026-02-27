@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- PodSecurityPolicy should set `readOnly` to `true` for every entry in `spec.allowedHostPaths`. The `spec.allowedHostPaths` attribute must be defined and not null, and each allowed host path must include `readOnly: true`. Entries with `readOnly` undefined or set to `false`, or a missing `spec.allowedHostPaths`, are reported.
-
+PodSecurityPolicy should set `readOnly` to `true` for every entry in `spec.allowedHostPaths`. The `spec.allowedHostPaths` attribute must be defined and not null, and each allowed host path must include `readOnly: true`. Entries with `readOnly` undefined or set to `false`, or a missing `spec.allowedHostPaths`, are reported.
 
 ## Compliant Code Examples
 ```yaml
@@ -81,6 +80,8 @@ metadata:
 spec:
   hostIPC: false
   allowedHostPaths:
+  - pathPrefix: /etc
+    readOnly: true
   - pathPrefix: /dev
     readOnly: false
   runAsUser:

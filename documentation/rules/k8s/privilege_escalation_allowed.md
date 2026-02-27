@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not run with the `allowPrivilegeEscalation` attribute set to `true`. The attribute must be present and set to `false` to prevent a container from gaining more privileges than its parent process. This rule applies to both `containers` and `initContainers` and reports missing attributes or values set to `true`.
-
+Containers should not run with the `allowPrivilegeEscalation` attribute set to `true`. The attribute must be present and set to `false` to prevent a container from gaining more privileges than its parent process. This rule applies to both `containers` and `initContainers` and reports missing attributes or values set to `true`.
 
 ## Compliant Code Examples
 ```yaml

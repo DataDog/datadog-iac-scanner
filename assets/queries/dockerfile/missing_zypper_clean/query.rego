@@ -20,6 +20,8 @@ CxPolicy[result] {
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "There should be a zypper clean after a zypper usage",
 		"keyActualValue": sprintf("The command '%s' does not have a zypper clean after it", [commands[img][c].Value[j]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

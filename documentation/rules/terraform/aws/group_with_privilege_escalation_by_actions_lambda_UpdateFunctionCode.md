@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting the `lambda:UpdateFunctionCode` permission with the `Resource` attribute set to `"*"` in an IAM group policy enables users in that group to update the code of any Lambda function within the AWS account. This broad permission could allow a user to inject malicious code into critical Lambda functions or leverage those functions for privilege escalation, compromising the overall security of the environment. To mitigate this risk, permissions should be limited to only trusted users and to specific, necessary Lambda functions using fine-grained resource ARNs rather than wildcard resources.
-
+Granting the `lambda:UpdateFunctionCode` permission with the `Resource` attribute set to `"*"` in an IAM group policy enables users in that group to update the code of any Lambda function within the AWS account. This broad permission could allow a user to inject malicious code into critical Lambda functions or leverage those functions for privilege escalation, compromising the overall security of the environment. To mitigate this risk, permissions should be limited to only trusted users and to specific, necessary Lambda functions using fine-grained resource ARNs rather than wildcard resources.
 
 ## Compliant Code Examples
 ```terraform

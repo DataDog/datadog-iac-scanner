@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- Databricks clusters must define both `autoscale.min_workers` and `autoscale.max_workers`. This rule flags `databricks_cluster` resources where either attribute is missing or unset.
+Databricks clusters must define both `autoscale.min_workers` and `autoscale.max_workers`. This rule flags `databricks_cluster` resources where either attribute is missing or unset.
 Defining both ensures predictable autoscaling and prevents resource overuse or unexpected costs.
-
 
 ## Compliant Code Examples
 ```terraform

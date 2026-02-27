@@ -1,0 +1,12 @@
+{
+  "id": "d0b535a2-5e5f-d18f-52f8-cc59a3f236bd",
+  "queryName": "Use only allowed registry in FROM",
+  "severity": "HIGH",
+  "category": "Supply-Chain",
+  "descriptionText": "Base images referenced in Dockerfiles must originate from trusted registries to reduce the risk of supply-chain compromise, malicious image insertion, or execution of unvetted binaries in containers.  \n\nThis rule inspects the `FROM` instruction in `dockerfile_container` resources and requires the registry prefix (the substring before the first `/`) to match an allowed registry. By default, only `docker.io` is permitted.  \n\nAny `FROM` instruction that explicitly specifies a registry not in the allowed list (for example, `gcr.io/myimage`) is flagged. Images that do not include an explicit registry (no `/`) are not evaluated by this rule, and multi-stage references containing a space (for example, `FROM builder AS final`) are excluded.\n\nSecure example:\n\n```Dockerfile\nFROM docker.io/library/nginx:1.21\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/use_only_an_allowed_registry_in_the_from_image",
+  "platform": "Dockerfile",
+  "descriptionID": "d0b535a2",
+  "cwe": "829",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from"
+}

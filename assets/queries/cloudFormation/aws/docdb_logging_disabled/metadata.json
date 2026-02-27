@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "Amazon DocumentDB clusters must export profiler and audit logs to CloudWatch Logs to ensure visibility for security monitoring and to support incident response and compliance.\n \n The `EnableCloudwatchLogsExports` property on `AWS::DocDB::DBCluster` resources must be defined and include both `profiler` and `audit` in the list. Resources missing this property or omitting either value will be flagged because they prevent collection of critical diagnostic and audit data.\n\nSecure configuration example:\n\n```yaml\nMyDocDBCluster:\n  Type: AWS::DocDB::DBCluster\n  Properties:\n    DBClusterIdentifier: my-docdb-cluster\n    MasterUsername: admin\n    MasterUserPassword: SecretPassword123\n    EnableCloudwatchLogsExports:\n      - profiler\n      - audit\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/docdb_logging_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/docdb_logging_disabled",
   "platform": "CloudFormation",
   "descriptionID": "4818ceaf",
   "cloudProvider": "aws",

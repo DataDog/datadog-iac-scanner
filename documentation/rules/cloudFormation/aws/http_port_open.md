@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups should not allow HTTP (port `80`) ingress from the entire internet because it exposes web services to unauthenticated access and increases the attack surface for automated scanning and exploitation.
+Security groups should not allow HTTP (port `80`) ingress from the entire internet because it exposes web services to unauthenticated access and increases the attack surface for automated scanning and exploitation.
  
  In CloudFormation, inspect `AWS::EC2::SecurityGroup` resources' `SecurityGroupIngress` entries and ensure none have `CidrIp` = `0.0.0.0/0` or `CidrIpv6` = `::/0`, combined with `IpProtocol` set to `tcp`, `-1`, or `6`, and a port range that includes `80`. This rule flags ingress entries where `FromPort <= 80` and `ToPort >= 80`, indicating port `80` is open to the world.
  
@@ -48,7 +48,6 @@ MySecurityGroup:
         ToPort: 443
         CidrIp: 10.0.0.0/16
 ```
-
 
 ## Compliant Code Examples
 ```yaml

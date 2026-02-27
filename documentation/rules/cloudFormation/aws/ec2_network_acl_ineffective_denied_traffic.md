@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Deny entries in Network ACLs that are intended to block all external traffic must explicitly target all IP addresses (`0.0.0.0/0`). If a deny rule uses a narrower CIDR, it may leave other sources allowed and create a false sense of protection.
+Deny entries in Network ACLs that are intended to block all external traffic must explicitly target all IP addresses (`0.0.0.0/0`). If a deny rule uses a narrower CIDR, it may leave other sources allowed and create a false sense of protection.
  
  For `AWS::EC2::NetworkAclEntry` resources, when `Properties.RuleAction` is `deny`, `Properties.CidrBlock` must be `0.0.0.0/0`. Resources with `RuleAction` set to `deny` and a different or missing `CidrBlock` will be flagged as ineffective for global traffic denial. If you only intend to block specific ranges, use the appropriate CIDRs and verify rule ordering. 
  
@@ -45,7 +45,6 @@ DenyAllEntry:
     Egress: false
     CidrBlock: 0.0.0.0/0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

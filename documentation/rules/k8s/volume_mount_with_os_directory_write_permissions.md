@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Containers can mount sensitive directories from the host, granting potentially dangerous access to critical host configurations and binaries.
+Containers can mount sensitive directories from the host, granting potentially dangerous access to critical host configurations and binaries.
 This rule flags container volume mounts where the mountPath is a host-sensitive directory (for example `/bin`, `/etc`, `/proc`, or `/`) and the `readOnly` attribute is missing or set to false.
 Such mounts are expected to be set to read-only to avoid modification of host files and reduce the risk of privilege escalation or system compromise.
-
 
 ## Compliant Code Examples
 ```yaml

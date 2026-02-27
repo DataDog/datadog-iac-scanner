@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "A Parameter Object must contain either a 'schema' property, or a 'content' property",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/parameter_object_undefined_type",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/parameter_object_undefined_type",
   "platform": "OpenAPI",
   "descriptionID": "4bbd104f",
   "cwe": "20",

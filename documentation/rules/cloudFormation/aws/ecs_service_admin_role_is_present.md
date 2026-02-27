@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECS services must not be assigned administrative IAM roles because a service role with admin privileges lets containers or the ECS control plane perform broad, potentially destructive actions across your account. This increases the risk of privilege escalation and data exposure.
+Amazon ECS services must not be assigned administrative IAM roles because a service role with admin privileges lets containers or the ECS control plane perform broad, potentially destructive actions across your account. This increases the risk of privilege escalation and data exposure.
  
  This check targets `AWS::ECS::Service` resources with a `Role` property and load balancers configured. It flags cases where `Role` is provided as a literal string that contains `admin` (case-insensitive), which commonly indicates an admin role or admin ARN.
  
@@ -59,7 +59,6 @@ MyService:
         ContainerPort: 80
         TargetGroupArn: !Ref MyTargetGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

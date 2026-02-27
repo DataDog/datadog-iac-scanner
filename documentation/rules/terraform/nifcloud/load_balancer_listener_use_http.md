@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `nifcloud_load_balancer_listener` is configured to use the HTTP port: `load_balancer_port` is set to `80`, so the listener uses unencrypted HTTP rather than HTTPS. This configuration does not provide TLS encryption; the listener is expected to use HTTPS to benefit from TLS security features.
-
+The `nifcloud_load_balancer_listener` is configured to use the HTTP port: `load_balancer_port` is set to `80`, so the listener uses unencrypted HTTP rather than HTTPS. This configuration does not provide TLS encryption; the listener is expected to use HTTPS to benefit from TLS security features.
 
 ## Compliant Code Examples
 ```terraform

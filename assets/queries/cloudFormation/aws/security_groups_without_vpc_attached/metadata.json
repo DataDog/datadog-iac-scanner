@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "Security groups must be associated with a specific VPC to ensure network isolation and to allow enforcement of VPC-level controls. A security group without a `VpcId` may end up outside the intended VPC (or require EC2-Classic), which prevents proper subnet scoping, VPC flow logging, and other VPC security controls and can lead to unintended exposure.\n\nFor `AWS::EC2::SecurityGroup` resources, `Properties.VpcId` must be defined (for example, `!Ref MyVPC` or an explicit VPC ID). This rule flags security groups where `Properties.VpcId` is undefined and the group is not the default group (`GroupName != \"default\"`).\n\nSecure example with `VpcId` set:\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Allow HTTP\n    VpcId: !Ref MyVPC\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 80\n        ToPort: 80\n        CidrIp: 10.0.0.0/16\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_groups_without_vpc_attached",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/security_groups_without_vpc_attached",
   "platform": "CloudFormation",
   "descriptionID": "8664bd98",
   "cloudProvider": "aws",

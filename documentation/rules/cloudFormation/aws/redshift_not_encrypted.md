@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Redshift clusters must have storage encryption enabled to protect sensitive data at rest and to ensure snapshots and automated backups are encrypted and not exposed if storage media is compromised. In AWS CloudFormation, the `Encrypted` property on `AWS::Redshift::Cluster` resources must be defined and set to `true`. Resources missing this property or with `Encrypted` set to `false` will be flagged. If `Encrypted` is omitted, the default behavior is `false`. For key management, set `KmsKeyId` to a customer-managed KMS key ARN or alias when you require control over encryption keys. If omitted, AWS will use the AWS-managed key.
+Redshift clusters must have storage encryption enabled to protect sensitive data at rest and to ensure snapshots and automated backups are encrypted and not exposed if storage media is compromised. In AWS CloudFormation, the `Encrypted` property on `AWS::Redshift::Cluster` resources must be defined and set to `true`. Resources missing this property or with `Encrypted` set to `false` will be flagged. If `Encrypted` is omitted, the default behavior is `false`. For key management, set `KmsKeyId` to a customer-managed KMS key ARN or alias when you require control over encryption keys. If omitted, AWS will use the AWS-managed key.
 
 Secure configuration example:
 
@@ -44,7 +44,6 @@ MyRedshiftCluster:
     Encrypted: true
     KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd-1234-efgh-5678
 ```
-
 
 ## Compliant Code Examples
 ```yaml

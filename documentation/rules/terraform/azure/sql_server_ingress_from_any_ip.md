@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- This check identifies Azure SQL Server firewall rules that allow access from any IP address (`0.0.0.0` to `255.255.255.255`), creating a significant security vulnerability by exposing your database to the entire internet. Such unrestricted access increases the risk of unauthorized access, data breaches, and potential exfiltration of sensitive information stored in your SQL databases.
+This check identifies Azure SQL Server firewall rules that allow access from any IP address (`0.0.0.0` to `255.255.255.255`), creating a significant security vulnerability by exposing your database to the entire internet. Such unrestricted access increases the risk of unauthorized access, data breaches, and potential exfiltration of sensitive information stored in your SQL databases.
 
 Instead of allowing all IPs, you should configure specific IP ranges or addresses that require access. For example, use specific IP addresses such as `start_ip_address = "10.0.17.62"` and `end_ip_address = "10.0.17.62"`, instead of the insecure configuration with `start_ip_address = "0.0.0.0"` and `end_ip_address = "255.255.255.255"`.
-
 
 ## Compliant Code Examples
 ```terraform

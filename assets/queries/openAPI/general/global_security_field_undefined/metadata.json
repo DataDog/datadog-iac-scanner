@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "Global security field should be defined to prevent API to have insecure paths and have this rules defined on securitySchemes",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/global_security_field_undefined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/global_security_field_undefined",
   "platform": "OpenAPI",
   "descriptionID": "25b129f1",
   "aggregation": 2,

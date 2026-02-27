@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that Amazon Elastic File System (EFS) resources are configured with encryption enabled using a customer-managed KMS key specified via the `kms_key_id` attribute, rather than defaulting to AWS-managed keys. If only `encrypted = true` is set without specifying a `kms_key_id`, sensitive data stored in EFS will use default AWS-managed encryption keys, reducing control over key rotation and access management. Failure to use a customer-managed key increases the risk of unauthorized data access and may not meet stringent compliance requirements for sensitive workloads.
-
+This check ensures that Amazon Elastic File System (EFS) resources are configured with encryption enabled using a customer-managed KMS key specified via the `kms_key_id` attribute, rather than defaulting to AWS-managed keys. If only `encrypted = true` is set without specifying a `kms_key_id`, sensitive data stored in EFS will use default AWS-managed encryption keys, reducing control over key rotation and access management. Failure to use a customer-managed key increases the risk of unauthorized data access and may not meet stringent compliance requirements for sensitive workloads.
 
 ## Compliant Code Examples
 ```terraform

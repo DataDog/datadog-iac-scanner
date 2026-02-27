@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stages must have access logging enabled so request activity is recorded for detection, auditing, and incident investigation. Without access logs, malicious or anomalous traffic can go undetected and forensic analysis is limited.
+API Gateway stages must have access logging enabled so request activity is recorded for detection, auditing, and incident investigation. Without access logs, malicious or anomalous traffic can go undetected and forensic analysis is limited.
 
  In CloudFormation, when an `AWS::ApiGateway::Stage` resource references a deployment (its `Properties.DeploymentId.Ref` equals the deployment logical ID), the corresponding `AWS::ApiGateway::Deployment` must define `StageDescription` and include `StageDescription.AccessLogSetting`.
 
@@ -52,7 +52,6 @@ MyStage:
     DeploymentId:
       Ref: MyDeployment
 ```
-
 
 ## Compliant Code Examples
 ```yaml

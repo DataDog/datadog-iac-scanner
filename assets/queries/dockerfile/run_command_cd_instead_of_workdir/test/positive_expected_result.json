@@ -1,18 +1,18 @@
 [
   {
-    "queryName": "RUN Instruction Using 'cd' Instead of WORKDIR",
+    "queryName": "RUN instruction using cd instead of WORKDIR",
     "severity": "LOW",
     "line": 3,
     "fileName": "positive.dockerfile"
   },
   {
-    "queryName": "RUN Instruction Using 'cd' Instead of WORKDIR",
+    "queryName": "RUN instruction using cd instead of WORKDIR",
     "severity": "LOW",
     "line": 9,
     "fileName": "positive.dockerfile"
   },
   {
-    "queryName": "RUN Instruction Using 'cd' Instead of WORKDIR",
+    "queryName": "RUN instruction using cd instead of WORKDIR",
     "severity": "LOW",
     "line": 15,
     "fileName": "positive.dockerfile"

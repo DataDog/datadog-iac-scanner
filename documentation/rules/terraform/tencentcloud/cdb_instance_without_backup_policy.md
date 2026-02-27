@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A CDB instance should include a `tencentcloud_mysql_backup_policy`. This rule verifies that each `tencentcloud_mysql_instance` has a matching `tencentcloud_mysql_backup_policy` whose `mysql_id` references the instance name. Instances without a matching backup policy are reported as `MissingAttribute`.
-
+A CDB instance should include a `tencentcloud_mysql_backup_policy`. This rule verifies that each `tencentcloud_mysql_instance` has a matching `tencentcloud_mysql_backup_policy` whose `mysql_id` references the instance name. Instances without a matching backup policy are reported as `MissingAttribute`.
 
 ## Compliant Code Examples
 ```terraform

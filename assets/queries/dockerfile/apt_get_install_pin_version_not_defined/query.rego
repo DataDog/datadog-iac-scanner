@@ -25,6 +25,8 @@ CxPolicy[result] {
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": sprintf("Package '%s' has version defined", [packageName]),
 		"keyActualValue": sprintf("Package '%s' does not have version defined", [packageName]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -51,6 +53,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("Package '%s' has version defined", [packageName]),
 		"keyActualValue": sprintf("Package '%s' does not have version defined", [packageName]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

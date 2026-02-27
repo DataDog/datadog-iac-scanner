@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `RotateKubeletServerCertificate` feature gate must be set to `true`. It must be enabled either by including `RotateKubeletServerCertificate=true` in the `--feature-gates=` flag for kube components (for example `kubelet` or `kube-controller-manager`) or by setting `featureGates.RotateKubeletServerCertificate` to `true` in `KubeletConfiguration`. This rule reports an `IncorrectValue` when the feature gate is `false`.
-
+The `RotateKubeletServerCertificate` feature gate must be set to `true`. It must be enabled either by including `RotateKubeletServerCertificate=true` in the `--feature-gates=` flag for kube components (for example `kubelet` or `kube-controller-manager`) or by setting `featureGates.RotateKubeletServerCertificate` to `true` in `KubeletConfiguration`. This rule reports an `IncorrectValue` when the feature gate is `false`.
 
 ## Compliant Code Examples
 ```yaml

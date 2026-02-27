@@ -2,7 +2,7 @@
   {
     "queryName": "EBS volume snapshot not encrypted",
     "severity": "HIGH",
-    "line": 4,
+    "line": 12,
     "fileName": "positive1.tf"
   },
   {

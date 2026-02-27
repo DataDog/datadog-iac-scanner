@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When running `kube-apiserver`, the `--enable-admission-plugins` flag should include `ImagePolicyWebhook`, and the plugin must be configured in the admission control configuration file so it is operational. If the `--enable-admission-plugins` flag does not contain `ImagePolicyWebhook`, this rule reports a missing attribute for the `kube-apiserver` container.
-
+When running `kube-apiserver`, the `--enable-admission-plugins` flag should include `ImagePolicyWebhook`, and the plugin must be configured in the admission control configuration file so it is operational. If the `--enable-admission-plugins` flag does not contain `ImagePolicyWebhook`, this rule reports a missing attribute for the `kube-apiserver` container.
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Ingress controllers should not directly expose workload targets. Exposing service backends that map to a workload's target_port can increase the risk of vulnerabilities and denial-of-service attacks. This rule flags Ingress rules whose backend service name and port match a Kubernetes Service's spec.port.target_port, indicating the Ingress is exposing the workload.
-
+Ingress controllers should not directly expose workload targets. Exposing service backends that map to a workload's target_port can increase the risk of vulnerabilities and denial-of-service attacks. This rule flags Ingress rules whose backend service name and port match a Kubernetes Service's spec.port.target_port, indicating the Ingress is exposing the workload.
 
 ## Compliant Code Examples
 ```terraform

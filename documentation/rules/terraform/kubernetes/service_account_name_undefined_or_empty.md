@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A Kubernetes Pod must have a Service Account defined to restrict access to the Kubernetes API. The pod spec attribute `service_account_name` must be defined and not empty or null. Pods missing a valid `service_account_name` can have excessive permissions or fail to authenticate when accessing the API.
-
+A Kubernetes Pod must have a Service Account defined to restrict access to the Kubernetes API. The pod spec attribute `service_account_name` must be defined and not empty or null. Pods missing a valid `service_account_name` can have excessive permissions or fail to authenticate when accessing the API.
 
 ## Compliant Code Examples
 ```terraform

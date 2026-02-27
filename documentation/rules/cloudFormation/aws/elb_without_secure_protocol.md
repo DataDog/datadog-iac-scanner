@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Listeners on Classic Elastic Load Balancers must use encrypted protocols to protect data in transit. Listeners configured with plaintext protocols (for example, `HTTP` or `TCP`) can expose sensitive information and allow interception or tampering.
+Listeners on Classic Elastic Load Balancers must use encrypted protocols to protect data in transit. Listeners configured with plaintext protocols (for example, `HTTP` or `TCP`) can expose sensitive information and allow interception or tampering.
  
  For `AWS::ElasticLoadBalancing::LoadBalancer` resources, this rule checks each entry in `Properties.Listeners` and requires the `Protocol` and `InstanceProtocol` fields (when present) to be set to `SSL` or `HTTPS`. Resources missing these properties or with `Protocol`/`InstanceProtocol` set to values like `HTTP` or `TCP` will be flagged as insecure. 
  
@@ -45,7 +45,6 @@ MyLoadBalancer:
         InstancePort: 8443
         SSLCertificateId: arn:aws:iam::123456789012:server-certificate/my-cert
 ```
-
 
 ## Compliant Code Examples
 ```yaml

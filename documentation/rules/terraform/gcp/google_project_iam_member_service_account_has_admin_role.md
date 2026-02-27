@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This query identifies when a service account is granted an administrative role in a Google Cloud project, which violates the principle of least privilege. Service accounts with administrative permissions such as `roles/iam.serviceAccountAdmin` can create and manage other service accounts, potentially leading to privilege escalation attacks and unauthorized access across your Google Cloud environment.
+This query identifies when a service account is granted an administrative role in a Google Cloud project, which violates the principle of least privilege. Service accounts with administrative permissions such as `roles/iam.serviceAccountAdmin` can create and manage other service accounts, potentially leading to privilege escalation attacks and unauthorized access across your Google Cloud environment.
 
 Instead of using administrative roles, assign more granular, limited roles that provide only the permissions required for the service account to function. For example:
 
@@ -47,7 +47,6 @@ resource "google_project_iam_member" "secure" {
   member  = "serviceAccount:my-app@appspot.gserviceacccount.com"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

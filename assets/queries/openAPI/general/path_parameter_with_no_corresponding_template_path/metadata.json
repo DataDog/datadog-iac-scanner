@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "The path parameter must have a corresponding template path for a given operation",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/path_parameter_with_no_corresponding_template_path",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/path_parameter_with_no_corresponding_template_path",
   "platform": "OpenAPI",
   "descriptionID": "c005cfeb",
   "aggregation": 2,

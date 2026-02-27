@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Attaching an excessive number of gateways to a single VPC increases the attack surface and may indicate misconfiguration or exceed AWS service limits. Exceeding service limits can cause routing problems or service disruption.
+Attaching an excessive number of gateways to a single VPC increases the attack surface and may indicate misconfiguration or exceed AWS service limits. Exceeding service limits can cause routing problems or service disruption.
 
 This rule checks `AWS::EC2::VPC` resources and counts `AWS::EC2::VPCGatewayAttachment` resources whose `Properties.VpcId` refers to that VPC. The count must not be greater than `3`. Resources with more than three gateway attachments referencing the VPC will be flagged. `VpcId` may be specified as a literal value or a `Ref`.
 
@@ -49,7 +49,6 @@ MyVPCGatewayAttachment:
     VpcId: !Ref MyVPC
     InternetGatewayId: !Ref MyInternetGateway
 ```
-
 
 ## Compliant Code Examples
 ```yaml

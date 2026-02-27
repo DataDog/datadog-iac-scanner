@@ -11,5 +11,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue", #"MissingAttribute" / "RedundantAttribute"
 		"keyExpectedValue": "'WORKDIR' Command has absolute path",
 		"keyActualValue": "'WORKDIR' Command doesn't have absolute path",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Workspaces provides virtual desktop infrastructure in the cloud with both root and user volumes that should be encrypted to protect sensitive data from unauthorized access. When these volumes are not encrypted, workspace data including user files, system configurations, and application data are vulnerable to exposure if the storage media is compromised or improperly decommissioned. To properly secure your workspaces, the `root_volume_encryption_enabled` and `user_volume_encryption_enabled` attributes must be set to `true`, as shown in the following example:
+AWS Workspaces provides virtual desktop infrastructure in the cloud with both root and user volumes that should be encrypted to protect sensitive data from unauthorized access. When these volumes are not encrypted, workspace data including user files, system configurations, and application data are vulnerable to exposure if the storage media is compromised or improperly decommissioned. To properly secure your workspaces, the `root_volume_encryption_enabled` and `user_volume_encryption_enabled` attributes must be set to `true`, as shown in the following example:
 
 ```terraform
 resource "aws_workspaces_workspace" "example" {
@@ -38,7 +38,6 @@ resource "aws_workspaces_workspace" "example" {
   volume_encryption_key          = "alias/aws/workspaces"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

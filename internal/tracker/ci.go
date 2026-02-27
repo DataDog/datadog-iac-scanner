@@ -58,11 +58,15 @@ func (c *CITracker) GetOutputLines() int {
 
 // TrackQueryLoad adds a loaded query
 func (c *CITracker) TrackQueryLoad(queryAggregation int) {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.LoadedQueries += queryAggregation
 }
 
 // TrackQueryExecuting adds a executing queries
 func (c *CITracker) TrackQueryExecuting(queryAggregation int) {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.ExecutingQueries += queryAggregation
 }
 
@@ -101,35 +105,49 @@ func (c *CITracker) TrackFileParse(path string) {
 
 // FailedDetectLine - queries that fail to detect line are counted as failed to execute queries
 func (c *CITracker) FailedDetectLine() {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.ExecutedQueries--
 }
 
 // FailedComputeSimilarityID - queries that failed to compute similarity ID
 func (c *CITracker) FailedComputeSimilarityID() {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.FailedSimilarityID++
 }
 
 // FailedComputeOldSimilarityID - queries that failed to compute old similarity ID
 func (c *CITracker) FailedComputeOldSimilarityID() {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.FailedOldSimilarityID++
 }
 
 // TrackFileFoundCountLines - information about the lines of the scanned files
 func (c *CITracker) TrackFileFoundCountLines(countLines int) {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.FoundCountLines += countLines
 }
 
 // TrackFileParseCountLines - information about the lines of the parsed files
 func (c *CITracker) TrackFileParseCountLines(countLines int) {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.ParsedCountLines += countLines
 }
 
 // TrackFileIgnoreCountLines - information about the lines ignored of the parsed files
 func (c *CITracker) TrackFileIgnoreCountLines(countLines int) {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.IgnoreCountLines += countLines
 }
 
 // TrackResourceFoundCountLines - information about the resources of the scanned files
 func (c *CITracker) TrackFileFoundCountResources(countResources int) {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
 	c.FoundResources += countResources
 }

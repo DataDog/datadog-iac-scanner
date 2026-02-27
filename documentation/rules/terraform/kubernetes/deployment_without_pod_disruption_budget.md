@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Deployments should be assigned a `PodDisruptionBudget` to ensure high availability. For `kubernetes_deployment` resources with `spec.replicas > 1`, the deployment's `spec.selector.match_labels` should be targeted by a `kubernetes_pod_disruption_budget`. This ensures the deployment's selector labels are referenced by the `PodDisruptionBudget`, preventing excessive pod evictions during voluntary disruptions.
-
+Deployments should be assigned a `PodDisruptionBudget` to ensure high availability. For `kubernetes_deployment` resources with `spec.replicas > 1`, the deployment's `spec.selector.match_labels` should be targeted by a `kubernetes_pod_disruption_budget`. This ensures the deployment's selector labels are referenced by the `PodDisruptionBudget`, preventing excessive pod evictions during voluntary disruptions.
 
 ## Compliant Code Examples
 ```terraform

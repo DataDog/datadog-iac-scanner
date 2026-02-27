@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should be configured with an AppArmor profile to enforce fine-grained access control over low-level system resources. This rule requires each container to have the annotation `container.apparmor.security.beta.kubernetes.io/<container>` set to `runtime/default` or to a `localhost/<profile>` value. Missing or invalid annotations are reported as MissingAttribute or IncorrectValue issues. The rule validates annotations on Pod templates, Job templates, and top-level Pod resources.
-
+Containers should be configured with an AppArmor profile to enforce fine-grained access control over low-level system resources. This rule requires each container to have the annotation `container.apparmor.security.beta.kubernetes.io/<container>` set to `runtime/default` or to a `localhost/<profile>` value. Missing or invalid annotations are reported as MissingAttribute or IncorrectValue issues. The rule validates annotations on Pod templates, Job templates, and top-level Pod resources.
 
 ## Compliant Code Examples
 ```yaml

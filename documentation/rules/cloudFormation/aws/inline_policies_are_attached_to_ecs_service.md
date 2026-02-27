@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- ECS services must reference an IAM role, not an IAM policy, because pointing the service `Role` property to a policy resource can break permission binding, make access controls harder to manage and audit, and increase the chance of privilege misconfiguration. Check `AWS::ECS::Service` resources' `Properties.Role`. The value must be a reference to an `AWS::IAM::Role` (logical ID or ARN) and must not be the logical ID of an `AWS::IAM::Policy` resource. Attach permissions to that role using `ManagedPolicyArns`, an `AWS::IAM::ManagedPolicy`, or inline policies defined on the `AWS::IAM::Role` itself. ECS services whose `Role` property refers to an `AWS::IAM::Policy` logical ID will be flagged.
+ECS services must reference an IAM role, not an IAM policy, because pointing the service `Role` property to a policy resource can break permission binding, make access controls harder to manage and audit, and increase the chance of privilege misconfiguration. Check `AWS::ECS::Service` resources' `Properties.Role`. The value must be a reference to an `AWS::IAM::Role` (logical ID or ARN) and must not be the logical ID of an `AWS::IAM::Policy` resource. Attach permissions to that role using `ManagedPolicyArns`, an `AWS::IAM::ManagedPolicy`, or inline policies defined on the `AWS::IAM::Role` itself. ECS services whose `Role` property refers to an `AWS::IAM::Policy` logical ID will be flagged.
 
 Secure configuration example:
 
@@ -50,7 +50,6 @@ MyEcsService:
   Properties:
     Role: !Ref MyEcsRole
 ```
-
 
 ## Compliant Code Examples
 ```yaml

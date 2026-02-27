@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When the `kube-apiserver` command is present, the `--enable-admission-plugins` flag should not include the `AlwaysAdmit` plugin. This rule identifies `containers` and `initContainers` running `kube-apiserver` and flags resources whose `--enable-admission-plugins` flag contains `AlwaysAdmit`. The `AlwaysAdmit` plugin bypasses admission control and allows requests without validation, so it should not be used in production.
-
+When the `kube-apiserver` command is present, the `--enable-admission-plugins` flag should not include the `AlwaysAdmit` plugin. This rule identifies `containers` and `initContainers` running `kube-apiserver` and flags resources whose `--enable-admission-plugins` flag contains `AlwaysAdmit`. The `AlwaysAdmit` plugin bypasses admission control and allows requests without validation, so it should not be used in production.
 
 ## Compliant Code Examples
 ```yaml

@@ -1,12 +1,13 @@
 {
   "id": "b84a0b47-2e99-4c9f-8933-98bcabe2b94d",
-  "queryName": "Run Using apt",
+  "queryName": "Run using apt",
   "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "apt is discouraged by the linux distributions as an unattended tool as its interface may suffer changes between versions. Better use the more stable apt-get and apt-cache",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "Using the interactive `apt` front-end in Dockerfile `RUN` instructions is discouraged because its user-facing behavior can change between versions and it may prompt for input during non-interactive image builds. This can cause build failures or incomplete/incorrect package installations that leave images outdated or inconsistent.\n\nThis rule flags Dockerfile `RUN` commands that invoke the token `apt ` (for example `RUN apt ...`) and instead requires using scripting-friendly tools such as `apt-get` and `apt-cache`. Replace `apt` with `apt-get`/`apt-cache`, run `apt-get update` before installs, use non-interactive and affirmative flags (for example, `-y --no-install-recommends`), and clean apt caches to reduce image size and avoid stale state. \n\nSecure example:\n\n```dockerfile\nRUN apt-get update && apt-get install -y --no-install-recommends <package> && rm -rf /var/lib/apt/lists/*\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/run_using_apt",
   "platform": "Dockerfile",
   "descriptionID": "6cb53718",
   "cwe": "758",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Secret Management",
   "descriptionText": "IAM access keys must be rotated regularly to reduce the risk from long-lived credentials and limit the exposure window if a key is compromised. Ensure an `AWS::Config::ConfigRule` resource exists with `Source.SourceIdentifier` set to `ACCESS_KEYS_ROTATED` and that its `InputParameters` contain a `maxAccessKeyAge` value less than or equal to `90` (days). Resources missing this ConfigRule, missing `InputParameters`, or with `maxAccessKeyAge` > `90` will be flagged; `maxAccessKeyAge` is evaluated numerically and is often provided as a string.\n\nSecure configuration example (CloudFormation):\n\n```yaml\nAccessKeyRotationRule:\n  Type: AWS::Config::ConfigRule\n  Properties:\n    ConfigRuleName: enforce-access-key-rotation\n    Source:\n      Owner: AWS\n      SourceIdentifier: ACCESS_KEYS_ROTATED\n    InputParameters: '{\"maxAccessKeyAge\":\"90\"}'\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/access_key_not_rotated_within_90_days",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/access_key_not_rotated_within_90_days",
   "platform": "CloudFormation",
   "descriptionID": "148d40cb",
   "cloudProvider": "aws",

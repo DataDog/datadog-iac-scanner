@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting the `iam:CreatePolicyVersion` action with a resource of `"*"` in an IAM policy allows a user to create new policy versions for *any* policy in the AWS account, including those attached to highly privileged roles. This capability can be exploited for privilege escalation, as a malicious or compromised user could attach or update policies to grant themselves broader permissions. To mitigate this risk, restrict the `Resource` attribute to specific policy ARNs and only grant this action to trusted administrative principals.
+Granting the `iam:CreatePolicyVersion` action with a resource of `"*"` in an IAM policy allows a user to create new policy versions for *any* policy in the AWS account, including those attached to highly privileged roles. This capability can be exploited for privilege escalation, as a malicious or compromised user could attach or update policies to grant themselves broader permissions. To mitigate this risk, restrict the `Resource` attribute to specific policy ARNs and only grant this action to trusted administrative principals.
 
 A more secure configuration would specify only necessary actions for the specific resources required. For example:
 
@@ -55,7 +55,6 @@ resource "aws_iam_user_policy" "inline_policy_run_instances2" {
   })
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

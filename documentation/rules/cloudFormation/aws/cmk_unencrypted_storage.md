@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Storage encryption must be enabled for database and analytics clusters to protect data at rest and prevent exposure of sensitive data in volumes, snapshots, and backups if storage media or snapshots are compromised. In CloudFormation, the `StorageEncrypted` property must be defined and set to `true` for `AWS::RDS::DBInstance`, `AWS::RDS::DBCluster`, `AWS::RDS::GlobalCluster`, `AWS::DocDB::DBCluster`, and `AWS::Neptune::DBCluster`. For `AWS::Redshift::Cluster`, the `Encrypted` property must be defined and set to `true`. Resources missing these properties or with the properties set to `false` will be flagged.
+Storage encryption must be enabled for database and analytics clusters to protect data at rest and prevent exposure of sensitive data in volumes, snapshots, and backups if storage media or snapshots are compromised. In CloudFormation, the `StorageEncrypted` property must be defined and set to `true` for `AWS::RDS::DBInstance`, `AWS::RDS::DBCluster`, `AWS::RDS::GlobalCluster`, `AWS::DocDB::DBCluster`, and `AWS::Neptune::DBCluster`. For `AWS::Redshift::Cluster`, the `Encrypted` property must be defined and set to `true`. Resources missing these properties or with the properties set to `false` will be flagged.
 
 Secure configuration examples:
 
@@ -47,7 +47,6 @@ MyRedshiftCluster:
     ClusterIdentifier: my-redshift
     Encrypted: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -1,12 +1,13 @@
 {
   "id": "8ada6e80-0ade-439e-b176-0b28f6bce35a",
-  "queryName": "Run Using Sudo",
+  "queryName": "Run using sudo",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "Avoid RUN with sudo command as it leads to unpredictable behavior",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#run",
+  "descriptionText": "Including the `sudo` command in Dockerfile `RUN` instructions is a misconfiguration because Docker build steps typically run as root and `sudo` is unnecessary. Using `sudo` can mask incorrect privilege assumptions and lead to fragile builds, unexpected file ownership, or build-time failures when `sudo` is not available.\n\nThis rule flags Dockerfile `RUN` instructions that contain the literal `sudo`, either as the first token or anywhere in the command value. `RUN` instructions must omit `sudo`. Fix by invoking commands directly during build or by switching to a non-root user with the `USER` directive and correcting permissions with `chown` where appropriate.\n\n```Dockerfile\nFROM ubuntu:22.04\nRUN apt-get update && apt-get install -y curl\n\n# If commands must run as a non-root user:\nUSER appuser\nRUN mkdir -p /app && chown appuser:appuser /app\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/run_using_sudo",
   "platform": "Dockerfile",
   "descriptionID": "c4f2e24a",
   "cwe": "440",
-  "oldSeverity": "HIGH"
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run"
 }

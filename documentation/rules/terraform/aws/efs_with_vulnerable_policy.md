@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS EFS file system policies should avoid the use of wildcards (`*`) in the `Action` and `Principal` fields, as shown below, because this grants broad permissions to all users and all actions:
+AWS EFS file system policies should avoid the use of wildcards (`*`) in the `Action` and `Principal` fields, as shown below, because this grants broad permissions to all users and all actions:
 
 ```
 "Principal": { "AWS": "*" },
@@ -41,7 +41,6 @@ Such overly permissive policies can allow any AWS account to perform any action 
 "Principal": { "AWS": "arn:aws:iam::111122223333:user/Carlos" },
 "Action": ["elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite"]
 ```
-
 
 ## Compliant Code Examples
 ```terraform

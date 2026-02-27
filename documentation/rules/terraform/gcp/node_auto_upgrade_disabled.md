@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes nodes should have automatic upgrades enabled to ensure that critical security patches, bug fixes, and feature updates are applied without manual intervention. In Terraform, this is configured by setting the `auto_upgrade` attribute to `true` within the `management` block:
+Kubernetes nodes should have automatic upgrades enabled to ensure that critical security patches, bug fixes, and feature updates are applied without manual intervention. In Terraform, this is configured by setting the `auto_upgrade` attribute to `true` within the `management` block:
 
 ```
 management {
@@ -45,7 +45,6 @@ management {
 ```
 
 Leaving auto upgrade disabled can expose your cluster to exploits and instability due to unpatched vulnerabilities in the underlying infrastructure.
-
 
 ## Compliant Code Examples
 ```terraform

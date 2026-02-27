@@ -1,11 +1,12 @@
 {
   "id": "f45ea400-6bbe-4501-9fc7-1c3d75c32067",
-  "queryName": "Image Version Using 'latest'",
+  "queryName": "Image version using latest",
   "severity": "MEDIUM",
   "category": "Best Practices",
-  "descriptionText": "When building images, always tag them with useful tags which codify version information, intended destination (prod or test, for instance), stability, or other information that is useful when deploying the application in different environments. Do not rely on the automatically-created latest tag",
-  "descriptionUrl": "https://docs.docker.com/develop/dev-best-practices/",
+  "descriptionText": "Using the `:latest` tag for base images makes builds non-reproducible and can silently introduce unreviewed or vulnerable changes from upstream, increasing supply-chain and runtime risk.\n\nCheck the Dockerfile `FROM` instruction: the image reference must use an explicit version tag or an immutable digest (for example, `nginx:1.21.6` or `nginx@sha256:...`) rather than `...:latest`. `scratch` base images are exempt.\n\nThis rule flags `FROM` lines that contain `:latest` (excluding `scratch`). Update them to a specific semantic version tag or pin to a digest to ensure consistent, auditable images. \n\nSecure examples:\n\n```Dockerfile\nFROM nginx:1.21.6\n```\n\n```Dockerfile\nFROM nginx@sha256:03a1c7c8f9e2d5b6a7c8e9f0a1b2c3d4e5f67890123456789abcdef0123456789\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/image_version_using_latest",
   "platform": "Dockerfile",
   "descriptionID": "22f535ec",
-  "cwe": "1357"
+  "cwe": "1357",
+  "providerUrl": "https://docs.docker.com/develop/dev-best-practices/"
 }

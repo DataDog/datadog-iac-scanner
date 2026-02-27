@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Instance Metadata Service Version 1 (IMDSv1) is susceptible to Server-Side Request Forgery (SSRF) attacks, which can allow attackers to access instance metadata and potentially steal credentials or sensitive information from EC2 instances. IMDSv2 mitigates this risk by requiring session tokens for metadata requests, providing an additional layer of protection against SSRF vulnerabilities. To secure your infrastructure, set `http_tokens` to `"required"` in your AWS instance or launch template metadata options, as shown in the following example:
+AWS Instance Metadata Service Version 1 (IMDSv1) is susceptible to Server-Side Request Forgery (SSRF) attacks, which can allow attackers to access instance metadata and potentially steal credentials or sensitive information from EC2 instances. IMDSv2 mitigates this risk by requiring session tokens for metadata requests, providing an additional layer of protection against SSRF vulnerabilities. To secure your infrastructure, set `http_tokens` to `"required"` in your AWS instance or launch template metadata options, as shown in the following example:
 
 ```hcl
 resource "aws_instance" "secure_example" {
@@ -40,7 +40,6 @@ resource "aws_instance" "secure_example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

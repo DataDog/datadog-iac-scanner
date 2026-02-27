@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM policies should be applied to groups rather than directly to individual users to centralize permission management and reduce privilege creep. This rule checks `AWS::IAM::Policy` resources and flags policies that define the `Users` property. Policies should instead use the `Groups` property (a list of group names or refs). Resources with `Properties.Users` present or without a `Groups` assignment will be flagged. Remove `Users` and attach the policy to one or more groups, then add users to those groups for consistent, auditable permission control.
+IAM policies should be applied to groups rather than directly to individual users to centralize permission management and reduce privilege creep. This rule checks `AWS::IAM::Policy` resources and flags policies that define the `Users` property. Policies should instead use the `Groups` property (a list of group names or refs). Resources with `Properties.Users` present or without a `Groups` assignment will be flagged. Remove `Users` and attach the policy to one or more groups, then add users to those groups for consistent, auditable permission control.
 
 Secure configuration example (CloudFormation YAML):
 
@@ -46,7 +46,6 @@ MyPolicy:
     Groups:
       - Ref: MyIamGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

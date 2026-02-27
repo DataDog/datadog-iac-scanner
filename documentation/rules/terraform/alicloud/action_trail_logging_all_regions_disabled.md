@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- ActionTrail logging must be enabled for all regions.
+ActionTrail logging must be enabled for all regions.
 This rule checks that each `alicloud_actiontrail_trail` resource:
 
 - Includes the `oss_bucket_name` attribute
 - Sets both `event_rw` and `trail_region` attributes to `All`
 
 Missing attributes trigger a `MissingAttribute` issue. Incorrect values trigger an `IncorrectValue` issue, with suggested remediation to add or correct the attribute.
-
 
 ## Compliant Code Examples
 ```terraform

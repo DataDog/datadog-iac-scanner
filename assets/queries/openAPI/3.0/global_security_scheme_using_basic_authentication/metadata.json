@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "A security scheme is allowing basic authentication credentials to be transported over network",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/global_security_scheme_using_basic_authentication",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/global_security_scheme_using_basic_authentication",
   "platform": "OpenAPI",
   "descriptionID": "f29b5719",
   "cwe": "284",

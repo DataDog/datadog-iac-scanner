@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Tiller (Helm v2) must not be deployed because it is deprecated and no longer supported. This rule detects resources that reference Tiller by resource name or labels (for example, `metadata.name`, `metadata.labels.app == "helm"`, or a `metadata.labels.name` containing "tiller"). It also detects Tiller container images by name in `containers` or `initContainers`, including within pod templates (`spec.template`).
-
+Tiller (Helm v2) must not be deployed because it is deprecated and no longer supported. This rule detects resources that reference Tiller by resource name or labels (for example, `metadata.name`, `metadata.labels.app == "helm"`, or a `metadata.labels.name` containing "tiller"). It also detects Tiller container images by name in `containers` or `initContainers`, including within pod templates (`spec.template`).
 
 ## Compliant Code Examples
 ```yaml

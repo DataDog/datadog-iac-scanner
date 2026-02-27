@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "API Gateway stages should present a client SSL/TLS certificate to their backend so the backend can cryptographically verify that requests originate from the API Gateway. Without this, backends cannot reliably distinguish legitimate API Gateway traffic from spoofed or direct requests, increasing the risk of unauthorized access to internal services.\n\n In CloudFormation, `AWS::ApiGateway::Stage` resources must define the `ClientCertificateId` property and it should reference the ID of an `AWS::ApiGateway::ClientCertificate` (for example, with `!Ref`). Resources missing `ClientCertificateId` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyClientCertificate:\n  Type: AWS::ApiGateway::ClientCertificate\n\nMyStage:\n  Type: AWS::ApiGateway::Stage\n  Properties:\n    StageName: prod\n    RestApiId: !Ref MyRestApi\n    ClientCertificateId: !Ref MyClientCertificate\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/api_gateway_without_ssl_certificate",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/api_gateway_without_ssl_certificate",
   "platform": "CloudFormation",
   "descriptionID": "95c8b13a",
   "cloudProvider": "aws",

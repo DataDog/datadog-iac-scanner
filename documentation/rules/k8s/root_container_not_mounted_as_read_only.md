@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The root container filesystem should be mounted as read-only. This rule checks both `containers` and `initContainers` and expects `securityContext.readOnlyRootFilesystem` to be set to `true` for each container. It reports `IncorrectValue` when the field is present and `false`, and `MissingAttribute` when the field is undefined.
-
+The root container filesystem should be mounted as read-only. This rule checks both `containers` and `initContainers` and expects `securityContext.readOnlyRootFilesystem` to be set to `true` for each container. It reports `IncorrectValue` when the field is present and `false`, and `MissingAttribute` when the field is undefined.
 
 ## Compliant Code Examples
 ```yaml

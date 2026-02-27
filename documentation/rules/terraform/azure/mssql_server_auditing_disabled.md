@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Auditing should be enabled for MSSQL servers to ensure that access and activity logs are generated and retained for security monitoring and incident response. Without the `azurerm_mssql_server_extended_auditing_policy` resource configured, suspicious activities or potential breaches may go undetected, increasing the risk of data compromise. Auditing can be enabled by adding a resource like the following:
+Auditing should be enabled for MSSQL servers to ensure that access and activity logs are generated and retained for security monitoring and incident response. Without the `azurerm_mssql_server_extended_auditing_policy` resource configured, suspicious activities or potential breaches may go undetected, increasing the risk of data compromise. Auditing can be enabled by adding a resource like the following:
 
 ```
 resource "azurerm_mssql_server_extended_auditing_policy" "example" {
@@ -37,7 +37,6 @@ resource "azurerm_mssql_server_extended_auditing_policy" "example" {
   retention_in_days = 6
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

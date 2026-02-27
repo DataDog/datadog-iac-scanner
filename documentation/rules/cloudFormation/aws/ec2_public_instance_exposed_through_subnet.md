@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EC2 instances should not be assigned public IP addresses in subnets that have a default route to the internet, because doing so exposes those instances to unrestricted inbound and outbound traffic and increases the risk of unauthorized access, exploitation, and data exfiltration. This rule checks `AWS::EC2::Instance` resources' `NetworkInterfaces[*].AssociatePublicIpAddress` property. It flags instances where this is `true` and the subnet referenced by `NetworkInterfaces[*].SubnetId` is associated (via `AWS::EC2::SubnetRouteTableAssociation`) with a route table that contains an `AWS::EC2::Route` having `DestinationCidrBlock` set to `0.0.0.0/0` or `DestinationIpv6CidrBlock` set to `::/0`.
+EC2 instances should not be assigned public IP addresses in subnets that have a default route to the internet, because doing so exposes those instances to unrestricted inbound and outbound traffic and increases the risk of unauthorized access, exploitation, and data exfiltration. This rule checks `AWS::EC2::Instance` resources' `NetworkInterfaces[*].AssociatePublicIpAddress` property. It flags instances where this is `true` and the subnet referenced by `NetworkInterfaces[*].SubnetId` is associated (via `AWS::EC2::SubnetRouteTableAssociation`) with a route table that contains an `AWS::EC2::Route` having `DestinationCidrBlock` set to `0.0.0.0/0` or `DestinationIpv6CidrBlock` set to `::/0`.
  
  To remediate, avoid assigning public IPs to instances in those subnets, place workloads in private subnets that use a NAT gateway for outbound access, or remove/restrict the default `0.0.0.0/0` or `::/0` route from the subnet's route table.
 
@@ -45,7 +45,6 @@ MyInstance:
         SubnetId: !Ref MyPrivateSubnet
         DeviceIndex: 0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

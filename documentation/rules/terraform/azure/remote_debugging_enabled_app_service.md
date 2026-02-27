@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Remote debugging in Azure app services creates a direct channel into your application which can be exploited by attackers to access sensitive data, execute arbitrary code, or gain unauthorized system access. When enabled, it significantly expands your attack surface by exposing debugging interfaces that should never be accessible in production environments. To secure your application, ensure remote debugging is explicitly disabled in your Terraform configuration by setting `remote_debugging_enabled = [false]` in the site_config block, as shown in this secure example: ```resource "azurerm_app_service" "good_example" { site_config { remote_debugging_enabled = [false] } }```.
-
+Remote debugging in Azure app services creates a direct channel into your application which can be exploited by attackers to access sensitive data, execute arbitrary code, or gain unauthorized system access. When enabled, it significantly expands your attack surface by exposing debugging interfaces that should never be accessible in production environments. To secure your application, ensure remote debugging is explicitly disabled in your Terraform configuration by setting `remote_debugging_enabled = [false]` in the site_config block, as shown in this secure example: ```resource "azurerm_app_service" "good_example" { site_config { remote_debugging_enabled = [false] } }```.
 
 ## Compliant Code Examples
 ```terraform

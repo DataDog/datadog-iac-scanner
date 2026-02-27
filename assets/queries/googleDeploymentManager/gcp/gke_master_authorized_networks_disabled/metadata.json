@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Master authorized networks must be enabled in GKE clusters",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/gke_master_authorized_networks_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/gke_master_authorized_networks_disabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "be3364b4",
   "cloudProvider": "gcp",

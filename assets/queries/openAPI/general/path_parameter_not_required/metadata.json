@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "The property 'required' determines whether the parameter is mandatory. If the parameter location is 'path', this property is required and its value must be true.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/path_parameter_not_required",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/path_parameter_not_required",
   "platform": "OpenAPI",
   "descriptionID": "977266c3",
   "aggregation": 2,

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront distributions must enforce HTTPS for viewer connections to prevent plaintext interception and downgrade attacks that could expose credentials or sensitive content.
+CloudFront distributions must enforce HTTPS for viewer connections to prevent plaintext interception and downgrade attacks that could expose credentials or sensitive content.
 
  In CloudFormation, verify `AWS::CloudFront::Distribution` resources: `DistributionConfig.DefaultCacheBehavior.ViewerProtocolPolicy` and each `DistributionConfig.CacheBehaviors[].ViewerProtocolPolicy` must be set to `https-only` or `redirect-to-https`.
 
@@ -47,7 +47,6 @@ MyDistribution:
         - PathPattern: "/secure/*"
           ViewerProtocolPolicy: https-only
 ```
-
 
 ## Compliant Code Examples
 ```yaml

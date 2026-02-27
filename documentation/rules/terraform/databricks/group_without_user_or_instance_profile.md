@@ -28,13 +28,12 @@ meta:
 
 ### Description
 
- Each `databricks_group` must be associated with at least one user or one instance profile. This rule checks for:
+Each `databricks_group` must be associated with at least one user or one instance profile. This rule checks for:
 
 - A `databricks_group_member` with a non-empty member_id, or
 - A `databricks_group_instance_profile` with a non-empty `instance_profile_id`
 
 If neither is found referencing the group's `group_id`, the `databricks_group` is flagged.
-
 
 ## Compliant Code Examples
 ```terraform

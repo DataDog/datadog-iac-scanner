@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "Alexa skill client secrets must not be stored as plaintext in CloudFormation templates because embedding secrets in templates exposes credentials to source control and anyone with template access, risking unauthorized access to the skill and its integrations. The `AuthenticationConfiguration.ClientSecret` property on `Alexa::ASK::Skill` resources must be a string that uses a secure dynamic reference beginning with `{{resolve:secretsmanager:` or `{{resolve:ssm-secure:`. This retrieves the secret from AWS Secrets Manager or AWS Systems Manager Parameter Store (`SecureString`) at deploy time. Resources with non-string values or `ClientSecret` values that do not start with those prefixes will be flagged. Use dynamic references instead of hardcoding secrets; for example, a secure CloudFormation configuration looks like:\n\n```yaml\nMySkillWithSecretsManager:\n  Type: Alexa::ASK::Skill\n  Properties:\n    AuthenticationConfiguration:\n      ClientId: my-client-id\n      ClientSecret: \"{{resolve:secretsmanager:my-secret-name:SecretString:clientSecret::}}\"\n```\n\n```yaml\nMySkillWithSSM:\n  Type: Alexa::ASK::Skill\n  Properties:\n    AuthenticationConfiguration:\n      ClientId: my-client-id\n      ClientSecret: \"{{resolve:ssm-secure:/my/secure/param:1}}\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/alexa_skill_plaintext_client_secret_exposed",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/alexa_skill_plaintext_client_secret_exposed",
   "platform": "CloudFormation",
   "descriptionID": "cd21865c",
   "cloudProvider": "aws",

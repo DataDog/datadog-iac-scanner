@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Checks whether Deployment resources with `replicas > 2` include a `podAntiAffinity` policy to prevent multiple pods from being scheduled on the same node. The rule verifies that `.spec.template.spec.affinity.pod_anti_affinity` is present and that either `required_during_scheduling_ignored_during_execution` or `preferred_during_scheduling_ignored_during_execution` is configured. It also ensures the `topology_key` is set to `kubernetes.io/hostname` and that the `label_selector.match_labels` entries match labels on the Pod template.
-
+Checks whether Deployment resources with `replicas > 2` include a `podAntiAffinity` policy to prevent multiple pods from being scheduled on the same node. The rule verifies that `.spec.template.spec.affinity.pod_anti_affinity` is present and that either `required_during_scheduling_ignored_during_execution` or `preferred_during_scheduling_ignored_during_execution` is configured. It also ensures the `topology_key` is set to `kubernetes.io/hostname` and that the `label_selector.match_labels` entries match labels on the Pod template.
 
 ## Compliant Code Examples
 ```terraform

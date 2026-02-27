@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Containers should drop `ALL` or at least `NET_RAW` capabilities.  
+Containers should drop `ALL` or at least `NET_RAW` capabilities.  
 The container's `securityContext.capabilities.drop` field must include `ALL` or `NET_RAW`.  
 If the `drop` list is undefined or does not include these capabilities, the policy reports a violation.
-
 
 ## Compliant Code Examples
 ```yaml

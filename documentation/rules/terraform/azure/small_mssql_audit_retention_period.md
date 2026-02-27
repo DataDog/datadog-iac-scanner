@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Auditing logs for Azure MSSQL Servers should be retained for more than 90 days to support monitoring and forensic investigations. When the `retention_in_days` attribute in the `extended_auditing_policy` block is set to a value less than 91, as shown below, important event logs may be deleted too soon, increasing the risk of missing or incomplete audit trails in the event of a breach or regulatory review.
+Auditing logs for Azure MSSQL Servers should be retained for more than 90 days to support monitoring and forensic investigations. When the `retention_in_days` attribute in the `extended_auditing_policy` block is set to a value less than 91, as shown below, important event logs may be deleted too soon, increasing the risk of missing or incomplete audit trails in the event of a breach or regulatory review.
 
 ```
 extended_auditing_policy {
@@ -45,7 +45,6 @@ extended_auditing_policy {
   retention_in_days = 91
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

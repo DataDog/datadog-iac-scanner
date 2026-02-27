@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- This rule detects `databricks_job` resources with `task.spark_submit_task` and reports an `IncorrectValue` issue.
+This rule detects `databricks_job` resources with `task.spark_submit_task` and reports an `IncorrectValue` issue.
 Use of `spark_submit_task` in job tasks is not allowed.
-
 
 ## Compliant Code Examples
 ```terraform

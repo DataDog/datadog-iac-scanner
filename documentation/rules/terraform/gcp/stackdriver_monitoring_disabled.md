@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes Engine clusters must have Stackdriver Monitoring enabled by setting the `monitoring_service` attribute to `"monitoring.googleapis.com/kubernetes"` or leaving it undefined to use the default monitoring. Disabling monitoring by setting `monitoring_service = "none"` removes visibility into cluster performance, health, and security events, increasing the risk of undetected failures or malicious activity. 
+Kubernetes Engine clusters must have Stackdriver Monitoring enabled by setting the `monitoring_service` attribute to `"monitoring.googleapis.com/kubernetes"` or leaving it undefined to use the default monitoring. Disabling monitoring by setting `monitoring_service = "none"` removes visibility into cluster performance, health, and security events, increasing the risk of undetected failures or malicious activity. 
 
 A secure configuration should include:
 
@@ -41,7 +41,6 @@ resource "google_container_cluster" "example" {
 }
 ```
 If left unaddressed, this misconfiguration can prevent prompt detection and remediation of operational or security incidents, potentially leading to service outages or breaches.
-
 
 ## Compliant Code Examples
 ```terraform

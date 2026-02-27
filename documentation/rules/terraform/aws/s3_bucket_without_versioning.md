@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Amazon S3 buckets should have versioning enabled to protect against accidental or malicious deletion and overwriting of objects. Without versioning (`versioning { enabled = false }`), deleted or overwritten files cannot be recovered, potentially leading to permanent data loss or loss of critical information. Enabling versioning (`versioning { enabled = true }`) allows you to preserve, retrieve, and restore every version of every object stored in the bucket, significantly improving data resiliency.
-
+Amazon S3 buckets should have versioning enabled to protect against accidental or malicious deletion and overwriting of objects. Without versioning (`versioning { enabled = false }`), deleted or overwritten files cannot be recovered, potentially leading to permanent data loss or loss of critical information. Enabling versioning (`versioning { enabled = true }`) allows you to preserve, retrieve, and restore every version of every object stored in the bucket, significantly improving data resiliency.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Repositories must be set to private. This requires the `visibility` attribute to be set to `private` and/or the `private` attribute to be `true`. If both are defined, `visibility` takes precedence over `private`.
-
+Repositories must be set to private. This requires the `visibility` attribute to be set to `private` and/or the `private` attribute to be `true`. If both are defined, `visibility` takes precedence over `private`.
 
 ## Compliant Code Examples
 ```terraform

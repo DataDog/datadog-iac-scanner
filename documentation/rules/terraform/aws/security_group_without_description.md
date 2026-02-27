@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- It is a best practice for AWS security groups to include a meaningful `description` attribute in their Terraform configuration, such as in the following example:
+It is a best practice for AWS security groups to include a meaningful `description` attribute in their Terraform configuration, such as in the following example:
 
 ```
 description = "Allow TLS inbound traffic"
@@ -46,7 +46,6 @@ resource "aws_security_group" "allow_tls" {
 ```
 
 Without clear descriptions, security teams may struggle to quickly identify the purpose of a group, increasing the risk of misconfigurations and delayed incident response.
-
 
 ## Compliant Code Examples
 ```terraform

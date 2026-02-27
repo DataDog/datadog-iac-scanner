@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- EC2 instances should not be assigned public IP addresses directly, as this exposes them to the internet and increases the risk of unauthorized access and attacks. In Terraform, this is configured using the `associate_public_ip_address` attribute. Setting `associate_public_ip_address = true` on an `aws_instance` resource will result in a public IP being attached, whereas `associate_public_ip_address = false` ensures the instance is only accessible within the private network, reducing the attack surface and enhancing the security posture of the environment.
-
+EC2 instances should not be assigned public IP addresses directly, as this exposes them to the internet and increases the risk of unauthorized access and attacks. In Terraform, this is configured using the `associate_public_ip_address` attribute. Setting `associate_public_ip_address = true` on an `aws_instance` resource will result in a public IP being attached, whereas `associate_public_ip_address = false` ensures the instance is only accessible within the private network, reducing the attack surface and enhancing the security posture of the environment.
 
 ## Compliant Code Examples
 ```terraform

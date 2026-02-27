@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies if the Kubernetes Dashboard add-on is enabled in the cluster configuration by examining the `addon_profile` block and specifically whether `kube_dashboard { enabled = true }` has been set. Enabling the Kubernetes Dashboard can expose sensitive cluster information and administrative controls via a web interface, increasing the risk of unauthorized access if not properly secured or restricted. For better security, the dashboard should be disabled by setting `enabled = false`:
+This check verifies if the Kubernetes Dashboard add-on is enabled in the cluster configuration by examining the `addon_profile` block and specifically whether `kube_dashboard { enabled = true }` has been set. Enabling the Kubernetes Dashboard can expose sensitive cluster information and administrative controls via a web interface, increasing the risk of unauthorized access if not properly secured or restricted. For better security, the dashboard should be disabled by setting `enabled = false`:
 
 ```
 addon_profile {
@@ -38,7 +38,6 @@ addon_profile {
 }
 ```
 This reduces the potential attack surface and protects against possible privilege escalation or data exposure vulnerabilities.
-
 
 ## Compliant Code Examples
 ```terraform

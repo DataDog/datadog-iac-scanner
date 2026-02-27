@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should block public policies to prevent unauthorized access to bucket contents. When the `block_public_policy` attribute is set to false or not defined in the `aws_s3_bucket_public_access_block` resource, attackers could potentially attach public policies to the bucket, exposing sensitive data to the internet. To secure your S3 bucket, ensure that `block_public_policy` is set to `true`, as shown in the following example:
+S3 buckets should block public policies to prevent unauthorized access to bucket contents. When the `block_public_policy` attribute is set to false or not defined in the `aws_s3_bucket_public_access_block` resource, attackers could potentially attach public policies to the bucket, exposing sensitive data to the internet. To secure your S3 bucket, ensure that `block_public_policy` is set to `true`, as shown in the following example:
 
 ```terraform
 resource "aws_s3_bucket_public_access_block" "example" {
@@ -38,7 +38,6 @@ resource "aws_s3_bucket_public_access_block" "example" {
   ignore_public_acls  = false
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

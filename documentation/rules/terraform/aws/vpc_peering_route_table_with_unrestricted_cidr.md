@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- VPC Peering Route Tables with unrestricted CIDR blocks (`0.0.0.0/0`) create a significant security vulnerability by allowing all IP addresses to route through the VPC peering connection. This configuration effectively bypasses network isolation between VPCs and exposes your resources to potential unauthorized access from any IP address that can reach the peering connection.
+VPC Peering Route Tables with unrestricted CIDR blocks (`0.0.0.0/0`) create a significant security vulnerability by allowing all IP addresses to route through the VPC peering connection. This configuration effectively bypasses network isolation between VPCs and exposes your resources to potential unauthorized access from any IP address that can reach the peering connection.
 
 Instead of using unrestricted CIDR blocks, you should always limit the route to the specific IP range of the peered VPC or a minimum required subset. For example, use `cidr_block = "10.0.0.0/8"` or the exact VPC CIDR such as `cidr_block = aws_vpc.vpc2.cidr_block`, instead of `cidr_block = "0.0.0.0/0"`.
-
 
 ## Compliant Code Examples
 ```terraform

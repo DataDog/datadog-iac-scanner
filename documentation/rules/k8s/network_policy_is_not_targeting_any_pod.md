@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Each NetworkPolicy should target at least one Pod.
+Each NetworkPolicy should target at least one Pod.
 This rule verifies that the `spec.podSelector.matchLabels` entries match the `metadata.labels` of at least one Pod present in the input documents.
 If no Pod matches the selector, the NetworkPolicy is reported as not targeting any Pod.
-
 
 ## Compliant Code Examples
 ```yaml

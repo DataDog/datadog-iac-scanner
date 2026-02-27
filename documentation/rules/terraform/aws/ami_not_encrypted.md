@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon Machine Images (AMIs) created without EBS encryption can result in sensitive data stored on volumes being exposed if the underlying storage is compromised. To mitigate this, AMI resources should have the `encrypted = true` attribute set within each `ebs_block_device` block to ensure all data at rest is protected.
+Amazon Machine Images (AMIs) created without EBS encryption can result in sensitive data stored on volumes being exposed if the underlying storage is compromised. To mitigate this, AMI resources should have the `encrypted = true` attribute set within each `ebs_block_device` block to ensure all data at rest is protected.
 
 For example, a secure Terraform configuration would look like the following:
 
@@ -46,7 +46,6 @@ resource "aws_ami" "secure" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

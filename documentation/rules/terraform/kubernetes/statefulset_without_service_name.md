@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- StatefulSets should reference an existing headless `Service` via `spec.serviceName`. The referenced `Service` must be headless (`spec.clusterIP: "None"`) and exist in the same namespace. The `Service` selector labels (`spec.selector`) must match the StatefulSet Pod template labels (`spec.template.metadata.labels`).
-
+StatefulSets should reference an existing headless `Service` via `spec.serviceName`. The referenced `Service` must be headless (`spec.clusterIP: "None"`) and exist in the same namespace. The `Service` selector labels (`spec.selector`) must match the StatefulSet Pod template labels (`spec.template.metadata.labels`).
 
 ## Compliant Code Examples
 ```terraform

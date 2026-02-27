@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "This configuration grants a user the `\"lambda:UpdateFunctionCode\"` permission with the resource set to `\"*\"`, allowing them to update the code of any Lambda function in the AWS account. Attackers or unauthorized users with this privilege can replace the code of existing Lambda functions with malicious code, which may be executed in response to legitimate triggers or schedules. This type of privilege escalation can allow an attacker to gain unauthorized access to sensitive data, further compromise the AWS environment, or establish persistent backdoors within serverless resources. If left unaddressed, this vulnerability exposes the environment to substantial risk of code injection, data exfiltration, and lateral movement within the AWS account.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_lambda_UpdateFunctionCode",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_lambda_updatefunctioncode",
   "platform": "Terraform",
   "descriptionID": "f5d372a0",
   "cloudProvider": "aws",

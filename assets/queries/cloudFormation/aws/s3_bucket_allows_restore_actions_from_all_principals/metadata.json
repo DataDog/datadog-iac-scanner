@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "S3 bucket policies must not allow restore actions to all principals (`*`). A public `Allow` on restore operations lets anyone trigger restores of archived objects, risking exposure of sensitive archived data and unexpected costs. Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag any statement where `Effect: \"Allow\"`, `Principal: \"*\"`, and `Action` includes restore operations such as `s3:RestoreObject`.\n\nTo remediate, restrict `Principal` to explicit AWS principals (account IDs, ARNs, or specific roles), or remove restore actions from publicly allowed statements.\n\nSecure configuration example restricting restore actions to a specific role:\n\n```yaml\nMyBucketPolicy:\n  Type: AWS::S3::BucketPolicy\n  Properties:\n    Bucket: my-bucket\n    PolicyDocument:\n      Statement:\n        - Sid: AllowRestoreForRestoreRole\n          Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:role/RestoreRole\n          Action:\n            - s3:RestoreObject\n          Resource: arn:aws:s3:::my-bucket/* \n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_allows_restore_actions_from_all_principals",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_allows_restore_actions_from_all_principals",
   "platform": "CloudFormation",
   "descriptionID": "0a41482e",
   "cloudProvider": "aws",

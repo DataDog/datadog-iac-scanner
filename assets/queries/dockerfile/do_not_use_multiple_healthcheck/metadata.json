@@ -1,0 +1,12 @@
+{
+  "id": "1c2d47bd-eec6-6485-7ed7-3d0650e960a4",
+  "queryName": "Multiple HEALTHCHECK instructions",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Multiple `HEALTHCHECK` instructions in a Dockerfile create ambiguity and can cause health monitoring to behave unpredictably. This can hide failing containers or produce false healthy or failed signals.  \n\nDockerfile resources must include at most one `HEALTHCHECK` instruction, because Docker applies only the last `HEALTHCHECK` it encounters. Additional `HEALTHCHECK` lines are ignored and can lead to unintended monitoring behavior.  \n\nThis rule scans `dockerfile_container` resources for `HEALTHCHECK` commands and flags any occurrences beyond the first. Fix by consolidating probe logic into a single `HEALTHCHECK` or removing redundant instructions so the container's health status is unambiguous and reflects the intended check.\n\nSecure example with a single `HEALTHCHECK`:\n\n```dockerfile\nFROM alpine:3.18\nCOPY app /usr/local/bin/app\nHEALTHCHECK --interval=30s --timeout=5s CMD wget -q -O- http://localhost:8080/health || exit 1\nCMD [\"app\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/do_not_use_multiple_healthcheck",
+  "platform": "Dockerfile",
+  "descriptionID": "1c2d47bd",
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#healthcheck"
+}

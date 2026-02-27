@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Resources that run `kube-apiserver` should set the `--authorization-mode` flag to include `RBAC`. If `--authorization-mode=RBAC` is not present, RBAC authorization will not be enforced and access control may be insufficient. This rule checks `containers` and `initContainers` commands for `kube-apiserver` and flags those missing the `--authorization-mode` `RBAC` mode.
-
+Resources that run `kube-apiserver` should set the `--authorization-mode` flag to include `RBAC`. If `--authorization-mode=RBAC` is not present, RBAC authorization will not be enforced and access control may be insufficient. This rule checks `containers` and `initContainers` commands for `kube-apiserver` and flags those missing the `--authorization-mode` `RBAC` mode.
 
 ## Compliant Code Examples
 ```yaml

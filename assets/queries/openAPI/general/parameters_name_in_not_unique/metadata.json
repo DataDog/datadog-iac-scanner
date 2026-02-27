@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Parameters properties 'name' and 'in' should have unique combinations",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/parameters_name_in_not_unique",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/parameters_name_in_not_unique",
   "platform": "OpenAPI",
   "descriptionID": "c55d0bc8",
   "aggregation": 2,

@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Shell Running A Pipe Without Pipefail Flag",
+    "queryName": "Shell running a pipe without the pipefail flag",
     "severity": "LOW",
     "line": 2
   },
   {
-    "queryName": "Shell Running A Pipe Without Pipefail Flag",
+    "queryName": "Shell running a pipe without the pipefail flag",
     "severity": "LOW",
     "line": 3
   }

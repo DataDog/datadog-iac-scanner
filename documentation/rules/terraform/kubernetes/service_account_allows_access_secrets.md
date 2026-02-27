@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- `kubernetes_role` and `kubernetes_cluster_role`, when bound, should not include the verbs `get`, `list`, `watch`, or `*` in rules that grant access to `secrets`.  
+`kubernetes_role` and `kubernetes_cluster_role`, when bound, should not include the verbs `get`, `list`, `watch`, or `*` in rules that grant access to `secrets`.  
 The rule inspects `kubernetes_role_binding` and `kubernetes_cluster_role_binding` entries that bind these roles to a `ServiceAccount` and checks the role's `rule.verbs` for any of the restricted verbs.  
 Both single `rule` objects and arrays of `rule` entries are evaluated.
-
 
 ## Compliant Code Examples
 ```terraform

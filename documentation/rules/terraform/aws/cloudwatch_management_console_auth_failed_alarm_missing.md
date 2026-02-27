@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- This check ensures that a CloudWatch log metric filter and corresponding alarm are properly configured to monitor AWS Management Console authentication failures. Without a correct association between the metric alarm (`aws_cloudwatch_metric_alarm.metric_name`) and the log metric filter (for example, `aws_cloudwatch_metric_filter.cis_console_authn_failure_metric_filter.id`), failed login events may go undetected, leaving the environment vulnerable to brute-force attacks or unauthorized access attempts. A secure Terraform configuration links the alarm to the appropriate metric filter, as shown below:
+This check ensures that a CloudWatch log metric filter and corresponding alarm are properly configured to monitor AWS Management Console authentication failures. Without a correct association between the metric alarm (`aws_cloudwatch_metric_alarm.metric_name`) and the log metric filter (for example, `aws_cloudwatch_metric_filter.cis_console_authn_failure_metric_filter.id`), failed login events may go undetected, leaving the environment vulnerable to brute-force attacks or unauthorized access attempts. A secure Terraform configuration links the alarm to the appropriate metric filter, as shown below:
 
 ```
 metric_name = aws_cloudwatch_log_metric_filter.cis_console_authn_failure_metric_filter.id
 ```
 
 This enables timely alerting on suspicious authentication failures, reducing the risk of compromised credentials going unnoticed.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check identifies IAM groups that have been granted both the `iam:UpdateAssumeRolePolicy` and `sts:AssumeRole` actions with a wildcard resource (`"Resource": "*"`) in their attached policies. Granting these permissions together allows any user in the group to escalate their privileges by altering assume role policies and then assuming any role, potentially gaining unauthorized access to sensitive resources. If left unaddressed, this misconfiguration could enable attackers or malicious insiders to escalate permissions, compromise account security, and move laterally throughout your AWS environment.
-
+This check identifies IAM groups that have been granted both the `iam:UpdateAssumeRolePolicy` and `sts:AssumeRole` actions with a wildcard resource (`"Resource": "*"`) in their attached policies. Granting these permissions together allows any user in the group to escalate their privileges by altering assume role policies and then assuming any role, potentially gaining unauthorized access to sensitive resources. If left unaddressed, this misconfiguration could enable attackers or malicious insiders to escalate permissions, compromise account security, and move laterally throughout your AWS environment.
 
 ## Compliant Code Examples
 ```terraform

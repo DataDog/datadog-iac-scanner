@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- RAM policies that grant administrative access should not be associated with users, groups, or roles. This rule detects policy documents with `Effect = "Allow"` where both `Action` and `Resource` are set to `"*"`. It flags any such policy attached via `alicloud_ram_user_policy_attachment`, `alicloud_ram_group_policy_attachment`, or `alicloud_ram_role_policy_attachment`.
-
+RAM policies that grant administrative access should not be associated with users, groups, or roles. This rule detects policy documents with `Effect = "Allow"` where both `Action` and `Resource` are set to `"*"`. It flags any such policy attached via `alicloud_ram_user_policy_attachment`, `alicloud_ram_group_policy_attachment`, or `alicloud_ram_role_policy_attachment`.
 
 ## Compliant Code Examples
 ```terraform

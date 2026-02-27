@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stage caches can store sensitive response data. If caching is enabled but cache data is not encrypted, cached content at rest may be exposed via compromised storage or unauthorized access.
+API Gateway stage caches can store sensitive response data. If caching is enabled but cache data is not encrypted, cached content at rest may be exposed via compromised storage or unauthorized access.
 
  For CloudFormation, `AWS::ApiGateway::Deployment` resources must set `StageDescription.CacheDataEncrypted` to `true` whenever `StageDescription.CachingEnabled` is set to `true`. Resources missing the `CacheDataEncrypted` property or with `CacheDataEncrypted` set to `false` while caching is enabled will be flagged. 
  
@@ -44,7 +44,6 @@ MyDeployment:
       CachingEnabled: true
       CacheDataEncrypted: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

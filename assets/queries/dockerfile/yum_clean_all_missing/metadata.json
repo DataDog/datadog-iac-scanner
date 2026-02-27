@@ -1,12 +1,13 @@
 {
   "id": "00481784-25aa-4a55-8633-3136dfcf4f37",
-  "queryName": "Yum Clean All Missing",
+  "queryName": "yum clean all missing",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "Need to use 'yum clean all' after using a 'yum install' command to clean package cached data and reduce image size",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "Dockerfile `RUN` instructions that perform a `yum install` must run `yum clean all` afterward to remove package manager caches and reduce image size. This prevents unnecessarily large images and the retention of cached packages or metadata that can increase attack surface.\n\nThis rule checks Dockerfile `RUN` commands containing `yum ... install` and requires that `yum clean all` appears later in the same `RUN` instruction. `RUN` lines with `yum install` but no subsequent `yum clean all` (or with `yum clean all` positioned before the install) will be flagged. If you perform multiple installs, ensure a single `yum clean all` follows them in the same `RUN`, or explicitly remove `/var/cache/yum` as part of the same command to guarantee caches are deleted.\n\nSecure example:\n\n```Dockerfile\nRUN yum -y install package1 package2 && yum clean all && rm -rf /var/cache/yum\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/yum_clean_all_missing",
   "platform": "Dockerfile",
   "descriptionID": "714267a2",
   "cwe": "459",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

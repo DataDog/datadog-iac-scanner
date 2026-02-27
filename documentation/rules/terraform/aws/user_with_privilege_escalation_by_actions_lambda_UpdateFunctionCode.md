@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This configuration grants a user the `"lambda:UpdateFunctionCode"` permission with the resource set to `"*"`, allowing them to update the code of any Lambda function in the AWS account. Attackers or unauthorized users with this privilege can replace the code of existing Lambda functions with malicious code, which may be executed in response to legitimate triggers or schedules. This type of privilege escalation can allow an attacker to gain unauthorized access to sensitive data, further compromise the AWS environment, or establish persistent backdoors within serverless resources. If left unaddressed, this vulnerability exposes the environment to substantial risk of code injection, data exfiltration, and lateral movement within the AWS account.
-
+This configuration grants a user the `"lambda:UpdateFunctionCode"` permission with the resource set to `"*"`, allowing them to update the code of any Lambda function in the AWS account. Attackers or unauthorized users with this privilege can replace the code of existing Lambda functions with malicious code, which may be executed in response to legitimate triggers or schedules. This type of privilege escalation can allow an attacker to gain unauthorized access to sensitive data, further compromise the AWS environment, or establish persistent backdoors within serverless resources. If left unaddressed, this vulnerability exposes the environment to substantial risk of code injection, data exfiltration, and lateral movement within the AWS account.
 
 ## Compliant Code Examples
 ```terraform

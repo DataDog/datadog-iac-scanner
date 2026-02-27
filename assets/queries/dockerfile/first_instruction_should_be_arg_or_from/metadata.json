@@ -1,0 +1,12 @@
+{
+  "id": "52e2b1c6-56e4-5264-2fc6-523166b2c8f3",
+  "queryName": "First instruction must be ARG or FROM",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "Dockerfiles must start with either an `ARG` or `FROM` instruction, because the initial instruction defines the base image and the scope of build-time variables. Placing another instruction first can result in unintended base images, mis-scoped build arguments, and unpredictable build-time behavior that increases supply-chain and configuration risks.  \n\nThis rule inspects `dockerfile_container` resources and flags cases where the earliest parsed instruction is not `ARG` or `FROM`.  \n\nTo remediate, ensure the first non-comment line in the Dockerfile is an `ARG` (when build-time variables must be substituted into `FROM`) or a `FROM` instruction that explicitly defines the base image.  \n\nSecure examples:\n\n```dockerfile\n# ARG before FROM to allow substitution in the base image\nARG BASE_IMAGE=alpine:3.16\nFROM ${BASE_IMAGE}\n```\n\n```dockerfile\n# Direct FROM as the first instruction\nFROM ubuntu:22.04\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/first_instruction_should_be_arg_or_from",
+  "platform": "Dockerfile",
+  "descriptionID": "52e2b1c6",
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from"
+}

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Lambda functions must not share the same IAM role because sharing roles expands each function's effective permissions beyond what it needs and increases the blast radius if the role is compromised. This rule inspects `AWS::Lambda::Function` resources and their `Properties.Role`. Each function should reference a distinct IAM role (a unique `AWS::IAM::Role` resource or a unique role ARN). Resources where `Properties.Role` is identical to another function's role will be flagged, including identical ARNs, a `Ref` to the same role resource, or equivalent `Fn::GetAtt` results. To remediate, assign separate IAM role resources per function or narrow policies so roles are not reused across multiple functions.
+Lambda functions must not share the same IAM role because sharing roles expands each function's effective permissions beyond what it needs and increases the blast radius if the role is compromised. This rule inspects `AWS::Lambda::Function` resources and their `Properties.Role`. Each function should reference a distinct IAM role (a unique `AWS::IAM::Role` resource or a unique role ARN). Resources where `Properties.Role` is identical to another function's role will be flagged, including identical ARNs, a `Ref` to the same role resource, or equivalent `Fn::GetAtt` results. To remediate, assign separate IAM role resources per function or narrow policies so roles are not reused across multiple functions.
 
 Secure configuration example (each function has its own role):
 
@@ -81,7 +81,6 @@ Function2:
         def handler(event, context):
             return {}
 ```
-
 
 ## Compliant Code Examples
 ```yaml

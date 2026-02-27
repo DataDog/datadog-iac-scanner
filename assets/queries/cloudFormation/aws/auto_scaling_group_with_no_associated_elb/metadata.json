@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Availability",
   "descriptionText": "Auto Scaling groups must be associated with a load balancer to distribute traffic and maintain availability during scaling and instance replacement. Without a load balancer, instances can become single points of failure and traffic may be routed unevenly.\n\n In CloudFormation, the `AWS::AutoScaling::AutoScalingGroup` resource must define the `LoadBalancerNames` property, and it must be a non-empty list of Classic ELB names. Resources missing `LoadBalancerNames` or where `LoadBalancerNames` is an empty array will be flagged.\n\n If your environment uses Application Load Balancers (ALBs) or Network Load Balancers (NLBs), attach the Auto Scaling group to target groups via the `TargetGroupARNs` property instead, since this rule only checks `LoadBalancerNames`.\n\nSecure configuration example:\n\n```yaml\nMyAutoScalingGroup:\n  Type: AWS::AutoScaling::AutoScalingGroup\n  Properties:\n    LaunchConfigurationName: myLaunchConfig\n    MinSize: '1'\n    MaxSize: '3'\n    LoadBalancerNames:\n      - my-classic-elb\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/auto_scaling_group_with_no_associated_elb",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/auto_scaling_group_with_no_associated_elb",
   "platform": "CloudFormation",
   "descriptionID": "99966f58",
   "cloudProvider": "aws",

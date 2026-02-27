@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing a user the `iam:PutRolePolicy` action on all resources (that is, `"Resource": "*"`) enables them to attach inline policies to any IAM role in the AWS environment. This grants the user a privilege escalation path, as they could grant overly broad or administrative permissions to roles they do not own, potentially gaining full control over the AWS account. To mitigate this risk, restrict the `iam:PutRolePolicy` action using least privilege and avoid using wildcards in the `Resource` attribute, as shown below:
+Allowing a user the `iam:PutRolePolicy` action on all resources (that is, `"Resource": "*"`) enables them to attach inline policies to any IAM role in the AWS environment. This grants the user a privilege escalation path, as they could grant overly broad or administrative permissions to roles they do not own, potentially gaining full control over the AWS account. To mitigate this risk, restrict the `iam:PutRolePolicy` action using least privilege and avoid using wildcards in the `Resource` attribute, as shown below:
 
 ```
 policy = jsonencode({
@@ -44,7 +44,6 @@ policy = jsonencode({
   ]
 })
 ```
-
 
 ## Compliant Code Examples
 ```terraform

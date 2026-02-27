@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling IP forwarding on network interfaces allows packets to be routed between networks, which can make the network interface behave like a router. This may expose your environment to lateral movement and man-in-the-middle attacks if an attacker gains access to the interface. To prevent this risk, set the `enable_ip_forwarding` attribute to `false` in your Terraform configuration, as shown below:
+Enabling IP forwarding on network interfaces allows packets to be routed between networks, which can make the network interface behave like a router. This may expose your environment to lateral movement and man-in-the-middle attacks if an attacker gains access to the interface. To prevent this risk, set the `enable_ip_forwarding` attribute to `false` in your Terraform configuration, as shown below:
 
 ```
 resource "azurerm_network_interface" "secure" {
@@ -36,7 +36,6 @@ resource "azurerm_network_interface" "secure" {
   enable_ip_forwarding = false
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

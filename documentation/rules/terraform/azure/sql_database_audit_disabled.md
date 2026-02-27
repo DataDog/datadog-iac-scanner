@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling `Threat Detection` for Azure SQL Database helps identify anomalous activities and potential security threats by alerting administrators when suspicious activity is detected. If the threat_detection_policy block is set to `state = "Disabled"` or omitted entirely, as in the following configuration, threat detection will not be active: 
+Enabling `Threat Detection` for Azure SQL Database helps identify anomalous activities and potential security threats by alerting administrators when suspicious activity is detected. If the threat_detection_policy block is set to `state = "Disabled"` or omitted entirely, as in the following configuration, threat detection will not be active: 
 
 ```
 threat_detection_policy {
@@ -44,7 +44,6 @@ threat_detection_policy {
 }
 ```
 If left unaddressed, disabling this feature may allow attackers to exploit vulnerabilities in your database environment undetected.
-
 
 ## Compliant Code Examples
 ```terraform

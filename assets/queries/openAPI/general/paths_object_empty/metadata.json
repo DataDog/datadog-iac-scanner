@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Paths object may be empty due to ACL constraints, meaning they are not exposed",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/paths_object_empty",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/paths_object_empty",
   "platform": "OpenAPI",
   "descriptionID": "0fee068b",
   "aggregation": 2,

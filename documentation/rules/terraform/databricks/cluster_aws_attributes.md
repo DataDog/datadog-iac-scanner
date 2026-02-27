@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- One or more AWS attribute best practices are not followed for this Databricks cluster.
+One or more AWS attribute best practices are not followed for this Databricks cluster.
 
 The rule flags `databricks_cluster` resources when:
 
@@ -37,7 +37,6 @@ The rule flags `databricks_cluster` resources when:
 - `aws_attributes.zone_id` is not equal to `auto`
 
 Each finding includes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.
-
 
 ## Compliant Code Examples
 ```terraform

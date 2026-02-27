@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Route 53 hosted zones should have query logging enabled so DNS queries are recorded for detection, forensics, and troubleshooting. Without query logs, DNS-based attacks and misconfigurations are harder to detect and investigate.
+Route 53 hosted zones should have query logging enabled so DNS queries are recorded for detection, forensics, and troubleshooting. Without query logs, DNS-based attacks and misconfigurations are harder to detect and investigate.
 
  In CloudFormation, `AWS::Route53::HostedZone` resources must include the `QueryLoggingConfig` property with a valid `CloudWatchLogsLogGroupArn` pointing to a CloudWatch Logs log group to receive DNS query logs. Ensure the referenced log group exists and that permissions allow Route 53 to publish logs. Resources missing `QueryLoggingConfig` will be flagged.
 
@@ -42,7 +42,6 @@ MyHostedZone:
     QueryLoggingConfig:
       CloudWatchLogsLogGroupArn: arn:aws:logs:us-east-1:123456789012:log-group:/aws/route53/example
 ```
-
 
 ## Compliant Code Examples
 ```yaml

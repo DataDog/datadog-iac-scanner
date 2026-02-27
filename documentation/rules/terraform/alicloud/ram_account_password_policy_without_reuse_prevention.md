@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The RAM account password policy attribute `password_reuse_prevention` should be defined and set to `24` or less. If `password_reuse_prevention` is missing, the rule reports a `MissingAttribute` issue and recommends adding `password_reuse_prevention = 24`. If it is present but set to a value greater than `24`, the rule reports an `IncorrectValue` issue and recommends replacing it with `24`.
-
+The RAM account password policy attribute `password_reuse_prevention` should be defined and set to `24` or less. If `password_reuse_prevention` is missing, the rule reports a `MissingAttribute` issue and recommends adding `password_reuse_prevention = 24`. If it is present but set to a value greater than `24`, the rule reports an `IncorrectValue` issue and recommends replacing it with `24`.
 
 ## Compliant Code Examples
 ```terraform

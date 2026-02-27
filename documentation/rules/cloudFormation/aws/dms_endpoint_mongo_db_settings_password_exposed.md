@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Storing MongoDB passwords for AWS DMS endpoints in plaintext or as a parameter with a `Default` value exposes credentials in CloudFormation templates, source control, and template outputs. This increases the risk of compromise and unauthorized access.
+Storing MongoDB passwords for AWS DMS endpoints in plaintext or as a parameter with a `Default` value exposes credentials in CloudFormation templates, source control, and template outputs. This increases the risk of compromise and unauthorized access.
 
  Verify the `AWS::DMS::Endpoint` resource's `Properties.MongoDbSettings.Password` is not a literal string value and is not a `Ref` to a `Parameters` entry that defines a `Default`.
 
@@ -64,7 +64,6 @@ MyDmsEndpoint:
       Username: myuser
       Password: !Ref DbPassword
 ```
-
 
 ## Compliant Code Examples
 ```yaml

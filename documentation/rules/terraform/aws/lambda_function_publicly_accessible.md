@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Lambda permissions with a principal value of `*` allow any AWS account or user to invoke the function, making it publicly accessible. This creates a significant security risk as unauthorized parties can trigger your Lambda function, potentially accessing sensitive data or consuming your AWS resources. To secure Lambda functions, specify the exact AWS account ARN in the `principal` field, as shown below, rather than using the wildcard `*`. 
+AWS Lambda permissions with a principal value of `*` allow any AWS account or user to invoke the function, making it publicly accessible. This creates a significant security risk as unauthorized parties can trigger your Lambda function, potentially accessing sensitive data or consuming your AWS resources. To secure Lambda functions, specify the exact AWS account ARN in the `principal` field, as shown below, rather than using the wildcard `*`. 
 ```
 principal = "arn:aws:iam::123456789012:root"
 ```
@@ -36,7 +36,6 @@ The following is an example of an insecure configuration:
 ```
 principal = "*"
 ```
-
 
 ## Compliant Code Examples
 ```terraform

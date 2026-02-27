@@ -1,12 +1,13 @@
 {
   "id": "67fd0c4a-68cf-46d7-8c41-bc9fba7e40ae",
-  "queryName": "Last User Is 'root'",
+  "queryName": "Last user is root",
   "severity": "HIGH",
   "category": "Best Practices",
-  "descriptionText": "Leaving the last user as root can cause security risks. Change to another user after running the commands the need privileges",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#user",
+  "descriptionText": "Containers must not run their final process as root because running as root increases the impact of a compromise and can enable privilege escalation or container-to-host attacks.\n\nThis rule checks the Dockerfile `USER` instruction and flags Dockerfiles whose last `USER` is set to `root`. The final `USER` must be a non-root username or UID.\n\nIf root is required for build-time actions, perform those steps earlier (for example, in a build stage), then create a non-root user and set `USER` to that account before the final `CMD`/`ENTRYPOINT`. \n\nSecure example that switches to a non-root user before runtime:\n\n```dockerfile\nFROM node:18 AS build\nRUN npm ci && npm run build\n\nFROM node:18-slim\nWORKDIR /app\nCOPY --from=build /app/dist .\nRUN addgroup --system app && adduser --system --ingroup app app\nUSER app\nCMD [\"node\", \"server.js\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/last_user_is_root",
   "platform": "Dockerfile",
   "descriptionID": "f445bd25",
   "cwe": "250",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#user"
 }

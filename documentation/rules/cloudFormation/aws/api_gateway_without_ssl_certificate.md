@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stages should present a client SSL/TLS certificate to their backend so the backend can cryptographically verify that requests originate from the API Gateway. Without this, backends cannot reliably distinguish legitimate API Gateway traffic from spoofed or direct requests, increasing the risk of unauthorized access to internal services.
+API Gateway stages should present a client SSL/TLS certificate to their backend so the backend can cryptographically verify that requests originate from the API Gateway. Without this, backends cannot reliably distinguish legitimate API Gateway traffic from spoofed or direct requests, increasing the risk of unauthorized access to internal services.
 
  In CloudFormation, `AWS::ApiGateway::Stage` resources must define the `ClientCertificateId` property and it should reference the ID of an `AWS::ApiGateway::ClientCertificate` (for example, with `!Ref`). Resources missing `ClientCertificateId` will be flagged.
 
@@ -45,7 +45,6 @@ MyStage:
     RestApiId: !Ref MyRestApi
     ClientCertificateId: !Ref MyClientCertificate
 ```
-
 
 ## Compliant Code Examples
 ```yaml

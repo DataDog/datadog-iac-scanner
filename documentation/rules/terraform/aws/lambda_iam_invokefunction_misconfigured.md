@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Lambda permissions must be carefully defined so that the `Action` field in the IAM policy explicitly specifies allowed actions, such as `"lambda:InvokeFunction"`. If the `Action` field is omitted or set too broadly, it could inadvertently grant unnecessary permissions, allowing unintended users or services to perform privileged operations on the Lambda function. This misconfiguration increases the risk of unauthorized invocation or modification of Lambda functions, potentially leading to security breaches or the execution of malicious code.
+AWS Lambda permissions must be carefully defined so that the `Action` field in the IAM policy explicitly specifies allowed actions, such as `"lambda:InvokeFunction"`. If the `Action` field is omitted or set too broadly, it could inadvertently grant unnecessary permissions, allowing unintended users or services to perform privileged operations on the Lambda function. This misconfiguration increases the risk of unauthorized invocation or modification of Lambda functions, potentially leading to security breaches or the execution of malicious code.
 
 A secure Terraform configuration ensures the `Action` is correctly specified:
 
@@ -49,7 +49,6 @@ policy = jsonencode({
   ]
 })
 ```
-
 
 ## Compliant Code Examples
 ```terraform

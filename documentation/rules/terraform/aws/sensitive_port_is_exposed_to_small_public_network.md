@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Opening sensitive ports such as port 23 (Telnet) or port 110 (POP3) to even small public network ranges in security groups allows untrusted or unauthorized traffic to reach services that are known to have vulnerabilities or lack modern security protections. Attackers can exploit these open ports to gain unauthorized access, launch brute-force attacks, or intercept sensitive data, depending on the service listening on these ports. If this misconfiguration is left unaddressed, it increases the attack surface of your cloud environment and heightens the risk of data breaches, lateral movement within the network, or full system compromise. Properly restricting access to sensitive ports by limiting source IP ranges and disabling unused services is critical for maintaining a secure environment.
-
+Opening sensitive ports such as port 23 (Telnet) or port 110 (POP3) to even small public network ranges in security groups allows untrusted or unauthorized traffic to reach services that are known to have vulnerabilities or lack modern security protections. Attackers can exploit these open ports to gain unauthorized access, launch brute-force attacks, or intercept sensitive data, depending on the service listening on these ports. If this misconfiguration is left unaddressed, it increases the attack surface of your cloud environment and heightens the risk of data breaches, lateral movement within the network, or full system compromise. Properly restricting access to sensitive ports by limiting source IP ranges and disabling unused services is critical for maintaining a secure environment.
 
 ## Compliant Code Examples
 ```terraform

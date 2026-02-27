@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "Check if the Google compute firewall allows unrestricted RDP access. Allowed ports should not contain RDP port 3389",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/rdp_access_is_not_restricted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/rdp_access_is_not_restricted",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "cae2eeea",
   "cloudProvider": "gcp",

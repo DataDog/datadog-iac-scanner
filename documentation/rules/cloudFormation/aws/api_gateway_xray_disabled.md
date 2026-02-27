@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Failing to enable AWS X-Ray tracing on API Gateway stages prevents collection of end-to-end request traces, which hinders latency analysis, root-cause investigation, and detection of suspicious cross-service behavior. The `TracingEnabled` property on `AWS::ApiGateway::Stage` resources must be defined and set to `true`. Resources that omit `TracingEnabled` or set it to `false` (boolean `false` or the string `"false"`) will be flagged.
+Failing to enable AWS X-Ray tracing on API Gateway stages prevents collection of end-to-end request traces, which hinders latency analysis, root-cause investigation, and detection of suspicious cross-service behavior. The `TracingEnabled` property on `AWS::ApiGateway::Stage` resources must be defined and set to `true`. Resources that omit `TracingEnabled` or set it to `false` (boolean `false` or the string `"false"`) will be flagged.
 
 Secure configuration example:
 
@@ -40,7 +40,6 @@ MyStage:
     RestApiId: !Ref MyApi
     TracingEnabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

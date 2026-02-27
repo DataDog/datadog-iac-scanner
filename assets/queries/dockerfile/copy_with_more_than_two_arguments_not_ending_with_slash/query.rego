@@ -18,5 +18,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue", #"MissingAttribute" / "RedundantAttribute"
 		"keyExpectedValue": "When COPY command has more than two arguments, the last one should end with a slash",
 		"keyActualValue": "COPY command has more than two arguments and the last one does not end with a slash",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

@@ -15,5 +15,7 @@ CxPolicy[result] {
 		"issueType": "RedundantAttribute",
 		"keyExpectedValue": "There should be only one ENTRYPOINT instruction",
 		"keyActualValue": sprintf("There are %d ENTRYPOINT instructions", [count(cmdInst)]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

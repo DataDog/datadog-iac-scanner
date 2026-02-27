@@ -1,11 +1,12 @@
 {
   "id": "df746b39-6564-4fed-bf85-e9c44382303c",
-  "queryName": "Apt Get Install Lists Were Not Deleted",
-  "severity": "INFO",
+  "queryName": "apt-get install lists were not deleted",
+  "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "After using apt-get install, it is needed to delete apt-get lists",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "descriptionText": "Leaving apt package lists in a built image after running `apt-get install` can expose package metadata and increase image size. This makes images larger to distribute and can retain information that aids attackers or troubleshooting of past package states.\n\nThis rule scans Dockerfile `RUN` instructions that invoke `apt-get install` and requires that the same `RUN` command perform cleanup by running `apt-get clean` and/or removing `/var/lib/apt/lists/*` (for example, `rm -rf /var/lib/apt/lists/*`). Ensure the cleanup step appears after the install in the same `RUN` (using `&&` or `;`) so the cache is not preserved in an earlier layer. \n\nSecure example:\n\n```Dockerfile\nRUN apt-get update && apt-get install -y curl \\\n    && apt-get clean \\\n    && rm -rf /var/lib/apt/lists/*\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/apt_get_install_lists_were_not_deleted",
   "platform": "Dockerfile",
   "descriptionID": "4236a50c",
-  "cwe": "459"
+  "cwe": "459",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
 }

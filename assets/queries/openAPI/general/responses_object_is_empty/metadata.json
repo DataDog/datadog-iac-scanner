@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Responses Object should not be empty",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/responses_object_is_empty",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/responses_object_is_empty",
   "platform": "OpenAPI",
   "descriptionID": "5c40b3e8",
   "aggregation": 2,

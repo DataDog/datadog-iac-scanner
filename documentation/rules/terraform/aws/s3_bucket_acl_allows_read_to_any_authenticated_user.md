@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies S3 buckets that use the `authenticated-read` ACL, which grants read access to any authenticated AWS user, regardless of their account. This configuration creates a significant security risk as it exposes your data to all authenticated AWS users worldwide, potentially leading to unauthorized data access and information disclosure. 
+This check identifies S3 buckets that use the `authenticated-read` ACL, which grants read access to any authenticated AWS user, regardless of their account. This configuration creates a significant security risk as it exposes your data to all authenticated AWS users worldwide, potentially leading to unauthorized data access and information disclosure. 
 
 Secure configuration example:
 ```
@@ -45,7 +45,6 @@ resource "aws_s3_bucket" "example" {
   acl    = "authenticated-read"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

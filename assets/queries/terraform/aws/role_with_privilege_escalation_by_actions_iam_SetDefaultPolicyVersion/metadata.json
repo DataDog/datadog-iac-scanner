@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting the `iam:SetDefaultPolicyVersion` action with a resource value of `\"*\"` allows a user or role to set any version of any IAM policy as the default, enabling potential privilege escalation. If an attacker can create or update a policy version containing more permissive permissions and set it as default, they can grant themselves or others broader access to AWS resources. This misconfiguration can lead to compromised account security and unauthorized actions if not properly restricted.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_SetDefaultPolicyVersion",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_setdefaultpolicyversion",
   "platform": "Terraform",
   "descriptionID": "a0ddfb38",
   "cloudProvider": "aws",

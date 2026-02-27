@@ -14,8 +14,8 @@ rules:
         description: Unsecured commands
         title: Unsecured commands
       unspecified_workflows_permissions:
-        description: Unspecified Workflows Level Permissions
-        title: Unspecified Workflows Level Permissions
+        description: Unspecified workflows level permissions
+        title: Unspecified workflows level permissions
   cloudFormation:
     aws:
       access_key_not_rotated_within_90_days:
@@ -795,6 +795,182 @@ rules:
       serverless_function_without_x-ray_tracing:
         description: Serverless function without X-Ray tracing
         title: Serverless function without X-Ray tracing
+  dockerfile:
+    dockerfile:
+      add_instead_of_copy:
+        description: ADD instead of COPY
+        title: ADD instead of COPY
+      apk_add_using_local_cache_path:
+        description: apk add using local cache path
+        title: apk add using local cache path
+      apt_get_install_lists_were_not_deleted:
+        description: apt-get install lists were not deleted
+        title: apt-get install lists were not deleted
+      apt_get_install_pin_version_not_defined:
+        description: apt-get install pin version not defined
+        title: apt-get install pin version not defined
+      apt_get_missing_flags_to_avoid_manual_input:
+        description: apt-get missing flags to avoid manual input
+        title: apt-get missing flags to avoid manual input
+      apt_get_not_avoiding_additional_packages:
+        description: apt-get not avoiding additional packages
+        title: apt-get not avoiding additional packages
+      avoid_chmod_777:
+        description: Avoid chmod 777
+        title: Avoid chmod 777
+      avoid_http:
+        description: Avoid HTTP
+        title: Avoid HTTP
+      changing_default_shell_using_run_command:
+        description: Changing default shell using RUN command
+        title: Changing default shell using RUN command
+      chown_flag_exists:
+        description: chown flag exists
+        title: chown flag exists
+      copy_from_references_current_from_alias:
+        description: COPY --from references current FROM alias
+        title: COPY --from references current FROM alias
+      copy_with_more_than_two_arguments_not_ending_with_slash:
+        description: COPY with more than two arguments not ending with a slash
+        title: COPY with more than two arguments not ending with a slash
+      curl_or_wget_instead_of_add:
+        description: curl or wget instead of ADD
+        title: curl or wget instead of ADD
+      do_not_use_multiple_healthcheck:
+        description: Multiple HEALTHCHECK instructions
+        title: Multiple HEALTHCHECK instructions
+      env_no_refer_envvar:
+        description: ENV refers to itself
+        title: ENV refers to itself
+      exposing_port_22:
+        description: Exposing port 22 (SSH)
+        title: Exposing port 22 (SSH)
+      first_instruction_should_be_arg_or_from:
+        description: First instruction must be ARG or FROM
+        title: First instruction must be ARG or FROM
+      from_or_maintainer_cannot_be_triggered_within_onbuild:
+        description: ONBUILD cannot trigger FROM or MAINTAINER
+        title: ONBUILD cannot trigger FROM or MAINTAINER
+      gem_install_without_version:
+        description: gem install without version
+        title: gem install without version
+      healthcheck_instruction_missing:
+        description: Healthcheck instruction missing
+        title: Healthcheck instruction missing
+      image_version_not_explicit:
+        description: Image version not explicit
+        title: Image version not explicit
+      image_version_using_latest:
+        description: Image version using latest
+        title: Image version using latest
+      last_user_is_root:
+        description: Last user is root
+        title: Last user is root
+      maintainer_instruction_being_used:
+        description: MAINTAINER instruction being used
+        title: MAINTAINER instruction being used
+      missing_dnf_clean_all:
+        description: Missing dnf clean all
+        title: Missing dnf clean all
+      missing_flag_from_dnf_install:
+        description: Missing flag from dnf install
+        title: Missing flag from dnf install
+      missing_user_instruction:
+        description: Missing user instruction
+        title: Missing user instruction
+      missing_version_specification_in_dnf_install:
+        description: Missing version specification in dnf install
+        title: Missing version specification in dnf install
+      missing_zypper_clean:
+        description: Missing zypper clean
+        title: Missing zypper clean
+      missing_zypper_non_interactive_switch:
+        description: Missing Zypper non-interactive switch
+        title: Missing Zypper non-interactive switch
+      multiple_cmd_instructions_listed:
+        description: Multiple CMD instructions listed
+        title: Multiple CMD instructions listed
+      multiple_entrypoint_instructions_listed:
+        description: Multiple ENTRYPOINT instructions listed
+        title: Multiple ENTRYPOINT instructions listed
+      multiple_run_add_copy_instructions_listed:
+        description: Multiple RUN, ADD, COPY instructions listed
+        title: Multiple RUN, ADD, COPY instructions listed
+      not_using_json_in_cmd_and_entrypoint_arguments:
+        description: Not using JSON for CMD and ENTRYPOINT arguments
+        title: Not using JSON for CMD and ENTRYPOINT arguments
+      npm_install_without_pinned_version:
+        description: npm install command without pinned version
+        title: npm install command without pinned version
+      pip_install_keeping_cached_packages:
+        description: pip install keeping cached packages
+        title: pip install keeping cached packages
+      run_command_cd_instead_of_workdir:
+        description: RUN instruction using cd instead of WORKDIR
+        title: RUN instruction using cd instead of WORKDIR
+      run_using_apt:
+        description: Run using apt
+        title: Run using apt
+      run_using_sudo:
+        description: Run using sudo
+        title: Run using sudo
+      run_using_wget_and_curl:
+        description: Run using wget and curl
+        title: Run using wget and curl
+      run_utilities_and_posix_commands:
+        description: Run utilities and POSIX commands
+        title: Run utilities and POSIX commands
+      run_yarn_clean_after_yarn_install:
+        description: Run yarn clean after yarn install
+        title: Run yarn clean after yarn install
+      same_alias_in_different_froms:
+        description: Same alias in different FROM statements
+        title: Same alias in different FROM statements
+      shell_running_a_pipe_without_pipefail_flag:
+        description: Shell running a pipe without the pipefail flag
+        title: Shell running a pipe without the pipefail flag
+      should_specify_base_image:
+        description: Dockerfile should specify base image
+        title: Dockerfile should specify base image
+      unix_ports_out_of_range:
+        description: UNIX ports out of range
+        title: UNIX ports out of range
+      unpinned_package_version_in_apk_add:
+        description: Unpinned package version in apk add
+        title: Unpinned package version in apk add
+      unpinned_package_version_in_pip_install:
+        description: Unpinned package version in pip install
+        title: Unpinned package version in pip install
+      update_instruction_alone:
+        description: Package update without install in same RUN
+        title: Package update without install in same RUN
+      use_only_an_allowed_registry_in_the_from_image:
+        description: Use only allowed registry in FROM
+        title: Use only allowed registry in FROM
+      use_recommended_flags_with_useradd:
+        description: Use recommended flags with useradd
+        title: Use recommended flags with useradd
+      using_platform_with_from:
+        description: Using --platform flag with FROM command
+        title: Using --platform flag with FROM command
+      using_unnamed_build_stages:
+        description: Using unnamed build stages
+        title: Using unnamed build stages
+      workdir_path_not_absolute:
+        description: WORKDIR path not absolute
+        title: WORKDIR path not absolute
+      yum_clean_all_missing:
+        description: yum clean all missing
+        title: yum clean all missing
+      yum_install_allows_manual_input:
+        description: yum install allows manual input
+        title: yum install allows manual input
+      yum_install_without_version:
+        description: yum install without version
+        title: yum install without version
+      zypper_install_without_version:
+        description: Zypper install without explicit package version
+        title: Zypper install without explicit package version
   k8s:
     k8s:
       always_admit_admission_control_plugin_set:
@@ -1032,8 +1208,8 @@ rules:
         description: Peer auto TLS set to true
         title: Peer auto TLS set to true
       permissive_access_to_create_pods:
-        description: Permissive access to create Pods
-        title: Permissive access to create Pods
+        description: Permissive access to create pods
+        title: Permissive access to create pods
       pod_misconfigured_network_policy:
         description: Pod misconfigured network policy
         title: Pod misconfigured network policy
@@ -1548,8 +1724,8 @@ rules:
         description: CloudWatch AWS Config configuration changes alarm missing
         title: CloudWatch AWS Config configuration changes alarm missing
       cloudwatch_aws_organizations_changes_missing_alarm:
-        description: CloudWatch AWS organizations changes missing alarm
-        title: CloudWatch AWS organizations changes missing alarm
+        description: Missing CloudWatch alarm for AWS Organizations changes
+        title: Missing CloudWatch alarm for AWS Organizations changes
       cloudwatch_changes_to_nacl_alarm_missing:
         description: CloudWatch changes to NACL alarm missing
         title: CloudWatch changes to NACL alarm missing
@@ -1894,12 +2070,6 @@ rules:
       guardduty_detector_disabled:
         description: GuardDuty detector disabled
         title: GuardDuty detector disabled
-      hardcoded_aws_access_key:
-        description: Hardcoded AWS access key
-        title: Hardcoded AWS access key
-      hardcoded_aws_access_key_in_lambda:
-        description: Hardcoded AWS access key in Lambda
-        title: Hardcoded AWS access key in Lambda
       http_port_open:
         description: HTTP port open to internet
         title: HTTP port open to internet
@@ -3168,7 +3338,7 @@ rules:
       root_containers_admitted:
         description: Root containers admitted
         title: Root containers admitted
-      secoomp_profile_is_not_configured:
+      seccomp_profile_is_not_configured:
         description: Seccomp profile is not configured
         title: Seccomp profile is not configured
       secrets_as_environment_variables:

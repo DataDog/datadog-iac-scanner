@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Lambda permissions that grant API Gateway or the public principal access with a `SourceArn` ending in `/*/*` allow any API stage and method to invoke the function. This enables broad or unintended public invocation and can result in unauthorized executions, data exposure, and increased resource consumption.
+Lambda permissions that grant API Gateway or the public principal access with a `SourceArn` ending in `/*/*` allow any API stage and method to invoke the function. This enables broad or unintended public invocation and can result in unauthorized executions, data exposure, and increased resource consumption.
 
 In AWS CloudFormation, check `AWS::Lambda::Permission` resources where `Action` is `lambda:InvokeFunction` or `lambda:*` and `Principal` is `apigateway.amazonaws.com` or `*`. The `SourceArn` must not equal `/*/*` or end with `/*/*`. Resources missing `SourceArn` or containing a trailing `/*/*` will be flagged. Set `SourceArn` to a specific execute-api ARN that includes the API ID, stage, and method to limit invocation scope.
 
@@ -43,7 +43,6 @@ MyLambdaPermission:
     Principal: "apigateway.amazonaws.com"
     SourceArn: "arn:aws:execute-api:us-east-1:123456789012:api-id/prod/GET/myresource"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudWatch log groups in AWS should explicitly specify the `retention_in_days` attribute to control how long log data is stored. If this attribute is omitted or set to `0`, as shown below, logs are retained indefinitely, increasing storage costs and the risk of sensitive data exposure over time:
+CloudWatch log groups in AWS should explicitly specify the `retention_in_days` attribute to control how long log data is stored. If this attribute is omitted or set to `0`, as shown below, logs are retained indefinitely, increasing storage costs and the risk of sensitive data exposure over time:
 
 ```
 resource "aws_cloudwatch_log_group" "example" {
@@ -45,7 +45,6 @@ resource "aws_cloudwatch_log_group" "example" {
   retention_in_days = 7
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

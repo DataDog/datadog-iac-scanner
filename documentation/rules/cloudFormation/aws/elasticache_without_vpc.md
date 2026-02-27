@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ElastiCache clusters must be launched inside a VPC to provide network isolation and reduce the risk of unintended public or cross-account access.
+Amazon ElastiCache clusters must be launched inside a VPC to provide network isolation and reduce the risk of unintended public or cross-account access.
  
  In CloudFormation, `AWS::ElastiCache::CacheCluster` resources must include the `CacheSubnetGroupName` property. Resources with this property missing or set to `null` will be flagged because they may be created outside a VPC.
  
@@ -53,7 +53,6 @@ MyCacheCluster:
     CacheNodeType: cache.t3.micro
     NumCacheNodes: 1
 ```
-
 
 ## Compliant Code Examples
 ```yaml

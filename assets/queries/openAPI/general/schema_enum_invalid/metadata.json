@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "The field 'enum' of Schema Object should be consistent with the schema's type",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/schema_enum_invalid",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/schema_enum_invalid",
   "platform": "OpenAPI",
   "descriptionID": "b8ac8ff9",
   "aggregation": 2,

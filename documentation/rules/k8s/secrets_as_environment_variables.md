@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers and initContainers must not use secrets as environment variables. This rule flags environment variables that reference secrets via env[].valueFrom.secretKeyRef and envFrom[].secretRef in container specs. It reports an IncorrectValue issue including the resource name, spec path, and the specific key that is defined.
-
+Containers and initContainers must not use secrets as environment variables. This rule flags environment variables that reference secrets via env[].valueFrom.secretKeyRef and envFrom[].secretRef in container specs. It reports an IncorrectValue issue including the resource name, spec path, and the specific key that is defined.
 
 ## Compliant Code Examples
 ```yaml

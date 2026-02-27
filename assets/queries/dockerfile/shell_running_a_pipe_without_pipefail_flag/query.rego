@@ -26,6 +26,8 @@ CxPolicy[result] {
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": sprintf("'%s' has pipefail option set for pipe command with shell %s.", [runCmd.Original, shells[shell]]),
 		"keyActualValue": sprintf("'%s' does not have pipefail option set for pipe command with shell %s.", [runCmd.Original, shells[shell]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -51,6 +53,8 @@ CxPolicy[result] {
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": sprintf("'%s' has pipefail option set for pipe command with shell %s.", [cmdFormatted, value[shellIdx]]),
 		"keyActualValue": sprintf("'%s' does not have pipefail option set for pipe command with shell %s.", [cmdFormatted, value[shellIdx]]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

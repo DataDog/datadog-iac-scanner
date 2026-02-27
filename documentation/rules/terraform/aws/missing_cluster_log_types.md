@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon EKS clusters provide several control plane log types, such as `api`, `audit`, `authenticator`, `controllerManager`, and `scheduler`, which should all be enabled for comprehensive monitoring and security auditing. If some log types are omitted in Terraform, as in the example below, critical events may go unlogged, impeding detection and investigation of suspicious activity or configuration issues within the EKS control plane:
+Amazon EKS clusters provide several control plane log types, such as `api`, `audit`, `authenticator`, `controllerManager`, and `scheduler`, which should all be enabled for comprehensive monitoring and security auditing. If some log types are omitted in Terraform, as in the example below, critical events may go unlogged, impeding detection and investigation of suspicious activity or configuration issues within the EKS control plane:
 
 ```
 enabled_cluster_log_types = ["api", "audit"]
@@ -39,7 +39,6 @@ Enabling all log types mitigates blind spots and enhances security visibility, a
 ```
 enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 ```
-
 
 ## Compliant Code Examples
 ```terraform

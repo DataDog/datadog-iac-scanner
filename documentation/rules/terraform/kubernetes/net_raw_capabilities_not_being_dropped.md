@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers must set `security_context.capabilities.drop` to include `ALL` or, at minimum, `NET_RAW`. This policy applies to both `container` and `init_container` entries and detects missing `security_context` or `capabilities` attributes. It flags when `capabilities.drop` is undefined or does not contain `ALL` or `NET_RAW`.
-
+Containers must set `security_context.capabilities.drop` to include `ALL` or, at minimum, `NET_RAW`. This policy applies to both `container` and `init_container` entries and detects missing `security_context` or `capabilities` attributes. It flags when `capabilities.drop` is undefined or does not contain `ALL` or `NET_RAW`.
 
 ## Compliant Code Examples
 ```terraform

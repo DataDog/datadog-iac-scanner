@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- Metadata labels must be valid and conform to the pattern `^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$`.
+Metadata labels must be valid and conform to the pattern `^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$`.
 This requires label values to start and end with an alphanumeric character and may include dashes, underscores, or dots in the middle; labels that do not match this pattern are reported as `IncorrectValue` with the resource and label details.
-
 
 ## Compliant Code Examples
 ```yaml

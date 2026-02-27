@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Serverless APIs should use a `PRIVATE` endpoint to avoid exposure to the public internet, since public endpoints can allow unauthenticated access and unintended invocation of backend services, leading to data exposure or service abuse. For `AWS::Serverless::Api` resources, the `Properties.EndpointConfiguration.Types` array must be defined and include the value `PRIVATE`. Resources missing `EndpointConfiguration`, missing `Types`, or where `Types` does not contain `PRIVATE` will be flagged.
+Serverless APIs should use a `PRIVATE` endpoint to avoid exposure to the public internet, since public endpoints can allow unauthenticated access and unintended invocation of backend services, leading to data exposure or service abuse. For `AWS::Serverless::Api` resources, the `Properties.EndpointConfiguration.Types` array must be defined and include the value `PRIVATE`. Resources missing `EndpointConfiguration`, missing `Types`, or where `Types` does not contain `PRIVATE` will be flagged.
 
 Secure configuration example:
 
@@ -41,7 +41,6 @@ MyApi:
       Types:
         - PRIVATE
 ```
-
 
 ## Compliant Code Examples
 ```yaml

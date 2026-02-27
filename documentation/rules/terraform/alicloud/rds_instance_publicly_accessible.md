@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- `0.0.0.0` or `0.0.0.0/0` should not be included in the `security_ips` list. This rule flags `alicloud_db_instance` resources whose `security_ips` contain these public addresses. Allowing them grants public network access to the database instance and may expose it to the internet.
-
+`0.0.0.0` or `0.0.0.0/0` should not be included in the `security_ips` list. This rule flags `alicloud_db_instance` resources whose `security_ips` contain these public addresses. Allowing them grants public network access to the database instance and may expose it to the internet.
 
 ## Compliant Code Examples
 ```terraform
@@ -77,15 +76,17 @@ resource "alicloud_db_instance" "default" {
     db_instance_storage = "10"
     security_ips = [
         "0.0.0.0/0",
-        "10.23.12.24/24"
-        ]
-    parameters = [{
-        name = "innodb_large_prefix"
-        value = "ON"
-    },{
-        name = "connect_timeout"
-        value = "50"
-    }]
+        "10.23.12.24/24",
+    ]
+    parameters = [
+        {
+            name = "innodb_large_prefix"
+            value = "ON"
+        },{
+            name = "connect_timeout"
+            value = "50"
+        }
+    ]
 }
 
 ```
@@ -99,14 +100,16 @@ resource "alicloud_db_instance" "default" {
     security_ips = [
         "0.0.0.0",
         "10.23.12.24/24"
-        ]
-    parameters = [{
-        name = "innodb_large_prefix"
-        value = "ON"
-    },{
-        name = "connect_timeout"
-        value = "50"
-    }]
+    ]
+    parameters = [
+        {
+            name = "innodb_large_prefix"
+            value = "ON"
+        },{
+            name = "connect_timeout"
+            value = "50"
+        }
+    ]
 }
 
 ```

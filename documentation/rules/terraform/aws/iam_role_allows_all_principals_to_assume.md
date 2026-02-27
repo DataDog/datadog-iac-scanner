@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- IAM roles should restrict which services or principals can assume them by using tightly scoped `assume_role_policy` statements. If an IAM role's `Principal` in the assume role policy allows all services (for example, `"Principal": {"AWS": "arn:aws:iam::root"}`) or is overly broad, it can be assumed by unintended AWS accounts or resources, leading to privilege escalation or unauthorized actions in your environment. To mitigate this, always specify the minimum required services or principals in the `assume_role_policy`. For example, restrict access by defining `"Principal": {"Service": "ec2.amazonaws.com"}` instead of allowing `"arn:aws:iam::root"`. Leaving this unchecked could result in a critical security vulnerability where any AWS principal could leverage the role's permissions, increasing the risk of data exposure or account compromise.
-
+IAM roles should restrict which services or principals can assume them by using tightly scoped `assume_role_policy` statements. If an IAM role's `Principal` in the assume role policy allows all services (for example, `"Principal": {"AWS": "arn:aws:iam::root"}`) or is overly broad, it can be assumed by unintended AWS accounts or resources, leading to privilege escalation or unauthorized actions in your environment. To mitigate this, always specify the minimum required services or principals in the `assume_role_policy`. For example, restrict access by defining `"Principal": {"Service": "ec2.amazonaws.com"}` instead of allowing `"arn:aws:iam::root"`. Leaving this unchecked could result in a critical security vulnerability where any AWS principal could leverage the role's permissions, increasing the risk of data exposure or account compromise.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that every cloud resource defined in Terraform includes a "Team" tag within the `tags` attribute, which is critical for tracking resource ownership and accountability. Without a "Team" tag (for example, `tags = { Environment = "Production" }`), it becomes difficult to determine resource owners, leading to challenges in cost allocation, incident response, and lifecycle management. If left unaddressed, the absence of this tag can result in unmanaged resources remaining active, increasing the risk of security vulnerabilities and unnecessary expenses.
-
+This check ensures that every cloud resource defined in Terraform includes a "Team" tag within the `tags` attribute, which is critical for tracking resource ownership and accountability. Without a "Team" tag (for example, `tags = { Environment = "Production" }`), it becomes difficult to determine resource owners, leading to challenges in cost allocation, incident response, and lifecycle management. If left unaddressed, the absence of this tag can result in unmanaged resources remaining active, increasing the risk of security vulnerabilities and unnecessary expenses.
 
 ## Compliant Code Examples
 ```terraform

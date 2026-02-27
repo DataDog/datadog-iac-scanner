@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "This check identifies IAM group policies that grant the `glue:UpdateDevEndpoint` action with the resource set to `\"*\"`, as shown in the following insecure example:\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"glue:UpdateDevEndpoint\",\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    },\n  ]\n})\n```\n\nAllowing unrestricted access to `glue:UpdateDevEndpoint` enables users in the group to potentially attach arbitrary IAM roles to a Glue development endpoint, which can be leveraged for privilege escalation. If left unaddressed, attackers with this permission may exploit it to gain elevated permissions or access sensitive resources by executing malicious code or gaining unauthorized access to other AWS services. This misconfiguration can result in significant security risks, including compromise of AWS account resources and loss of sensitive information.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_glue_UpdateDevEndpoint",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_glue_updatedevendpoint",
   "platform": "Terraform",
   "descriptionID": "10f17e18",
   "cloudProvider": "aws",

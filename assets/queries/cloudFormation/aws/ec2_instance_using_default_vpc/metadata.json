@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "EC2 instances placed in a default VPC are more likely to be publicly reachable and lack explicit network segmentation, increasing the risk of unintended exposure and lateral movement. This rule checks `AWS::EC2::Instance` resources and ensures `Properties.SubnetId` does not reference a subnet that is associated with a default VPC. Instances are flagged when their `SubnetId` references an `AWS::EC2::Subnet` whose `Properties.VpcId` resolves to a value or `Ref` name containing `default`. Use an explicit non-default VPC and private subnets. For example, reference a subnet in your own VPC:\n\n```yaml\nMyVPC:\n  Type: AWS::EC2::VPC\n  Properties:\n    CidrBlock: 10.0.0.0/16\n\nMySubnet:\n  Type: AWS::EC2::Subnet\n  Properties:\n    VpcId: !Ref MyVPC\n    CidrBlock: 10.0.1.0/24\n\nMyInstance:\n  Type: AWS::EC2::Instance\n  Properties:\n    SubnetId: !Ref MySubnet\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ec2_instance_using_default_vpc",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ec2_instance_using_default_vpc",
   "platform": "CloudFormation",
   "descriptionID": "8dd9abf5",
   "cloudProvider": "aws",

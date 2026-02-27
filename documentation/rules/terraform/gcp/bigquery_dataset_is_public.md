@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies BigQuery datasets configured to allow public or anonymous access, which can expose sensitive data to unauthorized users and increase the risk of data breaches. The vulnerability occurs when access controls use the special groups `allAuthenticatedUsers` or `allUsers`, effectively making data available to anyone with a Google account or the general public. To secure your BigQuery dataset, restrict access to specific users, groups, or domains instead of using public access groups, as shown in the example below:
+This check identifies BigQuery datasets configured to allow public or anonymous access, which can expose sensitive data to unauthorized users and increase the risk of data breaches. The vulnerability occurs when access controls use the special groups `allAuthenticatedUsers` or `allUsers`, effectively making data available to anyone with a Google account or the general public. To secure your BigQuery dataset, restrict access to specific users, groups, or domains instead of using public access groups, as shown in the example below:
 
 ```terraform
 access {
@@ -41,7 +41,6 @@ access {
   domain = "hashicorp.com"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- OSS buckets must not allow all actions (`*`) from all principals, as this can expose private data or permit unauthorized modification or deletion. This rule inspects the `policy` attribute of `alicloud_oss_bucket` resources to detect such configurations. Specifically, `Effect` must not be `Allow` when both `Action` and `Principal` are set to `*`.
-
+OSS buckets must not allow all actions (`*`) from all principals, as this can expose private data or permit unauthorized modification or deletion. This rule inspects the `policy` attribute of `alicloud_oss_bucket` resources to detect such configurations. Specifically, `Effect` must not be `Allow` when both `Action` and `Principal` are set to `*`.
 
 ## Compliant Code Examples
 ```terraform

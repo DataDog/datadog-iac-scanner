@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- RDS instances in AWS should have automatic minor version upgrades enabled by setting the `auto_minor_version_upgrade` attribute to `true`. This ensures that the database receives timely security patches and important bug fixes without manual intervention. If this attribute is set to `false`, as shown in the following configuration, the RDS instance will not automatically apply minor updates, potentially leaving it exposed to vulnerabilities and unsupported bugs until manually updated.
+RDS instances in AWS should have automatic minor version upgrades enabled by setting the `auto_minor_version_upgrade` attribute to `true`. This ensures that the database receives timely security patches and important bug fixes without manual intervention. If this attribute is set to `false`, as shown in the following configuration, the RDS instance will not automatically apply minor updates, potentially leaving it exposed to vulnerabilities and unsupported bugs until manually updated.
 
 ```
 auto_minor_version_upgrade = false
 ```
 
 This increases the risk of security incidents and database outages due to missed critical patches.
-
 
 ## Compliant Code Examples
 ```terraform

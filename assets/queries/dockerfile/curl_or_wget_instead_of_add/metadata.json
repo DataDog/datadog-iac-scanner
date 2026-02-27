@@ -1,11 +1,12 @@
 {
   "id": "4b410d24-1cbe-4430-a632-62c9a931cf1c",
-  "queryName": "Curl or Wget Instead of Add",
+  "queryName": "curl or wget instead of ADD",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "Use of Curl or Wget should be done instead of Add to fetch packages from remote URLs due to the use of Add being strongly discouraged",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "descriptionText": "Using Dockerfile `ADD` to download files from HTTPS URLs embeds externally hosted content into images without integrity checks and creates supply-chain and reproducibility risks if the remote resource changes or is compromised.\n\nThis rule flags Dockerfile `ADD` instructions whose source argument matches `http://` or `https://`. Instead, fetch remote artifacts with `curl` or `wget` in a `RUN` step, or use `COPY` for pre-downloaded local files.\n\nWhen you download in the build, pin exact versions, validate integrity (for example, via SHA256 or signatures), and remove temporary files to avoid leaving unverified artifacts in the final image. \n\nSecure pattern example using `curl` with checksum verification:\n\n```Dockerfile\n# Secure: download with curl and verify SHA256 before extracting\nRUN curl -fsSL https://example.com/package-1.2.3.tar.gz -o /tmp/package.tar.gz \\\n  && echo \"expected_sha256  /tmp/package.tar.gz\" | sha256sum -c - \\\n  && tar -xzf /tmp/package.tar.gz -C /usr/src/app \\\n  && rm /tmp/package.tar.gz\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/curl_or_wget_instead_of_add",
   "platform": "Dockerfile",
   "descriptionID": "29e8216b",
-  "cwe": "610"
+  "cwe": "610",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
 }

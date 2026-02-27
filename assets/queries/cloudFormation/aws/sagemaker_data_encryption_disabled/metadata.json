@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "SageMaker notebook instances must specify a KMS key to encrypt data at rest. This helps protect notebook storage and snapshots from unauthorized access.\n\nCheck `AWS::SageMaker::NotebookInstance` resources for the `Properties.KmsKeyId` property. It must be defined as a non-empty string that identifies a valid KMS key (key ID, key ARN, or alias). Resources missing `KmsKeyId`, or with `KmsKeyId` set to `\"\"`, will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyNotebook:\n  Type: AWS::SageMaker::NotebookInstance\n  Properties:\n    NotebookInstanceName: my-notebook\n    InstanceType: ml.t2.medium\n    RoleArn: arn:aws:iam::123456789012:role/SageMakerRole\n    KmsKeyId: !Ref MyKmsKey\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sagemaker_data_encryption_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/sagemaker_data_encryption_disabled",
   "platform": "CloudFormation",
   "descriptionID": "41b14673",
   "cloudProvider": "aws",

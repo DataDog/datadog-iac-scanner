@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Client certificate authentication must be configured using a `.pem` or `.crt` file. Containers running `kube-apiserver` or `kubelet` must include the `--client-ca-file` flag that references a `.pem` or `.crt` certificate. For KubeletConfiguration, the `authentication.x509.clientCAFile` field must reference a `.pem` or `.crt` file.
-
+Client certificate authentication must be configured using a `.pem` or `.crt` file. Containers running `kube-apiserver` or `kubelet` must include the `--client-ca-file` flag that references a `.pem` or `.crt` certificate. For KubeletConfiguration, the `authentication.x509.clientCAFile` field must reference a `.pem` or `.crt` file.
 
 ## Compliant Code Examples
 ```yaml

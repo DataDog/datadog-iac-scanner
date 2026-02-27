@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Setting a Web ACL default action to `ALLOW` causes any request that does not match a rule to be permitted. This can let unhandled or malicious traffic reach your application and undermines the intent of defensive rules.
+Setting a Web ACL default action to `ALLOW` causes any request that does not match a rule to be permitted. This can let unhandled or malicious traffic reach your application and undermines the intent of defensive rules.
 
 For `AWS::WAF::WebACL` resources, `Properties.DefaultAction.Type` must not be set to `ALLOW`. It should be set to `BLOCK` to deny requests that do not match allow rules. This rule flags resources where `DefaultAction.Type` is explicitly `ALLOW`. Review such Web ACLs and change the default to `BLOCK` or otherwise ensure rules comprehensively cover allowed traffic.
 
@@ -44,7 +44,6 @@ MyWebACL:
       Type: BLOCK
     Rules: []
 ```
-
 
 ## Compliant Code Examples
 ```yaml

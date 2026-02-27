@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing non-SSL connections to Azure Redis Cache resources exposes sensitive data in transit to potential interception or man-in-the-middle attacks, as information exchanged between clients and the Redis service will not be encrypted. To mitigate this risk, the `enable_non_ssl_port` attribute in the Terraform resource should be set to `false`, ensuring all connections use secure TLS communication. For example:
+Allowing non-SSL connections to Azure Redis Cache resources exposes sensitive data in transit to potential interception or man-in-the-middle attacks, as information exchanged between clients and the Redis service will not be encrypted. To mitigate this risk, the `enable_non_ssl_port` attribute in the Terraform resource should be set to `false`, ensuring all connections use secure TLS communication. For example:
 
 ```
 resource "azurerm_redis_cache" "secure_example" {
@@ -47,7 +47,6 @@ resource "azurerm_redis_cache" "secure_example" {
 ```
 
 Neglecting this configuration can lead to exposure of authentication credentials and cached data, increasing the risk of data breaches and compliance violations.
-
 
 ## Compliant Code Examples
 ```terraform

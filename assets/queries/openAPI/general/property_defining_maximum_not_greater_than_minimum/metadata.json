@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Property defining minimum has greater value than maximum defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/property_defining_maximum_not_greater_than_minimum",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/property_defining_maximum_not_greater_than_minimum",
   "platform": "OpenAPI",
   "descriptionID": "48eeea37",
   "aggregation": 2,

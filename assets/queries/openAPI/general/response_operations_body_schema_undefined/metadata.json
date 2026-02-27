@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "If a response is not head or its code is not 204 or 304, it should have a schema defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/response_operations_body_schema_undefined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/response_operations_body_schema_undefined",
   "platform": "OpenAPI",
   "descriptionID": "eaff445e",
   "aggregation": 2,

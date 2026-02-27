@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Using an RDS instance's default database port makes the service easy for attackers to discover and target with automated scanners, brute-force attempts, and opportunistic exploits. Instances should not listen on the engine's well-known port. This rule checks `AWS::RDS::DBInstance` resources and flags `Properties.Port` when it is explicitly set to the engine's default value. Default ports checked include Aurora, MariaDB, and MySQL (`3306`), PostgreSQL (`5432`), Oracle (`1521`), and SQL Server (`1433`). If you must use a common port for compatibility, restrict access with tight security group, subnet, and network controls rather than relying on port obscurity.
+Using an RDS instance's default database port makes the service easy for attackers to discover and target with automated scanners, brute-force attempts, and opportunistic exploits. Instances should not listen on the engine's well-known port. This rule checks `AWS::RDS::DBInstance` resources and flags `Properties.Port` when it is explicitly set to the engine's default value. Default ports checked include Aurora, MariaDB, and MySQL (`3306`), PostgreSQL (`5432`), Oracle (`1521`), and SQL Server (`1433`). If you must use a common port for compatibility, restrict access with tight security group, subnet, and network controls rather than relying on port obscurity.
 
 Secure configuration example (PostgreSQL on non-default port):
 
@@ -45,7 +45,6 @@ MyDBInstance:
     MasterUsername: admin
     MasterUserPassword: !Ref DBPassword
 ```
-
 
 ## Compliant Code Examples
 ```yaml

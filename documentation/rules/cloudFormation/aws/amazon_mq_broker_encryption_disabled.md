@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon MQ brokers must have encryption options defined so message data, broker storage, and snapshots are encrypted at rest and protected from unauthorized access if storage media or backups are compromised. In CloudFormation, the `AWS::AmazonMQ::Broker` resource must include the `EncryptionOptions` property configured to enable AWS KMS encryption. For example, set `KmsKeyId` to a customer-managed KMS key or setting `UseAwsOwnedKey` to `true` to rely on an AWS-owned key. Resources missing the `EncryptionOptions` property will be flagged. Use a customer-managed KMS key (`KmsKeyId`) when you need full control over key rotation and access policies.
+Amazon MQ brokers must have encryption options defined so message data, broker storage, and snapshots are encrypted at rest and protected from unauthorized access if storage media or backups are compromised. In CloudFormation, the `AWS::AmazonMQ::Broker` resource must include the `EncryptionOptions` property configured to enable AWS KMS encryption. For example, set `KmsKeyId` to a customer-managed KMS key or setting `UseAwsOwnedKey` to `true` to rely on an AWS-owned key. Resources missing the `EncryptionOptions` property will be flagged. Use a customer-managed KMS key (`KmsKeyId`) when you need full control over key rotation and access policies.
 
 Secure configuration example (CloudFormation YAML):
 
@@ -44,7 +44,6 @@ MyBroker:
       KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd-ef01-2345-6789
       UseAwsOwnedKey: false
 ```
-
 
 ## Compliant Code Examples
 ```yaml

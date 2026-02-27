@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "The Schema Object should not be empty to avoid accepting any JSON values",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/schema_object_empty",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/schema_object_empty",
   "platform": "OpenAPI",
   "descriptionID": "561c9140",
   "aggregation": 2,

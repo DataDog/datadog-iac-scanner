@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "Global security definition must not have empty objects",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/security_empty_object_definition",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/security_empty_object_definition",
   "platform": "OpenAPI",
   "descriptionID": "e2c89bd7",
   "aggregation": 2,

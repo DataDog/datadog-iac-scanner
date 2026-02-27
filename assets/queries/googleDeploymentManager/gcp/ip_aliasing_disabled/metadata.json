@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Kubernetes Clusters must be created with Alias IP ranges enabled, which means the attribute 'ipAllocationPolicy' must be defined and the subattribute 'useIpAliases' must be set to 'true'.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/ip_aliasing_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/ip_aliasing_disabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "34473a24",
   "cloudProvider": "gcp",

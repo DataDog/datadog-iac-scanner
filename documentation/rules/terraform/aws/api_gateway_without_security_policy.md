@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The AWS API Gateway custom domain resource should have a security policy explicitly defined to enforce the use of strong encryption protocols. By omitting the `security_policy` attribute or leaving it unset, as shown below, the domain name may default to an older, less secure version of TLS, making the API vulnerable to downgrade attacks and exposure of sensitive data.
+The AWS API Gateway custom domain resource should have a security policy explicitly defined to enforce the use of strong encryption protocols. By omitting the `security_policy` attribute or leaving it unset, as shown below, the domain name may default to an older, less secure version of TLS, making the API vulnerable to downgrade attacks and exposure of sensitive data.
 
 ```
 resource "aws_api_gateway_domain_name" "example" {
@@ -44,7 +44,6 @@ resource "aws_api_gateway_domain_name" "example" {
   security_policy = "TLS_1_2"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

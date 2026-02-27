@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Egress rules that allow all protocols (`IpProtocol: -1`) permit unrestricted outbound traffic. This increases the risk of data exfiltration and enables command-and-control traffic or lateral movement.\n\nFor `AWS::EC2::SecurityGroupEgress` resources and entries in `AWS::EC2::SecurityGroup` > `Properties.SecurityGroupEgress`, `IpProtocol` must not be set to `-1`. Specify explicit protocols such as `tcp`, `udp`, or `icmp`. Resources with `IpProtocol: -1` will be flagged. Instead, define explicit `IpProtocol` values and corresponding `FromPort`/`ToPort` for TCP/UDP, and restrict destination CIDRs or target security groups to the minimum required.\n\nSecure configuration examples:\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Allow outbound HTTPS only\n    SecurityGroupEgress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        CidrIp: 0.0.0.0/0\n```\n\n```yaml\nMyEgressRule:\n  Type: AWS::EC2::SecurityGroupEgress\n  Properties:\n    GroupId: !Ref MySecurityGroup\n    IpProtocol: tcp\n    FromPort: 443\n    ToPort: 443\n    CidrIp: 203.0.113.0/24\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_group_egress_with_all_protocols",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/security_group_egress_with_all_protocols",
   "platform": "CloudFormation",
   "descriptionID": "b3e66493",
   "cloudProvider": "aws",

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- PodSecurityPolicy should not include allowed capabilities. The presence of the allowedCapabilities field grants containers additional privileges that increase the attack surface and may enable privilege escalation. Remove the allowedCapabilities key or leave it unset to enforce least privilege.
-
+PodSecurityPolicy should not include allowed capabilities. The presence of the allowedCapabilities field grants containers additional privileges that increase the attack surface and may enable privilege escalation. Remove the allowedCapabilities key or leave it unset to enforce least privilege.
 
 ## Compliant Code Examples
 ```yaml

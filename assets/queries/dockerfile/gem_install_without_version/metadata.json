@@ -1,11 +1,12 @@
 {
   "id": "22cd11f7-9c6c-4f6e-84c0-02058120b341",
-  "queryName": "Gem Install Without Version",
+  "queryName": "gem install without version",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
-  "descriptionText": "Instead of 'gem install ' we should use 'gem install :'",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "Unpinned Ruby gem installs in Dockerfile `RUN` commands allow unintentional upgrades or malicious releases to be pulled at build time, increasing risk of supply-chain compromise and causing non-reproducible or breakage-prone images.\n\nThis rule inspects Dockerfile `RUN` instructions that invoke `gem install` and requires each gem to include an explicit version, for example, via `-v <version>` or `--version <version>` (or other recognized inline version syntax). Both single-line `RUN` strings and tokenized `RUN` commands are analyzed. Any gem argument that is a plain package name without a following version flag or embedded version will be flagged. \n\nSecure examples:\n\n```dockerfile\nRUN gem install bundler -v 2.3.7 rake -v 13.0.6\nRUN gem install rails --version '6.1.7'\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/gem_install_without_version",
   "platform": "Dockerfile",
   "descriptionID": "0586ed55",
-  "cwe": "1357"
+  "cwe": "1357",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

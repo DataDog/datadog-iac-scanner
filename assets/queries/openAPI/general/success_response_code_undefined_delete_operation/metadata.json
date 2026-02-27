@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "Delete should define at least one success response (200, 201, 202 or 204)",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/success_response_code_undefined_delete_operation",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/success_response_code_undefined_delete_operation",
   "platform": "OpenAPI",
   "descriptionID": "b24ceff4",
   "aggregation": 2,

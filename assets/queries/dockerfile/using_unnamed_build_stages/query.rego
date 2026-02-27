@@ -17,5 +17,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "COPY '--from' should reference a previously defined FROM alias",
 		"keyActualValue": "COPY '--from' does not reference a previously defined FROM alias",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

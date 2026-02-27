@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Cognito User Pools must enable or allow multi-factor authentication (MFA) to protect user accounts from compromised credentials and reduce the risk of account takeover and unauthorized access. The `MfaConfiguration` property in `AWS::Cognito::UserPool` must be defined and set to `ON` (enforce MFA for all users) or `OPTIONAL` (allow users to enable MFA). Resources that omit `MfaConfiguration` or set it to `OFF` will be flagged. When enabling or allowing MFA, also configure an MFA provider such as `SoftwareTokenMfaConfiguration` or `SmsConfiguration` so MFA can operate correctly.
+Cognito User Pools must enable or allow multi-factor authentication (MFA) to protect user accounts from compromised credentials and reduce the risk of account takeover and unauthorized access. The `MfaConfiguration` property in `AWS::Cognito::UserPool` must be defined and set to `ON` (enforce MFA for all users) or `OPTIONAL` (allow users to enable MFA). Resources that omit `MfaConfiguration` or set it to `OFF` will be flagged. When enabling or allowing MFA, also configure an MFA provider such as `SoftwareTokenMfaConfiguration` or `SmsConfiguration` so MFA can operate correctly.
 
 Secure configuration example (CloudFormation YAML):
 
@@ -41,7 +41,6 @@ MyUserPool:
     SoftwareTokenMfaConfiguration:
       Enabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

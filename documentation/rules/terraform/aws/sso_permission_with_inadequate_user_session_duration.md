@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Single Sign-On (SSO) permission sets should restrict user session durations to a maximum of one hour to reduce the window of opportunity for unauthorized access and session hijacking. Allowing longer session durations by setting the `session_duration` attribute to values such as `"PT2H"` or `"PT1H1M"` in the `aws_ssoadmin_permission_set` resource increases the risk of attackers leveraging stale or stolen sessions. Configuring session durations to `session_duration = "PT1H"`, or omitting the duration in the configuration enforces this security best practice and helps limit potential exposure.
+Single Sign-On (SSO) permission sets should restrict user session durations to a maximum of one hour to reduce the window of opportunity for unauthorized access and session hijacking. Allowing longer session durations by setting the `session_duration` attribute to values such as `"PT2H"` or `"PT1H1M"` in the `aws_ssoadmin_permission_set` resource increases the risk of attackers leveraging stale or stolen sessions. Configuring session durations to `session_duration = "PT1H"`, or omitting the duration in the configuration enforces this security best practice and helps limit potential exposure.
 
 ```
 resource "aws_ssoadmin_permission_set" "example" {
@@ -38,7 +38,6 @@ resource "aws_ssoadmin_permission_set" "example" {
   session_duration = "PT1H"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

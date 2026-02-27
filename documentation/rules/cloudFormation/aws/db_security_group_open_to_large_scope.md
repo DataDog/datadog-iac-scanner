@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Ingress rules that use large CIDR blocks grant network access to hundreds or thousands of hosts. This increases attack surface and raises the risk of unauthorized access, brute-force attacks, and lateral movement.
+Ingress rules that use large CIDR blocks grant network access to hundreds or thousands of hosts. This increases attack surface and raises the risk of unauthorized access, brute-force attacks, and lateral movement.
 
  For CloudFormation:
  - For `AWS::EC2::SecurityGroup` resources, `Properties.SecurityGroupIngress` IPv4 entries (`CidrIp`) must use prefix lengths of `/25` through `/32`, and IPv6 entries (`CidrIpv6`) must use `/120` through `/128`.
@@ -61,7 +61,6 @@ MyDBSecurityGroup:
     DBSecurityGroupIngress:
       - CIDRIP: 203.0.113.0/25
 ```
-
 
 ## Compliant Code Examples
 ```yaml

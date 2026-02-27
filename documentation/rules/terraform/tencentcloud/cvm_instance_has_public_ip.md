@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- A CVM instance should not include a public IP address.
+A CVM instance should not include a public IP address.
 This rule flags Tencent Cloud CVM instances where the `allocate_public_ip` attribute is set to `true`; it must be set to `false` to prevent assignment of a public IP.
 The rule returns the attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`, and `searchLine`.
-
 
 ## Compliant Code Examples
 ```terraform

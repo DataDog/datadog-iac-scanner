@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- This check verifies if AWS DynamoDB Tables are configured with server-side encryption to protect sensitive data at rest. Without encryption, stored data is vulnerable to unauthorized access if the database storage is compromised. To properly secure your DynamoDB table, you must include a `server_side_encryption` block with `enabled = true`, as shown below:
+This check verifies if AWS DynamoDB Tables are configured with server-side encryption to protect sensitive data at rest. Without encryption, stored data is vulnerable to unauthorized access if the database storage is compromised. To properly secure your DynamoDB table, you must include a `server_side_encryption` block with `enabled = true`, as shown below:
 
 ```
 server_side_encryption {
   enabled = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- It is important to configure Key Management Service (KMS) encryption keys with a `rotation_period` of 90 days or less to limit the blast radius if a key is ever compromised. Failure to set a short rotation period, or omitting the `rotation_period` attribute entirely, increases risk by allowing the same encryption key to remain in use for extended periods, making it a more valuable and longer-lived target if leaked or compromised. Properly securing this setting in Terraform involves specifying the `rotation_period` attribute within the `google_kms_crypto_key` resource, for example:
+It is important to configure Key Management Service (KMS) encryption keys with a `rotation_period` of 90 days or less to limit the blast radius if a key is ever compromised. Failure to set a short rotation period, or omitting the `rotation_period` attribute entirely, increases risk by allowing the same encryption key to remain in use for extended periods, making it a more valuable and longer-lived target if leaked or compromised. Properly securing this setting in Terraform involves specifying the `rotation_period` attribute within the `google_kms_crypto_key` resource, for example:
 
 ```
 resource "google_kms_crypto_key" "secure_example" {
@@ -40,7 +40,6 @@ resource "google_kms_crypto_key" "secure_example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

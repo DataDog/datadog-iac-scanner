@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Bucket policies that allow S3 Put actions from the wildcard principal (`*`) enable anyone on the internet to upload or overwrite objects in the bucket. This can lead to unauthorized data tampering, malware uploads, or public exposure of sensitive content.
+Bucket policies that allow S3 Put actions from the wildcard principal (`*`) enable anyone on the internet to upload or overwrite objects in the bucket. This can lead to unauthorized data tampering, malware uploads, or public exposure of sensitive content.
 
 Check `AWS::S3::BucketPolicy` resources' `Properties.PolicyDocument.Statement` entries and flag statements where `Effect: "Allow"`, `Principal: "*"`, and `Action` includes Put operations such as `s3:PutObject` (or other `s3:Put*` actions). `Principal` should specify explicit principals (AWS account IDs, IAM role/user ARNs, or canonical user IDs). If `Principal` is `*`, the statement must include strict conditions (for example, `SourceIp` or `VpcEndpoint`) that effectively prevent public uploads. Statements with `Principal: "*"` and unrestrained Put actions will be flagged.
 
@@ -49,7 +49,6 @@ MyBucketPolicy:
             - s3:PutObject
           Resource: arn:aws:s3:::my-bucket/*
 ```
-
 
 ## Compliant Code Examples
 ```yaml

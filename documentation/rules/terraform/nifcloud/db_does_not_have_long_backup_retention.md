@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The RDB backup retention period is less than 2 days. The `nifcloud_db_instance` resource must include the `backup_retention_period` attribute set to at least 2 (days). Resources missing this attribute or with a value less than 2 will be reported as `MissingAttribute` or `IncorrectValue`.
-
+The RDB backup retention period is less than 2 days. The `nifcloud_db_instance` resource must include the `backup_retention_period` attribute set to at least 2 (days). Resources missing this attribute or with a value less than 2 will be reported as `MissingAttribute` or `IncorrectValue`.
 
 ## Compliant Code Examples
 ```terraform

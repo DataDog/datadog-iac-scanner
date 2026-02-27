@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The RAM account password policy resource `alicloud_ram_account_password_policy` should set `require_numbers` to `true`. This enforces the inclusion of numeric characters in passwords and strengthens account security. Resources where `require_numbers` is `false` or omitted will trigger this rule and should set `require_numbers = true`.
-
+The RAM account password policy resource `alicloud_ram_account_password_policy` should set `require_numbers` to `true`. This enforces the inclusion of numeric characters in passwords and strengthens account security. Resources where `require_numbers` is `false` or omitted will trigger this rule and should set `require_numbers = true`.
 
 ## Compliant Code Examples
 ```terraform

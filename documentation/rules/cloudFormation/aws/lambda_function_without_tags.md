@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Lambda functions must be tagged so resources can be reliably identified, assigned ownership, and included in incident response, access reviews, and automated security workflows. The `Tags` property on `AWS::Lambda::Function` resources must be defined and contain tag objects (`Key` and `Value` pairs). Resources missing the `Tags` property will be flagged. Tags should be provided as an array of objects with `Key` and `Value` fields.
+Lambda functions must be tagged so resources can be reliably identified, assigned ownership, and included in incident response, access reviews, and automated security workflows. The `Tags` property on `AWS::Lambda::Function` resources must be defined and contain tag objects (`Key` and `Value` pairs). Resources missing the `Tags` property will be flagged. Tags should be provided as an array of objects with `Key` and `Value` fields.
 
 Secure configuration example:
 
@@ -49,7 +49,6 @@ MyFunction:
       - Key: Owner
         Value: team-security
 ```
-
 
 ## Compliant Code Examples
 ```yaml

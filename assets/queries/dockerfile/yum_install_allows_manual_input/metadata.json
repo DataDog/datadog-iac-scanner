@@ -1,12 +1,13 @@
 {
   "id": "6e19193a-8753-436d-8a09-76dcff91bb03",
-  "queryName": "Yum Install Allows Manual Input",
+  "queryName": "yum install allows manual input",
   "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "Need to use -y to avoid manual input 'yum install -y <package>'",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#run",
+  "descriptionText": "`RUN` instructions that invoke `yum install` without a non-interactive flag can prompt for user input during image builds, causing automated CI/CD pipelines to hang or produce inconsistent images when builds are completed manually.\n\nCheck Dockerfile `RUN` commands for invocations of `yum install` (including `groupinstall` or `localinstall`). The command must include a non-interactive flag such as `-y`, `yes`, or `--assumeyes`. This rule flags `RUN` entries where a `yum` install is detected but none of those flags are present. It applies to both single-string `RUN` commands and list-form `RUN` arguments. \n\nSecure example:\n\n```dockerfile\nRUN yum -y install curl\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/yum_install_allows_manual_input",
   "platform": "Dockerfile",
   "descriptionID": "f17a245a",
   "cwe": "710",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run"
 }

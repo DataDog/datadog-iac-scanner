@@ -3,7 +3,7 @@
   "queryName": "MQ broker logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "This check ensures that AWS MQ brokers have logging enabled in their configuration. ActiveMQ brokers should have both audit and general logging enabled, while RabbitMQ brokers only support general logging. Logging is essential for capturing critical security events and operational information, which aids in monitoring, troubleshooting, and forensic analysis. If logging is not enabled, malicious activity or configuration issues may go undetected, significantly increasing the risk of security breaches and data loss. Unaddressed, the lack of logging impedes compliance efforts and can hinder incident response due to an absence of necessary audit trails.",
+  "descriptionText": "This check ensures that AWS MQ brokers have logging enabled in their configuration. ActiveMQ brokers should have both audit and general logging enabled, while RabbitMQ brokers only support general logging.\n\nLogging is essential for capturing critical security events and operational information, which aids in monitoring, troubleshooting, and forensic analysis. If logging is not enabled, malicious activity or configuration issues may go undetected, significantly increasing the risk of security breaches and data loss. The lack of logging impedes compliance efforts and can hinder incident response due to an absence of necessary audit trails.",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/mq_broker_logging_disabled",
   "platform": "Terraform",
   "descriptionID": "cdf2b416",

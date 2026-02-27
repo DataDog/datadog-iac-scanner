@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing sensitive ports, such as port 23 (Telnet) or port 110 (POP3), to be open on public-facing network security groups exposes your resources to potential attacks that target these outdated and insecure protocols. Attackers can exploit these open ports to gain unauthorized access, intercept unencrypted communications, or conduct brute-force attacks against your infrastructure. To mitigate this risk, network security rules should explicitly deny traffic on sensitive ports, as in the following secure configuration:
+Allowing sensitive ports, such as port 23 (Telnet) or port 110 (POP3), to be open on public-facing network security groups exposes your resources to potential attacks that target these outdated and insecure protocols. Attackers can exploit these open ports to gain unauthorized access, intercept unencrypted communications, or conduct brute-force attacks against your infrastructure. To mitigate this risk, network security rules should explicitly deny traffic on sensitive ports, as in the following secure configuration:
 
 ```
 resource "azurerm_network_security_rule" "secure_example" {
@@ -45,7 +45,6 @@ resource "azurerm_network_security_rule" "secure_example" {
      network_security_group_name = azurerm_network_security_group.example.name
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

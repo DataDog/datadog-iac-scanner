@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Amazon ECR repositories should enforce immutable image tags to prevent tags from being overwritten. This reduces the risk of supply-chain tampering and accidental or malicious replacement of images referenced by deployments.\n \n The `ImageTagMutability` property on `AWS::ECR::Repository` must be defined and set to `IMMUTABLE`. Resources missing this property or with `ImageTagMutability` set to `MUTABLE` will be flagged as a security issue. \n \n Secure configuration example:\n\n```yaml\nMyRepository:\n  Type: AWS::ECR::Repository\n  Properties:\n    RepositoryName: my-repo\n    ImageTagMutability: IMMUTABLE\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/ecr_image_tag_not_immutable",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/ecr_image_tag_not_immutable",
   "platform": "CloudFormation",
   "descriptionID": "a4ed2a4f",
   "cloudProvider": "aws",

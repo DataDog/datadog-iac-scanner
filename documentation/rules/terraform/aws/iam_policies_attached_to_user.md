@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM policies should be attached only to groups or roles to promote centralized permission management and reduce the risk of granting excessive privileges to individual users. Assigning an IAM policy directly to a user, as shown below with the `users` attribute, can increase the risk of credentials compromise or accidental permission escalation:
+IAM policies should be attached only to groups or roles to promote centralized permission management and reduce the risk of granting excessive privileges to individual users. Assigning an IAM policy directly to a user, as shown below with the `users` attribute, can increase the risk of credentials compromise or accidental permission escalation:
 
 ```
 resource "aws_iam_policy_attachment" "positive1_3" {
@@ -41,7 +41,6 @@ EOF
 ```
 
 If left unaddressed, this practice can lead to difficulties in auditing permissions and increases the attack surface, as any compromise of a single user account could grant broad and unrestricted access to resources.
-
 
 ## Compliant Code Examples
 ```terraform

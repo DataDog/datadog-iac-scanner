@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Images should be specified with their digests to ensure integrity. The policy checks `containers` and `initContainers` entries in the resource spec and flags any image value that does not include a digest (i.e., missing the '@' separator). Specifying images by digest enforces immutability and helps ensure consistent, repeatable, and trusted deployments.
-
+Images should be specified with their digests to ensure integrity. The policy checks `containers` and `initContainers` entries in the resource spec and flags any image value that does not include a digest (i.e., missing the '@' separator). Specifying images by digest enforces immutability and helps ensure consistent, repeatable, and trusted deployments.
 
 ## Compliant Code Examples
 ```yaml

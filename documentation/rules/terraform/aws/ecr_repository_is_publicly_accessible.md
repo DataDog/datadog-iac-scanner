@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECR repository policies that use a wildcard `*` in the `Principal` field grant public access to your container images, potentially exposing sensitive data or proprietary code. When left unaddressed, this vulnerability allows unauthorized users to pull, and in some cases push, container images, compromising the integrity and confidentiality of your container deployments. To remediate this issue, always specify explicit IAM principals in your repository policies, such as `"Principal": { "AWS": "arn:aws:iam::account_number:root" }` instead of using `"Principal": "*"`.
-
+Amazon ECR repository policies that use a wildcard `*` in the `Principal` field grant public access to your container images, potentially exposing sensitive data or proprietary code. When left unaddressed, this vulnerability allows unauthorized users to pull, and in some cases push, container images, compromising the integrity and confidentiality of your container deployments. To remediate this issue, always specify explicit IAM principals in your repository policies, such as `"Principal": { "AWS": "arn:aws:iam::account_number:root" }` instead of using `"Principal": "*"`.
 
 ## Compliant Code Examples
 ```terraform

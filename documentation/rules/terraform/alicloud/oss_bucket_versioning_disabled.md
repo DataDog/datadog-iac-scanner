@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- OSS bucket resources (`alicloud_oss_bucket`) should have `versioning.status` set to `Enabled`. This rule flags buckets where `versioning.status` is `Suspended`, or where the `versioning` block is missing. To remediate, add or update the `versioning` block so that `status = "Enabled"`.
-
+OSS bucket resources (`alicloud_oss_bucket`) should have `versioning.status` set to `Enabled`. This rule flags buckets where `versioning.status` is `Suspended`, or where the `versioning` block is missing. To remediate, add or update the `versioning` block so that `status = "Enabled"`.
 
 ## Compliant Code Examples
 ```terraform

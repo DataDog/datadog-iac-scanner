@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Batch Job Definitions with privileged container properties grant elevated permissions to the container, essentially providing it with root-level access to the host machine. This configuration creates a significant security risk as containers can access host resources and potentially escape container isolation, leading to unauthorized access or system compromise. Instead, containers should run with minimum required privileges according to the principle of least privilege. To secure your configuration, either explicitly set the privileged property to `false` or omit it entirely, as shown below:
+AWS Batch Job Definitions with privileged container properties grant elevated permissions to the container, essentially providing it with root-level access to the host machine. This configuration creates a significant security risk as containers can access host resources and potentially escape container isolation, leading to unauthorized access or system compromise. Instead, containers should run with minimum required privileges according to the principle of least privilege. To secure your configuration, either explicitly set the privileged property to `false` or omit it entirely, as shown below:
 
 ```terraform
 container_properties = <<CONTAINER_PROPERTIES
@@ -42,7 +42,6 @@ container_properties = <<CONTAINER_PROPERTIES
 }
 CONTAINER_PROPERTIES
 ```
-
 
 ## Compliant Code Examples
 ```terraform

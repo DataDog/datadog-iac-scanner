@@ -28,12 +28,11 @@ meta:
 
 ### Description
 
- The Horizontal Pod Autoscaler must target a valid object.
+The Horizontal Pod Autoscaler must target a valid object.
 
 The `kubernetes_horizontal_pod_autoscaler` resource's `spec.metric` must be an object with `type` set to `Object` and an `object` field.
 
 That `object` must include `metric`, `target`, and a `described_object` containing `name`, `api_version`, and `kind`.
-
 
 ## Compliant Code Examples
 ```terraform

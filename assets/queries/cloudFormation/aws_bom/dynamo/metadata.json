@@ -4,7 +4,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "DynamoDB tables should be inventoried for network accessibility and server-side encryption because public access or missing encryption increases the risk of unauthorized access and data exposure. This rule inspects CloudFormation resources of type AWS::DynamoDB::Table and evaluates accessibility by examining AWS::EC2::VPCEndpoint resources' Properties.PolicyDocument; a VPCEndpoint policy with an Allow effect, any principal (including '*'), and DynamoDB actions targeting '*' or the table's ARN will classify the table as public. It also reports encryption state by checking Properties.SSESpecification.SSEEnabled—tables with SSEEnabled != true are reported as unencrypted; tables without a matching VPCEndpoint policy are reported as private, and policies that exist but do not grant public access are annotated as having a policy.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/dynamo",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_bom/dynamo",
   "platform": "CloudFormation",
   "descriptionID": "b0d40495",
   "cloudProvider": "aws",

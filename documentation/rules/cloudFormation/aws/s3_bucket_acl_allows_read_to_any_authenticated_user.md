@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets configured with the `AuthenticatedRead` canned ACL allow any AWS authenticated user to read bucket objects. This can lead to unintended data exposure and compliance violations. For CloudFormation, the `AWS::S3::Bucket` resource's `AccessControl` property must not be set to `AuthenticatedRead`. Resources with `AccessControl: AuthenticatedRead` will be flagged. Set `AccessControl: Private` or omit ACLs and enforce least-privilege access using explicit bucket policies or IAM principals instead.
+S3 buckets configured with the `AuthenticatedRead` canned ACL allow any AWS authenticated user to read bucket objects. This can lead to unintended data exposure and compliance violations. For CloudFormation, the `AWS::S3::Bucket` resource's `AccessControl` property must not be set to `AuthenticatedRead`. Resources with `AccessControl: AuthenticatedRead` will be flagged. Set `AccessControl: Private` or omit ACLs and enforce least-privilege access using explicit bucket policies or IAM principals instead.
 
 Secure configuration example:
 
@@ -39,7 +39,6 @@ MyBucket:
     BucketName: my-bucket
     AccessControl: Private
 ```
-
 
 ## Compliant Code Examples
 ```yaml

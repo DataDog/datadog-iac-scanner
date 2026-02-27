@@ -17,6 +17,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "The '--no-cache-dir' flag should be set when running 'pip/pip3 install'",
 		"keyActualValue": "The '--no-cache-dir' flag isn't set when running 'pip/pip3 install'",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -36,6 +38,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "The '--no-cache-dir' flag should be set when running 'pip/pip3 install'",
 		"keyActualValue": "The '--no-cache-dir' flag isn't set when running 'pip/pip3 install'",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

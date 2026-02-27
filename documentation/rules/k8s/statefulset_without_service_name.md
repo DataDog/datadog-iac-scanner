@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- StatefulSets should reference an existing headless Service via `spec.serviceName`. The referenced Service must be headless (`spec.clusterIP` set to "None") and located in the same namespace. All selector labels defined on the Service must be present on the StatefulSet pod template labels so the Service can target the StatefulSet's pods.
-
+StatefulSets should reference an existing headless Service via `spec.serviceName`. The referenced Service must be headless (`spec.clusterIP` set to "None") and located in the same namespace. All selector labels defined on the Service must be present on the StatefulSet pod template labels so the Service can target the StatefulSet's pods.
 
 ## Compliant Code Examples
 ```yaml

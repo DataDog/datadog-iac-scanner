@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Opening port ranges for GameLift fleet instances increases the attack surface by exposing multiple ports instead of a single intended port. This can allow additional network-based attacks and makes it harder to reason about allowed traffic.
+Opening port ranges for GameLift fleet instances increases the attack surface by exposing multiple ports instead of a single intended port. This can allow additional network-based attacks and makes it harder to reason about allowed traffic.
  
  For `AWS::GameLift::Fleet` resources, each entry in the `Properties.EC2InboundPermissions` array must set `FromPort` and `ToPort` to the same numeric value so only a single port is opened. Resources with `EC2InboundPermissions` entries where `FromPort` is not equal to `ToPort` will be flagged. Ensure both properties are defined and equal for every entry.
 
@@ -44,7 +44,6 @@ MyGameLiftFleet:
         IpRange: 0.0.0.0/0
         Protocol: UDP
 ```
-
 
 ## Compliant Code Examples
 ```yaml

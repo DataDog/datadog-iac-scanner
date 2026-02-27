@@ -25,6 +25,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Package version should be specified when using 'dnf install'",
 		"keyActualValue": "Package version should be pinned when running ´dnf install´",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -48,6 +50,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Package version should be specified when using 'dnf install'",
 		"keyActualValue": "Package version should be pinned when running ´dnf install´",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

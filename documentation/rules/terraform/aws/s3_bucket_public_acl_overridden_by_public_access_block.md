@@ -28,12 +28,11 @@ meta:
 
 ### Description
 
- This check identifies S3 buckets that have been configured with public ACLs but are simultaneously protected by bucket-level public access block settings that override those ACLs. This configuration creates a security risk through misleading access controls, where developers might assume the bucket is public (based on ACL settings) when it's actually restricted by the public access block. To properly secure S3 buckets, ensure consistency between your ACL settings and public access block configuration. For example, an insecure configuration might include a public ACL with restrictive public access block settings: ```acl = "public-read-write"
+This check identifies S3 buckets that have been configured with public ACLs but are simultaneously protected by bucket-level public access block settings that override those ACLs. This configuration creates a security risk through misleading access controls, where developers might assume the bucket is public (based on ACL settings) when it's actually restricted by the public access block. To properly secure S3 buckets, ensure consistency between your ACL settings and public access block configuration. For example, an insecure configuration might include a public ACL with restrictive public access block settings: ```acl = "public-read-write"
 block_public_acls = true
 ignore_public_acls = true```. A more transparent configuration would align these settings: ```acl = "public-read-write"
 block_public_acls = false
 ignore_public_acls = false```.
-
 
 ## Compliant Code Examples
 ```terraform

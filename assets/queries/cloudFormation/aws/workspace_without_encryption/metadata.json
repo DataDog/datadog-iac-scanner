@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "User volumes for Amazon WorkSpaces must be encrypted to protect sensitive user data at rest and to reduce the risk of data exposure if storage media, snapshots, or backups are compromised.\n\nIn CloudFormation, `AWS::WorkSpaces::Workspace` resources must include `Properties.UserVolumeEncryptionEnabled` set to `true`. Resources that omit this property or set it to `false` will be flagged. Ensure the property is explicitly defined as a boolean `true` in your template so encryption is enforced for user volumes.\n\nSecure configuration example:\n\n```yaml\nMyWorkSpace:\n  Type: AWS::WorkSpaces::Workspace\n  Properties:\n    BundleId: ws-bundle-id\n    DirectoryId: d-xxxxxxxxx\n    UserName: example-user\n    UserVolumeEncryptionEnabled: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/workspace_without_encryption",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/workspace_without_encryption",
   "platform": "CloudFormation",
   "descriptionID": "ed0be490",
   "cloudProvider": "aws",

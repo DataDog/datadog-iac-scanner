@@ -15,5 +15,7 @@ CxPolicy[result] {
 		"issueType": "RedundantAttribute", #"MissingAttribute" / "RedundantAttribute"
 		"keyExpectedValue": "There should be only one CMD instruction",
 		"keyActualValue": sprintf("There are %d CMD instructions", [count(cmdInst)]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

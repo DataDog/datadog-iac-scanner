@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- A log metric filter and corresponding alarm should be in place to detect when a customer master key (CMK) in AWS KMS is disabled or scheduled for deletion, as these actions may indicate unauthorized or risky changes to encryption controls. Without proper alerting, malicious or accidental actions targeting CMKs may go unnoticed, putting sensitive encrypted data at risk of compromise or loss. A secure Terraform example ensures the `aws_cloudwatch_metric_alarm` uses the metric created by the `aws_cloudwatch_log_metric_filter` to trigger alerts:
+A log metric filter and corresponding alarm should be in place to detect when a customer master key (CMK) in AWS KMS is disabled or scheduled for deletion, as these actions may indicate unauthorized or risky changes to encryption controls. Without proper alerting, malicious or accidental actions targeting CMKs may go unnoticed, putting sensitive encrypted data at risk of compromise or loss. A secure Terraform example ensures the `aws_cloudwatch_metric_alarm` uses the metric created by the `aws_cloudwatch_log_metric_filter` to trigger alerts:
 
 ```
 resource "aws_cloudwatch_metric_alarm" "disable_delete_cmk" {
@@ -36,7 +36,6 @@ resource "aws_cloudwatch_metric_alarm" "disable_delete_cmk" {
   // other attributes...
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

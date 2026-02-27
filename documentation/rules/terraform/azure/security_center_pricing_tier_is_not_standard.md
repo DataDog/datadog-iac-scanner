@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Selecting the appropriate pricing tier for Azure Security Center is crucial for ensuring comprehensive security monitoring and protection. If the `tier` attribute in the `azurerm_security_center_subscription_pricing` resource is set to `"Free"`, as in the following configuration, only limited security features and monitoring capabilities are enabled, leaving the environment more vulnerable to threats:
+Selecting the appropriate pricing tier for Azure Security Center is crucial for ensuring comprehensive security monitoring and protection. If the `tier` attribute in the `azurerm_security_center_subscription_pricing` resource is set to `"Free"`, as in the following configuration, only limited security features and monitoring capabilities are enabled, leaving the environment more vulnerable to threats:
 
 ```
 resource "azurerm_security_center_subscription_pricing" "example" {
@@ -43,7 +43,6 @@ resource "azurerm_security_center_subscription_pricing" "example" {
    tier = "Standard"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -31,6 +31,11 @@ type FileSystemSourceProvider struct {
 	mu       sync.RWMutex
 }
 
+const (
+	minNumWorkers = 4
+	maxNumWorkers = 64
+)
+
 var (
 	queryRegexExcludeTerraCache = regexp.MustCompile(fmt.Sprintf(`^(.*?%s)?\.terra.*`, regexp.QuoteMeta(string(os.PathSeparator))))
 	// ErrNotSupportedFile - error representing when a file format is not supported by KICS
@@ -157,6 +162,187 @@ func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 		continue
 	}
 	return nil
+}
+
+// GetParallelSources is an alternative to GetSources, parallelising the task
+func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
+	extensions model.Extensions, sink Sink, resolverSink ResolverSink) error {
+	contextLogger := logger.FromContext(ctx)
+
+	// Phase 1: Collect all file paths to process
+	var filesToProcess []string
+
+	for _, scanPath := range s.paths {
+		fileInfo, err := os.Stat(scanPath)
+		if err != nil {
+			return errors.Wrap(err, "failed to open path")
+		}
+
+		if !fileInfo.IsDir() {
+			// Single file - validate and add to queue
+			_, openFileErr := openScanFile(ctx, scanPath, extensions)
+			if openFileErr != nil {
+				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
+					continue
+				}
+				return openFileErr
+			}
+			filesToProcess = append(filesToProcess, scanPath)
+			continue
+		}
+
+		// Directory - collect all files first
+		files, err := s.collectFiles(ctx, scanPath, false, resolverSink, extensions)
+		if err != nil {
+			return errors.Wrap(err, "failed to collect files")
+		}
+		filesToProcess = append(filesToProcess, files...)
+	}
+
+	contextLogger.Info().Msgf("Collected %d files to process", len(filesToProcess))
+
+	// Phase 2: Process files in parallel
+	return s.processFilesParallel(ctx, filesToProcess, sink)
+}
+
+// collectFiles walks the directory tree and collects file paths without processing them, except Helm files
+func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string, resolved bool,
+	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
+	contextLogger := logger.FromContext(ctx)
+
+	err = filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolved); shouldSkip {
+			return skipFolder
+		}
+
+		// ------------------ Helm resolver --------------------------------
+		if info.IsDir() {
+			excluded, errRes := resolverSink(ctx, strings.ReplaceAll(path, "\\", "/"))
+			if errRes != nil {
+				return nil
+			}
+			if errAdd := s.AddExcluded(ctx, excluded); errAdd != nil {
+				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
+			}
+			resolved = true
+			return nil
+		}
+		// -----------------------------------------------------------------
+
+		// Just collect the file path, don't open or process it yet
+		files = append(files, strings.ReplaceAll(path, "\\", "/"))
+		return nil
+	})
+
+	return files, err
+}
+
+// processFilesParallel processes collected files using a worker pool
+func (s *FileSystemSourceProvider) processFilesParallel(ctx context.Context, files []string, sink Sink) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	contextLogger := logger.FromContext(ctx)
+
+	numWorkers := s.calculateWorkerCount()
+	contextLogger.Info().Msgf("Processing files with %d workers", numWorkers)
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Create channels for work distribution
+	filesChan := make(chan string, numWorkers*2)
+	errChan := make(chan error, numWorkers)
+	var wg sync.WaitGroup
+
+	// Start worker goroutines
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go s.processFileWorker(workerCtx, &wg, filesChan, errChan, sink)
+	}
+
+	// Feed files to workers
+	go s.feedFilesToWorkers(workerCtx, files, filesChan)
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var firstErr error
+	for err := range errChan {
+		if err != nil && firstErr == nil {
+			firstErr = err
+			cancel()
+		}
+	}
+
+	return firstErr
+}
+
+// calculateWorkerCount determines the optimal number of workers for parallel processing
+func (s *FileSystemSourceProvider) calculateWorkerCount() int {
+	numWorkers := utils.AdjustNumWorkers(0) // 0 means auto-detect
+	if numWorkers < 1 {
+		numWorkers = minNumWorkers
+	}
+	if numWorkers > maxNumWorkers {
+		numWorkers = maxNumWorkers
+	}
+	return numWorkers
+}
+
+// processFileWorker is a worker goroutine that processes files from the channel
+func (s *FileSystemSourceProvider) processFileWorker(ctx context.Context, wg *sync.WaitGroup,
+	filesChan <-chan string, errChan chan<- error, sink Sink) {
+	defer wg.Done()
+	for filePath := range filesChan {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := s.processFile(ctx, filePath, sink); err != nil {
+			select {
+			case errChan <- err:
+			case <-ctx.Done():
+				return
+			}
+			// Stop processing more files after encountering an error
+			return
+		}
+	}
+}
+
+// processFile opens and processes a single file
+func (s *FileSystemSourceProvider) processFile(ctx context.Context, filePath string, sink Sink) error {
+	c, err := os.Open(filepath.Clean(filePath))
+	if err != nil {
+		if ignoreDamagedFiles(ctx, filepath.Clean(filePath)) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to open file")
+	}
+	defer c.Close() //nolint:all
+
+	return sink(ctx, filePath, c)
+}
+
+// feedFilesToWorkers sends files to the worker pool through the channel
+func (s *FileSystemSourceProvider) feedFilesToWorkers(ctx context.Context, files []string, filesChan chan<- string) {
+	defer close(filesChan)
+	for _, file := range files {
+		select {
+		case <-ctx.Done():
+			return
+		case filesChan <- file:
+		}
+	}
 }
 
 func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string, resolved bool,

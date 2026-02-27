@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "API Gateway REST APIs should be configured with a `PRIVATE` endpoint to avoid unintended exposure to the public internet. Publicly accessible APIs increase attack surface and can enable unauthorized access to internal services or sensitive data.\n\n For CloudFormation, the `AWS::ApiGateway::RestApi` resource must define the `EndpointConfiguration` property and its `Types` list must include `PRIVATE`. Resources missing `EndpointConfiguration`, missing `Types`, or whose `Types` list does not contain `PRIVATE` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyPrivateApi:\n  Type: AWS::ApiGateway::RestApi\n  Properties:\n    Name: my-private-api\n    EndpointConfiguration:\n      Types:\n        - PRIVATE\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/api_gateway_endpoint_config_is_not_private",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/api_gateway_endpoint_config_is_not_private",
   "platform": "CloudFormation",
   "descriptionID": "f370d030",
   "cloudProvider": "aws",

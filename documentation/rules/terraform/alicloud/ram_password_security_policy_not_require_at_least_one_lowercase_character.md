@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The RAM account password policy (`alicloud_ram_account_password_policy`) must set `require_lowercase_characters` to `true`. This ensures that account passwords include at least one lowercase character to meet complexity requirements. Resources with `require_lowercase_characters` set to `false` are non-compliant and should be updated to `true`.
-
+The RAM account password policy (`alicloud_ram_account_password_policy`) must set `require_lowercase_characters` to `true`. This ensures that account passwords include at least one lowercase character to meet complexity requirements. Resources with `require_lowercase_characters` set to `false` are non-compliant and should be updated to `true`.
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Schema discriminator property should be a string",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/schema_discriminator_property_not_string",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/schema_discriminator_property_not_string",
   "platform": "OpenAPI",
   "descriptionID": "201104fd",
   "aggregation": 2,

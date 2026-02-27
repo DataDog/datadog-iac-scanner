@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "Security object for operations should not be empty object or has any empty object definition",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/security_operations_empty_object_definition",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/security_operations_empty_object_definition",
   "platform": "OpenAPI",
   "descriptionID": "05dcdd12",
   "aggregation": 2,

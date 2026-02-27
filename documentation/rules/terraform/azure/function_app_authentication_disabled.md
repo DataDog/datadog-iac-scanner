@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Function App authentication settings should be enabled to ensure that only authorized users and services can access the deployed function endpoints. Leaving authentication (`auth_settings { enabled = true }`) disabled, as shown below, permits unauthenticated, potentially malicious access to the function app, increasing the risk of data exposure or unauthorized actions:
+Azure Function App authentication settings should be enabled to ensure that only authorized users and services can access the deployed function endpoints. Leaving authentication (`auth_settings { enabled = true }`) disabled, as shown below, permits unauthenticated, potentially malicious access to the function app, increasing the risk of data exposure or unauthorized actions:
 
 ```
 resource "azurerm_function_app" "example" {
@@ -40,7 +40,6 @@ resource "azurerm_function_app" "example" {
 ```
 
 Enabling authentication protects sensitive operations and helps prevent unauthorized or anonymous interaction with serverless workloads.
-
 
 ## Compliant Code Examples
 ```terraform

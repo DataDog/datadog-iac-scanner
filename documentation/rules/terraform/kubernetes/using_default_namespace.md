@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Resources must not use the `default` namespace.
+Resources must not use the `default` namespace.
 This rule flags Kubernetes resources that either lack `metadata` or `metadata.namespace`, or have `metadata.namespace` set to `default`.
 It applies to resource kinds: `kubernetes_ingress`, `kubernetes_config_map`, `kubernetes_secret`, `kubernetes_service`, `kubernetes_cron_job`, `kubernetes_service_account`, `kubernetes_role`, `kubernetes_role_binding`, `kubernetes_pod`, `kubernetes_deployment`, `kubernetes_daemonset`, `kubernetes_job`, `kubernetes_stateful_set`, `kubernetes_replication_controller`.
-
 
 ## Compliant Code Examples
 ```terraform

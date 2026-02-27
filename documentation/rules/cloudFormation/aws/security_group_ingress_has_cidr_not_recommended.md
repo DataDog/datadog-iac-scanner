@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Ingress rules that use single-address CIDRs (IPv4 `/32` or IPv6 `/128`) are brittle. They often indicate hard-coded, single-IP access which can become stale, break when addresses are reassigned, and lead to unintended access or operational disruption.
+Ingress rules that use single-address CIDRs (IPv4 `/32` or IPv6 `/128`) are brittle. They often indicate hard-coded, single-IP access which can become stale, break when addresses are reassigned, and lead to unintended access or operational disruption.
 
 This check inspects `AWS::EC2::SecurityGroupIngress` resources (`Properties.CidrIp` and `Properties.CidrIpv6`) and `AWS::EC2::SecurityGroup` resources' `Properties.SecurityGroupIngress[].CidrIp` and `CidrIpv6` entries. Any entry containing `/32` (IPv4) or `/128` (IPv6) will be flagged.
 
@@ -48,7 +48,6 @@ MySecurityGroup:
         ToPort: 443
         SourceSecurityGroupId: !Ref BastionSecurityGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

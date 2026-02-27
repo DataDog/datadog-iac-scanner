@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "HTTP Responses status code should be in range of [200-599]",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/responses_wrong_http_status_code",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/responses_wrong_http_status_code",
   "platform": "OpenAPI",
   "descriptionID": "66f7a90d",
   "aggregation": 2,

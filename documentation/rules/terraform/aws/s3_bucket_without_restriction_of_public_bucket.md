@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether public access to an Amazon S3 bucket is properly restricted using the `restrict_public_buckets` attribute within the `aws_s3_bucket_public_access_block` resource. If `restrict_public_buckets` is set to `false` or omitted, as shown below, the bucket may still be publicly accessible through policies, even if other public access blocks are enabled:
+This check verifies whether public access to an Amazon S3 bucket is properly restricted using the `restrict_public_buckets` attribute within the `aws_s3_bucket_public_access_block` resource. If `restrict_public_buckets` is set to `false` or omitted, as shown below, the bucket may still be publicly accessible through policies, even if other public access blocks are enabled:
 
 ```
 resource "aws_s3_bucket_public_access_block" "example" {
@@ -50,7 +50,6 @@ resource "aws_s3_bucket_public_access_block" "example" {
 }
 ```
 Failure to enforce this protection may lead to unauthorized access to sensitive data stored in S3, resulting in data breaches and compliance violations.
-
 
 ## Compliant Code Examples
 ```terraform

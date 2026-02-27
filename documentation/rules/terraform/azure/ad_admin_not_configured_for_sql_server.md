@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When a SQL server in Azure is not configured with an Active Directory (AD) administrator, access control is limited to SQL authentication accounts, which lack the centralized identity management and advanced security features provided by Azure AD. This can make the SQL server more difficult to manage securely and can increase the risk of unauthorized access if user accounts are not handled properly. Enabling AD authentication by specifying an `azurerm_sql_active_directory_administrator` resource ensures that access can be centrally managed and monitored, helping enforce organizational security policies. 
+When a SQL server in Azure is not configured with an Active Directory (AD) administrator, access control is limited to SQL authentication accounts, which lack the centralized identity management and advanced security features provided by Azure AD. This can make the SQL server more difficult to manage securely and can increase the risk of unauthorized access if user accounts are not handled properly. Enabling AD authentication by specifying an `azurerm_sql_active_directory_administrator` resource ensures that access can be centrally managed and monitored, helping enforce organizational security policies. 
 
 A secure Terraform configuration example should look like the following:
 ```
@@ -40,7 +40,6 @@ resource "azurerm_sql_active_directory_administrator" "example" {
   object_id           = data.azurerm_client_config.current.object_id
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When running `kube-apiserver`, the `--basic-auth-file` flag should not be set. The rule inspects `containers` and `initContainers` whose command includes `kube-apiserver` and reports the resource if the `--basic-auth-file` flag is present. Basic auth files are insecure and deprecated; use supported authentication mechanisms (for example, client certificates or tokens) instead.
-
+When running `kube-apiserver`, the `--basic-auth-file` flag should not be set. The rule inspects `containers` and `initContainers` whose command includes `kube-apiserver` and reports the resource if the `--basic-auth-file` flag is present. Basic auth files are insecure and deprecated; use supported authentication mechanisms (for example, client certificates or tokens) instead.
 
 ## Compliant Code Examples
 ```yaml

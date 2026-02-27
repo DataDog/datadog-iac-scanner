@@ -1,11 +1,12 @@
 {
   "id": "99614418-f82b-4852-a9ae-5051402b741c",
-  "queryName": "MAINTAINER Instruction Being Used",
+  "queryName": "MAINTAINER instruction being used",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "The MAINTAINER instruction sets the Author field of the generated images. The LABEL instruction is a much more flexible version of this and you should use it instead, as it enables setting any metadata you require, and can be viewed easily",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#maintainer-deprecated",
+  "descriptionText": "Using the deprecated `MAINTAINER` instruction can cause maintainer metadata to be lost or ignored by modern build systems and does not follow OCI image metadata conventions, which reduces image traceability and hinders incident response, patching, and supply chain automation. This rule flags Dockerfiles that contain a `MAINTAINER` instruction; instead, set maintainer information as a `LABEL` so metadata is preserved and machine-readable.\n\nUpdate Dockerfiles by replacing `MAINTAINER` with a `LABEL` (for example, a simple `maintainer` label or the OCI-standard `org.opencontainers.image.authors`) and ensure the label value includes contact details or an identifier recognizable by your tooling.\n\nSecure examples:\n\n```dockerfile\n# simple maintainer label\nLABEL maintainer=\"Alice Example <alice@example.com>\"\n\n# OCI standard author label\nLABEL org.opencontainers.image.authors=\"Alice Example <alice@example.com>\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/maintainer_instruction_being_used",
   "platform": "Dockerfile",
   "descriptionID": "9d9cbf83",
-  "cwe": "710"
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#maintainer-deprecated"
 }

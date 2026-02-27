@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets that receive CloudTrail log deliveries should have S3 server access logging enabled so access to log files and object-level operations are recorded for auditing and incident investigation. Without access logs, unauthorized reads, writes, or deletions of delivered logs may go undetected.
+S3 buckets that receive CloudTrail log deliveries should have S3 server access logging enabled so access to log files and object-level operations are recorded for auditing and incident investigation. Without access logs, unauthorized reads, writes, or deletions of delivered logs may go undetected.
 
 This rule looks for `AWS::S3::Bucket` resources referenced by an `AWS::S3::BucketPolicy` where `PolicyDocument.Statement[].Principal.Service == "cloudtrail.amazonaws.com"`. For those buckets, `Properties.LoggingConfiguration` must be defined. Resources missing `LoggingConfiguration` will be flagged. Set `LoggingConfiguration.DestinationBucketName` (and optionally `LogFilePrefix`) to a dedicated logging bucket to collect access logs.
 
@@ -43,7 +43,6 @@ MyCloudTrailBucket:
       DestinationBucketName: my-logging-bucket
       LogFilePrefix: access-logs/
 ```
-
 
 ## Compliant Code Examples
 ```yaml

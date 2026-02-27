@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "The node image should be Container-Optimized OS(COS)",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/cos_node_image_not_used",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/cos_node_image_not_used",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "5915a575",
   "cloudProvider": "gcp",

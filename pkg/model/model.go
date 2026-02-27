@@ -19,6 +19,7 @@ import (
 const (
 	KindTerraform FileKind = "TF"
 	KindBICEP     FileKind = "BICEP"
+	KindDOCKER    FileKind = "DOCKER"
 	KindJSON      FileKind = "JSON"
 	KindYAML      FileKind = "YAML"
 	KindYML       FileKind = "YML"

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not share the host network namespace. Setting `spec.hostNetwork` to true causes a pod's containers to use the node's network namespace, exposing host network interfaces and reducing network isolation. This rule flags resources where `spec.hostNetwork` is true; it expects `spec.hostNetwork` to be false or undefined.
-
+Containers should not share the host network namespace. Setting `spec.hostNetwork` to true causes a pod's containers to use the node's network namespace, exposing host network interfaces and reducing network isolation. This rule flags resources where `spec.hostNetwork` is true; it expects `spec.hostNetwork` to be false or undefined.
 
 ## Compliant Code Examples
 ```yaml

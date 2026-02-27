@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Roles or ClusterRoles with the `impersonate` permission allow subjects to assume the rights of other users, groups, or service accounts. If an identity with such permissions is compromised, attackers can abuse this sudo-like capability to escalate privileges and act with the impersonated principals' access. Misuse of the `impersonate` permission can enable lateral movement, persistent access, and the bypass of intended permission boundaries. For these reasons, `impersonate` is considered a high-risk permission and is commonly subject to restriction and monitoring.
-
+Roles or ClusterRoles with the `impersonate` permission allow subjects to assume the rights of other users, groups, or service accounts. If an identity with such permissions is compromised, attackers can abuse this sudo-like capability to escalate privileges and act with the impersonated principals' access. Misuse of the `impersonate` permission can enable lateral movement, persistent access, and the bypass of intended permission boundaries. For these reasons, `impersonate` is considered a high-risk permission and is commonly subject to restriction and monitoring.
 
 ## Compliant Code Examples
 ```yaml

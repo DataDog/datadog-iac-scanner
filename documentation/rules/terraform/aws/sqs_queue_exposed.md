@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- An SQS Queue is considered exposed when its policy allows access from any principal by setting `Principal` to `*`. This creates a security vulnerability where unauthorized users can send messages to your queue, potentially leading to information disclosure or denial of service attacks.
+An SQS Queue is considered exposed when its policy allows access from any principal by setting `Principal` to `*`. This creates a security vulnerability where unauthorized users can send messages to your queue, potentially leading to information disclosure or denial of service attacks.
 
 To secure your SQS queue, avoid using wildcard principals in your policy statements. Instead, explicitly specify the ARNs of services or resources that should have access to the queue, as shown in the following secure example:
 
@@ -48,7 +48,6 @@ To secure your SQS queue, avoid using wildcard principals in your policy stateme
   ]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

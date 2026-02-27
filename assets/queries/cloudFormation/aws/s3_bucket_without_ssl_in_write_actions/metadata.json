@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "S3 buckets should enforce SSL/TLS for data in transit to prevent unencrypted requests from exposing sensitive data or enabling man-in-the-middle attacks.\n\nEnsure each `AWS::S3::Bucket` has an associated `AWS::S3::BucketPolicy` whose `Properties.PolicyDocument.Statement` enforces `aws:SecureTransport`. For example, use a `Deny` statement that blocks unsafe actions (such as `s3:*` or `s3:PutObject`) when `Condition.Bool[\"aws:SecureTransport\"]` is `false`. Alternatively, use `Allow` statements that only permit those actions when `aws:SecureTransport` is `true`.\n\nResources missing an `AWS::S3::BucketPolicy`, or with statements that do not include the `Condition.Bool[\"aws:SecureTransport\"]` check (that is, do not deny unsecured requests), will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyBucketPolicy:\n  Type: AWS::S3::BucketPolicy\n  Properties:\n    Bucket: !Ref MyBucket\n    PolicyDocument:\n      Statement:\n        - Sid: EnforceSSL\n          Effect: Deny\n          Principal: \"*\"\n          Action: \"s3:*\"\n          Resource:\n            - !Sub \"arn:aws:s3:::${MyBucket}\"\n            - !Sub \"arn:aws:s3:::${MyBucket}/*\"\n          Condition:\n            Bool:\n              aws:SecureTransport: \"false\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_without_ssl_in_write_actions",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_without_ssl_in_write_actions",
   "platform": "CloudFormation",
   "descriptionID": "907676d7",
   "cloudProvider": "aws",

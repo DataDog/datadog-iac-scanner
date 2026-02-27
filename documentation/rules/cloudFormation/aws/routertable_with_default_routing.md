@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Default routes that use IPv4 `0.0.0.0/0` or IPv6 `::/0` can expose subnets and instances to the public internet. This increases the risk of unauthorized access, data exfiltration, and lateral movement.
+Default routes that use IPv4 `0.0.0.0/0` or IPv6 `::/0` can expose subnets and instances to the public internet. This increases the risk of unauthorized access, data exfiltration, and lateral movement.
 
 In CloudFormation, inspect `AWS::EC2::Route` resources. If `DestinationCidrBlock` equals `0.0.0.0/0` or `DestinationIpv6CidrBlock` equals `::/0`, the route must explicitly target a NAT gateway so outbound traffic from private subnets is proxied rather than directly exposed. Ensure the `NatGatewayId` property is defined on routes that provide internet-bound access. Resources missing `NatGatewayId`, or with a default destination but no NAT gateway, will be flagged.
 
@@ -42,7 +42,6 @@ PrivateRoute:
     DestinationCidrBlock: 0.0.0.0/0
     NatGatewayId: !Ref MyNatGateway
 ```
-
 
 ## Compliant Code Examples
 ```yaml

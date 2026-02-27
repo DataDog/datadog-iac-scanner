@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "This check looks for AWS IAM groups with policies that allow the `iam:PutRolePolicy` action on all resources (`\"Resource\": \"*\"`) in Terraform code. Granting this privilege means members of the group can attach any policy to any IAM role in the account, enabling easy privilege escalation or the creation of backdoors. If left unaddressed, attackers or unprivileged users could use this access to gain administrative permissions or compromise critical resources, leading to severe security risks.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_PutRolePolicy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/group_with_privilege_escalation_by_actions_iam_putrolepolicy",
   "platform": "Terraform",
   "descriptionID": "3a6914a5",
   "cloudProvider": "aws",

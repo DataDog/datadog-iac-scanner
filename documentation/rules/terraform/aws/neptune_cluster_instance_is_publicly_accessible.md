@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- Amazon Neptune cluster instances should not be publicly accessible to reduce the risk of unauthorized access to sensitive graph data. When a Neptune instance is publicly accessible, it can be accessed directly from the internet, potentially exposing it to attacks and unauthorized access attempts. To properly secure Neptune instances, set the `publicly_accessible` attribute to `false`, as shown in the following example: 
+Amazon Neptune cluster instances should not be publicly accessible to reduce the risk of unauthorized access to sensitive graph data. When a Neptune instance is publicly accessible, it can be accessed directly from the internet, potentially exposing it to attacks and unauthorized access attempts. To properly secure Neptune instances, set the `publicly_accessible` attribute to `false`, as shown in the following example: 
 ```
 resource "aws_neptune_cluster_instance" "example" {
   // ... other configurations
   publicly_accessible = false
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

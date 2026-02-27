@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Setting `IpProtocol` to `-1` allows all protocols and all ports. This greatly increases attack surface and can expose services or enable lateral movement if an ingress rule is too permissive.
+Setting `IpProtocol` to `-1` allows all protocols and all ports. This greatly increases attack surface and can expose services or enable lateral movement if an ingress rule is too permissive.
 
 Check `AWS::EC2::SecurityGroupIngress` resources and `AWS::EC2::SecurityGroup` resources' `SecurityGroupIngress` entries. `IpProtocol` must not be set to `-1`. Resources with `IpProtocol: -1` will be flagged. Specify explicit protocols (for example, `tcp`, `udp`, or `icmp`, or their numeric protocol values) and define `FromPort`/`ToPort` where applicable. If broader access is required, restrict the source to a specific CIDR or use a referenced security group.
 
@@ -55,7 +55,6 @@ MySecurityGroup:
         ToPort: 22
         CidrIp: 203.0.113.5/32
 ```
-
 
 ## Compliant Code Examples
 ```yaml

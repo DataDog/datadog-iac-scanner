@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting an IAM role permissions for both `iam:UpdateAssumeRolePolicy` and `sts:AssumeRole` actions with the `Resource` attribute set to `"*"` creates a severe privilege escalation risk. This misconfiguration allows a user or role to modify the trust policies of any role and subsequently assume any role in the AWS account, potentially gaining administrative privileges. If left unaddressed, malicious actors could exploit these permissions to take over sensitive roles and perform unauthorized actions across all AWS resources.
-
+Granting an IAM role permissions for both `iam:UpdateAssumeRolePolicy` and `sts:AssumeRole` actions with the `Resource` attribute set to `"*"` creates a severe privilege escalation risk. This misconfiguration allows a user or role to modify the trust policies of any role and subsequently assume any role in the AWS account, potentially gaining administrative privileges. If left unaddressed, malicious actors could exploit these permissions to take over sensitive roles and perform unauthorized actions across all AWS resources.
 
 ## Compliant Code Examples
 ```terraform

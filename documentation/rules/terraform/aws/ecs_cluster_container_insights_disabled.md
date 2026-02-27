@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- ECS clusters should have the `containerInsights` setting enabled to provide enhanced monitoring and observability for container workloads. Without enabling container insights, as in the configuration below, critical metrics and logs about cluster and task performance will not be collected, making it more difficult to detect anomalies, troubleshoot issues, and ensure operational health:
+ECS clusters should have the `containerInsights` setting enabled to provide enhanced monitoring and observability for container workloads. Without enabling container insights, as in the configuration below, critical metrics and logs about cluster and task performance will not be collected, making it more difficult to detect anomalies, troubleshoot issues, and ensure operational health:
 
 ```
 resource "aws_ecs_cluster" "foo" {
@@ -44,7 +44,6 @@ setting {
   value = "enabled"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

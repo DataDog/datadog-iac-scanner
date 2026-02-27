@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The ECS service should have at least one task running, which is defined by the `desired_count` attribute in the Terraform configuration. An unsafe configuration, such as shown below, leaves the service without any running tasks, meaning the application will be unavailable and unable to process user requests:
+The ECS service should have at least one task running, which is defined by the `desired_count` attribute in the Terraform configuration. An unsafe configuration, such as shown below, leaves the service without any running tasks, meaning the application will be unavailable and unable to process user requests:
 
 ```
 resource "aws_ecs_service" "positive1" {
@@ -39,7 +39,6 @@ resource "aws_ecs_service" "positive1" {
 ```
 
 Failure to set an appropriate value for `desired_count` can lead to outages and an inability to meet service availability or business requirements.
-
 
 ## Compliant Code Examples
 ```terraform

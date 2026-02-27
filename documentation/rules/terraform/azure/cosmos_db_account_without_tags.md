@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Cosmos DB accounts should be configured with appropriate tags to ensure resources are identifiable, manageable, and auditable within an Azure environment. Without tags, as shown below, critical contextual information—such as environment, owner, or cost center—is missing, making resource management and cost tracking difficult:
+Cosmos DB accounts should be configured with appropriate tags to ensure resources are identifiable, manageable, and auditable within an Azure environment. Without tags, as shown below, critical contextual information—such as environment, owner, or cost center—is missing, making resource management and cost tracking difficult:
 
 ```
 resource "azurerm_cosmosdb_account" "example" {
@@ -49,7 +49,6 @@ resource "azurerm_cosmosdb_account" "example" {
 ```
 
 Leaving tags unconfigured can lead to unmanaged resources, increased risk of misconfiguration, and operational inefficiencies.
-
 
 ## Compliant Code Examples
 ```terraform

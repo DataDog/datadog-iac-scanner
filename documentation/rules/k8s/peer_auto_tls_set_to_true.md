@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When running `etcd`, the `--peer-auto-tls` flag must not be set to `true`; it should be set to `false` or omitted. This rule inspects `containers` and `initContainers` for `etcd` commands and flags set to `--peer-auto-tls=true`. Enabling peer auto TLS can cause certificates to be automatically accepted or generated for peers, potentially weakening cluster security, so explicit TLS configuration is required.
-
+When running `etcd`, the `--peer-auto-tls` flag must not be set to `true`; it should be set to `false` or omitted. This rule inspects `containers` and `initContainers` for `etcd` commands and flags set to `--peer-auto-tls=true`. Enabling peer auto TLS can cause certificates to be automatically accepted or generated for peers, potentially weakening cluster security, so explicit TLS configuration is required.
 
 ## Compliant Code Examples
 ```yaml

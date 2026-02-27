@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When a container command includes `etcd`, the `--peer-cert-file` and `--peer-key-file` flags should be set. The rule inspects both initContainers and containers and reports a MissingAttribute when any required flag is not present in the container's command. The result identifies the resource and the command position where the missing flag was detected.
-
+When a container command includes `etcd`, the `--peer-cert-file` and `--peer-key-file` flags should be set. The rule inspects both initContainers and containers and reports a MissingAttribute when any required flag is not present in the container's command. The result identifies the resource and the command position where the missing flag was detected.
 
 ## Compliant Code Examples
 ```yaml

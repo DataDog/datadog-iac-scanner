@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Verifies whether a Kubernetes workload's container specifies a `host_port`. The rule checks `kubernetes_pod` and `kubernetes_deployment` resources, inspecting `spec.container` or `spec.template.spec.container` blocks. It reports an `IncorrectValue` issue when the `host_port` attribute is undefined or null.
-
+Verifies whether a Kubernetes workload's container specifies a `host_port`. The rule checks `kubernetes_pod` and `kubernetes_deployment` resources, inspecting `spec.container` or `spec.template.spec.container` blocks. It reports an `IncorrectValue` issue when the `host_port` attribute is undefined or null.
 
 ## Compliant Code Examples
 ```terraform

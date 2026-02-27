@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting the `iam:PutGroupPolicy` action with the `Resource` value set to `"*"` in an IAM policy, as shown below, allows the role to attach arbitrary permissions to any IAM group in the account:
+Granting the `iam:PutGroupPolicy` action with the `Resource` value set to `"*"` in an IAM policy, as shown below, allows the role to attach arbitrary permissions to any IAM group in the account:
 
 ```
 policy = jsonencode({
@@ -46,7 +46,6 @@ policy = jsonencode({
 ```
 
 This powerful permission can be abused for privilege escalation, as a malicious user assuming this role could grant themselves or others elevated privileges by attaching highly permissive group policies. To mitigate this risk, limit the scope of the `Resource` attribute to only the intended groups and restrict allowed actions to only those necessary for the role’s function.
-
 
 ## Compliant Code Examples
 ```terraform

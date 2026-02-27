@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- KMS keys must have a strict, explicit key policy because policies that grant broad `kms:*` permissions to wildcard principals (or omit a policy entirely) allow unintended principals to administer or use the key. This can lead to unauthorized decryption, key compromise, or deletion.
+KMS keys must have a strict, explicit key policy because policies that grant broad `kms:*` permissions to wildcard principals (or omit a policy entirely) allow unintended principals to administer or use the key. This can lead to unauthorized decryption, key compromise, or deletion.
 
 In AWS CloudFormation, inspect `AWS::KMS::Key` resources and verify `Properties.KeyPolicy.Statement[]`. A statement will be flagged when `Effect` is `Allow`, `Action` includes `kms:*`, and `Principal` is `*` (or contains wildcard values) without a restrictive `Condition`. Resources with `Properties.KeyPolicy` undefined or `null` are also flagged.
 
@@ -52,7 +52,6 @@ MyKey:
             - "kms:Decrypt"
           Resource: "*"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

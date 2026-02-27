@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Workloads and persistent volumes outside the `kube-system` namespace should not include `hostPath` mounts. This rule evaluates `kubernetes_pod` and `kubernetes_persistent_volume` resources and flags any `spec.volume.host_path.path` entries; when `metadata.namespace` is unset it is treated as `default`.
-
+Workloads and persistent volumes outside the `kube-system` namespace should not include `hostPath` mounts. This rule evaluates `kubernetes_pod` and `kubernetes_persistent_volume` resources and flags any `spec.volume.host_path.path` entries; when `metadata.namespace` is unset it is treated as `default`.
 
 ## Compliant Code Examples
 ```terraform

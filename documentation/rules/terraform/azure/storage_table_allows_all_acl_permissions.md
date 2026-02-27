@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing all Access Control List (ACL) permissions (`rwdl` for read, write, delete, and list) on an Azure storage Table grants overly broad access, increasing the risk of unauthorized data modification or deletion. This misconfiguration may lead to data leakage, loss, or manipulation if the credentials are compromised or abused. To enhance security, permissions should be limited to only those operations necessary for the application's function, such as using only `r` for read access:
+Allowing all Access Control List (ACL) permissions (`rwdl` for read, write, delete, and list) on an Azure storage Table grants overly broad access, increasing the risk of unauthorized data modification or deletion. This misconfiguration may lead to data leakage, loss, or manipulation if the credentials are compromised or abused. To enhance security, permissions should be limited to only those operations necessary for the application's function, such as using only `r` for read access:
 
 ```
 resource "azurerm_storage_table" "table_resource2" {
@@ -44,7 +44,6 @@ resource "azurerm_storage_table" "table_resource2" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -1,0 +1,13 @@
+{
+  "id": "455f2e0c-686d-4fcb-8b5f-3f953f12c43c",
+  "queryName": "Seccomp profile is not configured",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should be configured with a secure Seccomp profile to restrict potentially dangerous syscalls.  \nThis rule validates that a seccomp profile is configured on `kubernetes_pod`, `kubernetes_cron_job`, and other workload resources. The recommended approach (Kubernetes v1.19+) is to set `security_context.seccomp_profile.type` to `RuntimeDefault` or `Localhost` in the pod spec. The legacy annotation `seccomp.security.alpha.kubernetes.io/defaultProfileName` with value `runtime/default` is also accepted for older clusters.  \nIf neither the `seccomp_profile` block nor the annotation is configured, the rule reports a `MissingAttribute` issue. If `seccomp_profile.type` is set to an insecure value (e.g. `Unconfined`), the rule reports an `IncorrectValue` issue.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/seccomp_profile_is_not_configured",
+  "platform": "Terraform",
+  "descriptionID": "ad5436a1",
+  "cwe": "665",
+  "cloudProvider": "common",
+  "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#annotations"
+}

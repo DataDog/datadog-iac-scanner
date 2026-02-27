@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- PodSecurityPolicy should not allow privilege escalation. The PodSecurityPolicy must include the 'allowPrivilegeEscalation' attribute and it must be set to false. If the attribute is missing or set to true, the PodSecurityPolicy is considered non-compliant.
-
+PodSecurityPolicy should not allow privilege escalation. The PodSecurityPolicy must include the 'allowPrivilegeEscalation' attribute and it must be set to false. If the attribute is missing or set to true, the PodSecurityPolicy is considered non-compliant.
 
 ## Compliant Code Examples
 ```yaml

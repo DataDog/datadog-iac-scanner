@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Verifies that container root filesystems are mounted read-only by ensuring `security_context.read_only_root_filesystem` is set to `true`. Flags resources where `security_context` or `security_context.read_only_root_filesystem` is missing, or where `read_only_root_filesystem` is set to `false`, for both `container` and `init_container` entries. This enforces an immutable root filesystem to reduce the attack surface.
-
+Verifies that container root filesystems are mounted read-only by ensuring `security_context.read_only_root_filesystem` is set to `true`. Flags resources where `security_context` or `security_context.read_only_root_filesystem` is missing, or where `read_only_root_filesystem` is set to `false`, for both `container` and `init_container` entries. This enforces an immutable root filesystem to reduce the attack surface.
 
 ## Compliant Code Examples
 ```terraform

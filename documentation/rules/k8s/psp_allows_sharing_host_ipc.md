@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- PodSecurityPolicy 'spec.hostIPC' allows containers to share the host IPC namespace when set to true. Sharing the host IPC namespace lets processes in a container observe or interfere with IPC resources of other containers or the host, increasing the risk of information disclosure and privilege escalation. 'spec.hostIPC' should be set to false or left undefined to preserve IPC isolation.
-
+PodSecurityPolicy 'spec.hostIPC' allows containers to share the host IPC namespace when set to true. Sharing the host IPC namespace lets processes in a container observe or interfere with IPC resources of other containers or the host, increasing the risk of information disclosure and privilege escalation. 'spec.hostIPC' should be set to false or left undefined to preserve IPC isolation.
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Multi-node Amazon ElastiCache (Memcached) clusters must be deployed across multiple Availability Zones to maintain availability and avoid complete cluster outage if a single Availability Zone fails.
+Multi-node Amazon ElastiCache (Memcached) clusters must be deployed across multiple Availability Zones to maintain availability and avoid complete cluster outage if a single Availability Zone fails.
  
  The `AZMode` property on `AWS::ElastiCache::CacheCluster` must be set to `cross-az` for resources with `Engine` set to `memcached` and `NumCacheNodes` greater than `1`. If `AZMode` is omitted, the cluster defaults to `single-az`, so resources missing `AZMode` or with `AZMode` not equal to `cross-az` will be flagged as a configuration risk.
 
@@ -43,7 +43,6 @@ MyCacheCluster:
     AZMode: cross-az
     CacheNodeType: cache.m6g.large
 ```
-
 
 ## Compliant Code Examples
 ```yaml

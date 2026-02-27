@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A service account token is shared between workloads. The rule detects multiple workload manifests that reference the same `serviceAccountName` in their spec. Sharing a service account increases the blast radius and can violate least-privilege principles by causing credentials and permissions to be shared across workloads.
-
+A service account token is shared between workloads. The rule detects multiple workload manifests that reference the same `serviceAccountName` in their spec. Sharing a service account increases the blast radius and can violate least-privilege principles by causing credentials and permissions to be shared across workloads.
 
 ## Compliant Code Examples
 ```yaml

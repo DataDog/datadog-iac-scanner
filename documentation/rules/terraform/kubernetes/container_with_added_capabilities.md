@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not include added capabilities. This rule checks both `container` and `init_container` entries and ensures `security_context.capabilities.add` is not defined. If the `add` list is set, the rule reports an `IncorrectValue` with the resource location and the expected vs actual values.
-
+Containers should not include added capabilities. This rule checks both `container` and `init_container` entries and ensures `security_context.capabilities.add` is not defined. If the `add` list is set, the rule reports an `IncorrectValue` with the resource location and the expected vs actual values.
 
 ## Compliant Code Examples
 ```terraform

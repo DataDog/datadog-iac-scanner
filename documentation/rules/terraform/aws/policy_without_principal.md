@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- When defining resource-based policies in AWS using Terraform, the `Principal` element must be explicitly set to specify which users, roles, or accounts are permitted to access the resource. If the `Principal` element is omitted in policies other than IAM identity-based policies, the permissions may unintentionally allow access to any AWS user, potentially enabling unauthorized or malicious actions on the resource. For example, a secure policy includes the `"Principal"` attribute, restricting permissions to specific users:
+When defining resource-based policies in AWS using Terraform, the `Principal` element must be explicitly set to specify which users, roles, or accounts are permitted to access the resource. If the `Principal` element is omitted in policies other than IAM identity-based policies, the permissions may unintentionally allow access to any AWS user, potentially enabling unauthorized or malicious actions on the resource. For example, a secure policy includes the `"Principal"` attribute, restricting permissions to specific users:
 
 ```
 "Principal": {
@@ -39,7 +39,6 @@ meta:
 }
 ```
 Neglecting to define the `Principal` in resource-based policies significantly increases the risk of unauthorized access or privilege escalation.
-
 
 ## Compliant Code Examples
 ```terraform

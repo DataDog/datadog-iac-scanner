@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "Global Schemes should use 'https' protocol instead of 'http'",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/global_schemes_uses_http",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/global_schemes_uses_http",
   "platform": "OpenAPI",
   "descriptionID": "11bb39ad",
   "cwe": "319",

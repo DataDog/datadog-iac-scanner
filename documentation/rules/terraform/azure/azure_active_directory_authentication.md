@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Azure Service Fabric clusters should be configured to use Azure Active Directory (AAD) for authentication to ensure secure identity management and access control. Omitting the `tenant_id` attribute in the `azure_active_directory` block, as shown below, may result in incomplete AAD integration, potentially allowing unauthorized access to the Service Fabric cluster:
+Azure Service Fabric clusters should be configured to use Azure Active Directory (AAD) for authentication to ensure secure identity management and access control. Omitting the `tenant_id` attribute in the `azure_active_directory` block, as shown below, may result in incomplete AAD integration, potentially allowing unauthorized access to the Service Fabric cluster:
 
 ```
 azure_active_directory {
@@ -48,7 +48,6 @@ azure_active_directory {
 ```
 
 Failure to correctly implement AAD authentication increases the risk of unauthorized cluster access and potential exposure of sensitive workloads and management endpoints.
-
 
 ## Compliant Code Examples
 ```terraform

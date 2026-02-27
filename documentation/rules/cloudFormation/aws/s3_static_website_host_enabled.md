@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets configured for static website hosting expose content via the S3 website endpoint. These endpoints do not support HTTPS, and website hosting is frequently paired with public access. This increases the risk of accidental data exposure, content tampering, and man-in-the-middle attacks.
+S3 buckets configured for static website hosting expose content via the S3 website endpoint. These endpoints do not support HTTPS, and website hosting is frequently paired with public access. This increases the risk of accidental data exposure, content tampering, and man-in-the-middle attacks.
 
 The `WebsiteConfiguration` property on `AWS::S3::Bucket` resources indicates static website hosting and must not be defined. This rule flags any resource where `Resources.<name>.Properties.WebsiteConfiguration` is present.
 
@@ -51,7 +51,6 @@ MyBucket:
         - ServerSideEncryptionByDefault:
             SSEAlgorithm: AES256
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The RDB instance is configured to allow public network access.
+The RDB instance is configured to allow public network access.
 This rule detects `nifcloud_db_instance` resources where `publicly_accessible` is set to `true` and reports an `IncorrectValue` issue; network access should be limited to the minimum required for the application to function.
 Report attributes: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`.
-
 
 ## Compliant Code Examples
 ```terraform

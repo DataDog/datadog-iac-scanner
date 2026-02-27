@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EC2 instances placed in a default VPC are more likely to be publicly reachable and lack explicit network segmentation, increasing the risk of unintended exposure and lateral movement. This rule checks `AWS::EC2::Instance` resources and ensures `Properties.SubnetId` does not reference a subnet that is associated with a default VPC. Instances are flagged when their `SubnetId` references an `AWS::EC2::Subnet` whose `Properties.VpcId` resolves to a value or `Ref` name containing `default`. Use an explicit non-default VPC and private subnets. For example, reference a subnet in your own VPC:
+EC2 instances placed in a default VPC are more likely to be publicly reachable and lack explicit network segmentation, increasing the risk of unintended exposure and lateral movement. This rule checks `AWS::EC2::Instance` resources and ensures `Properties.SubnetId` does not reference a subnet that is associated with a default VPC. Instances are flagged when their `SubnetId` references an `AWS::EC2::Subnet` whose `Properties.VpcId` resolves to a value or `Ref` name containing `default`. Use an explicit non-default VPC and private subnets. For example, reference a subnet in your own VPC:
 
 ```yaml
 MyVPC:
@@ -47,7 +47,6 @@ MyInstance:
   Properties:
     SubnetId: !Ref MySubnet
 ```
-
 
 ## Compliant Code Examples
 ```yaml

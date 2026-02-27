@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `policy` of an `alicloud_oss_bucket` must not allow `List` actions for all principals. Such policies can expose private data or enable unauthorized tampering or deletion. Specifically, `Effect` must not be `Allow` when `Action` includes `List` and `Principal` is set to `"*"`. This rule flags `alicloud_oss_bucket[*].policy` documents that permit `List` actions to all principals.
-
+The `policy` of an `alicloud_oss_bucket` must not allow `List` actions for all principals. Such policies can expose private data or enable unauthorized tampering or deletion. Specifically, `Effect` must not be `Allow` when `Action` includes `List` and `Principal` is set to `"*"`. This rule flags `alicloud_oss_bucket[*].policy` documents that permit `List` actions to all principals.
 
 ## Compliant Code Examples
 ```terraform

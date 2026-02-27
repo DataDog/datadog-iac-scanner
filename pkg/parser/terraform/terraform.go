@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -35,14 +36,16 @@ type Parser struct {
 	numOfRetries      int
 	terraformVarsPath string
 	sciInfo           model.SCIInfo
-	inputVariables    converter.VariableMap
+	inputVariables    map[string]converter.VariableMap
+	inputVarsMu       sync.RWMutex
 }
 
 // NewDefault initializes a parser with Parser default values
 func NewDefault() *Parser {
 	return &Parser{
-		numOfRetries: RetriesDefaultValue,
-		convertFunc:  converter.DefaultConverted,
+		numOfRetries:   RetriesDefaultValue,
+		convertFunc:    converter.DefaultConverted,
+		inputVariables: make(map[string]converter.VariableMap),
 	}
 }
 
@@ -64,7 +67,15 @@ func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename strin
 		}
 	}()
 	inputVars := getInputVariables(ctx, filepath.Dir(filename), string(fileContent), p.terraformVarsPath)
-	p.inputVariables = getDataSourcePolicy(ctx, filepath.Dir(filename), inputVars)
+	vars := getDataSourcePolicy(ctx, filepath.Dir(filename), inputVars)
+
+	// Store variables per filename to avoid race conditions between different files
+	// Use base filename to ensure consistency between Resolve() and Parse() calls
+	baseFilename := filepath.Base(filename)
+	p.inputVarsMu.Lock()
+	p.inputVariables[baseFilename] = vars
+	p.inputVarsMu.Unlock()
+
 	return fileContent, nil
 }
 
@@ -196,7 +207,16 @@ func (p *Parser) Parse(ctx context.Context, path string, content []byte) ([]mode
 
 	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
 
-	fc, parseErr := p.convertFunc(ctx, file, p.inputVariables)
+	// Use base filename to ensure consistency between Resolve() and Parse() calls
+	baseFilename := filepath.Base(path)
+	p.inputVarsMu.RLock()
+	inputVars, ok := p.inputVariables[baseFilename]
+	if !ok {
+		inputVars = make(converter.VariableMap)
+	}
+	p.inputVarsMu.RUnlock()
+
+	fc, parseErr := p.convertFunc(ctx, file, inputVars)
 	json, err := addExtraInfo(ctx, []model.Document{fc}, path)
 	if err != nil {
 		return json, []int{}, errors.Wrap(err, "failed terraform parse")

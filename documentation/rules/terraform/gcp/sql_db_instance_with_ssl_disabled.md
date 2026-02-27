@@ -28,18 +28,17 @@ meta:
 
 ### Description
 
- Google Cloud SQL instances without SSL enabled allow unencrypted connections, which can lead to data exposure through network eavesdropping and man-in-the-middle attacks. SSL encryption provides an essential layer of security for database connections by encrypting data in transit between the client and server. To secure your Google Cloud SQL Database, you should explicitly set `require_ssl = true` in the `ip_configuration` block as shown below:
+Google Cloud SQL instances without SSL enabled allow unencrypted connections, which can lead to data exposure through network eavesdropping and man-in-the-middle attacks. SSL encryption provides an essential layer of security for database connections by encrypting data in transit between the client and server. To secure your Google Cloud SQL Database, you should set `ssl_mode` to `ENCRYPTED_ONLY` or `TRUSTED_CLIENT_CERTIFICATE_REQUIRED` in the `ip_configuration` block (recommended), or set the legacy `require_ssl = true`:
 
 ```
 settings {
   ip_configuration {
-    require_ssl = true
+    ssl_mode = "ENCRYPTED_ONLY"
   }
 }
 ```
 
-Without this configuration, sensitive data such as credentials, personal information, and proprietary data could be intercepted when transmitted over the network.
-
+The `ssl_mode` attribute replaces the legacy `require_ssl` and provides more granular control: `ENCRYPTED_ONLY` enforces encryption for all connections, while `TRUSTED_CLIENT_CERTIFICATE_REQUIRED` additionally requires valid client certificates. Without this configuration, sensitive data such as credentials, personal information, and proprietary data could be intercepted when transmitted over the network.
 
 ## Compliant Code Examples
 ```terraform
@@ -57,6 +56,42 @@ resource "google_sql_database_instance" "negative1" {
       ipv4_enabled    = false
       private_network = google_compute_network.private_network.id
 	  require_ssl 	  = true
+    }
+  }
+}
+
+resource "google_sql_database_instance" "negative2" {
+  provider = google-beta
+
+  name   = "private-instance-${random_id.db_name_suffix.hex}"
+  region = "us-central1"
+
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+
+  settings {
+    tier = "db-f1-micro"
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.private_network.id
+      ssl_mode        = "ENCRYPTED_ONLY"
+    }
+  }
+}
+
+resource "google_sql_database_instance" "negative3" {
+  provider = google-beta
+
+  name   = "private-instance-${random_id.db_name_suffix.hex}"
+  region = "us-central1"
+
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+
+  settings {
+    tier = "db-f1-micro"
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.private_network.id
+      ssl_mode        = "TRUSTED_CLIENT_CERTIFICATE_REQUIRED"
     }
   }
 }
@@ -107,6 +142,24 @@ resource "google_sql_database_instance" "positive3" {
       ipv4_enabled    = false
       private_network = google_compute_network.private_network.id
 	    require_ssl 	  = false
+    }
+  }
+}
+
+resource "google_sql_database_instance" "positive4" {
+  provider = google-beta
+
+  name   = "private-instance-${random_id.db_name_suffix.hex}"
+  region = "us-central1"
+
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+
+  settings {
+    tier = "db-f1-micro"
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.private_network.id
+      ssl_mode        = "ALLOW_UNENCRYPTED_AND_ENCRYPTED"
     }
   }
 }

@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "The In field of Parameter Object must be 'formData' when type is 'file'",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/parameter_file_type_not_in_formdata",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/parameter_file_type_not_in_formdata",
   "platform": "OpenAPI",
   "descriptionID": "e8a62738",
   "cwe": "20",

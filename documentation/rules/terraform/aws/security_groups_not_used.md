@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that AWS load balancers are associated with appropriate security groups, which control network traffic to and from the resource. When the `security_groups` attribute is omitted from an `aws_lb` resource, as shown below, the load balancer may become exposed to unrestricted network access, increasing the risk of unauthorized access or attacks:
+This check ensures that AWS load balancers are associated with appropriate security groups, which control network traffic to and from the resource. When the `security_groups` attribute is omitted from an `aws_lb` resource, as shown below, the load balancer may become exposed to unrestricted network access, increasing the risk of unauthorized access or attacks:
 
 ```
 resource "aws_lb" "test" {
@@ -50,7 +50,6 @@ resource "aws_lb" "test" {
   security_groups = [aws_security_group.allow_tls.id]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

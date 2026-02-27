@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- To ensure proper resource ownership and management accountability in Azure environments, all resources should include a `team` tag within their `tags` block. Without this tag, as shown below, it becomes difficult to identify who is responsible for the resource, increasing the risk of unmanaged assets, security oversights, and operational inefficiencies:
+To ensure proper resource ownership and management accountability in Azure environments, all resources should include a `team` tag within their `tags` block. Without this tag, as shown below, it becomes difficult to identify who is responsible for the resource, increasing the risk of unmanaged assets, security oversights, and operational inefficiencies:
 
 ```
 resource "azurerm_storage_account" "bad_example_no_tags" {
@@ -54,7 +54,6 @@ resource "azurerm_storage_account" "good_example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

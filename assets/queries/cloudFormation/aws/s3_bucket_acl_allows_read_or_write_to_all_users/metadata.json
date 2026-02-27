@@ -4,7 +4,7 @@
   "severity": "CRITICAL",
   "category": "Access Control",
   "descriptionText": "S3 buckets must not use a public read-write ACL because it allows anyone on the internet to read, upload, modify, or delete objects. This risks data exposure, integrity loss, and service abuse. Check `AWS::S3::Bucket` resources and ensure the `AccessControl` property is not set to `PublicReadWrite`. Resources with `AccessControl: PublicReadWrite` will be flagged. Set `AccessControl` to `Private` or omit the ACL and enforce least-privilege access using bucket policies and a `PublicAccessBlockConfiguration` (enable `BlockPublicAcls`, `IgnorePublicAcls`, `BlockPublicPolicy`, and `RestrictPublicBuckets`) to prevent accidental public access.\n\nSecure configuration example:\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    BucketName: my-bucket\n    AccessControl: Private\n    PublicAccessBlockConfiguration:\n      BlockPublicAcls: true\n      IgnorePublicAcls: true\n      BlockPublicPolicy: true\n      RestrictPublicBuckets: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_acl_allows_read_or_write_to_all_users",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_acl_allows_read_or_write_to_all_users",
   "platform": "CloudFormation",
   "descriptionID": "68456465",
   "cloudProvider": "aws",

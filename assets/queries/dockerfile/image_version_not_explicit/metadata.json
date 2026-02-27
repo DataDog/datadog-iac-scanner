@@ -1,11 +1,12 @@
 {
   "id": "9efb0b2d-89c9-41a3-91ca-dcc0aec911fd",
-  "queryName": "Image Version Not Explicit",
+  "queryName": "Image version not explicit",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
-  "descriptionText": "Always tag the version of an image explicitly",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#from",
+  "descriptionText": "Dockerfile `FROM` instructions must specify an explicit image tag or digest to ensure build reproducibility and reduce supply-chain risk from unexpected upstream image updates.\n\nCheck each Dockerfile `FROM` command: the image reference must include a tag (`image:tag`) or a content-addressable digest (`image@sha256:<digest>`). Literal image names without a tag or digest will be flagged. When the image is supplied via `ARG` or `ENV` (for example, `FROM $BASE` or `FROM ${BASE}`), verify the corresponding `ARG`/`ENV` value is defined and contains the tag or digest.\n\nThe special base `scratch` and `FROM` lines that reference a previously declared build stage by name are exempt from this requirement. Resources missing a tag or digest (no `:` or `@`) will be reported.\n\nSecure examples:\n\n```dockerfile\nFROM ubuntu:20.04\n\nARG BASE=nginx:1.21.6\nFROM ${BASE}\n\nFROM nginx@sha256:3a1b8f2e...  \n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/image_version_not_explicit",
   "platform": "Dockerfile",
   "descriptionID": "4f469f06",
-  "cwe": "1357"
+  "cwe": "1357",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from"
 }

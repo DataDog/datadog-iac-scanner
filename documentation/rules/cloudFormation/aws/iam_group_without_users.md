@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM groups should have at least one user assigned so that group permissions are actively used and auditable. Empty groups can hide orphaned or over-permissive permission sets and increase the risk of unintended access if the group is later reused.
+IAM groups should have at least one user assigned so that group permissions are actively used and auditable. Empty groups can hide orphaned or over-permissive permission sets and increase the risk of unintended access if the group is later reused.
  
  This rule checks CloudFormation templates and requires each `AWS::IAM::Group` to be referenced by at least one `AWS::IAM::User` via the user's `Groups` property. `AWS::IAM::Group` resources with no such references will be flagged.
  
@@ -49,7 +49,6 @@ AliceUser:
     Groups:
       - !Ref MyGroup
 ```
-
 
 ## Compliant Code Examples
 ```yaml

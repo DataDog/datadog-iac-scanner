@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM role trust policies must not grant account-root or wildcard principals permission to assume the role, because allowing principals like an account root ARN (`arn:aws:iam::123456789012:root`) or `*` effectively trusts every principal in an account or every AWS account and can enable privilege escalation or unintended cross-account access. Check `AWS::IAM::Role` resources' `Properties.AssumeRolePolicyDocument.Statement[].Principal.AWS`. The principal value must not be `*` or contain `:root`. Only statements with `Effect: Allow` are evaluated. Resources with `Principal.AWS` containing `:root` or `*` will be flagged and should be replaced with explicit principal ARNs or specific service principals.
+IAM role trust policies must not grant account-root or wildcard principals permission to assume the role, because allowing principals like an account root ARN (`arn:aws:iam::123456789012:root`) or `*` effectively trusts every principal in an account or every AWS account and can enable privilege escalation or unintended cross-account access. Check `AWS::IAM::Role` resources' `Properties.AssumeRolePolicyDocument.Statement[].Principal.AWS`. The principal value must not be `*` or contain `:root`. Only statements with `Effect: Allow` are evaluated. Resources with `Principal.AWS` containing `:root` or `*` will be flagged and should be replaced with explicit principal ARNs or specific service principals.
 
 Secure example with an explicit principal ARN:
 
@@ -44,7 +44,6 @@ MyRole:
             AWS: arn:aws:iam::123456789012:role/TrustedRole
           Action: sts:AssumeRole
 ```
-
 
 ## Compliant Code Examples
 ```yaml

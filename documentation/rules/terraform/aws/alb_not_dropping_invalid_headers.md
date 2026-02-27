@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- It is recommended to set the `drop_invalid_header_fields` attribute to `true` in AWS Application Load Balancer (`aws_alb`) resources. If this attribute is omitted or set to `false`, as in the examples below, the load balancer will accept and forward malformed or non-standard HTTP header fields to the backend, potentially exposing your application to header-based attacks or unexpected backend behavior:
+It is recommended to set the `drop_invalid_header_fields` attribute to `true` in AWS Application Load Balancer (`aws_alb`) resources. If this attribute is omitted or set to `false`, as in the examples below, the load balancer will accept and forward malformed or non-standard HTTP header fields to the backend, potentially exposing your application to header-based attacks or unexpected backend behavior:
 
 ```
 resource "aws_alb" "disabled_1" {
@@ -42,7 +42,6 @@ resource "aws_alb" "disabled_2" {
 ```
 
 Enabling `drop_invalid_header_fields = true` helps mitigate these risks by ensuring only properly formatted HTTP headers are processed.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "The value of 'additionalProperties' should be set as object instead of boolean, since swagger 2.0 does not support boolean value for it",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/schema_with_additional_properties_set_as_boolean",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/schema_with_additional_properties_set_as_boolean",
   "platform": "OpenAPI",
   "descriptionID": "2509db0d",
   "cwe": "710",

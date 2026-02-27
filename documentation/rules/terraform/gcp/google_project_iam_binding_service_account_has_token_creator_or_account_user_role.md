@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies if a Google Project IAM binding grants `serviceAccountTokenCreator` or `serviceAccountUser` roles, which provide excessive privileges to service accounts. These roles allow the specified members to impersonate service accounts, creating security risks through privilege escalation paths and potential lateral movement across your GCP environment.
+This check identifies if a Google Project IAM binding grants `serviceAccountTokenCreator` or `serviceAccountUser` roles, which provide excessive privileges to service accounts. These roles allow the specified members to impersonate service accounts, creating security risks through privilege escalation paths and potential lateral movement across your GCP environment.
 
 Members with the `serviceAccountTokenCreator` role can create OAuth2 access tokens, while those with `serviceAccountUser` role can use service accounts for their operations. To remediate this issue, assign more restrictive roles that follow the principle of least privilege instead, as shown in the following example:
 
@@ -42,7 +42,6 @@ resource "google_project_iam_binding" "secure_example" {
   ]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- RDS DB clusters must have storage encryption enabled to protect data at rest and to prevent exposure of database contents through compromised storage, snapshots, or automated backups. In AWS CloudFormation, the `StorageEncrypted` property on `AWS::RDS::DBCluster` resources must be defined and set to `true`. Resources missing `StorageEncrypted` or with `StorageEncrypted` set to `false` will be flagged. You can also specify a customer-managed KMS key using `KmsKeyId` if you require a specific CMK.
+RDS DB clusters must have storage encryption enabled to protect data at rest and to prevent exposure of database contents through compromised storage, snapshots, or automated backups. In AWS CloudFormation, the `StorageEncrypted` property on `AWS::RDS::DBCluster` resources must be defined and set to `true`. Resources missing `StorageEncrypted` or with `StorageEncrypted` set to `false` will be flagged. You can also specify a customer-managed KMS key using `KmsKeyId` if you require a specific CMK.
 
 Secure configuration example:
 
@@ -40,7 +40,6 @@ MyDBCluster:
     StorageEncrypted: true
     KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd1234-56ef-78gh-90ij-klmnopqrstuv
 ```
-
 
 ## Compliant Code Examples
 ```yaml

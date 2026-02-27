@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon API Gateway caching should be enabled for Serverless APIs to reduce backend load and lower latency, helping prevent request amplification that can degrade performance or cause service outages. The `CacheClusterEnabled` property on `AWS::Serverless::Api` resources must be defined and set to `true`. Resources where `CacheClusterEnabled` is missing, `null`, or set to `false` will be flagged. Also consider configuring `CacheClusterSize` to provision adequate cache capacity for your expected traffic.
+Amazon API Gateway caching should be enabled for Serverless APIs to reduce backend load and lower latency, helping prevent request amplification that can degrade performance or cause service outages. The `CacheClusterEnabled` property on `AWS::Serverless::Api` resources must be defined and set to `true`. Resources where `CacheClusterEnabled` is missing, `null`, or set to `false` will be flagged. Also consider configuring `CacheClusterSize` to provision adequate cache capacity for your expected traffic.
 
 Secure configuration example:
 
@@ -39,7 +39,6 @@ MyApi:
     StageName: Prod
     CacheClusterEnabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

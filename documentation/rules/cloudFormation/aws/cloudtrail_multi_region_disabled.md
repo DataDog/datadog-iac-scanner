@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudTrail must be configured as a multi-region trail to capture management events from all AWS regions and avoid auditing gaps if a single region is compromised. The `IsMultiRegionTrail` property in `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources missing this property or with `IsMultiRegionTrail` set to `false` will be flagged.
+CloudTrail must be configured as a multi-region trail to capture management events from all AWS regions and avoid auditing gaps if a single region is compromised. The `IsMultiRegionTrail` property in `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources missing this property or with `IsMultiRegionTrail` set to `false` will be flagged.
 
 Secure configuration example:
 
@@ -39,7 +39,6 @@ MyTrail:
     IsMultiRegionTrail: true
     S3BucketName: my-cloudtrail-bucket
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Using a wildcard (`*`) for both `Action` and `Principal` in an `aws_elasticsearch_domain_policy`—such as `"Action": "es:*"` and `"Principal": "*"`—grants unrestricted access to the Elasticsearch domain, allowing any identity to perform any action. This broad permission model introduces a significant security vulnerability, as it may expose sensitive data and allow unauthorized users to modify or delete resources. To mitigate this risk, explicitly define trusted principals and limit actions using specific permissions in the policy document.
-
+Using a wildcard (`*`) for both `Action` and `Principal` in an `aws_elasticsearch_domain_policy`—such as `"Action": "es:*"` and `"Principal": "*"`—grants unrestricted access to the Elasticsearch domain, allowing any identity to perform any action. This broad permission model introduces a significant security vulnerability, as it may expose sensitive data and allow unauthorized users to modify or delete resources. To mitigate this risk, explicitly define trusted principals and limit actions using specific permissions in the policy document.
 
 ## Compliant Code Examples
 ```terraform

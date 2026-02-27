@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway methods must require an API key to prevent unauthenticated or uncontrolled usage that can lead to abuse, unexpected costs, or bypassing usage plans. For CloudFormation, `AWS::ApiGateway::Method` resources must define `Properties.ApiKeyRequired` and set it to `true`. Resources missing `ApiKeyRequired` or with `ApiKeyRequired` set to `false` will be flagged. Note that API keys help enforce usage plans and quotas but are not a substitute for strong authentication or authorization.
+API Gateway methods must require an API key to prevent unauthenticated or uncontrolled usage that can lead to abuse, unexpected costs, or bypassing usage plans. For CloudFormation, `AWS::ApiGateway::Method` resources must define `Properties.ApiKeyRequired` and set it to `true`. Resources missing `ApiKeyRequired` or with `ApiKeyRequired` set to `false` will be flagged. Note that API keys help enforce usage plans and quotas but are not a substitute for strong authentication or authorization.
 
 Secure configuration example:
 
@@ -44,7 +44,6 @@ MyMethod:
     Integration:
       Type: MOCK
 ```
-
 
 ## Compliant Code Examples
 ```yaml

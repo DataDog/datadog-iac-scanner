@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Listeners must not use plain HTTP because unencrypted traffic can be intercepted or modified in transit, exposing sensitive data and enabling session hijacking or credential theft.
+Listeners must not use plain HTTP because unencrypted traffic can be intercepted or modified in transit, exposing sensitive data and enabling session hijacking or credential theft.
 
  For `AWS::ElasticLoadBalancing::LoadBalancer` resources, ensure no entry in `Properties.Listeners` has `Protocol` set to `HTTP`. Listeners should use `HTTPS` and include an SSL certificate (`SSLCertificateId`).
 
@@ -63,7 +63,6 @@ MyALBListener:
         TargetGroupArn: !Ref MyTargetGroup
     SslPolicy: ELBSecurityPolicy-2016-08
 ```
-
 
 ## Compliant Code Examples
 ```yaml

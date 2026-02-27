@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Storing an Amplify access token in plaintext or as a parameter `Default` risks accidental disclosure (for example, via source control, template exports, or build logs) and can allow unauthorized access to connected repositories or services.
+Storing an Amplify access token in plaintext or as a parameter `Default` risks accidental disclosure (for example, via source control, template exports, or build logs) and can allow unauthorized access to connected repositories or services.
 
  This rule checks `AWS::Amplify::App` resources and the `Properties.AccessToken` value.
 
@@ -68,7 +68,6 @@ MyApp:
     Name: my-app
     AccessToken: !Ref AmplifyAccessToken
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting a wildcard principal (`*`) in a Lambda permission makes the function publicly invokable, allowing any AWS account or unauthenticated caller to invoke it and potentially leading to unauthorized invocation, data exposure, or abuse. The `AWS::Lambda::Permission` resource's `Principal` property must specify an explicit principal, such as a service principal (for example, `sns.amazonaws.com`), an AWS account ARN, or a specific IAM principal. It must not be `*` or contain wildcard values. This rule flags `AWS::Lambda::Permission` resources where `Properties.Principal` contains `*`. To fix, set `Principal` to the intended principal and, when applicable, add `SourceArn` or other conditions to restrict which resources can invoke the function.
+Granting a wildcard principal (`*`) in a Lambda permission makes the function publicly invokable, allowing any AWS account or unauthenticated caller to invoke it and potentially leading to unauthorized invocation, data exposure, or abuse. The `AWS::Lambda::Permission` resource's `Principal` property must specify an explicit principal, such as a service principal (for example, `sns.amazonaws.com`), an AWS account ARN, or a specific IAM principal. It must not be `*` or contain wildcard values. This rule flags `AWS::Lambda::Permission` resources where `Properties.Principal` contains `*`. To fix, set `Principal` to the intended principal and, when applicable, add `SourceArn` or other conditions to restrict which resources can invoke the function.
 
 Secure configuration example:
 
@@ -41,7 +41,6 @@ MyLambdaPermission:
     Principal: sns.amazonaws.com
     SourceArn: arn:aws:sns:us-east-1:123456789012:MyTopic
 ```
-
 
 ## Compliant Code Examples
 ```yaml

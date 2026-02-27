@@ -1,11 +1,12 @@
 {
   "id": "8a301064-c291-4b20-adcb-403fe7fd95fd",
-  "queryName": "Changing Default Shell Using RUN Command",
+  "queryName": "Changing default shell using RUN command",
   "severity": "MEDIUM",
   "category": "Best Practices",
-  "descriptionText": "Using the command RUN to override the default shell instead of the SHELL command leads to inefficiencies. It also does not make sense since Docker provides the SHELL command for this exact purpose.",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#shell",
+  "descriptionText": "Changing the image's default shell by running shell binaries or user-modifying commands in a `RUN` instruction instead of using the Dockerfile `SHELL` instruction can produce inconsistent build vs. runtime behavior and cause subsequent instructions to be interpreted under unexpected shell parsing rules. This increases the risk of misinterpreted commands or injection vulnerabilities.\n\nThis rule flags Dockerfile `RUN` instructions where the invoked command is `mv`, `chsh`, `usermod`, or `ln` and their arguments reference common shell paths (for example, `/bin/bash`, `/bin/sh`, `/usr/bin/zsh`). It also flags `RUN` invocations that call `powershell` directly. The intended default shell should be defined with the `SHELL` instruction.\n\nResources that attempt to edit `/etc/passwd`, symlink shell binaries, or invoke PowerShell via `RUN` will be flagged. For Windows images, the JSON-array form of `SHELL` is preferred to ensure proper argument handling. \n\nSecure examples:\n\n```Dockerfile\n# Unix/Linux: set bash as the default shell for subsequent instructions\nSHELL [\"/bin/bash\", \"-lc\"]\n```\n\n```Dockerfile\n# Windows/PowerShell: set PowerShell as the default shell for subsequent instructions\nSHELL [\"powershell\", \"-Command\"]\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/changing_default_shell_using_run_command",
   "platform": "Dockerfile",
   "descriptionID": "d859b2eb",
-  "cwe": "710"
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#shell"
 }

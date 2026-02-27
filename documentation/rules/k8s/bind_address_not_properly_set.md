@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When running `kube-controller-manager` or `kube-scheduler`, the `--bind-address` flag must be set to `127.0.0.1`. The rule inspects command arguments in both `containers` and `initContainers` and reports a finding if the `--bind-address=127.0.0.1` flag is missing or set to a different value.
-
+When running `kube-controller-manager` or `kube-scheduler`, the `--bind-address` flag must be set to `127.0.0.1`. The rule inspects command arguments in both `containers` and `initContainers` and reports a finding if the `--bind-address=127.0.0.1` flag is missing or set to a different value.
 
 ## Compliant Code Examples
 ```yaml

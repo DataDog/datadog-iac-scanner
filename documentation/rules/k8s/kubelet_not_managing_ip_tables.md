@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The kubelet argument `--make-iptables-util-chains` should be set to `true`. This policy identifies kubelet invocations that explicitly include `--make-iptables-util-chains=false` (for example in `initContainers` or `containers` command arrays) or `KubeletConfiguration` resources where `makeIPTablesUtilChains` is set to `false`. Disabling this option prevents the kubelet from creating required iptables utility chains, which can disrupt network routing and kube-proxy behavior.
-
+The kubelet argument `--make-iptables-util-chains` should be set to `true`. This policy identifies kubelet invocations that explicitly include `--make-iptables-util-chains=false` (for example in `initContainers` or `containers` command arrays) or `KubeletConfiguration` resources where `makeIPTablesUtilChains` is set to `false`. Disabling this option prevents the kubelet from creating required iptables utility chains, which can disrupt network routing and kube-proxy behavior.
 
 ## Compliant Code Examples
 ```yaml

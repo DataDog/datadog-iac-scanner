@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check validates that SSL/TLS certificates used within infrastructure resources, such as API Gateway domain names, employ a sufficiently strong RSA key—specifically, one that is at least 2048 bits (256 bytes) in length. Using an RSA public key that is less than 2048 bits, such as with a 1024-bit certificate (`certificate_body = file("./rsa1024.pem")`), exposes the resource to cryptographic attacks, as shorter keys are more easily compromised by brute-force methods. Attackers that manage to break weak encryption can decrypt traffic, potentially leading to the exposure of sensitive data and unauthorized access to protected APIs and resources. To mitigate these risks, certificates should always be generated with a minimum of a 2048-bit key size (`certificate_body = file("./rsa4096.pem")`), ensuring robust protection for data in transit.
-
+This check validates that SSL/TLS certificates used within infrastructure resources, such as API Gateway domain names, employ a sufficiently strong RSA key—specifically, one that is at least 2048 bits (256 bytes) in length. Using an RSA public key that is less than 2048 bits, such as with a 1024-bit certificate (`certificate_body = file("./rsa1024.pem")`), exposes the resource to cryptographic attacks, as shorter keys are more easily compromised by brute-force methods. Attackers that manage to break weak encryption can decrypt traffic, potentially leading to the exposure of sensitive data and unauthorized access to protected APIs and resources. To mitigate these risks, certificates should always be generated with a minimum of a 2048-bit key size (`certificate_body = file("./rsa4096.pem")`), ensuring robust protection for data in transit.
 
 ## Compliant Code Examples
 ```terraform

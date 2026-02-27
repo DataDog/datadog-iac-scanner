@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When defining a Cross-Origin Resource Sharing (CORS) rule in an S3 bucket, it is important to ensure that the `allowed_headers` attribute is not overly permissive, for example, by setting `allowed_headers = ["*"]`. Allowing all headers to be accepted from any origin can expose the bucket to potential cross-origin attacks, enabling malicious sites to interact with S3 resources in unintended ways. This misconfiguration increases the risk of data exfiltration or manipulation by allowing arbitrary clients to send any HTTP headers, which can compromise sensitive data and security controls. To mitigate this vulnerability, it is recommended to specify only the necessary headers in `allowed_headers` and restrict origins to trusted domains.
-
+When defining a Cross-Origin Resource Sharing (CORS) rule in an S3 bucket, it is important to ensure that the `allowed_headers` attribute is not overly permissive, for example, by setting `allowed_headers = ["*"]`. Allowing all headers to be accepted from any origin can expose the bucket to potential cross-origin attacks, enabling malicious sites to interact with S3 resources in unintended ways. This misconfiguration increases the risk of data exfiltration or manipulation by allowing arbitrary clients to send any HTTP headers, which can compromise sensitive data and security controls. To mitigate this vulnerability, it is recommended to specify only the necessary headers in `allowed_headers` and restrict origins to trusted domains.
 
 ## Compliant Code Examples
 ```terraform

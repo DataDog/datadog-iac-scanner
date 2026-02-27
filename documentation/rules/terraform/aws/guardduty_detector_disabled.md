@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that Amazon GuardDuty is enabled in your AWS environment by verifying that the `enable` attribute in the `aws_guardduty_detector` Terraform resource is set to `true`. GuardDuty is a threat detection service that continuously monitors for malicious or unauthorized behavior, helping identify and prioritize potential security risks. If GuardDuty is disabled, suspicious activities such as anomalous API calls, potentially unauthorized deployments, or account compromise may go undetected, leaving cloud resources vulnerable to attack. Enabling GuardDuty is a crucial security best practice to maintain visibility into potential threats and respond to incidents promptly.
-
+This check ensures that Amazon GuardDuty is enabled in your AWS environment by verifying that the `enable` attribute in the `aws_guardduty_detector` Terraform resource is set to `true`. GuardDuty is a threat detection service that continuously monitors for malicious or unauthorized behavior, helping identify and prioritize potential security risks. If GuardDuty is disabled, suspicious activities such as anomalous API calls, potentially unauthorized deployments, or account compromise may go undetected, leaving cloud resources vulnerable to attack. Enabling GuardDuty is a crucial security best practice to maintain visibility into potential threats and respond to incidents promptly.
 
 ## Compliant Code Examples
 ```terraform

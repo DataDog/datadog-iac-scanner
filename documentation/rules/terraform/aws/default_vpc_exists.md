@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Using the default VPC in AWS is not recommended, as it is a shared environment with default configurations that may not align with an organization's security and networking requirements. Resources created in the default VPC are more susceptible to unintended access, misconfiguration, or exposure. To mitigate this risk, it is best to define a custom VPC, as in the following example:
+Using the default VPC in AWS is not recommended, as it is a shared environment with default configurations that may not align with an organization's security and networking requirements. Resources created in the default VPC are more susceptible to unintended access, misconfiguration, or exposure. To mitigate this risk, it is best to define a custom VPC, as in the following example:
 
 ```
 resource "aws_vpc" "main" {
@@ -42,7 +42,6 @@ resource "aws_vpc" "main" {
 ```
 
 This ensures network isolation and enables more granular control over security settings.
-
 
 ## Compliant Code Examples
 ```terraform

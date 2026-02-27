@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- PostgreSQL servers should have connection throttling enabled by setting the `connection_throttling` configuration value to `"on"`. Without connection throttling (for example, `value = "off"`), the server is more vulnerable to connection floods and denial-of-service attacks, as there is no mechanism to limit the rate of incoming connections. Enabling this option reduces the risk of service disruption by preventing excessive connection attempts from overloading the database.
+PostgreSQL servers should have connection throttling enabled by setting the `connection_throttling` configuration value to `"on"`. Without connection throttling (for example, `value = "off"`), the server is more vulnerable to connection floods and denial-of-service attacks, as there is no mechanism to limit the rate of incoming connections. Enabling this option reduces the risk of service disruption by preventing excessive connection attempts from overloading the database.
 
 A secure Terraform configuration example is shown below:
   
@@ -40,7 +40,6 @@ resource "azurerm_postgresql_configuration" "example" {
     value               = "on"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

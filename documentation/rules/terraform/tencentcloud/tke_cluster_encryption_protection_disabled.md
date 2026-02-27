@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- A `TKE` cluster should have `tencentcloud_kubernetes_encryption_protection` enabled.
+A `TKE` cluster should have `tencentcloud_kubernetes_encryption_protection` enabled.
 This rule verifies that each `tencentcloud_kubernetes_cluster` has a corresponding `tencentcloud_kubernetes_encryption_protection` resource whose `cluster_id` references the cluster.
 If no matching `tencentcloud_kubernetes_encryption_protection` is found, the rule reports a `MissingAttribute` issue.
-
 
 ## Compliant Code Examples
 ```terraform

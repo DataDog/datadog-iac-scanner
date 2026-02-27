@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When an RDS instance does not have any logging enabled, critical database activities such as errors, slow queries, and general events are not captured or retained. This lack of visibility makes it difficult to detect anomalous behavior, troubleshoot incidents, or comply with auditing requirements. Enabling logging, for example, by setting `enabled_cloudwatch_logs_exports = ["general", "error"]` in Terraform, ensures that important logs are exported for monitoring and incident response purposes.
-
+When an RDS instance does not have any logging enabled, critical database activities such as errors, slow queries, and general events are not captured or retained. This lack of visibility makes it difficult to detect anomalous behavior, troubleshoot incidents, or comply with auditing requirements. Enabling logging, for example, by setting `enabled_cloudwatch_logs_exports = ["general", "error"]` in Terraform, ensures that important logs are exported for monitoring and incident response purposes.
 
 ## Compliant Code Examples
 ```terraform

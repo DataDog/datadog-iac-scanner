@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "ELB security policies must not include weak TLS cipher suites because weak ciphers can be exploited to downgrade or break the confidentiality and integrity of TLS connections to the load balancer.\n \n Check `AWS::ElasticLoadBalancing::LoadBalancer` resources and verify the `Policies[].Attributes[].Name` values (the cipher identifiers or referenced policy names) do not match any known weak ciphers in the IANA, OpenSSL, or GnuTLS lists. Resources with `Attributes` that match a weak-cipher identifier will be flagged. Instead, use AWS predefined strong ELB security policy names or an `SSLNegotiationPolicyType` policy that explicitly references modern cipher suites (TLS 1.2+ with ECDHE and AES-GCM). \n \n Secure configuration example using a modern predefined policy:\n\n```yaml\nMyLoadBalancer:\n  Type: AWS::ElasticLoadBalancing::LoadBalancer\n  Properties:\n    Listeners:\n      - LoadBalancerPort: 443\n        InstancePort: 443\n        Protocol: HTTPS\n        InstanceProtocol: HTTPS\n        SSLCertificateId: arn:aws:iam::123456789012:server-certificate/my-cert\n    Policies:\n      - PolicyName: SecureSSLPolicy\n        PolicyType: SSLNegotiationPolicyType\n        Attributes:\n          - Name: Reference-Security-Policy\n            Value: ELBSecurityPolicy-TLS-1-2-2017-01\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elb_using_weak_ciphers",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/elb_using_weak_ciphers",
   "platform": "CloudFormation",
   "descriptionID": "94a91040",
   "cloudProvider": "aws",

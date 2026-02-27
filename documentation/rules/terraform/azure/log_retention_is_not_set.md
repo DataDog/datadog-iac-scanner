@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The `log_retention` server parameter in Azure PostgreSQL determines whether database logs are retained, which is essential for auditing and troubleshooting purposes. If this parameter is set to `OFF`, as shown below, log data will not be persisted, potentially hindering investigations into security incidents or operational issues:
+The `log_retention` server parameter in Azure PostgreSQL determines whether database logs are retained, which is essential for auditing and troubleshooting purposes. If this parameter is set to `OFF`, as shown below, log data will not be persisted, potentially hindering investigations into security incidents or operational issues:
 
 ```
 resource "azurerm_postgresql_configuration" "example" {
@@ -51,7 +51,6 @@ resource "azurerm_postgresql_configuration" "example" {
 ```
 
 Failing to enable log retention can result in loss of critical data needed for compliance, monitoring, and incident response.
-
 
 ## Compliant Code Examples
 ```terraform

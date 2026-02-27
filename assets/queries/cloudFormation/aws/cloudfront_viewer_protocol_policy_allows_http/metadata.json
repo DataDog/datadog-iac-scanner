@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "CloudFront distributions must enforce HTTPS for viewer connections to prevent plaintext interception and downgrade attacks that could expose credentials or sensitive content.\n\n In CloudFormation, verify `AWS::CloudFront::Distribution` resources: `DistributionConfig.DefaultCacheBehavior.ViewerProtocolPolicy` and each `DistributionConfig.CacheBehaviors[].ViewerProtocolPolicy` must be set to `https-only` or `redirect-to-https`.\n\n Resources with `ViewerProtocolPolicy` set to `allow-all` (or missing the property) will be flagged. Ensure both the default cache behavior and all cache behaviors explicitly enforce or redirect to HTTPS.\n\nSecure configuration examples:\n\n```yaml\nMyDistribution:\n  Type: AWS::CloudFront::Distribution\n  Properties:\n    DistributionConfig:\n      DefaultCacheBehavior:\n        ViewerProtocolPolicy: redirect-to-https\n      CacheBehaviors:\n        - PathPattern: \"/secure/*\"\n          ViewerProtocolPolicy: https-only\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cloudfront_viewer_protocol_policy_allows_http",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/cloudfront_viewer_protocol_policy_allows_http",
   "platform": "CloudFormation",
   "descriptionID": "bf860aba",
   "cloudProvider": "aws",

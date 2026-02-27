@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Replace `0.0.0.0/0` with a specific CIDR range for `address`, or remove the public access entry to restrict connectivity.
-
+Replace `0.0.0.0/0` with a specific CIDR range for `address`, or remove the public access entry to restrict connectivity.
 
 ## Compliant Code Examples
 ```terraform

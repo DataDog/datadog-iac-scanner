@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Google Cloud Pub/Sub Topics should not be configured to allow public access by assigning IAM roles to the special principals `allUsers` or `allAuthenticatedUsers`. Granting roles to these principals makes the topic accessible to anyone on the internet or to any authenticated Google user, exposing your data to unauthorized access or misuse. For example:
+Google Cloud Pub/Sub Topics should not be configured to allow public access by assigning IAM roles to the special principals `allUsers` or `allAuthenticatedUsers`. Granting roles to these principals makes the topic accessible to anyone on the internet or to any authenticated Google user, exposing your data to unauthorized access or misuse. For example:
 
 ```
 resource "google_pubsub_topic_iam_member" "bad_example" {
@@ -47,7 +47,6 @@ resource "google_pubsub_topic_iam_member" "good_example" {
   role   = "roles/pubsub.publisher"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

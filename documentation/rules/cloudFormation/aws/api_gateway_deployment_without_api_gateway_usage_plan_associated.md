@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway deployments must be associated with a usage plan to enforce throttling and quotas. This mitigates abuse, denial-of-service risks, and unexpected cost spikes from unbounded API traffic.
+API Gateway deployments must be associated with a usage plan to enforce throttling and quotas. This mitigates abuse, denial-of-service risks, and unexpected cost spikes from unbounded API traffic.
 
  For each `AWS::ApiGateway::Deployment`, there must be an `AWS::ApiGateway::UsagePlan` resource whose `Properties.ApiStages` array contains an entry with:
 
@@ -63,7 +63,6 @@ MyUsagePlan:
       Limit: 10000
       Period: MONTH
 ```
-
 
 ## Compliant Code Examples
 ```yaml

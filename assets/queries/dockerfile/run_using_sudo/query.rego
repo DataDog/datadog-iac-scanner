@@ -15,6 +15,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instruction shouldn't contain sudo",
 		"keyActualValue": "RUN instruction contains sudo",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -31,6 +33,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "RUN instruction shouldn't contain sudo",
 		"keyActualValue": "RUN instruction contains sudo",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

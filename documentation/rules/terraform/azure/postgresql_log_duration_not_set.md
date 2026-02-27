@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The PostgreSQL server parameter `log_duration` should be set to `ON` to ensure that the duration of each completed SQL statement is logged. Without this setting enabled (for example, if `value = "off"` is used in the `azurerm_postgresql_configuration` resource), critical visibility into query performance and potential issues will be lost, making it difficult to identify slow-running queries or investigate security incidents. Setting `log_duration` to `ON`, as shown below, enables enhanced monitoring and auditing capabilities for your database:
+The PostgreSQL server parameter `log_duration` should be set to `ON` to ensure that the duration of each completed SQL statement is logged. Without this setting enabled (for example, if `value = "off"` is used in the `azurerm_postgresql_configuration` resource), critical visibility into query performance and potential issues will be lost, making it difficult to identify slow-running queries or investigate security incidents. Setting `log_duration` to `ON`, as shown below, enables enhanced monitoring and auditing capabilities for your database:
 
 ```
 resource "azurerm_postgresql_configuration" "secure_example" {
@@ -38,7 +38,6 @@ resource "azurerm_postgresql_configuration" "secure_example" {
     value               = "ON"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

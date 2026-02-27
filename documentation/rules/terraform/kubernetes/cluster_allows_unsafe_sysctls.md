@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A Kubernetes cluster must not allow unsafe sysctls to prevent a pod from influencing other pods on the same node, harming node health, or consuming CPU or memory beyond a pod's resource limits. This rule requires that `spec.security_context.sysctl` must not include unsafe sysctls and that `allowed_unsafe_sysctls` is undefined. The rule applies to `kubernetes_pod` and `kubernetes_pod_security_policy` resources and flags any configured unsafe sysctl names.
-
+A Kubernetes cluster must not allow unsafe sysctls to prevent a pod from influencing other pods on the same node, harming node health, or consuming CPU or memory beyond a pod's resource limits. This rule requires that `spec.security_context.sysctl` must not include unsafe sysctls and that `allowed_unsafe_sysctls` is undefined. The rule applies to `kubernetes_pod` and `kubernetes_pod_security_policy` resources and flags any configured unsafe sysctl names.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Elasticsearch domains must publish slow logs to detect and investigate performance anomalies and suspicious query activity. Without slow logs, you cannot audit slow or resource-intensive queries that may indicate abuse, data exfiltration, or misconfiguration.
+Elasticsearch domains must publish slow logs to detect and investigate performance anomalies and suspicious query activity. Without slow logs, you cannot audit slow or resource-intensive queries that may indicate abuse, data exfiltration, or misconfiguration.
  
  In CloudFormation, `AWS::Elasticsearch::Domain` resources must define `Properties.LogPublishingOptions` and include `INDEX_SLOW_LOGS` and/or `SEARCH_SLOW_LOGS` entries with their `Enabled` property set to `true`. Resources missing `LogPublishingOptions`, missing the slow-log keys, or with `Enabled` set to `false` will be flagged. 
  
@@ -47,7 +47,6 @@ MyDomain:
         CloudWatchLogsLogGroupArn: arn:aws:logs:us-east-1:123456789012:log-group:/aws/elasticsearch/search-slow
         Enabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

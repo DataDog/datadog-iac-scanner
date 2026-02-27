@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Lambda functions must not be assigned IAM roles whose inline policies grant full administrative privileges, because a compromised function with full permissions can exfiltrate data, modify or delete resources, or escalate privileges across your account. This rule inspects `AWS::Lambda::Function` resources' `Properties.Role` reference (when the role is defined in the same template) and examines the referenced role's `Resources.<role>.Properties.Policies[].PolicyDocument.Statement[]`. A statement will be flagged when `Effect` is `Allow` and both `Action` and `Resource` are `*` (including arrays that contain `*`). To remediate, follow least privilege. Replace wildcard actions and resources with explicit actions and scoped ARNs, or attach narrowly scoped managed policies. Inline policies must not simultaneously allow `Action: '*'` and `Resource: '*'`.
+Lambda functions must not be assigned IAM roles whose inline policies grant full administrative privileges, because a compromised function with full permissions can exfiltrate data, modify or delete resources, or escalate privileges across your account. This rule inspects `AWS::Lambda::Function` resources' `Properties.Role` reference (when the role is defined in the same template) and examines the referenced role's `Resources.<role>.Properties.Policies[].PolicyDocument.Statement[]`. A statement will be flagged when `Effect` is `Allow` and both `Action` and `Resource` are `*` (including arrays that contain `*`). To remediate, follow least privilege. Replace wildcard actions and resources with explicit actions and scoped ARNs, or attach narrowly scoped managed policies. Inline policies must not simultaneously allow `Action: '*'` and `Resource: '*'`.
 
 Secure example (inline role policy scoped to a single S3 bucket):
 
@@ -51,7 +51,6 @@ MyLambdaRole:
                 - s3:GetObject
               Resource: arn:aws:s3:::example-bucket/* 
 ```
-
 
 ## Compliant Code Examples
 ```yaml

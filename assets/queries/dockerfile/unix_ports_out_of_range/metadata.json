@@ -1,13 +1,14 @@
 {
   "id": "71bf8cf8-f0a1-42fa-b9d2-d10525e0a38e",
-  "queryName": "UNIX Ports Out Of Range",
-  "severity": "INFO",
+  "queryName": "UNIX ports out of range",
+  "severity": "LOW",
   "category": "Networking and Firewall",
-  "descriptionText": "Exposing UNIX ports out of range from 0 to 65535",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#expose",
+  "descriptionText": "Dockerfile `EXPOSE` instructions that specify port numbers outside the valid TCP/UDP range (0–65535) are misconfigurations that can cause build or runtime errors and may lead to unintended network exposure or incorrect port mappings.\n\nThis rule inspects Dockerfile `EXPOSE` commands and requires the numeric port value (the portion before any `/protocol` suffix) to be an integer between 0 and 65535 inclusive. The policy flags `EXPOSE` entries where the parsed port number is greater than 65535. Ensure you declare ports as numeric values within the valid range. For example:\n\n```\nEXPOSE 80\nEXPOSE 8080/tcp\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/unix_ports_out_of_range",
   "platform": "Dockerfile",
   "descriptionID": "fed3d812",
   "cwe": "682",
   "oldSeverity": "HIGH",
-  "cloudProvider" : "common"
+  "cloudProvider": "common",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#expose"
 }

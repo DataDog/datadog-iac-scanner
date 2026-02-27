@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Cloud Storage Bucket is anonymously or publicly accessible",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/cloud_storage_bucket_is_publicly_accessible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/cloud_storage_bucket_is_publicly_accessible",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "f767772d",
   "cloudProvider": "gcp",

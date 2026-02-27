@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Requiring users to authenticate using Multi-Factor Authentication (MFA) provides an extra layer of security beyond just a password, reducing the risk of unauthorized access if credentials are compromised. In Terraform, this can be enforced by using an IAM policy with a condition such as `"aws:MultiFactorAuthPresent": "true"`, which restricts permissions such as `sts:AssumeRole` to only those sessions where MFA has been verified. Without this condition, as shown in the following policy snippet, the user may be able to access sensitive AWS resources without MFA: 
+Requiring users to authenticate using Multi-Factor Authentication (MFA) provides an extra layer of security beyond just a password, reducing the risk of unauthorized access if credentials are compromised. In Terraform, this can be enforced by using an IAM policy with a condition such as `"aws:MultiFactorAuthPresent": "true"`, which restricts permissions such as `sts:AssumeRole` to only those sessions where MFA has been verified. Without this condition, as shown in the following policy snippet, the user may be able to access sensitive AWS resources without MFA: 
 
 ```
 "Condition": {
@@ -39,7 +39,6 @@ meta:
 ```
 
 If left unaddressed, this misconfiguration could allow attackers with access to the user's credentials to escalate privileges or access critical resources without needing a second authentication factor, significantly increasing the risk of account compromise or data breach.
-
 
 ## Compliant Code Examples
 ```terraform

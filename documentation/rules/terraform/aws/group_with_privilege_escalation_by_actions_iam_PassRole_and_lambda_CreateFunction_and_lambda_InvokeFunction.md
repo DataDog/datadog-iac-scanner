@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This configuration allows an IAM group to escalate privileges by combining `lambda:CreateFunction`, `iam:PassRole`, and `lambda:InvokeFunction` permissions, all with the overly broad `Resource = "*"`. Attackers or unauthorized users with this access can create, invoke, and assign any role to Lambda functions, potentially gaining permissions beyond their intended scope and compromising the entire AWS account. To prevent this, restrict `iam:PassRole` and Lambda actions to specific, necessary resources and ensure that the policy does not broadly grant privileges, as shown below:
+This configuration allows an IAM group to escalate privileges by combining `lambda:CreateFunction`, `iam:PassRole`, and `lambda:InvokeFunction` permissions, all with the overly broad `Resource = "*"`. Attackers or unauthorized users with this access can create, invoke, and assign any role to Lambda functions, potentially gaining permissions beyond their intended scope and compromising the entire AWS account. To prevent this, restrict `iam:PassRole` and Lambda actions to specific, necessary resources and ensure that the policy does not broadly grant privileges, as shown below:
 
 ```
 policy = jsonencode({
@@ -44,7 +44,6 @@ policy = jsonencode({
   ]
 })
 ```
-
 
 ## Compliant Code Examples
 ```terraform

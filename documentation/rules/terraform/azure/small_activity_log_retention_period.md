@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the `retention_policy.days` attribute for the `azurerm_monitor_log_profile` resource in Terraform is set to 365 days or greater. Insufficient log retention (for example, `days = 7` or leaving the value unset) can result in the loss of valuable activity logs, limiting the ability to investigate incidents or meet audit requirements. To address this, configure the retention policy to at least 365 days, as shown below:
+This check ensures that the `retention_policy.days` attribute for the `azurerm_monitor_log_profile` resource in Terraform is set to 365 days or greater. Insufficient log retention (for example, `days = 7` or leaving the value unset) can result in the loss of valuable activity logs, limiting the ability to investigate incidents or meet audit requirements. To address this, configure the retention policy to at least 365 days, as shown below:
 
 ```
 retention_policy {
@@ -36,7 +36,6 @@ retention_policy {
   days    = 367
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

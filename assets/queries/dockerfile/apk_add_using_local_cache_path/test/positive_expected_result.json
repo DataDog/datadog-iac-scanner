@@ -1,14 +1,14 @@
 [
-	{
-		"queryName": "Apk Add Using Local Cache Path",
-		"severity": "INFO",
-		"line": 2,
-		"fileName": "positive.dockerfile"
-	},
-	{
-		"queryName": "Apk Add Using Local Cache Path",
-		"severity": "INFO",
-		"line": 2,
-		"fileName": "positive2.dockerfile"
-	}
+  {
+    "queryName": "apk add using local cache path",
+    "severity": "LOW",
+    "line": 2,
+    "fileName": "positive.dockerfile"
+  },
+  {
+    "queryName": "apk add using local cache path",
+    "severity": "LOW",
+    "line": 2,
+    "fileName": "positive2.dockerfile"
+  }
 ]

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `--streaming-connection-idle-timeout` flag should not be set to `0`. The rule also checks container `command` entries in `containers` and `initContainers`, and the `KubeletConfiguration` field `streamingConnectionIdleTimeout` should not be set to `0s`. Setting the timeout to zero disables the idle timeout and can allow connections to remain open indefinitely, increasing the risk of resource exhaustion or unintended exposure.
-
+The `--streaming-connection-idle-timeout` flag should not be set to `0`. The rule also checks container `command` entries in `containers` and `initContainers`, and the `KubeletConfiguration` field `streamingConnectionIdleTimeout` should not be set to `0s`. Setting the timeout to zero disables the idle timeout and can allow connections to remain open indefinitely, increasing the risk of resource exhaustion or unintended exposure.
 
 ## Compliant Code Examples
 ```yaml

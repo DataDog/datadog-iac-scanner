@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Availability",
   "descriptionText": "AWS KMS Customer Master Keys (CMKs) used by your stack must be usable so encrypted data can be decrypted and cryptographic operations succeed. Disabled keys or keys scheduled for deletion can lead to decryption failures, service outages, or permanent data loss.\n\n In CloudFormation, `AWS::KMS::Key` resources must have `Properties.Enabled` set to `true` and must not define the `Properties.PendingWindowInDays` property. Resources missing `Enabled` or with `Enabled` set to `false` will be flagged as unusable. Any resource that defines `PendingWindowInDays` will be flagged because that indicates the key is scheduled for deletion.\n\n Secure example (enable the key and omit pending-deletion settings):\n\n```yaml\nMyKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Enabled: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/cmk_is_unusable",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/cmk_is_unusable",
   "platform": "CloudFormation",
   "descriptionID": "2e00cfbb",
   "cloudProvider": "aws",

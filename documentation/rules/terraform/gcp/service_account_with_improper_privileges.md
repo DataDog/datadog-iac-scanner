@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting a service account excessive privileges such as `roles/admin`, `roles/editor`, `roles/owner`, or other write-level roles, can expose the environment to the risk of privilege escalation or unintended changes.  In Terraform, this misconfiguration appears when a binding like the following is used:
+Granting a service account excessive privileges such as `roles/admin`, `roles/editor`, `roles/owner`, or other write-level roles, can expose the environment to the risk of privilege escalation or unintended changes.  In Terraform, this misconfiguration appears when a binding like the following is used:
 
 ```
 binding {
@@ -51,7 +51,6 @@ binding {
 ```
 
 Failing to restrict service account privileges can enable attackers or compromised services to make unauthorized changes, potentially leading to data exposure or resource compromise.
-
 
 ## Compliant Code Examples
 ```terraform

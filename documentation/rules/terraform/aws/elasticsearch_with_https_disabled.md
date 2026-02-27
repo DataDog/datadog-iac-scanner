@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon Elasticsearch domains should enforce HTTPS by setting the `enforce_https` attribute to `true` in the `domain_endpoint_options` block. If `enforce_https` is left set to `false`, as shown below, communication with the Elasticsearch domain can occur over unencrypted HTTP, exposing data to interception and increasing the risk of man-in-the-middle attacks.
+Amazon Elasticsearch domains should enforce HTTPS by setting the `enforce_https` attribute to `true` in the `domain_endpoint_options` block. If `enforce_https` is left set to `false`, as shown below, communication with the Elasticsearch domain can occur over unencrypted HTTP, exposing data to interception and increasing the risk of man-in-the-middle attacks.
 
 ```
 domain_endpoint_options {
@@ -45,7 +45,6 @@ domain_endpoint_options {
 ```
 
 Enforcing HTTPS ensures that all data transmitted between clients and the Elasticsearch service is encrypted, protecting sensitive information from unauthorized access.
-
 
 ## Compliant Code Examples
 ```terraform

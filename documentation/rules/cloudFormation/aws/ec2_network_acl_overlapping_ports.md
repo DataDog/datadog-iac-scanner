@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Network ACL entries with overlapping port ranges can make rules ineffective or cause unintended allow/deny behavior, increasing the risk of unauthorized access or service disruption. This check inspects `AWS::EC2::NetworkAclEntry` resources and their `Properties.PortRange.From` and `Properties.PortRange.To` values. Each entry must define a port range that does not intersect with any other `AWS::EC2::NetworkAclEntry` port range in the same template.
+Network ACL entries with overlapping port ranges can make rules ineffective or cause unintended allow/deny behavior, increasing the risk of unauthorized access or service disruption. This check inspects `AWS::EC2::NetworkAclEntry` resources and their `Properties.PortRange.From` and `Properties.PortRange.To` values. Each entry must define a port range that does not intersect with any other `AWS::EC2::NetworkAclEntry` port range in the same template.
  
  Resources missing `PortRange`, with `From` greater than `To`, or with ranges that share any port will be flagged as a misconfiguration. 
  
@@ -57,7 +57,6 @@ AclEntry2:
       From: 443
       To: 443
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Resource Management",
   "descriptionText": "Declaring an AWS SimpleDB domain is discouraged because SimpleDB is a legacy service that lacks many modern security and operational controls. This increases the risk of data exposure and creates maintenance and compliance challenges.\n\nCloudFormation resources with `Type: \"AWS::SDB::Domain\"` must not be defined. Any resource of that type will be flagged by this rule. Use supported services such as Amazon DynamoDB, Amazon RDS, or Amazon S3 with server-side encryption and appropriate IAM controls as secure alternatives.\n\nSecure alternative (DynamoDB instead of SimpleDB):\n\n```yaml\nMyTable:\n  Type: AWS::DynamoDB::Table\n  Properties:\n    TableName: my-table\n    AttributeDefinitions:\n      - AttributeName: id\n        AttributeType: S\n    KeySchema:\n      - AttributeName: id\n        KeyType: HASH\n    BillingMode: PAY_PER_REQUEST\n    SSESpecification:\n      SSEEnabled: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sdb_domain_declared_as_a_resource",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/sdb_domain_declared_as_a_resource",
   "platform": "CloudFormation",
   "descriptionID": "e6c6a7cf",
   "cloudProvider": "aws",

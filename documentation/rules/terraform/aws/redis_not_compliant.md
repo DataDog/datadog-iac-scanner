@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that AWS ElastiCache Redis clusters are using versions that comply with PCI DSS requirements. Older Redis versions (prior to 5.0.0) lack important security features such as encryption in transit, improved authentication, and vulnerability patches required for PCI DSS compliance. Using non-compliant Redis versions could lead to data breaches, non-compliance penalties, and compromise of sensitive information stored in the cache.
+This check ensures that AWS ElastiCache Redis clusters are using versions that comply with PCI DSS requirements. Older Redis versions (prior to 5.0.0) lack important security features such as encryption in transit, improved authentication, and vulnerability patches required for PCI DSS compliance. Using non-compliant Redis versions could lead to data breaches, non-compliance penalties, and compromise of sensitive information stored in the cache.
 
 Non-compliant example:
 ```terraform
@@ -49,7 +49,6 @@ resource "aws_elasticache_cluster" "example" {
   // ... other configuration
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

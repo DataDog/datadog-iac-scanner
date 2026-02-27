@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should have an associated bucket policy so explicit access controls can be enforced. This reduces the risk of unintended public or overly broad access to bucket contents.
+S3 buckets should have an associated bucket policy so explicit access controls can be enforced. This reduces the risk of unintended public or overly broad access to bucket contents.
 
 This rule checks `AWS::S3::Bucket` resources for a matching `AWS::S3::BucketPolicy` whose `Bucket` property references the same bucket. The policy may reference the bucket using a `Ref` to the bucket's logical ID, or by matching the bucket's `BucketName` property.
 
@@ -55,7 +55,6 @@ MyBucketPolicy:
           Action: "s3:GetObject"
           Resource: !Sub "arn:aws:s3:::${MyBucket}/*"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

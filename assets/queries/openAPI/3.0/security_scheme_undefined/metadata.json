@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Components' securityScheme field must have a valid scheme",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/security_scheme_undefined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/security_scheme_undefined",
   "platform": "OpenAPI",
   "descriptionID": "61dba06b",
   "cwe": "284",

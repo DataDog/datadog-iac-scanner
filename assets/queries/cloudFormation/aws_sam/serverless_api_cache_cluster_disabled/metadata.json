@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "Amazon API Gateway caching should be enabled for Serverless APIs to reduce backend load and lower latency, helping prevent request amplification that can degrade performance or cause service outages. The `CacheClusterEnabled` property on `AWS::Serverless::Api` resources must be defined and set to `true`. Resources where `CacheClusterEnabled` is missing, `null`, or set to `false` will be flagged. Also consider configuring `CacheClusterSize` to provision adequate cache capacity for your expected traffic.\n\nSecure configuration example:\n\n```yaml\nMyApi:\n  Type: AWS::Serverless::Api\n  Properties:\n    StageName: Prod\n    CacheClusterEnabled: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_sam/serverless_api_cache_cluster_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_sam/serverless_api_cache_cluster_disabled",
   "platform": "CloudFormation",
   "descriptionID": "1ce59cab",
   "cloudProvider": "aws",

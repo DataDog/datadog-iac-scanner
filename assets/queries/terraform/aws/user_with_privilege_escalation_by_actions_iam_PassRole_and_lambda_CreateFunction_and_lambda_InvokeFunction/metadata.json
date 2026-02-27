@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting a user the `'lambda:CreateFunction'`, `'lambda:InvokeFunction'`, and `'iam:PassRole'` permissions with the `Resource` set to `\"*\"` allows them to create and execute Lambda functions under any IAM role, potentially escalating their privileges in the AWS environment. This misconfiguration means the user can attach highly privileged roles to their Lambda functions and run them, effectively gaining any permissions those roles have—including full administrative access—without approval or oversight. If left unaddressed, this could lead to complete compromise of AWS resources, data theft, or account takeover.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_PassRole_and_lambda_CreateFunction_and_lambda_InvokeFunction",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_passrole_and_lambda_createfunction_and_lambda_invokefunction",
   "platform": "Terraform",
   "descriptionID": "da252d8a",
   "cloudProvider": "aws",

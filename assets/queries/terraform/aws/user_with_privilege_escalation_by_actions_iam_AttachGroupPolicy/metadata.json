@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting the `iam:AttachGroupPolicy` permission with a resource set to `*` allows the user to attach any IAM policy to any group within the AWS account, enabling malicious privilege escalation. If this access is exploited, an attacker could grant themselves or others administrative permissions by attaching powerful policies to groups they control. Instead, permissions should be tightly scoped; for example, only allow specific actions and resources, as in the secure configuration below:\n\n```\nresource \"aws_iam_user_policy\" \"inline_policy_run_instances2\" {\n  name = \"inline_policy_run_instances\"\n  user = aws_iam_user.cosmic2.name\n\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [\n      {\n        Action = [\n          \"ec2:Describe*\",\n        ]\n        Effect   = \"Allow\"\n        Resource = \"*\"\n      },\n    ]\n  })\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_AttachGroupPolicy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_attachgrouppolicy",
   "platform": "Terraform",
   "descriptionID": "9f22319f",
   "cloudProvider": "aws",

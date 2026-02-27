@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 bucket policies should explicitly deny unencrypted (HTTP) requests by using the `"Condition": { "Bool": { "aws:SecureTransport": "false" } }` block. Without this condition, users can transmit sensitive data over unencrypted HTTP connections, exposing objects in the bucket to interception and man-in-the-middle attacks. To ensure all traffic uses HTTPS, set the following policy condition:
+S3 bucket policies should explicitly deny unencrypted (HTTP) requests by using the `"Condition": { "Bool": { "aws:SecureTransport": "false" } }` block. Without this condition, users can transmit sensitive data over unencrypted HTTP connections, exposing objects in the bucket to interception and man-in-the-middle attacks. To ensure all traffic uses HTTPS, set the following policy condition:
 
 ```
 "Condition": {
@@ -38,7 +38,6 @@ meta:
 }
 ```
 This prevents insecure access and protects data integrity during transmission.
-
 
 ## Compliant Code Examples
 ```terraform

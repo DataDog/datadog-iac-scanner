@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- IAM users should not have more than one active access key at a time, as shown by multiple `aws_iam_access_key` resources provisioned for the same user. Allowing more than one access key per user increases the attack surface by providing additional credentials that might be lost, leaked, or forgotten, making unauthorized access and credential compromise more likely if keys are not properly rotated or managed. To mitigate this risk, limit each IAM user to a single access key and revoke any unused or unnecessary keys to maintain strong security hygiene.
-
+IAM users should not have more than one active access key at a time, as shown by multiple `aws_iam_access_key` resources provisioned for the same user. Allowing more than one access key per user increases the attack surface by providing additional credentials that might be lost, leaked, or forgotten, making unauthorized access and credential compromise more likely if keys are not properly rotated or managed. To mitigate this risk, limit each IAM user to a single access key and revoke any unused or unnecessary keys to maintain strong security hygiene.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing basic password authentication for Azure virtual machines introduces a significant security risk, as passwords can be easily guessed, brute-forced, or leaked. When `disable_password_authentication = false` is set in the `os_profile_linux_config` block, as shown below, the VM permits password-based SSH logins:
+Allowing basic password authentication for Azure virtual machines introduces a significant security risk, as passwords can be easily guessed, brute-forced, or leaked. When `disable_password_authentication = false` is set in the `os_profile_linux_config` block, as shown below, the VM permits password-based SSH logins:
 
 ```
 os_profile_linux_config {
@@ -46,7 +46,6 @@ admin_ssh_key {
 ```
 
 Failure to enforce SSH key authentication can lead to unauthorized access, data breaches, or compromise of critical resources.
-
 
 ## Compliant Code Examples
 ```terraform

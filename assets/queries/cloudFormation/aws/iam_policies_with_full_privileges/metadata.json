@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "IAM policy statements that allow `Action: '*'` on `Resource: '*'` grant full administrative privileges across the account and enable privilege escalation, data exfiltration, and account takeover. This rule checks `AWS::IAM::Policy` resources' `Properties.PolicyDocument.Statement` entries and flags statements where `Effect` is `Allow` and both `Action` and `Resource` are the wildcard `'*'` (either as a single string or contained in an array). Replace full wildcards with explicit action lists and scoped resource ARNs, or apply IAM condition keys to restrict the policy to the minimum required scope. Statements that do not include both wildcards will not be flagged. \n \n Secure example limiting S3 access to a single bucket:\n\n```yaml\nMyS3Policy:\n  Type: AWS::IAM::Policy\n  Properties:\n    PolicyName: ReadOnlyS3\n    PolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Action:\n            - s3:GetObject\n            - s3:ListBucket\n          Resource:\n            - arn:aws:s3:::my-bucket\n            - arn:aws:s3:::my-bucket/*\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/iam_policies_with_full_privileges",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/iam_policies_with_full_privileges",
   "platform": "CloudFormation",
   "descriptionID": "faa72156",
   "cloudProvider": "aws",

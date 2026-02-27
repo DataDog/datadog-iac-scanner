@@ -1,11 +1,12 @@
 {
   "id": "5907595b-5b6d-4142-b173-dbb0e73fbff8",
-  "queryName": "Exposing Port 22 (SSH)",
+  "queryName": "Exposing port 22 (SSH)",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "Expose only the ports that your application needs and avoid exposing ports like SSH (22)",
-  "descriptionUrl": "https://sysdig.com/blog/dockerfile-best-practices/",
+  "descriptionText": "Exposing SSH (port 22) from a container image creates an unnecessary remote access surface that enables brute-force attacks, credential theft, and lateral movement if the container or host is compromised. This rule checks Dockerfiles for `EXPOSE` instructions and flags any `EXPOSE` entry that includes port `22`.\n\nRemove port `22` from `EXPOSE` directives and rely on container runtime access methods (for example, `docker exec` or `kubectl exec`), a bastion host, or an ephemeral, tightly-controlled SSH gateway with network restrictions and strong authentication when interactive access is required.\n\nSecure example without SSH exposed:\n\n```dockerfile\nEXPOSE 8080\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/exposing_port_22",
   "platform": "Dockerfile",
   "descriptionID": "79731185",
-  "cwe": "710"
+  "cwe": "710",
+  "providerUrl": "https://sysdig.com/blog/dockerfile-best-practices/"
 }

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stages must be associated with an API Gateway usage plan to enforce throttling and quota limits and enable API key–based access control. Without a usage plan, a stage is vulnerable to abusive clients, excessive request rates, service exhaustion, and unexpected costs.
+API Gateway stages must be associated with an API Gateway usage plan to enforce throttling and quota limits and enable API key–based access control. Without a usage plan, a stage is vulnerable to abusive clients, excessive request rates, service exhaustion, and unexpected costs.
 
  Verify the template includes an `AWS::ApiGateway::UsagePlan` resource and that its `Properties.ApiStages` array contains an entry where:
 
@@ -55,7 +55,6 @@ MyUsagePlan:
       - ApiId: !Ref MyApi
         Stage: !Ref MyStage
 ```
-
 
 ## Compliant Code Examples
 ```yaml

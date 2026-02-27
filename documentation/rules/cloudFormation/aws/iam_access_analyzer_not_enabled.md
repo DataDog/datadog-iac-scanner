@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM Access Analyzer provides continuous monitoring of resource-based policies to detect unintended public or cross-account access. If an `AWS::AccessAnalyzer::Analyzer` is not defined, these permission issues can go undetected, increasing the risk of data exposure or privilege escalation.
+IAM Access Analyzer provides continuous monitoring of resource-based policies to detect unintended public or cross-account access. If an `AWS::AccessAnalyzer::Analyzer` is not defined, these permission issues can go undetected, increasing the risk of data exposure or privilege escalation.
  
  The CloudFormation template must include an `AWS::AccessAnalyzer::Analyzer` resource. Templates missing this resource will be flagged. Set the `Properties.Type` to `ACCOUNT` to monitor a single account or `ORGANIZATION` to monitor an AWS Organization, and optionally provide an `AnalyzerName` for identification.
 
@@ -41,7 +41,6 @@ MyAccessAnalyzer:
     AnalyzerName: my-access-analyzer
     Type: ACCOUNT
 ```
-
 
 ## Compliant Code Examples
 ```yaml

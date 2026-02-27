@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Assigning an IAM role directly to a user rather than to a group is considered a misconfiguration, as it reduces flexibility and scalability in managing permissions. This practice can also lead to security risks; if the user leaves the organization or changes roles, their individual permissions may be overlooked and not revoked, resulting in excessive access. Using a group-based assignment, as shown below, ensures a more centralized and manageable permission structure:
+Assigning an IAM role directly to a user rather than to a group is considered a misconfiguration, as it reduces flexibility and scalability in managing permissions. This practice can also lead to security risks; if the user leaves the organization or changes roles, their individual permissions may be overlooked and not revoked, resulting in excessive access. Using a group-based assignment, as shown below, ensures a more centralized and manageable permission structure:
 
 ```
 data "google_iam_policy" "secure" {
@@ -41,7 +41,6 @@ data "google_iam_policy" "secure" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that all AWS API Gateway REST APIs have an associated API Gateway authorizer, which is responsible for validating incoming requests before granting access to backend resources. Without specifying an authorizer using the `aws_api_gateway_authorizer` resource and linking it to the `rest_api_id` attribute in your Terraform configuration, APIs may be left unprotected, allowing unauthenticated and potentially malicious users to access sensitive endpoints. Failure to enforce proper authorization can result in unauthorized access, data exposure, or abuse of backend services.
-
+This check ensures that all AWS API Gateway REST APIs have an associated API Gateway authorizer, which is responsible for validating incoming requests before granting access to backend resources. Without specifying an authorizer using the `aws_api_gateway_authorizer` resource and linking it to the `rest_api_id` attribute in your Terraform configuration, APIs may be left unprotected, allowing unauthenticated and potentially malicious users to access sensitive endpoints. Failure to enforce proper authorization can result in unauthorized access, data exposure, or abuse of backend services.
 
 ## Compliant Code Examples
 ```terraform

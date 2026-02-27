@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether automated backups are enabled for all Google Cloud SQL database instances by ensuring the `backup_configuration` block has the `enabled = true` attribute. If automated backups are disabled or the `backup_configuration` block is missing, databases are at risk of unrecoverable data loss in the event of accidental deletion, corruption, or other failures. When automated backups are disabled, the configuration appears as follows:
+This check verifies whether automated backups are enabled for all Google Cloud SQL database instances by ensuring the `backup_configuration` block has the `enabled = true` attribute. If automated backups are disabled or the `backup_configuration` block is missing, databases are at risk of unrecoverable data loss in the event of accidental deletion, corruption, or other failures. When automated backups are disabled, the configuration appears as follows:
 
 ```
 settings {
@@ -49,7 +49,6 @@ settings {
 ```
 
 This ensures that point-in-time recovery is possible and critical business data can be restored when needed.
-
 
 ## Compliant Code Examples
 ```terraform

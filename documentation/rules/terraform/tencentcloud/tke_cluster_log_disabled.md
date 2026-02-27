@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- TKE cluster `log_agent` must be present and `log_agent.enabled` must be set to `true`.
+TKE cluster `log_agent` must be present and `log_agent.enabled` must be set to `true`.
 The rule flags resources of type `tencentcloud_kubernetes_cluster` when the `log_agent` attribute is missing or null, or when `log_agent.enabled` is `false`.
-
 
 ## Compliant Code Examples
 ```terraform

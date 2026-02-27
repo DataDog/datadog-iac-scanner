@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "When storage encryption is enabled for database or analytics clusters or instances, explicitly specifying a customer-managed AWS KMS key prevents use of the AWS-managed default key. Using the AWS-managed default key can limit your ability to enforce key policies, control access, rotate keys, and audit key usage.\n\n In CloudFormation, this applies to `AWS::RDS::DBInstance`, `AWS::RDS::DBCluster`, `AWS::DocDB::DBCluster`, `AWS::Neptune::DBCluster`, and `AWS::Redshift::Cluster`. `Properties.StorageEncrypted` must be `true`, and `Properties.KmsKeyId` must be defined and reference a customer-managed AWS KMS key (key ARN, alias, or a `Ref` to an `AWS::KMS::Key`). Resources with `StorageEncrypted` set to `true` and no `KmsKeyId` will be flagged.\n\n Define an `AWS::KMS::Key` and set `KmsKeyId` (for example, with `!Ref`) when you need explicit ownership, key policy control, or independent rotation and auditing.\n\nSecure CloudFormation example:\n\n```yaml\nMyKmsKey:\n  Type: AWS::KMS::Key\n  Properties:\n    Description: \"CMK for DB encryption\"\n\nMyDB:\n  Type: AWS::RDS::DBInstance\n  Properties:\n    DBInstanceIdentifier: my-db\n    StorageEncrypted: true\n    KmsKeyId: !Ref MyKmsKey\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/default_kms_key_usage",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/default_kms_key_usage",
   "platform": "CloudFormation",
   "descriptionID": "d479130b",
   "cloudProvider": "aws",

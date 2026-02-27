@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not include the CAP_SYS_ADMIN Linux capability. Granting CAP_SYS_ADMIN gives processes elevated system-administration privileges and can enable container escape or host compromise. Container security contexts must not add 'SYS_ADMIN' to capabilities.
-
+Containers should not include the CAP_SYS_ADMIN Linux capability. Granting CAP_SYS_ADMIN gives processes elevated system-administration privileges and can enable container escape or host compromise. Container security contexts must not add 'SYS_ADMIN' to capabilities.
 
 ## Compliant Code Examples
 ```terraform

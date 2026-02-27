@@ -1,12 +1,13 @@
 {
   "id": "38300d1a-feb2-4a48-936a-d1ef1cd24313",
-  "queryName": "Missing Zypper Clean",
+  "queryName": "Missing zypper clean",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "Reduce layer and image size by deleting unneeded caches after running zypper",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "Dockerfile `RUN` instructions that invoke zypper must include a subsequent `zypper clean` to remove package manager caches. Cached packages and metadata are otherwise persisted in image layers, increasing image size and the chance of leaking repository metadata or outdated package data.\n\nThis rule checks Dockerfile `RUN` commands for zypper usage (for example, `zypper in`, `zypper install`, `zypper rm`, `zypper si`, and `zypper patch`) and requires a `zypper clean` or `zypper cc` either in the same `RUN` command after the install or in a later `RUN` within the same build stage. Resources that run zypper without a following clean (or that rely on a clean in a prior layer) will be flagged. To avoid leaving caches in intermediate layers, chain the install and clean steps in the same `RUN`.\n\nSecure example:\n\n```dockerfile\nFROM opensuse/leap\nRUN zypper -n refresh && \\\n    zypper -n install package1 package2 && \\\n    zypper clean\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/missing_zypper_clean",
   "platform": "Dockerfile",
   "descriptionID": "a95b2646",
   "cwe": "459",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

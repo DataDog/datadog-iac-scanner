@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check verifies whether Amazon CloudFront distributions are configured to use secure TLS protocols and ciphers by examining the `viewer_certificate` block and its `minimum_protocol_version` attribute. CloudFront distributions that specify weak or outdated protocol versions, such as `SSLv3` (for example, `minimum_protocol_version = "SSLv3"`), expose transmitted data to vulnerabilities such as man-in-the-middle attacks and eavesdropping, as these protocols have known security flaws and are no longer considered safe. Failing to enforce secure cipher suites can allow attackers to decrypt, tamper with, or intercept sensitive information in transit between CloudFront and clients. To mitigate this risk, the attribute should be set to a secure value (such as "TLSv1.2_2019" or higher), or use the default CloudFront certificate which enforces modern standards.
-
+This check verifies whether Amazon CloudFront distributions are configured to use secure TLS protocols and ciphers by examining the `viewer_certificate` block and its `minimum_protocol_version` attribute. CloudFront distributions that specify weak or outdated protocol versions, such as `SSLv3` (for example, `minimum_protocol_version = "SSLv3"`), expose transmitted data to vulnerabilities such as man-in-the-middle attacks and eavesdropping, as these protocols have known security flaws and are no longer considered safe. Failing to enforce secure cipher suites can allow attackers to decrypt, tamper with, or intercept sensitive information in transit between CloudFront and clients. To mitigate this risk, the attribute should be set to a secure value (such as "TLSv1.2_2019" or higher), or use the default CloudFront certificate which enforces modern standards.
 
 ## Compliant Code Examples
 ```terraform

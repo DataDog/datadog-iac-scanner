@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "Schema External Documentation URL should be a valid URL",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/invalid_schema_external_documentation_url",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/invalid_schema_external_documentation_url",
   "platform": "OpenAPI",
   "descriptionID": "1628e080",
   "aggregation": 2,

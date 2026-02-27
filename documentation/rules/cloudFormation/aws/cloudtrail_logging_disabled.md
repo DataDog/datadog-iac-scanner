@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudTrail must have logging enabled to provide an audit trail of API activity. Without logging, you cannot reliably detect unauthorized actions, investigate incidents, or meet audit and compliance requirements. The `IsLogging` property on `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources missing `IsLogging` or with `IsLogging` set to `false` will be flagged.
+CloudTrail must have logging enabled to provide an audit trail of API activity. Without logging, you cannot reliably detect unauthorized actions, investigate incidents, or meet audit and compliance requirements. The `IsLogging` property on `AWS::CloudTrail::Trail` resources must be defined and set to `true`. Resources missing `IsLogging` or with `IsLogging` set to `false` will be flagged.
 
 Secure configuration example:
 
@@ -39,7 +39,6 @@ MyTrail:
     IsLogging: true
     S3BucketName: my-trail-bucket
 ```
-
 
 ## Compliant Code Examples
 ```yaml

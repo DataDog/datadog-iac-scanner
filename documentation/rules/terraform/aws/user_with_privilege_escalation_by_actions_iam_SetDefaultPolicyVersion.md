@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting the `iam:SetDefaultPolicyVersion` action with a resource of `"*"` allows a user to set any version of any IAM policy as the default, including attaching more permissive versions to roles or users. This creates a serious privilege escalation risk, as an attacker with these permissions could assign themselves or others elevated privileges by setting a policy version that permits broader or unauthorized access. If left unaddressed, this vulnerability could lead to full account compromise or unapproved actions throughout the AWS environment.
-
+Granting the `iam:SetDefaultPolicyVersion` action with a resource of `"*"` allows a user to set any version of any IAM policy as the default, including attaching more permissive versions to roles or users. This creates a serious privilege escalation risk, as an attacker with these permissions could assign themselves or others elevated privileges by setting a policy version that permits broader or unauthorized access. If left unaddressed, this vulnerability could lead to full account compromise or unapproved actions throughout the AWS environment.
 
 ## Compliant Code Examples
 ```terraform

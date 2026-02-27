@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Network ACL entries that allow all TCP or UDP ports significantly broaden the attack surface and can expose many services to network-based attacks and lateral movement.
+Network ACL entries that allow all TCP or UDP ports significantly broaden the attack surface and can expose many services to network-based attacks and lateral movement.
 
 For `AWS::EC2::NetworkAclEntry` resources where `Protocol` indicates TCP (`6`) or UDP (`17`), the `PortRange` property must be present, include both `From` and `To`, and must not be set to the full range `From: 0` and `To: 65535`. Resources missing `PortRange`, missing the `From`/`To` attributes, or configured to allow `0`–`65535` will be flagged.
 
@@ -49,7 +49,6 @@ MyNetworkAclEntry:
       From: 443
       To: 443
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting a group the `iam:AttachUserPolicy` action with `"Resource": "*"` in Terraform, as shown by the attribute and policy below, allows any group member to attach arbitrary IAM policies to any user in the AWS account. This creates a serious privilege escalation vulnerability, as users with this permission can grant themselves or others higher privileges, including administrative access, bypassing intended security controls. If left unaddressed, attackers could exploit this misconfiguration to gain unrestricted access or take over AWS resources.
+Granting a group the `iam:AttachUserPolicy` action with `"Resource": "*"` in Terraform, as shown by the attribute and policy below, allows any group member to attach arbitrary IAM policies to any user in the AWS account. This creates a serious privilege escalation vulnerability, as users with this permission can grant themselves or others higher privileges, including administrative access, bypassing intended security controls. If left unaddressed, attackers could exploit this misconfiguration to gain unrestricted access or take over AWS resources.
 
 ```
 policy = jsonencode({
@@ -44,7 +44,6 @@ policy = jsonencode({
   ]
 })
 ```
-
 
 ## Compliant Code Examples
 ```terraform

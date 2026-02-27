@@ -4,7 +4,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "Maintaining an inventory of SQS queues helps you quickly identify queues that are publicly or broadly accessible or that lack server-side encryption, both of which can lead to unauthorized access to message contents or unintended message ingestion. This rule enumerates CloudFormation resources of type `AWS::SQS::Queue` and gathers associated `AWS::SQS::QueuePolicy` details, accessibility metadata, and encryption information (for example the queue’s `KmsMasterKeyId` and related encryption settings) into a bill-of-materials output. Resources missing encryption metadata or having policies that grant wide principals or public access are surfaced in the BOM so you can inspect and remediate access policies or enable KMS-based encryption.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/sqs",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_bom/sqs",
   "platform": "CloudFormation",
   "descriptionID": "c57e306b",
   "cloudProvider": "aws",

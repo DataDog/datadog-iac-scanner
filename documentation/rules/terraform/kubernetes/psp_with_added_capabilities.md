@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Pod Security Policy should not include allowed capabilities.
+Pod Security Policy should not include allowed capabilities.
 
 This rule inspects `kubernetes_pod_security_policy` resources and flags any presence of `spec.allowed_capabilities`. When triggered, the rule returns `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue` to describe the finding. The `issueType` for these findings is `IncorrectValue`.
-
 
 ## Compliant Code Examples
 ```terraform

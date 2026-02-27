@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM roles with full administrative privileges (using wildcard actions like `*`) grant unrestricted access to AWS resources, creating a significant security risk. If compromised, these roles could be exploited to access sensitive data, modify infrastructure, or launch attacks across your entire AWS environment. Instead of using wildcard permissions in the `Action` field, specify only the required permissions, as shown in the secure example:
+IAM roles with full administrative privileges (using wildcard actions like `*`) grant unrestricted access to AWS resources, creating a significant security risk. If compromised, these roles could be exploited to access sensitive data, modify infrastructure, or launch attacks across your entire AWS environment. Instead of using wildcard permissions in the `Action` field, specify only the required permissions, as shown in the secure example:
 
 ```
 "Action": ["some:action"]
@@ -39,7 +39,6 @@ Avoid insecure patterns such as the following:
 ```
 "Action": ["*"] or "Action": "*"
 ```
-
 
 ## Compliant Code Examples
 ```terraform

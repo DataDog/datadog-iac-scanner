@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Network ACL entries that permit all protocols or use unsupported protocol values broaden the attack surface and can allow unintended traffic types to reach your instances, increasing risk of reconnaissance, exploitation, and lateral movement. For `AWS::EC2::NetworkAclEntry` resources, the `Protocol` property must be set to one of the numeric values: `6` (TCP), `17` (UDP), `1` (ICMP), or `58` (ICMPv6). Resources missing the `Protocol` property or configured with any other value (for example, `-1`/`all`) will be flagged. 
+Network ACL entries that permit all protocols or use unsupported protocol values broaden the attack surface and can allow unintended traffic types to reach your instances, increasing risk of reconnaissance, exploitation, and lateral movement. For `AWS::EC2::NetworkAclEntry` resources, the `Protocol` property must be set to one of the numeric values: `6` (TCP), `17` (UDP), `1` (ICMP), or `58` (ICMPv6). Resources missing the `Protocol` property or configured with any other value (for example, `-1`/`all`) will be flagged. 
  
  **Note**: ICMPv6 (`58`) entries must also use an IPv6 CIDR block and include an ICMP type and code.
 
@@ -47,7 +47,6 @@ MyNetworkAclEntry:
       From: 443
       To: 443
 ```
-
 
 ## Compliant Code Examples
 ```yaml

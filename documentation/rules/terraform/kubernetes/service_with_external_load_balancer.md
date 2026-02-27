@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- This rule applies to `kubernetes_service` resources with `spec.type == "LoadBalancer"`, which exposes the service via an external load balancer and can make it accessible from other networks and the Internet.
+This rule applies to `kubernetes_service` resources with `spec.type == "LoadBalancer"`, which exposes the service via an external load balancer and can make it accessible from other networks and the Internet.
 `metadata.annotations` should be set to indicate an internal load balancer when the service must not be externally exposed.
 Supported internal annotation keys include `networking.gke.io/load-balancer-type: Internal`, `cloud.google.com/load-balancer-type: Internal`, `service.beta.kubernetes.io/aws-load-balancer-internal: "true"`, and `service.beta.kubernetes.io/azure-load-balancer-internal: "true"`.
-
 
 ## Compliant Code Examples
 ```terraform

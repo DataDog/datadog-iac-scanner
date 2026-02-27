@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Schema Object reference must always point to '#/definitions'",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/schema_object_incorrect_ref",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/schema_object_incorrect_ref",
   "platform": "OpenAPI",
   "descriptionID": "8389f514",
   "cwe": "20",

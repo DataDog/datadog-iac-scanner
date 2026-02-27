@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- One or more Azure attribute best practices are not followed for this Databricks cluster. The rule flags clusters when:
+One or more Azure attribute best practices are not followed for this Databricks cluster. The rule flags clusters when:
 
 - `azure_attributes.availability` is set to `SPOT` or `SPOT_AZURE`,
 - `azure_attributes.first_on_demand` is `0`, or
 - `azure_attributes.first_on_demand` is missing.
 
 These settings must ensure the use of at least one on-demand instance and avoid exclusive reliance on spot VMs.
-
 
 ## Compliant Code Examples
 ```terraform

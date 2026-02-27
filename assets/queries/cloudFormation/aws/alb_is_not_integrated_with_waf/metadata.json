@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Externally accessible Application Load Balancers must be protected by a web application firewall (WAF) to block common web attacks such as SQL injection, cross-site scripting, and HTTP-layer abuse that can lead to data exposure or service disruption. Check `AWS::ElasticLoadBalancingV2::LoadBalancer` resources where `Properties.Scheme` is not `internal` and ensure there is an `AWS::WAFRegional::WebACLAssociation` that associates a web ACL with the load balancer by setting `Properties.ResourceArn` to the load balancer ARN. Resources missing a corresponding `AWS::WAFRegional::WebACLAssociation` where `ResourceArn` references the load balancer will be flagged. \n \n Secure CloudFormation example using the ALB ARN:\n\n```yaml\nMyLoadBalancer:\n  Type: AWS::ElasticLoadBalancingV2::LoadBalancer\n  Properties:\n    Name: my-alb\n    Scheme: internet-facing\n    # other ALB properties...\n\nMyWebACLAssociation:\n  Type: AWS::WAFRegional::WebACLAssociation\n  Properties:\n    ResourceArn: !GetAtt MyLoadBalancer.LoadBalancerArn\n    WebACLId: !Ref MyWebACL\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/alb_is_not_integrated_with_waf",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/alb_is_not_integrated_with_waf",
   "platform": "CloudFormation",
   "descriptionID": "2cad71a7",
   "cloudProvider": "aws",

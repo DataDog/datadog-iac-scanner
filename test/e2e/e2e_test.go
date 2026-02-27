@@ -24,7 +24,7 @@ func Test_E2EExclusions(t *testing.T) {
 			expectedOutput: scan.ScanStats{
 				Violations: 5,
 				Files:      1,
-				Rules:      1125,
+				Rules:      1123,
 				ViolationBreakdowns: map[string]map[string]int{
 					"LOW": {
 						"a2b3c4d5-e6f7-8901-gh23-ijkl456m7890": 1,
@@ -43,7 +43,7 @@ func Test_E2EExclusions(t *testing.T) {
 			expectedOutput: scan.ScanStats{
 				Violations: 4,
 				Files:      1,
-				Rules:      1125,
+				Rules:      1123,
 				ViolationBreakdowns: map[string]map[string]int{
 					"LOW": {
 						"c5b31ab9-0f26-4a49-b8aa-4cc064392f4d": 2,

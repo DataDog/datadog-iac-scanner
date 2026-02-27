@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that network ACLs don't allow unrestricted access to RDP (TCP port 3389) from the public internet (`0.0.0.0/0`). Exposing RDP to the entire internet significantly increases the risk of brute force attacks and unauthorized access to your instances, potentially leading to data breaches or system compromise. Instead of using a wide-open CIDR block like `0.0.0.0/0`, restrict RDP access to specific IP ranges as shown in the following secure configuration: `ingress = [{ protocol = "tcp", rule_no = 100, action = "allow", cidr_block = "10.3.0.0/18", from_port = 3389, to_port = 3389 }]`.
-
+This check ensures that network ACLs don't allow unrestricted access to RDP (TCP port 3389) from the public internet (`0.0.0.0/0`). Exposing RDP to the entire internet significantly increases the risk of brute force attacks and unauthorized access to your instances, potentially leading to data breaches or system compromise. Instead of using a wide-open CIDR block like `0.0.0.0/0`, restrict RDP access to specific IP ranges as shown in the following secure configuration: `ingress = [{ protocol = "tcp", rule_no = 100, action = "allow", cidr_block = "10.3.0.0/18", from_port = 3389, to_port = 3389 }]`.
 
 ## Compliant Code Examples
 ```terraform

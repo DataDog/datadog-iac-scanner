@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting the `iam:CreatePolicyVersion` action with a resource of `\"*\"` in an IAM policy allows a user to create new policy versions for *any* policy in the AWS account, including those attached to highly privileged roles. This capability can be exploited for privilege escalation, as a malicious or compromised user could attach or update policies to grant themselves broader permissions. To mitigate this risk, restrict the `Resource` attribute to specific policy ARNs and only grant this action to trusted administrative principals.\n\nA more secure configuration would specify only necessary actions for the specific resources required. For example:\n\n```\nresource \"aws_iam_user\" \"cosmic2\" {\n  name = \"cosmic2\"\n}\n\nresource \"aws_iam_user_policy\" \"inline_policy_run_instances2\" {\n  name = \"inline_policy_run_instances\"\n  user = aws_iam_user.cosmic2.name\n\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [\n      {\n        Action = [\n          \"ec2:Describe*\",\n        ]\n        Effect   = \"Allow\"\n        Resource = \"*\"\n      },\n    ]\n  })\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_CreatePolicyVersion",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_createpolicyversion",
   "platform": "Terraform",
   "descriptionID": "fe987a1d",
   "cloudProvider": "aws",

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Secrets stored in Azure Key Vault using the `azurerm_key_vault_secret` resource should always have an `expiration_date` set to ensure that sensitive credentials are not usable indefinitely. Failing to set an expiration date may result in forgotten or stale secrets lingering in your environment, increasing the risk of those secrets being misused if an account is compromised or a process changes. For a more secure configuration, explicitly specify the `expiration_date` attribute, as shown below:
+Secrets stored in Azure Key Vault using the `azurerm_key_vault_secret` resource should always have an `expiration_date` set to ensure that sensitive credentials are not usable indefinitely. Failing to set an expiration date may result in forgotten or stale secrets lingering in your environment, increasing the risk of those secrets being misused if an account is compromised or a process changes. For a more secure configuration, explicitly specify the `expiration_date` attribute, as shown below:
 
 ```
 resource "azurerm_key_vault_secret" "example" {
@@ -39,7 +39,6 @@ resource "azurerm_key_vault_secret" "example" {
     expiration_date  = "2025-01-01T00:00:00Z"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

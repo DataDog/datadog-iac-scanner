@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "The 'basePath' value format must match the pattern '^/'",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/basepath_with_wrong_format",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/basepath_with_wrong_format",
   "platform": "OpenAPI",
   "descriptionID": "c97fafa0",
   "cwe": "20",

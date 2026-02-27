@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Checks whether `kubernetes_pod_security_policy` resources allow containers to share the host network namespace. The rule identifies resources where `spec.hostNetwork` is set to `true`. Allowing `hostNetwork` exposes the node's network stack to pods, increasing attack surface and risking port collisions and privilege escalation. `spec.hostNetwork` should be set to `false` or left `undefined` to ensure pods use isolated network namespaces.
-
+Checks whether `kubernetes_pod_security_policy` resources allow containers to share the host network namespace. The rule identifies resources where `spec.hostNetwork` is set to `true`. Allowing `hostNetwork` exposes the node's network stack to pods, increasing attack surface and risking port collisions and privilege escalation. `spec.hostNetwork` should be set to `false` or left `undefined` to ensure pods use isolated network namespaces.
 
 ## Compliant Code Examples
 ```terraform

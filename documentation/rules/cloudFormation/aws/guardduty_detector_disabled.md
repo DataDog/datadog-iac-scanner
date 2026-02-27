@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon GuardDuty must be enabled to provide continuous threat detection and alerting. Disabling it can allow malicious activity to go undetected and delay incident response.
+Amazon GuardDuty must be enabled to provide continuous threat detection and alerting. Disabling it can allow malicious activity to go undetected and delay incident response.
  
  The `Enable` property on `AWS::GuardDuty::Detector` resources must be set to `true`. This rule flags `AWS::GuardDuty::Detector` resources where `Enable` is explicitly set to `false`.
 
@@ -40,7 +40,6 @@ MyDetector:
   Properties:
     Enable: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

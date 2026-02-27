@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECS clusters should have Container Insights enabled to collect container-level metrics and logs for monitoring, performance troubleshooting, and security visibility.
+Amazon ECS clusters should have Container Insights enabled to collect container-level metrics and logs for monitoring, performance troubleshooting, and security visibility.
  
  The `ClusterSettings` property in `AWS::ECS::Cluster` resources must include a `ClusterSetting` with `Name` set to `containerInsights` and `Value` set to `enabled`. Resources missing `ClusterSettings` or without an entry setting `containerInsights` to `enabled` will be flagged.
 
@@ -42,7 +42,6 @@ MyCluster:
       - Name: containerInsights
         Value: enabled
 ```
-
 
 ## Compliant Code Examples
 ```yaml

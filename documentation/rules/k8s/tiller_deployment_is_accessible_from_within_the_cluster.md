@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Tiller deployments must not allow access from within the cluster.  
+Tiller deployments must not allow access from within the cluster.  
 Tiller containers must include the `--listen` argument and set it to a local address (for example `localhost` or `127.0.0.1`).  
 Resources lacking `args` or whose `--listen` value is not a local address are flagged.
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When the `ignore_public_acls` attribute in the `aws_s3_bucket_public_access_block` resource is set to `false`, S3 buckets may still honor any public access permissions granted by existing or future bucket or object ACLs. This creates a risk of sensitive data being inadvertently exposed to the public internet if a user or process applies a permissive ACL. To prevent this, `ignore_public_acls` should be set to `true`, which ensures that all public ACLs are ignored and cannot be used to grant public access.
-
+When the `ignore_public_acls` attribute in the `aws_s3_bucket_public_access_block` resource is set to `false`, S3 buckets may still honor any public access permissions granted by existing or future bucket or object ACLs. This creates a risk of sensitive data being inadvertently exposed to the public internet if a user or process applies a permissive ACL. To prevent this, `ignore_public_acls` should be set to `true`, which ensures that all public ACLs are ignored and cannot be used to grant public access.
 
 ## Compliant Code Examples
 ```terraform

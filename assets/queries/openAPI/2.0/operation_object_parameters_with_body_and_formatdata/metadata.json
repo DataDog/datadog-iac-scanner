@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Operation object parameters should not have both 'body' and 'formatData' locations",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/operation_object_parameters_with_body_and_formatdata",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/operation_object_parameters_with_body_and_formatdata",
   "platform": "OpenAPI",
   "descriptionID": "007c8e83",
   "cwe": "20",

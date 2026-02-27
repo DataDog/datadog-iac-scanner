@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- When a container runs `kube-apiserver`, the `--audit-log-maxsize` flag should be set to 100 megabytes or more.  
+When a container runs `kube-apiserver`, the `--audit-log-maxsize` flag should be set to 100 megabytes or more.  
 This rule inspects `containers` and `initContainers` and checks container commands for `kube-apiserver`; it verifies that `--audit-log-maxsize` is present and has a value of at least 100 megabytes.  
 The rule reports `MissingAttribute` if the flag is absent and `IncorrectValue` if the flag is set to less than 100 megabytes.
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Load balancers must not reference security groups that lack inbound (ingress) rules, because a security group without ingress can block legitimate client traffic to the load balancer and indicates an incomplete network configuration that may cause availability issues.
+Load balancers must not reference security groups that lack inbound (ingress) rules, because a security group without ingress can block legitimate client traffic to the load balancer and indicates an incomplete network configuration that may cause availability issues.
  
  For each load balancer resource (for example, `AWS::ElasticLoadBalancing::LoadBalancer` or `AWS::ElasticLoadBalancingV2::LoadBalancer`), each entry in the `Properties.SecurityGroups` property must reference an `AWS::EC2::SecurityGroup` with ingress rules defined. The security group must either define a non-empty `SecurityGroupIngress` property or be targeted by one or more `AWS::EC2::SecurityGroupIngress` resources whose `GroupId` references it. Resources missing the `SecurityGroupIngress` key, with `SecurityGroupIngress` set to an empty list, or with no `AWS::EC2::SecurityGroupIngress` resources referencing the group will be flagged.
 
@@ -46,7 +46,6 @@ MySecurityGroup:
         ToPort: 80
         CidrIp: 0.0.0.0/0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

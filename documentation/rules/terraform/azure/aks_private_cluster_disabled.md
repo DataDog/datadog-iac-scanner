@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The Azure Kubernetes Service (AKS) API server should not be exposed directly to the internet, as this increases the risk of unauthorized access and potential exploitation of the cluster. When the `private_cluster_enabled` attribute is set to `false`, as shown below, the AKS API endpoint is accessible publicly, allowing threat actors to attempt brute force or other attacks:
+The Azure Kubernetes Service (AKS) API server should not be exposed directly to the internet, as this increases the risk of unauthorized access and potential exploitation of the cluster. When the `private_cluster_enabled` attribute is set to `false`, as shown below, the AKS API endpoint is accessible publicly, allowing threat actors to attempt brute force or other attacks:
 
 ```
 resource "azurerm_kubernetes_cluster" "example" {
@@ -45,7 +45,6 @@ resource "azurerm_kubernetes_cluster" "example" {
   private_cluster_enabled = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

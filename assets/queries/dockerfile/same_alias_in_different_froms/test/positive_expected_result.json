@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Same Alias In Different Froms",
+    "queryName": "Same alias in different FROM statements",
     "severity": "LOW",
     "line": 4
   }

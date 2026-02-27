@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Using personal Gmail accounts instead of corporate credentials in IAM bindings introduces a security risk by granting project access to external, non-managed identities that are not subject to company oversight, monitoring, or access controls. For example:
+Using personal Gmail accounts instead of corporate credentials in IAM bindings introduces a security risk by granting project access to external, non-managed identities that are not subject to company oversight, monitoring, or access controls. For example:
 
 ```
 resource "google_project_iam_binding" "positive1" {
@@ -55,7 +55,6 @@ resource "google_project_iam_binding" "negative1" {
   ]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

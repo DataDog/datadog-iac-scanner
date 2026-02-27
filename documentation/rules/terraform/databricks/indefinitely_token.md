@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- The `databricks_token` resource is missing the `lifetime_seconds` attribute, resulting in a token with an indefinite lifetime.
+The `databricks_token` resource is missing the `lifetime_seconds` attribute, resulting in a token with an indefinite lifetime.
 This attribute defines the token's validity period and should be set to enforce expiration.
-
 
 ## Compliant Code Examples
 ```terraform

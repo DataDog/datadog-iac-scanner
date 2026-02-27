@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Service account tokens are mounted automatically, even when not necessary. This rule checks Kubernetes resources — `kubernetes_pod`, `kubernetes_deployment`, `kubernetes_daemonset`, `kubernetes_job`, `kubernetes_stateful_set`, `kubernetes_replication_controller`, and `kubernetes_cron_job` — for the `automount_service_account_token` attribute and requires it to be set to `false`. It reports a `MissingAttribute` when `automount_service_account_token` is undefined and an `IncorrectValue` when it is explicitly set to `true`; remediation is to set `automount_service_account_token = false` (replacement from `true` to `false` when applicable).
-
+Service account tokens are mounted automatically, even when not necessary. This rule checks Kubernetes resources — `kubernetes_pod`, `kubernetes_deployment`, `kubernetes_daemonset`, `kubernetes_job`, `kubernetes_stateful_set`, `kubernetes_replication_controller`, and `kubernetes_cron_job` — for the `automount_service_account_token` attribute and requires it to be set to `false`. It reports a `MissingAttribute` when `automount_service_account_token` is undefined and an `IncorrectValue` when it is explicitly set to `true`; remediation is to set `automount_service_account_token = false` (replacement from `true` to `false` when applicable).
 
 ## Compliant Code Examples
 ```terraform

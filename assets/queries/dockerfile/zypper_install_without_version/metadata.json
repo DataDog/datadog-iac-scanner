@@ -1,12 +1,13 @@
 {
   "id": "562952e4-0348-4dea-9826-44f3a2c6117b",
-  "queryName": "Zypper Install Without Version",
+  "queryName": "Zypper install without explicit package version",
   "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "Not specifying the package version can cause failures due to unanticipated changes in required packages",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "When using zypper to install packages in a Dockerfile, each package should include an explicit version to ensure reproducible builds and avoid unintentionally pulling newer package releases that could introduce vulnerabilities or break functionality.\n\nThis rule inspects Dockerfile `RUN` instructions that invoke `zypper install` or `zypper in` (both shell-form and exec-form) and flags package arguments that are bare names without a version component. Resources missing a version, for example, `curl` instead of `curl=7.79.1` will be flagged. Specify the version inline using the repository-appropriate syntax or use a package pin/lock mechanism to fix the exact package release.\n\nSecure example:\n\n```Dockerfile\nRUN zypper install -y curl=7.79.1 libxml2=2.9.10\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/zypper_install_without_version",
   "platform": "Dockerfile",
   "descriptionID": "42d36068",
   "cwe": "1357",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

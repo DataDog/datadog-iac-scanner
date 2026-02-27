@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that a CloudWatch log metric filter and corresponding alarm are correctly configured to monitor for changes to AWS CloudTrail settings, such as create, update, or delete operations. If the `aws_cloudwatch_metric_alarm` does not reference the proper metric filter (for example, if the `metric_name` is not set to `aws_cloudwatch_log_metric_filter.cis_cloudtrail_config_change_metric_filter.id`, but instead uses an incorrect value), critical modifications to CloudTrail could go undetected. This misconfiguration can lead to a lack of visibility into potentially malicious activities, such as disabling or modifying CloudTrail to conceal unauthorized actions, ultimately undermining auditability and security monitoring.
-
+This check ensures that a CloudWatch log metric filter and corresponding alarm are correctly configured to monitor for changes to AWS CloudTrail settings, such as create, update, or delete operations. If the `aws_cloudwatch_metric_alarm` does not reference the proper metric filter (for example, if the `metric_name` is not set to `aws_cloudwatch_log_metric_filter.cis_cloudtrail_config_change_metric_filter.id`, but instead uses an incorrect value), critical modifications to CloudTrail could go undetected. This misconfiguration can lead to a lack of visibility into potentially malicious activities, such as disabling or modifying CloudTrail to conceal unauthorized actions, ultimately undermining auditability and security monitoring.
 
 ## Compliant Code Examples
 ```terraform

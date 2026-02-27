@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Elasticsearch (OpenSearch) domains must have encryption at rest enabled to protect index data, snapshots, and backups from unauthorized access if storage media or backups are compromised.
+Elasticsearch (OpenSearch) domains must have encryption at rest enabled to protect index data, snapshots, and backups from unauthorized access if storage media or backups are compromised.
  
  In CloudFormation, the `AWS::Elasticsearch::Domain` resource must include `EncryptionAtRestOptions` with `Enabled` set to `true`. Resources missing `EncryptionAtRestOptions` or with `Enabled` set to `false` will be flagged. If you require a customer-managed key, also set `KmsKeyId` under `EncryptionAtRestOptions`. Omitting `KmsKeyId` uses the AWS-managed key.
 
@@ -43,7 +43,6 @@ MyDomain:
       Enabled: true
       KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd-ef01-2345-6789
 ```
-
 
 ## Compliant Code Examples
 ```yaml

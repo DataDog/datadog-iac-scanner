@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies if Google Compute firewall rules allow unrestricted RDP access by examining if port 3389 (the default RDP port) is openly accessible from the internet. When firewall rules allow RDP traffic from `0.0.0.0/0` (all IPv4) or `::/0` (all IPv6), it significantly increases the risk of brute force attacks, unauthorized access, and potential system compromise.
+This check verifies if Google Compute firewall rules allow unrestricted RDP access by examining if port 3389 (the default RDP port) is openly accessible from the internet. When firewall rules allow RDP traffic from `0.0.0.0/0` (all IPv4) or `::/0` (all IPv6), it significantly increases the risk of brute force attacks, unauthorized access, and potential system compromise.
 
 Vulnerable configurations include allowing port 3389 directly or within ranges (for example, `21-3390`), or using `protocol = "all"` with unrestricted source ranges. To secure your environment, explicitly exclude RDP ports from public access and restrict RDP traffic to specific trusted IP addresses or VPN connections.
 
@@ -55,7 +55,6 @@ resource "google_compute_firewall" "secure" {
   // source_ranges = ["10.0.0.0/24", "192.168.1.0/24"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

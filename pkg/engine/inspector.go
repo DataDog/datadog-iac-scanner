@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
@@ -26,12 +27,12 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/open-policy-agent/opa/ast"
-	"github.com/open-policy-agent/opa/cover"
-	"github.com/open-policy-agent/opa/rego"
-	"github.com/open-policy-agent/opa/storage/inmem"
-	"github.com/open-policy-agent/opa/topdown"
-	"github.com/open-policy-agent/opa/util"
+	"github.com/open-policy-agent/opa/ast"           // nolint:staticcheck
+	"github.com/open-policy-agent/opa/cover"         // nolint:staticcheck
+	"github.com/open-policy-agent/opa/rego"          // nolint:staticcheck
+	"github.com/open-policy-agent/opa/storage/inmem" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/topdown"       // nolint:staticcheck
+	"github.com/open-policy-agent/opa/util"          // nolint:staticcheck
 	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -154,6 +155,7 @@ func NewInspector(
 
 	lineDetector := detector.NewDetectLine(tracker.GetOutputLines()).
 		Add(helm.DetectKindLine{}, model.KindHELM).
+		Add(docker.DetectKindLine{}, model.KindDOCKER).
 		Add(terraform.DetectKindLine{}, model.KindTerraform)
 
 	queryExecTimeout := time.Duration(queryTimeout) * time.Second
@@ -295,6 +297,10 @@ func (c *Inspector) Inspect(
 		return vulnerabilities, err
 	}
 
+	// Transform jsonencode in payload once before running queries
+	// This avoids redundant transformations and prevents race conditions
+	astPayload = c.TransformJsonencodeInPayload(ctx, astPayload)
+
 	queries := c.getQueriesByPlat(platforms)
 
 	// Create a channel to collect the results
@@ -424,7 +430,6 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			contextLogger.Err(err).Msg(errMessage)
 		}
 	}()
-	*qCtx.payload = c.TransformJsonencodeInPayload(ctx, *qCtx.payload)
 
 	options := []rego.EvalOption{rego.EvalParsedInput(*qCtx.payload)}
 

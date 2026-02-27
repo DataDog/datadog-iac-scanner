@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The audit policy should cover key security concerns about sensitive data logged in Kubernetes audit logs.
+The audit policy should cover key security concerns about sensitive data logged in Kubernetes audit logs.
 The policy requires rules for specific resources to be defined at the required audit levels (Metadata, Request, RequestResponse). These resources include: secrets, tokenreviews, configmaps, pods, deployments, and pod/service sub-resources (pods/exec, pods/portforward, pods/proxy, services/proxy).
 Missing any required level for a listed resource indicates the policy may not adequately prevent sensitive information from being recorded or exposed via audit events.
-
 
 ## Compliant Code Examples
 ```yaml

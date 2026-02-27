@@ -4,7 +4,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "This check inventories Amazon MQ brokers to surface accessibility and encryption posture, because publicly accessible brokers expose broker endpoints and management interfaces to unauthorized access and brokers without encryption risk message data and backups being exposed if storage is compromised. It inspects CloudFormation resources of type `AWS::AmazonMQ::Broker` and records the `EngineType` (ActiveMQ or RabbitMQ), the `PubliclyAccessible` property (`true` means public access), and the broker encryption configuration from `EncryptionOptions` (for example `KmsKeyId`/`UseAwsOwnedKey`). Each broker is included in the bill-of-materials output with its resource name, engine, accessibility (`public` or `private`), and reported encryption status; if `PubliclyAccessible` is not set it is treated as private and missing encryption details will appear empty.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/mq",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_bom/mq",
   "platform": "CloudFormation",
   "descriptionID": "93a9e162",
   "cloudProvider": "aws",

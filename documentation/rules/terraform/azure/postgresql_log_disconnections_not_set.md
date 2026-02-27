@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- The PostgreSQL server parameter `log_disconnections` controls whether session disconnections are logged, which is important for auditing and monitoring database activity. If this parameter is set to `"off"`, as shown in the configuration below, database disconnect events will not be recorded, making it significantly harder to detect unauthorized access or troubleshoot potential security incidents.
+The PostgreSQL server parameter `log_disconnections` controls whether session disconnections are logged, which is important for auditing and monitoring database activity. If this parameter is set to `"off"`, as shown in the configuration below, database disconnect events will not be recorded, making it significantly harder to detect unauthorized access or troubleshoot potential security incidents.
 
 ```
 resource "azurerm_postgresql_configuration" "example" {
@@ -51,7 +51,6 @@ resource "azurerm_postgresql_configuration" "example" {
 ```
 
 Leaving this parameter disabled can result in blind spots in your security monitoring and incident response processes.
-
 
 ## Compliant Code Examples
 ```terraform

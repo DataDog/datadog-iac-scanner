@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Non `kube-system` workloads should not include a `hostPath` volume mount. The rule detects `hostPath.path` in pod specs (including pod template specs) and in `PersistentVolume` resources and reports an issue when present. If `metadata.namespace` is not set, the resource is treated as being in the `default` namespace.
-
+Non `kube-system` workloads should not include a `hostPath` volume mount. The rule detects `hostPath.path` in pod specs (including pod template specs) and in `PersistentVolume` resources and reports an issue when present. If `metadata.namespace` is not set, the resource is treated as being in the `default` namespace.
 
 ## Compliant Code Examples
 ```yaml

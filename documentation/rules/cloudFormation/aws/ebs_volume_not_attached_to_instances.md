@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Unattached Amazon EBS volumes can retain sensitive data at rest and therefore increase the risk of data exposure or unauthorized access if snapshots are created, shared, or the storage is otherwise misused. In CloudFormation, each `AWS::EC2::Volume` should be associated with an `AWS::EC2::VolumeAttachment` whose `Properties.VolumeId` references the volume (typically using `Ref` to the volume logical ID). Resources missing a corresponding `AWS::EC2::VolumeAttachment` or where no `AWS::EC2::VolumeAttachment` resource's `Properties.VolumeId` equals the volume's `Ref` will be flagged.
+Unattached Amazon EBS volumes can retain sensitive data at rest and therefore increase the risk of data exposure or unauthorized access if snapshots are created, shared, or the storage is otherwise misused. In CloudFormation, each `AWS::EC2::Volume` should be associated with an `AWS::EC2::VolumeAttachment` whose `Properties.VolumeId` references the volume (typically using `Ref` to the volume logical ID). Resources missing a corresponding `AWS::EC2::VolumeAttachment` or where no `AWS::EC2::VolumeAttachment` resource's `Properties.VolumeId` equals the volume's `Ref` will be flagged.
  
  Note: This rule detects explicit `AWS::EC2::VolumeAttachment` resources and may not catch attachments made via instance block device mappings, LaunchConfigurations, or Auto Scaling constructs.
 
@@ -49,7 +49,6 @@ AttachVolume:
     VolumeId: !Ref MyVolume
     Device: /dev/sdf
 ```
-
 
 ## Compliant Code Examples
 ```yaml

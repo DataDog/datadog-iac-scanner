@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Redshift clusters should specify a customer-managed AWS KMS key (`KmsKeyId`) to maintain control over encryption of data at rest and snapshots. Without a customer-managed CMK, you lose control over key rotation, access policies, and the ability to revoke or share keys. In AWS CloudFormation, the `KmsKeyId` property must be defined on `AWS::Redshift::Cluster` resources and set to the ARN or key ID of a customer-managed KMS key. Resources missing this property will be flagged because they may rely on AWS-managed keys or lack explicit encryption controls. Secure configuration example (CloudFormation YAML):
+Redshift clusters should specify a customer-managed AWS KMS key (`KmsKeyId`) to maintain control over encryption of data at rest and snapshots. Without a customer-managed CMK, you lose control over key rotation, access policies, and the ability to revoke or share keys. In AWS CloudFormation, the `KmsKeyId` property must be defined on `AWS::Redshift::Cluster` resources and set to the ARN or key ID of a customer-managed KMS key. Resources missing this property will be flagged because they may rely on AWS-managed keys or lack explicit encryption controls. Secure configuration example (CloudFormation YAML):
 
 ```yaml
 MyRedshiftCluster:
@@ -41,7 +41,6 @@ MyRedshiftCluster:
     MasterUserPassword: ReplaceWithSecurePassword
     KmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd1234-ef56-7890-abcd-ef1234567890
 ```
-
 
 ## Compliant Code Examples
 ```yaml

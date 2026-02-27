@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- RDS clusters and standalone instances must retain automated backups for at least `7` days to ensure recoverability and limit data loss from accidental deletion, corruption, or operational errors. In AWS CloudFormation, the `BackupRetentionPeriod` property on `AWS::RDS::DBCluster` (and on standalone `AWS::RDS::DBInstance` resources) must be defined and set to `7` or greater. This rule flags `AWS::RDS::DBCluster` resources that omit `BackupRetentionPeriod` or set it to a value less than `7`. For `AWS::RDS::DBInstance` resources, the check is enforced only when no `AWS::RDS::DBCluster` resources are defined in the template because cluster-level backup retention may govern recovery for clustered deployments. Resources missing the property or with `BackupRetentionPeriod` less than `7` will be reported.
+RDS clusters and standalone instances must retain automated backups for at least `7` days to ensure recoverability and limit data loss from accidental deletion, corruption, or operational errors. In AWS CloudFormation, the `BackupRetentionPeriod` property on `AWS::RDS::DBCluster` (and on standalone `AWS::RDS::DBInstance` resources) must be defined and set to `7` or greater. This rule flags `AWS::RDS::DBCluster` resources that omit `BackupRetentionPeriod` or set it to a value less than `7`. For `AWS::RDS::DBInstance` resources, the check is enforced only when no `AWS::RDS::DBCluster` resources are defined in the template because cluster-level backup retention may govern recovery for clustered deployments. Resources missing the property or with `BackupRetentionPeriod` less than `7` will be reported.
 
 Secure configuration examples:
 
@@ -48,7 +48,6 @@ MyDBInstance:
     Engine: mysql
     BackupRetentionPeriod: 7
 ```
-
 
 ## Compliant Code Examples
 ```yaml

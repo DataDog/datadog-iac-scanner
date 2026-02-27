@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Roles and ClusterRoles with wildcard RBAC permissions grant excessive rights to the Kubernetes API and should be avoided. This rule flags Role and ClusterRole resources where any rule uses the wildcard "*" in the `apiGroups`, `resources`, or `verbs` fields. Wildcards permit broad access across API groups, resources, or actions, which can lead to privilege escalation or unintended access. The principle of least privilege recommends listing only the specific resources and actions required and reviewing existing rules to remove unnecessary wildcards.
-
+Roles and ClusterRoles with wildcard RBAC permissions grant excessive rights to the Kubernetes API and should be avoided. This rule flags Role and ClusterRole resources where any rule uses the wildcard "*" in the `apiGroups`, `resources`, or `verbs` fields. Wildcards permit broad access across API groups, resources, or actions, which can lead to privilege escalation or unintended access. The principle of least privilege recommends listing only the specific resources and actions required and reviewing existing rules to remove unnecessary wildcards.
 
 ## Compliant Code Examples
 ```yaml

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This Service uses a LoadBalancer and therefore creates an external load balancer, which may allow access from other networks and the internet. Annotations must be set to indicate an internal load balancer for supported cloud providers (for example, `networking.gke.io/load-balancer-type=Internal`, `cloud.google.com/load-balancer-type=Internal`, `service.beta.kubernetes.io/aws-load-balancer-internal=true`, `service.beta.kubernetes.io/azure-load-balancer-internal=true`) to avoid external exposure.
-
+This Service uses a LoadBalancer and therefore creates an external load balancer, which may allow access from other networks and the internet. Annotations must be set to indicate an internal load balancer for supported cloud providers (for example, `networking.gke.io/load-balancer-type=Internal`, `cloud.google.com/load-balancer-type=Internal`, `service.beta.kubernetes.io/aws-load-balancer-internal=true`, `service.beta.kubernetes.io/azure-load-balancer-internal=true`) to avoid external exposure.
 
 ## Compliant Code Examples
 ```yaml

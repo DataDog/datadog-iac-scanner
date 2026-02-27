@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Storing an Alexa skill's refresh token as a plaintext value in an AWS CloudFormation template exposes a sensitive credential to source control, CI/CD logs, and anyone with template access. This can enable unauthorized skill access or account compromise. For `Alexa::ASK::Skill` resources, `AuthenticationConfiguration.RefreshToken` must be a string that uses a CloudFormation dynamic reference to a secure store. It should start with `{{resolve:secretsmanager:` or `{{resolve:ssm-secure:`. Resources missing this property, with a non-string value, or with a literal token will be flagged as insecure.
+Storing an Alexa skill's refresh token as a plaintext value in an AWS CloudFormation template exposes a sensitive credential to source control, CI/CD logs, and anyone with template access. This can enable unauthorized skill access or account compromise. For `Alexa::ASK::Skill` resources, `AuthenticationConfiguration.RefreshToken` must be a string that uses a CloudFormation dynamic reference to a secure store. It should start with `{{resolve:secretsmanager:` or `{{resolve:ssm-secure:`. Resources missing this property, with a non-string value, or with a literal token will be flagged as insecure.
 
 Secure examples using dynamic references:
 
@@ -47,7 +47,6 @@ MyAlexaSkillWithSsm:
     AuthenticationConfiguration:
       RefreshToken: "{{resolve:ssm-secure:/alexa/refresh-token:1}}"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

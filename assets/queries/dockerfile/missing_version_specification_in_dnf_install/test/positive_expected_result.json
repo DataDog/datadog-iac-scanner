@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Missing Version Specification In dnf install",
+    "queryName": "Missing version specification in dnf install",
     "severity": "MEDIUM",
     "line": 2
   },
   {
-    "queryName": "Missing Version Specification In dnf install",
+    "queryName": "Missing version specification in dnf install",
     "severity": "MEDIUM",
     "line": 3
   }

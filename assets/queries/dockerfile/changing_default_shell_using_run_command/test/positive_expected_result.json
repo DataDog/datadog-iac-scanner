@@ -1,14 +1,14 @@
 [
-	{
-		"queryName": "Changing Default Shell Using RUN Command",
-		"severity": "MEDIUM",
-		"line": 5,
-		"filename": "positive1.dockerfile"
-	},
-	{
-		"queryName": "Changing Default Shell Using RUN Command",
-		"severity": "MEDIUM",
-		"line": 5,
-		"filename": "positive2.dockerfile"
-	}
+  {
+    "queryName": "Changing default shell using RUN command",
+    "severity": "MEDIUM",
+    "line": 5,
+    "filename": "positive1.dockerfile"
+  },
+  {
+    "queryName": "Changing default shell using RUN command",
+    "severity": "MEDIUM",
+    "line": 5,
+    "filename": "positive2.dockerfile"
+  }
 ]

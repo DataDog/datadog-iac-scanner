@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Embedding plaintext credentials in CloudFormation template metadata exposes secrets to anyone with access to the template or its repository and can lead to credential theft and unauthorized access to resources.
+Embedding plaintext credentials in CloudFormation template metadata exposes secrets to anyone with access to the template or its repository and can lead to credential theft and unauthorized access to resources.
 
  This rule flags `AWS::EC2::Instance` resources that include an `AWS::CloudFormation::Authentication` metadata block containing inline credentials:
 
@@ -46,7 +46,6 @@ MyInstance:
     IamInstanceProfile: my-ec2-instance-profile
     # no AWS::CloudFormation::Authentication metadata containing accessKeyId/secretKey/password
 ```
-
 
 ## Compliant Code Examples
 ```yaml

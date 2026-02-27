@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- IAM Policies should not grant the `AssumeRole` permission across all services by using wildcard principals, such as `"AWS": "*"`. Allowing any AWS account or principal to assume a role poses a significant security risk, as it removes any restriction over who can gain the role's permissions. If left unaddressed, this misconfiguration could enable unauthorized users or malicious actors to assume sensitive roles and gain elevated privileges within your AWS environment, resulting in potential data loss, privilege escalation, or compromise of critical cloud resources. Restricting the principals allowed to assume a role to only trusted services or accounts is essential for maintaining a secure cloud infrastructure.
-
+IAM Policies should not grant the `AssumeRole` permission across all services by using wildcard principals, such as `"AWS": "*"`. Allowing any AWS account or principal to assume a role poses a significant security risk, as it removes any restriction over who can gain the role's permissions. If left unaddressed, this misconfiguration could enable unauthorized users or malicious actors to assume sensitive roles and gain elevated privileges within your AWS environment, resulting in potential data loss, privilege escalation, or compromise of critical cloud resources. Restricting the principals allowed to assume a role to only trusted services or accounts is essential for maintaining a secure cloud infrastructure.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Outdated TLS versions (TLS 1.0/1.1) contain vulnerabilities that can be exploited by attackers to intercept sensitive data transmitted between the client and the MySQL server. When TLS 1.0/1.1 is used, your database traffic becomes vulnerable to man-in-the-middle attacks, potentially exposing usernames, passwords, and sensitive data. Using TLS 1.2 addresses these security weaknesses and provides stronger encryption algorithms and more secure cipher suites. To ensure proper configuration, replace `ssl_minimal_tls_version_enforced = ["TLS1_0"]` with `ssl_minimal_tls_version_enforced = ["TLS1_2"]` in your Azure MySQL server resource.
-
+Outdated TLS versions (TLS 1.0/1.1) contain vulnerabilities that can be exploited by attackers to intercept sensitive data transmitted between the client and the MySQL server. When TLS 1.0/1.1 is used, your database traffic becomes vulnerable to man-in-the-middle attacks, potentially exposing usernames, passwords, and sensitive data. Using TLS 1.2 addresses these security weaknesses and provides stronger encryption algorithms and more secure cipher suites. To ensure proper configuration, replace `ssl_minimal_tls_version_enforced = ["TLS1_0"]` with `ssl_minimal_tls_version_enforced = ["TLS1_2"]` in your Azure MySQL server resource.
 
 ## Compliant Code Examples
 ```terraform

@@ -19,7 +19,7 @@ import (
 // GetExtension gets the extension of a file path
 func GetExtension(ctx context.Context, path string) (string, error) {
 	contextLogger := logger.FromContext(ctx)
-	targets := []string{"tfvars"}
+	targets := []string{"tfvars", "Dockerfile", "possibleDockerfile"}
 
 	// Get file information
 	fileInfo, err := os.Stat(path)

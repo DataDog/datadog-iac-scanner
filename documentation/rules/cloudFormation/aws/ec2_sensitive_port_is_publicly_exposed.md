@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security group ingress rules must not expose known sensitive service ports to the entire internet (for example, `0.0.0.0/0` or `::/0`) because this makes EC2 instances reachable for unauthorized access, brute-force attacks, and exploitation of network services.
+Security group ingress rules must not expose known sensitive service ports to the entire internet (for example, `0.0.0.0/0` or `::/0`) because this makes EC2 instances reachable for unauthorized access, brute-force attacks, and exploitation of network services.
  
  This check inspects `AWS::EC2::SecurityGroup` resources that are attached to `AWS::EC2::Instance` (via the instance's `SecurityGroups` property). It flags `SecurityGroupIngress` entries where the `CidrIp` value ends with `/0` and the `IpProtocol` plus `FromPort`–`ToPort` range includes known sensitive ports (for example, SSH `22`, RDP `3389`, and common database ports). The rule evaluates `IpProtocol` values of `-1`/`ALL` as both TCP and UDP and supports port ranges when mapping to sensitive services.
  
@@ -47,7 +47,6 @@ MySecurityGroup:
         ToPort: 22
         CidrIp: 10.0.0.0/24
 ```
-
 
 ## Compliant Code Examples
 ```yaml

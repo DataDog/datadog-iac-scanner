@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not have full (unmasked) access to the host's `/proc` filesystem, as this can expose sensitive information and allow kernel parameter changes. A PodSecurityPolicy's `spec.allowedProcMountTypes` must not include the value "Unmasked" and should include "Default" to restrict proc mount behavior. Allowing "Unmasked" increases the risk of information disclosure and potential host compromise.
-
+Containers should not have full (unmasked) access to the host's `/proc` filesystem, as this can expose sensitive information and allow kernel parameter changes. A PodSecurityPolicy's `spec.allowedProcMountTypes` must not include the value "Unmasked" and should include "Default" to restrict proc mount behavior. Allowing "Unmasked" increases the risk of information disclosure and potential host compromise.
 
 ## Compliant Code Examples
 ```yaml

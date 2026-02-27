@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "CloudFront distributions must require or redirect viewers to HTTPS to prevent plaintext HTTP traffic that can expose sensitive data in transit and enable interception or downgrade attacks. In `AWS::CloudFront::Distribution` resources, set `DistributionConfig.DefaultCacheBehavior.ViewerProtocolPolicy` and each `DistributionConfig.CacheBehaviors[].ViewerProtocolPolicy` to `https-only` or `redirect-to-https`. Resources missing these properties or configured with `allow-all` (which permits HTTP) will be flagged as insecure.\n\nSecure configuration example:\n\n```yaml\nMyDistribution:\n  Type: AWS::CloudFront::Distribution\n  Properties:\n    DistributionConfig:\n      Enabled: true\n      DefaultCacheBehavior:\n        TargetOriginId: myOrigin\n        ViewerProtocolPolicy: redirect-to-https\n      CacheBehaviors:\n        - PathPattern: '/images/*'\n          TargetOriginId: myOrigin\n          ViewerProtocolPolicy: https-only\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/connection_between_cloudfront_origin_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/connection_between_cloudfront_origin_not_encrypted",
   "platform": "CloudFormation",
   "descriptionID": "5e31354c",
   "cloudProvider": "aws",

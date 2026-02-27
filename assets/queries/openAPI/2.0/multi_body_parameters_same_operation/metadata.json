@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Only one body parameter is allowed on operation's parameters type field",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/multi_body_parameters_same_operation",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/multi_body_parameters_same_operation",
   "platform": "OpenAPI",
   "descriptionID": "817fa38a",
   "cwe": "20",

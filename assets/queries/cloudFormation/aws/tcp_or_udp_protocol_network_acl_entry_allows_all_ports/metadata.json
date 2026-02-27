@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Network ACL entries that allow all TCP or UDP ports significantly broaden the attack surface and can expose many services to network-based attacks and lateral movement.\n\nFor `AWS::EC2::NetworkAclEntry` resources where `Protocol` indicates TCP (`6`) or UDP (`17`), the `PortRange` property must be present, include both `From` and `To`, and must not be set to the full range `From: 0` and `To: 65535`. Resources missing `PortRange`, missing the `From`/`To` attributes, or configured to allow `0`–`65535` will be flagged.\n\nTo remediate, restrict `PortRange` to specific ports or narrow ranges required by the application.\n\nSecure example with a single allowed port (HTTPS):\n\n```yaml\nMyNetworkAclEntry:\n  Type: AWS::EC2::NetworkAclEntry\n  Properties:\n    NetworkAclId: acl-0123456789abcdef0\n    RuleNumber: 100\n    Protocol: 6\n    RuleAction: allow\n    Egress: false\n    PortRange:\n      From: 443\n      To: 443\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/tcp_or_udp_protocol_network_acl_entry_allows_all_ports",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/tcp_or_udp_protocol_network_acl_entry_allows_all_ports",
   "platform": "CloudFormation",
   "descriptionID": "51ad2aeb",
   "cloudProvider": "aws",

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check verifies that AWS Application Load Balancers (ALBs) are not configured to listen for incoming traffic on unencrypted HTTP ports (typically port 80). Allowing an ALB to accept HTTP traffic without redirecting it to HTTPS exposes sensitive data to potential interception, as communication is not encrypted in transit. Insecure configurations, such as setting the `protocol` parameter within an `aws_lb_listener` to `"HTTP"` without ensuring a redirect to `"HTTPS"`, can result in data breaches or man-in-the-middle attacks.
-
+This check verifies that AWS Application Load Balancers (ALBs) are not configured to listen for incoming traffic on unencrypted HTTP ports (typically port 80). Allowing an ALB to accept HTTP traffic without redirecting it to HTTPS exposes sensitive data to potential interception, as communication is not encrypted in transit. Insecure configurations, such as setting the `protocol` parameter within an `aws_lb_listener` to `"HTTP"` without ensuring a redirect to `"HTTPS"`, can result in data breaches or man-in-the-middle attacks.
 
 ## Compliant Code Examples
 ```terraform

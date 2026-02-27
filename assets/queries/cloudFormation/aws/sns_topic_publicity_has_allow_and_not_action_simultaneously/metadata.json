@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "SNS topic policy statements must not combine `Effect: \"Allow\"` with a `NotAction` element. Using `NotAction` with `Allow` effectively permits all actions except the ones excluded and can unintentionally grant broad access to the topic.\n\nCheck `AWS::SNS::TopicPolicy` resources' `Properties.PolicyDocument.Statement` entries. Any statement with `Effect: \"Allow\"` must include an explicit `Action` (for example, `sns:Publish`) rather than `NotAction`. Resources containing a statement where `Effect: \"Allow\"` and `NotAction` is present will be flagged. To block specific actions, use `Effect: \"Deny\"` with `NotAction`, or enumerate allowed actions explicitly in `Action`.\n\nSecure configuration with explicit Action:\n\n```yaml\nMyTopicPolicy:\n  Type: AWS::SNS::TopicPolicy\n  Properties:\n    PolicyDocument:\n      Version: '2012-10-17'\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:root\n          Action:\n            - sns:Publish\n          Resource: arn:aws:sns:us-east-1:123456789012:my-topic\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/sns_topic_publicity_has_allow_and_not_action_simultaneously",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/sns_topic_publicity_has_allow_and_not_action_simultaneously",
   "platform": "CloudFormation",
   "descriptionID": "a4bd80b0",
   "cloudProvider": "aws",

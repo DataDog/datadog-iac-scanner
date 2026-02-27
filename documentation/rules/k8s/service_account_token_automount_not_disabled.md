@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Service account tokens are automatically mounted even if not necessary. This rule detects workloads where `automountServiceAccountToken` is set to true on the pod spec or inherited from the referenced ServiceAccount, and flags resources that should set it to false.
+Service account tokens are automatically mounted even if not necessary. This rule detects workloads where `automountServiceAccountToken` is set to true on the pod spec or inherited from the referenced ServiceAccount, and flags resources that should set it to false.
 Pod-level `automountServiceAccountToken` takes precedence over the ServiceAccount setting. If the pod-level key is missing, the ServiceAccount value is evaluated.
 The rule reports IncorrectValue when the token is enabled, and MissingAttribute when the attribute is undefined on both the pod and the referenced ServiceAccount.
-
 
 ## Compliant Code Examples
 ```yaml

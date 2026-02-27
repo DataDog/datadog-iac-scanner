@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EMR clusters must be launched inside a VPC to ensure network isolation and to allow enforcement of security controls such as security groups, private subnet routing, and network ACLs. Omitting a VPC subnet can make cluster nodes publicly reachable or prevent VPC-level access restrictions.
+EMR clusters must be launched inside a VPC to ensure network isolation and to allow enforcement of security controls such as security groups, private subnet routing, and network ACLs. Omitting a VPC subnet can make cluster nodes publicly reachable or prevent VPC-level access restrictions.
  
  In CloudFormation, `AWS::EMR::Cluster` resources must define either `Properties.Instances.Ec2SubnetId` (single subnet) or `Properties.Instances.Ec2SubnetIds` (list of subnets) with non-null values. Resources missing both properties or containing `null` or empty values will be flagged.
 
@@ -51,7 +51,6 @@ MyEMRCluster:
     ServiceRole: !Ref EMRServiceRole
     JobFlowRole: !Ref EMRInstanceProfile
 ```
-
 
 ## Compliant Code Examples
 ```yaml

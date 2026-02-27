@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes clusters should be created with private clusters enabled by configuring the `private_cluster_config` block and setting both `enable_private_nodes` and `enable_private_endpoint` to `true`. Failing to do so allows access to the cluster’s control plane and nodes from public networks, increasing exposure to potential attacks and unauthorized access. A secure configuration in Terraform looks like:
+Kubernetes clusters should be created with private clusters enabled by configuring the `private_cluster_config` block and setting both `enable_private_nodes` and `enable_private_endpoint` to `true`. Failing to do so allows access to the cluster’s control plane and nodes from public networks, increasing exposure to potential attacks and unauthorized access. A secure configuration in Terraform looks like:
 
 ```
 resource "google_container_cluster" "secure" {
@@ -41,7 +41,6 @@ resource "google_container_cluster" "secure" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

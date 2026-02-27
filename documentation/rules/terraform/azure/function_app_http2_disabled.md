@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling HTTP/2 for Azure Function Apps improves security and performance by providing better encryption and more efficient use of network resources compared to HTTP/1.1. If the `http2_enabled` attribute is not set to `true` in the `site_config` block, as shown below, the Function App defaults to HTTP/1.1, exposing it to potential vulnerabilities such as protocol downgrade attacks and inefficient data transfer:
+Enabling HTTP/2 for Azure Function Apps improves security and performance by providing better encryption and more efficient use of network resources compared to HTTP/1.1. If the `http2_enabled` attribute is not set to `true` in the `site_config` block, as shown below, the Function App defaults to HTTP/1.1, exposing it to potential vulnerabilities such as protocol downgrade attacks and inefficient data transfer:
 
 ```
 site_config {
@@ -37,7 +37,6 @@ site_config {
 ```
 
 Leaving HTTP/2 disabled can result in degraded application security and responsiveness, making services more vulnerable to exploitation and less performant for end users.
-
 
 ## Compliant Code Examples
 ```terraform

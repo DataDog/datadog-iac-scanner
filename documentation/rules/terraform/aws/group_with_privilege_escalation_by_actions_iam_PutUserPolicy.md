@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Allowing the action `iam:PutUserPolicy` on the `Resource` set to `"*"` in an inline group policy grants members of that group the ability to attach arbitrary permissions to any IAM user in the AWS account. This privilege escalation vulnerability could allow an attacker or compromised group member to grant themselves administrative access, bypass intended access controls, or compromise the entire AWS environment. To mitigate this risk, restrict the `iam:PutUserPolicy` action to specific users or resources and avoid policies with wildcard resources where possible, as shown below in a secure example:
+Allowing the action `iam:PutUserPolicy` on the `Resource` set to `"*"` in an inline group policy grants members of that group the ability to attach arbitrary permissions to any IAM user in the AWS account. This privilege escalation vulnerability could allow an attacker or compromised group member to grant themselves administrative access, bypass intended access controls, or compromise the entire AWS environment. To mitigate this risk, restrict the `iam:PutUserPolicy` action to specific users or resources and avoid policies with wildcard resources where possible, as shown below in a secure example:
 
 ```
 resource "aws_iam_user" "cosmic2" {
@@ -53,7 +53,6 @@ resource "aws_iam_user_policy" "inline_policy_run_instances2" {
   })
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

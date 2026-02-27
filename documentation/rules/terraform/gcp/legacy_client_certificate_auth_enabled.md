@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Kubernetes clusters in Google Kubernetes Engine (GKE) should use the default OAuth authentication to ensure that client certificates are not issued for cluster authentication. In Terraform, this is enforced by setting `master_auth.client_certificate_config.issue_client_certificate` to `false` or by omitting the attribute entirely. Allowing client certificate issuance (`issue_client_certificate = true`) increases the cluster's attack surface by enabling users to authenticate with potentially compromised or unmanaged certificates, which could lead to unauthorized access.
+Kubernetes clusters in Google Kubernetes Engine (GKE) should use the default OAuth authentication to ensure that client certificates are not issued for cluster authentication. In Terraform, this is enforced by setting `master_auth.client_certificate_config.issue_client_certificate` to `false` or by omitting the attribute entirely. Allowing client certificate issuance (`issue_client_certificate = true`) increases the cluster's attack surface by enabling users to authenticate with potentially compromised or unmanaged certificates, which could lead to unauthorized access.
 
 For a secure configuration, ensure the relevant block in Terraform is configured as shown below or omitted entirely.
 
@@ -39,7 +39,6 @@ master_auth {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

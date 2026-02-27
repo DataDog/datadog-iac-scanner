@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway should have a valid compression threshold to ensure large responses are compressed, which reduces bandwidth use and helps limit data exposure and amplification risks from large uncompressed payloads. The `AWS::ApiGateway::RestApi` resource must include the `Properties.MinimumCompressionSize` property as an integer between `0` and `10485759` (inclusive). Resources missing this property or with values less than `0` or greater than `10485759` will be flagged.
+API Gateway should have a valid compression threshold to ensure large responses are compressed, which reduces bandwidth use and helps limit data exposure and amplification risks from large uncompressed payloads. The `AWS::ApiGateway::RestApi` resource must include the `Properties.MinimumCompressionSize` property as an integer between `0` and `10485759` (inclusive). Resources missing this property or with values less than `0` or greater than `10485759` will be flagged.
 
 Secure configuration example:
 
@@ -39,7 +39,6 @@ MyApi:
     Name: MyApi
     MinimumCompressionSize: 1024
 ```
-
 
 ## Compliant Code Examples
 ```yaml

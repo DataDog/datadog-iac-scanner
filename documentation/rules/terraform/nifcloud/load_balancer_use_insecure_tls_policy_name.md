@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `lb` uses an insecure TLS policy. The `nifcloud_load_balancer` resource either omits the `ssl_policy_name` attribute or sets it to an outdated SSL policy. Configure `ssl_policy_name` to use a modern TLS policy (TLS v1.2 or newer) and avoid legacy SSL policies.
-
+The `lb` uses an insecure TLS policy. The `nifcloud_load_balancer` resource either omits the `ssl_policy_name` attribute or sets it to an outdated SSL policy. Configure `ssl_policy_name` to use a modern TLS policy (TLS v1.2 or newer) and avoid legacy SSL policies.
 
 ## Compliant Code Examples
 ```terraform

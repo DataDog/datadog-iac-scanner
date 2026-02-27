@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that a CloudWatch log metric filter and alarm are properly configured to detect AWS Management Console sign-ins that occur without multi-factor authentication (MFA), using log patterns such as `{ ($.eventName = "ConsoleLogin") && ($.additionalEventData.MFAUsed != "Yes") }`. Without this monitoring, administrators may be unaware of insecure single-factor logins to the management console, increasing the risk of unauthorized or compromised account access. If left unaddressed, attackers or malicious insiders could exploit accounts lacking MFA to gain elevated access, potentially resulting in data breaches or unauthorized changes to AWS resources.
-
+This check ensures that a CloudWatch log metric filter and alarm are properly configured to detect AWS Management Console sign-ins that occur without multi-factor authentication (MFA), using log patterns such as `{ ($.eventName = "ConsoleLogin") && ($.additionalEventData.MFAUsed != "Yes") }`. Without this monitoring, administrators may be unaware of insecure single-factor logins to the management console, increasing the risk of unauthorized or compromised account access. If left unaddressed, attackers or malicious insiders could exploit accounts lacking MFA to gain elevated access, potentially resulting in data breaches or unauthorized changes to AWS resources.
 
 ## Compliant Code Examples
 ```terraform

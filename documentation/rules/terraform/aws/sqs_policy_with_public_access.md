@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check looks for overly permissive `Action` statements and wildcards `"Principal": "*"` in AWS SQS queue policies, which may grant broad permissions to any user. If left unaddressed, this misconfiguration can allow unauthorized parties to perform any action on the queue, including viewing, deleting, or sending messages, which poses risks such as data leakage or denial of service. To reduce the attack surface, always scope the `Principal` attribute in policy documents to trusted AWS identities instead of using `"*"` or `{"AWS": "*"}`.
+This check looks for overly permissive `Action` statements and wildcards `"Principal": "*"` in AWS SQS queue policies, which may grant broad permissions to any user. If left unaddressed, this misconfiguration can allow unauthorized parties to perform any action on the queue, including viewing, deleting, or sending messages, which poses risks such as data leakage or denial of service. To reduce the attack surface, always scope the `Principal` attribute in policy documents to trusted AWS identities instead of using `"*"` or `{"AWS": "*"}`.
 
 The following is an example of an insecure configuration:
 
@@ -65,7 +65,6 @@ resource "aws_sqs_queue_policy" "test" {
 EOF
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

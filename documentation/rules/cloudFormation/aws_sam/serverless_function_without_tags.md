@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS Serverless Application Model (AWS SAM) functions should include tags to support asset inventory and incident response. Check `AWS::Serverless::Function` resources and ensure the `Properties.Tags` map is defined and not `null`. Resources missing the `Tags` property or with `Tags: null` will be flagged.
+AWS Serverless Application Model (AWS SAM) functions should include tags to support asset inventory and incident response. Check `AWS::Serverless::Function` resources and ensure the `Properties.Tags` map is defined and not `null`. Resources missing the `Tags` property or with `Tags: null` will be flagged.
 
 Secure configuration example:
 
@@ -42,7 +42,6 @@ MyFunction:
       Environment: production
       Owner: devops
 ```
-
 
 ## Compliant Code Examples
 ```yaml

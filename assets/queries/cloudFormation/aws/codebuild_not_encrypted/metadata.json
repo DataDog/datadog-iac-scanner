@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "Build projects must specify an explicit AWS KMS encryption key to protect build artifacts and outputs with a customer-controlled key and retain control over key policies, rotation, and auditability.\n\n In CloudFormation, the `EncryptionKey` property on `AWS::CodeBuild::Project` (`Resources.<name>.Project.Properties.EncryptionKey`) must be defined and not `null`. It should reference an AWS KMS key ARN or a CloudFormation reference to an `AWS::KMS::Key`. Resources missing this property or with `EncryptionKey` set to `null` will be flagged as non-compliant.\n\nSecure configuration example:\n\n```yaml\nMyCodeBuildProject:\n  Type: AWS::CodeBuild::Project\n  Properties:\n    Name: my-project\n    EncryptionKey: !GetAtt MyKmsKey.Arn\n    # other required properties...\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/codebuild_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/codebuild_not_encrypted",
   "platform": "CloudFormation",
   "descriptionID": "3e1306b1",
   "cloudProvider": "aws",

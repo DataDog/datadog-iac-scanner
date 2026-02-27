@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudTrail trails should be configured to publish notifications to an Amazon SNS topic so that security teams receive real-time alerts for suspicious events and automated workflows can be triggered for faster detection and response.
+CloudTrail trails should be configured to publish notifications to an Amazon SNS topic so that security teams receive real-time alerts for suspicious events and automated workflows can be triggered for faster detection and response.
 
  This rule checks `AWS::CloudTrail::Trail` resources to ensure the `SnsTopicName` property is defined and non-empty. Resources missing `SnsTopicName` or with `SnsTopicName` set to `""` will be flagged. Ensure the property references a valid Amazon SNS topic that allows CloudTrail to publish. 
  
@@ -45,7 +45,6 @@ MyTrail:
     IsLogging: true
     SnsTopicName: !Ref AuditTopic
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- To ensure data transmitted between clients and the MySQL server is secure, the `ssl_enforcement_enabled` attribute in the `azurerm_mysql_server` resource should be set to `true`. If `ssl_enforcement_enabled` is set to `false`, as shown below, database connections can occur over unencrypted channels, potentially exposing sensitive information such as credentials and application data to interception and misuse.
+To ensure data transmitted between clients and the MySQL server is secure, the `ssl_enforcement_enabled` attribute in the `azurerm_mysql_server` resource should be set to `true`. If `ssl_enforcement_enabled` is set to `false`, as shown below, database connections can occur over unencrypted channels, potentially exposing sensitive information such as credentials and application data to interception and misuse.
 
 ```
 resource "azurerm_mysql_server" "example" {
@@ -38,7 +38,6 @@ resource "azurerm_mysql_server" "example" {
 ```
 
 Enabling SSL enforcement mitigates this risk by ensuring that all clients must connect using SSL, protecting data in transit.
-
 
 ## Compliant Code Examples
 ```terraform

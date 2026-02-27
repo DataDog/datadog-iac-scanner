@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- CPU limits should be set to ensure fair resource allocation and to prevent containers from consuming excessive CPU. Each container and initContainer should include a `resources.limits.cpu` value. This rule verifies that `resources`, `resources.limits`, and `resources.limits.cpu` are defined for each container.
-
+CPU limits should be set to ensure fair resource allocation and to prevent containers from consuming excessive CPU. Each container and initContainer should include a `resources.limits.cpu` value. This rule verifies that `resources`, `resources.limits`, and `resources.limits.cpu` are defined for each container.
 
 ## Compliant Code Examples
 ```yaml

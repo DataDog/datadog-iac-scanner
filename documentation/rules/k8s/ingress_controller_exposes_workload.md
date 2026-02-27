@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Ingress controllers should not expose workloads, as this can create vulnerabilities and enable denial-of-service (DoS) attacks. This rule detects Ingress entries that route traffic to Services whose ports map directly to pod targetPorts, indicating direct exposure of workload ports. When such mappings are found, the rule flags the Ingress resource with an IncorrectValue issue identifying the resource and offending backend path.
-
+Ingress controllers should not expose workloads, as this can create vulnerabilities and enable denial-of-service (DoS) attacks. This rule detects Ingress entries that route traffic to Services whose ports map directly to pod targetPorts, indicating direct exposure of workload ports. When such mappings are found, the rule flags the Ingress resource with an IncorrectValue issue identifying the resource and offending backend path.
 
 ## Compliant Code Examples
 ```yaml

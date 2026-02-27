@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Google Cloud KMS CryptoKeys provide cryptographic functionality for encrypting and decrypting sensitive data in Google Cloud. When KMS CryptoKey IAM policies include `allUsers` or `allAuthenticatedUsers`, they become publicly accessible, creating a serious security vulnerability that could lead to unauthorized access to encryption capabilities, data breaches, or compromised encrypted information.
+Google Cloud KMS CryptoKeys provide cryptographic functionality for encrypting and decrypting sensitive data in Google Cloud. When KMS CryptoKey IAM policies include `allUsers` or `allAuthenticatedUsers`, they become publicly accessible, creating a serious security vulnerability that could lead to unauthorized access to encryption capabilities, data breaches, or compromised encrypted information.
 
 Insecure configuration example:
 ```
@@ -51,7 +51,6 @@ data "google_iam_policy" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

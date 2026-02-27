@@ -1,9 +1,9 @@
 {
   "id": "592ad21d-ad9b-46c6-8d2d-fad09d62a942",
-  "queryName": "Permissive access to create Pods",
+  "queryName": "Permissive access to create pods",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "The permission to create Pods in a cluster should be restricted because it can allow privilege escalation. This rule detects Role and ClusterRole rules where verbs include \"create\" for the \"pods\" resource, or where verbs or resources use wildcard values together with non-custom API groups (empty string or \"*\"). When triggered, the rule reports the document, resource, and rule location containing the unsafe verb/resource combination.",
+  "descriptionText": "The permission to create pods in a cluster should be restricted because it can allow privilege escalation. This rule detects Role and ClusterRole rules where verbs include \"create\" for the \"pods\" resource, or where verbs or resources use wildcard values together with non-custom API groups (empty string or \"*\"). When triggered, the rule reports the document, resource, and rule location containing the unsafe verb/resource combination.",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/permissive_access_to_create_pods",
   "platform": "Kubernetes",
   "descriptionID": "c78cb1a7",

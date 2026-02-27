@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Resource Management",
   "descriptionText": "VPCs without any attached subnets can indicate unused or orphaned networks that increase the attack surface and hinder enforcement of network segmentation and security controls.\n\nIn CloudFormation, every `AWS::EC2::VPC` resource should be referenced by at least one `AWS::EC2::Subnet` via the subnet's `Properties.VpcId` (for example, a `Ref` to the VPC logical ID). This rule flags `AWS::EC2::VPC` resources defined in the same template that have no `AWS::EC2::Subnet` resources referencing them. If subnets are created in another stack or outside the template, include the subnet resources in the same template or ensure the VPC/subnet relationship is expressed in CloudFormation to avoid false positives.\n\nSecure configuration example:\n\n```yaml\nMyVPC:\n  Type: AWS::EC2::VPC\n  Properties:\n    CidrBlock: 10.0.0.0/16\n    EnableDnsSupport: true\n    EnableDnsHostnames: true\n\nMySubnet:\n  Type: AWS::EC2::Subnet\n  Properties:\n    VpcId: !Ref MyVPC\n    CidrBlock: 10.0.1.0/24\n    AvailabilityZone: us-east-1a\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/vpc_without_attached_subnet",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/vpc_without_attached_subnet",
   "platform": "CloudFormation",
   "descriptionID": "23dfbed0",
   "cloudProvider": "aws",

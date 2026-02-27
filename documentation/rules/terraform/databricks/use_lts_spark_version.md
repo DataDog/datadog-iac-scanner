@@ -28,12 +28,11 @@ meta:
 
 ### Description
 
- Flags use of non-LTS Spark versions. This rule applies to:
+Flags use of non-LTS Spark versions. This rule applies to:
 
 - `databricks_spark_version` resources not marked as `long_term_support`
 - `databricks_cluster` resources with a `spark_version` that is not an approved LTS version
 - Clusters whose `spark_version` does not reference a `data.databricks_spark_version` resource
-
 
 ## Compliant Code Examples
 ```terraform

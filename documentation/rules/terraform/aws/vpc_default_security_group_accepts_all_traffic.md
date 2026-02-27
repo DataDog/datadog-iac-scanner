@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Default security groups are automatically created when a VPC is created and allow all inbound traffic from resources assigned to the same security group, as well as all outbound traffic by default. This creates a significant security vulnerability as it allows unrestricted network access between resources, potentially enabling lateral movement during a breach. 
+Default security groups are automatically created when a VPC is created and allow all inbound traffic from resources assigned to the same security group, as well as all outbound traffic by default. This creates a significant security vulnerability as it allows unrestricted network access between resources, potentially enabling lateral movement during a breach. 
 
 Secure implementation should not define open ingress/egress rules, as in the following example:
 ```
@@ -46,7 +46,6 @@ ingress = [{
   to_port   = 0
 }]
 ```
-
 
 ## Compliant Code Examples
 ```terraform

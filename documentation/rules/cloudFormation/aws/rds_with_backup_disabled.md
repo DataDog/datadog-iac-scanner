@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Disabling automated backups for an RDS instance removes point-in-time recovery and increases the risk of permanent data loss and compliance violations. In AWS CloudFormation, check `AWS::RDS::DBInstance` resources. The `Properties.BackupRetentionPeriod` must be a positive integer (greater than or equal to `1`) representing the number of days to retain automated backups. This rule flags resources where `BackupRetentionPeriod` is set to `0`. Ensure the property is defined and set to at least `1` to enable automated backups and point-in-time recovery.
+Disabling automated backups for an RDS instance removes point-in-time recovery and increases the risk of permanent data loss and compliance violations. In AWS CloudFormation, check `AWS::RDS::DBInstance` resources. The `Properties.BackupRetentionPeriod` must be a positive integer (greater than or equal to `1`) representing the number of days to retain automated backups. This rule flags resources where `BackupRetentionPeriod` is set to `0`. Ensure the property is defined and set to at least `1` to enable automated backups and point-in-time recovery.
 
 Secure configuration example:
 
@@ -40,7 +40,6 @@ MyDB:
     Engine: mysql
     BackupRetentionPeriod: 7
 ```
-
 
 ## Compliant Code Examples
 ```yaml

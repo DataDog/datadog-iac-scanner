@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Granting an IAM role permission to perform `iam:AttachRolePolicy` with `Resource = "*"` allows the role to attach any policy to any role in the AWS environment, including itself. This enables privilege escalation, as a user or process with this permission can grant themselves full administrative privileges or access beyond what was originally intended. If left unaddressed, such a configuration could lead to unauthorized access, data breaches, or full compromise of the AWS account.
-
+Granting an IAM role permission to perform `iam:AttachRolePolicy` with `Resource = "*"` allows the role to attach any policy to any role in the AWS environment, including itself. This enables privilege escalation, as a user or process with this permission can grant themselves full administrative privileges or access beyond what was originally intended. If left unaddressed, such a configuration could lead to unauthorized access, data breaches, or full compromise of the AWS account.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- CloudFront distributions must define a `ViewerCertificate` and enforce a minimum TLS version of 1.2 to prevent the use of weak SSL/TLS protocols that can enable downgrade attacks and interception of client connections.
+CloudFront distributions must define a `ViewerCertificate` and enforce a minimum TLS version of 1.2 to prevent the use of weak SSL/TLS protocols that can enable downgrade attacks and interception of client connections.
 
  For `AWS::CloudFront::Distribution` resources, ensure `Properties.DistributionConfig.ViewerCertificate` is present and its `MinimumProtocolVersion` is set to a TLS 1.2 family value (for example, `TLSv1.2_2018` or `TLSv1.2_2019`). Also include an appropriate certificate reference (such as `ACMCertificateArn`) and `SslSupportMethod`.
 
@@ -54,7 +54,6 @@ MyDistribution:
             HTTPSPort: 443
             OriginProtocolPolicy: https-only
 ```
-
 
 ## Compliant Code Examples
 ```yaml

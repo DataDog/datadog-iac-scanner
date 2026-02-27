@@ -28,12 +28,11 @@ meta:
 
 ### Description
 
- This check ensures that a CloudWatch log metric filter and corresponding alarm are in place to monitor S3 bucket policy changes, such as modifications to ACLs or bucket policies. Without the correct configuration, unauthorized changes to S3 bucket permissions could go unnoticed, increasing the risk of data exposure or policy misconfiguration. For example, `aws_cloudwatch_metric_alarm` should reference the correct metric filter, as shown below, to promptly alert on policy changes and help reduce the time to detect and respond to potentially dangerous modifications.
+This check ensures that a CloudWatch log metric filter and corresponding alarm are in place to monitor S3 bucket policy changes, such as modifications to ACLs or bucket policies. Without the correct configuration, unauthorized changes to S3 bucket permissions could go unnoticed, increasing the risk of data exposure or policy misconfiguration. For example, `aws_cloudwatch_metric_alarm` should reference the correct metric filter, as shown below, to promptly alert on policy changes and help reduce the time to detect and respond to potentially dangerous modifications.
 
 ```
 metric_name = aws_cloudwatch_log_metric_filter.cis_s3_bucket_policy_change_metric_filter.id
 ```
-
 
 ## Compliant Code Examples
 ```terraform

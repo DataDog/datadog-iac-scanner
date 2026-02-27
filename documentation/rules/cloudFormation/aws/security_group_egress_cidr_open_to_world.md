@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Egress rules that allow `0.0.0.0/0` or `::/0` permit unrestricted outbound traffic to the internet. This can enable data exfiltration and communications with malicious command-and-control infrastructure.
+Egress rules that allow `0.0.0.0/0` or `::/0` permit unrestricted outbound traffic to the internet. This can enable data exfiltration and communications with malicious command-and-control infrastructure.
 
 In CloudFormation, check `AWS::EC2::SecurityGroupEgress` resources and `AWS::EC2::SecurityGroup` resources’ `Properties.SecurityGroupEgress` entries. `CidrIp` must not be `0.0.0.0/0` and `CidrIpv6` must not be `::/0`. Resources with these values set will be flagged. Restrict egress to specific destination CIDR ranges, reference other security groups, or route outbound traffic through centralized egress controls (NAT gateways, proxies, or firewalls) to meet this requirement.
 
@@ -45,7 +45,6 @@ MySecurityGroup:
         ToPort: 443
         CidrIp: 10.0.0.0/16
 ```
-
 
 ## Compliant Code Examples
 ```yaml

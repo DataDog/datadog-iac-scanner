@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -45,8 +46,9 @@ var DefaultConverted = func(ctx context.Context, file *hcl.File, inputVariables 
 }
 
 type converter struct {
-	bytes     []byte
-	inputVars VariableMap
+	bytes       []byte
+	inputVars   VariableMap
+	inputVarsMu sync.RWMutex
 }
 
 const kicsLinesKey = "_kics_"
@@ -224,20 +226,24 @@ func (c *converter) convertExpression(expr hclsyntax.Expression) (interface{}, e
 	case *hclsyntax.FunctionCallExpr:
 		return c.evalFunction(expr)
 	case *hclsyntax.ConditionalExpr:
+		c.inputVarsMu.RLock()
 		expressionEvaluated, err := expr.Value(&hcl.EvalContext{
 			Variables: c.inputVars,
 			Functions: functions.TerraformFuncs,
 		})
+		c.inputVarsMu.RUnlock()
 		if err != nil {
 			return c.wrapExpr(expr)
 		}
 		return ctyjson.SimpleJSONValue{Value: expressionEvaluated}, nil
 	default:
 		// try to evaluate with variables and functions
+		c.inputVarsMu.RLock()
 		valueConverted, _ := expr.Value(&hcl.EvalContext{
 			Variables: c.inputVars,
 			Functions: functions.TerraformFuncs,
 		})
+		c.inputVarsMu.RUnlock()
 		if !checkDynamicKnownTypes(valueConverted) {
 			return ctyjson.SimpleJSONValue{Value: valueConverted}, nil
 		}
@@ -348,9 +354,11 @@ func (c *converter) convertStringPart(expr hclsyntax.Expression) (string, error)
 		return c.convertStringPart(v.Expression)
 	default:
 		// try to evaluate with variables
+		c.inputVarsMu.RLock()
 		valueConverted, _ := expr.Value(&hcl.EvalContext{
 			Variables: c.inputVars,
 		})
+		c.inputVarsMu.RUnlock()
 		if valueConverted.Type().FriendlyName() == "string" {
 			return valueConverted.AsString(), nil
 		}
@@ -418,12 +426,16 @@ func (c *converter) wrapExpr(expr hclsyntax.Expression) (string, error) {
 }
 
 func (c *converter) evalFunction(expression hclsyntax.Expression) (interface{}, error) {
+	c.inputVarsMu.RLock()
 	expressionEvaluated, err := expression.Value(&hcl.EvalContext{
 		Variables: c.inputVars,
 		Functions: functions.TerraformFuncs,
 	})
+	c.inputVarsMu.RUnlock()
+
 	if err != nil {
 		// Initialize inputVars if nil
+		c.inputVarsMu.Lock()
 		if c.inputVars == nil {
 			c.inputVars = make(VariableMap)
 		}
@@ -434,6 +446,7 @@ func (c *converter) evalFunction(expression hclsyntax.Expression) (interface{}, 
 				if strings.Contains(jsonPath, ".") {
 					jsonCtyValue, convertErr := createEntryInputVar(strings.Split(jsonPath, ".")[1:], jsonPath)
 					if convertErr != nil {
+						c.inputVarsMu.Unlock()
 						return c.wrapExpr(expression)
 					}
 					c.inputVars[rootKey] = jsonCtyValue
@@ -442,10 +455,16 @@ func (c *converter) evalFunction(expression hclsyntax.Expression) (interface{}, 
 				}
 			}
 		}
+		c.inputVarsMu.Unlock()
+
+		// Retry evaluation with updated variables
+		c.inputVarsMu.RLock()
 		expressionEvaluated, err = expression.Value(&hcl.EvalContext{
 			Variables: c.inputVars,
 			Functions: functions.TerraformFuncs,
 		})
+		c.inputVarsMu.RUnlock()
+
 		if err != nil {
 			return c.wrapExpr(expression)
 		}

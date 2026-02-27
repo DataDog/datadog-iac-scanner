@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This vulnerability occurs when an S3 bucket policy allows the delete action from all principals (`*`), which can lead to unauthorized deletion of data and potential data loss or service disruption. Even when IP address conditions are applied, allowing delete actions from all principals presents a significant security risk as it could be exploited if the IP restriction is bypassed or misconfigured.
+This vulnerability occurs when an S3 bucket policy allows the delete action from all principals (`*`), which can lead to unauthorized deletion of data and potential data loss or service disruption. Even when IP address conditions are applied, allowing delete actions from all principals presents a significant security risk as it could be exploited if the IP restriction is bypassed or misconfigured.
 
 An insecure configuration looks like the following:
 ```
@@ -48,7 +48,6 @@ To secure your S3 bucket, either explicitly deny the action or restrict it to sp
   "Resource": "arn:aws:s3:::my_tf_test_bucket/*"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

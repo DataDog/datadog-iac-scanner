@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SageMaker notebook instances must have direct internet access disabled to prevent notebooks from initiating outbound connections. Outbound access can be used to exfiltrate sensitive data or download and execute malicious code.
+SageMaker notebook instances must have direct internet access disabled to prevent notebooks from initiating outbound connections. Outbound access can be used to exfiltrate sensitive data or download and execute malicious code.
 
 In CloudFormation, `AWS::SageMaker::NotebookInstance` resources must include `Properties.DirectInternetAccess` set to `Disabled`. Resources that omit `DirectInternetAccess`, or set it to any other value, will be flagged.
 
@@ -41,7 +41,6 @@ MyNotebook:
     RoleArn: arn:aws:iam::123456789012:role/SageMakerExecutionRole
     DirectInternetAccess: Disabled
 ```
-
 
 ## Compliant Code Examples
 ```yaml

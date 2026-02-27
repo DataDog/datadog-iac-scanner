@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting the `iam:AddUserToGroup` action with a `Resource` value of `\"*\"` in an IAM role, such as in the example below, allows any user or role assigned this policy to add themselves or any user to any IAM group in the account.\n\n```\nresource \"aws_iam_role_policy\" \"test_inline_policy\" {\n  ...\n  policy = jsonencode({\n    ...\n    Statement = [\n      {\n        Action = [\n          \"iam:AddUserToGroup\",\n        ]\n        Effect   = \"Allow\"\n        Resource = \"*\"\n      },\n    ]\n  })\n}\n```\n\nThis configuration creates a privilege escalation risk, as users may gain unauthorized permissions by adding themselves to groups with higher privileges, potentially leading to account compromise. Limiting both the allowed action and narrowing the resources by specifying particular group ARNs greatly reduces this attack surface.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_AddUserToGroup",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_addusertogroup",
   "platform": "Terraform",
   "descriptionID": "058bc100",
   "cloudProvider": "aws",

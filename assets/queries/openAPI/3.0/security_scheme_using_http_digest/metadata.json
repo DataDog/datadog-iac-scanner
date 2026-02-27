@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Access Control",
   "descriptionText": "Security Scheme HTTP should not be using digest authentication",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/security_scheme_using_http_digest",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/security_scheme_using_http_digest",
   "platform": "OpenAPI",
   "descriptionID": "2e962b5c",
   "cwe": "285",

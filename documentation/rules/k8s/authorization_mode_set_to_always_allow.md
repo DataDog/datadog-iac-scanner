@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When using `kubelet` or `kube-apiserver`, the `--authorization-mode` flag should not be set to `AlwaysAllow`. The rule also checks `KubeletConfiguration` resources and flags an `authorization.mode` equal to `AlwaysAllow`. The `AlwaysAllow` mode grants unrestricted access to all requests and bypasses cluster authorization controls.
-
+When using `kubelet` or `kube-apiserver`, the `--authorization-mode` flag should not be set to `AlwaysAllow`. The rule also checks `KubeletConfiguration` resources and flags an `authorization.mode` equal to `AlwaysAllow`. The `AlwaysAllow` mode grants unrestricted access to all requests and bypasses cluster authorization controls.
 
 ## Compliant Code Examples
 ```yaml

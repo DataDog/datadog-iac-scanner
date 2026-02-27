@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The `nifcloud_router` is configured to use the common private network (`net-COMMON_PRIVATE`). This rule detects `nifcloud_router` resources where `network_interface[_].network_id` or `network_interface.network_id` is set to `net-COMMON_PRIVATE`. The router should use a dedicated private LAN to isolate the private-side network from the shared network.
-
+The `nifcloud_router` is configured to use the common private network (`net-COMMON_PRIVATE`). This rule detects `nifcloud_router` resources where `network_interface[_].network_id` or `network_interface.network_id` is set to `net-COMMON_PRIVATE`. The router should use a dedicated private LAN to isolate the private-side network from the shared network.
 
 ## Compliant Code Examples
 ```terraform

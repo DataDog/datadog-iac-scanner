@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Load balancer security groups that allow ingress from the entire internet (for example, `0.0.0.0/0` or `::/0`) to sensitive ports expose management, database, and application endpoints to unauthorized access and exploitation.
+Load balancer security groups that allow ingress from the entire internet (for example, `0.0.0.0/0` or `::/0`) to sensitive ports expose management, database, and application endpoints to unauthorized access and exploitation.
  
  Check load balancer resources (`AWS::ElasticLoadBalancing::LoadBalancer` and `AWS::ElasticLoadBalancingV2::LoadBalancer`) and their referenced security groups. Examine `SecurityGroupIngress` entries (`Properties.SecurityGroupIngress`) for `IpProtocol`, `FromPort`/`ToPort`, and `CidrIp`. The `CidrIp` value must not be a `/0` range for ports that map to sensitive services (for example, SSH `22`, RDP `3389`, and database ports).
  
@@ -48,7 +48,6 @@ AdminSG:
         ToPort: 22
         CidrIp: 203.0.113.5/32
 ```
-
 
 ## Compliant Code Examples
 ```yaml

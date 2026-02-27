@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The Docker daemon socket should not be exposed to containers. Mounting /var/run/docker.sock into a container grants the container direct access to the host Docker daemon, which can enable privilege escalation and full control of the host. Alternatives include using isolated build environments, container runtime APIs with proper access controls, or dedicated build services.
-
+The Docker daemon socket should not be exposed to containers. Mounting /var/run/docker.sock into a container grants the container direct access to the host Docker daemon, which can enable privilege escalation and full control of the host. Alternatives include using isolated build environments, container runtime APIs with proper access controls, or dedicated build services.
 
 ## Compliant Code Examples
 ```yaml

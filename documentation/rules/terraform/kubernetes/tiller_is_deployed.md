@@ -28,11 +28,10 @@ meta:
 
 ### Description
 
- Check whether Tiller is deployed.  
+Check whether Tiller is deployed.  
 Detects references to Tiller in resource `metadata` and in container `image` fields.  
 Specifically inspects `metadata.name`, `metadata.labels.app`, `metadata.labels.name`, top-level `spec`, pod template `spec.template`, and both `container` and `init_container` entries for container images that contain `tiller`.  
 When a match is found, the rule reports an issue with attributes `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.
-
 
 ## Compliant Code Examples
 ```terraform

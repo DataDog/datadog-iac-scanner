@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Allowing the `iam:PutUserPolicy` action with a `Resource` value of `"*"` in a Terraform AWS IAM role or policy configuration allows any user assigned the role to attach arbitrary policies to any users in the AWS account. This creates a significant privilege escalation vulnerability, as an attacker could grant themselves or others increased permissions, potentially leading to full administrative access. To mitigate this risk, the scope of the `PutUserPolicy` action should be strictly restricted to only the necessary resources and users.
-
+Allowing the `iam:PutUserPolicy` action with a `Resource` value of `"*"` in a Terraform AWS IAM role or policy configuration allows any user assigned the role to attach arbitrary policies to any users in the AWS account. This creates a significant privilege escalation vulnerability, as an attacker could grant themselves or others increased permissions, potentially leading to full administrative access. To mitigate this risk, the scope of the `PutUserPolicy` action should be strictly restricted to only the necessary resources and users.
 
 ## Compliant Code Examples
 ```terraform

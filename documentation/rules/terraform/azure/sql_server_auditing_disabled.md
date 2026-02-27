@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SQL Server auditing should be enabled to ensure that all database events and activities are properly logged for security monitoring and compliance purposes. Without the `extended_auditing_policy` block set as shown below, malicious or unauthorized actions may go undetected, increasing the risk of data breaches and making forensic analysis difficult. For example, secure Terraform configuration includes the following:
+SQL Server auditing should be enabled to ensure that all database events and activities are properly logged for security monitoring and compliance purposes. Without the `extended_auditing_policy` block set as shown below, malicious or unauthorized actions may go undetected, increasing the risk of data breaches and making forensic analysis difficult. For example, secure Terraform configuration includes the following:
 
 ```
 extended_auditing_policy {
@@ -38,7 +38,6 @@ extended_auditing_policy {
    retention_in_days                       = 90
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

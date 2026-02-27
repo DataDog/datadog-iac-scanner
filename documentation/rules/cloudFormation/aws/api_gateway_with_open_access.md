@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway methods must not set `AuthorizationType` to `NONE` except for CORS preflight (`OPTIONS`) requests, because leaving a method unauthenticated allows anyone to invoke the endpoint and can lead to unauthorized access, data exposure, or backend abuse.
+API Gateway methods must not set `AuthorizationType` to `NONE` except for CORS preflight (`OPTIONS`) requests, because leaving a method unauthenticated allows anyone to invoke the endpoint and can lead to unauthorized access, data exposure, or backend abuse.
 
  For `AWS::ApiGateway::Method` resources, `AuthorizationType` must specify an authentication mechanism (for example, `AWS_IAM`, `CUSTOM`, or `COGNITO_USER_POOLS`) when `HttpMethod` is not `OPTIONS`. This rule flags `Resources.<name>.Properties` where `AuthorizationType` is `NONE` and `HttpMethod` is not `OPTIONS`.
 
@@ -49,7 +49,6 @@ MyMethod:
       IntegrationHttpMethod: POST
       Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MyFunction.Arn}/invocations
 ```
-
 
 ## Compliant Code Examples
 ```yaml

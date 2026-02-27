@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups must not allow ingress from `0.0.0.0/0` across all ports. An all-ports public rule exposes instances to the internet and enables indiscriminate port scanning and brute-force attacks.
+Security groups must not allow ingress from `0.0.0.0/0` across all ports. An all-ports public rule exposes instances to the internet and enables indiscriminate port scanning and brute-force attacks.
 
 In CloudFormation, check `Resources.*.Properties.SecurityGroupIngress` entries (and standalone `AWS::EC2::SecurityGroupIngress` resources) and ensure no rule has `CidrIp: 0.0.0.0/0` with `FromPort: 0` and `ToPort: 65535`. Resources containing such an entry will be flagged.
 
@@ -48,7 +48,6 @@ MySecurityGroup:
         ToPort: 443
         CidrIp: 0.0.0.0/0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

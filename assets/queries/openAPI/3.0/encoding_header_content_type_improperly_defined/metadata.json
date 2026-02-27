@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "Encoding Map Key should not define a 'Content-Type' in the 'headers' field. If so, it will be ignored.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/encoding_header_content_type_improperly_defined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/encoding_header_content_type_improperly_defined",
   "platform": "OpenAPI",
   "descriptionID": "61185041",
   "cwe": "710",

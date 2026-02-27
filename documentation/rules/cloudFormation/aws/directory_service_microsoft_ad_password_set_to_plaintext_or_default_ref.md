@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Storing Microsoft AD passwords in plaintext or as a parameter `Default` in CloudFormation exposes credentials to source control, template archives, and other readers. This can enable unauthorized access to the directory and lateral movement across your environment.
+Storing Microsoft AD passwords in plaintext or as a parameter `Default` in CloudFormation exposes credentials to source control, template archives, and other readers. This can enable unauthorized access to the directory and lateral movement across your environment.
 
  For resources of type `AWS::DirectoryService::MicrosoftAD`, `Properties.Password` must not be a literal string or a `Ref` to a `Parameters.<Name>` that defines a `Default` password.
 
@@ -66,7 +66,6 @@ MyDirectory:
         - subnet-abc
         - subnet-def
 ```
-
 
 ## Compliant Code Examples
 ```yaml

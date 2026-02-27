@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stages must enable CloudWatch metrics for their method settings to provide visibility into request volume, latency, and errors and to support alerting and incident response.
+API Gateway stages must enable CloudWatch metrics for their method settings to provide visibility into request volume, latency, and errors and to support alerting and incident response.
 
  In CloudFormation, check resources of type `AWS::ApiGateway::Stage`: the `Properties.MethodSettings` array must include `MethodSetting` objects with `MetricsEnabled` set to `true`.
 
@@ -47,7 +47,6 @@ MyStage:
         HttpMethod: "*"
         MetricsEnabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

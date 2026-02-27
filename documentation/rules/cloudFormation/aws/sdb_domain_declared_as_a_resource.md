@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Declaring an AWS SimpleDB domain is discouraged because SimpleDB is a legacy service that lacks many modern security and operational controls. This increases the risk of data exposure and creates maintenance and compliance challenges.
+Declaring an AWS SimpleDB domain is discouraged because SimpleDB is a legacy service that lacks many modern security and operational controls. This increases the risk of data exposure and creates maintenance and compliance challenges.
 
 CloudFormation resources with `Type: "AWS::SDB::Domain"` must not be defined. Any resource of that type will be flagged by this rule. Use supported services such as Amazon DynamoDB, Amazon RDS, or Amazon S3 with server-side encryption and appropriate IAM controls as secure alternatives.
 
@@ -49,7 +49,6 @@ MyTable:
     SSESpecification:
       SSEEnabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

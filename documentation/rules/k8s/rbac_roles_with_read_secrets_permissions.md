@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Roles and ClusterRoles with `get`, `watch`, or `list` permissions on Kubernetes Secrets are dangerous and should be avoided.
+Roles and ClusterRoles with `get`, `watch`, or `list` permissions on Kubernetes Secrets are dangerous and should be avoided.
 These permissions allow read access to Secrets objects across the scope of the Role or ClusterRole. In case of compromise, attackers could abuse these roles to access sensitive data such as passwords, tokens, and keys, increasing the blast radius.
 This policy flags Role and ClusterRole rules that grant the `get`, `watch`, or `list` verbs on the `secrets` resource.
-
 
 ## Compliant Code Examples
 ```yaml

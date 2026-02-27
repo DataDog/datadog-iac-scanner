@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- The container's `image_pull_policy` must be defined and set to `Always`.
+The container's `image_pull_policy` must be defined and set to `Always`.
 The container image must not use the `:latest` tag.
 This rule checks container paths in `kubernetes_pod` (`spec.container`) and `kubernetes_deployment` (`spec.template.spec.container`) resources.
-
 
 ## Compliant Code Examples
 ```terraform

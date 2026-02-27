@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that AWS VPC subnets do not automatically assign public IP addresses by verifying the value of the `map_public_ip_on_launch` attribute. If this attribute is set to `true`, as shown in `map_public_ip_on_launch = true`, instances launched in the subnet will receive public IPs by default, potentially exposing them to the public internet. Leaving this misconfiguration unaddressed increases the risk of unauthorized access, data breaches, and external attacks.
-
+This check ensures that AWS VPC subnets do not automatically assign public IP addresses by verifying the value of the `map_public_ip_on_launch` attribute. If this attribute is set to `true`, as shown in `map_public_ip_on_launch = true`, instances launched in the subnet will receive public IPs by default, potentially exposing them to the public internet. Leaving this misconfiguration unaddressed increases the risk of unauthorized access, data breaches, and external attacks.
 
 ## Compliant Code Examples
 ```terraform

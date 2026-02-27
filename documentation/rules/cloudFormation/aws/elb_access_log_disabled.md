@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Elastic Load Balancers must have access logging enabled so request logs are retained for incident investigation and auditing. Without logs, you cannot reconstruct traffic patterns or investigate unauthorized access.
+Elastic Load Balancers must have access logging enabled so request logs are retained for incident investigation and auditing. Without logs, you cannot reconstruct traffic patterns or investigate unauthorized access.
  
  For CloudFormation, the `AWS::ElasticLoadBalancing::LoadBalancer` resource must include the `AccessLoggingPolicy` property and its `Enabled` attribute must be set to `true`. Resources missing `AccessLoggingPolicy` or with `AccessLoggingPolicy.Enabled` set to `false` will be flagged.
 
@@ -46,7 +46,6 @@ MyLoadBalancer:
 ```
 
 Ensure the target S3 bucket exists and allows the load balancer to write logs.
-
 
 ## Compliant Code Examples
 ```yaml

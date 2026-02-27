@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that Azure Web App Services are configured to accept only HTTPS traffic by setting the `https_only` attribute to `true`. Allowing HTTP traffic by setting `https_only = false` exposes the web application to potential security risks, including interception of sensitive data through unencrypted connections. To enforce secure communications, configure your Terraform resource as follows:
+This check ensures that Azure Web App Services are configured to accept only HTTPS traffic by setting the `https_only` attribute to `true`. Allowing HTTP traffic by setting `https_only = false` exposes the web application to potential security risks, including interception of sensitive data through unencrypted connections. To enforce secure communications, configure your Terraform resource as follows:
 
 ```
 resource "azurerm_app_service" "example" {
@@ -51,7 +51,6 @@ resource "azurerm_app_service" "example" {
   }
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting public or anonymous access to a Google Cloud Storage bucket using Terraform, such as by setting the member to `allUsers` (anyone on the internet) or `allAuthenticatedUsers` (any authenticated Google account) in a `google_storage_bucket_iam_member` resource, exposes your data to unauthorized access. This can lead to data leaks, theft, or manipulation since anyone could potentially view, download, modify, or delete sensitive data. To prevent this, IAM bindings for storage buckets should only specify trusted user or service accounts, as shown below:
+Granting public or anonymous access to a Google Cloud Storage bucket using Terraform, such as by setting the member to `allUsers` (anyone on the internet) or `allAuthenticatedUsers` (any authenticated Google account) in a `google_storage_bucket_iam_member` resource, exposes your data to unauthorized access. This can lead to data leaks, theft, or manipulation since anyone could potentially view, download, modify, or delete sensitive data. To prevent this, IAM bindings for storage buckets should only specify trusted user or service accounts, as shown below:
 
 ```
 resource "google_storage_bucket_iam_member" "secure_example" {
@@ -37,7 +37,6 @@ resource "google_storage_bucket_iam_member" "secure_example" {
   member = "user:jane@example.com"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

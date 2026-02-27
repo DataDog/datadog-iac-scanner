@@ -1,0 +1,102 @@
+name: False Positive Benchmark
+
+on:
+  schedule:
+    # Run every Monday at 4 AM UTC (12 AM EST)
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout kics repo
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        path: kics
+
+    - name: Clone iac-benchmarking repo
+      run: |
+        git clone https://github.com/muh-nee/iac-benchmarking.git
+
+    - name: Set up Go
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      with:
+        go-version-file: kics/go.mod
+        check-latest: true
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Python dependencies
+      run: |
+        pip install -r iac-benchmarking/benchmark-tools/requirements.txt
+
+    - name: Build datadog-iac-scanner
+      run: |
+        cd kics
+        make build
+        ./bin/datadog-iac-scanner --help
+        echo "SCANNER=$(pwd)/bin/datadog-iac-scanner" >> $GITHUB_ENV
+
+    - name: Run IAC scanner on benchmark test cases
+      run: |
+        cd iac-benchmarking
+        ./benchmark-tools/run_scanner.sh $SCANNER
+
+    - name: Run FP evaluation
+      env:
+        DD_API_KEY: ${{ secrets.DD_API_KEY }}
+        DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+      run: |
+        cd iac-benchmarking
+        python benchmark-tools/fp_eval.py \
+          --test-cases-dir test-cases/terraform \
+          --output results/fp_eval_results.json \
+          --workers 3
+
+    - name: Submit metrics to Datadog
+      if: always()
+      env:
+        DD_API_KEY: ${{ secrets.DD_API_KEY }}
+        DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+      run: |
+        cd iac-benchmarking
+        if [ -f results/fp_eval_results.json ]; then
+          python benchmark-tools/submit_metrics.py results/fp_eval_results.json
+        fi
+
+    - name: Upload results artifact
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: fp-benchmark-results
+        path: |
+          iac-benchmarking/results/
+
+    - name: Generate summary
+      if: always()
+      run: |
+        cd iac-benchmarking
+        echo "## IAC False Positive Benchmark Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ -f results/fp_eval_results.json ]; then
+          python benchmark-tools/generate_summary.py results/fp_eval_results.json >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No results available" >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Check accuracy threshold
+      if: always()
+      run: |
+        cd iac-benchmarking
+        if [ -f results/fp_eval_results.json ]; then
+          python benchmark-tools/check_threshold.py results/fp_eval_results.json 0.8
+        fi

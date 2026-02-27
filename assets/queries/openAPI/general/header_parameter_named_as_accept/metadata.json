@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "The header Parameter should not be named as 'Accept'. If so, it will be ignored.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/header_parameter_named_as_accept",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/header_parameter_named_as_accept",
   "platform": "OpenAPI",
   "descriptionID": "4067b4c1",
   "aggregation": 2,

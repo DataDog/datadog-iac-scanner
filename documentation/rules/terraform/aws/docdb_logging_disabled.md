@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Enabling logging for Amazon DocumentDB clusters helps ensure that database activity is captured and monitored, allowing for the detection of anomalous behavior and aiding in incident investigations. If logging is not enabled by omitting the `enabled_cloudwatch_logs_exports` attribute, critical events and queries may go unrecorded, making it difficult to audit access or troubleshoot security events. To enforce secure configurations, the `aws_docdb_cluster` resource should specify the desired log exports, such as in the example below:
+Enabling logging for Amazon DocumentDB clusters helps ensure that database activity is captured and monitored, allowing for the detection of anomalous behavior and aiding in incident investigations. If logging is not enabled by omitting the `enabled_cloudwatch_logs_exports` attribute, critical events and queries may go unrecorded, making it difficult to audit access or troubleshoot security events. To enforce secure configurations, the `aws_docdb_cluster` resource should specify the desired log exports, such as in the example below:
 
 ```
 resource "aws_docdb_cluster" "example" {
@@ -43,7 +43,6 @@ resource "aws_docdb_cluster" "example" {
   enabled_cloudwatch_logs_exports = ["profiler", "audit"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

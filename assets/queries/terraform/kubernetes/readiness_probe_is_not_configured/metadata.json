@@ -3,7 +3,7 @@
   "queryName": "Readiness probe is not configured",
   "severity": "MEDIUM",
   "category": "Availability",
-  "descriptionText": "Check whether `readiness_probe` is configured for every `container` and `init_container`. The rule reports `MissingAttribute` when the `readiness_probe` key is undefined on a container object or array item. This check excludes resources of type `kubernetes_cron_job` and `kubernetes_job`.",
+  "descriptionText": "Check whether `readiness_probe` is configured for every `container`. The rule reports `MissingAttribute` when the `readiness_probe` key is undefined on a container object or array item. This check excludes `init_container` (readiness probes are not supported on `init_container`) and resources of type `kubernetes_cron_job` and `kubernetes_job`.",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/readiness_probe_is_not_configured",
   "platform": "Terraform",
   "descriptionID": "a333fe96",

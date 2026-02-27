@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check verifies that AWS DynamoDB Accelerator (DAX) clusters have server-side encryption enabled to protect data at rest. Without encryption, sensitive data stored in DAX clusters could be exposed if unauthorized access to the storage media occurs, potentially leading to data breaches and compliance violations.
+This check verifies that AWS DynamoDB Accelerator (DAX) clusters have server-side encryption enabled to protect data at rest. Without encryption, sensitive data stored in DAX clusters could be exposed if unauthorized access to the storage media occurs, potentially leading to data breaches and compliance violations.
 
 To secure a DAX cluster, you must include a `server_side_encryption` block with `enabled = true`, as shown below:
 ```
@@ -42,7 +42,6 @@ resource "aws_dax_cluster" "secure_example" {
 }
 ```
 Insecure configurations either omit the `server_side_encryption` block entirely, include an empty block, or explicitly set `enabled = false`.
-
 
 ## Compliant Code Examples
 ```terraform

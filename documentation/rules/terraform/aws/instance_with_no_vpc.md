@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon EC2 instances should always be provisioned within a Virtual Private Cloud (VPC) to leverage the network isolation, traffic filtering, and granular access controls that VPCs provide. If EC2 instances are created without specifying a `subnet_id` or `vpc_security_group_ids` (as shown in the configuration below), they may default to legacy EC2-Classic networks or lack critical network restrictions, increasing the risk of unauthorized access and exposure to attacks. Using a VPC ensures all traffic to and from instances can be centrally managed, monitored, and audited, reducing the attack surface.
+Amazon EC2 instances should always be provisioned within a Virtual Private Cloud (VPC) to leverage the network isolation, traffic filtering, and granular access controls that VPCs provide. If EC2 instances are created without specifying a `subnet_id` or `vpc_security_group_ids` (as shown in the configuration below), they may default to legacy EC2-Classic networks or lack critical network restrictions, increasing the risk of unauthorized access and exposure to attacks. Using a VPC ensures all traffic to and from instances can be centrally managed, monitored, and audited, reducing the attack surface.
 
 Insecure example:
 ```
@@ -47,7 +47,6 @@ resource "aws_instance" "example" {
   vpc_security_group_ids = [aws_security_group.example.id]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

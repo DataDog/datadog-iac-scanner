@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When MSSQL Server public network access is enabled, it allows connections from the internet to your database server, significantly expanding the attack surface and potentially exposing it to unauthorized access. This vulnerability could lead to data breaches, unauthorized data manipulation, or denial of service attacks if credentials are compromised or if there are exploitable vulnerabilities in the database server. To mitigate this risk, set `public_network_access_enabled = false` in your MSSQL Server configuration, which restricts access to private endpoints or services within your Azure network only.
-
+When MSSQL Server public network access is enabled, it allows connections from the internet to your database server, significantly expanding the attack surface and potentially exposing it to unauthorized access. This vulnerability could lead to data breaches, unauthorized data manipulation, or denial of service attacks if credentials are compromised or if there are exploitable vulnerabilities in the database server. To mitigate this risk, set `public_network_access_enabled = false` in your MSSQL Server configuration, which restricts access to private endpoints or services within your Azure network only.
 
 ## Compliant Code Examples
 ```terraform

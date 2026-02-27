@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The container `imagePullPolicy` must be set to `Always`. This requirement applies when the image is referenced with an explicit tag (contains ':') and is not referenced by digest (`@...`) or by the `:latest` tag. Setting `imagePullPolicy` to `Always` ensures the image is pulled on every start and prevents relying on mutable images cached locally.
-
+The container `imagePullPolicy` must be set to `Always`. This requirement applies when the image is referenced with an explicit tag (contains ':') and is not referenced by digest (`@...`) or by the `:latest` tag. Setting `imagePullPolicy` to `Always` ensures the image is pulled on every start and prevents relying on mutable images cached locally.
 
 ## Compliant Code Examples
 ```yaml

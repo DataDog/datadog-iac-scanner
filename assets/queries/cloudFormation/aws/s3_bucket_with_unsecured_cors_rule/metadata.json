@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "CORS rules that allow all methods, all headers, or use overly broad (or multiple) origins can enable unintended cross-origin access. This increases the risk of data exfiltration or unauthorized requests to your S3 objects.\n\nFor `AWS::S3::Bucket` resources, examine `Properties.CorsConfiguration.CorsRules` entries. `AllowedMethods` and `AllowedHeaders` must not include the wildcard (`*`). `AllowedOrigins` should be restricted to explicit, trusted origins rather than wildcards or overly broad lists.\n\nThis rule flags any `CorsRules` entry where `AllowedMethods` or `AllowedHeaders` contains `*`. It also flags rules where `AllowedOrigins` includes `*` or an unnecessarily broad set of origins.\n\nSecure example with a single trusted origin and explicit methods/headers:\n\n```yaml\nMyBucket:\n  Type: AWS::S3::Bucket\n  Properties:\n    CorsConfiguration:\n      CorsRules:\n        - AllowedOrigins:\n            - \"https://example.com\"\n          AllowedMethods:\n            - GET\n            - HEAD\n          AllowedHeaders:\n            - \"Content-Type\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/s3_bucket_with_unsecured_cors_rule",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/s3_bucket_with_unsecured_cors_rule",
   "platform": "CloudFormation",
   "descriptionID": "f616509e",
   "cloudProvider": "aws",

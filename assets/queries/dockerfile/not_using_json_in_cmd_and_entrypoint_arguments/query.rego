@@ -15,6 +15,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("{{%s}} should be in the JSON Notation", [resource.Original]),
 		"keyActualValue": sprintf("{{%s}} isn't in JSON Notation", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -31,5 +33,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("{{%s}} should be in the JSON Notation", [resource.Original]),
         "keyActualValue": sprintf("{{%s}} isn't in JSON Notation", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

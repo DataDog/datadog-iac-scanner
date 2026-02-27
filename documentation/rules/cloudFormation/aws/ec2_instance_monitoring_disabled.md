@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EC2 instances should have detailed (1-minute) monitoring enabled to improve detection and response to performance and security incidents and to provide higher-resolution metrics for investigations and alerting. In CloudFormation, the `AWS::EC2::Instance` resource must include the `Monitoring` property set to `true`. Resources missing `Monitoring` or with `Monitoring` set to `false` will be flagged.
+EC2 instances should have detailed (1-minute) monitoring enabled to improve detection and response to performance and security incidents and to provide higher-resolution metrics for investigations and alerting. In CloudFormation, the `AWS::EC2::Instance` resource must include the `Monitoring` property set to `true`. Resources missing `Monitoring` or with `Monitoring` set to `false` will be flagged.
 
 ```yaml
 MyInstance:
@@ -38,7 +38,6 @@ MyInstance:
     ImageId: ami-0123456789abcdef0
     Monitoring: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should restrict public bucket settings to prevent accidental or unauthorized public exposure of objects. This also ensures bucket-level public access controls are enforced.
+S3 buckets should restrict public bucket settings to prevent accidental or unauthorized public exposure of objects. This also ensures bucket-level public access controls are enforced.
 
 In CloudFormation, `AWS::S3::Bucket` resources must define `Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets` and set it to `true`. Resources missing `PublicAccessBlockConfiguration`, missing `RestrictPublicBuckets`, or with `RestrictPublicBuckets: false` will be flagged.
 
@@ -45,7 +45,6 @@ MyBucket:
       IgnorePublicAcls: true
       RestrictPublicBuckets: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Schema Object should have all required properties defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/properties_missing_required_property",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/properties_missing_required_property",
   "platform": "OpenAPI",
   "descriptionID": "c5c91b2f",
   "aggregation": 2,

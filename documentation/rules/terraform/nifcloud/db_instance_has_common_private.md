@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- `nifcloud_db_instance` is configured to use the common private LAN `net-COMMON_PRIVATE`. The resource's `network_id` should be a private LAN that isolates the private-side network from the shared network. This rule identifies `nifcloud_db_instance` resources that are using the common private network.
-
+`nifcloud_db_instance` is configured to use the common private LAN `net-COMMON_PRIVATE`. The resource's `network_id` should be a private LAN that isolates the private-side network from the shared network. This rule identifies `nifcloud_db_instance` resources that are using the common private network.
 
 ## Compliant Code Examples
 ```terraform

@@ -12,5 +12,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'EXPOSE' shouldn't contain the port 22 ",
 		"keyActualValue": "'EXPOSE' contains the port 22 ",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

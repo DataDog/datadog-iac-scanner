@@ -1,11 +1,12 @@
 {
   "id": "b03a748a-542d-44f4-bb86-9199ab4fd2d5",
-  "queryName": "Healthcheck Instruction Missing",
+  "queryName": "Healthcheck instruction missing",
   "severity": "LOW",
   "category": "Insecure Configurations",
-  "descriptionText": "Ensure that HEALTHCHECK is being used. The HEALTHCHECK instruction tells Docker how to test a container to check that it is still working",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#healthcheck",
+  "descriptionText": "Containers should expose an explicit `HEALTHCHECK` so runtimes and orchestrators can detect unhealthy applications and automatically restart or replace failing containers. Without a health check, internal failures may go unnoticed and lead to reduced availability and slower incident recovery.\n\nThis rule verifies each Dockerfile build stage (each `FROM`) and requires a `HEALTHCHECK` instruction to be present in the stage's instruction set. Stages missing a `HEALTHCHECK` will be flagged.\n\nImplement the `HEALTHCHECK` using the `CMD` form and sensible options (for example, `--interval`, `--timeout`, `--start-period`, `--retries`) so the probe is lightweight and accurately reflects service health.\n\nSecure example:\n\n```dockerfile\nFROM alpine:3.14\n# application setup...\n\nHEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \\\n  CMD wget -q -O /dev/null http://localhost:8080/health || exit 1\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/healthcheck_instruction_missing",
   "platform": "Dockerfile",
   "descriptionID": "426121ee",
-  "cwe": "710"
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#healthcheck"
 }

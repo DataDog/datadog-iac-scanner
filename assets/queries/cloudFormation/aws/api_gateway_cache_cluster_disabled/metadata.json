@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "API Gateway stages should have cache clustering enabled to reduce repeated backend requests and lower latency, helping prevent backend overload and service degradation. The `CacheClusterEnabled` property on `AWS::ApiGateway::Stage` resources must be defined and set to `true`. Resources missing this property or with `CacheClusterEnabled` set to `false` will be flagged. The `CacheClusterSize` property should also be configured to provision adequate cache capacity for expected traffic.\n\nSecure configuration example:\n\n```yaml\nMyStage:\n  Type: AWS::ApiGateway::Stage\n  Properties:\n    StageName: prod\n    RestApiId: !Ref MyApi\n    CacheClusterEnabled: true\n    CacheClusterSize: '0.5'\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/api_gateway_cache_cluster_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/api_gateway_cache_cluster_disabled",
   "platform": "CloudFormation",
   "descriptionID": "c5c1c902",
   "cloudProvider": "aws",

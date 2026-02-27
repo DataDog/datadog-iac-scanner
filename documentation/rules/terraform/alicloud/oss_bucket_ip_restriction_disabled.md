@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- OSS bucket policies should restrict access by IP address.
+OSS bucket policies should restrict access by IP address.
 This rule checks the `policy` attribute of `alicloud_oss_bucket` resources for statements that include a `Condition` with `acs:SourceIp`.
 Resources without an IP restriction in their `policy` are reported.
-
 
 ## Compliant Code Examples
 ```terraform

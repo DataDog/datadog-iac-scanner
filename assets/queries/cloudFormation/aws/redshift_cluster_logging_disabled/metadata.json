@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "Redshift clusters must have audit and query logging enabled so user actions and query activity are captured for detection, incident response, and compliance. Without logging, malicious activity and data access can go undetected. In AWS CloudFormation, `AWS::Redshift::Cluster` resources must define the `LoggingProperties` property and include a valid `BucketName` (and optional `S3KeyPrefix`) so logs are delivered to an S3 bucket. Resources missing `LoggingProperties` will be flagged. Ensure the destination S3 bucket has appropriate access controls, encryption, and retention or lifecycle policies to protect and retain logs.\n\n```yaml\nMyRedshiftCluster:\n  Type: AWS::Redshift::Cluster\n  Properties:\n    ClusterIdentifier: my-cluster\n    NodeType: dc2.large\n    MasterUsername: masteruser\n    MasterUserPassword: ChangeMe123!\n    NumberOfNodes: 2\n    LoggingProperties:\n      BucketName: my-redshift-logs\n      S3KeyPrefix: redshift/logs\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/redshift_cluster_logging_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/redshift_cluster_logging_disabled",
   "platform": "CloudFormation",
   "descriptionID": "b84206ae",
   "cloudProvider": "aws",

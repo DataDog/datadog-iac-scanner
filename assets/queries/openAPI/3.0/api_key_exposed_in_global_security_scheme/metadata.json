@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Access Control",
   "descriptionText": "API Keys should not be transported over network",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/api_key_exposed_in_global_security_scheme",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/api_key_exposed_in_global_security_scheme",
   "platform": "OpenAPI",
   "descriptionID": "bcb4b221",
   "cwe": "284",

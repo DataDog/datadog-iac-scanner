@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- EMR `SecurityConfiguration` must enable encryption at rest and in transit to prevent unauthorized access to data stored on cluster disks and to protect data in flight between EMR nodes from interception.
+EMR `SecurityConfiguration` must enable encryption at rest and in transit to prevent unauthorized access to data stored on cluster disks and to protect data in flight between EMR nodes from interception.
  
  For CloudFormation, resources of type `AWS::EMR::SecurityConfiguration` must define `SecurityConfiguration.EncryptionConfiguration` with `EnableAtRestEncryption` set to `true` and `EnableInTransitEncryption` set to `true`. The `AtRestEncryptionConfiguration.LocalDiskEncryptionConfiguration.EnableEbsEncryption` property must be set to `true`, and `EncryptionKeyProviderType` must be defined. Resources missing `EncryptionConfiguration`, with any of those booleans set to `false`, or without a defined `EncryptionKeyProviderType` will be flagged.
 
@@ -47,7 +47,6 @@ MyEMRSecurityConfiguration:
             EnableEbsEncryption: true
             EncryptionKeyProviderType: AwsKms
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Server access logging should be enabled on S3 Buckets so that all changes are logged and trackable. Without the `logging` block in your Terraform configuration, such as shown below, access and modification events to the S3 bucket will not be recorded, making it difficult to detect unauthorized access or investigate security incidents.
+Server access logging should be enabled on S3 Buckets so that all changes are logged and trackable. Without the `logging` block in your Terraform configuration, such as shown below, access and modification events to the S3 bucket will not be recorded, making it difficult to detect unauthorized access or investigate security incidents.
 
 ```
 resource "aws_s3_bucket" "example" {
@@ -38,7 +38,6 @@ resource "aws_s3_bucket" "example" {
 ```
 
 This lack of logging can result in untraceable data exposure or loss if the bucket is misused or compromised.
-
 
 ## Compliant Code Examples
 ```terraform

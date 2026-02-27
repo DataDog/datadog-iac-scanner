@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- A misconfigured AWS CloudFront distribution may have the `enabled` attribute set to `false`, which means the CDN is disabled and will not provide the intended performance, availability, and security benefits. When a CloudFront distribution is not enabled, website traffic is routed directly to the origin, bypassing critical protections such as DDoS mitigation, geo-restriction, and integrated access controls. This exposes the origin servers to a higher risk of malicious traffic, information disclosure, or unauthorized access, potentially increasing the attack surface significantly. If this misconfiguration is left unaddressed, organizations lose important layers of defense and optimization for web applications and data, making resources more vulnerable to compromise or service disruption.
-
+A misconfigured AWS CloudFront distribution may have the `enabled` attribute set to `false`, which means the CDN is disabled and will not provide the intended performance, availability, and security benefits. When a CloudFront distribution is not enabled, website traffic is routed directly to the origin, bypassing critical protections such as DDoS mitigation, geo-restriction, and integrated access controls. This exposes the origin servers to a higher risk of malicious traffic, information disclosure, or unauthorized access, potentially increasing the attack surface significantly. If this misconfiguration is left unaddressed, organizations lose important layers of defense and optimization for web applications and data, making resources more vulnerable to compromise or service disruption.
 
 ## Compliant Code Examples
 ```terraform

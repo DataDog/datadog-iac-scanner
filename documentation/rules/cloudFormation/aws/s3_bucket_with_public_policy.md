@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- S3 buckets should block public bucket policies to prevent bucket policies from granting public access. Public bucket policies can expose objects or other sensitive data.
+S3 buckets should block public bucket policies to prevent bucket policies from granting public access. Public bucket policies can expose objects or other sensitive data.
 
 For `AWS::S3::Bucket` resources, `Properties.PublicAccessBlockConfiguration.BlockPublicPolicy` must be set to `true`. Resources missing `PublicAccessBlockConfiguration`, or with `BlockPublicPolicy: false`, will be flagged.
 
@@ -41,7 +41,6 @@ MyBucket:
     PublicAccessBlockConfiguration:
       BlockPublicPolicy: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

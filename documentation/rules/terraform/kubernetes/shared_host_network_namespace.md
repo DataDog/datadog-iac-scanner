@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Containers should not share the host network namespace. The `host_network` field in the container spec must be undefined or set to false. Sharing the host network exposes the host's network stack to the container and can lead to privilege escalation, port conflicts, and unintended access to host network resources.
-
+Containers should not share the host network namespace. The `host_network` field in the container spec must be undefined or set to false. Sharing the host network exposes the host's network stack to the container and can lead to privilege escalation, port conflicts, and unintended access to host network resources.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,11 +28,10 @@ meta:
 
 ### Description
 
- To ensure containers do not run with root privileges:
+To ensure containers do not run with root privileges:
 - Set `privileged`, `allowPrivilegeEscalation`, and `readOnlyRootFilesystem` to `false`.
 - Set `runAsUser.rule` to `MustRunAsNonRoot`.
 - Configure `fsGroup` and `supplementalGroups` with `MustRunAs`, ensuring the root range (GID 0) and root group are not permitted.
-
 
 ## Compliant Code Examples
 ```yaml

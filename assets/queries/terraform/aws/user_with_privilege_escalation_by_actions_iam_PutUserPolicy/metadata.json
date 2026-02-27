@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Granting a user the `iam:PutUserPolicy` action with a resource value of `\"*\"` allows that user to attach any policy to any IAM user, including themselves. This creates a privilege escalation vulnerability, as the user could grant themselves administrative permissions or access otherwise restricted resources. To mitigate this risk, permission sets should be strictly defined and limited; for example, only allowing non-privileged actions such as in the following example:\n\n```\npolicy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Action = [\n        \"ec2:Describe*\"\n      ]\n      Effect   = \"Allow\"\n      Resource = \"*\"\n    }\n  ]\n})\n```\nLimiting permissions in this way reduces the risk of unauthorized privilege escalation.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_PutUserPolicy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/user_with_privilege_escalation_by_actions_iam_putuserpolicy",
   "platform": "Terraform",
   "descriptionID": "b99501af",
   "cloudProvider": "aws",

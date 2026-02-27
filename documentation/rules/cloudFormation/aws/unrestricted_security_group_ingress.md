@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Security groups must not allow ingress from the entire internet (`0.0.0.0/0` or `::/0`) because such wide-open rules expose instances and services to unauthorized access, brute-force attempts, and remote exploitation.
+Security groups must not allow ingress from the entire internet (`0.0.0.0/0` or `::/0`) because such wide-open rules expose instances and services to unauthorized access, brute-force attempts, and remote exploitation.
 
 This rule checks `AWS::EC2::SecurityGroupIngress` resources (`Properties.CidrIp` / `Properties.CidrIpv6`) and `AWS::EC2::SecurityGroup` resources' `Properties.SecurityGroupIngress` entries. `CidrIp` must not be `0.0.0.0/0` and `CidrIpv6` must not be `::/0`. Resources with those values will be flagged.
 
@@ -57,7 +57,6 @@ MySGToSGIngress:
     ToPort: 443
     SourceSecurityGroupId: sg-0123456789abcdef0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

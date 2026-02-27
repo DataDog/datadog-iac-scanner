@@ -21,6 +21,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("{{%s}} should avoid manual input", [resource.Original]),
 		"keyActualValue": sprintf("{{%s}} doesn't avoid manual input", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -40,6 +42,8 @@ CxPolicy[result] {
         "issueType": "IncorrectValue",
         "keyExpectedValue": sprintf("{{%s}} should avoid manual input", [resource.Original]),
         "keyActualValue": sprintf("{{%s}} doesn't avoid manual input", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
     }
 }
 

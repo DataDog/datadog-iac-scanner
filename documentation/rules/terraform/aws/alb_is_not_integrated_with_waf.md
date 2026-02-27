@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Application Load Balancers (ALBs) should always be protected by a Web Application Firewall (WAF) to defend against common web exploits and vulnerabilities, such as SQL injection and cross-site scripting (XSS) attacks. Without an associated WAF, ALBs are left exposed to the internet with no filter or mitigation in place for potentially malicious traffic targeting applications. This misconfiguration can lead to unauthorized access, data breaches, and disruptions to application availability, compromising the security and integrity of hosted applications. Ensuring that ALBs have an active WAF association is a critical best practice for reducing the risk of successful web-based attacks.
-
+Application Load Balancers (ALBs) should always be protected by a Web Application Firewall (WAF) to defend against common web exploits and vulnerabilities, such as SQL injection and cross-site scripting (XSS) attacks. Without an associated WAF, ALBs are left exposed to the internet with no filter or mitigation in place for potentially malicious traffic targeting applications. This misconfiguration can lead to unauthorized access, data breaches, and disruptions to application availability, compromising the security and integrity of hosted applications. Ensuring that ALBs have an active WAF association is a critical best practice for reducing the risk of successful web-based attacks.
 
 ## Compliant Code Examples
 ```terraform

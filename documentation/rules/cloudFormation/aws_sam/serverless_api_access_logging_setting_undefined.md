@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Serverless APIs should have access logging enabled to create an audit trail and support incident investigation and detection of anomalous or abusive traffic. For `AWS::Serverless::Api` resources, the `Properties.AccessLogSetting` property must be defined and not `null`. For `AWS::Serverless::HttpApi` resources, the `Properties.AccessLogSettings` property must be defined and not `null`. These properties configure the log destination and format, so missing or `null` values will be flagged. Ensure the access log configuration includes a log destination (for example, `DestinationArn`) and a `Format` describing the fields to record.
+Serverless APIs should have access logging enabled to create an audit trail and support incident investigation and detection of anomalous or abusive traffic. For `AWS::Serverless::Api` resources, the `Properties.AccessLogSetting` property must be defined and not `null`. For `AWS::Serverless::HttpApi` resources, the `Properties.AccessLogSettings` property must be defined and not `null`. These properties configure the log destination and format, so missing or `null` values will be flagged. Ensure the access log configuration includes a log destination (for example, `DestinationArn`) and a `Format` describing the fields to record.
 
 Secure configuration examples:
 
@@ -50,7 +50,6 @@ MyHttpApi:
       DestinationArn: arn:aws:logs:us-east-1:123456789012:log-group:/aws/apigateway/my-httpapi-logs
       Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","method":"$context.httpMethod","path":"$context.path"}'
 ```
-
 
 ## Compliant Code Examples
 ```yaml

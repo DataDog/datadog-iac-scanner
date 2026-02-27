@@ -21,6 +21,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("{{%s}} should have 'yum clean all' after 'yum install' command", [resource.Original]),
 		"keyActualValue": sprintf("{{%s}} doesn't have 'yum clean all' after 'yum install' command", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

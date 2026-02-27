@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM users should have at most one access key because multiple keys increase the risk of credential exposure and make secure rotation and revocation more difficult. In AWS CloudFormation, each `AWS::IAM::AccessKey` resource’s `Properties.UserName` should be unique per IAM user so a user is not associated with more than one access key. This rule flags templates where more than one `AWS::IAM::AccessKey` resource references the same `UserName`. Remove extra keys, consolidate usage, or rotate and delete unused keys to remediate.
+IAM users should have at most one access key because multiple keys increase the risk of credential exposure and make secure rotation and revocation more difficult. In AWS CloudFormation, each `AWS::IAM::AccessKey` resource’s `Properties.UserName` should be unique per IAM user so a user is not associated with more than one access key. This rule flags templates where more than one `AWS::IAM::AccessKey` resource references the same `UserName`. Remove extra keys, consolidate usage, or rotate and delete unused keys to remediate.
 
 Secure example with a single access key for a user:
 
@@ -38,7 +38,6 @@ MyUserAccessKey:
   Properties:
     UserName: MyIamUser
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Structure and Semantics",
   "descriptionText": "Schema reference should exists on definitions field",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/2.0/json_reference_does_not_exists_schema",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/2.0/json_reference_does_not_exists_schema",
   "platform": "OpenAPI",
   "descriptionID": "6da8f0da",
   "cwe": "20",

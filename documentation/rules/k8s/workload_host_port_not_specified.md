@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Checks whether a Kubernetes workload defines a container port with a specified hostPort. It inspects both top-level pod specs and workload templates (spec.template.spec) for entries in containers and initContainers and reports any ports where hostPort is defined. Findings are reported as "IncorrectValue" because container port entries should not include hostPort.
-
+Checks whether a Kubernetes workload defines a container port with a specified hostPort. It inspects both top-level pod specs and workload templates (spec.template.spec) for entries in containers and initContainers and reports any ports where hostPort is defined. Findings are reported as "IncorrectValue" because container port entries should not include hostPort.
 
 ## Compliant Code Examples
 ```yaml

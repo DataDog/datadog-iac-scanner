@@ -28,14 +28,13 @@ meta:
 
 ### Description
 
- Alicloud security group rules must not expose all ports or all protocols to the public. This rule flags `alicloud_security_group_rule` resources where:
+Alicloud security group rules must not expose all ports or all protocols to the public. This rule flags `alicloud_security_group_rule` resources where:
 
 - `cidr_ip` is `0.0.0.0/0` and `ip_protocol` is `all`, or
 - `ip_protocol` is `tcp` or `udp` and `port_range` is `1/65535`, or
 - `ip_protocol` is `icmp` or `gre` and `port_range` is `-1/-1`
 
 These configurations expose resources to the public internet and significantly increase the attack surface.
-
 
 ## Compliant Code Examples
 ```terraform

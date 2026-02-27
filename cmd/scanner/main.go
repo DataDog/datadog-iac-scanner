@@ -77,5 +77,5 @@ func (e *normalExitCode) Error() string {
 }
 
 func GetSupportedPlatforms() []string {
-	return []string{"CICD", "Terraform", "Kubernetes", "CloudFormation"}
+	return []string{"CICD", "Terraform", "Kubernetes", "CloudFormation", "Dockerfile"}
 }

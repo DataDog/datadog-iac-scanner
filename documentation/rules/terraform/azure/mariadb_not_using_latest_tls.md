@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Using outdated TLS versions in Azure MariaDB servers exposes your database to known vulnerabilities and encryption weaknesses, potentially allowing attackers to intercept and decrypt sensitive data. Without proper SSL enforcement and TLS 1.2 (or higher) configuration, your database communications remain susceptible to man-in-the-middle attacks and other security exploits that have been addressed in newer TLS versions. 
+Using outdated TLS versions in Azure MariaDB servers exposes your database to known vulnerabilities and encryption weaknesses, potentially allowing attackers to intercept and decrypt sensitive data. Without proper SSL enforcement and TLS 1.2 (or higher) configuration, your database communications remain susceptible to man-in-the-middle attacks and other security exploits that have been addressed in newer TLS versions. 
 
 To secure your Azure MariaDB server, you must set both the `ssl_enforcement_enabled` flag to `true` and `ssl_minimal_tls_version_enforced` to `TLS1_2`, as shown in the following example:
 
@@ -42,7 +42,6 @@ resource "azurerm_mariadb_server" "good_example" {
   ssl_minimal_tls_version_enforced = ["TLS1_2"]
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

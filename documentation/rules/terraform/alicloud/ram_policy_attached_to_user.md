@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- RAM policies should not be attached directly to users. The Terraform resource `alicloud_ram_user_policy_attachment` must be `undefined` or omitted from the configuration. This rule flags any `alicloud_ram_user_policy_attachment` defined for users as incorrect.
-
+RAM policies should not be attached directly to users. The Terraform resource `alicloud_ram_user_policy_attachment` must be `undefined` or omitted from the configuration. This rule flags any `alicloud_ram_user_policy_attachment` defined for users as incorrect.
 
 ## Compliant Code Examples
 ```terraform

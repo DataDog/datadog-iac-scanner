@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "Global server object URL should use 'https' protocol instead of 'http'",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/global_server_uses_http",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/global_server_uses_http",
   "platform": "OpenAPI",
   "descriptionID": "6b568693",
   "cwe": "319",

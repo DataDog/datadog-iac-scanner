@@ -1,11 +1,12 @@
 {
   "id": "9513a694-aa0d-41d8-be61-3271e056f36b",
-  "queryName": "Add Instead of Copy",
+  "queryName": "ADD instead of COPY",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
-  "descriptionText": "Using ADD to load external installation scripts could lead to an evil web server leveraging this and loading a malicious script.",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#add",
+  "descriptionText": "Using the Dockerfile `ADD` instruction to pull or include non-archive files can introduce unverified remote content or unexpected file extraction into images. This increases the risk of supply-chain compromise and remote code execution.\n\nUses of `ADD` are flagged when the source does not appear to be a tar archive (no `.tar` or `.tar.*` extension). Replace `ADD` with `COPY` for local files and directories, and reserve `ADD` only for adding and auto-extracting tar archives. Resources using `ADD` with non-archive sources or remote URLs will be flagged.\n\nSecure examples:\n\n```dockerfile\n# Use COPY for local files or directories\nCOPY ./install.sh /usr/local/bin/install.sh\n\n# Use ADD only when intentionally extracting a tar archive\nADD archive.tar.gz /opt/app/\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/add_instead_of_copy",
   "platform": "Dockerfile",
   "descriptionID": "0aedd324",
-  "cwe": "610"
+  "cwe": "610",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#add"
 }

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The permission to create `pods` in a cluster should be restricted because it allows privilege escalation. This rule inspects `kubernetes_role` and `kubernetes_cluster_role` resources and reports when a rule's `verbs` contains `create` while its `resources` contains `pods` or a wildcard value. It also flags cases where `verbs` or `resources` contain a wildcard (for example, `*`) in combination with `pods`, since those broaden access and can enable pod creation. Restricting these permissions reduces the risk of workloads obtaining elevated privileges.
-
+The permission to create `pods` in a cluster should be restricted because it allows privilege escalation. This rule inspects `kubernetes_role` and `kubernetes_cluster_role` resources and reports when a rule's `verbs` contains `create` while its `resources` contains `pods` or a wildcard value. It also flags cases where `verbs` or `resources` contain a wildcard (for example, `*`) in combination with `pods`, since those broaden access and can enable pod creation. Restricting these permissions reduces the risk of workloads obtaining elevated privileges.
 
 ## Compliant Code Examples
 ```terraform

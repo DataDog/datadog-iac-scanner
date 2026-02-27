@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Limits capabilities for PodSecurityPolicy. This rule checks that PodSecurityPolicy resources define spec.requiredDropCapabilities, which specifies Linux capabilities that must be dropped to reduce container privileges. A MissingAttribute issue is reported if this field is not defined.
-
+Limits capabilities for PodSecurityPolicy. This rule checks that PodSecurityPolicy resources define spec.requiredDropCapabilities, which specifies Linux capabilities that must be dropped to reduce container privileges. A MissingAttribute issue is reported if this field is not defined.
 
 ## Compliant Code Examples
 ```yaml

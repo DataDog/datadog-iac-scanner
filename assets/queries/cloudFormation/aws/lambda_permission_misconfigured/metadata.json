@@ -4,7 +4,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Lambda permissions must explicitly allow only the invocation action to enforce least privilege and prevent unintended access to other function operations or configuration. In AWS CloudFormation, the `Action` property in `AWS::Lambda::Permission` resources must be set exactly to `lambda:InvokeFunction`. Resources missing `Action` or with any other value will be flagged as a security risk. \n \n Secure CloudFormation example:\n\n```yaml\nMyFunctionPermission:\n  Type: AWS::Lambda::Permission\n  Properties:\n    FunctionName: !GetAtt MyFunction.Arn\n    Action: lambda:InvokeFunction\n    Principal: sns.amazonaws.com\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/lambda_permission_misconfigured",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/lambda_permission_misconfigured",
   "platform": "CloudFormation",
   "descriptionID": "dec6dd24",
   "cloudProvider": "aws",

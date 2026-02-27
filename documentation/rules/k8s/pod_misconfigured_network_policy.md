@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Each Pod should be targeted by a NetworkPolicy that includes both ingress and egress rules.
+Each Pod should be targeted by a NetworkPolicy that includes both ingress and egress rules.
 For Pods in the same namespace, a matching NetworkPolicy is determined by namespace. For Pods in a different namespace, the NetworkPolicy must explicitly select the Pod via `spec.podSelector.matchLabels`.
 A NetworkPolicy satisfies ingress or egress if it lists the respective type in `spec.policyTypes`. When `spec.policyTypes` is omitted, ingress is treated as present, while egress is considered present only if `spec.egress` is non-empty.
-
 
 ## Compliant Code Examples
 ```yaml

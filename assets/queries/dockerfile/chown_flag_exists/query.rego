@@ -12,5 +12,7 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "The 'Dockerfile' shouldn´t contain the 'chown' flag",
 		"keyActualValue": "The 'Dockerfile' contains the 'chown' flag",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }

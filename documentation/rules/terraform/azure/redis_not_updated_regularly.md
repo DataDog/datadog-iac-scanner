@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Configuring an Azure Redis Cache without a regular patch schedule leaves the service vulnerable to missing important security and operational updates, increasing the risk of exploitation by attackers targeting known vulnerabilities. By using the `patch_schedule` block in Terraform, such as shown below, organizations can ensure updates are applied in a timely manner, minimizing the attack surface and helping maintain service reliability and compliance:
+Configuring an Azure Redis Cache without a regular patch schedule leaves the service vulnerable to missing important security and operational updates, increasing the risk of exploitation by attackers targeting known vulnerabilities. By using the `patch_schedule` block in Terraform, such as shown below, organizations can ensure updates are applied in a timely manner, minimizing the attack surface and helping maintain service reliability and compliance:
 
 ```
 patch_schedule {
@@ -38,7 +38,6 @@ patch_schedule {
 ```
 
 Failure to address this may result in exposure to security threats or outages due to unpatched software flaws.
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,13 +28,12 @@ meta:
 
 ### Description
 
- Alicloud KMS must only include enabled Customer Master Keys (CMKs). This rule flags `alicloud_kms_key` resources when:
+Alicloud KMS must only include enabled Customer Master Keys (CMKs). This rule flags `alicloud_kms_key` resources when:
 
 - `is_enabled` is explicitly set to false (`IncorrectValue`), or
 - `is_enabled` is missing (`MissingAttribute`)
 
 To remediate, set or update `is_enabled = true`.
-
 
 ## Compliant Code Examples
 ```terraform

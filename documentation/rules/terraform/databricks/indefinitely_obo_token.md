@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- `databricks_obo_token` has an indefinite lifetime.
+`databricks_obo_token` has an indefinite lifetime.
 OBO tokens must include a `lifetime_seconds` attribute to enforce a finite validity period.
 This rule flags any `databricks_obo_token` resource that does not set `lifetime_seconds`.
-
 
 ## Compliant Code Examples
 ```terraform

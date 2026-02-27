@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon DocumentDB (`AWS::DocDB::DBCluster`) master user passwords must not be embedded as plaintext in the template or stored as parameter `Default` values. Exposed credentials in IaC or parameter defaults can be checked into source control or viewed in consoles and lead to unauthorized database access.
+Amazon DocumentDB (`AWS::DocDB::DBCluster`) master user passwords must not be embedded as plaintext in the template or stored as parameter `Default` values. Exposed credentials in IaC or parameter defaults can be checked into source control or viewed in consoles and lead to unauthorized database access.
 
  For `AWS::DocDB::DBCluster` resources, validate `Resources.<name>.Properties.MasterUserPassword`. It must reference an AWS Secrets Manager secret or a parameter that does not define a `Default`. When using a parameter for passwords, set `NoEcho: true` and omit `Default`. Alternatively, use a Secrets Manager dynamic reference or an `AWS::SecretsManager::Secret` resource and reference its secret value.
 
@@ -58,7 +58,6 @@ Resources:
       MasterUsername: admin
       MasterUserPassword: '{{resolve:secretsmanager:my-db-secret:SecretString:password}}'
 ```
-
 
 ## Compliant Code Examples
 ```json

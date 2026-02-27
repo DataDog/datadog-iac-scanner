@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM Groups should have at least one user associated with them to ensure that group permissions are assigned with clear intent and are being utilized for access control. Leaving an IAM group without users—such as configuring `users = []` in an `aws_iam_group_membership` resource—can create ambiguity in access management, leaving unused privilege sets within the environment that may go unnoticed or be misused if users are later added without proper oversight. To address this, always specify one or more users in the `users` attribute, as shown below:
+IAM Groups should have at least one user associated with them to ensure that group permissions are assigned with clear intent and are being utilized for access control. Leaving an IAM group without users—such as configuring `users = []` in an `aws_iam_group_membership` resource—can create ambiguity in access management, leaving unused privilege sets within the environment that may go unnoticed or be misused if users are later added without proper oversight. To address this, always specify one or more users in the `users` attribute, as shown below:
 
 ```
 resource "aws_iam_group_membership" "team" {
@@ -42,7 +42,6 @@ resource "aws_iam_group_membership" "team" {
   group = aws_iam_group.group.name
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Granting an IAM role permission for the `lambda:UpdateFunctionCode` action with a resource set to `"*"` allows the role to update the code of any Lambda function in the AWS account, opening the door for privilege escalation. An attacker with this permission could alter Lambda function code to obtain higher privileges or execute unauthorized actions, potentially compromising the security of the entire AWS environment. To mitigate this risk, restrict the `Resource` attribute to only the specific Lambda functions that need to be updated and avoid using the wildcard `"*"`.
+Granting an IAM role permission for the `lambda:UpdateFunctionCode` action with a resource set to `"*"` allows the role to update the code of any Lambda function in the AWS account, opening the door for privilege escalation. An attacker with this permission could alter Lambda function code to obtain higher privileges or execute unauthorized actions, potentially compromising the security of the entire AWS environment. To mitigate this risk, restrict the `Resource` attribute to only the specific Lambda functions that need to be updated and avoid using the wildcard `"*"`.
 
 A secure Terraform configuration should look like the following:
 
@@ -51,7 +51,6 @@ resource "aws_iam_role_policy" "secure_inline_policy" {
   })
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

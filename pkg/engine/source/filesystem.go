@@ -267,7 +267,7 @@ func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]inte
 	}
 
 	// Check if the rule is enabled via feature flag
-	rulePlatformEnabled, err := queryParameters.FlagEvaluator.EvaluateWithOrgAndCustomVariables(featureflags.IacEnableKicsPlatform,
+	rulePlatformEnabled, err := queryParameters.FlagEvaluator.EvaluateWithOrgAndEnvAndCustomVariables(featureflags.IacEnableKicsPlatform,
 		customVariables)
 	if err != nil {
 		// If feature flag evaluation fails, log and continue (fail open)
@@ -428,6 +428,7 @@ var supPlatforms = &supportedPlatforms{
 	"CloudFormation":          "cloudFormation",
 	"Common":                  "common",
 	"Crossplane":              "crossplane",
+	"Dockerfile":              "dockerfile",
 	"Knative":                 "knative",
 	"Kubernetes":              "k8s",
 	"OpenAPI":                 "openAPI",

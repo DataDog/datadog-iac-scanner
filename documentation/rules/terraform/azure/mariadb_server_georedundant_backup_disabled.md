@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- MariaDB Servers deployed in Azure should have geo-redundant backup enabled by setting the `geo_redundant_backup_enabled` attribute to `true`. Without geo-redundant backups, your database backups are stored only within the primary region, making them vulnerable to regional outages or disasters that could lead to data loss. Enabling geo-redundant backups ensures that your backups are replicated to a paired Azure region and increases your ability to restore data in the event of a regional failure.
+MariaDB Servers deployed in Azure should have geo-redundant backup enabled by setting the `geo_redundant_backup_enabled` attribute to `true`. Without geo-redundant backups, your database backups are stored only within the primary region, making them vulnerable to regional outages or disasters that could lead to data loss. Enabling geo-redundant backups ensures that your backups are replicated to a paired Azure region and increases your ability to restore data in the event of a regional failure.
 
 ```hcl
 resource "azurerm_mariadb_server" "secure_example" {
@@ -36,7 +36,6 @@ resource "azurerm_mariadb_server" "secure_example" {
   geo_redundant_backup_enabled = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

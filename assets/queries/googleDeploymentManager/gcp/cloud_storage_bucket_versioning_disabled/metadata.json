@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "Cloud Storage Bucket should have versioning enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googleDeploymentManager/gcp/cloud_storage_bucket_versioning_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/googledeploymentmanager/gcp/cloud_storage_bucket_versioning_disabled",
   "platform": "GoogleDeploymentManager",
   "descriptionID": "9b7ba7de",
   "cloudProvider": "gcp",

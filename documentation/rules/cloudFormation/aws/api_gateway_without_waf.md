@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- API Gateway stages must be protected by a web application firewall (WAF) to block common application-layer attacks such as SQL injection and cross-site scripting, and to reduce the risk of malicious or abusive traffic causing data exposure or service disruption.
+API Gateway stages must be protected by a web application firewall (WAF) to block common application-layer attacks such as SQL injection and cross-site scripting, and to reduce the risk of malicious or abusive traffic causing data exposure or service disruption.
 
  Verify that each `AWS::ApiGateway::Stage` resource (its `StageName`) has a corresponding `AWS::WAFv2::WebACLAssociation` resource. The association must set `Properties.ResourceArn` to the API Gateway stage ARN (format: `arn:aws:apigateway:{region}::/restapis/{restapi-id}/stages/{stageName}`) and must reference a valid WAF via `Properties.WebACLArn`. Resources missing the `AWS::WAFv2::WebACLAssociation`, or whose `ResourceArn` does not reference the stage's `StageName`, will be flagged.
 
@@ -60,7 +60,6 @@ MyWebACLAssociation:
     ResourceArn: !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/${MyApi}/stages/prod"
     WebACLArn: !Ref MyWebACL
 ```
-
 
 ## Compliant Code Examples
 ```yaml

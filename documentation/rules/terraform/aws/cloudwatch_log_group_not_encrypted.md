@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- AWS CloudWatch log groups should use KMS encryption to protect sensitive log data at rest. When the `aws_cloudwatch_log_group` resource is defined without the `kms_key_id` attribute, as in the following example, logs are stored unencrypted or with default encryption, making them vulnerable to unauthorized access if AWS accounts or storage is compromised:
+AWS CloudWatch log groups should use KMS encryption to protect sensitive log data at rest. When the `aws_cloudwatch_log_group` resource is defined without the `kms_key_id` attribute, as in the following example, logs are stored unencrypted or with default encryption, making them vulnerable to unauthorized access if AWS accounts or storage is compromised:
 
 ```
 resource "aws_cloudwatch_log_group" "negative1" {
@@ -38,7 +38,6 @@ resource "aws_cloudwatch_log_group" "negative1" {
 ```
 
 By specifying the `kms_key_id` attribute, you ensure that log data is encrypted with a customer-managed AWS KMS key, reducing the risk of data exposure.
-
 
 ## Compliant Code Examples
 ```terraform

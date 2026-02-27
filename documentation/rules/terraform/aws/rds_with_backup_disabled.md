@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that Amazon RDS instances have automatic backups enabled by setting the `backup_retention_period` to a value greater than zero. When `backup_retention_period` is set to `0`, no automated backups are created for the database instance, leaving data unprotected against accidental deletion, corruption, or operational incidents. Without automated backups, it is impossible to restore the database to a previous point in time, significantly increasing the risk of permanent data loss. Enabling and properly configuring the backup retention period helps ensure data durability and business continuity for critical database workloads.
-
+This check ensures that Amazon RDS instances have automatic backups enabled by setting the `backup_retention_period` to a value greater than zero. When `backup_retention_period` is set to `0`, no automated backups are created for the database instance, leaving data unprotected against accidental deletion, corruption, or operational incidents. Without automated backups, it is impossible to restore the database to a previous point in time, significantly increasing the risk of permanent data loss. Enabling and properly configuring the backup retention period helps ensure data durability and business continuity for critical database workloads.
 
 ## Compliant Code Examples
 ```terraform

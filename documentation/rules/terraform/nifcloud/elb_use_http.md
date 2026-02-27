@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The ELB uses the HTTP protocol. This rule detects NIFCLOUD ELBs attached to the "net-COMMON_GLOBAL" VIP network (network_id == "net-COMMON_GLOBAL" and is_vip_network == true) that are configured with `protocol == "HTTP"`. Such ELBs should use HTTPS to benefit from TLS security features; the rule reports the resource with issueType `IncorrectValue` and indicates the expected and actual values.
-
+The ELB uses the HTTP protocol. This rule detects NIFCLOUD ELBs attached to the "net-COMMON_GLOBAL" VIP network (network_id == "net-COMMON_GLOBAL" and is_vip_network == true) that are configured with `protocol == "HTTP"`. Such ELBs should use HTTPS to benefit from TLS security features; the rule reports the resource with issueType `IncorrectValue` and indicates the expected and actual values.
 
 ## Compliant Code Examples
 ```terraform

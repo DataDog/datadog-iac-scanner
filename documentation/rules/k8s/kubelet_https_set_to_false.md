@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- When using `kube-apiserver`, the `--kubelet-https` flag should be set to `true` or omitted; it must not be set to `false`.
+When using `kube-apiserver`, the `--kubelet-https` flag should be set to `true` or omitted; it must not be set to `false`.
 This rule checks container and initContainer command arguments for `kube-apiserver` and reports when `--kubelet-https=false` is present.
 Setting the flag to `false` disables HTTPS to the kubelet and results in insecure communication; set it to `true` or remove the flag to enforce secure connections.
-
 
 ## Compliant Code Examples
 ```yaml

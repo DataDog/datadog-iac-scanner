@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- ECS data disks must have the `kms_key_id` attribute set. This rule flags any `alicloud_disk` resource missing the `kms_key_id` attribute.
+ECS data disks must have the `kms_key_id` attribute set. This rule flags any `alicloud_disk` resource missing the `kms_key_id` attribute.
 Setting this ensures disks are encrypted using a KMS key and avoids unencrypted storage.
-
 
 ## Compliant Code Examples
 ```terraform

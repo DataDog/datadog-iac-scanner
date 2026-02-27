@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Elasticsearch domains must publish slow logs, application logs, and audit logs so you can detect suspicious or malicious activity and perform operational troubleshooting and compliance auditing.
+Elasticsearch domains must publish slow logs, application logs, and audit logs so you can detect suspicious or malicious activity and perform operational troubleshooting and compliance auditing.
  
  In CloudFormation, `AWS::Elasticsearch::Domain` resources must define `Properties.LogPublishingOptions` entries for each relevant log type (`INDEX_SLOW_LOGS`, `SEARCH_SLOW_LOGS`, `ES_APPLICATION_LOGS`, `AUDIT_LOGS`). For each entry, the `Enabled` property must be set to `true`. Resources that omit `LogPublishingOptions`, omit an `Enabled` key for a log type, or have `Enabled` set to `false` will be flagged. 
  
@@ -53,7 +53,6 @@ MyDomain:
         CloudWatchLogsLogGroupArn: arn:aws:logs:us-east-1:123456789012:log-group:es-audit-logs
         Enabled: true
 ```
-
 
 ## Compliant Code Examples
 ```yaml

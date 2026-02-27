@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Default permissions for the GITHUB_TOKEN are expected to be restricted (contents: read and packages: read). Your repository may require a different setup, so consider defining permissions for each job following the least privilege principle to restrict the impact of a possible compromise. Permissions can be defined at the job or the workflow level.
-
+Default permissions for the GITHUB_TOKEN are expected to be restricted (contents: read and packages: read). Your repository may require a different setup, so consider defining permissions for each job following the least privilege principle to restrict the impact of a possible compromise. Permissions can be defined at the job or the workflow level.
 
 ## Compliant Code Examples
 ```yaml

@@ -21,6 +21,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("'%s' uses '--no-install-recommends' flag to avoid installing additional packages", [resource.Original]),
 		"keyActualValue": sprintf("'%s' does not use '--no-install-recommends' flag to avoid installing additional packages", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 
@@ -43,6 +45,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("'%s' uses '--no-install-recommends' flag to avoid installing additional packages", [resource.Original]),
 		"keyActualValue": sprintf("'%s' does not use '--no-install-recommends' flag to avoid installing additional packages", [resource.Original]),
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

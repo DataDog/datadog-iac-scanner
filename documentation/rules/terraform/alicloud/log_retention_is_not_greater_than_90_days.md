@@ -28,11 +28,10 @@ meta:
 
 ### Description
 
- The OSS Log Store must have `retention_period` set to at least 90 days to ensure sufficient visibility into resource and object activity.  
+The OSS Log Store must have `retention_period` set to at least 90 days to ensure sufficient visibility into resource and object activity.  
 If `retention_period` is undefined, the default is 30 days, which is insufficient.  
 Resources of type `alicloud_log_store` should explicitly set `retention_period` to 90 or more days (for example, `100`).  
 This rule flags `alicloud_log_store` resources that either omit `retention_period` or set it to less than 90 days.
-
 
 ## Compliant Code Examples
 ```terraform

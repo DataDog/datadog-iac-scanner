@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When using `kube-apiserver`, the `--secure-port` flag should not be set to `0`. Setting `--secure-port=0` disables the API server's secure (HTTPS) listener, which can prevent encrypted communication and potentially expose the server to insecure access. This rule inspects container command arguments in `containers` and `initContainers` for `kube-apiserver` and flags any occurrence of `--secure-port=0`.
-
+When using `kube-apiserver`, the `--secure-port` flag should not be set to `0`. Setting `--secure-port=0` disables the API server's secure (HTTPS) listener, which can prevent encrypted communication and potentially expose the server to insecure access. This rule inspects container command arguments in `containers` and `initContainers` for `kube-apiserver` and flags any occurrence of `--secure-port=0`.
 
 ## Compliant Code Examples
 ```yaml

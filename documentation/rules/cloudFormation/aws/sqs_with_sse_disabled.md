@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SQS queues should encrypt message contents at rest to prevent unauthorized disclosure if storage, backups, or snapshots are compromised and to meet data protection and compliance requirements.
+SQS queues should encrypt message contents at rest to prevent unauthorized disclosure if storage, backups, or snapshots are compromised and to meet data protection and compliance requirements.
 
 In CloudFormation, `AWS::SQS::Queue` resources must either define `Properties.KmsMasterKeyId` (a customer-managed KMS key ID, ARN, or alias) or set `Properties.SqsManagedSseEnabled` to `true` to enable server-side encryption. Resources that omit `KmsMasterKeyId` and either omit `SqsManagedSseEnabled` or set it to `false` will be flagged.
 
@@ -47,7 +47,6 @@ MyQueueWithKms:
   Properties:
     KmsMasterKeyId: arn:aws:kms:us-west-2:123456789012:key/EXAMPLE-KEY-ID
 ```
-
 
 ## Compliant Code Examples
 ```yaml

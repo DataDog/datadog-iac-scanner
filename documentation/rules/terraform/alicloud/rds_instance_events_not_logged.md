@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- All RDS instance event trackers should be set to `true`.
+All RDS instance event trackers should be set to `true`.
 The rule verifies the `alicloud_log_audit` resource `variable_map` contains the parameters `rds_enabled`, `rds_ti_enabled`, `rds_slow_enabled`, and `rds_perf_enabled`.
 It reports a `MissingAttribute` when a parameter is not defined and an `IncorrectValue` when a parameter is set to `false`.
-
 
 ## Compliant Code Examples
 ```terraform

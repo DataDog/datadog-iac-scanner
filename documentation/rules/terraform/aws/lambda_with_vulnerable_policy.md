@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- AWS Lambda permissions with wildcard actions (`lambda:*`) grant excessive privileges that violate the principle of least privilege, potentially allowing unauthorized operations on your Lambda functions. When wildcards are used, principals may execute unintended actions against your functions, leading to potential service disruption or data leakage. Instead of using wildcards like `action = "lambda:*"`, specify only the precise permissions needed, such as `action = "lambda:InvokeFunction"` to ensure proper access controls and reduce the attack surface of your Lambda resources.
-
+AWS Lambda permissions with wildcard actions (`lambda:*`) grant excessive privileges that violate the principle of least privilege, potentially allowing unauthorized operations on your Lambda functions. When wildcards are used, principals may execute unintended actions against your functions, leading to potential service disruption or data leakage. Instead of using wildcards like `action = "lambda:*"`, specify only the precise permissions needed, such as `action = "lambda:InvokeFunction"` to ensure proper access controls and reduce the attack surface of your Lambda resources.
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Roles and ClusterRoles that grant 'get', 'watch', or 'list' RBAC permissions on Kubernetes 'secrets' are dangerous and should not include such permissions. If compromised, these roles can be used to access sensitive data such as passwords, tokens, and keys. This rule flags Role and ClusterRole resources that include rules with 'secrets' in their resources field together with any of the read verbs ('get', 'watch', 'list').
-
+Roles and ClusterRoles that grant 'get', 'watch', or 'list' RBAC permissions on Kubernetes 'secrets' are dangerous and should not include such permissions. If compromised, these roles can be used to access sensitive data such as passwords, tokens, and keys. This rule flags Role and ClusterRole resources that include rules with 'secrets' in their resources field together with any of the read verbs ('get', 'watch', 'list').
 
 ## Compliant Code Examples
 ```terraform

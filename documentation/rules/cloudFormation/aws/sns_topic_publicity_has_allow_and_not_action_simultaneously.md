@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- SNS topic policy statements must not combine `Effect: "Allow"` with a `NotAction` element. Using `NotAction` with `Allow` effectively permits all actions except the ones excluded and can unintentionally grant broad access to the topic.
+SNS topic policy statements must not combine `Effect: "Allow"` with a `NotAction` element. Using `NotAction` with `Allow` effectively permits all actions except the ones excluded and can unintentionally grant broad access to the topic.
 
 Check `AWS::SNS::TopicPolicy` resources' `Properties.PolicyDocument.Statement` entries. Any statement with `Effect: "Allow"` must include an explicit `Action` (for example, `sns:Publish`) rather than `NotAction`. Resources containing a statement where `Effect: "Allow"` and `NotAction` is present will be flagged. To block specific actions, use `Effect: "Deny"` with `NotAction`, or enumerate allowed actions explicitly in `Action`.
 
@@ -48,7 +48,6 @@ MyTopicPolicy:
             - sns:Publish
           Resource: arn:aws:sns:us-east-1:123456789012:my-topic
 ```
-
 
 ## Compliant Code Examples
 ```yaml

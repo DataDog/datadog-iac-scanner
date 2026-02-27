@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECR repositories should enforce immutable image tags to prevent tags from being overwritten. This reduces the risk of supply-chain tampering and accidental or malicious replacement of images referenced by deployments.
+Amazon ECR repositories should enforce immutable image tags to prevent tags from being overwritten. This reduces the risk of supply-chain tampering and accidental or malicious replacement of images referenced by deployments.
  
  The `ImageTagMutability` property on `AWS::ECR::Repository` must be defined and set to `IMMUTABLE`. Resources missing this property or with `ImageTagMutability` set to `MUTABLE` will be flagged as a security issue. 
  
@@ -41,7 +41,6 @@ MyRepository:
     RepositoryName: my-repo
     ImageTagMutability: IMMUTABLE
 ```
-
 
 ## Compliant Code Examples
 ```yaml

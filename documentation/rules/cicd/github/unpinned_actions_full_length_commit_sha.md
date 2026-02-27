@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Pinning an action to a full-length commit SHA is currently the only way to use it as an immutable release. This helps mitigate the risk of a bad actor introducing a backdoor, as doing so would require generating a SHA-1 collision for a valid Git object. When choosing a SHA, ensure it comes from the action's original repository and not a fork.
-
+Pinning an action to a full-length commit SHA is currently the only way to use it as an immutable release. This helps mitigate the risk of a bad actor introducing a backdoor, as doing so would require generating a SHA-1 collision for a valid Git object. When choosing a SHA, ensure it comes from the action's original repository and not a fork.
 
 ## Compliant Code Examples
 ```yaml

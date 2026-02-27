@@ -28,9 +28,8 @@ meta:
 
 ### Description
 
- Application Load Balancer (`alb`) listeners should not use `HTTP`.
+Application Load Balancer (`alb`) listeners should not use `HTTP`.
 Listeners configured with `listener_protocol = "HTTP"` expose unencrypted traffic. In Terraform, set `listener_protocol = "HTTPS"` for `alicloud_alb_listener` resources to enforce TLS termination and secure data in transit.
-
 
 ## Compliant Code Examples
 ```terraform

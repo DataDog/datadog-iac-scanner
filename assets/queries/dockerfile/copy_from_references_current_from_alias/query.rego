@@ -15,6 +15,8 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "COPY --from should not reference the current FROM alias",
 		"keyActualValue": "COPY --from references the current FROM alias",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

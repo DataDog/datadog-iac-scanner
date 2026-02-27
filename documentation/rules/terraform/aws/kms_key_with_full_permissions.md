@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check identifies AWS KMS keys with overly permissive policies that grant full access to all AWS services or users. KMS keys with policies allowing `kms:*` actions to all principals (`AWS:*`) create a significant security risk, potentially allowing unauthorized users to access, modify, or delete encrypted data across your AWS environment.
+This check identifies AWS KMS keys with overly permissive policies that grant full access to all AWS services or users. KMS keys with policies allowing `kms:*` actions to all principals (`AWS:*`) create a significant security risk, potentially allowing unauthorized users to access, modify, or delete encrypted data across your AWS environment.
 
 Vulnerable policies typically include a statement with `Effect:Allow`, `Principal:{"AWS":"*"}`, and `Action:["kms:*"]`, as shown in this insecure example:
 ```
@@ -49,7 +49,6 @@ Secure your KMS keys by using least privilege principless—restrict access to s
   "Resource":"*"
 }]
 ```
-
 
 ## Compliant Code Examples
 ```terraform

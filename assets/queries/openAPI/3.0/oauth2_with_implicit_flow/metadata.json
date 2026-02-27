@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "OAuth2 implicit flow is vulnerable to access token leakage and access token replay",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/3.0/oauth2_with_implicit_flow",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/3.0/oauth2_with_implicit_flow",
   "platform": "OpenAPI",
   "descriptionID": "9bce0305",
   "cwe": "284",

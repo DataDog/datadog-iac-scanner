@@ -1,12 +1,13 @@
 {
   "id": "7ebd323c-31b7-4e5b-b26f-de5e9e477af8",
-  "queryName": "Missing Flag From Dnf Install",
+  "queryName": "Missing flag from dnf install",
   "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "The '-y' or '--assumeyes' flag should be added when invoking dnf install. If omitted, it can cause the command to fail during the build process, because dnf would expect manual input.",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "DNF package installations in Dockerfile `RUN` instructions can prompt for interactive input. If the installer is run without a non-interactive flag, the build can hang or fail, disrupting automated CI/CD pipelines and encouraging unsafe manual interventions.\n\nCheck `RUN` commands that invoke DNF (for example, `dnf install`, `dnf groupinstall`, `dnf localinstall`, `dnf reinstall`, and short forms such as `dnf in`/`dnf rei`) and require the `-y` or `--assumeyes` switch to be present. `RUN` lines invoking these commands without `-y`/`--assumeyes` will be flagged. Use a non-interactive invocation such as:\n\n```dockerfile\nRUN dnf -y install vim wget\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/missing_flag_from_dnf_install",
   "platform": "Dockerfile",
   "descriptionID": "efc680ea",
   "cwe": "710",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

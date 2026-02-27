@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Last User Is 'root'",
+    "queryName": "Last user is root",
     "severity": "HIGH",
     "line": 2
   }

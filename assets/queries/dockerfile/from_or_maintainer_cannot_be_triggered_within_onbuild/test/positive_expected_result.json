@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "ONBUILD cannot trigger FROM or MAINTAINER",
+    "severity": "MEDIUM",
+    "line": 16
+  },
+  {
+    "queryName": "ONBUILD cannot trigger FROM or MAINTAINER",
+    "severity": "MEDIUM",
+    "line": 22
+  }
+]

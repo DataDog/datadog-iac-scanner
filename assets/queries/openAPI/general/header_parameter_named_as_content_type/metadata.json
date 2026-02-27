@@ -4,7 +4,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "The header Parameter should not be named as 'Content-Type'. If so, it will be ignored.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openAPI/general/header_parameter_named_as_content_type",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/openapi/general/header_parameter_named_as_content_type",
   "platform": "OpenAPI",
   "descriptionID": "abd35d94",
   "aggregation": 2,

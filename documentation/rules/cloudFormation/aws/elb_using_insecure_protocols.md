@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Load balancer policies that permit SSLv2, SSLv3, TLSv1.0, or TLSv1.1 expose TLS connections to known cryptographic weaknesses and downgrade attacks, increasing the risk of intercepted or tampered data in transit.
+Load balancer policies that permit SSLv2, SSLv3, TLSv1.0, or TLSv1.1 expose TLS connections to known cryptographic weaknesses and downgrade attacks, increasing the risk of intercepted or tampered data in transit.
  
  In CloudFormation, this rule checks `AWS::ElasticLoadBalancing::LoadBalancer` resources and flags any `Policies[].Attributes[].Name` equal to `Protocol-SSLv2`, `Protocol-SSLv3`, `Protocol-TLSv1`, or `Protocol-TLSv1.1`. Replace these identifiers with TLS 1.2+ protocol settings or attach a current ELB security policy that enforces strong TLS versions and ciphers. Resources with the listed attribute values will be reported.
 
@@ -45,7 +45,6 @@ MyLoadBalancer:
           - Name: Protocol-TLSv1.2
             Value: "true"
 ```
-
 
 ## Compliant Code Examples
 ```yaml

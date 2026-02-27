@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Storing AWS Directory Service Simple AD passwords in plaintext or as parameter `Default` values in CloudFormation exposes directory credentials to anyone who can read the template or parameter defaults. This can enable unauthorized access, lateral movement, and credential leakage via template repositories or build logs.
+Storing AWS Directory Service Simple AD passwords in plaintext or as parameter `Default` values in CloudFormation exposes directory credentials to anyone who can read the template or parameter defaults. This can enable unauthorized access, lateral movement, and credential leakage via template repositories or build logs.
 
  For `AWS::DirectoryService::SimpleAD` resources, `Properties.Password` must not be a hard-coded string or a reference to a parameter that defines a `Default` value. Instead, provide the secret via a secrets service or as a parameter with no `Default` so it is supplied at deployment time.
 
@@ -67,7 +67,6 @@ Resources:
       Password: !Ref DirectoryPassword
       Size: Small
 ```
-
 
 ## Compliant Code Examples
 ```yaml

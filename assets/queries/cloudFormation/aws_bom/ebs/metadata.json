@@ -4,7 +4,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "This rule inventories EBS volumes declared in CloudFormation so you can locate block storage that may contain sensitive data and verify appropriate encryption and access controls. It inspects resources of type `AWS::EC2::Volume` and emits a Bill of Materials entry containing the resource name, reported encryption state (`resource_encryption`), and inferred accessibility (`resource_accessibility`). Resources lacking explicit encryption settings (for example missing `Encrypted: true` or a defined KMS key) or with unknown accessibility will be listed in the BOM to help prioritize manual review and remediation.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_bom/ebs",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_bom/ebs",
   "platform": "CloudFormation",
   "descriptionID": "6869b929",
   "cloudProvider": "aws",

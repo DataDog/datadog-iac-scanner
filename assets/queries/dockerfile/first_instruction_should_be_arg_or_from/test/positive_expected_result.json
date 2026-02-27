@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "First instruction must be ARG or FROM",
+    "severity": "MEDIUM",
+    "line": 2
+  }
+]

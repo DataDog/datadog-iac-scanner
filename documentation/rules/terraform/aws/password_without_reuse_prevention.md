@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- This check ensures that the IAM account password policy's `password_reuse_prevention` attribute is set to at least 24, preventing users from reusing any of their last 24 passwords. Without this configuration, as seen when `password_reuse_prevention = 20` or when the attribute is omitted, users may repeatedly cycle through a small set of previously used passwords, increasing the risk of password-related attacks. Configuring a secure password policy, as in the following example, helps to enforce strong password hygiene and mitigates the likelihood of compromised credentials being reused:
+This check ensures that the IAM account password policy's `password_reuse_prevention` attribute is set to at least 24, preventing users from reusing any of their last 24 passwords. Without this configuration, as seen when `password_reuse_prevention = 20` or when the attribute is omitted, users may repeatedly cycle through a small set of previously used passwords, increasing the risk of password-related attacks. Configuring a secure password policy, as in the following example, helps to enforce strong password hygiene and mitigates the likelihood of compromised credentials being reused:
 
 ```
 resource "aws_iam_account_password_policy" "secure" {
@@ -41,7 +41,6 @@ resource "aws_iam_account_password_policy" "secure" {
   password_reuse_prevention      = 24
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When a container runs `kube-apiserver`, the `--service-account-key-file` flag should be set to a PEM-encoded key file. This enables the API server to validate service account tokens presented to it. The rule flags `kube-apiserver` containers that do not include this flag.
-
+When a container runs `kube-apiserver`, the `--service-account-key-file` flag should be set to a PEM-encoded key file. This enables the API server to validate service account tokens presented to it. The rule flags `kube-apiserver` containers that do not include this flag.
 
 ## Compliant Code Examples
 ```yaml

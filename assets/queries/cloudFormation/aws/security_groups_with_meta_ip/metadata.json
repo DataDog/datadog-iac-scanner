@@ -4,7 +4,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "Security groups must not allow ingress from `0.0.0.0/0` across all ports. An all-ports public rule exposes instances to the internet and enables indiscriminate port scanning and brute-force attacks.\n\nIn CloudFormation, check `Resources.*.Properties.SecurityGroupIngress` entries (and standalone `AWS::EC2::SecurityGroupIngress` resources) and ensure no rule has `CidrIp: 0.0.0.0/0` with `FromPort: 0` and `ToPort: 65535`. Resources containing such an entry will be flagged.\n\nTo remediate, restrict `CidrIp` to trusted IP ranges, narrow the port range to only the required ports (for example, `80` and `443`), or reference other security groups or load balancers to provide controlled access.\n\nSecure configuration example (allow only specific ports):\n\n```yaml\nMySecurityGroup:\n  Type: AWS::EC2::SecurityGroup\n  Properties:\n    GroupDescription: Web server security group\n    VpcId: !Ref MyVPC\n    SecurityGroupIngress:\n      - IpProtocol: tcp\n        FromPort: 443\n        ToPort: 443\n        CidrIp: 0.0.0.0/0\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/security_groups_with_meta_ip",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/security_groups_with_meta_ip",
   "platform": "CloudFormation",
   "descriptionID": "868a9ec5",
   "cloudProvider": "aws",

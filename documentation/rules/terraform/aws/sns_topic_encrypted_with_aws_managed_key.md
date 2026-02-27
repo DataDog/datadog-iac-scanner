@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- Simple Notification Service (SNS) topics should be encrypted using customer-managed AWS KMS keys, rather than default AWS-managed keys, to provide greater control over access and auditing. Using an AWS-managed key (such as `alias/aws/sns`) limits visibility into key usage and does not allow setting granular key rotation or access policies tailored to an organization's specific requirements. If left unaddressed, messages published to the SNS topic are protected only by the generic AWS-managed key, increasing the risk that sensitive information could be accessed by unauthorized users or compromise key compliance obligations. This misconfiguration could lead to operational and regulatory risks if message confidentiality is critical.
-
+Simple Notification Service (SNS) topics should be encrypted using customer-managed AWS KMS keys, rather than default AWS-managed keys, to provide greater control over access and auditing. Using an AWS-managed key (such as `alias/aws/sns`) limits visibility into key usage and does not allow setting granular key rotation or access policies tailored to an organization's specific requirements. If left unaddressed, messages published to the SNS topic are protected only by the generic AWS-managed key, increasing the risk that sensitive information could be accessed by unauthorized users or compromise key compliance obligations. This misconfiguration could lead to operational and regulatory risks if message confidentiality is critical.
 
 ## Compliant Code Examples
 ```terraform

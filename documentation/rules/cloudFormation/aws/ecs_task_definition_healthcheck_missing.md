@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon ECS container definitions must include a `HealthCheck` so the orchestrator and any load balancers can detect unhealthy containers and replace them automatically. Without health checks, failing containers may continue to receive traffic or delay recovery, increasing downtime and operational risk.
+Amazon ECS container definitions must include a `HealthCheck` so the orchestrator and any load balancers can detect unhealthy containers and replace them automatically. Without health checks, failing containers may continue to receive traffic or delay recovery, increasing downtime and operational risk.
  
  For `AWS::ECS::TaskDefinition` resources, each element of `Properties.ContainerDefinitions` must define the `HealthCheck` property. Resources missing `HealthCheck` will be flagged.
  
@@ -52,7 +52,6 @@ MyTaskDefinition:
           Retries: 3
           StartPeriod: 10
 ```
-
 
 ## Compliant Code Examples
 ```yaml

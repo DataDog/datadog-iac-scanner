@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon Redshift clusters should be deployed within an Amazon VPC to ensure network isolation and control over access to the cluster. If the `vpc_security_group_ids` and `cluster_subnet_group_name` attributes are not specified, the cluster is created outside a VPC and could be exposed to the public internet, increasing the risk of unauthorized access and data breaches. A secure configuration includes the following attributes:
+Amazon Redshift clusters should be deployed within an Amazon VPC to ensure network isolation and control over access to the cluster. If the `vpc_security_group_ids` and `cluster_subnet_group_name` attributes are not specified, the cluster is created outside a VPC and could be exposed to the public internet, increasing the risk of unauthorized access and data breaches. A secure configuration includes the following attributes:
 
 ```
 resource "aws_redshift_cluster" "secure_example" {
@@ -37,7 +37,6 @@ resource "aws_redshift_cluster" "secure_example" {
   cluster_subnet_group_name  = aws_redshift_subnet_group.redshift_subnet_group.id
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

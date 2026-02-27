@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- Containers must not run with root privileges. The PodSecurityPolicy must set `privileged` and `allow_privilege_escalation` to `false`, and `spec.run_as_user.rule` must be `MustRunAsNonRoot`. The group settings `fs_group` and `supplemental_groups` must use `MustRunAs` and their `range.min` must not allow `0` (root).  
+Containers must not run with root privileges. The PodSecurityPolicy must set `privileged` and `allow_privilege_escalation` to `false`, and `spec.run_as_user.rule` must be `MustRunAsNonRoot`. The group settings `fs_group` and `supplemental_groups` must use `MustRunAs` and their `range.min` must not allow `0` (root).  
 
 Noncompliant policies permit privilege escalation or root user/group IDs, increasing the risk of container breakout and unauthorized host access; this rule identifies PSPs that do not enforce these restrictions.
-
 
 ## Compliant Code Examples
 ```terraform

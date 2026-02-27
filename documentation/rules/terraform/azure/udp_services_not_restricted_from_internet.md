@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Network Security Group (NSG) rules that allow unrestricted UDP traffic from the internet (`0.0.0.0/0`) create significant security vulnerabilities in Azure environments. UDP is a connectionless protocol that doesn't provide built-in security controls, making services using it particularly susceptible to DDoS attacks, packet spoofing, and unauthorized access when exposed publicly. Instead of using broad source address prefixes like `0.0.0.0/0`, restrict inbound UDP traffic to specific IP ranges or CIDR blocks that require access.
+Network Security Group (NSG) rules that allow unrestricted UDP traffic from the internet (`0.0.0.0/0`) create significant security vulnerabilities in Azure environments. UDP is a connectionless protocol that doesn't provide built-in security controls, making services using it particularly susceptible to DDoS attacks, packet spoofing, and unauthorized access when exposed publicly. Instead of using broad source address prefixes like `0.0.0.0/0`, restrict inbound UDP traffic to specific IP ranges or CIDR blocks that require access.
 
 Secure example:
 ```
@@ -47,7 +47,6 @@ security_rule {
   destination_port_range    = "53"
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- The deprecated `set-env` and `add-path` commands can still be explicitly enabled by setting the `ACTIONS_ALLOW_UNSECURE_COMMANDS` environment variable to true. Depending on how this variable is used, an attacker could potentially modify the system path to run unintended commands, which may lead to arbitrary code execution.
-
+The deprecated `set-env` and `add-path` commands can still be explicitly enabled by setting the `ACTIONS_ALLOW_UNSECURE_COMMANDS` environment variable to true. Depending on how this variable is used, an attacker could potentially modify the system path to run unintended commands, which may lead to arbitrary code execution.
 
 ## Compliant Code Examples
 ```yaml

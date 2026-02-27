@@ -1,12 +1,13 @@
 {
   "id": "6db6e0c2-32a3-4a2e-93b5-72c35f4119db",
-  "queryName": "Copy With More Than Two Arguments Not Ending With Slash",
+  "queryName": "COPY with more than two arguments not ending with a slash",
   "severity": "LOW",
   "category": "Build Process",
-  "descriptionText": "When a COPY command has more than two arguments, the last one should end with a slash",
-  "descriptionUrl": "https://docs.docker.com/engine/reference/builder/#copy",
+  "descriptionText": "`COPY` commands that reference a storage path must end directory arguments with a trailing slash so the command targets the intended directory prefix rather than a single object. Omitting the slash can lead to ambiguous file selection and accidental inclusion or exclusion of files, causing data integrity problems or unintended data exposure.\n\nThis check inspects `COPY` commands with more than two arguments and verifies that the final argument (the source path) ends with a `/` character. Resources where the command has more than two elements and the last element does not end with `/` will be flagged. Ensure the source path is explicitly a directory by including the trailing slash. For example:\n\n```\nCOPY INTO my_table FROM 's3://my-bucket/path/' CREDENTIALS=...;\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/copy_with_more_than_two_arguments_not_ending_with_slash",
   "platform": "Dockerfile",
   "descriptionID": "bab38efd",
   "cwe": "628",
-  "oldSeverity": "HIGH"
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#copy"
 }

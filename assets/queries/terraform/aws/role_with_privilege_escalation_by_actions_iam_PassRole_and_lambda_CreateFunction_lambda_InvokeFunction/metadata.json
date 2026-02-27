@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "This configuration grants an IAM role permission to create and invoke Lambda functions (`lambda:CreateFunction` and `lambda:InvokeFunction`), and to pass any IAM role (`iam:PassRole`) with the resource set to `\"*\"`. This combination of permissions enables privilege escalation, as a user with these rights can create a Lambda function that assumes any role in the account, including high-privilege roles such as `Administrator`. The attacker could then execute arbitrary actions with elevated privileges by passing critical roles to their malicious Lambda and invoking it. If left unaddressed, this vulnerability could allow unauthorized access to sensitive resources or full account takeover.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_PassRole_and_lambda_CreateFunction_lambda_InvokeFunction",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/role_with_privilege_escalation_by_actions_iam_passrole_and_lambda_createfunction_lambda_invokefunction",
   "platform": "Terraform",
   "descriptionID": "628b0909",
   "cloudProvider": "aws",

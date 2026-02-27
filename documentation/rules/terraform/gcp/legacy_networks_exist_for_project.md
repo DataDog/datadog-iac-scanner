@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Legacy networks in Google Cloud Platform (GCP) with `auto_create_subnetworks` enabled represent a significant security risk as they automatically create subnets with predefined IP ranges in every region. This can lead to overly permissive network configurations and potentially expose internal services to unauthorized access or lateral movement within your infrastructure.
+Legacy networks in Google Cloud Platform (GCP) with `auto_create_subnetworks` enabled represent a significant security risk as they automatically create subnets with predefined IP ranges in every region. This can lead to overly permissive network configurations and potentially expose internal services to unauthorized access or lateral movement within your infrastructure.
 
 The secure configuration (as shown below) explicitly avoids enabling auto-created subnetworks, giving administrators complete control over subnet creation and IP addressing:
 ```hcl
@@ -44,7 +44,6 @@ resource "google_compute_network" "legacy_network" {
   auto_create_subnetworks = true
 }
 ```
-
 
 ## Compliant Code Examples
 ```terraform

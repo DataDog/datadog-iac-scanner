@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Neptune DB clusters must have IAM database authentication enabled to centralize credential management and enable IAM-based access control and auditing. This reduces reliance on static database passwords that can be leaked or become stale. In AWS CloudFormation, the `AWS::Neptune::DBCluster` resource must include the `IamAuthEnabled` property set to `true`. Resources that omit this property or set `IamAuthEnabled` to `false` will be flagged.
+Neptune DB clusters must have IAM database authentication enabled to centralize credential management and enable IAM-based access control and auditing. This reduces reliance on static database passwords that can be leaked or become stale. In AWS CloudFormation, the `AWS::Neptune::DBCluster` resource must include the `IamAuthEnabled` property set to `true`. Resources that omit this property or set `IamAuthEnabled` to `false` will be flagged.
 
 Secure configuration example:
 
@@ -40,7 +40,6 @@ MyNeptuneCluster:
     IamAuthEnabled: true
     # other required properties...
 ```
-
 
 ## Compliant Code Examples
 ```yaml

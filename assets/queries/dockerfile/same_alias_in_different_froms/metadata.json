@@ -1,12 +1,13 @@
 {
   "id": "f2daed12-c802-49cd-afed-fe41d0b82fed",
-  "queryName": "Same Alias In Different Froms",
+  "queryName": "Same alias in different FROM statements",
   "severity": "LOW",
   "category": "Build Process",
-  "descriptionText": "Different FROMS cant have the same alias defined",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/multistage-build/",
+  "descriptionText": "`FROM` stage aliases must be unique because duplicate aliases make references such as `COPY --from=<alias>` ambiguous, which can cause incorrect artifacts or unintended files (including secrets) to be pulled into later stages and compromise image integrity.\n\nCheck every Dockerfile `FROM` command and ensure the token following `AS` (the stage alias) is distinct across all `FROM` commands. This rule flags cases where two or more `FROM` commands define the same alias. Resources without an `AS` alias are not affected. Ensure each multi-stage build uses a unique alias for each stage so stage references resolve unambiguously.\n\nSecure example:\n\n```dockerfile\nFROM golang:1.20 AS builder\nWORKDIR /src\nRUN go build -o /app/myapp\n\nFROM alpine:3.18 AS runtime\nCOPY --from=builder /app/myapp /usr/local/bin/myapp\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/same_alias_in_different_froms",
   "platform": "Dockerfile",
   "descriptionID": "c923ad4b",
   "cwe": "694",
-  "oldSeverity": "HIGH"
+  "oldSeverity": "HIGH",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/multistage-build/"
 }

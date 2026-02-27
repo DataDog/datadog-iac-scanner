@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Serverless APIs should use a `PRIVATE` endpoint to avoid exposure to the public internet, since public endpoints can allow unauthenticated access and unintended invocation of backend services, leading to data exposure or service abuse. For `AWS::Serverless::Api` resources, the `Properties.EndpointConfiguration.Types` array must be defined and include the value `PRIVATE`. Resources missing `EndpointConfiguration`, missing `Types`, or where `Types` does not contain `PRIVATE` will be flagged.\n\nSecure configuration example:\n\n```yaml\nMyApi:\n  Type: AWS::Serverless::Api\n  Properties:\n    StageName: prod\n    EndpointConfiguration:\n      Types:\n        - PRIVATE\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws_sam/serverless_api_endpoint_config_not_private",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws_sam/serverless_api_endpoint_config_not_private",
   "platform": "CloudFormation",
   "descriptionID": "f86c03cc",
   "cloudProvider": "aws",

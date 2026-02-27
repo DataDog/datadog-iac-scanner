@@ -28,8 +28,7 @@ meta:
 
 ### Description
 
- When SQS policies use the wildcard (`*`) for actions, they grant excessive permissions that violate the principle of least privilege, potentially allowing unauthorized entities to perform any operation on the queue. This vulnerability creates a significant security risk where attackers could read sensitive messages, delete messages, or modify queue configurations if they gain access. To avoid excessive permissions, replace wildcards with specific actions, such as `"Action": "sqs:SendMessage"` instead of the insecure `"Action": "*"`.
-
+When SQS policies use the wildcard (`*`) for actions, they grant excessive permissions that violate the principle of least privilege, potentially allowing unauthorized entities to perform any operation on the queue. This vulnerability creates a significant security risk where attackers could read sensitive messages, delete messages, or modify queue configurations if they gain access. To avoid excessive permissions, replace wildcards with specific actions, such as `"Action": "sqs:SendMessage"` instead of the insecure `"Action": "*"`.
 
 ## Compliant Code Examples
 ```terraform

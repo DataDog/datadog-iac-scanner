@@ -14,6 +14,8 @@ CxPolicy[result] {
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "Dockerfile should contain instruction 'HEALTHCHECK'",
 		"keyActualValue": "Dockerfile doesn't contain instruction 'HEALTHCHECK'",
+		"resourceName": "dockerfile_container",
+		"resourceType": "dockerfile_container",
 	}
 }
 

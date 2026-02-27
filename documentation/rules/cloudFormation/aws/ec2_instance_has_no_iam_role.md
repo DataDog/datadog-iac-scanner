@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon EC2 instances must be associated with an IAM instance profile so the instance can assume a temporary IAM role. Without a profile, workloads may require embedded long‑lived credentials or run without least‑privilege access, increasing the risk of credential exposure and excessive privileges.
+Amazon EC2 instances must be associated with an IAM instance profile so the instance can assume a temporary IAM role. Without a profile, workloads may require embedded long‑lived credentials or run without least‑privilege access, increasing the risk of credential exposure and excessive privileges.
  
  In CloudFormation, every `AWS::EC2::Instance` should define `Resources.<Name>.Properties.IamInstanceProfile`. That value must reference an existing `AWS::IAM::InstanceProfile` resource in the template (either a `Ref` or the resource logical name). The referenced `AWS::IAM::InstanceProfile` resource must include `Properties.Roles` with one or more role names or `Ref`s so the instance actually receives an IAM role.
  
@@ -59,7 +59,6 @@ MyInstance:
     IamInstanceProfile: Ref: MyInstanceProfile
     ImageId: ami-0123456789abcdef0
 ```
-
 
 ## Compliant Code Examples
 ```yaml

@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Amazon MQ brokers must not be publicly accessible because exposing a broker to the public internet increases the attack surface and can allow unauthorized access to messages and management interfaces. Check the `PubliclyAccessible` property on `AWS::AmazonMQ::Broker` resources. It must be omitted or set to `false`. Resources with `PubliclyAccessible` set to `true` will be flagged as a security risk. 
+Amazon MQ brokers must not be publicly accessible because exposing a broker to the public internet increases the attack surface and can allow unauthorized access to messages and management interfaces. Check the `PubliclyAccessible` property on `AWS::AmazonMQ::Broker` resources. It must be omitted or set to `false`. Resources with `PubliclyAccessible` set to `true` will be flagged as a security risk. 
  
  Secure CloudFormation example:
 
@@ -41,7 +41,6 @@ MyBroker:
     EngineVersion: "5.15.6"
     PubliclyAccessible: false
 ```
-
 
 ## Compliant Code Examples
 ```yaml

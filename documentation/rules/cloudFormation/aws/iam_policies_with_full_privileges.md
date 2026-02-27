@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- IAM policy statements that allow `Action: '*'` on `Resource: '*'` grant full administrative privileges across the account and enable privilege escalation, data exfiltration, and account takeover. This rule checks `AWS::IAM::Policy` resources' `Properties.PolicyDocument.Statement` entries and flags statements where `Effect` is `Allow` and both `Action` and `Resource` are the wildcard `'*'` (either as a single string or contained in an array). Replace full wildcards with explicit action lists and scoped resource ARNs, or apply IAM condition keys to restrict the policy to the minimum required scope. Statements that do not include both wildcards will not be flagged. 
+IAM policy statements that allow `Action: '*'` on `Resource: '*'` grant full administrative privileges across the account and enable privilege escalation, data exfiltration, and account takeover. This rule checks `AWS::IAM::Policy` resources' `Properties.PolicyDocument.Statement` entries and flags statements where `Effect` is `Allow` and both `Action` and `Resource` are the wildcard `'*'` (either as a single string or contained in an array). Replace full wildcards with explicit action lists and scoped resource ARNs, or apply IAM condition keys to restrict the policy to the minimum required scope. Statements that do not include both wildcards will not be flagged. 
  
  Secure example limiting S3 access to a single bucket:
 
@@ -48,7 +48,6 @@ MyS3Policy:
             - arn:aws:s3:::my-bucket
             - arn:aws:s3:::my-bucket/*
 ```
-
 
 ## Compliant Code Examples
 ```yaml

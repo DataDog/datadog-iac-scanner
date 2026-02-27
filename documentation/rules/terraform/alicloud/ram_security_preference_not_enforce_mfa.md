@@ -28,10 +28,9 @@ meta:
 
 ### Description
 
- `alicloud_ram_security_preference` must be defined and configured to enforce MFA login for `alicloud_ram_user` accounts.
+`alicloud_ram_security_preference` must be defined and configured to enforce MFA login for `alicloud_ram_user` accounts.
 The rule detects when the `alicloud_ram_security_preference` resource is missing, when `enforce_mfa_for_login` is not defined, or when `enforce_mfa_for_login` is set to false.
 When any of these conditions occur, the policy reports the affected resource and suggests setting `enforce_mfa_for_login = true`.
-
 
 ## Compliant Code Examples
 ```terraform

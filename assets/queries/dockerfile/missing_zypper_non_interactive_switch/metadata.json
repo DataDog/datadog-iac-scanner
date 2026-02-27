@@ -1,11 +1,12 @@
 {
   "id": "45e1fca5-f90e-465d-825f-c2cb63fa3944",
-  "queryName": "Missing Zypper Non-interactive Switch",
+  "queryName": "Missing Zypper non-interactive switch",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
-  "descriptionText": "Omitting the non-interactive switch causes the command to fail during the build process, because zypper would expect manual input",
-  "descriptionUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "descriptionText": "`RUN` instructions that invoke the zypper package manager must include a non-interactive switch to avoid interactive prompts that can stall automated builds. This ensures package installs, removals, and patches complete reliably in CI/CD pipelines. Without this switch, images may be built with missing packages or without applied security updates.\n\nCheck Dockerfile `RUN` commands that call zypper subcommands (for example, `in`, `remove`/`rm`, `source-install`/`si`, and `patch`) and ensure the command includes either `-y` or `--no-confirm`. Any `RUN` command invoking zypper without one of these switches will be flagged. \n\nSecure examples:\n\n```dockerfile\nRUN zypper --no-confirm install ca-certificates\nRUN zypper -y patch\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/missing_zypper_non_interactive_switch",
   "platform": "Dockerfile",
   "descriptionID": "b3efa689",
-  "cwe": "710"
+  "cwe": "710",
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
 }

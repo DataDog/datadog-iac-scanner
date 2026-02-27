@@ -4,7 +4,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Elasticsearch domains must not grant access to wildcard or anonymous principals because such policies allow unauthenticated access to cluster APIs and data, risking data exposure and unauthorized configuration changes.\n \n In CloudFormation, verify `AWS::Elasticsearch::Domain` resources. The `Properties.AccessPolicies.Statement[].Principal` value must specify explicit IAM principals (for example, AWS account IDs or role/user/service ARNs). It must not be the literal `\"*\"` and must not include `AWS=\"*\"` (or equivalent wildcard principals). Resources with `Principal=\"*\"` or `Principal.AWS=\"*\"` (or other any-principal patterns) will be flagged. Instead, scope access to specific ARNs, AWS account numbers, or IAM roles/users. You can also combine principals with conditions such as `aws:SourceVpc` or `aws:SourceIp` to limit exposure.\n\nSecure configuration example (CloudFormation YAML):\n\n```yaml\nMyEsDomain:\n  Type: AWS::Elasticsearch::Domain\n  Properties:\n    DomainName: my-domain\n    AccessPolicies:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: Allow\n          Principal:\n            AWS: arn:aws:iam::123456789012:role/EsAccessRole\n          Action: es:ESHttp*\n          Resource: arn:aws:es:us-west-2:123456789012:domain/my-domain/*\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudFormation/aws/elasticsearch_without_iam_authentication",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cloudformation/aws/elasticsearch_without_iam_authentication",
   "platform": "CloudFormation",
   "descriptionID": "af727c29",
   "cloudProvider": "aws",

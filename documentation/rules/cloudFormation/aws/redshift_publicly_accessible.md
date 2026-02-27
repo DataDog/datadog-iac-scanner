@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
- Redshift clusters must not be publicly accessible because exposure to the public internet increases the risk of unauthorized data access and expands the attack surface for brute-force or other network-based attacks. In AWS CloudFormation, `AWS::Redshift::Cluster` resources must include the `PubliclyAccessible` property and set it to `false`. Resources missing this property or with `PubliclyAccessible` set to `true` will be flagged as a security finding.
+Redshift clusters must not be publicly accessible because exposure to the public internet increases the risk of unauthorized data access and expands the attack surface for brute-force or other network-based attacks. In AWS CloudFormation, `AWS::Redshift::Cluster` resources must include the `PubliclyAccessible` property and set it to `false`. Resources missing this property or with `PubliclyAccessible` set to `true` will be flagged as a security finding.
 
 Secure configuration example:
 
@@ -39,7 +39,6 @@ MyRedshiftCluster:
     PubliclyAccessible: false
     # other required properties...
 ```
-
 
 ## Compliant Code Examples
 ```yaml

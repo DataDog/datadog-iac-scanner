@@ -1,0 +1,12 @@
+{
+  "id": "d5b3c9a1-7e8f-4c2a-9d6e-3f1a8b4c7e9d",
+  "queryName": "Avoid HTTP",
+  "severity": "MEDIUM",
+  "category": "Encryption",
+  "descriptionText": "Dockerfile `RUN` commands must not fetch resources over unencrypted HTTP, because clear-text downloads can be intercepted or modified in transit. This increases the risk of supply-chain compromise or execution of malicious code in the built image.  \n\nThis rule inspects `dockerfile_container` resources' `RUN` entries and flags tokens containing `http://` (matches `http:` but not `https:`). URLs must use `https://` instead of `http://`. Localhost addresses (`http://localhost`, `http://127.0.0.1`, `http://[::1]`) are excluded from detection.  \n\nWhen switching to HTTPS, also verify artifact integrity (for example, with checksums or signatures) or use trusted TLS-protected registries to further reduce tampering risk.\n\nSecure example using HTTPS and checksum verification:\n\n```Dockerfile\nRUN curl -fsSL https://example.com/artifact.tar.gz -o /tmp/artifact.tar.gz && \\\n    echo \"3b7d6f...  /tmp/artifact.tar.gz\" | sha256sum -c -\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/avoid_http",
+  "platform": "Dockerfile",
+  "descriptionID": "e68dd80f",
+  "cwe": "319",
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/"
+}
