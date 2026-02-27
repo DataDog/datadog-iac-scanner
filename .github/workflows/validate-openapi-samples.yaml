@@ -6,6 +6,9 @@ on:
     - "assets/queries/openAPI/**/test/*.yaml"
     - "assets/queries/openAPI/**/test/*.json"
 
+permissions:
+  contents: read
+
 jobs:
   lint-yaml-samples:
     runs-on: ubuntu-latest

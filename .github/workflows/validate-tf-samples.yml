@@ -5,6 +5,9 @@ on:
     paths:
     - "assets/queries/terraform/**/**/test/*.tf"
 
+permissions:
+  contents: read
+
 jobs:
   lint-samples:
     runs-on: ubuntu-latest

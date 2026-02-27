@@ -53,7 +53,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '❌ **Critical Tests Failed**\n\nOne or more critical test suites failed. These packages are critical to the security scanning functionality.\n\n**This PR cannot be merged until these tests pass.**\n\nPlease review the test failures and fix the issues.\n\n[View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})'
+              body: `❌ **Critical Tests Failed**\n\nOne or more critical test suites failed. These packages are critical to the security scanning functionality.\n\n**This PR cannot be merged until these tests pass.**\n\nPlease review the test failures and fix the issues.\n\n[View workflow run](${context.serverUrl}/${context.repo().owner}/${context.repo().repo}/actions/runs/${context.runId})`
             })
 
       - name: Set status

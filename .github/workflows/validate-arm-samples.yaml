@@ -5,6 +5,9 @@ on:
     paths:
       - "assets/queries/azureResourceManager/**/test/*.json"
 
+permissions:
+  contents: read
+
 jobs:
   lint-json-samples:
     runs-on: ubuntu-latest

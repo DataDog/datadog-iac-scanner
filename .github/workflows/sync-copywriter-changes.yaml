@@ -10,10 +10,14 @@ jobs:
     # Only run if:
     # 1. It is a PR comment (not a regular issue)
     # 2. Comment contains "/sync-metadata"
+    # 3. Comment author is a recognized collaborator
     if: |
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
-      contains(github.event.comment.body, '/sync-metadata')
+      contains(github.event.comment.body, '/sync-metadata') &&
+      (github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'COLLABORATOR' ||
+       github.event.comment.author_association == 'OWNER')
 
     runs-on: ubuntu-latest
 
@@ -61,7 +65,7 @@ jobs:
       - name: Find changed MD files
         id: changed_files
         run: |
-          CHANGED_FILES=$(git diff --name-only main...pr-branch | grep '^documentation/rules/.*\.md$' || true)
+          CHANGED_FILES="$(git diff --name-only main...pr-branch | grep '^documentation/rules/.*\.md$' || true)"
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
@@ -74,22 +78,23 @@ jobs:
 
       - name: Extract MD files from PR
         if: steps.changed_files.outputs.has_changes == 'true'
+        env:
+          FILES: ${{ steps.changed_files.outputs.files }}
         run: |
-          FILES="${{ steps.changed_files.outputs.files }}"
           mkdir -p pr-md-files
-          for file in $FILES; do
+          while IFS= read -r file; do
             mkdir -p "pr-md-files/$(dirname "$file")"
             git show pr-branch:"$file" > "pr-md-files/$file"
             cp "pr-md-files/$file" "$file"
-          done
+          done <<< "${FILES}"
 
       - name: Run sync script
         if: steps.changed_files.outputs.has_changes == 'true'
         id: sync
+        env:
+          FILES: ${{ steps.changed_files.outputs.files }}
         run: |
-          FILES="${{ steps.changed_files.outputs.files }}"
-
-          python .github/scripts/sync-copywriter-changes/sync_md_to_metadata.py -f $FILES -v > sync_output.txt 2>&1
+          python .github/scripts/sync-copywriter-changes/sync_md_to_metadata.py -f "${FILES}" -v > sync_output.txt 2>&1
           SYNC_EXIT_CODE=$?
 
           cat sync_output.txt
