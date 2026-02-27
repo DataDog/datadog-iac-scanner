@@ -10,13 +10,12 @@ jobs:
     # Only run if:
     # 1. It is a PR comment (not a regular issue)
     # 2. Comment contains "/sync-metadata"
-    # 3. Comment author is a recognized collaborator
+    # 3. Comment author is a member of the organization or repo owner
     if: |
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
       contains(github.event.comment.body, '/sync-metadata') &&
       (github.event.comment.author_association == 'MEMBER' ||
-       github.event.comment.author_association == 'COLLABORATOR' ||
        github.event.comment.author_association == 'OWNER')
 
     runs-on: ubuntu-latest
