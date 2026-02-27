@@ -93,13 +93,13 @@ def find_json_paths(
     try:
         rules_idx = parts.index("rules")
     except ValueError:
-        return None
+        return None, None
 
     # Extract platform/provider/rule_name
     relative_parts = parts[rules_idx + 1 :]
 
     if len(relative_parts) < 2:
-        return None
+        return None, None
 
     # Remove .md extension from the last part (rule name)
     rule_name = relative_parts[-1].replace(".md", "")
@@ -290,6 +290,9 @@ def sync_md_to_metadata(
     else:
         md_files = list(md_dir.rglob("*.md"))
 
+    # Resolve the absolute path of the md_dir
+    abs_md_dir = md_dir.resolve()
+
     for md_file in md_files:
         if verbose:
             print(f"\nProcessing: {md_file}")
@@ -297,6 +300,9 @@ def sync_md_to_metadata(
         processed += 1
 
         try:
+            # Throws an exception if the resolved file path is not relative to the abs_md_dir
+            md_file.resolve().relative_to(abs_md_dir)
+
             # Read markdown file
             with open(md_file, "r", encoding="utf-8") as f:
                 content = f.read()
