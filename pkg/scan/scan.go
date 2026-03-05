@@ -22,6 +22,7 @@ import (
 	ansibleHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	bicepParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/bicep"
 	buildahParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/buildah"
+	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/cicd"
 	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
@@ -228,6 +229,7 @@ func (c *Client) createService(
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefaultWithParams(c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
 		Add(&bicepParser.Parser{}).
+		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).

@@ -3,13 +3,12 @@
  *
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
-package yaml
+package cicd
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -32,15 +31,7 @@ func TestParser_SupportedExtensions(t *testing.T) {
 func TestParser_SupportedTypes(t *testing.T) {
 	p := &Parser{}
 	require.Equal(t, map[string]bool{
-		"ansible":                 true,
-		"cloudformation":          true,
-		"kubernetes":              true,
-		"crossplane":              true,
-		"knative":                 true,
-		"openapi":                 true,
-		"googledeploymentmanager": true,
-		"pulumi":                  true,
-		"serverlessfw":            true,
+		"cicd": true,
 	}, p.SupportedTypes())
 }
 
@@ -399,45 +390,6 @@ func Test_Resolve(t *testing.T) {
 	require.Equal(t, []byte(have), resolved)
 }
 
-func TestYaml_processElements(t *testing.T) {
-	type args struct {
-		elements map[string]interface{}
-		filePath string
-	}
-	tests := []struct {
-		name     string
-		args     args
-		wantCert map[string]interface{}
-		wantSwag string
-	}{
-		{
-			name: "test_process_elements",
-			args: args{
-				elements: map[string]interface{}{
-					"swagger_file": "test",
-					"certificate":  filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-				},
-				filePath: filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-			},
-			wantCert: map[string]interface{}{
-				"expiration_date": [3]int{2022, 3, 27},
-				"file":            filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-				"rsa_key_bytes":   512,
-			},
-			wantSwag: "test",
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			processElements(ctx, tt.args.elements, tt.args.filePath)
-			require.Equal(t, tt.wantCert, tt.args.elements["certificate"])
-			require.Equal(t, tt.wantSwag, tt.args.elements["swagger_file"])
-		})
-	}
-}
-
 func TestModel_TestYamlParser(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -528,6 +480,209 @@ martin2:
 			got, err := tt.fields.parser.StringifyContent(tt.args.content)
 			require.Equal(t, tt.wantErr, (err != nil))
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestParser_ParseWithShellEnhancement tests the full parsing flow including shell script enhancement
+func TestParser_ParseWithShellEnhancement(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		verify  func(t *testing.T, docs []model.Document)
+	}{
+		{
+			name: "simple workflow with run block",
+			yaml: `
+jobs:
+  test:
+    steps:
+      - run: echo hello world
+`,
+			wantErr: false,
+			verify: func(t *testing.T, docs []model.Document) {
+				require.Len(t, docs, 1)
+				jobs := docs[0]["jobs"].(map[string]interface{})
+				testJob := jobs["test"].(map[string]interface{})
+				steps := testJob["steps"].([]interface{})
+				require.Len(t, steps, 1)
+
+				step := steps[0].(map[string]interface{})
+				parsed := step["_parsed_run"].(*ParsedRun)
+
+				require.NotNil(t, parsed)
+				require.True(t, parsed.ParseOK)
+				require.Equal(t, "bash", parsed.Shell)
+				require.Len(t, parsed.Commands, 1)
+				require.Equal(t, "echo", parsed.Commands[0].Command)
+			},
+		},
+		{
+			name: "workflow with variable expansion",
+			yaml: `
+jobs:
+  test:
+    steps:
+      - run: cargo publish --token $TOKEN
+`,
+			wantErr: false,
+			verify: func(t *testing.T, docs []model.Document) {
+				require.Len(t, docs, 1)
+				jobs := docs[0]["jobs"].(map[string]interface{})
+				testJob := jobs["test"].(map[string]interface{})
+				steps := testJob["steps"].([]interface{})
+				step := steps[0].(map[string]interface{})
+				parsed := step["_parsed_run"].(*ParsedRun)
+
+				require.NotNil(t, parsed)
+				require.True(t, parsed.ParseOK)
+				require.Len(t, parsed.Commands, 1)
+				require.Equal(t, "cargo", parsed.Commands[0].Command)
+				require.Len(t, parsed.Commands[0].Args, 3)
+				require.Equal(t, "simple_expansion", parsed.Commands[0].Args[2].Type)
+				require.Equal(t, "TOKEN", parsed.Commands[0].Args[2].Var)
+			},
+		},
+		{
+			name: "workflow with redirect to GITHUB_ENV",
+			yaml: `
+jobs:
+  test:
+    steps:
+      - run: echo "FOO=$BAR" >> $GITHUB_ENV
+`,
+			wantErr: false,
+			verify: func(t *testing.T, docs []model.Document) {
+				require.Len(t, docs, 1)
+				jobs := docs[0]["jobs"].(map[string]interface{})
+				testJob := jobs["test"].(map[string]interface{})
+				steps := testJob["steps"].([]interface{})
+				step := steps[0].(map[string]interface{})
+				parsed := step["_parsed_run"].(*ParsedRun)
+
+				require.NotNil(t, parsed)
+				require.True(t, parsed.ParseOK)
+				require.Len(t, parsed.Commands, 1)
+				require.Equal(t, "redirected_statement", parsed.Commands[0].Type)
+				require.Equal(t, "echo", parsed.Commands[0].Command)
+				require.NotNil(t, parsed.Commands[0].Redirect)
+				require.Equal(t, ">>", parsed.Commands[0].Redirect.Operator)
+				require.Equal(t, "GITHUB_ENV", parsed.Commands[0].Redirect.Target.Var)
+			},
+		},
+		{
+			name: "workflow with custom shell",
+			yaml: `
+jobs:
+  test:
+    steps:
+      - run: echo test
+        shell: zsh
+`,
+			wantErr: false,
+			verify: func(t *testing.T, docs []model.Document) {
+				require.Len(t, docs, 1)
+				jobs := docs[0]["jobs"].(map[string]interface{})
+				testJob := jobs["test"].(map[string]interface{})
+				steps := testJob["steps"].([]interface{})
+				step := steps[0].(map[string]interface{})
+				parsed := step["_parsed_run"].(*ParsedRun)
+
+				require.NotNil(t, parsed)
+				require.True(t, parsed.ParseOK)
+				require.Equal(t, "zsh", parsed.Shell)
+			},
+		},
+		{
+			name: "workflow with pipeline",
+			yaml: `
+jobs:
+  test:
+    steps:
+      - run: cat file.txt | grep pattern
+`,
+			wantErr: false,
+			verify: func(t *testing.T, docs []model.Document) {
+				require.Len(t, docs, 1)
+				jobs := docs[0]["jobs"].(map[string]interface{})
+				testJob := jobs["test"].(map[string]interface{})
+				steps := testJob["steps"].([]interface{})
+				step := steps[0].(map[string]interface{})
+				parsed := step["_parsed_run"].(*ParsedRun)
+
+				require.NotNil(t, parsed)
+				require.True(t, parsed.ParseOK)
+				require.Len(t, parsed.Commands, 1)
+				require.Equal(t, "pipeline", parsed.Commands[0].Type)
+				require.Len(t, parsed.Commands[0].Pipeline, 2)
+				require.Equal(t, "cat", parsed.Commands[0].Pipeline[0].Command)
+				require.Equal(t, "grep", parsed.Commands[0].Pipeline[1].Command)
+			},
+		},
+		{
+			name: "workflow with multiple steps",
+			yaml: `
+jobs:
+  test:
+    steps:
+      - run: echo "Building..."
+      - run: npm install
+      - run: npm test
+`,
+			wantErr: false,
+			verify: func(t *testing.T, docs []model.Document) {
+				require.Len(t, docs, 1)
+				jobs := docs[0]["jobs"].(map[string]interface{})
+				testJob := jobs["test"].(map[string]interface{})
+				steps := testJob["steps"].([]interface{})
+				require.Len(t, steps, 3)
+
+				// Verify each step has parsed run
+				for i, s := range steps {
+					step := s.(map[string]interface{})
+					parsed := step["_parsed_run"].(*ParsedRun)
+					require.NotNil(t, parsed, "step %d should have _parsed_run", i)
+					require.True(t, parsed.ParseOK, "step %d parsing should succeed", i)
+				}
+			},
+		},
+		{
+			name: "workflow without run blocks",
+			yaml: `
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v2
+`,
+			wantErr: false,
+			verify: func(t *testing.T, docs []model.Document) {
+				require.Len(t, docs, 1)
+				jobs := docs[0]["jobs"].(map[string]interface{})
+				testJob := jobs["test"].(map[string]interface{})
+				steps := testJob["steps"].([]interface{})
+				require.Len(t, steps, 1)
+
+				step := steps[0].(map[string]interface{})
+				// Should not have _parsed_run since there's no run block
+				_, hasRun := step["_parsed_run"]
+				require.False(t, hasRun)
+			},
+		},
+	}
+
+	ctx := context.Background()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := &Parser{}
+			_, docs, _, _, err := parser.Parse(ctx, []byte(tt.yaml), "test.yaml", true, 15)
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				tt.verify(t, docs)
+			}
 		})
 	}
 }
