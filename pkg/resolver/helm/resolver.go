@@ -11,9 +11,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/release"
+	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/cli/values"
+	"helm.sh/helm/v4/pkg/release"
 )
 
 // Resolver is an instance of the helm resolver

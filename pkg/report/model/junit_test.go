@@ -8,7 +8,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
-	"helm.sh/helm/v3/pkg/time"
+	"helm.sh/helm/v4/pkg/time"
 )
 
 var now = time.Now().String()
