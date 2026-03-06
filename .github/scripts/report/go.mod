@@ -2,6 +2,8 @@ module github.com/DataDog/datadog-iac-scanner/e2e-report
 
 go 1.21
 
+toolchain go1.26.0
+
 require (
 	github.com/rs/zerolog v1.31.0
 	github.com/tdewolff/minify/v2 v2.9.21
