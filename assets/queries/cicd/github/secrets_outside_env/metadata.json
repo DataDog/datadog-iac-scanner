@@ -3,7 +3,7 @@
   "queryName": "Secrets Outside Environment",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "Secrets should be referenced within dedicated environments to limit their scope and reduce the attack surface. When secrets are used outside of a defined environment, they may be repository-level or organization-level secrets that are available to all workflows and jobs. By defining an environment with required reviewers and environment-specific secrets, you can better control when and how sensitive credentials are used. Jobs without an environment that reference secrets (except GITHUB_TOKEN which is always available) should be reviewed to determine if they should use environment-scoped secrets instead.",
+  "descriptionText": "Secrets referenced in GitHub Actions jobs should be scoped to a dedicated environment to limit their availability and reduce the blast radius if credentials are exposed. This rule inspects workflow job definitions and flags jobs that do not define the `environment` property but reference the `secrets` context in fenced expressions. It looks for `secrets.<NAME>` usages in expressions and excludes `secrets.GITHUB_TOKEN`, which is always available; any job without an `environment` that accesses `secrets.*` will be reported. Remediate by adding an `environment` to the job and moving sensitive values to environment-scoped secrets with appropriate approvals, or confirm that repository/org-level secrets are intentionally used.",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/secrets_outside_env",
   "platform": "CICD",
   "descriptionID": "a1b2c3d4",

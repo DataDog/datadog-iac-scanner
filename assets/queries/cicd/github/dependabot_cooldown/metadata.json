@@ -3,7 +3,7 @@
   "queryName": "Dependabot Cooldown",
   "severity": "MEDIUM",
   "category": "Best Practices",
-  "descriptionText": "Dependabot should have appropriate cooldown periods configured to prevent excessive update pull requests. The cooldown setting limits how frequently Dependabot creates pull requests for a given dependency, reducing noise and CI/CD load. Without a cooldown or with an insufficient cooldown period (less than 7 days recommended), Dependabot may create too many pull requests, overwhelming maintainers and consuming CI/CD resources. The default-days setting in the cooldown configuration should be set to at least 7 days. Note: If default-days is not set, Dependabot treats it as 0, which means no cooldown by default. This rule applies to .github/dependabot.yml configuration files.",
+  "descriptionText": "Dependabot updates must include an adequate cooldown period to avoid excessive automated pull requests that can overwhelm maintainers and consume CI/CD resources. In GitHub Dependabot configuration files (.github/dependabot.yml), each `updates` entry should define `cooldown.default-days` and set it to at least 7. If the `cooldown` block is missing or `default-days` is absent Dependabot treats it as 0 (no cooldown) and will be flagged; values less than the configured minimum (7 days by default) are also flagged, and fixes can add or increase `default-days` to 7.\n\nSecure configuration example:\n\n```yaml\nupdates:\n  - package-ecosystem: pip\n    directory: /\n    cooldown:\n      default-days: 7\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/dependabot_cooldown",
   "platform": "CICD",
   "descriptionID": "f2a3b4c5",

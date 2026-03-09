@@ -3,7 +3,7 @@
   "queryName": "Archived Uses",
   "severity": "MEDIUM",
   "category": "Supply Chain",
-  "descriptionText": "Using actions or reusable workflows from archived repositories poses a security risk. Archived repositories no longer receive updates, security patches, or maintenance. This means that any vulnerabilities discovered in the action will not be fixed, and the action may become incompatible with future versions of GitHub Actions. Additionally, archived repositories may be deleted or transferred, which could break your workflows.",
+  "descriptionText": "Using actions or reusable workflows from archived repositories is risky because archived repositories no longer receive security fixes and may be deleted or transferred, which can leave workflows vulnerable and cause builds to break. This rule checks the `uses` property on workflow steps — including regular steps, composite action steps, and reusable-workflow call jobs — and flags any `uses` that references an archived repository, matching owner and repo case-insensitively. Replace archived actions with actively maintained alternatives, fork and maintain the action under your control, or vendor the code into your own repository; pinning to a commit does not restore ongoing security maintenance.\n\nSecure examples:\n\n```yaml\n- name: Checkout\n  uses: actions/checkout@v4\n\n- name: My maintained forked action\n  uses: my-org/some-action@v1\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/archived_uses",
   "platform": "CICD",
   "descriptionID": "b2c3d4e5",

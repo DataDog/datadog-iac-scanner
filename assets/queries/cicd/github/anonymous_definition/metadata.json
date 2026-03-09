@@ -3,7 +3,7 @@
   "queryName": "Anonymous Definition",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "Workflows and jobs without names can be hard to find in the GitHub UI and reduce code maintainability. Workflows without a name are harder to track and identify, especially in repositories with multiple workflows. Jobs without names also make it difficult to understand the workflow structure at a glance.",
+  "descriptionText": "Unnamed workflows and jobs reduce traceability and slow down auditing, monitoring, and incident response because run logs and alerts become harder to identify and correlate. Check GitHub Actions workflow YAML: the top-level `name` property must be defined and non-empty, and each standard job under `jobs` should include a non-empty `name` property; workflows missing a top-level `name` or jobs without `name` will be flagged. This rule applies to normal jobs, reusable or composite actions may be treated differently by some tools, so ensure each visible job has a clear `name`. Use concise, descriptive names so runs and failures are immediately recognizable.\n\nSecure example:\n\n```yaml\nname: CI — Build and Test\n\non:\n  push:\n    branches: [ main ]\n\njobs:\n  build:\n    name: Build\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v3\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/anonymous_definition",
   "platform": "CICD",
   "descriptionID": "a1b2c3d4",

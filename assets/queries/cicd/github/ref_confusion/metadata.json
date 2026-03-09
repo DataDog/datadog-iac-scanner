@@ -3,7 +3,7 @@
   "queryName": "Ref Confusion",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
-  "descriptionText": "GitHub Actions workflows may be vulnerable to reference confusion attacks when using ambiguous or manipulable git references. Attackers can exploit unclear or mutable references (such as branch names or tags) to trick workflows into checking out malicious code. This can occur when references are user-controlled or when there's confusion between different types of git references.",
+  "descriptionText": "GitHub Actions steps and reusable workflow calls that use ambiguous named git refs (for example `@foo`) can end up checking out different code if the upstream repository exposes the same name as both a branch and a tag, creating a supply‑chain risk or accidental execution of unreviewed code. Check the `uses` property on workflow steps, composite actions, and reusable workflow calls when it references a repository (`owner/repo@ref`); the ref should be immutable like a full commit SHA or explicitly namespace‑qualified, such as `refs/heads/<name>` or `refs/tags/<name>`. This rule flags `uses` entries where the ref is symbolic, because it is not a full commit SHA and the same name exists as both a branch and a tag in the referenced repository.\n\nSecure examples: \n\n```yaml\n# Pin to an immutable commit SHA\nsteps:\n  - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567\n\n# Or explicitly qualify the namespace to disambiguate\nsteps:\n  - uses: owner/repo@refs/heads/main\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/ref_confusion",
   "platform": "CICD",
   "descriptionID": "90178ddf",
