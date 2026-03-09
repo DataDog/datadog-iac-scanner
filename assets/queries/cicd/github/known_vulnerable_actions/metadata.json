@@ -3,7 +3,7 @@
   "queryName": "Known Vulnerable Actions",
   "severity": "HIGH",
   "category": "Supply-Chain",
-  "descriptionText": "GitHub Actions workflows should not use actions with known security vulnerabilities. Using actions that have published CVEs or known security issues can expose your CI/CD pipeline to attacks, including arbitrary code execution, data exfiltration, or privilege escalation. Always ensure actions are updated to their latest secure versions.",
+  "descriptionText": "Using a GitHub Action version that has a published security advisory can allow an attacker to execute arbitrary code in your CI environment or exfiltrate secrets and artifacts. This rule inspects workflow step `uses` clauses that reference repository actions using `owner/repo@ref` and queries GitHub’s security advisories for the resolved tag or commit. Steps whose referenced tag or commit match a GHSA advisory are flagged; when the advisory provides a patched version the audit suggests upgrading the `uses` value to that patched tag or to the corresponding commit hash.\n\nSecure example:\n\n```yaml\n- name: Checkout\n  uses: actions/checkout@v4\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/known_vulnerable_actions",
   "platform": "CICD",
   "descriptionID": "db94b2ab",

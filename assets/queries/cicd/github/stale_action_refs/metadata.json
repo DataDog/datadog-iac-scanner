@@ -3,7 +3,7 @@
   "queryName": "Stale Action Refs",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
-  "descriptionText": "GitHub Actions workflows should avoid using outdated or stale references to actions. Using old versions of actions may expose workflows to known vulnerabilities that have been patched in newer releases. Additionally, stale references can point to deprecated or unmaintained actions, increasing the risk of supply chain attacks and reducing the reliability of CI/CD pipelines.",
+  "descriptionText": "Workflow steps should not pin actions to raw commit SHAs that are not associated with a Git tag, because untagged commits lack release metadata and are more likely to contain unpublished, unreviewed, or unmaintained changes that increase supply-chain and reliability risk. This rule inspects workflow step `uses` entries that reference a repository, written `owner/repo@ref`, and flags cases where the ref is a commit hash and the GitHub API reports no tag pointing to that commit. Prefer pinning to an official Git tag or release, for example `v1.2.3` or a stable major tag like `v1`. Steps with commit refs that do not map to any tag will be flagged as stale.\n\nSecure configuration examples:\n\n```yaml\n- name: Checkout\n  uses: actions/checkout@v3\n\n- name: Use custom action\n  uses: owner/repo@v1.2.3\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/stale_action_refs",
   "platform": "CICD",
   "descriptionID": "0cf49343",
