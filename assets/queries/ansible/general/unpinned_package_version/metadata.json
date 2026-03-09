@@ -3,7 +3,7 @@
   "queryName": "Unpinned Package Version",
   "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "Setting state to latest performs an update and installs additional packages possibly resulting in performance degradation or loss of service",
+  "descriptionText": "Package installer tasks that set `state: latest` without pinning a `version` or enabling `update_only` can cause unintended upgrades, introducing breaking changes, regressions, or service disruptions and making deployments non-reproducible. Check Ansible package installer modules (for example `apt`, `yum`, `dnf`, `pip`) for the task properties: `state` must not be `latest` unless a `version` is specified or `update_only` is set to `true`; tasks with `state: latest` and no `version` and missing or `false` `update_only` will be flagged. Remediate by pinning packages to explicit versions for deterministic installs, or set `update_only: true` when you only want to upgrade already-installed packages.\n\nSecure example — pin a version:\n\n```yaml\n- name: Install mypkg at a specific version\n  apt:\n    name: mypkg=1.2.3\n    state: present\n```\n\nSecure example — allow only updates to already-installed packages:\n\n```yaml\n- name: Update installed packages only\n  yum:\n    name: mypkg\n    state: latest\n    update_only: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/general/unpinned_package_version",
   "platform": "Ansible",
   "descriptionID": "43e877b3",

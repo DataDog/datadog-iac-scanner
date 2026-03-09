@@ -3,7 +3,7 @@
   "queryName": "Storage Account Not Forcing HTTPS",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "Storage Accounts should enforce the use of HTTPS",
+  "descriptionText": "Storage Accounts must enforce HTTPS-only connections to prevent sensitive data and credentials from being transmitted in cleartext and to reduce the risk of man-in-the-middle interception. For Ansible tasks using `azure.azcollection.azure_rm_storageaccount` or `azure_rm_storageaccount`, the `https_only` property must be defined and set to `true`. Resources where `https_only` is missing (it defaults to `false`) or explicitly set to `false` will be flagged. Secure example:\n\n```yaml\n- name: Create storage account with HTTPS enforced\n  azure.azcollection.azure_rm_storageaccount:\n    name: myStorageAccount\n    resource_group: myResourceGroup\n    location: eastus\n    account_type: Standard_LRS\n    https_only: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/storage_account_not_forcing_https",
   "platform": "Ansible",
   "descriptionID": "bc830876",

@@ -3,7 +3,7 @@
   "queryName": "Lambda Permission Principal Is Wildcard",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "Lambda Permission Principal should not contain a wildcard.",
+  "descriptionText": "Lambda function permissions must not use wildcard principals ('*') because that effectively allows any AWS account or anonymous principal to invoke the function, increasing the risk of unauthorized invocations and data exposure. In Ansible, check tasks using the `community.aws.lambda_policy` or `lambda_policy` modules and ensure the `principal` property does not contain `*` or other wildcard values. The `principal` must specify explicit principals such as an AWS account ARN, role ARN, or service principal (for example `arn:aws:iam::123456789012:role/MyRole` or `events.amazonaws.com`); tasks where `principal` includes `*` will be flagged. Secure example using an explicit service principal:\n\n```yaml\n- name: Allow EventBridge to invoke Lambda\n  community.aws.lambda_policy:\n    state: present\n    function_name: my-function\n    principal: events.amazonaws.com\n    action: lambda:InvokeFunction\n    source_arn: arn:aws:events:us-east-1:123456789012:rule/MyRule\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/lambda_permission_principal_is_wildcard",
   "platform": "Ansible",
   "descriptionID": "1740275a",

@@ -3,7 +3,7 @@
   "queryName": "Unknown Port Exposed To Internet",
   "severity": "HIGH",
   "category": "Networking and Firewall",
-  "descriptionText": "AWS Security Group should not have an unknown port exposed to the entire Internet",
+  "descriptionText": "Security groups must not expose unknown or undocumented TCP ports to the entire Internet because exposing unexpected ports increases attack surface and makes it easier for attackers to discover and exploit unintended services. This rule inspects Ansible tasks using the `amazon.aws.ec2_group` and `ec2_group` modules and checks each `rules` entry: it flags rules where any port in the range from `from_port` to `to_port` is not found in the recognized TCP ports map and where `cidr_ip` equals `0.0.0.0/0` or `cidr_ipv6` equals `::/0` (entire network). To remediate, restrict ingress to only known, required ports and limit CIDR ranges to trusted networks or reference other security groups; review and document any non-standard ports before allowing public access. Secure example for Ansible `ec2_group` with a single, known port limited to a specific IPv4 range:\n\n```yaml\n- name: Create security group with restricted HTTPS access\n  amazon.aws.ec2_group:\n    name: example-sg\n    rules:\n      - proto: tcp\n        from_port: 443\n        to_port: 443\n        cidr_ip: 203.0.113.0/24\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/unknown_port_exposed_to_internet",
   "platform": "Ansible",
   "descriptionID": "f6437a28",

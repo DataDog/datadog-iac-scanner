@@ -3,7 +3,7 @@
   "queryName": "IAM Group Without Users",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "IAM Group should have at least one user associated",
+  "descriptionText": "IAM groups should explicitly include at least one user to ensure group membership and any attached permissions are intentional, auditable, and not left orphaned. This rule checks Ansible `community.aws.iam_group` and `iam_group` tasks and requires the `users` property to be defined and non-null (a list containing one or more usernames). Resources missing the `users` property or with `users: null` or an empty list will be flagged; either populate the list with the intended user names or remove unused groups and associated policies.\n\nSecure configuration example:\n\n```\n- name: Create developers IAM group with users\n  community.aws.iam_group:\n    name: developers\n    users:\n      - alice\n      - bob\n    state: present\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_group_without_users",
   "platform": "Ansible",
   "descriptionID": "082a1e01",

@@ -3,7 +3,7 @@
   "queryName": "CloudWatch Without Retention Period Specified",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "AWS CloudWatch should have CloudWatch Logs enabled in order to monitor, store, and access log events",
+  "descriptionText": "CloudWatch Log Groups must have a defined retention period to retain logs for incident investigation and regulatory compliance and to avoid indefinite retention that increases storage costs and risk of long‑term data exposure. For Ansible tasks using `community.aws.cloudwatchlogs_log_group` or `cloudwatchlogs_log_group`, the `retention` property must be set and its value must be one of the AWS-supported retention periods: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]. Resources missing `retention` or with a value not in this list will be flagged as misconfigured.  \n\nSecure configuration example:\n\n```\n- name: Create CloudWatch log group with retention\n  community.aws.cloudwatchlogs_log_group:\n    name: my-log-group\n    retention: 365\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudwatch_without_retention_period_specified",
   "platform": "Ansible",
   "descriptionID": "c48a227e",

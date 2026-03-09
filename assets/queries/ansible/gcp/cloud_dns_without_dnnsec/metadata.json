@@ -3,7 +3,7 @@
   "queryName": "Cloud DNS Without DNSSEC",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "DNSSEC must be enabled for Cloud DNS",
+  "descriptionText": "DNS zones must have DNSSEC enabled to protect DNS responses from tampering, spoofing, and cache poisoning and to ensure the authenticity and integrity of name resolution. For Ansible-managed Google Cloud DNS zones using `google.cloud.gcp_dns_managed_zone` or `gcp_dns_managed_zone`, the `dnssec_config.state` property must be defined and set to `\"on\"`. Resources missing `dnssec_config`, missing `dnssec_config.state`, or with `dnssec_config.state` not equal to `\"on\"` will be flagged. Secure configuration example:\n\n```yaml\n- name: Create DNS managed zone with DNSSEC enabled\n  google.cloud.gcp_dns_managed_zone:\n    name: my-managed-zone\n    dns_name: example.com.\n    dnssec_config:\n      state: \"on\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cloud_dns_without_dnnsec",
   "platform": "Ansible",
   "descriptionID": "1797efc5",

@@ -3,7 +3,7 @@
   "queryName": "Communication Over HTTP",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "Using HTTP URLs (without encryption) could lead to security vulnerabilities and risks",
+  "descriptionText": "Using HTTP URLs in Ansible uri tasks exposes requests and any sensitive data (tokens, credentials, or cookies) to interception and tampering because traffic is sent in plaintext. Check tasks that use the `ansible.builtin.uri` module and ensure the `url` property begins with `https://`. Tasks whose `url` starts with `http://` will be flagged and should be updated to use `https://` endpoints or other secure transport. \n\nSecure example:\n\n```yaml\n- name: Call API over HTTPS\n  ansible.builtin.uri:\n    url: \"https://api.example.com/endpoint\"\n    method: GET\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/general/communication_over_http",
   "platform": "Ansible",
   "descriptionID": "04892b9b",

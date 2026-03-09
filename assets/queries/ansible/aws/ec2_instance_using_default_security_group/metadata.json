@@ -3,7 +3,7 @@
   "queryName": "EC2 Instance Using Default Security Group",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "EC2 instances should not use default security group(s)",
+  "descriptionText": "Using the default security group for EC2 instances is unsafe because the default group is shared, often broadly permissive for intra-VPC traffic, and cannot be scoped to least-privilege rules, which increases the risk of lateral movement and unintended exposure. This rule inspects Ansible tasks that use the `amazon.aws.ec2` or legacy `ec2` module and flags `group` or `group_id` properties that reference the default security group. Both string and list forms are evaluated; any value containing the word \"default\" (case-insensitive) will be flagged and should be replaced with explicit, purpose-built security group names or IDs that restrict ingress and egress to only the required sources and ports. Secure example using an explicit security group ID:\n\n```yaml\n- name: Launch EC2 with dedicated security group\n  amazon.aws.ec2:\n    name: my-instance\n    image: ami-0123456789abcdef0\n    instance_type: t3.micro\n    group_id:\n      - sg-0123456789abcdef0\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ec2_instance_using_default_security_group",
   "platform": "Ansible",
   "descriptionID": "cc323109",

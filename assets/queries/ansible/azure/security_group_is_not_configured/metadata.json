@@ -3,7 +3,7 @@
   "queryName": "Security Group is Not Configured",
   "severity": "HIGH",
   "category": "Insecure Configurations",
-  "descriptionText": "Azure Virtual Network subnet must be configured with a Network Security Group, which means the attribute 'security_group' must be defined and not empty",
+  "descriptionText": "A subnet without an associated Network Security Group (NSG) lacks network-level access controls, increasing exposure to unauthorized access and enabling lateral movement between resources. For Ansible `azure_rm_subnet` resources (modules `azure.azcollection.azure_rm_subnet` and `azure_rm_subnet`) the `security_group` or `security_group_name` property must be defined and set to a non-empty value. Resources that omit these properties or set them to null/empty strings will be flagged. Ensure the value references the appropriate NSG (name or ID) for your environment.\n\nSecure configuration example:\n\n```yaml\n- name: Create subnet with NSG\n  azure.azcollection.azure_rm_subnet:\n    resource_group: my-rg\n    virtual_network: my-vnet\n    name: my-subnet\n    address_prefix: 10.0.1.0/24\n    security_group: my-nsg\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/security_group_is_not_configured",
   "platform": "Ansible",
   "descriptionID": "381f57a0",

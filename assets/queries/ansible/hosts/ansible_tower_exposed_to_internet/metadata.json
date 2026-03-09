@@ -3,7 +3,7 @@
   "queryName": "Ansible Tower Exposed To Internet",
   "severity": "MEDIUM",
   "category": "Best Practices",
-  "descriptionText": "Avoid exposing Ansible Tower to the public internet, effectively reducing the potential attack surface of your deployment",
+  "descriptionText": "Ansible Tower hosts must not be assigned public IP addresses because exposing Tower to the public internet increases the risk of unauthorized access and credential compromise of your automation infrastructure. Check the Ansible inventory resource (`ansible_inventory`) for entries under `all.children.tower.hosts` and ensure each host value is a private IP address (RFC1918) or an internal DNS name rather than a public IP. Resources with hosts set to public IPs will be flagged; use private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), internal hostnames, and place Tower behind a VPN, bastion host, or firewall/security-group restrictions to limit exposure.\n\nSecure inventory example with a private IP:\n\n```yaml\nall:\n  children:\n    tower:\n      hosts:\n        tower.internal.example.com:\n          ansible_host: 10.0.1.5\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/hosts/ansible_tower_exposed_to_internet",
   "platform": "Ansible",
   "descriptionID": "657a8b1d",

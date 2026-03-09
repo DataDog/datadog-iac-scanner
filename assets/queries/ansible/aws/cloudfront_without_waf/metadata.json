@@ -3,7 +3,7 @@
   "queryName": "CloudFront Without WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
-  "descriptionText": "All AWS CloudFront distributions should be integrated with the Web Application Firewall (AWS WAF) service",
+  "descriptionText": "CloudFront distributions must be associated with an AWS WAF Web ACL to filter malicious HTTP traffic and reduce the risk of application‑layer attacks such as SQL injection, cross‑site scripting, and automated bot abuse. For Ansible tasks using the `community.aws.cloudfront_distribution` or `cloudfront_distribution` module, the `web_acl_id` property must be defined and set to the ARN of a WAFv2 Web ACL (global scope) to enable protection for the distribution. This rule flags distributions where `web_acl_id` is missing or undefined; ensure you attach a WAFv2 Web ACL ARN that is compatible with CloudFront.\n\nSecure example (Ansible):\n\n```yaml\n- name: create cloudfront distribution with WAF\n  community.aws.cloudfront_distribution:\n    state: present\n    alias:\n      - example.com\n    web_acl_id: arn:aws:wafv2:global:123456789012:regional/webacl/example-web-acl/abcd1234-ef56-7890-gh12-ijklmnopqrst\n    # other required distribution properties...\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudfront_without_waf",
   "platform": "Ansible",
   "descriptionID": "7fd7e5c0",

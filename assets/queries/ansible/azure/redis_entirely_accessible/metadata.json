@@ -3,7 +3,7 @@
   "queryName": "Redis Entirely Accessible",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",
-  "descriptionText": "Firewall rule allowing unrestricted access to Redis from the Internet",
+  "descriptionText": "Allowing a Redis cache firewall rule to use 0.0.0.0 for both start and end addresses grants unrestricted Internet access to the cache, exposing it to unauthorized access, data exposure, and potential remote exploitation. For Ansible tasks using `azure.azcollection.azure_rm_rediscachefirewallrule` or `azure_rm_rediscachefirewallrule`, the `start_ip_address` and `end_ip_address` properties must be defined and must not be set to `\"0.0.0.0\"`; instead specify a limited IP range or a single trusted IP address (set both start and end to the same IP for a single host). Resources where both `start_ip_address` and `end_ip_address` equal `\"0.0.0.0\"` will be flagged; prefer restricting access to known management IPs, using VNet integration, or Azure service endpoints to avoid exposing Redis to the public internet.\n\nSecure example limiting access to a single admin IP:\n\n```yaml\n- name: Allow Redis access from admin IP\n  azure.azcollection.azure_rm_rediscachefirewallrule:\n    resource_group: my-resource-group\n    name: my-redis-cache\n    start_ip_address: 203.0.113.5\n    end_ip_address: 203.0.113.5\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/redis_entirely_accessible",
   "platform": "Ansible",
   "descriptionID": "30a0bdeb",

@@ -3,7 +3,7 @@
   "queryName": "PostgreSQL Log Checkpoints Disabled",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "Make sure that for Postgre SQL Database Server, parameter 'log_checkpoints' is set to 'ON'",
+  "descriptionText": "PostgreSQL's `log_checkpoints` should be enabled to record checkpoint activity, improving visibility into I/O behavior and aiding detection and troubleshooting of performance or recovery issues. In Ansible Azure PostgreSQL configuration resources (`azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration`), when the `name` property is `log_checkpoints` the `value` property must be set to `ON` (case-insensitive). Resources missing this setting or with `value` not equal to `ON` will be flagged as misconfigured.\n\nSecure configuration example:\n\n```yaml\n- name: Ensure log_checkpoints is enabled\n  azure.azcollection.azure_rm_postgresqlconfiguration:\n    resource_group: my-rg\n    server_name: my-pg-server\n    name: log_checkpoints\n    value: \"ON\"\n    state: present\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/postgresql_log_checkpoints_disabled",
   "platform": "Ansible",
   "descriptionID": "ddcfea46",

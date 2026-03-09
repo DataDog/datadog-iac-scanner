@@ -3,7 +3,7 @@
   "queryName": "Privilege Escalation Using Become Plugin",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "In order to perform an action as a different user with the become_user, 'become' must be defined and set to 'true'",
+  "descriptionText": "Playbooks and tasks that specify a target user with `become_user` must also enable privilege escalation so actions execute with the intended elevated privileges; without `become: true`, commands will run as the unprivileged connection user or fail, which can lead to misconfiguration, failed security controls, or unintended access to sensitive resources. Verify the `become` property is defined and set to `true` on `ansible_playbook` and `ansible_task` resources whenever `become_user` is present. Resources where `become_user` is defined but `become` is missing or `false` should be flagged for correction.\n\nSecure examples:\n\n```yaml\n- hosts: servers\n  become: true\n  become_user: root\n  tasks:\n    - name: Perform privileged action\n      command: /usr/bin/some-command\n```\n\n```yaml\n- name: Install package\n  become: true\n  become_user: root\n  apt:\n    name: nginx\n    state: present\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/general/privilege_escalation_using_become_plugin",
   "platform": "Ansible",
   "descriptionID": "11502e38",

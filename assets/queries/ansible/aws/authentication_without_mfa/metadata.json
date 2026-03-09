@@ -3,7 +3,7 @@
   "queryName": "Authentication Without MFA",
   "severity": "LOW",
   "category": "Access Control",
-  "descriptionText": "Users should authenticate with MFA (Multi-factor Authentication) to ensure an extra layer of protection when authenticating",
+  "descriptionText": "Assume-role operations should require multi-factor authentication (MFA) to provide a second authentication factor and reduce the risk that compromised credentials or automated workflows can silently assume privileged roles. In Ansible, tasks using the `community.aws.sts_assume_role` or `sts_assume_role` modules must define both `mfa_serial_number` (the IAM MFA device ARN or serial) and `mfa_token` (the one-time MFA code). Tasks missing either property or with those properties undefined will be flagged. Supply `mfa_token` securely at runtime (for example via Ansible Vault, environment variables, or an interactive prompt) and ensure `mfa_serial_number` references the correct MFA device ARN (e.g., `arn:aws:iam::123456789012:mfa/username`).",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/authentication_without_mfa",
   "platform": "Ansible",
   "descriptionID": "36040ce0",

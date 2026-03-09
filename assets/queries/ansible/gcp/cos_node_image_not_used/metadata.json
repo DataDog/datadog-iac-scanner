@@ -3,7 +3,7 @@
   "queryName": "COS Node Image Not Used",
   "severity": "LOW",
   "category": "Insecure Configurations",
-  "descriptionText": "The node image should be Container-Optimized OS(COS)",
+  "descriptionText": "GKE node pools should use Container-Optimized OS (COS) images because COS is a Google-managed, hardened OS with automatic security updates and tighter integration with GKE, which reduces exposure to unpatched vulnerabilities and kernel-level attack surface. In Ansible, check tasks using the `google.cloud.gcp_container_node_pool` or `gcp_container_node_pool` modules and ensure the `config.image_type` property is defined and starts with `COS` (case-insensitive). Tasks missing `config.image_type` or with values that do not start with `COS` will be flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create GKE node pool with COS image\n  google.cloud.gcp_container_node_pool:\n    name: my-node-pool\n    initial_node_count: 3\n    config:\n      machine_type: e2-medium\n      image_type: COS_CONTAINERD\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cos_node_image_not_used",
   "platform": "Ansible",
   "descriptionID": "1bcc90d0",

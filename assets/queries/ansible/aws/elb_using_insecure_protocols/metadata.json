@@ -3,7 +3,7 @@
   "queryName": "ELB Using Insecure Protocols",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "ELB Predefined or Custom Security Policies must not use insecure protocols, to reduce the risk of the SSL connection between the client and the load balancer being exploited. That means the 'SslPolicy' of 'listeners' must not coincide with any of a predefined list of insecure protocols.",
+  "descriptionText": "Load balancer listeners must use secure TLS policies to prevent protocol downgrade and known cryptographic vulnerabilities that could allow interception or decryption of client traffic. For Ansible ELB modules (`community.aws.elb_network_lb`, `elb_network_lb`, `community.aws.elb_application_lb`, `elb_application_lb`) the `listeners` property must be defined and each listener must include the `SslPolicy` property set to a modern, secure policy (not legacy SSL/TLS protocol policies). This rule flags resources missing `listeners`, listeners missing `SslPolicy`, and any `SslPolicy` equal to the insecure values `Protocol-SSLv2`, `Protocol-SSLv3`, `Protocol-TLSv1`, or `Protocol-TLSv1.1`. Secure example (use a TLS 1.2+ policy):\n\n```yaml\n- name: create application load balancer\n  community.aws.elb_application_lb:\n    name: my-alb\n    listeners:\n      - Protocol: HTTPS\n        Port: 443\n        SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01\n        CertificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abcd-1234\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/elb_using_insecure_protocols",
   "platform": "Ansible",
   "descriptionID": "8a2e6f3b",

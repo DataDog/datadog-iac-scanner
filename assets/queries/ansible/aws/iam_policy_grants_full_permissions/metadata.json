@@ -3,7 +3,7 @@
   "queryName": "IAM Policy Grants Full Permissions",
   "severity": "HIGH",
   "category": "Access Control",
-  "descriptionText": "IAM policy should not grant full permissions to resources from the get-go, instead of granting permissions gradually as necessary.",
+  "descriptionText": "IAM managed policies must not include statements that Allow all actions on all resources, as wildcard Allow statements grant unrestricted privileges, greatly increase blast radius, and raise the risk of privilege escalation or data exposure. For Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules, examine the policy document's `Statement` entries: any statement with `Effect: \"Allow\"` must not have both `Action` and `Resource` set to `\"*\"`. This rule flags tasks where `policy.Statement[].Action == \"*\"` and `policy.Statement[].Resource == \"*\"`, and you should instead scope `Action` to specific API operations and `Resource` to concrete ARNs or apply conditions to limit access.\n\nSecure example with scoped actions and resources:\n\n```yaml\n- name: Create IAM managed policy with scoped permissions\n  community.aws.iam_managed_policy:\n    name: ExampleReadOnlyPolicy\n    policy:\n      Version: \"2012-10-17\"\n      Statement:\n        - Effect: \"Allow\"\n          Action:\n            - \"s3:GetObject\"\n            - \"s3:ListBucket\"\n          Resource:\n            - \"arn:aws:s3:::example-bucket\"\n            - \"arn:aws:s3:::example-bucket/*\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_policy_grants_full_permissions",
   "platform": "Ansible",
   "descriptionID": "97b2a82d",

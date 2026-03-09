@@ -3,7 +3,7 @@
   "queryName": "Security Group Ingress Not Restricted",
   "severity": "HIGH",
   "category": "Networking and Firewall",
-  "descriptionText": "AWS Security Group should restrict ingress access",
+  "descriptionText": "Security groups must not allow unrestricted ingress from the public internet to all protocols and ports because such rules expose instances to network scanning, exploitation, and unauthorized access. In Ansible `amazon.aws.ec2_group` and `ec2_group` resources, each `rules` entry must not combine `from_port: 0` and `to_port: 0` with a non-explicit `proto` and an entire-network CIDR such as `cidr_ip: 0.0.0.0/0` or `cidr_ipv6: ::/0`. The `proto` property must be an explicit protocol (e.g., `tcp`, `udp`, `icmp`, `icmpv6` or numeric values `1`, `6`, `17`, `58`); rules where `proto` is missing or set to a catch-all (for example `-1`/`all`) together with ports `0-0` and an entire-network CIDR will be flagged. To fix this, restrict the CIDR to trusted IP ranges or specify the exact protocol and port range required for the service. \n\nSecure configuration example:\n\n```yaml\n- name: secure security group\n  amazon.aws.ec2_group:\n    name: my_sg\n    description: \"Allow SSH from admin network and HTTPS from anywhere\"\n    rules:\n      - proto: tcp\n        from_port: 22\n        to_port: 22\n        cidr_ip: 203.0.113.0/24\n      - proto: tcp\n        from_port: 443\n        to_port: 443\n        cidr_ip: 0.0.0.0/0\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/security_group_ingress_not_restricted",
   "platform": "Ansible",
   "descriptionID": "7e47368a",

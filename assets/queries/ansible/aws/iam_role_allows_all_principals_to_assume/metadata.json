@@ -3,7 +3,7 @@
   "queryName": "IAM Role Allows All Principals To Assume",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "IAM role allows all services or principals to assume it",
+  "descriptionText": "Specifying the account root or an entire AWS account as a principal (ARNs that end with \":root\") grants every identity in that account the ability to assume the role or act as that principal, increasing the risk of privilege escalation, lateral movement, and unauthorized access if any identity is compromised. This rule checks Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules and flags policy statements where `policy.Statement[].Principal.AWS` contains `:root`. Principal values must be explicit and least-privileged—use specific IAM role or user ARNs or service principals instead of account-root ARNs (or wildcards); resources with `Principal.AWS` containing `:root` will be flagged. Secure example with an explicit principal:\n\n```json\n{\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"AWS\": \"arn:aws:iam::123456789012:role/SpecificRole\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ],\n  \"Version\": \"2012-10-17\"\n}\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_role_allows_all_principals_to_assume",
   "platform": "Ansible",
   "descriptionID": "58219ae0",

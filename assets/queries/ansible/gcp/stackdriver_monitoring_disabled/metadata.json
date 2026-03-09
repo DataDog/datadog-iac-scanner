@@ -3,7 +3,7 @@
   "queryName": "Stackdriver Monitoring Disabled",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "Kubernetes Engine Clusters must have Stackdriver Monitoring enabled, which means the attribute 'monitoring_service' must be defined and different than 'none'",
+  "descriptionText": "GKE clusters must have Cloud Monitoring (Stackdriver) enabled to provide observability and support timely incident detection and response; disabling monitoring removes metrics and logs needed for alerting, troubleshooting, and forensic analysis. For Ansible resources using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `monitoring_service` property must be defined and must not be set to `'none'`. Resources that omit `monitoring_service` or explicitly set `monitoring_service: 'none'` will be flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create GKE cluster with monitoring enabled\n  google.cloud.gcp_container_cluster:\n    name: my-cluster\n    monitoring_service: monitoring.googleapis.com/kubernetes\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/stackdriver_monitoring_disabled",
   "platform": "Ansible",
   "descriptionID": "212e4955",

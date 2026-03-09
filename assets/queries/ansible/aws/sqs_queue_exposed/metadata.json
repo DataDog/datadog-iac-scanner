@@ -3,7 +3,7 @@
   "queryName": "SQS Queue Exposed",
   "severity": "HIGH",
   "category": "Access Control",
-  "descriptionText": "Checks if the SQS Queue is exposed",
+  "descriptionText": "Granting the wildcard principal ('*') Allow access in an SQS queue policy makes the queue publicly accessible, allowing unauthorized users or principals to send, receive, or modify messages and increasing the risk of data exposure and message injection. For Ansible SQS tasks (modules `community.aws.sqs_queue` or `sqs_queue`), inspect the `policy` property and ensure no policy Statement has `\"Effect\": \"Allow\"` with `\"Principal\": \"*\"`; statements must specify explicit principals (for example AWS account ARNs) or include restrictive conditions. Resources with policy statements where `Principal == \"*\" ` and `Effect == \"Allow\"` will be flagged; replace wildcard principals with explicit ARNs or add conditions such as `aws:SourceAccount` or `aws:SourceVpce` to restrict access.\n\nSecure example (Ansible task with explicit principal):\n\n```yaml\n- name: Create SQS queue with restricted policy\n  community.aws.sqs_queue:\n    name: my-queue\n    policy: |\n      {\n        \"Version\": \"2012-10-17\",\n        \"Statement\": [\n          {\n            \"Sid\": \"AllowSpecificAccount\",\n            \"Effect\": \"Allow\",\n            \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:root\" },\n            \"Action\": [\"SQS:SendMessage\", \"SQS:ReceiveMessage\"],\n            \"Resource\": \"arn:aws:sqs:us-east-1:123456789012:my-queue\"\n          }\n        ]\n      }\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/sqs_queue_exposed",
   "platform": "Ansible",
   "descriptionID": "a835b707",

@@ -3,7 +3,7 @@
   "queryName": "S3 Bucket with Unsecured CORS Rule",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "If the CORS (Cross-Origin Resource Sharing) rule is defined in an S3 bucket, it should be secure",
+  "descriptionText": "S3 CORS rules must restrict allowed origins, methods, and headers to prevent unintended cross-origin access and data exfiltration; overly permissive CORS (wildcard origins, all methods, or all headers) can allow arbitrary web pages to interact with or read bucket resources. For Ansible resources `community.aws.aws_s3_cors` and `aws_s3_cors`, inspect each `rules` entry: `allowed_origins` should specify specific trusted origins (avoid `\"*\"` or unnecessarily broad lists), `allowed_methods` must not be `[\"*\"]` and should include only the HTTP verbs required by your application, and `allowed_headers` must not be `[\"*\"]` and should be limited to the headers actually needed. Rules with wildcard `allowed_methods` or `allowed_headers`, or with wildcard or overly broad/multiple origins will be flagged; prefer a single explicit origin or a narrowly-scoped set and the minimal set of methods and headers.\n\nSecure example:\n\n```yaml\n- name: Configure S3 CORS\n  community.aws.aws_s3_cors:\n    name: my-bucket\n    rules:\n      - allowed_origins:\n          - https://app.example.com\n        allowed_methods:\n          - GET\n          - HEAD\n        allowed_headers:\n          - Authorization\n          - Content-Type\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_with_unsecured_cors_rule",
   "platform": "Ansible",
   "descriptionID": "c700f52b",

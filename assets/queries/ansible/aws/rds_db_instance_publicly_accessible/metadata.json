@@ -3,7 +3,7 @@
   "queryName": "RDS DB Instance Publicly Accessible",
   "severity": "CRITICAL",
   "category": "Insecure Configurations",
-  "descriptionText": "RDS must not be defined with public interface, which means the field 'publicly_accessible' should not be set to 'true' (default is 'false').",
+  "descriptionText": "RDS instances must not be configured as publicly accessible because exposing a database to the public internet increases the risk of unauthorized access and enables brute-force or credential‑stuffing attacks. In Ansible RDS tasks using the community.aws.rds_instance, rds_instance, community.aws.rds, or rds modules, ensure the `publicly_accessible` property is set to `false`; tasks with `publicly_accessible: true` will be flagged. If the property is omitted the modules default to `false`, but explicitly setting it to `false` and placing instances in private subnets with restrictive security groups provides defense-in-depth.\n\nSecure example:\n\n```yaml\n- name: Create RDS instance (private)\n  community.aws.rds_instance:\n    db_instance_identifier: mydb\n    engine: postgres\n    instance_class: db.t3.medium\n    publicly_accessible: false\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/rds_db_instance_publicly_accessible",
   "platform": "Ansible",
   "descriptionID": "e1b53fb6",

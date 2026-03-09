@@ -3,7 +3,7 @@
   "queryName": "IP Aliasing Disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "Kubernetes Clusters must be created with Alias IP ranges enabled, which means the attribute 'ip_allocation_policy' must be defined and the subattribute 'use_ip_aliases' must be set to 'yes'.",
+  "descriptionText": "Kubernetes clusters must enable Alias IP ranges so pods use VPC-native networking, which prevents pod IP address conflicts and enables VPC features such as network policy enforcement and private IP addressing. For Ansible-managed GKE clusters using the `google.cloud.gcp_container_cluster` (or `gcp_container_cluster`) module, the `ip_allocation_policy` property must be defined and its `use_ip_aliases` subproperty must be set to true (Ansible: `yes`). Resources missing `ip_allocation_policy`, missing `use_ip_aliases`, or with `use_ip_aliases` set to false will be flagged. Secure configuration example:\n\n```yaml\n- name: create gke cluster with alias IPs\n  google.cloud.gcp_container_cluster:\n    name: my-cluster\n    location: us-central1\n    ip_allocation_policy:\n      use_ip_aliases: yes\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/ip_aliasing_disabled",
   "platform": "Ansible",
   "descriptionID": "a4ad3884",

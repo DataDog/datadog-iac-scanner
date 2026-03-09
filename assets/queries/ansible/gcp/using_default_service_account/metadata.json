@@ -3,7 +3,7 @@
   "queryName": "Using Default Service Account",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "Instances must not be configured to use the Default Service Account, that has full access to all Cloud APIs, which means the attribute 'service_account_email' must be defined. Additionally, it must not be empty and must also not be a default Google Compute Engine service account.",
+  "descriptionText": "Compute instances must not use the default Google Compute Engine service account because that account often has broad Cloud API privileges and can lead to unintended privilege escalation or overly permissive access. For Ansible tasks using the `google.cloud.gcp_compute_instance` or `gcp_compute_instance` module with `auth_kind: serviceaccount`, the `service_account_email` property must be defined, must be a non-empty string containing an `@`, and must not reference a default Compute Engine service account (values containing `@developer.gserviceaccount.com`). Resources missing `service_account_email`, with an empty value, lacking an `@` character, or using a default developer service account will be flagged.\n\nSecure example:\n\n```yaml\n- name: Create instance with explicit service account\n  google.cloud.gcp_compute_instance:\n    name: my-instance\n    auth_kind: serviceaccount\n    service_account_email: my-sa@my-project.iam.gserviceaccount.com\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/using_default_service_account",
   "platform": "Ansible",
   "descriptionID": "a5896260",

@@ -3,7 +3,7 @@
   "queryName": "Public Port Wide",
   "severity": "HIGH",
   "category": "Networking and Firewall",
-  "descriptionText": "AWS Security Group should not have public port wide",
+  "descriptionText": "Security groups must not allow a wide port range to the entire internet because exposing multiple ports publicly increases attack surface and enables broad port scanning, automated exploitation, and easier lateral movement. For Ansible `amazon.aws.ec2_group` or `ec2_group` resources, check `rules[].from_port` and `rules[].to_port` and ensure rules where `to_port - from_port > 0` are not paired with `cidr_ip` equal to `0.0.0.0/0` or `cidr_ipv6` equal to `::/0`. Rules that require external access should restrict CIDR ranges to trusted networks or be split into specific single-port entries; any rule defining a port range together with an entire-network CIDR will be flagged. Secure example restricting access to a single port and a specific CIDR:\n\n```yaml\nmy_sg:\n  name: my-security-group\n  rules:\n    - proto: tcp\n      from_port: 22\n      to_port: 22\n      cidr_ip: 203.0.113.5/32\n    - proto: tcp\n      from_port: 443\n      to_port: 443\n      cidr_ip: 198.51.100.0/24\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/public_port_wide",
   "platform": "Ansible",
   "descriptionID": "be17d13e",

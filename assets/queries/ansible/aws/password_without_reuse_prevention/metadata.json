@@ -3,7 +3,7 @@
   "queryName": "Password Without Reuse Prevention",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "Password policy `password_reuse_prevention` doesn't exist or is equal to 0",
+  "descriptionText": "IAM password policies must prevent reuse of previous passwords to reduce the risk of account compromise from credential stuffing and replay of older credentials. For Ansible tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules, define one of the reuse-prevention properties (`password_reuse_prevent`, `pw_reuse_prevent`, or `prevent_reuse`) and set it to a positive integer greater than 0 to specify how many prior passwords are disallowed. This rule flags tasks where none of these properties are present or where the property is explicitly set to `0`. Secure example (prevents reuse of the last 5 passwords):\n\n```yaml\n- name: Enforce IAM password reuse prevention\n  community.aws.iam_password_policy:\n    password_reuse_prevent: 5\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/password_without_reuse_prevention",
   "platform": "Ansible",
   "descriptionID": "ad12d750",
