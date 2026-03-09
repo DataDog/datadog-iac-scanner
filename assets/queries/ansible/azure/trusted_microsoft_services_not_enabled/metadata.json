@@ -3,7 +3,7 @@
   "queryName": "Trusted Microsoft Services Not Enabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
-  "descriptionText": "Trusted Microsoft Services should be enabled for Storage Account access",
+  "descriptionText": "When a Storage Account's network access is restricted (network_acls.default_action = Deny), Trusted Microsoft Services must be allowed to bypass the network rules so platform features such as Azure Backup, diagnostics/monitoring, and replication can access the account; without this, backups, telemetry, and other managed operations can fail, impacting data protection and operational visibility. In Ansible `azure_rm_storageaccount` or `azure.azcollection.azure_rm_storageaccount` resources, ensure the `network_acls.bypass` property includes the value `AzureServices` (it may be a comma-separated list, e.g., `AzureServices,Logging`) whenever `network_acls.default_action` is `Deny`. Resources that omit `network_acls.bypass` or whose `bypass` value does not contain `AzureServices` will be flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create storage account with AzureServices bypass\n  azure_rm_storageaccount:\n    resource_group: my-rg\n    name: mystorageacct\n    location: eastus\n    account_type: Standard_LRS\n    network_acls:\n      default_action: Deny\n      bypass: AzureServices\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/trusted_microsoft_services_not_enabled",
   "platform": "Ansible",
   "descriptionID": "e86db9c1",

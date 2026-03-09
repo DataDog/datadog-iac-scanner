@@ -3,7 +3,7 @@
   "queryName": "Privilege Escalation Using Become Plugin In Defaults",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "In order to perform an action as a different user with the become_user, 'become' must be defined and set to 'true'",
+  "descriptionText": "Specifying a `become_user` without enabling privilege escalation prevents Ansible from elevating privileges, so tasks intended to run as that user will execute as the invoking user, which can cause configuration changes to be applied with incorrect permissions or fail to run and lead to insecure or inconsistent system state. In the Ansible defaults group, when `defaults.become_user` is defined the `defaults.become` property must be present and set to `true`. This rule flags defaults entries where `become_user` exists but `become` is missing or set to `false`.\n\nSecure configuration example:\n\n```yaml\ndefaults:\n  become: true\n  become_user: root\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/config/privilege_escalation_using_become_plugin_in_defaults",
   "platform": "Ansible",
   "descriptionID": "00396668",

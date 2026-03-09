@@ -3,7 +3,7 @@
   "queryName": "Allow Unsafe Lookups Enabled In Defaults",
   "severity": "HIGH",
   "category": "Insecure Configurations",
-  "descriptionText": "When enabled, this option allows lookup plugins to return data that is not marked 'unsafe'.",
+  "descriptionText": "The Ansible `allow_unsafe_lookups` option must be disabled because when enabled lookup plugins can return values that bypass safety markers, which can expose sensitive data or cause playbooks to process untrusted input. Check the `defaults.allow_unsafe_lookups` property in your Ansible configuration and ensure it is defined and set to `False`; configurations with this property set to `True` will be flagged. Set this option in your `ansible.cfg` under the `[defaults]` section as shown:\n\n```ini\n[defaults]\nallow_unsafe_lookups = False\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/config/allow_unsafe_lookups_enabled_in_defaults",
   "platform": "Ansible",
   "descriptionID": "0d491461",

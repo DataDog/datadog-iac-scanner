@@ -3,7 +3,7 @@
   "queryName": "Misconfigured Password Policy Expiration",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "No password expiration policy",
+  "descriptionText": "IAM account password policies must enforce regular password expiration to limit the window of exposure for compromised or leaked credentials and to reduce the risk of long-lived unauthorized access. In Ansible, tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules must define `pw_max_age` or `password_max_age` with a value of 90 days or fewer (no more than 90). Resources that omit both properties or set either property to a value greater than 90 will be flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Enforce IAM password expiration\n  community.aws.iam_password_policy:\n    password_max_age: 90\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/misconfigured_password_policy_expiration",
   "platform": "Ansible",
   "descriptionID": "80db60d5",

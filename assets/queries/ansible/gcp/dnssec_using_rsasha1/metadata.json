@@ -3,7 +3,7 @@
   "queryName": "DNSSEC Using RSASHA1",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "DNSSEC should not use the RSASHA1 algorithm",
+  "descriptionText": "Using the RSASHA1 algorithm for DNSSEC weakens DNS integrity because SHA-1 is deprecated and vulnerable to collision attacks, which increases the risk of forged or tampered DNS responses. For Ansible-managed Google Cloud DNS zones (modules `google.cloud.gcp_dns_managed_zone` and `gcp_dns_managed_zone`), the `dnssec_config.defaultKeySpecs.algorithm` property must not be set to `rsasha1` (checked case-insensitively). Resources with `dnssec_config.defaultKeySpecs.algorithm = \"rsasha1\"` will be flagged; update the property to a stronger algorithm such as `RSASHA256`, `RSASHA512`, or an ECDSA option like `ECDSAP256SHA256`. Secure configuration example:\n\n```yaml\n- name: Create managed zone with secure DNSSEC algorithm\n  google.cloud.gcp_dns_managed_zone:\n    name: my-zone\n    dnssec_config:\n      defaultKeySpecs:\n        - algorithm: RSASHA256\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/dnssec_using_rsasha1",
   "platform": "Ansible",
   "descriptionID": "e6a4b99b",

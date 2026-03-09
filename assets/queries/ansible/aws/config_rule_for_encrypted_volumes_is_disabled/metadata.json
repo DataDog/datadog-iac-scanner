@@ -3,7 +3,7 @@
   "queryName": "Config Rule For Encrypted Volumes Disabled",
   "severity": "HIGH",
   "category": "Encryption",
-  "descriptionText": "Check if AWS config rules do not identify Encrypted Volumes as a source.",
+  "descriptionText": "Missing an AWS Config rule for encrypted volumes prevents automated detection of unencrypted block storage and snapshots, leaving data at rest vulnerable to exposure if storage is compromised. For Ansible-managed resources you must define an `aws_config_rule` (module `community.aws.aws_config_rule` or `aws_config_rule`) whose `source.identifier` is set to `ENCRYPTED_VOLUMES`. The check is case-insensitive; tasks that omit this aws_config_rule or set `source.identifier` to a different value will be flagged.\n\nSecure Ansible example:\n\n```yaml\n- name: Ensure AWS Config rule for encrypted volumes exists\n  community.aws.aws_config_rule:\n    name: encrypted-volumes-rule\n    source:\n      owner: AWS\n      identifier: ENCRYPTED_VOLUMES\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/config_rule_for_encrypted_volumes_is_disabled",
   "platform": "Ansible",
   "descriptionID": "5b434d3f",

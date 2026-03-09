@@ -3,7 +3,7 @@
   "queryName": "IAM Access Key Is Exposed",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "Check if IAM Access Key is active for some user besides 'root'",
+  "descriptionText": "Active, long‑lived access keys for non‑root IAM users increase the risk of credential compromise and unauthorized API access because leaked keys can be used to impersonate users and perform privileged actions. This rule inspects Ansible tasks that use the `community.aws.iam` or `iam` modules and flags tasks where the `access_key_state` property is set to `active` while the `name` property does not contain `root`. Resources with `access_key_state='active'` for non‑root users will be flagged; remediate by removing or setting unused keys to `inactive`, rotating keys frequently, or replacing long‑lived keys with IAM roles and temporary credentials. The check is case‑insensitive and treats any username containing the substring `root` as the root account exception.",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_access_key_is_exposed",
   "platform": "Ansible",
   "descriptionID": "d8bc01a5",

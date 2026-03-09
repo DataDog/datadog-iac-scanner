@@ -3,7 +3,7 @@
   "queryName": "Stack Retention Disabled",
   "severity": "MEDIUM",
   "category": "Backup",
-  "descriptionText": "Make sure that retain_stack is enabled to keep the Stack and it's associated resources during resource destruction",
+  "descriptionText": "CloudFormation StackSet deletions must not purge stacks and their associated resources because purging can irreversibly delete resources and cause data loss or service interruption. For Ansible tasks using the `community.aws.cloudformation_stack_set` module, the `purge_stacks` property must be explicitly defined and set to the boolean value `false`. Resources missing `purge_stacks` or with `purge_stacks: true` will be flagged.\n\n```yaml\n- name: Create or update StackSet without purging stacks on deletion\n  community.aws.cloudformation_stack_set:\n    name: my-stack-set\n    template: /path/to/template.yaml\n    parameters:\n      Param1: value\n    purge_stacks: false\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/stack_retention_disabled",
   "platform": "Ansible",
   "descriptionID": "78d78b74",

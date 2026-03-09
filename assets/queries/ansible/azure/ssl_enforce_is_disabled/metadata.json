@@ -3,7 +3,7 @@
   "queryName": "SSL Enforce Disabled",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "Make sure that for PosgreSQL, the 'Enforce SSL connection' is set to 'ENABLED'",
+  "descriptionText": "PostgreSQL servers must enforce SSL connections to ensure client‑server traffic is encrypted and to prevent interception or credential exposure during transit. For Ansible playbooks using the azure.azcollection.azure_rm_postgresqlserver or azure_rm_postgresqlserver modules, the `enforce_ssl` parameter must be defined and set to true (Ansible `yes`/true). Tasks that omit `enforce_ssl` (it defaults to false) or set it to false will be flagged as insecure.\n\nSecure configuration example:\n\n```yaml\n- name: Create PostgreSQL server with SSL enforced\n  azure.azcollection.azure_rm_postgresqlserver:\n    name: mypgserver\n    resource_group: my-rg\n    location: eastus\n    enforce_ssl: yes\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/ssl_enforce_is_disabled",
   "platform": "Ansible",
   "descriptionID": "b4bcb2d1",

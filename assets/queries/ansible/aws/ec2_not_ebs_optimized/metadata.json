@@ -3,7 +3,7 @@
   "queryName": "EC2 Not EBS Optimized",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "It's considered a best practice for an EC2 instance to use an EBS optimized instance. This provides the best performance for your EBS volumes by minimizing contention between Amazon EBS I/O and other traffic from your instance",
+  "descriptionText": "EC2 instances must be EBS-optimized to ensure consistent, high-performance EBS I/O and to reduce contention between EBS traffic and other instance operations. For Ansible EC2 tasks using the amazon.aws.ec2 or ec2 module, the `ebs_optimized` property must be defined and set to `true` for instance types that are not EBS-optimized by default. If `instance_type` is omitted the default `t2.micro` is assumed; instance types that are EBS-optimized by default are exempt and will not be flagged. Tasks missing the `ebs_optimized` property or with `ebs_optimized: false` will be reported.\n\nSecure configuration example:\n\n```yaml\n- name: Launch EBS-optimized EC2\n  amazon.aws.ec2:\n    instance_type: m5.large\n    image: ami-0123456789abcdef0\n    ebs_optimized: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ec2_not_ebs_optimized",
   "platform": "Ansible",
   "descriptionID": "a99c1fe0",

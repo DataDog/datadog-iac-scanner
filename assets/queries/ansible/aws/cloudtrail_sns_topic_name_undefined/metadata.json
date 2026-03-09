@@ -3,7 +3,7 @@
   "queryName": "CloudTrail SNS Topic Name Undefined",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "Check if SNS topic name is set for CloudTrail",
+  "descriptionText": "CloudTrail should be configured to publish notifications to an SNS topic so important trail events and log delivery issues can trigger alerts and automated responses; without an SNS target you may miss timely notifications about suspicious activity or failures. For Ansible CloudTrail tasks (modules `community.aws.cloudtrail` or `cloudtrail`) the `sns_topic_name` property must be defined and non-null. Tasks missing `sns_topic_name` or with it set to `null`/empty will be flagged; ensure the value references an existing SNS topic (or create one in the same playbook) so CloudTrail can publish notifications.\n\nSecure example:\n\n```yaml\n- name: Create CloudTrail with SNS notifications\n  community.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-cloudtrail-bucket\n    sns_topic_name: my-cloudtrail-topic\n    is_multi_region_trail: true\n    include_global_service_events: true\n    state: present\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudtrail_sns_topic_name_undefined",
   "platform": "Ansible",
   "descriptionID": "de97fa1a",

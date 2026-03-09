@@ -3,7 +3,7 @@
   "queryName": "ECR Image Tag Not Immutable",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "ECR should have an image tag be immutable. This prevents image tags from being overwritten.",
+  "descriptionText": "ECR repositories should enforce immutable image tags to prevent tags from being overwritten. Allowing mutable tags can enable accidental or malicious replacement of images, facilitating supply-chain tampering or execution of unexpected code. For Ansible tasks using the `community.aws.ecs_ecr` or `ecs_ecr` modules, the `image_tag_mutability` property must be defined and set to the literal string `\"immutable\"`; resources missing this property or with any other value will be flagged.\n\nSecure Ansible task example:\n\n```yaml\n- name: Create ECR repository with immutable tags\n  community.aws.ecs_ecr:\n    name: my-repo\n    image_tag_mutability: immutable\n    state: present\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ecr_image_tag_not_immutable",
   "platform": "Ansible",
   "descriptionID": "a9bdce24",

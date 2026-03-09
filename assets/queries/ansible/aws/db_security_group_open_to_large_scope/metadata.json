@@ -3,7 +3,7 @@
   "queryName": "DB Security Group Open To Large Scope",
   "severity": "HIGH",
   "category": "Networking and Firewall",
-  "descriptionText": "The IP address in a DB Security Group must not have more than 256 hosts.",
+  "descriptionText": "Security group rules that use CIDR blocks containing 256 or more IP addresses broaden the attack surface and make unauthorized access or lateral movement easier. For Ansible EC2 security groups (modules `amazon.aws.ec2_group` and `ec2_group`), ensure each rule's `cidr_ip` is a CIDR with a prefix length greater than 24 (for example `/25`–`/32`) so the subnet contains fewer than 256 addresses. This rule flags any task where `rules[].cidr_ip` has a prefix length of 24 or less (for example `10.0.0.0/24`, `10.0.0.0/16`, or `0.0.0.0/0`). If broader access is required, prefer tighter subnetting, explicit host IPs, or using security-group references instead of large CIDR ranges.\n\nSecure Ansible example with a narrow CIDR (/32 single host):\n\n```yaml\n- name: create restrictive security group\n  amazon.aws.ec2_group:\n    name: my-sg\n    rules:\n      - proto: tcp\n        from_port: 22\n        to_port: 22\n        cidr_ip: 10.0.0.5/32\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/db_security_group_open_to_large_scope",
   "platform": "Ansible",
   "descriptionID": "c7f9cb9f",

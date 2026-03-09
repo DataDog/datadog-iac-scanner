@@ -3,7 +3,7 @@
   "queryName": "Redshift Publicly Accessible",
   "severity": "HIGH",
   "category": "Insecure Configurations",
-  "descriptionText": "AWS Redshift Clusters must not be publicly accessible. Check if 'publicly_accessible' field is true (default is false)",
+  "descriptionText": "Redshift clusters must not be publicly accessible because exposing cluster endpoints to the internet increases the risk of unauthorized access, data exfiltration, and brute-force attacks. For Ansible, check tasks using the `redshift` or `community.aws.redshift` modules: the `publicly_accessible` parameter must be set to `false`. This rule flags any task where `publicly_accessible` is `true`; explicitly set `publicly_accessible: false` in your task to ensure the cluster is not reachable from the public internet (relying on implicit defaults may be ambiguous across versions).\n\nSecure configuration example:\n\n```yaml\n- name: Create Redshift cluster (not publicly accessible)\n  community.aws.redshift:\n    cluster_identifier: my-cluster\n    node_type: dc2.large\n    number_of_nodes: 2\n    publicly_accessible: false\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/redshift_publicly_accessible",
   "platform": "Ansible",
   "descriptionID": "ffdc02cc",

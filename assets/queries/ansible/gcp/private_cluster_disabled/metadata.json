@@ -3,7 +3,7 @@
   "queryName": "Private Cluster Disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "Kubernetes Clusters must be created with Private Clusters enabled, meaning the 'private_cluster_config' must be defined and the attributes 'enable_private_endpoint' and 'enable_private_nodes' must be true.",
+  "descriptionText": "GKE clusters must be configured as private to avoid exposing the control plane endpoint and worker nodes to the public internet, which increases the risk of unauthorized access and lateral movement. For Ansible resources using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `private_cluster_config` property must be defined and its `enable_private_endpoint` and `enable_private_nodes` attributes set to `true`. Resources missing `private_cluster_config`, missing either attribute, or with either attribute set to `false` will be flagged.\n\nSecure Ansible configuration example:\n\n```yaml\n- name: Create private GKE cluster\n  google.cloud.gcp_container_cluster:\n    name: my-cluster\n    location: us-central1\n    private_cluster_config:\n      enable_private_nodes: true\n      enable_private_endpoint: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/private_cluster_disabled",
   "platform": "Ansible",
   "descriptionID": "7b4c3b32",

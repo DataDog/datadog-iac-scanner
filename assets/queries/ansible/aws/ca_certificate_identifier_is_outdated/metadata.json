@@ -3,7 +3,7 @@
   "queryName": "CA Certificate Identifier Is Outdated",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "The CA certificate Identifier must be 'rds-ca-2019'.",
+  "descriptionText": "RDS instances must specify a CA certificate identifier so the database uses a known AWS CA for TLS connections and to avoid broken or insecure certificate chains during CA rotations. For Ansible RDS resources (modules `community.aws.rds_instance` and `rds_instance`) the `ca_certificate_identifier` property must be defined and set to `rds-ca-2019`. Resources missing this property or specifying a different value will be flagged; update the value if AWS publishes a newer CA identifier.\n\nSecure Ansible task example:\n\n```yaml\n- name: create RDS instance with CA\n  community.aws.rds_instance:\n    db_instance_identifier: my-db\n    engine: mysql\n    instance_class: db.t3.medium\n    allocated_storage: 20\n    username: admin\n    password: secret\n    ca_certificate_identifier: rds-ca-2019\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ca_certificate_identifier_is_outdated",
   "platform": "Ansible",
   "descriptionID": "d92aa922",

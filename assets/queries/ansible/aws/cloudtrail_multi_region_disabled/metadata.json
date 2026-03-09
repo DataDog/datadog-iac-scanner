@@ -3,7 +3,7 @@
   "queryName": "CloudTrail Multi Region Disabled",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "CloudTrail multi region should be enabled, which means attribute 'is_multi_region_trail' should be set to true",
+  "descriptionText": "CloudTrail must be configured as a multi-region trail so that API activity across all AWS regions is captured for comprehensive auditing and timely incident response; without multi-region logging, cross-region activity can be missed, hindering detection, forensics, and compliance. For Ansible CloudTrail resources (modules `community.aws.cloudtrail` or `cloudtrail`) the `is_multi_region_trail` property must be defined and set to `true`. Resources that omit `is_multi_region_trail` or have `is_multi_region_trail: false` will be flagged. Secure example (Ansible):\n\n```yaml\n- name: Create multi-region CloudTrail\n  community.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-trail-bucket\n    is_multi_region_trail: true\n    state: present\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudtrail_multi_region_disabled",
   "platform": "Ansible",
   "descriptionID": "8c4873bf",

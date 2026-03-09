@@ -3,7 +3,7 @@
   "queryName": "S3 Bucket Logging Disabled",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "Server Access Logging should be enabled on S3 Buckets so that all changes are logged and trackable",
+  "descriptionText": "Enabling botocore endpoint debug logs for S3 operations helps capture detailed client request and response traces that are valuable for detecting suspicious activity and supporting incident investigation and troubleshooting. For Ansible tasks using the `amazon.aws.s3_bucket` or `s3_bucket` modules, the `debug_botocore_endpoint_logs` property must be defined and set to `true`; tasks where this property is missing or set to `false` will be flagged. Be aware that debug logs can contain sensitive request data, so ensure they are collected, transmitted, and stored securely with appropriate access controls and retention policies.\n\nSecure configuration example:\n\n```yaml\n- name: Create S3 bucket with botocore endpoint debug logs enabled\n  amazon.aws.s3_bucket:\n    name: my-bucket\n    state: present\n    debug_botocore_endpoint_logs: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_logging_disabled",
   "platform": "Ansible",
   "descriptionID": "2b508aee",

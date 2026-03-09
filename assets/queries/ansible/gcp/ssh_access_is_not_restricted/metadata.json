@@ -3,7 +3,7 @@
   "queryName": "SSH Access Is Not Restricted",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
-  "descriptionText": "Google Firewall should not allow SSH access (port 22) from the Internet (public CIDR block) to ensure the principle of least privileges",
+  "descriptionText": "Allowing SSH (port 22) from the public Internet exposes instances to brute‑force attacks and unauthorized access, which can lead to credential compromise and lateral movement across your network. In Ansible tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` modules, this rule flags ingress rules where `source_ranges` includes `0.0.0.0/0` or `::/0` and an `allowed` entry specifies port `22` (e.g., `allowed[].ip_protocol='tcp'` and `allowed[].ports` contains `22`). Restrict SSH access to specific trusted CIDR ranges, place SSH behind a bastion host or VPN, or use identity‑aware access methods instead of allowing unrestricted Internet access.  \n\nSecure example restricting SSH to a single admin IP:\n\n```yaml\n- name: allow-ssh-from-admin\n  google.cloud.gcp_compute_firewall:\n    name: allow-ssh-from-admin\n    network: default\n    direction: INGRESS\n    source_ranges:\n      - 203.0.113.5/32\n    allowed:\n      - ip_protocol: tcp\n        ports: ['22']\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/ssh_access_is_not_restricted",
   "platform": "Ansible",
   "descriptionID": "1b0564ad",

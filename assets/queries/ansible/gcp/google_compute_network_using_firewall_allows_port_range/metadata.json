@@ -3,7 +3,7 @@
   "queryName": "Google Compute Network Using Firewall Rule that Allows Port Range",
   "severity": "LOW",
   "category": "Networking and Firewall",
-  "descriptionText": "Google Compute Network should not use a firewall rule that allows port range",
+  "descriptionText": "Compute network firewall rules must not permit ingress using broad port ranges because ranges increase attack surface, make it harder to apply least privilege, and can unintentionally expose multiple services. This check inspects Ansible tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` modules and flags ingress rules where `allowed[].ports[]` entries are numeric ranges matching the `start-end` pattern (for example, `\"8000-9000\"`); the rule does not match the literal `\"0-65535\"`. The check applies when the firewall's `network` references a compute network task (the firewall `network` equals the compute network's registered name); fix by specifying explicit single ports or a minimal list of ports and by scoping ingress with specific source ranges or target tags.\n\nSecure example with explicit single ports:\n\n```yaml\n- name: Create restricted firewall rule\n  google.cloud.gcp_compute_firewall:\n    name: allow-ssh\n    network: \"{{ my_network.registered_name }}\"\n    direction: INGRESS\n    allowed:\n      - IPProtocol: tcp\n        ports:\n          - \"22\"\n    sourceRanges:\n      - \"203.0.113.0/24\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/google_compute_network_using_firewall_allows_port_range",
   "platform": "Ansible",
   "descriptionID": "2b7880b0",

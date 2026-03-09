@@ -3,7 +3,7 @@
   "queryName": "Instance Uses Metadata Service IMDSv1",
   "severity": "LOW",
   "category": "Insecure Configurations",
-  "descriptionText": "Instance metadata can be accessed with both IMDSv1 or IMDSv2. Although, IMDSv2 service is a session-oriented service, granting additional protection against exposure of metadata information. That version should be used instead of IMDSv1 in order to mitigate those situations.",
+  "descriptionText": "The EC2 instance metadata service should require IMDSv2 session tokens to reduce the risk of metadata and credential exposure via SSRF or from compromised instances. For Ansible-managed EC2 resources (`amazon.aws.ec2_instance`, `community.aws.ec2_instance`, `community.aws.autoscaling_launch_config`, `community.aws.ec2_lc`), the `metadata_options.http_tokens` property must be set to `required` to enforce IMDSv2. Resources missing `metadata_options`, missing `metadata_options.http_tokens`, or where `http_tokens` is not `required` will be flagged as insecure.\n\nSecure configuration example:\n\n```yaml\n- name: Launch EC2 instance with IMDSv2 required\n  amazon.aws.ec2_instance:\n    name: my-instance\n    image_id: ami-0123456789abcdef0\n    instance_type: t3.micro\n    metadata_options:\n      http_tokens: required\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/instance_uses_metadata_service_imdsv1",
   "platform": "Ansible",
   "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_instance_module.html",

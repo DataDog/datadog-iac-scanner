@@ -3,7 +3,7 @@
   "queryName": "AKS Monitoring Logging Disabled",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "Azure Container Service (AKS) instance should have logging enabled to Azure Monitoring",
+  "descriptionText": "AKS clusters must have the monitoring addon enabled and configured to send logs and metrics to an Azure Log Analytics workspace so that cluster activity, security events, and configuration changes are visible for detection, alerting, and incident investigation. For Ansible tasks using `azure_rm_aks` or `azure.azcollection.azure_rm_aks`, the `addon.monitoring` block must be present with `enabled` set to an Ansible-true value and `log_analytics_workspace_resource_id` set to the workspace resource ID. Tasks missing the `addon` or `addon.monitoring` blocks, missing either `enabled` or the workspace ID, or with `enabled` not set to an Ansible-true value (for example `yes`, `true`, `on`, or `1`) will be flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create AKS cluster with monitoring enabled\n  azure_rm_aks:\n    name: myAKS\n    resource_group: myRg\n    addon:\n      monitoring:\n        enabled: yes\n        log_analytics_workspace_resource_id: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myRg/providers/Microsoft.OperationalInsights/workspaces/myWorkspace\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/aks_monitoring_logging_disabled",
   "platform": "Ansible",
   "descriptionID": "6d8d362e",

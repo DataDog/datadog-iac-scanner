@@ -3,7 +3,7 @@
   "queryName": "Cloud SQL Instance With Cross DB Ownership Chaining On",
   "severity": "HIGH",
   "category": "Insecure Configurations",
-  "descriptionText": "GCP SQL Instance should not have Cross DB Ownership Chaining On",
+  "descriptionText": "SQL Server instances must have Cross DB Ownership Chaining disabled to prevent cross-database privilege escalation and lateral access between databases. For Ansible-managed Google Cloud SQL resources (`google.cloud.gcp_sql_instance` or `gcp_sql_instance`) ensure the `settings.database_flags` entry with name `cross db ownership chaining` is present and its `value` is set to `off`. This check applies only when `database_version` indicates SQL Server; instances missing the flag or with a value other than `off` will be flagged.\n\nSecure Ansible configuration example:\n\n```yaml\n- name: Create secure Cloud SQL SQLServer instance\n  google.cloud.gcp_sql_instance:\n    name: my-sqlserver-instance\n    database_version: SQLSERVER_2019_STANDARD\n    settings:\n      tier: db-custom-1-3840\n      database_flags:\n        - name: \"cross db ownership chaining\"\n          value: \"off\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cloud_sql_instance_with_cross_db_ownership_chaining_on",
   "platform": "Ansible",
   "descriptionID": "2a2f1164",
