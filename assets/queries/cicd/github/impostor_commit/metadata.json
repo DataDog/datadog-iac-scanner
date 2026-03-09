@@ -1,6 +1,6 @@
 {
   "id": "ffe0b305-060f-45dc-87dc-7796bb442fd9",
-  "queryName": "Impostor Commit",
+  "queryName": "Impostor commit",
   "severity": "HIGH",
   "category": "Supply-Chain",
   "descriptionText": "GitHub Actions workflows must not reference commit SHA pins that are not actually present in the referenced owner/repo, because such \"impostor\" commits can resolve from forks or unrelated repositories and allow attacker-controlled code to run in your CI/CD pipeline. This rule inspects the `uses` property on job steps, reusable workflow calls, and composite steps when pinned to a commit SHA, which format follows owner/repo@<commit>, and flags cases where the specified commit SHA is not found in the target repository's tags, branches, or contained in any named ref. Resources missing a matching tag/branch or where the commit is only resolvable via GitHub's fork network, because it is not in the target repo's history, will be reported as impostor commits. Prefer pinning to a validated tag or branch, for example a semantically versioned tag.\n\n```yaml\nsteps:\n  - uses: actions/checkout@v4\n  - uses: actions/hello-world-javascript-action@v1.1\n```",
