@@ -1,6 +1,6 @@
 {
   "id": "a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6",
-  "queryName": "Anonymous Definition",
+  "queryName": "Anonymous definition",
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Unnamed workflows and jobs reduce traceability and slow down auditing, monitoring, and incident response because run logs and alerts become harder to identify and correlate. Check GitHub Actions workflow YAML: the top-level `name` property must be defined and non-empty, and each standard job under `jobs` should include a non-empty `name` property; workflows missing a top-level `name` or jobs without `name` will be flagged. This rule applies to normal jobs, reusable or composite actions may be treated differently by some tools, so ensure each visible job has a clear `name`. Use concise, descriptive names so runs and failures are immediately recognizable.\n\nSecure example:\n\n```yaml\nname: CI — Build and Test\n\non:\n  push:\n    branches: [ main ]\n\njobs:\n  build:\n    name: Build\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v3\n```",
