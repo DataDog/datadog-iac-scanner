@@ -1,0 +1,17 @@
+name: insecure-workflow
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code with version mismatch
+        uses: actions/checkout@v4.1.0
+
+      - name: Setup Node with mismatched SHA
+        uses: actions/setup-node@v4.0.0
+        with:
+          node-version: '20'

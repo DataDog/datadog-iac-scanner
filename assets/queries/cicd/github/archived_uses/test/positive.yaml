@@ -1,0 +1,9 @@
+name: Workflow with Archived Action
+on: push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use archived action
+        uses: someowner/archived-action@v1

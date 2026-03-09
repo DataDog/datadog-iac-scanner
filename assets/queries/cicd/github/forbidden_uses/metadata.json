@@ -1,0 +1,13 @@
+{
+  "id": "14813ab9-cffa-40e3-87fb-66c5e9b07bdf",
+  "queryName": "Forbidden Uses",
+  "severity": "HIGH",
+  "category": "Supply-Chain",
+  "descriptionText": "GitHub Actions workflows should avoid using forbidden or untrusted actions that may pose security risks. Using actions from unverified sources or those that have been flagged as potentially malicious can lead to supply chain attacks, data exfiltration, or unauthorized access to your CI/CD pipeline.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/forbidden_uses",
+  "platform": "CICD",
+  "descriptionID": "e65890c8",
+  "cloudProvider": "common",
+  "cwe": "829",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "c3d4e5f6-a7b8-49c0-d1e2-f3a4b5c6d7e8",
+  "queryName": "Artipacked",
+  "severity": "HIGH",
+  "category": "Supply Chain",
+  "descriptionText": "GitHub Actions workflows using actions/checkout without persist-credentials: false may leak credentials through artifacts. By default, actions/checkout persists the GITHUB_TOKEN in the local git config, which can then be included in artifacts if the entire workspace is uploaded. Starting with actions/checkout@v6, credentials are stored in a temporary location reducing (but not eliminating) the risk. This rule detects checkouts without persist-credentials: false, especially when followed by actions/upload-artifact with dangerous paths like '.' or github.workspace.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/artipacked",
+  "platform": "CICD",
+  "descriptionID": "c3d4e5f6",
+  "cloudProvider": "common",
+  "cwe": "CWE-522",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-secrets"
+}

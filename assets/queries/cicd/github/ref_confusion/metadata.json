@@ -1,0 +1,13 @@
+{
+  "id": "85eef22b-9225-4745-8b17-dca1a8cd54d2",
+  "queryName": "Ref Confusion",
+  "severity": "MEDIUM",
+  "category": "Supply-Chain",
+  "descriptionText": "GitHub Actions workflows may be vulnerable to reference confusion attacks when using ambiguous or manipulable git references. Attackers can exploit unclear or mutable references (such as branch names or tags) to trick workflows into checking out malicious code. This can occur when references are user-controlled or when there's confusion between different types of git references.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/ref_confusion",
+  "platform": "CICD",
+  "descriptionID": "90178ddf",
+  "cloudProvider": "common",
+  "cwe": "706",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions"
+}

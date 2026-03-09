@@ -1,0 +1,13 @@
+{
+  "id": "969976c1-f152-4d77-abaa-1d051e449fc7",
+  "queryName": "Ref Version Mismatch",
+  "severity": "MEDIUM",
+  "category": "Supply-Chain",
+  "descriptionText": "GitHub Actions workflows should ensure consistency between version tags and commit references when pinning actions. A mismatch between the version tag (e.g., v1.2.3) and the actual commit SHA can indicate tampering or misconfiguration. This discrepancy may allow attackers to substitute malicious code while maintaining the appearance of using a trusted version.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/ref_version_mismatch",
+  "platform": "CICD",
+  "descriptionID": "586ff8f9",
+  "cloudProvider": "common",
+  "cwe": "345",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions"
+}

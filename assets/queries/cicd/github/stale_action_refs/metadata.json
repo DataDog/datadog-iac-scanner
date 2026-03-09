@@ -1,0 +1,13 @@
+{
+  "id": "7ef4d5a1-2337-4a71-9c67-3ffe445b37e4",
+  "queryName": "Stale Action Refs",
+  "severity": "MEDIUM",
+  "category": "Supply-Chain",
+  "descriptionText": "GitHub Actions workflows should avoid using outdated or stale references to actions. Using old versions of actions may expose workflows to known vulnerabilities that have been patched in newer releases. Additionally, stale references can point to deprecated or unmaintained actions, increasing the risk of supply chain attacks and reducing the reliability of CI/CD pipelines.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/stale_action_refs",
+  "platform": "CICD",
+  "descriptionID": "0cf49343",
+  "cloudProvider": "common",
+  "cwe": "1104",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions"
+}

@@ -1,0 +1,23 @@
+name: insecure-workflow
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code with old version
+        uses: actions/checkout@v1
+
+      - name: Setup Node with old version
+        uses: actions/setup-node@v1
+        with:
+          node-version: '20'
+
+      - name: Cache dependencies with old version
+        uses: actions/cache@v1
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}

@@ -1,0 +1,13 @@
+{
+  "id": "ffe0b305-060f-45dc-87dc-7796bb442fd9",
+  "queryName": "Impostor Commit",
+  "severity": "HIGH",
+  "category": "Supply-Chain",
+  "descriptionText": "GitHub Actions workflows may reference commits that appear legitimate but have been tampered with or replaced. This can occur when an attacker gains access to a repository and modifies commit history or creates malicious commits that masquerade as legitimate ones, potentially introducing backdoors or malicious code into your CI/CD pipeline.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/impostor_commit",
+  "platform": "CICD",
+  "descriptionID": "fbe290e4",
+  "cloudProvider": "common",
+  "cwe": "345",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions"
+}
