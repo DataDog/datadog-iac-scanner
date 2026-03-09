@@ -1,0 +1,15 @@
+name: Sound Conditions
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Properly fenced condition
+        if: ${{ github.event_name == 'push' }}
+        run: echo "This condition is sound"
+
+      - name: Stripped block scalar
+        if: |-
+          ${{ github.ref == 'refs/heads/main' }}
+        run: echo "This is also sound"

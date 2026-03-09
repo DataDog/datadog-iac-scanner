@@ -1,0 +1,9 @@
+name: Secure Reusable Workflow Call
+on: push
+
+jobs:
+  call-workflow:
+    uses: ./.github/workflows/reusable.yml
+    secrets:
+      token: ${{ secrets.DEPLOY_TOKEN }}
+      api_key: ${{ secrets.API_KEY }}

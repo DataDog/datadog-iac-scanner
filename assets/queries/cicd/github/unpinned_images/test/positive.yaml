@@ -1,0 +1,13 @@
+name: Unpinned Container Images
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: node:18
+    services:
+      postgres:
+        image: postgres:14
+    steps:
+      - run: npm test

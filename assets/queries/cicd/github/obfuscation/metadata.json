@@ -1,0 +1,13 @@
+{
+  "id": "39619709-d7d4-4e8a-ba5b-517e1c4f2a8b",
+  "queryName": "Obfuscation",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "GitHub Actions workflows should avoid using obfuscated code or commands that hide their true intent. Obfuscation techniques such as base64 encoding, string manipulation, or indirect command execution can be used to conceal malicious activities and make security reviews difficult. Clear, readable workflow configurations are essential for maintaining security and auditability.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/obfuscation",
+  "platform": "CICD",
+  "descriptionID": "95327581",
+  "cloudProvider": "common",
+  "cwe": "506",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions"
+}

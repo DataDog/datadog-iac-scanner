@@ -1,0 +1,13 @@
+name: Pinned Container Images
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: node@sha256:b4f0e0bdeb578043c518244e9f0f11f7e8b6d1a0f9f4e6e1e1f0a4f7c7e3c5a8
+    services:
+      postgres:
+        image: postgres@sha256:c5e1c2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1
+    steps:
+      - run: npm test

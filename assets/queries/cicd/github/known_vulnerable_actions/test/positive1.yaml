@@ -1,0 +1,23 @@
+name: insecure-workflow
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Upload artifact with vulnerable action
+        uses: actions/upload-artifact@v1
+        with:
+          name: build-output
+          path: dist/
+
+      - name: Download artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: build-output

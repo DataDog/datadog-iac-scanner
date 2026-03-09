@@ -1,0 +1,13 @@
+{
+  "id": "c9d0e1f2-a3b4-45c6-d7e8-f9a0b1c2d3e4",
+  "queryName": "Unpinned Images",
+  "severity": "HIGH",
+  "category": "Supply Chain",
+  "descriptionText": "Container images used in GitHub Actions workflows should be pinned to specific digests (SHA256 hashes) rather than tags. Image tags are mutable and can be updated to point to different images, potentially introducing malicious code or breaking changes into your workflows. An attacker with access to the container registry could push a malicious image with the same tag, affecting all workflows that use that tag. Pinning to a digest ensures that the exact same image is used every time the workflow runs. This applies to both job containers (container:) and service containers (services:). Images should be specified in the format 'image@sha256:...' rather than 'image:tag'.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unpinned_images",
+  "platform": "CICD",
+  "descriptionID": "c9d0e1f2",
+  "cloudProvider": "common",
+  "cwe": "CWE-829",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idcontainer"
+}

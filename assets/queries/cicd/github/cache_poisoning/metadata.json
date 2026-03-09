@@ -1,0 +1,13 @@
+{
+  "id": "e5f6a7b8-c9d0-41e2-f3a4-b5c6d7e8f9a0",
+  "queryName": "Cache Poisoning",
+  "severity": "HIGH",
+  "category": "Supply Chain",
+  "descriptionText": "Workflows that publish runtime artifacts (packages, releases, deployments) while using dependency caching are vulnerable to cache poisoning attacks. An attacker who gains write access to the cache (e.g., through a pull request in pull_request_target workflows) can inject malicious dependencies that will be used when building and publishing artifacts to production. This affects actions like actions/cache, actions/setup-go, actions/setup-node, actions/setup-python, and many others that cache dependencies. The vulnerability is particularly dangerous in workflows triggered by release events or that use publisher actions like pypa/gh-action-pypi-publish, docker/build-push-action, or softprops/action-gh-release. To mitigate, disable cache writes in publishing workflows by setting appropriate flags: lookup-only: true for actions/cache and Swatinem/rust-cache, cache: false for most setup-* actions, or removing caching entirely.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/cache_poisoning",
+  "platform": "CICD",
+  "descriptionID": "e5f6a7b8",
+  "cloudProvider": "common",
+  "cwe": "CWE-349",
+  "providerUrl": "https://adnanthekhan.com/2024/05/06/breaking-rulesets-github-artifact-poisoning/"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "f6a7b8c9-d0e1-42f3-a4b5-c6d7e8f9a0b1",
+  "queryName": "Concurrency Limits",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "GitHub Actions workflows without proper concurrency controls can waste CI/CD resources by running duplicate workflows simultaneously. When multiple commits are pushed quickly or when pull requests are updated frequently, workflows can queue up and run unnecessarily. The concurrency setting with cancel-in-progress: true allows GitHub to automatically cancel in-progress runs when a new run is triggered for the same concurrency group, saving time and compute resources. This is especially important for workflows that take a long time to complete. Concurrency can be set at the workflow level to apply to all jobs, or at individual job levels for more granular control. Reusable workflows should have concurrency managed by their calling workflows to avoid deadlocks and premature cancellations.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/concurrency_limits",
+  "platform": "CICD",
+  "descriptionID": "f6a7b8c9",
+  "cloudProvider": "common",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency"
+}

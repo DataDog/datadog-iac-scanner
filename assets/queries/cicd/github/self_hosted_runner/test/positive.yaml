@@ -1,0 +1,9 @@
+name: Self Hosted Runner
+on: push
+
+jobs:
+  test:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test

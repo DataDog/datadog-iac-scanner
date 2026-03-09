@@ -1,0 +1,12 @@
+name: Secure Bot Check
+on: pull_request
+
+jobs:
+  dependabot:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'dependabot[bot]' && github.actor_id == '49699333' }}
+    steps:
+      - name: Auto-approve
+        run: gh pr review --approve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

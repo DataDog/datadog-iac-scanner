@@ -1,0 +1,11 @@
+name: Safe Secret Usage
+on: push
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use secret directly
+        run: |
+          echo "Using secret safely"
+          curl -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" https://api.example.com

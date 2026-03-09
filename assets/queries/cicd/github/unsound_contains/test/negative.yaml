@@ -1,0 +1,17 @@
+name: Sound Contains Usage
+on: pull_request
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+
+  test-with-json:
+    runs-on: ubuntu-latest
+    if: ${{ contains(fromJSON('["refs/heads/main", "refs/heads/develop"]'), github.ref) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test

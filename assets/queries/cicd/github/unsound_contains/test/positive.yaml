@@ -1,0 +1,16 @@
+name: Unsound Contains Usage
+on: pull_request
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    if: ${{ contains('refs/heads/main refs/heads/develop', github.ref) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+
+  test-env:
+    runs-on: ubuntu-latest
+    if: ${{ contains('production staging', env.ENVIRONMENT) }}
+    steps:
+      - run: echo "Deploying"

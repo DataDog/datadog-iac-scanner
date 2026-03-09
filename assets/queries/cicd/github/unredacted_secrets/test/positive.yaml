@@ -1,0 +1,11 @@
+name: Unredacted Secret
+on: push
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse secret as JSON
+        run: |
+          CONFIG='${{ fromJSON(secrets.CONFIG_JSON) }}'
+          echo "Config: $CONFIG"

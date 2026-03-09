@@ -1,0 +1,13 @@
+{
+  "id": "eb224cbc-fd0b-4b6b-8823-7e348133c41c",
+  "queryName": "Known Vulnerable Actions",
+  "severity": "HIGH",
+  "category": "Supply-Chain",
+  "descriptionText": "GitHub Actions workflows should not use actions with known security vulnerabilities. Using actions that have published CVEs or known security issues can expose your CI/CD pipeline to attacks, including arbitrary code execution, data exfiltration, or privilege escalation. Always ensure actions are updated to their latest secure versions.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/known_vulnerable_actions",
+  "platform": "CICD",
+  "descriptionID": "db94b2ab",
+  "cloudProvider": "common",
+  "cwe": "1104",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions"
+}

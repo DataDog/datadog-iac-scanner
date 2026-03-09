@@ -1,0 +1,20 @@
+name: insecure-workflow
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@0000000000000000000000000000000000000000
+
+      - name: Setup Node
+        uses: actions/setup-node@1111111111111111111111111111111111111111
+        with:
+          node-version: '20'
+
+      - name: Build application
+        run: npm ci && npm run build

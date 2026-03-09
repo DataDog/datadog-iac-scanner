@@ -1,0 +1,16 @@
+name: Unsound Conditions
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unsound literal block
+        if: |
+          ${{ github.event_name == 'pull_request' }}
+        run: echo "This will always run!"
+
+      - name: Unsound folded block
+        if: >
+          ${{ false }}
+        run: echo "This will also always run!"

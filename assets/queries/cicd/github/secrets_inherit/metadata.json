@@ -1,0 +1,13 @@
+{
+  "id": "e1f2a3b4-c5d6-47e8-f9a0-b1c2d3e4f5a6",
+  "queryName": "Secrets Inherit",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Using 'secrets: inherit' in reusable workflow calls passes all secrets from the calling workflow to the called workflow unconditionally. This violates the principle of least privilege and expands the attack surface by giving the reusable workflow access to secrets it may not need. If the reusable workflow is compromised or contains vulnerabilities, all inherited secrets could be exposed. Instead, explicitly declare which specific secrets the reusable workflow needs using the secrets mapping syntax. This provides better security boundaries and makes it clear which secrets are being used where.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/secrets_inherit",
+  "platform": "CICD",
+  "descriptionID": "e1f2a3b4",
+  "cloudProvider": "common",
+  "cwe": "CWE-269",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/reusing-workflows#passing-secrets-to-nested-workflows"
+}
