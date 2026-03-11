@@ -1,0 +1,68 @@
+---
+title: "AD Admin Not Configured For SQL Server"
+group_id: "Ansible / Azure"
+meta:
+  name: "azure/ad_admin_not_configured_for_sql_server"
+  id: "b176e927-bbe2-44a6-a9c3-041417137e5f"
+  display_name: "AD Admin Not Configured For SQL Server"
+  cloud_provider: "Azure"
+  platform: "Ansible"
+  severity: "MEDIUM"
+  category: "Insecure Configurations"
+---
+## Metadata
+
+**Id:** `b176e927-bbe2-44a6-a9c3-041417137e5f`
+
+**Cloud Provider:** Azure
+
+**Platform:** Ansible
+
+**Severity:** Medium
+
+**Category:** Insecure Configurations
+
+#### Learn More
+
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_sqlserver_module.html#parameter-ad_user)
+
+### Description
+
+SQL servers should have an Active Directory administrator configured to enforce centralized identity, stronger authentication, and auditable access controls; relying solely on SQL authentication increases attack surface and makes access management and auditing more difficult. For Ansible, tasks using the `azure.azcollection.azure_rm_sqlserver` or `azure_rm_sqlserver` module must define the `ad_user` property and set it to a valid Azure AD principal (for example a user UPN or objectId). Resources missing `ad_user` or with it empty/undefined will be flagged.
+
+Secure example:
+
+```
+- name: Create Azure SQL Server with AD admin
+  azure.azcollection.azure_rm_sqlserver:
+    name: my-sql-server
+    resource_group: my-rg
+    location: eastus
+    ad_user: "adminuser@contoso.com"
+    admin_password: "secure-password"
+```
+
+## Compliant Code Examples
+```yaml
+- name: Create (or update) SQL Server
+  azure_rm_sqlserver:
+    resource_group: myResourceGroup
+    name: server_name
+    location: westus
+    admin_username: mylogin
+    admin_password: Testpasswordxyz12!
+    ad_user: sqladmin
+
+```
+## Non-Compliant Code Examples
+```yaml
+---
+- name: Create (or update) SQL Server
+  azure_rm_sqlserver:
+    resource_group: myResourceGroup
+    name: server_name
+    location: westus
+    admin_username: mylogin
+    admin_password: Testpasswordxyz12!
+
+```
