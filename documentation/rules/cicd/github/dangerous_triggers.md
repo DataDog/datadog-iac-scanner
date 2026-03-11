@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Using the pull_request_target or workflow_run triggers is dangerous because workflows triggered this way run with the base repository’s privileges and access to repository secrets, which allows untrusted pull requests or external workflow runs to exfiltrate secrets or modify repository contents. Check GitHub Actions workflow definitions in .github/workflows/*.yml for the top-level `on` property containing `pull_request_target` or `workflow_run`; any workflow that declares either trigger will be flagged. Avoid these triggers when possible — prefer `pull_request` for pull-request checks or manual/controlled triggers like `workflow_dispatch`, and configure minimal `permissions` for `GITHUB_TOKEN` and avoid using repository secrets in workflows that handle untrusted events. If you must use these triggers, restrict event filters (branches/types), enforce least-privilege `permissions`, never expose secrets to untrusted runs, and validate event origin before performing privileged actions.
+The `pull_request_target` and `workflow_run` triggers are dangerous because workflows using them run with the base repository's privileges and access to repository secrets. This allows untrusted pull requests or external workflow runs to exfiltrate secrets or modify repository contents.
+
+Check GitHub Actions workflow definitions in `.github/workflows/*.yml` for the top-level `on` property containing `pull_request_target` or `workflow_run`. Any workflow that declares either trigger will be flagged.
+
+Avoid these triggers when possible. Prefer `pull_request` for pull-request checks or manual/controlled triggers like `workflow_dispatch`. Configure minimal `permissions` for `GITHUB_TOKEN` and avoid using repository secrets in workflows that handle untrusted events.
+
+If you must use these triggers, restrict event filters (branches/types), enforce least-privilege `permissions`, never expose secrets to untrusted runs, and validate event origin before performing privileged actions.
 
 Secure alternatives example:
 

@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Self-hosted runners in public repositories are risky because they can retain state, files, or credentials between workflow runs and allow untrusted contributors (for example via pull requests) to access secrets or modify the runner environment. Inspect the GitHub Actions workflow job `runs-on` setting: any job whose `runs-on` value begins with the literal `self-hosted`, references a runner group, or uses expressions/matrix expansions that may evaluate to `self-hosted` should be reviewed or avoided in public repos. Prefer explicit GitHub-hosted runner labels such as `ubuntu-latest` for public workflows; expression-based or group-based runner selections are flagged because they may expand to self-hosted runners at runtime.
+Self-hosted runners in public repositories are risky because they can retain state, files, or credentials between workflow runs. They also allow untrusted contributors (for example via pull requests) to access secrets or modify the runner environment.
+
+Inspect the GitHub Actions workflow job `runs-on` setting. Any job whose `runs-on` value begins with the literal `self-hosted`, references a runner group, or uses expressions/matrix expansions that may evaluate to `self-hosted` should be reviewed or avoided in public repos.
+
+Prefer explicit GitHub-hosted runner labels such as `ubuntu-latest` for public workflows. Expression-based or group-based runner selections are flagged because they may expand to self-hosted runners at runtime.
 
 Secure example using a GitHub-hosted runner:
 

@@ -28,9 +28,9 @@ meta:
 
 ### Description
 
-Workflow steps should not pin actions to raw commit SHAs that are not associated with a Git tag, because untagged commits lack release metadata and are more likely to contain unpublished, unreviewed, or unmaintained changes that increase supply-chain and reliability risk. This rule inspects workflow step `uses` entries that reference a repository, written `owner/repo@ref`, and flags cases where the ref is a commit hash and the GitHub API reports no tag pointing to that commit. Prefer pinning to an official Git tag or release, for example `v1.2.3` or a stable major tag like `v1`. Steps with commit refs that do not map to any tag will be flagged as stale.
+Workflow steps should not pin actions to raw commit SHAs that lack an associated Git tag. Untagged commits have no release metadata and are more likely to contain unpublished, unreviewed, or unmaintained changes that increase supply-chain and reliability risk. This rule inspects workflow step `uses` entries that reference a repository in the form `owner/repo@ref` and flags cases where the ref is a commit hash and the GitHub API reports no tag pointing to that commit. Prefer pinning to an official Git tag or release, such as `v1.2.3` or a stable major tag like `v1`. Steps with commit refs that do not map to any tag will be flagged as stale.
 
-Secure configuration examples:
+Secure examples:
 
 ```yaml
 - name: Checkout

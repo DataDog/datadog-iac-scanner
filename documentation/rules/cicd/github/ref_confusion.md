@@ -28,9 +28,13 @@ meta:
 
 ### Description
 
-GitHub Actions steps and reusable workflow calls that use ambiguous named git refs (for example `@foo`) can end up checking out different code if the upstream repository exposes the same name as both a branch and a tag, creating a supply‑chain risk or accidental execution of unreviewed code. Check the `uses` property on workflow steps, composite actions, and reusable workflow calls when it references a repository (`owner/repo@ref`); the ref should be immutable like a full commit SHA or explicitly namespace‑qualified, such as `refs/heads/<name>` or `refs/tags/<name>`. This rule flags `uses` entries where the ref is symbolic, because it is not a full commit SHA and the same name exists as both a branch and a tag in the referenced repository.
+GitHub Actions steps and reusable workflow calls that use ambiguous named git refs (for example `@foo`) can check out different code if the upstream repository exposes the same name as both a branch and a tag. This creates a supply-chain risk or accidental execution of unreviewed code.
 
-Secure examples: 
+Check the `uses` property on workflow steps, composite actions, and reusable workflow calls when it references a repository (`owner/repo@ref`). The ref should be immutable like a full commit SHA or explicitly namespace-qualified, such as `refs/heads/<name>` or `refs/tags/<name>`.
+
+This rule flags `uses` entries where the ref is symbolic, because it is not a full commit SHA and the same name exists as both a branch and a tag in the referenced repository.
+
+Secure examples:
 
 ```yaml
 # Pin to an immutable commit SHA

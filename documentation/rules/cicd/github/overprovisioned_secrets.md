@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Referencing the entire GitHub Actions `secrets` context or using dynamic/non-literal secret indexing exposes all repository secrets to the workflow runner. If a workflow or runner is compromised, an attacker could read every secret instead of only the ones required by the job. This rule flags expression patterns that serialize or expand the secrets object—specifically calls to `toJSON(secrets)` and context accesses like `secrets[<non-literal>]` where the index is not a literal string or number. Avoid these patterns and reference required secrets explicitly by literal property names, such as `secrets.MY_SECRET`. Expressions that call `toJSON(secrets)` or use non-literal secret indices will be flagged.
+Referencing the entire GitHub Actions `secrets` context or using dynamic/non-literal secret indexing exposes all repository secrets to the workflow runner. If a workflow or runner is compromised, an attacker could read every secret instead of only the ones required by the job.
+
+This rule flags expression patterns that serialize or expand the secrets object—specifically calls to `toJSON(secrets)` and context accesses like `secrets[<non-literal>]` where the index is not a literal string or number. Reference required secrets explicitly by literal property names, such as `secrets.MY_SECRET`. Expressions that call `toJSON(secrets)` or use non-literal secret indices will be flagged.
 
 Secure usage example:
 

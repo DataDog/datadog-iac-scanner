@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Secrets referenced in GitHub Actions jobs should be scoped to a dedicated environment to limit their availability and reduce the blast radius if credentials are exposed. This rule inspects workflow job definitions and flags jobs that do not define the `environment` property but reference the `secrets` context in fenced expressions. It looks for `secrets.<NAME>` usages in expressions and excludes `secrets.GITHUB_TOKEN`, which is always available; any job without an `environment` that accesses `secrets.*` will be reported. Remediate by adding an `environment` to the job and moving sensitive values to environment-scoped secrets with appropriate approvals, or confirm that repository/org-level secrets are intentionally used.
+Secrets referenced in GitHub Actions jobs should be scoped to a dedicated environment to limit their availability and reduce the blast radius if credentials are exposed. This rule inspects workflow job definitions and flags jobs that reference the `secrets` context in fenced expressions but do not define the `environment` property. It looks for `secrets.<NAME>` usages in expressions and excludes `secrets.GITHUB_TOKEN`, which is always available. Any job without an `environment` that accesses `secrets.*` will be reported.
+
+Remediate by adding an `environment` to the job and moving sensitive values to environment-scoped secrets with appropriate approvals, or confirm that repository/org-level secrets are intentionally used.
 
 ## Compliant Code Examples
 ```yaml

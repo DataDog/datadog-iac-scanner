@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Unnamed workflows and jobs reduce traceability and slow down auditing, monitoring, and incident response because run logs and alerts become harder to identify and correlate. Check GitHub Actions workflow YAML: the top-level `name` property must be defined and non-empty, and each standard job under `jobs` should include a non-empty `name` property; workflows missing a top-level `name` or jobs without `name` will be flagged. This rule applies to normal jobs, reusable or composite actions may be treated differently by some tools, so ensure each visible job has a clear `name`. Use concise, descriptive names so runs and failures are immediately recognizable.
+Unnamed workflows and jobs reduce traceability and slow down auditing, monitoring, and incident response because run logs and alerts become harder to identify and correlate.
+
+Check GitHub Actions workflow YAML: the top-level `name` property must be defined and non-empty, and each standard job under `jobs` should include a non-empty `name` property. Workflows missing a top-level `name` or jobs without `name` will be flagged.
+
+This rule applies to normal jobs. Reusable or composite actions may be treated differently by some tools, so ensure each visible job has a clear `name`. Use concise, descriptive names so runs and failures are immediately recognizable.
 
 Secure example:
 

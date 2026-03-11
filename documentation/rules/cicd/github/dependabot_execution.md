@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Dependabot updates must not be configured to execute untrusted external code because allowing install scripts or arbitrary code from dependencies can lead to supply-chain compromise and remote code execution during automated updates. The `insecure-external-code-execution` property under each `updates` entry in the Dependabot configuration (dependabot.yml) must be set to the string `deny` or omitted as the default is `deny`. Entries with `insecure-external-code-execution: allow` will be flagged.
+Dependabot updates must not be configured to execute untrusted external code. Allowing install scripts or arbitrary code from dependencies can lead to supply-chain compromise and remote code execution during automated updates. The `insecure-external-code-execution` property under each `updates` entry in the Dependabot configuration (dependabot.yml) must be set to the string `deny` or omitted, as the default is `deny`. Entries with `insecure-external-code-execution: allow` will be flagged.
 
 Secure configuration example:
 

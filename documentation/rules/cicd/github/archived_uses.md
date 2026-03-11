@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Using actions or reusable workflows from archived repositories is risky because archived repositories no longer receive security fixes and may be deleted or transferred, which can leave workflows vulnerable and cause builds to break. This rule checks the `uses` property on workflow steps — including regular steps, composite action steps, and reusable-workflow call jobs — and flags any `uses` that references an archived repository, matching owner and repo case-insensitively. Replace archived actions with actively maintained alternatives, fork and maintain the action under your control, or vendor the code into your own repository; pinning to a commit does not restore ongoing security maintenance.
+Using actions or reusable workflows from archived repositories is risky because archived repositories no longer receive security fixes and may be deleted or transferred. This can leave workflows vulnerable and cause builds to break.
+
+This rule checks the `uses` property on workflow steps, including regular steps, composite action steps, and reusable-workflow call jobs. Any `uses` that references an archived repository will be flagged, matching owner and repo case-insensitively.
+
+Replace archived actions with actively maintained alternatives, fork and maintain the action under your control, or vendor the code into your own repository. Pinning to a commit does not restore ongoing security maintenance.
 
 Secure examples:
 

@@ -28,9 +28,13 @@ meta:
 
 ### Description
 
-Workflows that publish packages should use Trusted Publishing, GitHub OIDC, instead of embedding long‑lived tokens or other manually‑configured credentials, because manual credentials increase the risk of leakage, reuse across projects, and supply‑chain compromise. This rule flags publishing steps that supply explicit credentials or indicate manual token use, and run steps that invoke publish commands without OIDC id‑token permissions. Concretely, inspect workflow Step resources: flag `uses` steps for known publishing actions, such as `pypa/gh-action-pypi-publish`, `rubygems/release-gem`, `rubygems/configure-rubygems-credentials`, `actions/setup-node`, when `with` contains keys like `password`, `api-token`, or `always-auth=true`, or when `with.setup-trusted-publisher` is not set to `true`. Also check `with.repository-url` / `with.repository_url` and `with.registry-url` against known trusted indices to determine intent. For `run` steps, flag commands that match publishing operations, like `cargo publish`, `twine upload`, `npm publish`, `gem push`, `dotnet nuget push`, when the parent job does not grant the OIDC id‑token permission, like `permissions.id-token: write`. Resources missing the appropriate OIDC permissions or containing the listed insecure `with` values will be flagged; remediate by removing hardcoded tokens/credentials and configuring the job/actions to rely on `id-token` or the action’s Trusted Publishing option. 
+Workflows that publish packages should use Trusted Publishing (GitHub OIDC) instead of embedding long-lived tokens or other manually configured credentials. Manual credentials increase the risk of leakage, reuse across projects, and supply-chain compromise. This rule flags publishing steps that supply explicit credentials or indicate manual token use, and `run` steps that invoke publish commands without OIDC `id-token` permissions.
 
-Secure example: 
+For `uses` steps, known publishing actions are flagged — such as `pypa/gh-action-pypi-publish`, `rubygems/release-gem`, `rubygems/configure-rubygems-credentials`, and `actions/setup-node` — when `with` contains keys like `password`, `api-token`, or `always-auth` set to `true`, or when `with.setup-trusted-publisher` is not set to `true`. The rule also checks `with.repository-url` / `with.repository_url` and `with.registry-url` against known trusted indices to determine intent.
+
+For `run` steps, commands that match publishing operations are flagged — such as `cargo publish`, `twine upload`, `npm publish`, `gem push`, and `dotnet nuget push` — when the parent job does not grant the OIDC `id-token` permission (e.g., `permissions.id-token: write`). Resources missing the appropriate OIDC permissions or containing the listed insecure `with` values will be flagged. Remediate by removing hardcoded tokens/credentials and configuring the job/actions to rely on `id-token` or the action's Trusted Publishing option. 
+
+Secure example:
 
 ```yaml
 jobs:
