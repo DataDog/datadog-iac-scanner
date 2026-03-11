@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Using `contains()` with a delimiter or space-separated literal to validate a runtime value is unsafe because `contains()` does substring matching, allowing crafted values, such as `refs/heads/main/malicious` or `refs/heads/main` to satisfy the check and bypass intended restrictions. This is especially dangerous when the value being tested comes from user-controllable contexts, such as `env.*`, `github.ref`, `github.ref_name`, `github.head_ref`, `github.base_ref`, `github.actor`, `github.sha`, `github.triggering_actor`, or `inputs.*` because an attacker can trigger unintended workflow paths, disclosures, or privileged actions. The rule inspects job `if` expressions and flags calls of the form `contains(<string literal>, <Context>)`. Replace substring checks with explicit equality comparisons, such as `github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'` or use a JSON array with `fromJSON` and `contains`, for example:
+Using `contains()` with a delimiter or space-separated literal to validate a runtime value is unsafe because `contains()` performs substring matching. Crafted values such as `refs/heads/main/malicious` or `refs/heads/main` can satisfy the check and bypass intended restrictions.
+
+This is especially dangerous when the value being tested comes from user-controllable contexts such as `env.*`, `github.ref`, `github.ref_name`, `github.head_ref`, `github.base_ref`, `github.actor`, `github.sha`, `github.triggering_actor`, or `inputs.*`. An attacker can trigger unintended workflow paths, disclosures, or privileged actions.
+
+The rule inspects job `if` expressions and flags calls of the form `contains(<string literal>, <Context>)`. Replace substring checks with explicit equality comparisons such as `github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'`, or use a JSON array with `fromJSON` and `contains`.
 
 ```yaml
 # Explicit equality checks

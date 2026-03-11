@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Using a GitHub Action version that has a published security advisory can allow an attacker to execute arbitrary code in your CI environment or exfiltrate secrets and artifacts. This rule inspects workflow step `uses` clauses that reference repository actions using `owner/repo@ref` and queries GitHub’s security advisories for the resolved tag or commit. Steps whose referenced tag or commit match a GHSA advisory are flagged; when the advisory provides a patched version the audit suggests upgrading the `uses` value to that patched tag or to the corresponding commit hash.
+Using a GitHub Action version that has a published security advisory can allow an attacker to execute arbitrary code in your CI environment or exfiltrate secrets and artifacts. This rule inspects workflow step `uses` clauses that reference repository actions using `owner/repo@ref` and queries GitHub's security advisories for the resolved tag or commit. Steps whose referenced tag or commit match a GHSA advisory are flagged. When the advisory provides a patched version, the audit suggests upgrading the `uses` value to that patched tag or to the corresponding commit hash.
 
 Secure example:
 

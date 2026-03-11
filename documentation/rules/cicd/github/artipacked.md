@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Persisting runner credentials into the workspace can leak the `GITHUB_TOKEN` via uploaded artifacts or repository files, exposing secrets to anyone who can access those artifacts. For steps that use `actions/checkout` the `with.persist-credentials` property must be defined and set to `false`; steps missing this property or with `persist-credentials: true` will be flagged. Findings are escalated when an `actions/upload-artifact` step uploads dangerous paths such as `.`/`./`/`..`/`../` or an expression that references `github.workspace`, since those artifacts can include the persisted credentials; in that case the checkout and the upload are reported together with higher confidence. Starting with `actions/checkout@v6` credentials are stored in `$RUNNER_TEMP` instead of `.git/config`, so the rule lowers severity for v6+ checkouts when no vulnerable uploads are present; when the checkout ref is a commit SHA the auditor will attempt to resolve its tag via the GitHub client and treats unresolved or unknown versions conservatively as older versions.
+Persisting runner credentials into the workspace can leak the `GITHUB_TOKEN` via uploaded artifacts or repository files, exposing secrets to anyone who can access those artifacts. For steps that use `actions/checkout`, the `with.persist-credentials` property must be defined and set to `false`. Steps missing this property or with `persist-credentials: true` will be flagged.
+
+Findings are escalated when an `actions/upload-artifact` step uploads dangerous paths such as `.`/`./`/`..`/`../` or an expression that references `github.workspace`, since those artifacts can include the persisted credentials. In that case, the checkout and the upload are reported together with higher confidence.
+
+Starting with `actions/checkout@v6`, credentials are stored in `$RUNNER_TEMP` instead of `.git/config`, so the rule lowers severity for v6+ checkouts when no vulnerable uploads are present. When the checkout ref is a commit SHA, the auditor attempts to resolve its tag via the GitHub client and treats unresolved or unknown versions conservatively as older versions.
 
 Secure configuration example:
 

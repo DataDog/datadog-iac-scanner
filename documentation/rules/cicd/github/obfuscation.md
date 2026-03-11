@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Obfuscated GitHub Actions usage (e.g., weird `uses:` paths or needlessly complex/fenced expressions) makes workflows harder to audit and can hide malicious or unintended behavior. For repository action references, the step `uses` property must not contain empty path components, `.` or `..`; it should be normalized to the concrete form `owner/repo[/path]@ref` so pattern-matching and provenance analysis work reliably. For expressions anywhere routable text is allowed, such as step inputs/outputs, workflow fields, constant-reducible expressions should be replaced by their evaluated constant and computed index expressions should be avoided; if replacing an entire fenced expression, written `${{ ... }}`, the fix must remove the fencing to preserve semantics, while fixes for reducible sub-expressions should target only the subfragment. This rule flags step `uses` values with empty components or `.`/`..`, fenced expressions that can be constant-reduced, and computed index expressions; automated fixes normalize `uses` paths and either replace full expressions with their evaluated value or rewrite only the reducible subexpression when possible.
+Obfuscated GitHub Actions usage (for example, weird `uses:` paths or needlessly complex/fenced expressions) makes workflows harder to audit and can hide malicious or unintended behavior.
+
+For repository action references, the step `uses` property must not contain empty path components, `.` or `..`. It should be normalized to the concrete form `owner/repo[/path]@ref` so pattern-matching and provenance analysis work reliably.
+
+For expressions anywhere routable text is allowed (such as step inputs/outputs and workflow fields), constant-reducible expressions should be replaced by their evaluated constant, and computed index expressions should be avoided. When replacing an entire fenced expression written `${{ ... }}`, the fix must remove the fencing to preserve semantics. Fixes for reducible sub-expressions should target only the subfragment.
+
+This rule flags step `uses` values with empty components or `.`/`..`, fenced expressions that can be constant-reduced, and computed index expressions. Automated fixes normalize `uses` paths and either replace full expressions with their evaluated value or rewrite only the reducible subexpression when possible.
 
 Secure examples:
 

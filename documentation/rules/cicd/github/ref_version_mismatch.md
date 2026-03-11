@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Version comments in GitHub Actions workflows should accurately reflect the release tag that corresponds to a pinned commit SHA, because a mismatched comment can mislead reviewers and may hide supply‑chain tampering or misconfiguration that substitutes different code while appearing to use a trusted version. This rule inspects workflow step `uses` entries that reference a repository with a commit ref, written repository@<commit_sha>, and looks for version comments on the same `uses` YAML node matching patterns like `# v1.2.3`, `# tag=1.2.3`, or `# version: 1.2.3`. If a version comment is present the tag is resolved via the GitHub API and must point to the same commit as the pinned SHA; the step is flagged when the tag resolves to a different commit. Steps using symbolic refs, such as `@v1.0.0` are not checked, the rule currently does not flag comments that cannot be resolved to any tag.
+Version comments in GitHub Actions workflows should accurately reflect the release tag that corresponds to a pinned commit SHA. A mismatched comment can mislead reviewers and may hide supply-chain tampering or misconfiguration that substitutes different code while appearing to use a trusted version.
+
+This rule inspects workflow step `uses` entries that reference a repository with a commit ref, written repository@<commit_sha>, and looks for version comments on the same `uses` YAML node matching patterns like `# v1.2.3`, `# tag=1.2.3`, or `# version: 1.2.3`. If a version comment is present, the tag is resolved via the GitHub API and must point to the same commit as the pinned SHA. The step is flagged when the tag resolves to a different commit. Steps using symbolic refs such as `@v1.0.0` are not checked. The rule currently does not flag comments that cannot be resolved to any tag.
 
 Secure configuration example:
 

@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Certain GitHub Actions features create brittle or hard-to-audit workflows that increase the risk of inconsistent builds, unexpected runtime behavior, and missed detection of unsafe commands. The `pip-install` input to `actions/setup-python` installs packages into a global (user or system) Python environment rather than an isolated virtual environment, which can lead to inconsistent dependency resolution and unexpected side effects across different runners and Python versions. This rule flags workflow steps that use `uses: actions/setup-python` with a `with` mapping that contains `pip-install`; avoid that input and instead create and use a virtual environment, such as `python -m venv` and activating it, before installing packages. Using `shell: cmd` or `cmd.exe` for `run` steps hampers static analysis because Windows CMD has no formal grammar and multiple line-continuation behaviors, which can hide unsafe commands or make auditing unreliable; this rule flags steps with `shell: cmd`/`cmd.exe` and will also flag other non‑well‑known shells as auditor findings—prefer well-known shells like `pwsh` or `bash` when possible. 
+Certain GitHub Actions features create brittle or hard-to-audit workflows that increase the risk of inconsistent builds, unexpected runtime behavior, and missed detection of unsafe commands.
+
+The `pip-install` input to `actions/setup-python` installs packages into a global (user or system) Python environment rather than an isolated virtual environment. This can lead to inconsistent dependency resolution and unexpected side effects across different runners and Python versions. This rule flags workflow steps that use `uses: actions/setup-python` with a `with` mapping that contains `pip-install`. Avoid that input and instead create and use a virtual environment, such as `python -m venv` and activating it, before installing packages.
+
+Using `shell: cmd` or `cmd.exe` for `run` steps hampers static analysis because Windows `CMD` has no formal grammar and multiple line-continuation behaviors, which can hide unsafe commands or make auditing unreliable. This rule flags steps with `shell: cmd`/`cmd.exe` and will also flag other non‑well‑known shells as auditor findings. Prefer well-known shells like `pwsh` or `bash` when possible.
 
 Secure configuration examples:
 

@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Using `secrets: inherit` in reusable workflow calls passes all secrets from the calling workflow to the called workflow, which violates the principle of least privilege and can lead to broad secret exposure if the reusable workflow is compromised or contains vulnerabilities. The `secrets` property on a job that invokes a reusable workflow (a job with `uses: <owner>/<repo>/.github/workflows/<file>@<ref>`) must not be set to `inherit`; jobs with `secrets: inherit` will be flagged. Instead, explicitly map only the specific secrets the reusable workflow requires using the secrets mapping syntax, or omit the `secrets` property if none are needed.
+Using `secrets: inherit` in reusable workflow calls passes all secrets from the calling workflow to the called workflow. This violates the principle of least privilege and can lead to broad secret exposure if the reusable workflow is compromised or contains vulnerabilities.
+
+The `secrets` property on a job that invokes a reusable workflow (a job with `uses: <owner>/<repo>/.github/workflows/<file>@<ref>`) must not be set to `inherit`. Jobs with `secrets: inherit` will be flagged. Instead, explicitly map only the specific secrets the reusable workflow requires using the secrets mapping syntax, or omit the `secrets` property if none are needed.
 
 Secure example with explicit secret mapping:
 

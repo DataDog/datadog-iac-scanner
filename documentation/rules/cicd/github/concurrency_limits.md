@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Workflows and jobs without proper concurrency controls can lead to redundant, overlapping runs that waste CI/CD compute, increase queue times, and slow feedback for developers when commits or PR updates happen frequently. Configure the `concurrency` setting with `cancel-in-progress: true` so GitHub cancels in-progress runs for the same concurrency group instead of running duplicates. In workflow YAML, the `concurrency` property must be an object containing a `group` and `cancel-in-progress: true`; this rule flags workflows or jobs that omit `concurrency` or use a bare string value, which therefore lacks `cancel-in-progress`. Reusable-only workflows should not manage concurrency themselves; their callers should define concurrency to avoid deadlocks and premature cancellations.
+Workflows and jobs without proper concurrency controls can lead to redundant, overlapping runs that waste CI/CD compute, increase queue times, and slow feedback for developers when commits or PR updates happen frequently. Configure the `concurrency` setting with `cancel-in-progress: true` so GitHub cancels in-progress runs for the same concurrency group instead of running duplicates.
+
+In workflow YAML, the `concurrency` property must be an object containing a `group` and `cancel-in-progress: true`. This rule flags workflows or jobs that omit `concurrency` or use a bare string value, which lacks `cancel-in-progress`. Reusable-only workflows should not manage concurrency themselves. Their callers should define concurrency to avoid deadlocks and premature cancellations.
 
 Secure configuration example:
 

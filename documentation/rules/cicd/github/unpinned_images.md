@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Container images used in GitHub Actions workflows must be pinned to immutable digests (SHA256) to ensure builds are repeatable and to prevent malicious or accidental replacement of an image via mutable tags. Check the job-level `container.image` and each `services.<name>.image` entry and require an image reference that includes a digest, which format follows `image@sha256:<hash>`. image references that lack a digest or that only use a tag, including `latest`, are considered unpinned. If an image is provided via a workflow expression, for example using `matrix` values, the expanded value must be a static digest; complex or non-static expressions will be flagged. To remediate, replace tag-only references with a digest-pinned reference, for example:
+Container images used in GitHub Actions workflows must be pinned to immutable digests (SHA256) to ensure builds are repeatable and prevent malicious or accidental replacement of an image via mutable tags.
+
+This rule checks the job-level `container.image` and each `services.<name>.image` entry for an image reference that includes a digest in the format `image@sha256:<hash>`. Image references that lack a digest or only use a tag, including `latest`, are considered unpinned.
+
+If an image is provided via a workflow expression, such as `matrix` values, the expanded value must be a static digest. Complex or non-static expressions will be flagged. To remediate, replace tag-only references with a digest-pinned reference.
 
 ```yaml
 jobs:

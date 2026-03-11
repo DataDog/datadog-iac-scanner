@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Hardcoded container registry passwords in GitHub Actions workflows expose credentials to anyone with repository read access and embed secrets in version control history, increasing the risk of credential theft and unauthorized access to private images. Container credentials must be supplied via expressions that reference GitHub Secrets, such as `${{ secrets.DOCKER_PASSWORD }}`, rather than literal string values. This check validates job-level container credentials `jobs[].container.credentials.password` and service container credentials `jobs[].services[].credentials.password` and will flag passwords that are plain literals instead of expression references. Values that parse as a GitHub Actions expression (curly-brace form) are allowed; any password not written as an expression should be moved to a repository or organization secret and referenced from the workflow.
+Hardcoded container registry passwords in GitHub Actions workflows expose credentials to anyone with repository read access and embed secrets in version control history. This increases the risk of credential theft and unauthorized access to private images. Container credentials must be supplied via expressions that reference GitHub Secrets, such as `${{ secrets.DOCKER_PASSWORD }}`, rather than literal string values.
+
+This check validates job-level container credentials `jobs[].container.credentials.password` and service container credentials `jobs[].services[].credentials.password` and will flag passwords that are plain literals instead of expression references. Values that parse as a GitHub Actions expression (curly-brace form) are allowed. Any password not written as an expression should be moved to a repository or organization secret and referenced from the workflow.
 
 Secure configuration examples:
 

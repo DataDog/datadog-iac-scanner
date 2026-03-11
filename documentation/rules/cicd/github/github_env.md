@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Writing to the special GitHub Actions environment files GITHUB_ENV or GITHUB_PATH from workflow steps that handle untrusted input can inject environment variables or alter PATH, enabling attackers to escalate privileges or achieve arbitrary code execution. This rule inspects GitHub Actions workflow steps with a `run:` body in workflows using dangerous triggers, such as `pull_request_target` or `workflow_run`, and flags occurrences that write to those files. It detects the `>`, `>>` shell redirections, pipeline-to-tee patterns, PowerShell `Out-File`/`Add-Content`/`Set-Content`/`Tee-Object`, and Windows `cmd` echo/write patterns targeting `$GITHUB_ENV`, `$GITHUB_PATH`, `${env:GITHUB_ENV}`, `%GITHUB_ENV%`, etc. The audit ignores trivially static `echo` statements with only literal text but will flag commands that include variable expansion, command substitution, multiple arguments, or unknown commands which may introduce attacker-controlled data.
+Writing to the special GitHub Actions environment files `GITHUB_ENV` or `GITHUB_PATH` from workflow steps that handle untrusted input can inject environment variables or alter `PATH`, enabling attackers to escalate privileges or achieve arbitrary code execution.
+
+This rule inspects GitHub Actions workflow steps with a `run:` body in workflows that use dangerous triggers such as `pull_request_target` or `workflow_run`, and flags occurrences that write to those files. It detects `>` and `>>` shell redirections, pipeline-to-tee patterns, PowerShell `Out-File`/`Add-Content`/`Set-Content`/`Tee-Object`, and Windows `cmd` echo/write patterns targeting `$GITHUB_ENV`, `$GITHUB_PATH`, `${env:GITHUB_ENV}`, `%GITHUB_ENV%`, and similar variants. The audit ignores trivially static `echo` statements with only literal text but will flag commands that include variable expansion, command substitution, multiple arguments, or unknown commands that may introduce attacker-controlled data.
 
 Secure alternative using step outputs instead of writing to `GITHUB_ENV`:
 

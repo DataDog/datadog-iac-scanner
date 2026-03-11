@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Passing GitHub Actions secrets through transformation functions such as fromJSON() is unsafe because the transformation produces a different string that GitHub’s automatic redaction can’t recognize, which can allow secret values to appear in plaintext in workflow logs. This rule flags workflow expressions that call `fromJSON` with the `secrets` context or any child of it as an argument, for example `fromJSON(secrets)`, `fromJSON(secrets.MY_SECRET)`, or nested uses like `fromJSON(secrets.MY_SECRET).field`. Avoid storing multiple values as a single JSON secret; instead store individual secrets and reference them directly, or ensure any transformed value is never written to logs or exposed to third-party actions. 
+Passing GitHub Actions secrets through transformation functions such as `fromJSON()` is unsafe. The transformation produces a different string that GitHub's automatic redaction can't recognize, which can allow secret values to appear in plaintext in workflow logs.
+
+This rule flags workflow expressions that call `fromJSON` with the `secrets` context or any child of it as an argument, for example `fromJSON(secrets)`, `fromJSON(secrets.MY_SECRET)`, or nested uses like `fromJSON(secrets.MY_SECRET).field`. Avoid storing multiple values as a single JSON secret. Instead, store individual secrets and reference them directly, or ensure any transformed value is never written to logs or exposed to third-party actions.
 
 Secure example — reference a single secret value instead of parsing a JSON blob:
 

@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Publishing workflows that build and publish runtime artifacts must not write to dependency caches because a poisoned cache can introduce malicious dependencies into packages, releases, or container images and lead to supply‑chain compromise. For example using writable caches exposed to pull request workflows. This rule inspects GitHub Actions workflow job steps: the `uses` key identifies cache‑aware actions. Examples include `actions/cache`, `actions/setup-go`, `actions/setup-node`, `actions/setup-python`, `Swatinem/rust-cache`, and others. It also identifies the `with` mapping containing cache-related controls. When a job is triggered by release events or contains well‑known publisher steps, ensure `cache-write` flags are disabled. For example, `lookup-only: true` for `actions/cache` and `cache: false` for boolean `cache` controls. Steps missing a disabling flag, explicitly enabling caching, or relying on an action’s default caching behaviour will be flagged; note that some actions use string-valued fields to control caching and non-configurable actions cannot be automatically fixed.
+Publishing workflows that build and publish runtime artifacts must not write to dependency caches. A poisoned cache can introduce malicious dependencies into packages, releases, or container images, leading to supply-chain compromise. For example, using writable caches exposed to pull request workflows. 
+
+This rule inspects GitHub Actions workflow job steps. The `uses` key identifies cache-aware actions such as `actions/cache`, `actions/setup-go`, `actions/setup-node`, `actions/setup-python`, `Swatinem/rust-cache`, and others. It also identifies `with` mappings containing cache-related controls.
+
+When a job is triggered by release events or contains well-known publisher steps, `cache-write` flags must be disabled. For example, set `lookup-only: true` for `actions/cache` and `cache: false` for boolean `cache` controls. Steps missing a disabling flag, explicitly enabling caching, or relying on an action's default caching behavior will be flagged. Some actions use string-valued fields to control caching, and non-configurable actions cannot be automatically fixed.
 
 Secure examples:
 

@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-GitHub Actions steps must not invoke forbidden or untrusted actions because actions run with pipeline privileges and a compromised action can exfiltrate secrets, modify code, or execute arbitrary commands in your CI/CD environment. This rule inspects the `uses` field of workflow step entries and evaluates repository-style references, such as `owner/repo@ref`, against the configured forbidden-uses policy. If the configuration is a whitelist (allow), only actions that match an allow pattern are permitted; if it is a blacklist, using deny, any repository-style `uses` that matches a deny pattern will be flagged. Local actions referenced by a relative path, such as `./.github/actions/...` are never denied, Docker image uses are not evaluated by this rule, and steps without a `uses` field are ignored.
+GitHub Actions steps must not invoke forbidden or untrusted actions because actions run with pipeline privileges. A compromised action can exfiltrate secrets, modify code, or execute arbitrary commands in your CI/CD environment.
+
+This rule inspects the `uses` field of workflow step entries and evaluates repository-style references, such as `owner/repo@ref`, against the configured forbidden-uses policy. If the configuration is a whitelist (allow), only actions that match an allow pattern are permitted. If it is a blacklist (deny), any repository-style `uses` that matches a deny pattern will be flagged. Local actions referenced by a relative path, such as `./.github/actions/...`, are never denied. Docker image uses are not evaluated by this rule, and steps without a `uses` field are ignored.
 
 Secure example:
 

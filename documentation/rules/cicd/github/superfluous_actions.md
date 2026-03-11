@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Using third‑party GitHub Actions that duplicate functionality already provided by GitHub‑hosted runners increases supply‑chain and maintenance risk by introducing unnecessary external code, permissions, and update surface to your workflows. This rule checks workflow job steps and composite steps that declare a repository action via the `uses` property and flags known superfluous actions such as `ncipollo/release-action`, `softprops/action-gh-release`, `elgohr/Github-Release-Action`, `peter-evans/create-pull-request`, `peter-evans/create-or-update-comment`, `addnab/docker-run-action`, and `dtolnay/rust-toolchain`. Replace these with `run` script steps that call built‑in tools available on runners, such as `gh release`, `gh pr create`, `gh pr comment` / `gh issue comment`, `docker run`, or `rustup`/`cargo`, or use native container steps where appropriate. Any step with a `uses` value matching the listed repositories will be flagged.
+Using third-party GitHub Actions that duplicate functionality already provided by GitHub-hosted runners increases supply-chain and maintenance risk. These actions introduce unnecessary external code, permissions, and update surface to your workflows.
+
+This rule flags workflow job steps and composite steps that declare a repository action via the `uses` property. The following actions are flagged: `ncipollo/release-action`, `softprops/action-gh-release`, `elgohr/Github-Release-Action`, `peter-evans/create-pull-request`, `peter-evans/create-or-update-comment`, `addnab/docker-run-action`, and `dtolnay/rust-toolchain`.
+
+Replace these with `run` script steps that call built-in tools available on runners. For example, use `gh release`, `gh pr create`, `gh pr comment` / `gh issue comment`, `docker run`, or `rustup`/`cargo`. You can also use native container steps where appropriate. Any step with a `uses` value matching the listed repositories will be flagged.
 
 Secure replacement examples:
 

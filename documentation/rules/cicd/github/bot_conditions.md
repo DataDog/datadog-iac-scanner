@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-GitHub Actions `if` conditions should not rely on top-level actor contexts like `github.actor`, `github.triggering_actor`, or their ID variants because attacker-controlled usernames that end with `[bot]` or reused integration IDs can be used to bypass actor checks and grant unintended access. This rule inspects job and step-level `if` expressions and flags comparisons where spoofable contexts are checked against bot names or IDs. For example, `github.actor == 'dependabot[bot]'` or `github.actor_id == '49699333'`. Instead, use event-specific user contexts so the actor is taken from the triggering event payload. For example, use `github.event.pull_request.user.login` / `github.event.pull_request.user.id` for `pull_request` or `pull_request_target`, `github.event.comment.user.login` / `.id` for `issue_comment` and `discussion_comment`, `github.event.review.user.login` / `.id` for `pull_request_review`, and `github.event.issue.user.login` / `.id` for `issues`. Known vulnerable bot IDs include `29110`, `49699333`, `27856297`, and `29139614`.
+GitHub Actions `if` conditions should not rely on top-level actor contexts like `github.actor`, `github.triggering_actor`, or their ID variants. Attacker-controlled usernames ending with `[bot]` or reused integration IDs can bypass actor checks and grant unintended access.
+
+This rule inspects job and step-level `if` expressions and flags comparisons where spoofable contexts are checked against bot names or IDs, such as `github.actor == 'dependabot[bot]'` or `github.actor_id == '49699333'`. Instead, use event-specific user contexts so the actor is taken from the triggering event payload. For `pull_request` or `pull_request_target`, use `github.event.pull_request.user.login` / `github.event.pull_request.user.id`. For `issue_comment` and `discussion_comment`, use `github.event.comment.user.login` / `.id`. For `pull_request_review`, use `github.event.review.user.login` / `.id`. For `issues`, use `github.event.issue.user.login` / `.id`.
+
+Known vulnerable bot IDs include `29110`, `49699333`, `27856297`, and `29139614`.
 
 Secure example replacing `github.actor` with an event-specific context:
 
