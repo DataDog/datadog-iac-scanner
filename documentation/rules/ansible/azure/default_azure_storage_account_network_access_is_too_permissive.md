@@ -1,0 +1,114 @@
+---
+title: "Default Azure Storage Account Network Access Is Too Permissive"
+group_id: "Ansible / Azure"
+meta:
+  name: "azure/default_azure_storage_account_network_access_is_too_permissive"
+  id: "ca4df748-613a-4fbf-9c76-f02cbd580307"
+  display_name: "Default Azure Storage Account Network Access Is Too Permissive"
+  cloud_provider: "Azure"
+  platform: "Ansible"
+  severity: "HIGH"
+  category: "Access Control"
+---
+## Metadata
+
+**Id:** `ca4df748-613a-4fbf-9c76-f02cbd580307`
+
+**Cloud Provider:** Azure
+
+**Platform:** Ansible
+
+**Severity:** High
+
+**Category:** Access Control
+
+#### Learn More
+
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/azure/azcollection/azure_rm_storageaccount_module.html#parameter-public_network_access)
+
+### Description
+
+Storage accounts must not permit broad public access or use a permissive default ACL because public network access or a default-allow policy can expose blobs, queues, and file storage to unauthorized users and increase the risk of data exfiltration. For Ansible resources using `azure.azcollection.azure_rm_storageaccount` or `azure_rm_storageaccount`, explicitly set `public_network_access` to `Disabled` and set `network_acls.default_action` to `Deny`. Resources that omit `public_network_access` (the default is `Enabled`), that set `public_network_access: Enabled`, or that set `network_acls.default_action: Allow` will be flagged. Secure configuration example:
+
+```yaml
+- name: Create secure Azure Storage Account
+  azure_rm_storageaccount:
+    resource_group: my-rg
+    name: mystorageacct
+    location: eastus
+    public_network_access: Disabled
+    network_acls:
+      default_action: Deny
+```
+
+## Compliant Code Examples
+```yaml
+---
+- name: create an account
+  azure.azcollection.azure_rm_storageaccount:
+    resource_group: myResourceGroup
+    name: clh0002
+    type: Standard_RAGRS
+    tags:
+      testing: testing
+      delete: on-exit
+    network_acls:
+      default_action: Deny
+
+```
+
+```yaml
+---
+- name: create an account
+  azure.azcollection.azure_rm_storageaccount:
+    resource_group: myResourceGroup
+    name: clh0002
+    type: Standard_RAGRS
+    tags:
+      testing: testing
+      delete: on-exit
+    public_network_access: Disabled
+
+```
+## Non-Compliant Code Examples
+```yaml
+---
+- name: create an account
+  azure.azcollection.azure_rm_storageaccount:
+    resource_group: myResourceGroup
+    name: clh0002
+    type: Standard_RAGRS
+    tags:
+      testing: testing
+      delete: on-exit
+
+```
+
+```yaml
+---
+- name: create an account
+  azure.azcollection.azure_rm_storageaccount:
+    resource_group: myResourceGroup
+    name: clh0002
+    type: Standard_RAGRS
+    tags:
+      testing: testing
+      delete: on-exit
+    network_acls:
+      default_action: Allow
+
+```
+
+```yaml
+---
+- name: create an account
+  azure.azcollection.azure_rm_storageaccount:
+    resource_group: myResourceGroup
+    name: clh0002
+    type: Standard_RAGRS
+    tags:
+      testing: testing
+      delete: on-exit
+    public_network_access: Enabled
+
+```
