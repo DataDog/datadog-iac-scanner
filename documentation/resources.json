@@ -1,4 +1,12 @@
 {
+  "ansible": [
+    "aws",
+    "azure",
+    "gcp",
+    "general",
+    "config",
+    "hosts"
+  ],
   "terraform": [
       "alicloud",
       "aws",
