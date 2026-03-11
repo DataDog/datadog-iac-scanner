@@ -1,0 +1,95 @@
+---
+title: "Misconfigured Password Policy Expiration"
+group_id: "Ansible / AWS"
+meta:
+  name: "aws/misconfigured_password_policy_expiration"
+  id: "3f2cf811-88fa-4eda-be45-7a191a18aba9"
+  display_name: "Misconfigured Password Policy Expiration"
+  cloud_provider: "AWS"
+  platform: "Ansible"
+  severity: "LOW"
+  category: "Best Practices"
+---
+## Metadata
+
+**Id:** `3f2cf811-88fa-4eda-be45-7a191a18aba9`
+
+**Cloud Provider:** AWS
+
+**Platform:** Ansible
+
+**Severity:** Low
+
+**Category:** Best Practices
+
+#### Learn More
+
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_password_policy_module.html)
+
+### Description
+
+IAM account password policies must enforce regular password expiration to limit the window of exposure for compromised or leaked credentials and to reduce the risk of long-lived unauthorized access. In Ansible, tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules must define `pw_max_age` or `password_max_age` with a value of 90 days or fewer (no more than 90). Resources that omit both properties or set either property to a value greater than 90 will be flagged.
+
+Secure configuration example:
+
+```yaml
+- name: Enforce IAM password expiration
+  community.aws.iam_password_policy:
+    password_max_age: 90
+```
+
+## Compliant Code Examples
+```yaml
+- name: Missing Password policy for AWS account
+  community.aws.iam_password_policy:
+    state: present
+    min_pw_length: 8
+    require_symbols: false
+    require_numbers: true
+    require_uppercase: true
+    require_lowercase: true
+    allow_pw_change: true
+    pw_max_age: 20
+    pw_reuse_prevent: 5
+    pw_expire: false
+
+```
+## Non-Compliant Code Examples
+```yaml
+- name: Missing Password policy for AWS account
+  community.aws.iam_password_policy:
+    state: present
+    min_pw_length: 8
+    require_symbols: false
+    require_numbers: true
+    require_uppercase: true
+    require_lowercase: true
+    allow_pw_change: true
+    pw_reuse_prevent: 5
+    pw_expire: false
+- name: Extreme Password policy for AWS account
+  community.aws.iam_password_policy:
+    state: present
+    min_pw_length: 8
+    require_symbols: false
+    require_numbers: true
+    require_uppercase: true
+    require_lowercase: true
+    allow_pw_change: true
+    pw_max_age: 180
+    pw_reuse_prevent: 5
+    pw_expire: false
+- name: Alias extreme Password policy for AWS account
+  community.aws.iam_password_policy:
+    state: present
+    min_pw_length: 8
+    require_symbols: false
+    require_numbers: true
+    require_uppercase: true
+    require_lowercase: true
+    allow_pw_change: true
+    password_max_age: 95
+    pw_reuse_prevent: 5
+    pw_expire: false
+
+```

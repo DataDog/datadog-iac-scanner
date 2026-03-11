@@ -1,0 +1,70 @@
+---
+title: "Lambda Permission Misconfigured"
+group_id: "Ansible / AWS"
+meta:
+  name: "aws/lambda_permission_misconfigured"
+  id: "3ddf3417-424d-420d-8275-0724dc426520"
+  display_name: "Lambda Permission Misconfigured"
+  cloud_provider: "AWS"
+  platform: "Ansible"
+  severity: "LOW"
+  category: "Best Practices"
+---
+## Metadata
+
+**Id:** `3ddf3417-424d-420d-8275-0724dc426520`
+
+**Cloud Provider:** AWS
+
+**Platform:** Ansible
+
+**Severity:** Low
+
+**Category:** Best Practices
+
+#### Learn More
+
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/lambda_policy_module.html)
+
+### Description
+
+Lambda permission statements must set the action to 'lambda:InvokeFunction' so callers are limited to invoking the function and to avoid granting broader or unintended Lambda privileges. Check Ansible tasks that use the `community.aws.lambda_policy` or `lambda_policy` modules; the `action` property must be defined and set to the exact string `lambda:InvokeFunction`. Tasks missing the `action` property or using any other value (for example `lambda:*`, a different Lambda action, or an empty value) will be flagged because they can either over‑privilege callers or result in misconfigured access. Secure example with the action explicitly set:
+
+```yaml
+- name: Allow S3 to invoke my Lambda
+  community.aws.lambda_policy:
+    name: my_lambda_policy
+    state: present
+    principal: s3.amazonaws.com
+    action: lambda:InvokeFunction
+    function_name: my-function
+```
+
+## Compliant Code Examples
+```yaml
+- name: Lambda S3 notification negative
+  community.aws.lambda_policy:
+    state: present
+    function_name: functionName
+    alias: Dev
+    statement_id: lambda-s3-myBucket-create-data-log
+    action: lambda:InvokeFunction
+    principal: s3.amazonaws.com
+    source_arn: arn:aws:s3:eu-central-1:123456789012:bucketName
+    source_account: 123456789012
+
+```
+## Non-Compliant Code Examples
+```yaml
+- name: Lambda S3 notification positive
+  community.aws.lambda_policy:
+    state: present
+    function_name: functionName
+    alias: Dev
+    statement_id: lambda-s3-myBucket-create-data-log
+    action: lambda:CreateFunction
+    principal: s3.amazonaws.com
+    source_arn: arn:aws:s3:eu-central-1:123456789012:bucketName
+    source_account: 123456789012
+
+```
