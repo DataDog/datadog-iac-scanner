@@ -1,0 +1,88 @@
+---
+title: "Google Compute Subnetwork with Private Google Access Disabled"
+group_id: "Ansible / GCP"
+meta:
+  name: "gcp/google_compute_subnetwork_with_private_google_access_disabled"
+  id: "6a4080ae-79bd-42f6-a924-8f534c1c018b"
+  display_name: "Google Compute Subnetwork with Private Google Access Disabled"
+  cloud_provider: "GCP"
+  platform: "Ansible"
+  severity: "LOW"
+  category: "Networking and Firewall"
+---
+## Metadata
+
+**Id:** `6a4080ae-79bd-42f6-a924-8f534c1c018b`
+
+**Cloud Provider:** GCP
+
+**Platform:** Ansible
+
+**Severity:** Low
+
+**Category:** Networking and Firewall
+
+#### Learn More
+
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/google/cloud/gcp_compute_subnetwork_module.html#parameter-private_ip_google_access)
+
+### Description
+
+Subnetworks must have Private Google Access enabled so VM instances with only internal IPs can reach Google APIs and services over Google's internal network. If Private Google Access is disabled, operators may assign external IPs or route traffic via the public internet, increasing attack surface and the risk of data exposure or network-based attacks. For Ansible resources using the google.cloud.gcp_compute_subnetwork or gcp_compute_subnetwork modules, the `private_ip_google_access` property must be defined and set to `yes`. Tasks missing this property or with `private_ip_google_access` not equal to `yes` will be flagged.
+
+Secure Ansible example:
+
+```yaml
+- name: Create subnetwork with Private Google Access enabled
+  google.cloud.gcp_compute_subnetwork:
+    name: my-subnet
+    region: us-central1
+    ip_cidr_range: 10.0.0.0/24
+    network: my-vpc
+    private_ip_google_access: yes
+```
+
+## Compliant Code Examples
+```yaml
+- name: create a subnetwork3
+  google.cloud.gcp_compute_subnetwork:
+    name: ansiblenet
+    region: us-west1
+    network: "{{ network }}"
+    ip_cidr_range: 172.16.0.0/16
+    project: test_project
+    auth_kind: serviceaccount
+    service_account_file: "/tmp/auth.pem"
+    private_ip_google_access: yes
+    state: present
+
+```
+## Non-Compliant Code Examples
+```yaml
+- name: create a subnetwork2
+  google.cloud.gcp_compute_subnetwork:
+    name: ansiblenet
+    region: us-west1
+    network: "{{ network }}"
+    ip_cidr_range: 172.16.0.0/16
+    project: test_project
+    auth_kind: serviceaccount
+    service_account_file: "/tmp/auth.pem"
+    private_ip_google_access: no
+    state: present
+
+```
+
+```yaml
+- name: create a subnetwork
+  google.cloud.gcp_compute_subnetwork:
+    name: ansiblenet
+    region: us-west1
+    network: "{{ network }}"
+    ip_cidr_range: 172.16.0.0/16
+    project: test_project
+    auth_kind: serviceaccount
+    service_account_file: "/tmp/auth.pem"
+    state: present
+
+```
