@@ -19,6 +19,8 @@ CODE_SUFFIX = {
     "yaml": "yaml",
     "json": "json",
     "dockerfile": "dockerfile",
+    "cfg": "ini",
+    "ini": "ini",
 }
 CLOUD_PROVIDER = {
     "alicloud": "Alicloud",
@@ -36,6 +38,8 @@ CLOUD_PROVIDER = {
     "kubernetes": "Kubernetes",
     "nifcloud": "Nifcloud",
     "tencentcloud": "TencentCloud",
+    "config": "Ansible Config",
+    "hosts": "Ansible Inventory",
 }
 
 
@@ -91,14 +95,16 @@ def get_code_snippets(test_dir, resource_type, max_examples):
         (f for f in test_dir.iterdir() if NEGATIVE.match(f.name)), max_examples
     ):
         if code := read_file_contents(file).replace("```", "\\`\\`\\`"):
-            compliant.append(f"```{CODE_SUFFIX[file.suffix.lstrip('.')]}\n{code}\n```")
+            ext = file.suffix.lstrip(".")
+            lang = CODE_SUFFIX.get(ext, "text")
+            compliant.append(f"```{lang}\n{code}\n```")
     for file in islice(
         (f for f in test_dir.iterdir() if POSITIVE.match(f.name)), max_examples
     ):
         if code := read_file_contents(file).replace("```", "\\`\\`\\`"):
-            non_compliant.append(
-                f"```{CODE_SUFFIX[file.suffix.lstrip('.')]}\n{code}\n```"
-            )
+            ext = file.suffix.lstrip(".")
+            lang = CODE_SUFFIX.get(ext, "text")
+            non_compliant.append(f"```{lang}\n{code}\n```")
     return compliant, non_compliant
 
 
