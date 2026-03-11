@@ -1,0 +1,94 @@
+---
+title: "CA Certificate Identifier Is Outdated"
+group_id: "Ansible / AWS"
+meta:
+  name: "aws/ca_certificate_identifier_is_outdated"
+  id: "5eccd62d-8b4d-46d3-83ea-1879f3cbd3ce"
+  display_name: "CA Certificate Identifier Is Outdated"
+  cloud_provider: "AWS"
+  platform: "Ansible"
+  severity: "MEDIUM"
+  category: "Encryption"
+---
+## Metadata
+
+**Id:** `5eccd62d-8b4d-46d3-83ea-1879f3cbd3ce`
+
+**Cloud Provider:** AWS
+
+**Platform:** Ansible
+
+**Severity:** Medium
+
+**Category:** Encryption
+
+#### Learn More
+
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-ca_certificate_identifier)
+
+### Description
+
+RDS instances must specify a CA certificate identifier so the database uses a known AWS CA for TLS connections and to avoid broken or insecure certificate chains during CA rotations. For Ansible RDS resources (modules `community.aws.rds_instance` and `rds_instance`) the `ca_certificate_identifier` property must be defined and set to `rds-ca-2019`. Resources missing this property or specifying a different value will be flagged; update the value if AWS publishes a newer CA identifier.
+
+Secure Ansible task example:
+
+```yaml
+- name: create RDS instance with CA
+  community.aws.rds_instance:
+    db_instance_identifier: my-db
+    engine: mysql
+    instance_class: db.t3.medium
+    allocated_storage: 20
+    username: admin
+    password: secret
+    ca_certificate_identifier: rds-ca-2019
+```
+
+## Compliant Code Examples
+```yaml
+- name: create minimal aurora instance in default VPC and default subnet group
+  community.aws.rds_instance:
+    engine: aurora
+    db_instance_identifier: ansible-test-aurora-db-instance
+    instance_type: db.t2.small
+    password: '{{ password }}'
+    username: '{{ username }}'
+    cluster_id: ansible-test-cluster
+    ca_certificate_identifier: rds-ca-2019
+- name: Create a DB instance using the default AWS KMS encryption key
+  community.aws.rds_instance:
+    id: test-encrypted-db
+    state: present
+    engine: mariadb
+    storage_encrypted: true
+    db_instance_class: db.t2.medium
+    username: '{{ username }}'
+    password: '{{ password }}'
+    allocated_storage: '{{ allocated_storage }}'
+    ca_certificate_identifier: rds-ca-2019
+
+```
+## Non-Compliant Code Examples
+```yaml
+---
+- name: create minimal aurora instance in default VPC and default subnet group
+  community.aws.rds_instance:
+    engine: aurora
+    db_instance_identifier: ansible-test-aurora-db-instance
+    instance_type: db.t2.small
+    password: "{{ password }}"
+    username: "{{ username }}"
+    cluster_id: ansible-test-cluster
+    ca_certificate_identifier: rds-ca-2015
+- name: create a DB instance using the default AWS KMS encryption key
+  community.aws.rds_instance:
+    id: test-encrypted-db
+    state: present
+    engine: mariadb
+    storage_encrypted: True
+    db_instance_class: db.t2.medium
+    username: "{{ username }}"
+    password: "{{ password }}"
+    allocated_storage: "{{ allocated_storage }}"
+
+```
