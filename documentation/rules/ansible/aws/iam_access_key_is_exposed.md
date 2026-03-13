@@ -1,10 +1,10 @@
 ---
-title: "IAM Access Key Is Exposed"
+title: "IAM access key is exposed"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_access_key_is_exposed"
   id: "7f79f858-fbe8-4186-8a2c-dfd0d958a40f"
-  display_name: "IAM Access Key Is Exposed"
+  display_name: "IAM access key is exposed"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Active, long‑lived access keys for non‑root IAM users increase the risk of credential compromise and unauthorized API access because leaked keys can be used to impersonate users and perform privileged actions. This rule inspects Ansible tasks that use the `community.aws.iam` or `iam` modules and flags tasks where the `access_key_state` property is set to `active` while the `name` property does not contain `root`. Resources with `access_key_state='active'` for non‑root users will be flagged; remediate by removing or setting unused keys to `inactive`, rotating keys frequently, or replacing long‑lived keys with IAM roles and temporary credentials. The check is case‑insensitive and treats any username containing the substring `root` as the root account exception.
+Active, long‑lived access keys for non‑root IAM users increase the risk of credential compromise and unauthorized API access because leaked keys can be used to impersonate users and perform privileged actions. This rule inspects Ansible tasks that use the `community.aws.iam` or `iam` modules and flags tasks where the `access_key_state` property is set to `active` while the `name` property does not contain `root`.
+
+Resources with `access_key_state` set to `active` for non‑root users are flagged. Remediate by removing or setting unused keys to `inactive`, rotating keys frequently, or replacing long‑lived keys with IAM roles and temporary credentials. The check is case‑insensitive and treats any username containing the substring `root` as the root account exception.
 
 ## Compliant Code Examples
 ```yaml

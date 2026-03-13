@@ -1,10 +1,10 @@
 ---
-title: "EBS Volume Encryption Disabled"
+title: "EBS volume encryption disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ebs_volume_encryption_disabled"
   id: "4b6012e7-7176-46e4-8108-e441785eae57"
-  display_name: "EBS Volume Encryption Disabled"
+  display_name: "EBS volume encryption disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-EBS volumes must be encrypted to protect data at rest and to ensure snapshots and backups are also encrypted; unencrypted volumes and their snapshots can be exposed if storage media or backups are compromised. For Ansible, tasks using the `amazon.aws.ec2_vol` or legacy `ec2_vol` modules must define the `encrypted` property and set it to `true` (or `yes`). Tasks where `state` is `absent` or `list` are ignored; resources with `encrypted=false` or missing the `encrypted` attribute will be flagged.  
+Encrypt EBS volumes to protect data at rest and ensure snapshots and backups are also encrypted. Unencrypted volumes and their snapshots risk exposure if storage media or backups are compromised. For Ansible, tasks using the `amazon.aws.ec2_vol` or legacy `ec2_vol` modules must define the `encrypted` property and set it to `true` (or `yes`). Tasks with `state` set to `absent` or `list` are ignored. Resources with `encrypted` set to `false` or missing the `encrypted` attribute are flagged.
 
 Secure Ansible example:
 
