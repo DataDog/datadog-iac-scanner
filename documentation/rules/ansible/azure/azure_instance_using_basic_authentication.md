@@ -1,10 +1,10 @@
 ---
-title: "Azure Instance Using Basic Authentication"
+title: "Azure instance using basic authentication"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/azure_instance_using_basic_authentication"
   id: "e2d834b7-8b25-4935-af53-4a60668dcbe0"
-  display_name: "Azure Instance Using Basic Authentication"
+  display_name: "Azure instance using basic authentication"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Linux virtual machines must require SSH key authentication instead of username/password because password-based login is susceptible to brute-force attacks and credential compromise that can lead to unauthorized access and lateral movement. For Ansible `azure_rm_virtualmachine` resources, ensure `ssh_password_enabled` is set to `false` and `linux_config.disable_password_authentication` is set to `true` so only SSH key authentication is allowed. This rule applies to resources intended to be Linux VMs (where `os_type` is `"linux"` or unspecified); resources missing these properties or that allow password authentication will be flagged.
+Linux virtual machines must require SSH key authentication instead of username/password. Password-based login is susceptible to brute-force attacks and credential compromise, which can lead to unauthorized access and lateral movement.
+
+For Ansible `azure_rm_virtualmachine` resources, ensure `ssh_password_enabled` is set to `false` and `linux_config.disable_password_authentication` is set to `true` so only SSH key authentication is allowed. This rule applies to resources intended to be Linux VMs (where `os_type` is `"linux"` or unspecified). Resources missing these properties or that allow password authentication are flagged.
 
 Secure example configuration:
 

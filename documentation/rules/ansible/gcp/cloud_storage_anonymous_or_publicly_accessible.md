@@ -1,10 +1,10 @@
 ---
-title: "Cloud Storage Anonymous or Publicly Accessible"
+title: "Cloud storage anonymous or publicly accessible"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cloud_storage_anonymous_or_publicly_accessible"
   id: "086031e1-9d4a-4249-acb3-5bfe4c363db2"
-  display_name: "Cloud Storage Anonymous or Publicly Accessible"
+  display_name: "Cloud storage anonymous or publicly accessible"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Cloud Storage buckets must not be anonymously or publicly accessible because setting an ACL entity to 'allUsers' or 'allAuthenticatedUsers' grants broad read or write access to anyone on the internet or to any authenticated Google account, risking data exposure or unauthorized modification. For Ansible `gcp_storage_bucket` resources (modules `google.cloud.gcp_storage_bucket` and `gcp_storage_bucket`), ensure neither the `acl.entity` nor the `default_object_acl.entity` property is set to `allUsers` or `allAuthenticatedUsers`. If a bucket does not define `acl`, `default_object_acl` must be explicitly defined and must not contain those public entities; tasks missing `default_object_acl` or with either entity set to `allUsers`/`allAuthenticatedUsers` will be flagged.
+Cloud Storage buckets must not be anonymously or publicly accessible. Setting an ACL entity to `allUsers` or `allAuthenticatedUsers` grants broad read or write access to anyone on the internet or to any authenticated Google account, risking data exposure or unauthorized modification.
+
+For Ansible `gcp_storage_bucket` resources (modules `google.cloud.gcp_storage_bucket` and `gcp_storage_bucket`), ensure neither the `acl.entity` nor the `default_object_acl.entity` property is set to `allUsers` or `allAuthenticatedUsers`. If a bucket does not define `acl`, `default_object_acl` must be explicitly defined and must not contain those public entities. Tasks missing `default_object_acl` or with either entity set to `allUsers`/`allAuthenticatedUsers` are flagged.
 
 ## Compliant Code Examples
 ```yaml

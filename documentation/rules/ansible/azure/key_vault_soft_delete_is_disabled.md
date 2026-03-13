@@ -1,10 +1,10 @@
 ---
-title: "Key Vault Soft Delete Is Disabled"
+title: "Key Vault soft delete is disabled"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/key_vault_soft_delete_is_disabled"
   id: "881696a8-68c5-4073-85bc-7c38a3deb854"
-  display_name: "Key Vault Soft Delete Is Disabled"
+  display_name: "Key Vault soft delete is disabled"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Key Vaults must have Soft Delete enabled to prevent permanent loss of keys, secrets, and certificates and to ensure deleted items can be recovered after accidental or malicious deletion. This rule checks Ansible tasks using the `azure.azcollection.azure_rm_keyvault` or `azure_rm_keyvault` modules and requires the `enable_soft_delete` property to be defined and set to `true`. Resources missing `enable_soft_delete` or with `enable_soft_delete: false` will be flagged as insecure. Consider also enabling purge protection for additional protection against permanent deletion where appropriate.
+Key Vaults must have soft delete enabled to prevent permanent loss of keys, secrets, and certificates. This ensures deleted items can be recovered after accidental or malicious deletion.
+
+This rule checks Ansible tasks using the `azure.azcollection.azure_rm_keyvault` or `azure_rm_keyvault` modules and requires the `enable_soft_delete` property to be defined and set to `true`. Resources missing `enable_soft_delete` or with `enable_soft_delete: false` are flagged as insecure. Consider enabling purge protection for additional safeguards against permanent deletion.
 
 Secure configuration example:
 

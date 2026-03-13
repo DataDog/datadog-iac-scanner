@@ -1,10 +1,10 @@
 ---
-title: "PostgreSQL Log Duration Not Set"
+title: "PostgreSQL log duration not set"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_log_duration_not_set"
   id: "729ebb15-8060-40f7-9017-cb72676a5487"
-  display_name: "PostgreSQL Log Duration Not Set"
+  display_name: "PostgreSQL log duration not set"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Enable the PostgreSQL server parameter `log_duration` to record statement execution durations; without duration logging, slow queries and malicious long-running activity can go undetected, hindering timely detection and forensic investigation. In Ansible tasks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` module, the parameter entry with `name: log_duration` must have `value: 'ON'`. Tasks missing the `value` property or with a value other than `ON` (case-insensitive) will be flagged.
+Enable the PostgreSQL server parameter `log_duration` to record statement execution durations. Without duration logging, slow queries and malicious long-running activity can go undetected, hindering timely detection and forensic investigation.
+
+In Ansible tasks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` module, the parameter entry with `name: log_duration` must have `value: 'ON'`. Tasks missing the `value` property or with a value other than `ON` (case-insensitive) are flagged.
 
 Secure Ansible task example:
 

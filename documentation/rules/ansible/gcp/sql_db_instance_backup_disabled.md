@@ -1,10 +1,10 @@
 ---
-title: "SQL DB Instance Backup Disabled"
+title: "SQL DB instance backup disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/sql_db_instance_backup_disabled"
   id: "0c82eae2-aca0-401f-93e4-fb37a0f9e5e8"
-  display_name: "SQL DB Instance Backup Disabled"
+  display_name: "SQL DB instance backup disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Cloud SQL instances must have backups enabled so you can recover from accidental deletion, data corruption, or ransomware; without backups, data loss can be permanent and service restoration time increases. For Ansible resources using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, ensure the `settings.backup_configuration.enabled` property is present and set to `true`. Resources missing `settings`, `settings.backup_configuration`, or `settings.backup_configuration.enabled`, or where `enabled` is `false`, will be flagged. Secure configuration example:
+Cloud SQL instances must have backups enabled so you can recover from accidental deletion, data corruption, or ransomware. Without backups, data loss can be permanent and service restoration time increases.
+
+For Ansible resources using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, ensure the `settings.backup_configuration.enabled` property is present and set to `true`. Resources missing `settings`, `settings.backup_configuration`, or `settings.backup_configuration.enabled`, or where `enabled` is `false`, are flagged. 
+
+Secure configuration example:
 
 ```yaml
 - name: Create Cloud SQL instance with backups enabled

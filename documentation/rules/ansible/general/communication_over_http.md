@@ -1,10 +1,10 @@
 ---
-title: "Communication Over HTTP"
+title: "Communication over HTTP"
 group_id: "Ansible / Common"
 meta:
   name: "general/communication_over_http"
   id: "2e8d4922-8362-4606-8c14-aa10466a1ce3"
-  display_name: "Communication Over HTTP"
+  display_name: "Communication over HTTP"
   cloud_provider: "Common"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Using HTTP URLs in Ansible uri tasks exposes requests and any sensitive data (tokens, credentials, or cookies) to interception and tampering because traffic is sent in plaintext. Check tasks that use the `ansible.builtin.uri` module and ensure the `url` property begins with `https://`. Tasks whose `url` starts with `http://` will be flagged and should be updated to use `https://` endpoints or other secure transport. 
+Using HTTP URLs in Ansible uri tasks exposes requests and any sensitive data (tokens, credentials, or cookies) to interception and tampering because traffic is sent in plaintext. Tasks that use the `ansible.builtin.uri` module should have a `url` property that begins with `https://`. Tasks whose `url` starts with `http://` are flagged and should be updated to use `https://` endpoints or other secure transport.
 
 Secure example:
 

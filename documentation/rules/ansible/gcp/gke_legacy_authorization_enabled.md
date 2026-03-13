@@ -1,10 +1,10 @@
 ---
-title: "GKE Legacy Authorization Enabled"
+title: "GKE legacy authorization enabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/gke_legacy_authorization_enabled"
   id: "300a9964-b086-41f7-9378-b6de3ba1c32b"
-  display_name: "GKE Legacy Authorization Enabled"
+  display_name: "GKE legacy authorization enabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Legacy Authorization (ABAC) must be disabled on Kubernetes Engine (GKE) clusters because ABAC grants access based on user attributes instead of fine‑grained RBAC rules, which can result in overly broad permissions and increase the risk of unauthorized access or privilege escalation. For Ansible-managed clusters using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `legacy_abac.enabled` property must be set to `false`. This rule flags cluster resources where `legacy_abac.enabled` is `true`; ensure the property is explicitly defined as `false` in your cluster declaration to enforce RBAC. 
+Legacy Authorization (ABAC) must be disabled on Kubernetes Engine (GKE) clusters. ABAC grants access based on user attributes instead of fine-grained RBAC rules, which can result in overly broad permissions and increase the risk of unauthorized access or privilege escalation.
+
+For Ansible-managed clusters using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `legacy_abac.enabled` property must be set to `false`. This rule flags cluster resources where `legacy_abac.enabled` is `true`. Ensure the property is explicitly defined as `false` in your cluster declaration to enforce RBAC.
 
 Secure configuration example:
 

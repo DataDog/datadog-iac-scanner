@@ -1,10 +1,10 @@
 ---
-title: "GKE Using Default Service Account"
+title: "GKE using default service account"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/gke_using_default_service_account"
   id: "dc126833-125a-40fb-905a-ce5f2afde240"
-  display_name: "GKE Using Default Service Account"
+  display_name: "GKE using default service account"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Kubernetes Engine clusters should not use the default node service account because the default account typically has broad permissions and increases the blast radius if a node is compromised. For Ansible resources using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `node_config.service_account` property must be defined and set to a dedicated, least-privilege IAM service account (full email address); resources missing `node_config.service_account` or with a value containing `"default"` will be flagged. Use a distinct service account with narrowly scoped IAM roles that follow least-privilege principles, for example `my-sa@PROJECT_ID.iam.gserviceaccount.com`.
+Kubernetes Engine clusters should not use the default node service account. The default account typically has broad permissions, increasing the blast radius if a node is compromised.
+
+For Ansible resources using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `node_config.service_account` property must be defined and set to a dedicated, least-privilege IAM service account (full email address). Resources missing `node_config.service_account` or with a value containing `"default"` are flagged. Use a distinct service account with narrowly scoped IAM roles, for example, `my-sa@PROJECT_ID.iam.gserviceaccount.com`.
 
 Secure configuration example:
 

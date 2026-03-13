@@ -1,10 +1,10 @@
 ---
-title: "VM Not Attached To Network"
+title: "VM not attached to network"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/vm_not_attached_to_network"
   id: "1e5f5307-3e01-438d-8da6-985307ed25ce"
-  display_name: "VM Not Attached To Network"
+  display_name: "VM not attached to network"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Virtual machines should reference explicit network interfaces so network security controls (for example, Network Security Groups) can be applied and network exposure is predictable; without explicit NIC configuration, instances may be created without NSGs or with default networking that exposes them to unintended access. For Ansible VM tasks using `azure.azcollection.azure_rm_virtualmachine` or `azure_rm_virtualmachine`, either the `network_interface_names` property (a list of existing NIC names) or the `network_interfaces` property (a list of interface definitions) must be defined. Tasks missing both `network_interface_names` and `network_interfaces` will be flagged. This rule verifies the presence of NIC references only and does not validate whether the referenced NICs themselves have NSGs attached.
+Virtual machines should reference explicit network interfaces so network security controls (for example, Network Security Groups) can be applied and network exposure is predictable. Without explicit NIC configuration, instances may be created without NSGs or with default networking that exposes them to unintended access.
+
+For Ansible VM tasks using `azure.azcollection.azure_rm_virtualmachine` or `azure_rm_virtualmachine`, either the `network_interface_names` property (a list of existing NIC names) or the `network_interfaces` property (a list of interface definitions) must be defined. Tasks missing both `network_interface_names` and `network_interfaces` are flagged. This rule verifies the presence of NIC references only and does not validate whether the referenced NICs themselves have NSGs attached.
 
 Secure configuration examples:
 

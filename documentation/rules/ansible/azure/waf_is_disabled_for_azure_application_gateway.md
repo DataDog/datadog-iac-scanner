@@ -1,10 +1,10 @@
 ---
-title: "WAF Is Disabled For Azure Application Gateway"
+title: "WAF is disabled for Azure Application Gateway"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/waf_is_disabled_for_azure_application_gateway"
   id: "2fc5ab5a-c5eb-4ae4-b687-0f16fe77c255"
-  display_name: "WAF Is Disabled For Azure Application Gateway"
+  display_name: "WAF is disabled for Azure Application Gateway"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Application Gateway instances must have the Web Application Firewall (WAF) SKU enabled to protect web traffic from application-layer threats like SQL injection, cross-site scripting, and automated attacks. For Ansible resources using `azure.azcollection.azure_rm_appgateway` or `azure_rm_appgateway`, the `sku.tier` property must be set to `WAF` or `WAF_v2` (case-insensitive) to enable the WAF capabilities. Resources missing `sku.tier` or configured with non-WAF tiers (for example `Standard` or `Standard_v2`) will be flagged as insecure.
+Application Gateway instances must have the Web Application Firewall (WAF) SKU enabled to protect web traffic from application-layer threats like SQL injection, cross-site scripting, and automated attacks.
+
+For Ansible resources using `azure.azcollection.azure_rm_appgateway` or `azure_rm_appgateway`, the `sku.tier` property must be set to `WAF` or `WAF_v2` (case-insensitive) to enable WAF capabilities. Resources missing `sku.tier` or configured with non-WAF tiers (for example `Standard` or `Standard_v2`) are flagged as insecure.
 
 Secure configuration example:
 

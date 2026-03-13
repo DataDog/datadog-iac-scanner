@@ -1,10 +1,10 @@
 ---
-title: "Trusted Microsoft Services Not Enabled"
+title: "Trusted Microsoft services not enabled"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/trusted_microsoft_services_not_enabled"
   id: "1bc398a8-d274-47de-a4c8-6ac867b353de"
-  display_name: "Trusted Microsoft Services Not Enabled"
+  display_name: "Trusted Microsoft services not enabled"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-When a Storage Account's network access is restricted (network_acls.default_action = Deny), Trusted Microsoft Services must be allowed to bypass the network rules so platform features such as Azure Backup, diagnostics/monitoring, and replication can access the account; without this, backups, telemetry, and other managed operations can fail, impacting data protection and operational visibility. In Ansible `azure_rm_storageaccount` or `azure.azcollection.azure_rm_storageaccount` resources, ensure the `network_acls.bypass` property includes the value `AzureServices` (it may be a comma-separated list, e.g., `AzureServices,Logging`) whenever `network_acls.default_action` is `Deny`. Resources that omit `network_acls.bypass` or whose `bypass` value does not contain `AzureServices` will be flagged.
+When a Storage Account's network access is restricted (`network_acls.default_action` set to `Deny`), Trusted Microsoft Services must be allowed to bypass the network rules. This ensures platform features such as Azure Backup, diagnostics/monitoring, and replication can access the account. Without this bypass, backups, telemetry, and other managed operations can fail, impacting data protection and operational visibility.
+
+In Ansible `azure_rm_storageaccount` or `azure.azcollection.azure_rm_storageaccount` resources, ensure the `network_acls.bypass` property includes the value `AzureServices` (it may be a comma-separated list, for example, `AzureServices,Logging`) whenever `network_acls.default_action` is `Deny`. Resources that omit `network_acls.bypass` or whose `bypass` value does not contain `AzureServices` are flagged.
 
 Secure configuration example:
 

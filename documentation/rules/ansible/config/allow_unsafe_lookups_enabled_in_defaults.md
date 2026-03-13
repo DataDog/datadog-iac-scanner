@@ -1,10 +1,10 @@
 ---
-title: "Allow Unsafe Lookups Enabled In Defaults"
+title: "Allow unsafe lookups enabled in defaults"
 group_id: "Ansible / Ansible Config"
 meta:
   name: "config/allow_unsafe_lookups_enabled_in_defaults"
   id: "86b97bb4-85c9-462d-8635-cbc057c5c8c5"
-  display_name: "Allow Unsafe Lookups Enabled In Defaults"
+  display_name: "Allow unsafe lookups enabled in defaults"
   cloud_provider: "Ansible Config"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-The Ansible `allow_unsafe_lookups` option must be disabled because when enabled lookup plugins can return values that bypass safety markers, which can expose sensitive data or cause playbooks to process untrusted input. Check the `defaults.allow_unsafe_lookups` property in your Ansible configuration and ensure it is defined and set to `False`; configurations with this property set to `True` will be flagged. Set this option in your `ansible.cfg` under the `[defaults]` section as shown:
+The Ansible `allow_unsafe_lookups` option must be disabled. When enabled, lookup plugins can return values that bypass safety markers, which can expose sensitive data or cause playbooks to process untrusted input. Check the `defaults.allow_unsafe_lookups` property in your Ansible configuration and ensure it is defined and set to `False`. Configurations with this property set to `True` are flagged. Set this option in your `ansible.cfg` under the `[defaults]` section as shown in the following example:
 
 ```ini
 [defaults]

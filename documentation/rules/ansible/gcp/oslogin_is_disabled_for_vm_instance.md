@@ -1,10 +1,10 @@
 ---
-title: "OSLogin Is Disabled In VM Instance"
+title: "OSLogin is disabled in VM instance"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/oslogin_is_disabled_for_vm_instance"
   id: "66dae697-507b-4aef-be18-eec5bd707f33"
-  display_name: "OSLogin Is Disabled In VM Instance"
+  display_name: "OSLogin is disabled in VM instance"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-OS Login should be enabled on Google Compute VM instances to centralize SSH access control via IAM and to avoid unmanaged, long-lived SSH keys on individual instances. For Ansible-managed instances using the `google.cloud.gcp_compute_instance` or `gcp_compute_instance` modules, the `metadata.enable-oslogin` property must be set to true. Resources missing the `enable-oslogin` metadata key or with a value that does not evaluate to Ansible true will be flagged. Secure configuration example:
+OS Login should be enabled on Google Compute VM instances to centralize SSH access control via IAM and avoid unmanaged, long-lived SSH keys on individual instances. For Ansible-managed instances using the `google.cloud.gcp_compute_instance` or `gcp_compute_instance` modules, set the `metadata.enable-oslogin` property to `true`. Resources missing the `enable-oslogin` metadata key or with a value that does not evaluate to Ansible true are flagged. 
+
+Secure configuration example:
 
 ```yaml
 - name: create instance with OS Login enabled

@@ -1,10 +1,10 @@
 ---
-title: "PostgreSQL Misconfigured Logging Duration Flag"
+title: "PostgreSQL misconfigured logging duration flag"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/postgresql_misconfigured_logging_duration_flag"
   id: "aed98a2a-e680-497a-8886-277cea0f4514"
-  display_name: "PostgreSQL Misconfigured Logging Duration Flag"
+  display_name: "PostgreSQL misconfigured logging duration flag"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-The PostgreSQL `log_min_duration_statement` flag controls whether SQL statements are recorded for slow queries; if it is not set to `-1`, statement text for slow queries may be written to logs, increasing the risk of exposing sensitive data and creating additional compliance and log-management burden. For Ansible-managed Cloud SQL PostgreSQL instances, ensure the `settings.database_flags` entry for `log_min_duration_statement` is present and set to `-1` in `google.cloud.gcp_sql_instance` or `gcp_sql_instance` tasks. Resources missing this flag or with a different value will be flagged; use `-1` (integer) to disable duration-based statement logging.
+The PostgreSQL `log_min_duration_statement` flag controls whether SQL statements are recorded for slow queries. If it is not set to `-1`, statement text may be written to logs, increasing the risk of exposing sensitive data and creating additional compliance and log-management burden.
+
+For Ansible-managed Cloud SQL PostgreSQL instances, ensure the `settings.database_flags` entry for `log_min_duration_statement` is present and set to `-1` in `google.cloud.gcp_sql_instance` or `gcp_sql_instance` tasks. Resources missing this flag or with a different value are flagged. Use `-1` (integer) to disable duration-based statement logging.
 
 Secure configuration example:
 

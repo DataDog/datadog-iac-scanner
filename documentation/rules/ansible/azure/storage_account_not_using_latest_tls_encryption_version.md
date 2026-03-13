@@ -1,10 +1,10 @@
 ---
-title: "Storage Account Not Using Latest TLS Encryption Version"
+title: "Storage account not using latest TLS encryption version"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/storage_account_not_using_latest_tls_encryption_version"
   id: "c62746cf-92d5-4649-9acf-7d48d086f2ee"
-  display_name: "Storage Account Not Using Latest TLS Encryption Version"
+  display_name: "Storage account not using latest TLS encryption version"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Storage accounts must enforce TLS 1.2 to protect data in transit and to prevent use of older, vulnerable TLS versions or downgrade attacks. For Ansible, the `azure_rm_storageaccount` or `azure.azcollection.azure_rm_storageaccount` resource must include the `minimum_tls_version` property set to `"TLS1_2"`. Resources missing `minimum_tls_version` or configured with any value other than `"TLS1_2"` (for example `"TLS1_0"` or `"TLS1_1"`) will be flagged.
+Storage accounts must enforce TLS 1.2 to protect data in transit and prevent downgrade attacks using older, vulnerable TLS versions. For Ansible, the `azure_rm_storageaccount` or `azure.azcollection.azure_rm_storageaccount` resource must include the `minimum_tls_version` property set to `"TLS1_2"`. Resources missing `minimum_tls_version` or configured with any value other than `"TLS1_2"` (for example `"TLS1_0"` or `"TLS1_1"`) are flagged.
 
 ## Compliant Code Examples
 ```yaml

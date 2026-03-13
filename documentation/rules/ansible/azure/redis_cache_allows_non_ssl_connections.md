@@ -1,10 +1,10 @@
 ---
-title: "Redis Cache Allows Non SSL Connections"
+title: "Redis cache allows non-SSL connections"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/redis_cache_allows_non_ssl_connections"
   id: "869e7fb4-30f0-4bdb-b360-ad548f337f2f"
-  display_name: "Redis Cache Allows Non SSL Connections"
+  display_name: "Redis cache allows non-SSL connections"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Allowing non-SSL (plaintext) connections to Azure Cache for Redis exposes data in transit to interception and tampering, which can leak credentials and sensitive cached data or enable man-in-the-middle attacks. For Ansible tasks using the `azure.azcollection.azure_rm_rediscache` or `azure_rm_rediscache` modules, the `enable_non_ssl_port` property must be set to `false` or omitted so only SSL/TLS connections are permitted. Resources with `enable_non_ssl_port: true` will be flagged; ensure clients connect over the TLS/SSL port (typically 6380) and validate certificates. Secure Ansible configuration example:
+Allowing non-SSL (plaintext) connections to Azure Cache for Redis exposes data in transit to interception and tampering. This can leak credentials and sensitive cached data or enable man-in-the-middle attacks.
+
+For Ansible tasks using the `azure.azcollection.azure_rm_rediscache` or `azure_rm_rediscache` modules, the `enable_non_ssl_port` property must be set to `false` or omitted so only SSL/TLS connections are permitted. Resources with `enable_non_ssl_port: true` are flagged. Ensure clients connect over the TLS/SSL port (typically 6380) and validate certificates. 
+
+Secure Ansible configuration example:
 
 ```yaml
 - name: Create Redis Cache with TLS-only access

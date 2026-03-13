@@ -1,10 +1,10 @@
 ---
-title: "Public Storage Account"
+title: "Public storage account"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/public_storage_account"
   id: "35e2f133-a395-40de-a79d-b260d973d1bd"
-  display_name: "Public Storage Account"
+  display_name: "Public storage account"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Storage accounts must not allow public network access because permitting broad network access or open IP ranges exposes account endpoints and data to unauthorized access and exfiltration. For Ansible `azure_rm_storageaccount` and `azure.azcollection.azure_rm_storageaccount` tasks, ensure the `network_acls.default_action` property is not set to `"Allow"` (use `"Deny"`), and when `default_action` is `"Deny"` the `network_acls.ip_rules` list must not contain the catch-all `"0.0.0.0/0"`. Resources missing these properties, with `default_action='Allow'`, or with `ip_rules` containing `0.0.0.0/0` will be flagged. Secure example for an Ansible task:
+Storage accounts must not allow public network access. Broad network access or open IP ranges expose account endpoints and data to unauthorized access and exfiltration.
+
+For Ansible `azure_rm_storageaccount` and `azure.azcollection.azure_rm_storageaccount` tasks, ensure `network_acls.default_action` is not set to `"Allow"` (use `"Deny"`). When `default_action` is `"Deny"`, the `network_acls.ip_rules` list must not contain the catch-all `"0.0.0.0/0"`. Resources missing these properties, with `default_action='Allow'`, or with `ip_rules` containing `0.0.0.0/0` are flagged. 
+
+Secure example for an Ansible task:
 
 ```yaml
 - name: Create storage account with restricted network access

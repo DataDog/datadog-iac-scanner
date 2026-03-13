@@ -1,10 +1,10 @@
 ---
-title: "High Google KMS Crypto Key Rotation Period"
+title: "High Google KMS crypto key rotation period"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/high_google_kms_crypto_key_rotation_period"
   id: "f9b7086b-deb8-4034-9330-d7fd38f1b8de"
-  display_name: "High Google KMS Crypto Key Rotation Period"
+  display_name: "High Google KMS crypto key rotation period"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-KMS crypto keys must have a rotation_period of 90 days (or less) to limit key lifetime and reduce the blast radius if a key is compromised. For Ansible resources using `google.cloud.gcp_kms_crypto_key` or `gcp_kms_crypto_key`, the `rotation_period` property must be defined as a duration string in seconds that ends with an `s`, and the numeric value must be less than or equal to 7776000 (90 days). Resources missing `rotation_period`, lacking the `s` suffix, or with a numeric value greater than 7776000 will be flagged.
+KMS crypto keys must have a `rotation_period` of 90 days or less to limit key lifetime and reduce the blast radius if a key is compromised.
+
+For Ansible resources using `google.cloud.gcp_kms_crypto_key` or `gcp_kms_crypto_key`, the `rotation_period` property must be a duration string in seconds ending with an `s`. The numeric value must be less than or equal to `7776000` (90 days). Resources missing `rotation_period`, lacking the `s` suffix, or with a value greater than `7776000` are flagged.
 
 Secure configuration example:
 

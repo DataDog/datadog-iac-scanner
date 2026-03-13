@@ -1,10 +1,10 @@
 ---
-title: "SQL Server Predictable Admin Account Name"
+title: "SQL Server predictable admin account name"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/sql_server_predictable_admin_account_name"
   id: "663062e9-473d-4e87-99bc-6f3684b3df40"
-  display_name: "SQL Server Predictable Admin Account Name"
+  display_name: "SQL Server predictable admin account name"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Admin usernames for Azure SQL Server must not be empty or use predictable names because predictable account names (for example, "admin" or "administrator") make it significantly easier for attackers to perform brute-force, credential-stuffing, and targeted authentication attacks. For Ansible resources using `azure.azcollection.azure_rm_sqlserver` or `azure_rm_sqlserver`, the `admin_username` property must be defined as a non-empty string and must not be one of the predictable names: `admin`, `administrator`, `root`, `user`, `azure_admin`, `azure_administrator`, or `guest`. Tasks that omit `admin_username`, set it to an empty value, or use any of the predictable names (checked case-insensitively) will be flagged as insecure. Secure example:
+Admin usernames for Azure SQL Server must not be empty or use predictable names. Predictable account names (for example, "admin" or "administrator") make it significantly easier for attackers to perform brute-force, credential-stuffing, and targeted authentication attacks.
+
+For Ansible resources using `azure.azcollection.azure_rm_sqlserver` or `azure_rm_sqlserver`, the `admin_username` property must be defined as a non-empty string. It must not be one of the following predictable names: `admin`, `administrator`, `root`, `user`, `azure_admin`, `azure_administrator`, or `guest`.
+
+Tasks that omit `admin_username`, set it to an empty value, or use any of the predictable names (checked case-insensitively) are flagged as insecure. 
+
+Secure example:
 
 ```yaml
 - name: Create Azure SQL Server

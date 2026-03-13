@@ -1,10 +1,10 @@
 ---
-title: "PostgreSQL Log Connections Disabled"
+title: "PostgreSQL log connections disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/postgresql_log_connections_disabled"
   id: "d7a5616f-0a3f-4d43-bc2b-29d1a183e317"
-  display_name: "PostgreSQL Log Connections Disabled"
+  display_name: "PostgreSQL log connections disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-PostgreSQL Cloud SQL instances must have the `log_connections` flag set to `on` so connection events are recorded for auditing and to help detect suspicious or unauthorized access. For Ansible resources using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, the `settings.databaseFlags` property must include an entry with `name: log_connections` and `value: on`. Resources missing `settings` or `settings.databaseFlags`, or where `log_connections` is absent or set to `off`, will be flagged.
+PostgreSQL Cloud SQL instances must have the `log_connections` flag set to `on` so connection events are recorded for auditing and to help detect suspicious or unauthorized access. For Ansible resources using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, the `settings.databaseFlags` property must include an entry with `name: log_connections` and `value: on`. Resources missing `settings` or `settings.databaseFlags`, or where `log_connections` is absent or set to `off`, are flagged.
 
 Secure Ansible example:
 

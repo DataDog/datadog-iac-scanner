@@ -1,10 +1,10 @@
 ---
-title: "Cluster Labels Disabled"
+title: "Cluster labels disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cluster_labels_disabled"
   id: "fbe9b2d0-a2b7-47a1-a534-03775f3013f7"
-  display_name: "Cluster Labels Disabled"
+  display_name: "Cluster labels disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Kubernetes clusters should include resource labels to ensure assets are identifiable and to support inventory, policy targeting, and incident response. For Ansible-managed GKE clusters using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `resource_labels` property must be defined and contain at least one key/value pair. Tasks missing the `resource_labels` property or with it set to an empty value (for example, an empty string) will be flagged.
+Kubernetes clusters should include resource labels to ensure assets are identifiable and support inventory, policy targeting, and incident response. For Ansible-managed GKE clusters using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `resource_labels` property must be defined and contain at least one key/value pair. Tasks missing the `resource_labels` property or with it set to an empty value (for example, an empty string) are flagged.
 
 Secure configuration example:
 

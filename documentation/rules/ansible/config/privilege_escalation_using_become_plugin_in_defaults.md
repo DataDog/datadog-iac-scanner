@@ -1,10 +1,10 @@
 ---
-title: "Privilege Escalation Using Become Plugin In Defaults"
+title: "Privilege escalation using become plugin in defaults"
 group_id: "Ansible / Ansible Config"
 meta:
   name: "config/privilege_escalation_using_become_plugin_in_defaults"
   id: "404908b6-4954-4611-98f0-e8ceacdabcb1"
-  display_name: "Privilege Escalation Using Become Plugin In Defaults"
+  display_name: "Privilege escalation using become plugin in defaults"
   cloud_provider: "Ansible Config"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Specifying a `become_user` without enabling privilege escalation prevents Ansible from elevating privileges, so tasks intended to run as that user will execute as the invoking user, which can cause configuration changes to be applied with incorrect permissions or fail to run and lead to insecure or inconsistent system state. In the Ansible defaults group, when `defaults.become_user` is defined the `defaults.become` property must be present and set to `true`. This rule flags defaults entries where `become_user` exists but `become` is missing or set to `false`.
+Specifying a `become_user` without enabling privilege escalation prevents Ansible from elevating privileges. Tasks intended to run as that user will execute as the invoking user instead, which can cause configuration changes to be applied with incorrect permissions or fail entirely, leading to insecure or inconsistent system state. In the Ansible defaults group, when `defaults.become_user` is defined, the `defaults.become` property must be present and set to `true`. This rule flags defaults entries where `become_user` exists but `become` is missing or set to `false`.
 
 Secure configuration example:
 

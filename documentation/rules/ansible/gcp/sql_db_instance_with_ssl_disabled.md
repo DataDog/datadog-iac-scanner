@@ -1,10 +1,10 @@
 ---
-title: "SQL DB Instance With SSL Disabled"
+title: "SQL DB instance with SSL disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/sql_db_instance_with_ssl_disabled"
   id: "d0f7da39-a2d5-4c78-bb85-4b7f338b3cbb"
-  display_name: "SQL DB Instance With SSL Disabled"
+  display_name: "SQL DB instance with SSL disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Cloud SQL instances must require SSL for client connections to protect data in transit and to prevent unauthorized or unencrypted access to the database. In Ansible tasks using the `google.cloud.gcp_sql_instance` or `gcp_sql_instance` module, the `settings.ip_configuration.require_ssl` property must be defined and set to `true`. Resources that omit `settings.ip_configuration.require_ssl` or set it to `false` will be flagged as a misconfiguration.
+Cloud SQL instances must require SSL for client connections to protect data in transit and prevent unauthorized or unencrypted access to the database. In Ansible tasks using the `google.cloud.gcp_sql_instance` or `gcp_sql_instance` module, the `settings.ip_configuration.require_ssl` property must be set to `true`. Resources that omit `settings.ip_configuration.require_ssl` or set it to `false` are flagged as a misconfiguration.
 
 Secure Ansible task example:
 

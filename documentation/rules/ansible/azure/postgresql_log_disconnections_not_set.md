@@ -1,10 +1,10 @@
 ---
-title: "PostgreSQL Log Disconnections Not Set"
+title: "PostgreSQL log disconnections not set"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_log_disconnections_not_set"
   id: "054d07b5-941b-4c28-8eef-18989dc62323"
-  display_name: "PostgreSQL Log Disconnections Not Set"
+  display_name: "PostgreSQL log disconnections not set"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Enabling the PostgreSQL server parameter `log_disconnections` ensures the server records client connection termination events, which is important for detecting abnormal connection patterns, troubleshooting connectivity issues, and supporting forensic investigations. For Ansible, the `azure.azcollection.azure_rm_postgresqlconfiguration` (or legacy `azure_rm_postgresqlconfiguration`) resource must have `name: log_disconnections` and `value: ON` (value compared case-insensitively). Resources where `name` is `log_disconnections` but `value` is missing, not a string, or not set to `ON` will be flagged as insecure.
+Enabling the PostgreSQL server parameter `log_disconnections` ensures the server records client connection termination events. This is important for detecting abnormal connection patterns, troubleshooting connectivity issues, and supporting forensic investigations.
+
+For Ansible, the `azure.azcollection.azure_rm_postgresqlconfiguration` (or legacy `azure_rm_postgresqlconfiguration`) resource must have `name: log_disconnections` and `value: ON` (value compared case-insensitively). Resources where `name` is `log_disconnections` but `value` is missing, not a string, or not set to `ON` are flagged as insecure.
 
 Secure Ansible configuration example:
 

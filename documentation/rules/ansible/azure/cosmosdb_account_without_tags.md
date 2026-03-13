@@ -1,10 +1,10 @@
 ---
-title: "Cosmos DB Account Without Tags"
+title: "Cosmos DB account without tags"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/cosmosdb_account_without_tags"
   id: "23a4dc83-4959-4d99-8056-8e051a82bc1e"
-  display_name: "Cosmos DB Account Without Tags"
+  display_name: "Cosmos DB account without tags"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Cosmos DB account resources must include tags to support asset identification, ownership, and automated security or incident response processes; lacking tags makes inventory, cost allocation, and security triage more difficult. For Ansible, tasks using the `azure.azcollection.azure_rm_cosmosdbaccount` or `azure_rm_cosmosdbaccount` modules must define the `tags` property as a mapping of key-value pairs. Resources missing the `tags` property or with it undefined will be flagged; ensure tags are present (and ideally include keys such as Owner and Environment) to enable governance and automation.
+Cosmos DB account resources must include tags to support asset identification, ownership, and automated security or incident response processes. Without tags, inventory, cost allocation, and security triage become more difficult.
+
+For Ansible, tasks using the `azure.azcollection.azure_rm_cosmosdbaccount` or `azure_rm_cosmosdbaccount` modules must define the `tags` property as a mapping of key-value pairs. Resources missing the `tags` property or with it undefined are flagged. Include keys such as Owner and Environment to enable governance and automation.
 
 Secure example:
 

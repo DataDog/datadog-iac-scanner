@@ -1,10 +1,10 @@
 ---
-title: "AKS Network Policy Misconfigured"
+title: "AKS network policy misconfigured"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/aks_network_policy_misconfigured"
   id: "8c3bedf1-c570-4c3b-b414-d068cd39a00c"
-  display_name: "AKS Network Policy Misconfigured"
+  display_name: "AKS network policy misconfigured"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-AKS clusters must have a network policy configured to enforce pod-to-pod network isolation and the principle of least privilege; without a network policy, pods can communicate freely, increasing the risk of lateral movement and unintended access to services. For Ansible resources using `azure.azcollection.azure_rm_aks` or `azure_rm_aks`, the `network_profile.network_policy` property must be defined and set to either `calico` or `azure`. Tasks that omit `network_profile` or `network_profile.network_policy`, or that set the property to any value other than `calico` or `azure`, will be flagged. Secure example Ansible task:
+AKS clusters must have a network policy configured to enforce pod-to-pod network isolation and the principle of least privilege. Without a network policy, pods can communicate freely, increasing the risk of lateral movement and unintended access to services.
+
+For Ansible resources using `azure.azcollection.azure_rm_aks` or `azure_rm_aks`, the `network_profile.network_policy` property must be defined and set to either `calico` or `azure`. Tasks that omit `network_profile` or `network_profile.network_policy`, or that set the property to any value other than `calico` or `azure`, are flagged.
+
+Secure example Ansible task:
 
 ```yaml
 - name: Create AKS cluster with network policy

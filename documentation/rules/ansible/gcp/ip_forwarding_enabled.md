@@ -1,10 +1,10 @@
 ---
-title: "IP Forwarding Enabled"
+title: "IP forwarding enabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/ip_forwarding_enabled"
   id: "11bd3554-cd56-4257-8e25-7aaf30cf8f5f"
-  display_name: "IP Forwarding Enabled"
+  display_name: "IP forwarding enabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Compute instances must not have IP forwarding enabled because allowing an instance to forward packets can be used to intercept, relay, or spoof network traffic and enables lateral movement or bypassing of network security controls. For Google Cloud Compute instances managed with the Ansible modules `google.cloud.gcp_compute_instance` or `gcp_compute_instance`, the `can_ip_forward` property must be defined and set to `false` (not true/yes). Instances with `can_ip_forward` set to true or where the property is omitted will be flagged; only enable IP forwarding when strictly necessary and document justification and compensating controls such as restrictive firewall rules and isolated network segments.
+Compute instances must not have IP forwarding enabled. Allowing an instance to forward packets can be used to intercept, relay, or spoof network traffic. This enables lateral movement or bypassing of network security controls. For Google Cloud Compute instances managed with the Ansible modules `google.cloud.gcp_compute_instance` or `gcp_compute_instance`, the `can_ip_forward` property must be defined and set to `false` (not true/yes).
+
+Instances with `can_ip_forward` set to `true` or where the property is omitted are flagged. Only enable IP forwarding when strictly necessary, and document justification and compensating controls such as restrictive firewall rules and isolated network segments.
 
 ## Compliant Code Examples
 ```yaml

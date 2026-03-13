@@ -1,10 +1,10 @@
 ---
-title: "Azure Container Registry With No Locks"
+title: "Azure Container Registry with no locks"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/azure_container_registry_with_no_locks"
   id: "581dae78-307d-45d5-aae4-fe2b0db267a5"
-  display_name: "Azure Container Registry With No Locks"
+  display_name: "Azure container registry with no locks"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Azure Container Registries must be protected by Azure resource locks to prevent accidental or unauthorized deletion or modification of container images and registry configuration. In Ansible playbooks, tasks that create or manage ACRs using the `azure.azcollection.azure_rm_containerregistry` or `azure_rm_containerregistry` modules must be accompanied by a lock task using `azure.azcollection.azure_rm_lock` or `azure_rm_lock`. The lock should either target the specific registry—by having `managed_resource_id` contain the registry's `<register>.id`—or be scoped to the same `resource_group` as the registry (lock `resource_group` equals registry `resource_group`). Tasks without a corresponding lock task, or with locks that do not reference the registry by `managed_resource_id` nor share the same `resource_group`, will be flagged.
+Azure Container Registries must be protected by Azure resource locks to prevent accidental or unauthorized deletion or modification of container images and registry configuration.
+
+In Ansible playbooks, tasks that create or manage ACRs using the `azure.azcollection.azure_rm_containerregistry` or `azure_rm_containerregistry` modules must be accompanied by a lock task using `azure.azcollection.azure_rm_lock` or `azure_rm_lock`. The lock should either target the specific registry—by having `managed_resource_id` contain the registry's `<register>.id`—or be scoped to the same `resource_group` as the registry (lock `resource_group` equals registry `resource_group`). Tasks without a corresponding lock task, or with locks that do not reference the registry by `managed_resource_id` nor share the same `resource_group`, are flagged.
 
 ## Compliant Code Examples
 ```yaml

@@ -1,10 +1,10 @@
 ---
-title: "Project-wide SSH Keys Are Enabled In VM Instances"
+title: "Project-wide SSH keys are enabled in VM instances"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/project_wide_ssh_keys_are_enabled_in_vm_instances"
   id: "099b4411-d11e-4537-a0fc-146b19762a79"
-  display_name: "Project-wide SSH Keys Are Enabled In VM Instances"
+  display_name: "Project-wide SSH keys are enabled in VM instances"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-VM instances should block project-wide SSH keys to prevent SSH keys defined at the project level from granting access to individual instances, reducing the risk of unintended or persistent SSH access and lateral movement if project metadata or keys are compromised. For Ansible resources using `google.cloud.gcp_compute_instance` or `gcp_compute_instance`, ensure the `metadata.block-project-ssh-keys` property is defined and set to `true`. Resources that omit the `metadata` map, omit the `block-project-ssh-keys` key, or set it to `false` will be flagged. Secure configuration example for an Ansible task:
+VM instances should block project-wide SSH keys. This prevents SSH keys defined at the project level from granting access to individual instances, reducing the risk of unintended or persistent SSH access and lateral movement if project metadata or keys are compromised.
+
+For Ansible resources using `google.cloud.gcp_compute_instance` or `gcp_compute_instance`, ensure the `metadata.block-project-ssh-keys` property is defined and set to `true`. Resources that omit the `metadata` map, omit the `block-project-ssh-keys` key, or set it to `false` are flagged. 
+
+Secure configuration example for an Ansible task:
 
 ```yaml
 - name: Create VM with project-wide SSH keys blocked

@@ -1,10 +1,10 @@
 ---
-title: "Disk Encryption Disabled"
+title: "Disk encryption disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/disk_encryption_disabled"
   id: "092bae86-6105-4802-99d2-99cd7e7431f3"
-  display_name: "Disk Encryption Disabled"
+  display_name: "Disk encryption disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-VM disks must be encrypted using customer-supplied (CSEK) or customer-managed (CMEK) keys so you retain control over key lifecycle and reduce the risk that cloud-managed keys could be used to decrypt sensitive data without your authorization. For Ansible resources using `google.cloud.gcp_compute_disk` (or `gcp_compute_disk`), the `disk_encryption_key` property must be defined and contain either a non-empty `kms_key_name` (CMEK) or a non-empty `raw_key` (CSEK). This rule flags disks where `disk_encryption_key` is missing or null, where both `raw_key` and `kms_key_name` are absent, or where either subproperty is an empty string. Prefer using `kms_key_name` (a full KMS crypto key resource name, e.g., `projects/.../locations/.../keyRings/.../cryptoKeys/...`) and avoid hardcoding `raw_key` in source code—store secrets in a secure secret manager.
+VM disks must be encrypted using customer-supplied (CSEK) or customer-managed (CMEK) keys. This ensures you retain control over key lifecycle and reduces the risk of cloud-managed keys being used to decrypt sensitive data without your authorization.
+
+For Ansible resources using `google.cloud.gcp_compute_disk` (or `gcp_compute_disk`), the `disk_encryption_key` property must be defined and contain either a non-empty `kms_key_name` (CMEK) or a non-empty `raw_key` (CSEK). This rule flags disks where `disk_encryption_key` is missing or `null`, where both `raw_key` and `kms_key_name` are absent, or where either subproperty is an empty string.
+
+Prefer using `kms_key_name` (a full KMS crypto key resource name, for example, `projects/.../locations/.../keyRings/.../cryptoKeys/...`) and avoid hardcoding `raw_key` in source code—store secrets in a secure secret manager.
 
 Secure configuration examples:
 

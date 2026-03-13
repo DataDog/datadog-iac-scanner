@@ -1,10 +1,10 @@
 ---
-title: "Google Compute SSL Policy Weak Cipher In Use"
+title: "Google Compute SSL policy weak cipher in use"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/google_compute_ssl_policy_weak_cipher_in_use"
   id: "b28bcd2f-c309-490e-ab7c-35fc4023eb26"
-  display_name: "Google Compute SSL Policy Weak Cipher In Use"
+  display_name: "Google Compute SSL policy weak cipher in use"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Compute SSL policies must enforce a minimum TLS version of TLS_1_2 to prevent use of older, vulnerable protocol versions and to avoid permitting weak cipher suites. The `min_tls_version` property on `google.cloud.gcp_compute_ssl_policy` (or `gcp_compute_ssl_policy`) resources must be defined and set to `TLS_1_2`. Resources that omit `min_tls_version` or set it to any other value will be flagged.
+Compute SSL policies must enforce a minimum TLS version of `TLS_1_2` to prevent use of older, vulnerable protocol versions and weak cipher suites. The `min_tls_version` property on `google.cloud.gcp_compute_ssl_policy` (or `gcp_compute_ssl_policy`) resources must be defined and set to `TLS_1_2`. Resources that omit `min_tls_version` or set it to any other value are flagged.
 
 ```yaml
 - name: Create SSL policy with TLS 1.2 minimum

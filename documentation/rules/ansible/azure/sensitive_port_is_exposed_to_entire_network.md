@@ -1,10 +1,10 @@
 ---
-title: "Sensitive Port Is Exposed To Entire Network"
+title: "Sensitive port is exposed to entire network"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/sensitive_port_is_exposed_to_entire_network"
   id: "0ac9abbc-6d7a-41cf-af23-2e57ddb3dbfc"
-  display_name: "Sensitive Port Is Exposed To Entire Network"
+  display_name: "Sensitive port is exposed to entire network"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Inbound network security group rules that allow TCP or UDP access to sensitive service ports from anywhere (e.g., 0.0.0.0/0 or ::/0) expose services such as Telnet or POP3 to the public internet, increasing the risk of unauthorized access and exploitation. In Ansible tasks using `azure.azcollection.azure_rm_securitygroup` or `azure_rm_securitygroup`, inspect each entry in `rules[]`: a rule is flagged when `access` is `"Allow"`, `direction` is `"Inbound"` (or absent), `source_address_prefix` ends with `"/0"`, `protocol` is TCP/UDP (or `"*"` which expands to include TCP/UDP), and `destination_port_range` contains a sensitive TCP port. The check handles `destination_port_range` as either a string or an array and supports single ports, comma-separated lists, and ranges; resources missing the `direction` property are treated as inbound and will be evaluated. Remediate by restricting `source_address_prefix` to specific CIDR ranges or internal/service endpoints, or by removing/denying public Allow rules for those ports; for example, allow only from a trusted management CIDR:
+Inbound network security group rules that allow TCP or UDP access to sensitive service ports from anywhere (for example, 0.0.0.0/0 or ::/0) expose services such as Telnet or POP3 to the public internet, increasing the risk of unauthorized access and exploitation.
+
+In Ansible tasks using `azure.azcollection.azure_rm_securitygroup` or `azure_rm_securitygroup`, inspect each entry in `rules[]`. A rule is flagged when `access` is `"Allow"`, `direction` is `"Inbound"` (or absent), `source_address_prefix` ends with `"/0"`, `protocol` is TCP/UDP (or `"*"`, which expands to include TCP/UDP), and `destination_port_range` contains a sensitive TCP port.
+
+The check handles `destination_port_range` as either a string or an array and supports single ports, comma-separated lists, and ranges. Resources missing the `direction` property are treated as inbound and are evaluated.
+
+Remediate by restricting `source_address_prefix` to specific CIDR ranges or internal/service endpoints, or by removing or denying public Allow rules for those ports. For example, allow only from a trusted management CIDR:
 
 ```yaml
 - name: Create NSG with restricted rule

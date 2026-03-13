@@ -1,10 +1,10 @@
 ---
-title: "Cloud Storage Bucket Logging Not Enabled"
+title: "Cloud storage bucket logging not enabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cloud_storage_bucket_logging_not_enabled"
   id: "507df964-ad97-4035-ab14-94a82eabdfdd"
-  display_name: "Cloud Storage Bucket Logging Not Enabled"
+  display_name: "Cloud storage bucket logging not enabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Cloud Storage buckets must have access logging enabled to provide audit trails for object access and modifications, which is critical for detecting and investigating unauthorized access, data exfiltration, and operational incidents. For Ansible tasks using the `google.cloud.gcp_storage_bucket` or `gcp_storage_bucket` modules, the `logging` property must be defined; it should specify a `logBucket` (the destination bucket for logs) and may include `logObjectPrefix` to organize log objects. Resources missing the `logging` property will be flagged; ensure the designated log bucket exists and has the necessary IAM permissions so logs can be written and retained according to your retention and compliance requirements.
+Cloud Storage buckets must have access logging enabled to provide audit trails for object access and modifications. This is critical for detecting and investigating unauthorized access, data exfiltration, and operational incidents.
+
+For Ansible tasks using the `google.cloud.gcp_storage_bucket` or `gcp_storage_bucket` modules, the `logging` property must be defined. It should specify a `logBucket` (the destination bucket for logs) and may include `logObjectPrefix` to organize log objects.
+
+Resources missing the `logging` property are flagged. Ensure the designated log bucket exists and has the necessary IAM permissions so logs can be written and retained according to your retention and compliance requirements.
 
 Secure example (Ansible task):
 

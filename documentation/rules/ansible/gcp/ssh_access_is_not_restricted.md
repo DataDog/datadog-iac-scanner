@@ -1,10 +1,10 @@
 ---
-title: "SSH Access Is Not Restricted"
+title: "SSH access is not restricted"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/ssh_access_is_not_restricted"
   id: "b2fbf1df-76dd-4d78-a6c0-e538f4a9b016"
-  display_name: "SSH Access Is Not Restricted"
+  display_name: "SSH access is not restricted"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Allowing SSH (port 22) from the public Internet exposes instances to brute‑force attacks and unauthorized access, which can lead to credential compromise and lateral movement across your network. In Ansible tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` modules, this rule flags ingress rules where `source_ranges` includes `0.0.0.0/0` or `::/0` and an `allowed` entry specifies port `22` (e.g., `allowed[].ip_protocol='tcp'` and `allowed[].ports` contains `22`). Restrict SSH access to specific trusted CIDR ranges, place SSH behind a bastion host or VPN, or use identity‑aware access methods instead of allowing unrestricted Internet access.  
+Allowing SSH (port 22) from the public Internet exposes instances to brute-force attacks and unauthorized access. This can lead to credential compromise and lateral movement across your network.
+
+In Ansible tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` modules, this rule flags ingress rules where `source_ranges` includes `0.0.0.0/0` or `::/0` and an `allowed` entry specifies port `22` (for example, `allowed[].ip_protocol='tcp'` and `allowed[].ports` contains `22`).
+
+Restrict SSH access to specific trusted CIDR ranges, place SSH behind a bastion host or VPN, or use identity-aware access methods instead of allowing unrestricted Internet access.
 
 Secure example restricting SSH to a single admin IP:
 

@@ -1,10 +1,10 @@
 ---
-title: "Stackdriver Logging Disabled"
+title: "Stackdriver logging disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/stackdriver_logging_disabled"
   id: "19c9e2a0-fc33-4264-bba1-e3682661e8f7"
-  display_name: "Stackdriver Logging Disabled"
+  display_name: "Stackdriver logging disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-GKE clusters must have Cloud Logging (Stackdriver) enabled so cluster control plane and node logs are centrally collected for monitoring, alerting, incident response, and forensic analysis; without central logging, audit trails and operational diagnostics can be lost or unavailable during security investigations. For the Ansible GCP modules `google.cloud.gcp_container_cluster` and `gcp_container_cluster`, the `logging_service` property must be defined and must not be set to `"none"` (case-insensitive), since `"none"` disables Cloud Logging. Resources missing `logging_service` or with `logging_service: "none"` will be flagged. Example secure configuration:
+GKE clusters must have Cloud Logging (Stackdriver) enabled so cluster control plane and node logs are centrally collected for monitoring, alerting, incident response, and forensic analysis. Without central logging, audit trails and operational diagnostics can be lost or unavailable during security investigations.
+
+For the Ansible GCP modules `google.cloud.gcp_container_cluster` and `gcp_container_cluster`, the `logging_service` property must be defined and must not be set to `"none"` (case-insensitive), since `"none"` disables Cloud Logging. Resources missing `logging_service` or with `logging_service: "none"` are flagged. 
+
+Secure example configuration:
 
 ```yaml
 - name: Create GKE cluster with logging enabled

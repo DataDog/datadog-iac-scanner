@@ -1,10 +1,10 @@
 ---
-title: "Node Auto Upgrade Disabled"
+title: "Node auto-upgrade disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/node_auto_upgrade_disabled"
   id: "d6e10477-2e19-4bcd-b8a8-19c65b89ccdf"
-  display_name: "Node Auto Upgrade Disabled"
+  display_name: "Node auto-upgrade disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Kubernetes node pools must have automatic node upgrades enabled so nodes receive security patches and Kubernetes version updates promptly, reducing exposure to known vulnerabilities and version drift. For Ansible tasks using the `google.cloud.gcp_container_node_pool` or `gcp_container_node_pool` modules, the `management.auto_upgrade` property must be defined and set to `true`. Tasks missing the `management` block, missing `management.auto_upgrade`, or with `auto_upgrade` set to `false` will be flagged as insecure. Secure configuration example:
+Kubernetes node pools must have automatic node upgrades enabled so nodes receive security patches and Kubernetes version updates promptly. This reduces exposure to known vulnerabilities and version drift.
+
+For Ansible tasks using the `google.cloud.gcp_container_node_pool` or `gcp_container_node_pool` modules, the `management.auto_upgrade` property must be defined and set to `true`. Tasks missing the `management` block, missing `management.auto_upgrade`, or with `auto_upgrade` set to `false` are flagged as insecure. Secure configuration example:
 
 ```yaml
 - name: Create GKE node pool with auto-upgrade

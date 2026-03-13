@@ -1,10 +1,10 @@
 ---
-title: "Web App Accepting Traffic Other Than HTTPS"
+title: "Web app accepting traffic other than HTTPS"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/web_app_accepting_traffic_other_than_https"
   id: "eb8c2560-8bee-4248-9d0d-e80c8641dd91"
-  display_name: "Web App Accepting Traffic Other Than HTTPS"
+  display_name: "Web app accepting traffic other than HTTPS"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Azure Web Apps must accept only HTTPS traffic to protect data in transit from interception, tampering, and credential or session-token exposure. For Ansible deployments using the `azure_rm_webapp` or `azure.azcollection.azure_rm_webapp` module, the `https_only` property must be defined and set to `true` (or `yes`). Tasks that omit `https_only` or set it to a false value will be flagged. Secure configuration example:
+Azure Web Apps must accept only HTTPS traffic to protect data in transit from interception, tampering, and credential or session-token exposure. For Ansible deployments using the `azure_rm_webapp` or `azure.azcollection.azure_rm_webapp` module, the `https_only` property must be defined and set to `true` (or `yes`). Tasks that omit `https_only` or set it to a `false` value are flagged. 
+
+Secure configuration example:
 
 ```yaml
 - name: Create web app with HTTPS only

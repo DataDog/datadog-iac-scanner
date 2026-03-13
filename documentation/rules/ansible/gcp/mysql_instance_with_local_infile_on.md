@@ -1,10 +1,10 @@
 ---
-title: "MySQL Instance With Local Infile On"
+title: "MySQL instance with local infile on"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/mysql_instance_with_local_infile_on"
   id: "a7b520bb-2509-4fb0-be05-bc38f54c7a4c"
-  display_name: "MySQL Instance With Local Infile On"
+  display_name: "MySQL instance with local infile on"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-MySQL instances must have the `local_infile` flag disabled because enabling LOAD DATA LOCAL INFILE can be abused to read or exfiltrate files via SQL operations or by malicious servers/clients, exposing sensitive data. For Ansible tasks using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, ensure the `settings.database_flags` list contains an entry with `name: local_infile` and `value: "off"` for instances whose `database_version` contains "MYSQL". Resources missing this flag or with `local_infile` set to any value other than `"off"` will be flagged as insecure.
+MySQL instances must have the `local_infile` flag disabled. Enabling `LOAD DATA LOCAL INFILE` can be abused to read or exfiltrate files via SQL operations or by malicious servers and clients, exposing sensitive data. For Ansible tasks using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, ensure the `settings.database_flags` list contains an entry with `name: local_infile` and `value: "off"` for instances whose `database_version` contains "MYSQL". Resources missing this flag or with `local_infile` set to any value other than `"off"` are flagged as insecure.
 
 Secure configuration example:
 
