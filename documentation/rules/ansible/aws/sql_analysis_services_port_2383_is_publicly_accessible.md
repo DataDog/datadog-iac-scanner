@@ -1,10 +1,10 @@
 ---
-title: "SQL Analysis Services Port 2383 (TCP) Is Publicly Accessible"
+title: "SQL Analysis Services port 2383 (TCP) is publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sql_analysis_services_port_2383_is_publicly_accessible"
   id: "7af1c447-c014-4f05-bd8b-ebe3a15734ac"
-  display_name: "SQL Analysis Services Port 2383 (TCP) Is Publicly Accessible"
+  display_name: "SQL Analysis Services port 2383 (TCP) is publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Allowing TCP port 2383 (SQL Server Analysis Services) from the public internet (CIDR 0.0.0.0/0) exposes the analysis service to unauthorized connections, increasing the risk of data exposure, unauthorized queries, and lateral movement into your environment. For Ansible tasks using the amazon.aws.ec2_group or ec2_group module, this rule flags any `rules` entry where `cidr_ip` is `0.0.0.0/0`, `proto` is `tcp`, and the rule includes port 2383. Restrict access by specifying a limited CIDR range or referencing internal security groups instead of 0.0.0.0/0, or remove the rule if public access is not required.
+Allowing TCP port 2383 (SQL Server Analysis Services) from the public internet (CIDR `0.0.0.0/0`) exposes the analysis service to unauthorized connections, increasing the risk of data exposure, unauthorized queries, and lateral movement into your environment.
+
+For Ansible tasks using the `amazon.aws.ec2_group` or `ec2_group` module, this rule flags any `rules` entry where `cidr_ip` is `0.0.0.0/0`, `proto` is `tcp`, and the rule includes port 2383. Restrict access by specifying a limited CIDR range or referencing internal security groups instead of `0.0.0.0/0`, or remove the rule if public access is not required.
 
 Secure configuration example:
 

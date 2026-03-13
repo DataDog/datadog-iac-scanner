@@ -1,10 +1,10 @@
 ---
-title: "Unrestricted Security Group Ingress"
+title: "Unrestricted security group ingress"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/unrestricted_security_group_ingress"
   id: "83c5fa4c-e098-48fc-84ee-0a537287ddd2"
-  display_name: "Unrestricted Security Group Ingress"
+  display_name: "Unrestricted security group ingress"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Security group ingress rules must not allow traffic from the entire Internet (IPv4 `0.0.0.0/0` or IPv6 `::/0`) to specific ports, because this exposes services to unauthorized access and automated attacks such as brute force and port scanning. This rule inspects Ansible `amazon.aws.ec2_group` and `ec2_group` tasks and flags `rules` entries that define ports (via `from_port`/`to_port` or `ports`) where `cidr_ip` is `0.0.0.0/0` or `cidr_ipv6` is `::/0`; it also detects these values when CIDRs are provided as lists. To remediate, restrict ingress to specific trusted CIDR ranges, use security group-to-security group references or VPN/bastion hosts, and remove or replace `0.0.0.0/0` and `::/0` from rules that open ports. Secure configuration example (restrict SSH to a trusted IPv4 range and allow HTTPS from a specific IPv6 range):
+Security group ingress rules must not allow traffic from the entire Internet (IPv4 `0.0.0.0/0` or IPv6 `::/0`) to specific ports. This exposes services to unauthorized access and automated attacks such as brute force and port scanning.
+
+This rule inspects Ansible `amazon.aws.ec2_group` and `ec2_group` tasks and flags `rules` entries that define ports (via `from_port`/`to_port` or `ports`) where `cidr_ip` is `0.0.0.0/0` or `cidr_ipv6` is `::/0`. It also detects these values when CIDRs are provided as lists.
+
+To remediate, restrict ingress to specific trusted CIDR ranges, use security group-to-security group references or VPN/bastion hosts, and remove or replace `0.0.0.0/0` and `::/0` from rules that open ports. 
+
+Secure configuration example (restrict SSH to a trusted IPv4 range and allow HTTPS from a specific IPv6 range):
 
 ```yaml
 - name: Create restricted SG

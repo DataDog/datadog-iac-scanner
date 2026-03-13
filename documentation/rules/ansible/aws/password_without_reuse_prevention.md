@@ -1,10 +1,10 @@
 ---
-title: "Password Without Reuse Prevention"
+title: "Password without reuse prevention"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/password_without_reuse_prevention"
   id: "6f5f5444-1422-495f-81ef-24cefd61ed2c"
-  display_name: "Password Without Reuse Prevention"
+  display_name: "Password without reuse prevention"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-IAM password policies must prevent reuse of previous passwords to reduce the risk of account compromise from credential stuffing and replay of older credentials. For Ansible tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules, define one of the reuse-prevention properties (`password_reuse_prevent`, `pw_reuse_prevent`, or `prevent_reuse`) and set it to a positive integer greater than 0 to specify how many prior passwords are disallowed. This rule flags tasks where none of these properties are present or where the property is explicitly set to `0`. Secure example (prevents reuse of the last 5 passwords):
+IAM password policies must prevent reuse of previous passwords to reduce the risk of account compromise from credential stuffing and replay of older credentials.
+
+For Ansible tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules, define one of the reuse-prevention properties (`password_reuse_prevent`, `pw_reuse_prevent`, or `prevent_reuse`) and set it to a positive integer greater than 0. This specifies how many prior passwords are disallowed. This rule flags tasks where none of these properties are present or where the property is explicitly set to `0`.
+
+Secure example (prevents reuse of the last 5 passwords):
 
 ```yaml
 - name: Enforce IAM password reuse prevention

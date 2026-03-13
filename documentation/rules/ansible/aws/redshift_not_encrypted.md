@@ -1,10 +1,10 @@
 ---
-title: "Redshift Not Encrypted"
+title: "Redshift cluster is not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/redshift_not_encrypted"
   id: "6a647814-def5-4b85-88f5-897c19f509cd"
-  display_name: "Redshift Not Encrypted"
+  display_name: "Redshift cluster is not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-AWS Redshift clusters must have storage encryption enabled to protect sensitive data at rest, including data on cluster disks, automated snapshots, and backups; without encryption, data can be exposed if storage media or snapshots are compromised. For Ansible, tasks using the `redshift` or `community.aws.redshift` modules that create or modify clusters must set the `encrypted` parameter to `true`. Resources where `encrypted` is omitted or explicitly set to `false` will be flagged because the modules default to unencrypted when the property is not provided. Optionally specify a customer-managed KMS key with `kms_key_id` when `encrypted: true` is required.
+AWS Redshift clusters must have storage encryption enabled to protect sensitive data at rest, including data on cluster disks, automated snapshots, and backups. Without encryption, data can be exposed if storage media or snapshots are compromised. For Ansible, tasks using the `redshift` or `community.aws.redshift` modules that create or modify clusters must set the `encrypted` parameter to `true`. Resources where `encrypted` is omitted or explicitly set to `false` are flagged because the modules default to unencrypted when the property is not provided. Optionally specify a customer-managed KMS key with `kms_key_id` when `encrypted: true` is required.
 
 Secure example:
 

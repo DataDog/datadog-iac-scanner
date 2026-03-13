@@ -1,10 +1,10 @@
 ---
-title: "Launch Configuration Is Not Encrypted"
+title: "Launch configuration is not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/launch_configuration_is_not_encrypted"
   id: "66477506-6abb-49ed-803d-3fa174cd5f6a"
-  display_name: "Launch Configuration Is Not Encrypted"
+  display_name: "Launch configuration is not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Block device volumes in EC2 launch configurations must be encrypted to protect data at rest and any snapshots or AMIs from exposure if storage media or snapshots are compromised. For Ansible tasks using the `community.aws.ec2_lc` or `ec2_lc` modules, ensure the `volumes` list is defined and each volume entry sets `encrypted: true` (Ansible `yes` is also acceptable) under `ec2_lc.volumes`. Ephemeral (instance-store) volumes do not support encryption and are excluded; this rule flags launch configurations missing the `volumes` property, any volume entries without an `encrypted` property, or volumes where `encrypted` is explicitly false. Example secure configuration for an Ansible `ec2_lc` task:
+Block device volumes in EC2 launch configurations must be encrypted to protect data at rest and prevent exposure of snapshots or AMIs if storage media is compromised.
+
+For Ansible tasks using the `community.aws.ec2_lc` or `ec2_lc` modules, ensure the `volumes` list is defined and each volume entry sets `encrypted: true` (Ansible `yes` is also acceptable) under `ec2_lc.volumes`. Ephemeral (instance-store) volumes do not support encryption and are excluded. This rule flags launch configurations missing the `volumes` property, any volume entries without an `encrypted` property, or volumes where `encrypted` is explicitly false.
+
+Example secure configuration for an Ansible `ec2_lc` task:
 
 ```yaml
 - name: Create launch configuration with encrypted volumes

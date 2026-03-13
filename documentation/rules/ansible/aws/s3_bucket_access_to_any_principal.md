@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket Access to Any Principal"
+title: "S3 bucket access to any principal"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_access_to_any_principal"
   id: "3ab1f27d-52cc-4943-af1d-43c1939e739a"
-  display_name: "S3 Bucket Access to Any Principal"
+  display_name: "S3 bucket access to any principal"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-S3 bucket policies must not grant the wildcard principal ("*") Allow access because that effectively makes the bucket accessible to any AWS account or anonymous user and can expose sensitive objects or lead to data leakage. This rule checks Ansible tasks using the `amazon.aws.s3_bucket` or `s3_bucket` modules and inspects the `policy` document to ensure no `Statement` has `Effect: "Allow"` with `Principal: "*"`. Resources with a policy Statement where `Principal` is `*` and the effect is `Allow` will be flagged; instead specify explicit principals (account IDs or IAM ARNs) or restrict access using conditions (for example `aws:SourceAccount` or `aws:PrincipalOrgID`) or S3 Block Public Access. Secure example with an explicit principal:
+S3 bucket policies must not grant the wildcard principal (`"*"`) `Allow` access. This effectively makes the bucket accessible to any AWS account or anonymous user and can expose sensitive objects or lead to data leakage. This rule checks Ansible tasks using the `amazon.aws.s3_bucket` or `s3_bucket` modules and inspects the `policy` document to ensure no `Statement` has `Effect: "Allow"` with `Principal: "*"`.
+
+Resources with a policy Statement where `Principal` is `*` and the effect is `Allow` are flagged. Instead, specify explicit principals (account IDs or IAM ARNs) or restrict access using conditions (for example `aws:SourceAccount` or `aws:PrincipalOrgID`) or S3 Block Public Access.
+
+Secure example with an explicit principal:
 
 ```yaml
 - name: Create S3 bucket with restricted policy

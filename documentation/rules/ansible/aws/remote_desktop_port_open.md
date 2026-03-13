@@ -1,10 +1,10 @@
 ---
-title: "Remote Desktop Port Open To Internet"
+title: "Remote desktop port open to internet"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/remote_desktop_port_open"
   id: "eda7301d-1f3e-47cf-8d4e-976debc64341"
-  display_name: "Remote Desktop Port Open To Internet"
+  display_name: "Remote desktop port open to internet"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Security groups that allow Remote Desktop (RDP, TCP port 3389) from 0.0.0.0/0 expose Windows hosts to the public internet, increasing the likelihood of brute-force compromise, unauthorized access, and ransomware or lateral movement. Ansible EC2 security group resources using the `amazon.aws.ec2_group` or `ec2_group` module must not include a rule where `cidr_ip` is `"0.0.0.0/0"` that permits port 3389 (i.e., a rule with `proto: tcp`, `from_port: 3389`, `to_port: 3389`). Tasks with such a rule will be flagged; restrict RDP to specific trusted CIDR ranges, require bastion hosts or VPN access, or remove the rule entirely. Secure example restricting RDP to a trusted network:
+Security groups that allow Remote Desktop (RDP, TCP port 3389) from 0.0.0.0/0 expose Windows hosts to the public internet, increasing the likelihood of brute-force compromise, unauthorized access, and ransomware or lateral movement.
+
+Ansible EC2 security group resources using the `amazon.aws.ec2_group` or `ec2_group` module must not include a rule where `cidr_ip` is `"0.0.0.0/0"` that permits port 3389 (that is, a rule with `proto: tcp`, `from_port: 3389`, `to_port: 3389`). Tasks with such a rule are flagged. Restrict RDP to specific trusted CIDR ranges, require bastion hosts or VPN access, or remove the rule entirely. 
+
+Secure example restricting RDP to a trusted network:
 
 ```yaml
 - name: Create security group with restricted RDP

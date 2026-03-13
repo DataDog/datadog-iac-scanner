@@ -1,10 +1,10 @@
 ---
-title: "Stack Retention Disabled"
+title: "Stack retention disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/stack_retention_disabled"
   id: "17d5ba1d-7667-4729-b1a6-b11fde3db7f7"
-  display_name: "Stack Retention Disabled"
+  display_name: "Stack retention disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-CloudFormation StackSet deletions must not purge stacks and their associated resources because purging can irreversibly delete resources and cause data loss or service interruption. For Ansible tasks using the `community.aws.cloudformation_stack_set` module, the `purge_stacks` property must be explicitly defined and set to the boolean value `false`. Resources missing `purge_stacks` or with `purge_stacks: true` will be flagged.
+CloudFormation StackSet deletions must not purge stacks and their associated resources. Purging can irreversibly delete resources, causing data loss or service interruption. For Ansible tasks using the `community.aws.cloudformation_stack_set` module, the `purge_stacks` property must be explicitly set to the boolean value `false`. Resources missing `purge_stacks` or with `purge_stacks: true` are flagged.
 
 ```yaml
 - name: Create or update StackSet without purging stacks on deletion

@@ -1,10 +1,10 @@
 ---
-title: "Misconfigured Password Policy Expiration"
+title: "Misconfigured password policy expiration"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/misconfigured_password_policy_expiration"
   id: "3f2cf811-88fa-4eda-be45-7a191a18aba9"
-  display_name: "Misconfigured Password Policy Expiration"
+  display_name: "Misconfigured password policy expiration"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-IAM account password policies must enforce regular password expiration to limit the window of exposure for compromised or leaked credentials and to reduce the risk of long-lived unauthorized access. In Ansible, tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules must define `pw_max_age` or `password_max_age` with a value of 90 days or fewer (no more than 90). Resources that omit both properties or set either property to a value greater than 90 will be flagged.
+IAM account password policies must enforce regular password expiration to limit exposure from compromised or leaked credentials and reduce the risk of long-lived unauthorized access. In Ansible, tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules must define `pw_max_age` or `password_max_age` with a value of 90 days or fewer. Resources that omit both properties or set either to a value greater than 90 are flagged.
 
 Secure configuration example:
 

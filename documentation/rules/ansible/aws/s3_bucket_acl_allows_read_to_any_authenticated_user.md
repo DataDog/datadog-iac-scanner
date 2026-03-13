@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket ACL Allows Read to Any Authenticated User"
+title: "S3 bucket ACL allows read access to any authenticated user"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_acl_allows_read_to_any_authenticated_user"
   id: "75480b31-f349-4b9a-861f-bce19588e674"
-  display_name: "S3 Bucket ACL Allows Read to Any Authenticated User"
+  display_name: "S3 bucket ACL allows read access to any authenticated user"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-S3 objects or buckets configured with the "authenticated-read" ACL allow any AWS authenticated user to read your data, which exposes content beyond your account boundary and increases the risk of unauthorized data access or leakage. In Ansible, tasks using the `amazon.aws.aws_s3` or `aws_s3` modules must not set the `permission` parameter to `authenticated-read`; prefer `permission: private` or enforce access via explicit bucket policies or IAM roles. This rule flags Ansible tasks where `permission` is exactly `authenticated-read`.
+S3 objects or buckets configured with the `authenticated-read` ACL allow any AWS authenticated user to read your data. This exposes content beyond your account boundary and increases the risk of unauthorized data access or leakage.
+
+In Ansible, tasks using the `amazon.aws.aws_s3` or `aws_s3` modules must not set the `permission` parameter to `authenticated-read`. Prefer `permission: private` or enforce access via explicit bucket policies or IAM roles. This rule flags Ansible tasks where `permission` is exactly `authenticated-read`.
 
 Secure example:
 

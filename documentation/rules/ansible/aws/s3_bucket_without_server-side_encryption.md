@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket Without Server-side-encryption"
+title: "S3 bucket without server-side encryption"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_without_server-side_encryption"
   id: "594f54e7-f744-45ab-93e4-c6dbaf6cd571"
-  display_name: "S3 Bucket Without Server-side-encryption"
+  display_name: "S3 bucket without server-side encryption"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-S3 buckets should have server-side encryption (SSE) enabled to protect data at rest and prevent exposure of sensitive objects if a bucket is misconfigured or storage media is accessed. For Ansible tasks using the amazon.aws.s3_bucket or s3_bucket modules, the `encryption` property must not be set to `'none'` and should be configured to a valid SSE algorithm such as `'AES256'` or `'aws:kms'`. Resources that omit the `encryption` property or explicitly set `encryption: 'none'` will be flagged. When using `'aws:kms'`, also specify and manage a KMS key (for example via `kms_key_id`) to retain control over encryption keys and meet organizational access requirements.
+S3 buckets should have server-side encryption (SSE) enabled to protect data at rest and prevent exposure of sensitive objects if a bucket is misconfigured or storage media is accessed.
+
+For Ansible tasks using the amazon.aws.s3_bucket or s3_bucket modules, the `encryption` property must not be set to `'none'` and should be configured to a valid SSE algorithm such as `'AES256'` or `'aws:kms'`. Resources that omit the `encryption` property or explicitly set `encryption: 'none'` are flagged.
+
+When using `'aws:kms'`, also specify and manage a KMS key (for example via `kms_key_id`) to retain control over encryption keys and meet organizational access requirements.
 
 Secure example using KMS-managed keys:
 

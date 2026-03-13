@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket Allows List Action From All Principals"
+title: "S3 bucket allows list action from all principals"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_allows_list_action_from_all_principals"
   id: "d395a950-12ce-4314-a742-ac5a785ab44e"
-  display_name: "S3 Bucket Allows List Action From All Principals"
+  display_name: "S3 bucket allows list action from all principals"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-S3 bucket policies must not allow List actions to all principals ('*') because exposing bucket listings to everyone reveals object inventories and metadata, enabling data discovery and potential unauthorized access or exfiltration. For Ansible resources using `amazon.aws.s3_bucket` or `s3_bucket`, inspect the bucket `policy` document and ensure there are no policy statements with `Effect` equal to `Allow`, `Principal` equal to `"*"`, and `Action` that includes list operations such as `s3:ListBucket`. Resources with a statement that combines `Effect: Allow`, `Principal: "*"`, and a list action will be flagged; instead restrict access to explicit principals (account IDs, role or service ARNs), apply IAM policies, or use S3 Public Access Block settings to prevent public listing. Secure example policy that grants List only to a specific principal:
+S3 bucket policies must not allow list actions to all principals ('*'). Exposing bucket listings to everyone reveals object inventories and metadata, enabling data discovery and potential unauthorized access or exfiltration.
+
+For Ansible resources using `amazon.aws.s3_bucket` or `s3_bucket`, inspect the bucket `policy` document. Ensure there are no policy statements with `Effect` set to `Allow`, `Principal` set to `"*"`, and `Action` that includes list operations such as `s3:ListBucket`.
+
+Resources with a statement that combines `Effect: Allow`, `Principal: "*"`, and a list action are flagged. Instead, restrict access to explicit principals (account IDs, role or service ARNs), apply IAM policies, or use S3 Public Access Block settings to prevent public listing.
+
+Secure example policy that grants List only to a specific principal:
 
 ```json
 {

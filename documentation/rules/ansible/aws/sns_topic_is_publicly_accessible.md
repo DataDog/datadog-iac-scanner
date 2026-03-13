@@ -1,10 +1,10 @@
 ---
-title: "SNS Topic is Publicly Accessible"
+title: "SNS topic is publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sns_topic_is_publicly_accessible"
   id: "905f4741-f965-45c1-98db-f7a00a0e5c73"
-  display_name: "SNS Topic is Publicly Accessible"
+  display_name: "SNS topic is publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-SNS topic policies must not allow any principal ('*') because making a topic public permits unauthorized publishing or subscription, which can lead to message injection, data exfiltration, or unintended triggering of downstream systems. In Ansible tasks using the `community.aws.sns_topic` or `sns_topic` modules, check the `policy` property and flag any `Statement` with `"Effect": "Allow"` where `Principal` is the wildcard (`"*"`) or contains `"AWS": "*"`. Policy statements must instead specify explicit principals such as AWS account IDs, ARNs, or service principals; statements that use a wildcard principal or are not limited to a specific account ID will be flagged.
+SNS topic policies must not allow any principal (`*`). Making a topic public permits unauthorized publishing or subscription, which can lead to message injection, data exfiltration, or unintended triggering of downstream systems.
+
+In Ansible tasks using the `community.aws.sns_topic` or `sns_topic` modules, check the `policy` property and flag any `Statement` with `"Effect": "Allow"` where `Principal` is the wildcard (`"*"`) or contains `"AWS": "*"`. Policy statements must instead specify explicit principals such as AWS account IDs, ARNs, or service principals. Statements that use a wildcard principal or are not limited to a specific account ID are flagged.
 
 Secure configuration example for an Ansible task (explicit principal):
 

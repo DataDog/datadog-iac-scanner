@@ -1,10 +1,10 @@
 ---
-title: "RDS With Backup Disabled"
+title: "RDS instance with backup disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/rds_with_backup_disabled"
   id: "e69890e6-fce5-461d-98ad-cb98318dfc96"
-  display_name: "RDS With Backup Disabled"
+  display_name: "RDS instance with backup disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-An RDS instance with automated backups disabled (backup_retention_period set to 0) cannot perform point-in-time recovery and is at increased risk of permanent data loss and regulatory non‑compliance. For Ansible resources using `community.aws.rds_instance` or `rds_instance`, the `backup_retention_period` property must be defined and set to an integer greater than 0 (value is in days). Resources missing this property or with `backup_retention_period: 0` will be flagged; set it to at least 1 (commonly 7 or more) based on your recovery objectives. Secure configuration example for Ansible:
+An RDS instance with automated backups disabled (`backup_retention_period` set to `0`) cannot perform point-in-time recovery and is at increased risk of permanent data loss and regulatory non‑compliance.
+
+For Ansible resources using `community.aws.rds_instance` or `rds_instance`, the `backup_retention_period` property must be defined and set to an integer greater than `0` (value is in days). Resources missing this property or with `backup_retention_period: 0` are flagged. Set it to at least `1` (commonly 7 or more) based on your recovery objectives.
+
+Secure configuration example for Ansible:
 
 ```yaml
 - name: Create RDS instance with automated backups

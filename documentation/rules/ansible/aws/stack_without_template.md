@@ -1,10 +1,10 @@
 ---
-title: "Stack Without Template"
+title: "Stack without template"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/stack_without_template"
   id: "32d31f1f-0f83-4721-b7ec-1e6948c60145"
-  display_name: "Stack Without Template"
+  display_name: "Stack without template"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-CloudFormation stack tasks must specify exactly one template source so the stack is created or updated with the intended infrastructure; missing or ambiguous templates can cause failed deployments or unintended resource changes that increase security and availability risks. For Ansible modules `amazon.aws.cloudformation`, `cloudformation`, `community.aws.cloudformation_stack_set`, and `cloudformation_stack_set`, one of the properties `template`, `template_body`, or `template_url` must be present and non-empty. Resources that omit all three properties will be flagged as missing a template, and resources that set more than one of these properties will be flagged because multiple template sources are ambiguous and can lead to unexpected template selection. Secure examples (valid configurations):
+CloudFormation stack tasks must specify exactly one template source. Missing or ambiguous templates can cause failed deployments or unintended resource changes that increase security and availability risks.
+
+For Ansible modules `amazon.aws.cloudformation`, `cloudformation`, `community.aws.cloudformation_stack_set`, and `cloudformation_stack_set`, one of the properties `template`, `template_body`, or `template_url` must be present and non-empty. Resources that omit all three properties are flagged as missing a template. Resources that set more than one are flagged because multiple template sources are ambiguous and can lead to unexpected template selection.
+
+Secure examples (valid configurations):
 
 ```yaml
 - name: Create CloudFormation stack from local template

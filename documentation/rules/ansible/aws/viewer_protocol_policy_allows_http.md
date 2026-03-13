@@ -1,10 +1,10 @@
 ---
-title: "Cloudfront Viewer Protocol Policy Allows HTTP"
+title: "CloudFront viewer protocol policy allows HTTP"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/viewer_protocol_policy_allows_http"
   id: "a6d27cf7-61dc-4bde-ae08-3b353b609f76"
-  display_name: "Cloudfront Viewer Protocol Policy Allows HTTP"
+  display_name: "CloudFront viewer protocol policy allows HTTP"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-CloudFront distributions must enforce HTTPS for viewer connections to prevent sensitive data from being transmitted in plaintext and to reduce the risk of downgrade or man-in-the-middle attacks. For Ansible CloudFront resources (modules `community.aws.cloudfront_distribution` or `cloudfront_distribution`) the `viewer_protocol_policy` property in `default_cache_behavior` and in each `cache_behaviors` entry must be set to `https-only` or `redirect-to-https`. Tasks with `viewer_protocol_policy` set to `allow-all` or without an explicit secure setting will be flagged; ensure every cache behavior explicitly specifies a secure policy.
+CloudFront distributions must enforce HTTPS for viewer connections to prevent sensitive data from being transmitted in plaintext and reduce the risk of downgrade or man-in-the-middle attacks.
+
+For Ansible CloudFront resources (modules `community.aws.cloudfront_distribution` or `cloudfront_distribution`), the `viewer_protocol_policy` property in `default_cache_behavior` and in each `cache_behaviors` entry must be set to `https-only` or `redirect-to-https`. Tasks with `viewer_protocol_policy` set to `allow-all` or without an explicit secure setting are flagged. Ensure every cache behavior explicitly specifies a secure policy.
 
 Secure configuration example:
 

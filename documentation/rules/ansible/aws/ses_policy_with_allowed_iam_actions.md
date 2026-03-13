@@ -1,10 +1,10 @@
 ---
-title: "SES Policy With Allowed IAM Actions"
+title: "SES policy with allowed IAM actions"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ses_policy_with_allowed_iam_actions"
   id: "8ed0bfce-f780-46d4-b086-21c3628f09ad"
-  display_name: "SES Policy With Allowed IAM Actions"
+  display_name: "SES policy with allowed IAM actions"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-SES identity policies must not grant Allow permissions for all actions to all principals, because a wildcard Action ('*') combined with a wildcard Principal ('*') lets any actor perform any API operation on the identity, enabling email spoofing, unauthorized sending, and potential privilege escalation. Check Ansible resources of type `community.aws.aws_ses_identity_policy` and `aws.aws_ses_identity_policy`; the `policy` document must not contain statements with `"Effect": "Allow"` where `Action` is `"*"` (or contains `"*"`) and `Principal` is a wildcard (for example `"*"` or `{"AWS":"*"}`). Resources with such statements will be flagged; instead, specify explicit principals (AWS account ARNs or service principals) and restrict `Action` to the minimum required SES API operations. Secure example showing a restricted policy:
+SES identity policies must not grant Allow permissions for all actions to all principals. A wildcard Action (`*`) combined with a wildcard Principal (`*`) lets any actor perform any API operation on the identity, enabling email spoofing, unauthorized sending, and potential privilege escalation.
+
+This rule checks Ansible resources of type `community.aws.aws_ses_identity_policy` and `aws.aws_ses_identity_policy`. The `policy` document must not contain statements with `"Effect": "Allow"` where `Action` is `"*"` (or contains `"*"`) and `Principal` is a wildcard (for example `"*"` or `{"AWS":"*"}`). Resources with such statements are flagged.
+
+Specify explicit principals (AWS account ARNs or service principals) and restrict `Action` to the minimum required SES API operations. Secure example showing a restricted policy:
 
 ```yaml
 - name: Attach SES identity policy

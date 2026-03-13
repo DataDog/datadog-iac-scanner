@@ -1,10 +1,10 @@
 ---
-title: "Redis Not Compliant"
+title: "Redis not compliant"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/redis_not_compliant"
   id: "9f34885e-c08f-4d13-a7d1-cf190c5bd268"
-  display_name: "Redis Not Compliant"
+  display_name: "Redis not compliant"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-ElastiCache Redis engine versions must meet AWS PCI DSS baseline because running outdated Redis releases can expose known vulnerabilities and lead to non‑compliance. In Ansible, tasks using the `community.aws.elasticache` or `elasticache` modules must define `cache_engine_version` and set it to a version equal to or newer than `4.0.10`. Resources missing `cache_engine_version` or specifying a lower version will be flagged as non‑compliant; update to a maintained Redis release that satisfies PCI DSS requirements.
+ElastiCache Redis engine versions must meet the AWS PCI DSS baseline. Running outdated Redis releases can expose known vulnerabilities and lead to non-compliance. In Ansible, tasks using the `community.aws.elasticache` or `elasticache` modules must define `cache_engine_version` and set it to a version equal to or newer than `4.0.10`. Resources missing `cache_engine_version` or specifying a lower version are flagged as non-compliant. Update to a maintained Redis release that satisfies PCI DSS requirements.
 
 Secure example for Ansible:
 

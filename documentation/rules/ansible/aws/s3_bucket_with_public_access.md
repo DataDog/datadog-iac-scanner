@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket With Public Access"
+title: "S3 bucket with public access"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_with_public_access"
   id: "c3e073c1-f65e-4d18-bd67-4a8f20ad1ab9"
-  display_name: "S3 Bucket With Public Access"
+  display_name: "S3 bucket with public access"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Ansible tasks that set S3 `permission` to `public` create publicly accessible buckets or objects, risking data exposure and regulatory non‑compliance. For the `amazon.aws.aws_s3` and `aws_s3` modules, the `permission` property must be defined and must not contain the value `public`; use `private` or other restricted values (for example, `authenticated-read`) as appropriate. This rule flags tasks where `permission` contains `public`; tasks missing an explicit `permission` should be reviewed and set to a non‑public value.
+Ansible tasks that set S3 `permission` to `public` create publicly accessible buckets or objects, risking data exposure and regulatory non‑compliance. For the `amazon.aws.aws_s3` and `aws_s3` modules, the `permission` property must be defined and must not contain the value `public`. Use `private` or other restricted values (for example, `authenticated-read`) as appropriate.
+
+This rule flags tasks where `permission` contains `public`. Tasks missing an explicit `permission` should be reviewed and set to a non‑public value.
 
 Secure example:
 
