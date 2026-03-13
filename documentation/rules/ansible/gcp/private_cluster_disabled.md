@@ -1,10 +1,10 @@
 ---
-title: "Private Cluster Disabled"
+title: "Private cluster disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/private_cluster_disabled"
   id: "3b30e3d6-c99b-4318-b38f-b99db74578b5"
-  display_name: "Private Cluster Disabled"
+  display_name: "Private cluster disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-GKE clusters must be configured as private to avoid exposing the control plane endpoint and worker nodes to the public internet, which increases the risk of unauthorized access and lateral movement. For Ansible resources using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `private_cluster_config` property must be defined and its `enable_private_endpoint` and `enable_private_nodes` attributes set to `true`. Resources missing `private_cluster_config`, missing either attribute, or with either attribute set to `false` will be flagged.
+GKE clusters must be configured as private to avoid exposing the control plane endpoint and worker nodes to the public internet. Public exposure increases the risk of unauthorized access and lateral movement.
+
+For Ansible resources using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `private_cluster_config` property must be defined with `enable_private_endpoint` and `enable_private_nodes` set to `true`. Resources missing `private_cluster_config`, missing either attribute, or with either attribute set to `false` are flagged.
 
 Secure Ansible configuration example:
 

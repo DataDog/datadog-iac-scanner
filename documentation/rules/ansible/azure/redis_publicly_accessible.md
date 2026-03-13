@@ -1,10 +1,10 @@
 ---
-title: "Redis Publicly Accessible"
+title: "Redis publicly accessible"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/redis_publicly_accessible"
   id: "0632d0db-9190-450a-8bb3-c283bffea445"
-  display_name: "Redis Publicly Accessible"
+  display_name: "Redis publicly accessible"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Allowing public IP ranges in Azure Redis Cache firewall rules exposes the cache to unauthorized internet access, increasing the risk of data exfiltration and lateral movement. The Ansible modules `azure.azcollection.azure_rm_rediscachefirewallrule` and `azure_rm_rediscachefirewallrule` must set `start_ip_address` and `end_ip_address` to private IP ranges (RFC1918); tasks missing these properties or specifying non-private/public IPs will be flagged. If access should be limited to Azure resources, prefer virtual network rules or service endpoints instead of broad IP ranges and ensure any IP range only includes trusted internal addresses.
+Allowing public IP ranges in Azure Redis Cache firewall rules exposes the cache to unauthorized internet access, increasing the risk of data exfiltration and lateral movement.
+
+The Ansible modules `azure.azcollection.azure_rm_rediscachefirewallrule` and `azure_rm_rediscachefirewallrule` must set `start_ip_address` and `end_ip_address` to private IP ranges (RFC1918). Tasks missing these properties or specifying non-private or public IPs are flagged.
+
+If access should be limited to Azure resources, prefer virtual network rules or service endpoints instead of broad IP ranges, and ensure any IP range only includes trusted internal addresses.
 
 Secure configuration example:
 

@@ -1,10 +1,10 @@
 ---
-title: "Unrestricted SQL Server Access"
+title: "Unrestricted SQL Server access"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/unrestricted_sql_server_acess"
   id: "3f23c96c-f9f5-488d-9b17-605b8da5842f"
-  display_name: "Unrestricted SQL Server Access"
+  display_name: "Unrestricted SQL Server access"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Allowing large IP ranges in Azure SQL firewall rules broadens the database attack surface and increases the risk of unauthorized access, brute-force attempts, and data exposure; firewall rules should grant the minimal address range required. For Ansible tasks using `azure_rm_sqlfirewallrule` or `azure.azcollection.azure_rm_sqlfirewallrule`, ensure the `start_ip_address` and `end_ip_address` properties are defined and that the numeric difference between them is less than 256 (i.e., a single IP or up to 255 addresses). Tasks that omit these properties, set either address to `0.0.0.0`, or specify a range with difference >= 256 will be flagged as insecure.
+Allowing large IP ranges in Azure SQL firewall rules broadens the database attack surface and increases the risk of unauthorized access, brute-force attempts, and data exposure. Firewall rules should grant the minimal address range required.
+
+For Ansible tasks using `azure_rm_sqlfirewallrule` or `azure.azcollection.azure_rm_sqlfirewallrule`, ensure the `start_ip_address` and `end_ip_address` properties are defined and that the numeric difference between them is less than 256 (that is, a single IP or up to 255 addresses). Tasks that omit these properties, set either address to `0.0.0.0`, or specify a range with difference >= 256 are flagged as insecure.
 
 Secure configuration example:
 

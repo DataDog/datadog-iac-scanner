@@ -1,10 +1,10 @@
 ---
-title: "PostgreSQL Log Checkpoints Disabled"
+title: "PostgreSQL log checkpoints disabled"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_log_checkpoints_disabled"
   id: "7ab33ac0-e4a3-418f-a673-50da4e34df21"
-  display_name: "PostgreSQL Log Checkpoints Disabled"
+  display_name: "PostgreSQL log checkpoints disabled"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-PostgreSQL's `log_checkpoints` should be enabled to record checkpoint activity, improving visibility into I/O behavior and aiding detection and troubleshooting of performance or recovery issues. In Ansible Azure PostgreSQL configuration resources (`azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration`), when the `name` property is `log_checkpoints` the `value` property must be set to `ON` (case-insensitive). Resources missing this setting or with `value` not equal to `ON` will be flagged as misconfigured.
+PostgreSQL's `log_checkpoints` should be enabled to record checkpoint activity. This improves visibility into I/O behavior and aids detection and troubleshooting of performance or recovery issues.
+
+In Ansible Azure PostgreSQL configuration resources (`azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration`), when the `name` property is `log_checkpoints`, the `value` property must be set to `ON` (case-insensitive). Resources missing this setting or with `value` not equal to `ON` are flagged as misconfigured.
 
 Secure configuration example:
 

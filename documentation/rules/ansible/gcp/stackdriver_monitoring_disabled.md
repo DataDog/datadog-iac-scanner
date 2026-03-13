@@ -1,10 +1,10 @@
 ---
-title: "Stackdriver Monitoring Disabled"
+title: "Stackdriver monitoring disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/stackdriver_monitoring_disabled"
   id: "20dcd953-a8b8-4892-9026-9afa6d05a525"
-  display_name: "Stackdriver Monitoring Disabled"
+  display_name: "Stackdriver monitoring disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-GKE clusters must have Cloud Monitoring (Stackdriver) enabled to provide observability and support timely incident detection and response; disabling monitoring removes metrics and logs needed for alerting, troubleshooting, and forensic analysis. For Ansible resources using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `monitoring_service` property must be defined and must not be set to `'none'`. Resources that omit `monitoring_service` or explicitly set `monitoring_service: 'none'` will be flagged.
+GKE clusters must have Cloud Monitoring (Stackdriver) enabled to provide observability and support timely incident detection and response. Disabling monitoring removes metrics and logs needed for alerting, troubleshooting, and forensic analysis.
+
+For Ansible resources using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `monitoring_service` property must be defined and must not be set to `'none'`. Resources that omit `monitoring_service` or explicitly set `monitoring_service: 'none'` are flagged.
 
 Secure configuration example:
 

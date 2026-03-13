@@ -1,10 +1,10 @@
 ---
-title: "SSL Enforce Disabled"
+title: "SSL enforce disabled"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/ssl_enforce_is_disabled"
   id: "961ce567-a16d-4d7d-9027-f0ec2628a555"
-  display_name: "SSL Enforce Disabled"
+  display_name: "SSL enforce disabled"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-PostgreSQL servers must enforce SSL connections to ensure client‑server traffic is encrypted and to prevent interception or credential exposure during transit. For Ansible playbooks using the azure.azcollection.azure_rm_postgresqlserver or azure_rm_postgresqlserver modules, the `enforce_ssl` parameter must be defined and set to true (Ansible `yes`/true). Tasks that omit `enforce_ssl` (it defaults to false) or set it to false will be flagged as insecure.
+PostgreSQL servers must enforce SSL connections to ensure client‑server traffic is encrypted and prevent credential exposure in transit. For Ansible playbooks using the `azure.azcollection.azure_rm_postgresqlserver` or `azure_rm_postgresqlserver` modules, the `enforce_ssl` parameter must be set to `true` (Ansible `yes`/true). Tasks that omit `enforce_ssl` (it defaults to `false`) or set it to `false` are flagged as insecure.
 
 Secure configuration example:
 

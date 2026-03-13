@@ -1,10 +1,10 @@
 ---
-title: "Firewall Rule Allows Too Many Hosts To Access Redis Cache"
+title: "Firewall rule allows too many hosts to access Redis Cache"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/firewall_rule_allows_too_many_hosts_to_access_redis_cache"
   id: "69f72007-502e-457b-bd2d-5012e31ac049"
-  display_name: "Firewall Rule Allows Too Many Hosts To Access Redis Cache"
+  display_name: "Firewall rule allows too many hosts to access Redis Cache"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Redis Cache firewall rules should restrict the IP address range to minimize attack surface and prevent broad network access that could allow unauthorized access or lateral movement. In Ansible, tasks using `azure.azcollection.azure_rm_rediscachefirewallrule` or `azure_rm_rediscachefirewallrule` must set `start_ip_address` and `end_ip_address` so the numeric range covers at most 255 hosts; any rule where the computed range (abs(end - start)) is greater than 255 will be flagged. Resources missing these properties or defining overly large ranges should be tightened to a single IP or a narrow range, or replaced with network-level controls such as private endpoints or service endpoints to limit access. Secure example with a small allowed range:
+Redis Cache firewall rules should restrict the IP address range to minimize attack surface and prevent broad network access that could allow unauthorized access or lateral movement.
+
+In Ansible, tasks using `azure.azcollection.azure_rm_rediscachefirewallrule` or `azure_rm_rediscachefirewallrule` must set `start_ip_address` and `end_ip_address` so the numeric range covers at most 255 hosts. Any rule where the computed range (`abs(end - start)`) is greater than 255 is flagged.
+
+Resources missing these properties or defining overly large ranges should be tightened to a single IP or a narrow range. Alternatively, replace them with network-level controls such as private endpoints or service endpoints to limit access.
+
+Secure example with a small allowed range:
 
 ```yaml
 - name: Allow small Redis access range

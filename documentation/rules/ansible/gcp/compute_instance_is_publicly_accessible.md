@@ -1,10 +1,10 @@
 ---
-title: "Compute Instance Is Publicly Accessible"
+title: "Compute instance is publicly accessible"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/compute_instance_is_publicly_accessible"
   id: "829f1c60-2bab-44c6-8a21-5cd9d39a2c82"
-  display_name: "Compute Instance Is Publicly Accessible"
+  display_name: "Compute instance is publicly accessible"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Compute instances must not be assigned external (public) IP addresses because public IPs expose instances directly to the internet, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration. For Ansible Google Cloud compute instance resources (modules `google.cloud.gcp_compute_instance` and `gcp_compute_instance`), ensure the `network_interfaces[].access_configs` property is not defined; any `network_interfaces` entry containing `access_configs` indicates an external IP is being assigned and will be flagged. Remove `access_configs` to prevent automatic external IP allocation and use Cloud NAT, internal load balancers, or bastion hosts for controlled outbound/inbound access instead.
+Compute instances must not be assigned external (public) IP addresses. Public IPs expose instances directly to the internet, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration.
+
+For Ansible Google Cloud compute instance resources (modules `google.cloud.gcp_compute_instance` and `gcp_compute_instance`), ensure the `network_interfaces[].access_configs` property is not defined. Any `network_interfaces` entry containing `access_configs` indicates an external IP is being assigned and is flagged. Remove `access_configs` to prevent automatic external IP allocation and use Cloud NAT, internal load balancers, or bastion hosts for controlled outbound/inbound access instead.
 
 Secure configuration example (no external IP):
 

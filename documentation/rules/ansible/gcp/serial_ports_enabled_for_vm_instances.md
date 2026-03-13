@@ -1,10 +1,10 @@
 ---
-title: "Serial Ports Are Enabled For VM Instances"
+title: "Serial ports are enabled for VM instances"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/serial_ports_enabled_for_vm_instances"
   id: "c6fc6f29-dc04-46b6-99ba-683c01aff350"
-  display_name: "Serial Ports Are Enabled For VM Instances"
+  display_name: "Serial ports are enabled for VM instances"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Enabling the serial console on Google Compute Engine VMs grants low-level interactive access to the instance console, which can bypass network/SSH controls and allow actors who know project/instance details to interact with or tamper with the VM. In Ansible, check tasks using `google.cloud.gcp_compute_instance` or `gcp_compute_instance` and ensure the `metadata.serial-port-enable` property is either undefined or explicitly set to `false`. Tasks with `metadata.serial-port-enable: true` will be flagged; remediate by removing the metadata key or setting it to `false`.
+Enabling the serial console on Google Compute Engine VMs grants low-level interactive access to the instance console. This can bypass network and SSH controls, allowing actors who know project or instance details to interact with or tamper with the VM.
+
+In Ansible, check tasks using `google.cloud.gcp_compute_instance` or `gcp_compute_instance` and ensure the `metadata.serial-port-enable` property is either undefined or explicitly set to `false`. Tasks with `metadata.serial-port-enable: true` are flagged. Remediate by removing the metadata key or setting it to `false`.
 
 Secure Ansible example:
 

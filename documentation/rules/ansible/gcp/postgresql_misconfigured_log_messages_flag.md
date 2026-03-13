@@ -1,10 +1,10 @@
 ---
-title: "PostgreSQL Misconfigured Log Messages Flag"
+title: "PostgreSQL misconfigured log messages flag"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/postgresql_misconfigured_log_messages_flag"
   id: "28a757fc-3d8f-424a-90c0-4233363b2711"
-  display_name: "PostgreSQL Misconfigured Log Messages Flag"
+  display_name: "PostgreSQL misconfigured log messages flag"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-PostgreSQL instances must have the `log_min_messages` flag set to a valid verbosity level so that critical database events are recorded for detection and forensic analysis, while avoiding overly verbose debug logs that can expose sensitive information. For Ansible Google Cloud SQL resources using the `google.cloud.gcp_sql_instance` (or `gcp_sql_instance`) module, ensure `settings.database_flags` contains an entry with `name: "log_min_messages"` and `value` set to one of: `fatal`, `panic`, `log`, `error`, `warning`, `notice`, `info`, `debug1`, `debug2`, `debug3`, `debug4`, or `debug5`. The `settings.database_flags` list must include this mapping and resources missing the entry or using a value outside the allowed set will be flagged.
+PostgreSQL instances must have the `log_min_messages` flag set to a valid verbosity level. This ensures critical database events are recorded for detection and forensic analysis, while avoiding overly verbose debug logs that can expose sensitive information.
+
+For Ansible Google Cloud SQL resources using the `google.cloud.gcp_sql_instance` (or `gcp_sql_instance`) module, ensure `settings.database_flags` contains an entry with `name: "log_min_messages"` and `value` set to one of the following: `fatal`, `panic`, `log`, `error`, `warning`, `notice`, `info`, `debug1`, `debug2`, `debug3`, `debug4`, or `debug5`. Resources missing this entry or using a value outside the allowed set are flagged.
 
 Secure configuration example:
 

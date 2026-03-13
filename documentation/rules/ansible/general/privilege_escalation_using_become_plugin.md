@@ -1,10 +1,10 @@
 ---
-title: "Privilege Escalation Using Become Plugin"
+title: "Privilege escalation using become plugin"
 group_id: "Ansible / Common"
 meta:
   name: "general/privilege_escalation_using_become_plugin"
   id: "0e75052f-cc02-41b8-ac39-a78017527e95"
-  display_name: "Privilege Escalation Using Become Plugin"
+  display_name: "Privilege escalation using become plugin"
   cloud_provider: "Common"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Playbooks and tasks that specify a target user with `become_user` must also enable privilege escalation so actions execute with the intended elevated privileges; without `become: true`, commands will run as the unprivileged connection user or fail, which can lead to misconfiguration, failed security controls, or unintended access to sensitive resources. Verify the `become` property is defined and set to `true` on `ansible_playbook` and `ansible_task` resources whenever `become_user` is present. Resources where `become_user` is defined but `become` is missing or `false` should be flagged for correction.
+Playbooks and tasks that specify a target user with `become_user` must also enable privilege escalation so actions execute with the intended elevated privileges. Without `become: true`, commands run as the unprivileged connection user or fail. This can lead to misconfiguration, failed security controls, or unintended access to sensitive resources. Verify the `become` property is defined and set to `true` on `ansible_playbook` and `ansible_task` resources whenever `become_user` is present. Resources where `become_user` is defined but `become` is missing or `false` are flagged for correction.
 
 Secure examples:
 

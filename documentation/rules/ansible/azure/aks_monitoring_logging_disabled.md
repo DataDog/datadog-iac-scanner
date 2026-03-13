@@ -1,10 +1,10 @@
 ---
-title: "AKS Monitoring Logging Disabled"
+title: "AKS monitoring logging disabled"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/aks_monitoring_logging_disabled"
   id: "d5e83b32-56dd-4247-8c2e-074f43b38a5e"
-  display_name: "AKS Monitoring Logging Disabled"
+  display_name: "AKS monitoring logging disabled"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-AKS clusters must have the monitoring addon enabled and configured to send logs and metrics to an Azure Log Analytics workspace so that cluster activity, security events, and configuration changes are visible for detection, alerting, and incident investigation. For Ansible tasks using `azure_rm_aks` or `azure.azcollection.azure_rm_aks`, the `addon.monitoring` block must be present with `enabled` set to an Ansible-true value and `log_analytics_workspace_resource_id` set to the workspace resource ID. Tasks missing the `addon` or `addon.monitoring` blocks, missing either `enabled` or the workspace ID, or with `enabled` not set to an Ansible-true value (for example `yes`, `true`, `on`, or `1`) will be flagged.
+AKS clusters must have the monitoring addon enabled and configured to send logs and metrics to an Azure Log Analytics workspace. This ensures that cluster activity, security events, and configuration changes are visible for detection, alerting, and incident investigation.
+
+For Ansible tasks using `azure_rm_aks` or `azure.azcollection.azure_rm_aks`, the `addon.monitoring` block must be present with `enabled` set to an Ansible-`true` value and `log_analytics_workspace_resource_id` set to the workspace resource ID. Tasks missing the `addon` or `addon.monitoring` blocks, missing `enabled` or the workspace ID, or with `enabled` not set to an Ansible-`true` value (for example `yes`, `true`, `on`, or `1`) are flagged.
 
 Secure configuration example:
 

@@ -1,10 +1,10 @@
 ---
-title: "Log Retention Is Not Set"
+title: "Log retention is not set"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/log_retention_is_not_set"
   id: "0461b4fd-21ef-4687-929e-484ee4796785"
-  display_name: "Log Retention Is Not Set"
+  display_name: "Log retention is not set"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-PostgreSQL servers must retain logs to support security incident investigation and satisfy audit/compliance requirements; without log retention, attackers or misconfigurations may go undetected and forensic analysis is impeded. In Ansible playbooks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` modules, the configuration entry with `name: log_retention` must have `value: on` (case-insensitive). Tasks missing the `log_retention` configuration or with `value` not equal to `on` will be flagged as insecure.
+PostgreSQL servers must retain logs to support security incident investigation and satisfy audit and compliance requirements. Without log retention, attackers or misconfigurations may go undetected and forensic analysis is impeded.
+
+In Ansible playbooks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` modules, the configuration entry with `name: log_retention` must have `value: on` (case-insensitive). Tasks missing the `log_retention` configuration or with `value` not equal to `on` are flagged as insecure.
 
 Secure Ansible example:
 

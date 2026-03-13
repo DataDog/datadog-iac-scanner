@@ -1,10 +1,10 @@
 ---
-title: "Admin User Enabled For Container Registry"
+title: "Admin user enabled for container registry"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/admin_user_enabled_for_container_registry"
   id: "29f35127-98e6-43af-8ec1-201b79f99604"
-  display_name: "Admin User Enabled For Container Registry"
+  display_name: "Admin user enabled for container registry"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Enabling the admin user on an Azure Container Registry creates a shared username/password credential that can be leaked or abused to push or pull images, increasing the risk of unauthorized access and lateral movement. For Ansible resources using `azure_rm_containerregistry` or `azure.azcollection.azure_rm_containerregistry`, the `admin_user_enabled` property must be set to `false` or omitted (it defaults to `false`). Tasks with `admin_user_enabled: true` will be flagged; instead use Azure AD RBAC with scoped service principals or managed identities for registry access. Secure example (explicitly disabling the admin user):
+Enabling the admin user on an Azure Container Registry creates a shared username/password credential that can be leaked or abused to push or pull images, increasing the risk of unauthorized access and lateral movement.
+
+For Ansible resources using `azure_rm_containerregistry` or `azure.azcollection.azure_rm_containerregistry`, the `admin_user_enabled` property must be set to `false` or omitted (it defaults to `false`). Tasks with `admin_user_enabled: true` are flagged. Use Azure AD RBAC with scoped service principals or managed identities for registry access instead. 
+
+Secure example (explicitly disabling the admin user):
 
 ```yaml
 - name: Create secure Azure Container Registry

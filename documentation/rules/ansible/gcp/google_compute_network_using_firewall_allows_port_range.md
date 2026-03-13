@@ -1,10 +1,10 @@
 ---
-title: "Google Compute Network Using Firewall Rule that Allows Port Range"
+title: "Google Compute network using firewall rule that allows port range"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/google_compute_network_using_firewall_allows_port_range"
   id: "7289eebd-a477-4064-8ad4-3c044bd70b00"
-  display_name: "Google Compute Network Using Firewall Rule that Allows Port Range"
+  display_name: "Google Compute network using firewall rule that allows port range"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Compute network firewall rules must not permit ingress using broad port ranges because ranges increase attack surface, make it harder to apply least privilege, and can unintentionally expose multiple services. This check inspects Ansible tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` modules and flags ingress rules where `allowed[].ports[]` entries are numeric ranges matching the `start-end` pattern (for example, `"8000-9000"`); the rule does not match the literal `"0-65535"`. The check applies when the firewall's `network` references a compute network task (the firewall `network` equals the compute network's registered name); fix by specifying explicit single ports or a minimal list of ports and by scoping ingress with specific source ranges or target tags.
+Compute network firewall rules must not permit ingress using broad port ranges because ranges increase attack surface, make it harder to apply least privilege, and can unintentionally expose multiple services.
+
+This check inspects Ansible tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` modules and flags ingress rules where `allowed[].ports[]` entries are numeric ranges matching the `start-end` pattern (for example, `"8000-9000"`). The rule does not match the literal `"0-65535"`.
+
+The check applies when the firewall's `network` references a compute network task, meaning the firewall `network` equals the compute network's registered name. To resolve, specify explicit single ports or a minimal list of ports and scope ingress with specific source ranges or target tags.
 
 Secure example with explicit single ports:
 

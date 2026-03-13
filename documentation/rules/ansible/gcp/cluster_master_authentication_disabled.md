@@ -1,10 +1,10 @@
 ---
-title: "Cluster Master Authentication Disabled"
+title: "Cluster master authentication disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cluster_master_authentication_disabled"
   id: "9df7f78f-ebe3-432e-ac3b-b67189c15518"
-  display_name: "Cluster Master Authentication Disabled"
+  display_name: "Cluster master authentication disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Kubernetes Engine clusters must have master authentication credentials defined so control plane access is not left unauthenticated or ambiguous, and so administrative access is explicit and auditable. For Ansible GKE cluster resources using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `master_auth` property must be present and its `username` and `password` subproperties must be defined and non-empty strings. This rule flags resources where `master_auth` is undefined or null, or where `master_auth.username` or `master_auth.password` are undefined, null, or empty. If you use alternative authentication mechanisms, ensure they are explicitly configured; otherwise provide non-empty credentials so the cluster admin account is not left unspecified.
+Kubernetes Engine clusters must have master authentication credentials defined so control plane access is not left unauthenticated or ambiguous. This ensures administrative access is explicit and auditable.
+
+For Ansible GKE cluster resources using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `master_auth` property must be present and its `username` and `password` subproperties must be defined and non-empty strings. This rule flags resources where `master_auth` is undefined or null, or where `master_auth.username` or `master_auth.password` are undefined, null, or empty. If you use alternative authentication mechanisms, ensure they are explicitly configured. Otherwise, provide non-empty credentials so the cluster admin account is not left unspecified.
 
 Secure configuration example for an Ansible task:
 

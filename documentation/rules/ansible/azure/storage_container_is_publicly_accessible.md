@@ -1,10 +1,10 @@
 ---
-title: "Storage Container Is Publicly Accessible"
+title: "Storage container is publicly accessible"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/storage_container_is_publicly_accessible"
   id: "4d3817db-dd35-4de4-a80d-3867157e7f7f"
-  display_name: "Storage Container Is Publicly Accessible"
+  display_name: "Storage container is publicly accessible"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Allowing anonymous public read access to Azure Blob Storage containers or their blobs exposes stored data to anyone on the internet, increasing the risk of data exfiltration and compliance violations. In Ansible tasks using `azure.azcollection.azure_rm_storageblob` or `azure_rm_storageblob`, the `public_access` property must not be set to `"blob"` or `"container"`. The rule flags tasks where `public_access` (case-insensitive) equals `blob` or `container`; `blob` permits anonymous read of individual blobs while `container` also allows listing container contents. To remediate, omit the `public_access` property or set it to `private` and use SAS tokens, Azure RBAC, private endpoints, or signed URLs for controlled sharing.
+Allowing anonymous public read access to Azure Blob Storage containers or their blobs exposes stored data to anyone on the internet, increasing the risk of data exfiltration and compliance violations. In Ansible tasks using `azure.azcollection.azure_rm_storageblob` or `azure_rm_storageblob`, the `public_access` property must not be set to `"blob"` or `"container"`.
+
+The rule flags tasks where `public_access` (case-insensitive) equals `blob` or `container`. Setting it to `blob` permits anonymous read of individual blobs, while `container` also allows listing container contents. To remediate, omit the `public_access` property or set it to `private`. Use SAS tokens, Azure RBAC, private endpoints, or signed URLs for controlled sharing.
 
 Secure example:
 

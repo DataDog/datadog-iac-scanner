@@ -1,10 +1,10 @@
 ---
-title: "RDP Access Is Not Restricted"
+title: "RDP access is not restricted"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/rdp_access_is_not_restricted"
   id: "75418eb9-39ec-465f-913c-6f2b6a80dc77"
-  display_name: "RDP Access Is Not Restricted"
+  display_name: "RDP access is not restricted"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Allowing unrestricted RDP (TCP port 3389) ingress exposes hosts to automated brute-force attacks and unauthorized remote access. This rule inspects Ansible `google.cloud.gcp_compute_firewall` and `gcp_compute_firewall` tasks and flags ingress rules whose `source_ranges` include unrestricted CIDRs (for example `0.0.0.0/0` or `::/0`) and whose `allowed` entries include port `3389` (typically `ip_protocol: tcp`). The `allowed` property must not include port `3389` for rules that permit unrestricted source ranges; either remove/disable RDP on the firewall or restrict `source_ranges` to trusted CIDRs, and consider using a bastion host, VPN, or identity-based access (IAP/SSM) instead of direct RDP. Resources where `direction` is ingress and `source_ranges` contains an unrestricted CIDR and `allowed[].ports` contains `"3389"` will be flagged.
+Allowing unrestricted RDP (TCP port 3389) ingress exposes hosts to automated brute-force attacks and unauthorized remote access. This rule inspects Ansible `google.cloud.gcp_compute_firewall` and `gcp_compute_firewall` tasks and flags ingress rules whose `source_ranges` include unrestricted CIDRs (for example `0.0.0.0/0` or `::/0`) and whose `allowed` entries include port `3389` (typically `ip_protocol: tcp`).
+
+The `allowed` property must not include port `3389` for rules that permit unrestricted source ranges. Either remove or disable RDP on the firewall, or restrict `source_ranges` to trusted CIDRs. Consider using a bastion host, VPN, or identity-based access (IAP/SSM) instead of direct RDP. Resources where `direction` is ingress, `source_ranges` contains an unrestricted CIDR, and `allowed[].ports` contains `"3389"` are flagged.
 
 Secure example that restricts RDP to a corporate CIDR:
 

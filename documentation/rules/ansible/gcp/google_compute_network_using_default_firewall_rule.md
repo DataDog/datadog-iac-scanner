@@ -1,10 +1,10 @@
 ---
-title: "Google Compute Network Using Default Firewall Rule"
+title: "Google Compute network using default firewall rule"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/google_compute_network_using_default_firewall_rule"
   id: "29b8224a-60e9-4011-8ac2-7916a659841f"
-  display_name: "Google Compute Network Using Default Firewall Rule"
+  display_name: "Google Compute network using default firewall rule"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Using a default firewall rule named "default" can expose a Compute Network to overly permissive ingress or egress and violates least-privilege network segmentation, increasing risk of unauthorized access and lateral movement. In Ansible playbooks this rule flags tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` module where the firewall `name` contains "default" and the `network` property attaches to a network created/registered by a prior `google.cloud.gcp_compute_network` or `gcp_compute_network` task. Specifically, firewall tasks with `name` including "default" and `network` set to the registered network value (e.g., `network: "{{ <compute_task.register> }}"`) will be flagged. Replace default rules with explicit, least-privilege firewall rules that specify precise allowed ports and source ranges, or reference the intended network and rule names explicitly rather than reusing the default.
+Using a default firewall rule named "default" can expose a Compute Network to overly permissive ingress or egress, violating least-privilege network segmentation and increasing the risk of unauthorized access and lateral movement.
+
+This rule flags Ansible tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` module where the firewall `name` contains "default" and the `network` property attaches to a network created or registered by a prior `google.cloud.gcp_compute_network` or `gcp_compute_network` task. Specifically, firewall tasks with `name` including "default" and `network` set to the registered network value (for example, `network: "{{ <compute_task.register> }}"`) are flagged.
+
+Replace default rules with explicit, least-privilege firewall rules that specify precise allowed ports and source ranges, or reference the intended network and rule names explicitly rather than reusing the default.
 
 ## Compliant Code Examples
 ```yaml

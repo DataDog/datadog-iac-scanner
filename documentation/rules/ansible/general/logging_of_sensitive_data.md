@@ -1,10 +1,10 @@
 ---
-title: "Logging of Sensitive Data"
+title: "Logging of sensitive data"
 group_id: "Ansible / Common"
 meta:
   name: "general/logging_of_sensitive_data"
   id: "59029ddf-e651-412b-ae7b-ff6d403184bc"
-  display_name: "Logging of Sensitive Data"
+  display_name: "Logging of sensitive data"
   cloud_provider: "Common"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Tasks that create or modify users and set a `password` can emit plaintext credentials in playbook output and logs, risking credential leakage and unauthorized access. For `ansible.builtin.user` tasks that include the `password` property, the task-level `no_log` attribute must be defined and set to `true`. Tasks missing `no_log` or with `no_log: false` will be flagged by this rule. Apply `no_log: true` to any task that handles plaintext secrets or templated variables that resolve to secrets.
+Tasks that create or modify users and set a `password` can emit plaintext credentials in playbook output and logs, risking credential leakage. For `ansible.builtin.user` tasks that include the `password` property, the task-level `no_log` attribute must be set to `true`. Tasks missing `no_log` or with `no_log: false` are flagged by this rule. Apply `no_log: true` to any task that handles plaintext secrets or templated variables that resolve to secrets.
 
 ```yaml
 - name: Create application user without exposing password

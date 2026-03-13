@@ -1,10 +1,10 @@
 ---
-title: "PostgreSQL Server Without Connection Throttling"
+title: "PostgreSQL server without connection throttling"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_server_without_connection_throttling"
   id: "a9becca7-892a-4af7-b9e1-44bf20a4cd9a"
-  display_name: "PostgreSQL Server Without Connection Throttling"
+  display_name: "PostgreSQL server without connection throttling"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Connection throttling must be enabled on PostgreSQL servers to limit concurrent connection attempts and prevent resource exhaustion or availability degradation from runaway clients or connection storms. This rule checks Ansible tasks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` module where `name` equals `connection_throttling` and requires the `value` property to be set to `ON` (case-insensitive). Resources missing this setting or with `value` set to `OFF` (or any value other than `ON`) will be flagged as an incorrect configuration.
+Connection throttling must be enabled on PostgreSQL servers to limit concurrent connection attempts and prevent resource exhaustion or availability degradation from runaway clients or connection storms.
+
+This rule checks Ansible tasks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` module where `name` equals `connection_throttling`. The `value` property must be set to `ON` (case-insensitive). Resources missing this setting or with `value` set to `OFF` (or any value other than `ON`) are flagged as an incorrect configuration.
 
 Secure Ansible task example:
 

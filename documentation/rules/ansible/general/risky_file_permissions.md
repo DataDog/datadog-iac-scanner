@@ -1,10 +1,10 @@
 ---
-title: "Risky File Permissions"
+title: "Risky file permissions"
 group_id: "Ansible / Common"
 meta:
   name: "general/risky_file_permissions"
   id: "88841d5c-d22d-4b7e-a6a0-89ca50e44b9f"
-  display_name: "Risky File Permissions"
+  display_name: "Risky file permissions"
   cloud_provider: "Common"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Files and directories created or modified by Ansible tasks must have explicit, least-privilege file modes because omitting the `mode` or relying on preserved/default permissions can leave artifacts world-readable or writable, increasing the risk of data exposure and privilege escalation. This rule checks file-related modules—`archive`, `assemble`, `copy`, `file`, `get_url`, `template` (including their FQCNs) and content-creation modules like `htpasswd` and `ini_file`—and flags tasks that would create files (task `state` not `absent`/`link`) but do not define the `mode` property. For modules that provide a `create` boolean (for example `htpasswd` and `ini_file`), tasks where `create` is true (or defaults to true) and `mode` is not defined will also be flagged; conversely, `mode: preserve` is only allowed for `copy` and `template` modules and any other module using `mode: preserve` will be reported as invalid. To remediate, add an explicit `mode` with an appropriate octal value (or set `create: false` when creation is not desired); for example, a secure file task and a secure ini_file task:
+Files and directories created or modified by Ansible tasks must have explicit, least-privilege file modes. Omitting the `mode` or relying on preserved/default permissions can leave artifacts world-readable or writable, increasing the risk of data exposure and privilege escalation.
+
+This rule checks file-related modules—`archive`, `assemble`, `copy`, `file`, `get_url`, `template` (including their FQCNs) and content-creation modules like `htpasswd` and `ini_file`. Tasks that create files (task `state` not `absent`/`link`) without defining the `mode` property are flagged.
+
+For modules that provide a `create` boolean (for example `htpasswd` and `ini_file`), tasks where `create` is true (or defaults to true) and `mode` is not defined are also flagged. `mode: preserve` is only allowed for `copy` and `template` modules. Any other module using `mode: preserve` is reported as invalid.
+
+To remediate, add an explicit `mode` with an appropriate octal value, or set `create: false` when creation is not desired.
 
 ```yaml
 - name: Create config file with restrictive permissions

@@ -1,10 +1,10 @@
 ---
-title: "Using Default Service Account"
+title: "Using default service account"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/using_default_service_account"
   id: "2775e169-e708-42a9-9305-b58aadd2c4dd"
-  display_name: "Using Default Service Account"
+  display_name: "Using default service account"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Compute instances must not use the default Google Compute Engine service account because that account often has broad Cloud API privileges and can lead to unintended privilege escalation or overly permissive access. For Ansible tasks using the `google.cloud.gcp_compute_instance` or `gcp_compute_instance` module with `auth_kind: serviceaccount`, the `service_account_email` property must be defined, must be a non-empty string containing an `@`, and must not reference a default Compute Engine service account (values containing `@developer.gserviceaccount.com`). Resources missing `service_account_email`, with an empty value, lacking an `@` character, or using a default developer service account will be flagged.
+Compute instances must not use the default Google Compute Engine service account. That account often has broad Cloud API privileges, which can lead to unintended privilege escalation or overly permissive access. For Ansible tasks using the `google.cloud.gcp_compute_instance` or `gcp_compute_instance` module with `auth_kind: serviceaccount`, the `service_account_email` property must be defined, must be a non-empty string containing an `@`, and must not reference a default Compute Engine service account (values containing `@developer.gserviceaccount.com`). Resources missing `service_account_email`, with an empty value, lacking an `@` character, or using a default developer service account are flagged.
 
 Secure example:
 

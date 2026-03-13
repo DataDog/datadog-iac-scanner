@@ -1,10 +1,10 @@
 ---
-title: "PostgreSQL log_checkpoints Flag Not Set To ON"
+title: "PostgreSQL log_checkpoints flag not set to on"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/postgresql_log_checkpoints_flag_not_set_to_on"
   id: "89afe3f0-4681-4ce3-89ed-896cebd4277c"
-  display_name: "PostgreSQL log_checkpoints Flag Not Set To ON"
+  display_name: "PostgreSQL log_checkpoints flag not set to on"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-PostgreSQL Cloud SQL instances must have the `log_checkpoints` flag enabled so checkpoint events are recorded; without these logs, crash recovery and forensic analysis are hindered and it becomes harder to detect or investigate anomalous or destructive activity. For Ansible tasks using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, the `settings.databaseFlags` list must include an entry with `name: log_checkpoints` and `value: on`. Tasks that omit the `settings` block, omit `databaseFlags`, or have `log_checkpoints` set to any value other than `on` will be flagged. Secure example configuration in an Ansible task:
+PostgreSQL Cloud SQL instances must have the `log_checkpoints` flag enabled so checkpoint events are recorded. Without these logs, crash recovery and forensic analysis are hindered, making it harder to detect or investigate anomalous or destructive activity.
+
+For Ansible tasks using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, the `settings.databaseFlags` list must include an entry with `name: log_checkpoints` and `value: on`. Tasks that omit the `settings` block, omit `databaseFlags`, or have `log_checkpoints` set to any value other than `on` are flagged.
+
+Secure example configuration in an Ansible task:
 
 ```yaml
 - name: Create Cloud SQL PostgreSQL instance with checkpoint logging

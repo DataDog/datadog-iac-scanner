@@ -1,10 +1,10 @@
 ---
-title: "Cloud Storage Bucket Versioning Disabled"
+title: "Cloud storage bucket versioning disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cloud_storage_bucket_versioning_disabled"
   id: "7814ddda-e758-4a56-8be3-289a81ded929"
-  display_name: "Cloud Storage Bucket Versioning Disabled"
+  display_name: "Cloud storage bucket versioning disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Cloud Storage buckets should have object versioning enabled to protect against accidental or malicious object deletion and to allow recovery of prior object states. In Ansible, tasks using the `google.cloud.gcp_storage_bucket` or `gcp_storage_bucket` modules must define the `versioning` parameter and set `versioning.enabled` to `true`. Resources missing the `versioning` parameter or with `versioning.enabled` set to `false` will be flagged. Secure configuration example:
+Cloud Storage buckets should have object versioning enabled to protect against accidental or malicious deletion and allow recovery of prior object states. In Ansible, tasks using the `google.cloud.gcp_storage_bucket` or `gcp_storage_bucket` modules must define the `versioning` parameter and set `versioning.enabled` to `true`. Resources missing the `versioning` parameter or with `versioning.enabled` set to `false` are flagged. 
+
+Secure configuration example:
 
 ```yaml
 - name: Create GCS bucket with versioning

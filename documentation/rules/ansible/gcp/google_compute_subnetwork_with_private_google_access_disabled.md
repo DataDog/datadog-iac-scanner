@@ -1,10 +1,10 @@
 ---
-title: "Google Compute Subnetwork with Private Google Access Disabled"
+title: "Google Compute subnetwork with Private Google Access disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/google_compute_subnetwork_with_private_google_access_disabled"
   id: "6a4080ae-79bd-42f6-a924-8f534c1c018b"
-  display_name: "Google Compute Subnetwork with Private Google Access Disabled"
+  display_name: "Google Compute subnetwork with Private Google Access disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Subnetworks must have Private Google Access enabled so VM instances with only internal IPs can reach Google APIs and services over Google's internal network. If Private Google Access is disabled, operators may assign external IPs or route traffic via the public internet, increasing attack surface and the risk of data exposure or network-based attacks. For Ansible resources using the google.cloud.gcp_compute_subnetwork or gcp_compute_subnetwork modules, the `private_ip_google_access` property must be defined and set to `yes`. Tasks missing this property or with `private_ip_google_access` not equal to `yes` will be flagged.
+Subnetworks must have Private Google Access enabled so VM instances with only internal IPs can reach Google APIs and services over Google's internal network. Without Private Google Access, operators may assign external IPs or route traffic over the public internet, increasing attack surface and the risk of data exposure or network-based attacks.
+
+For Ansible resources using the google.cloud.gcp_compute_subnetwork or gcp_compute_subnetwork modules, the `private_ip_google_access` property must be defined and set to `yes`. Tasks missing this property or with `private_ip_google_access` not equal to `yes` are flagged.
 
 Secure Ansible example:
 

@@ -1,10 +1,10 @@
 ---
-title: "SQL Server Predictable Active Directory Account Name"
+title: "SQL Server predictable Active Directory account name"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/sql_server_predictable_active_directory_admin_account_name"
   id: "530e8291-2f22-4bab-b7ea-306f1bc2a308"
-  display_name: "SQL Server Predictable Active Directory Account Name"
+  display_name: "SQL Server predictable Active Directory account name"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Active Directory administrator accounts for Azure SQL Server must not use predictable or common names (for example, "admin" or "administrator"), because predictable account names make privileged accounts easy to discover and enable targeted brute-force and credential-stuffing attacks. In Ansible, verify the `azure.azcollection.azure_ad_serviceprincipal` (or `azure_ad_serviceprincipal`) task's `ad_user` property is defined and non-empty and set to a non-predictable, unique name. This rule flags tasks where `ad_user` is missing or null, or where the case-insensitive value matches common predictable names such as `admin`, `administrator`, `sqladmin`, `root`, `user`, `azure_admin`, `azure_administrator`, or `guest`. Use a clear, non-guessable name for `ad_user`, for example:
+Active Directory administrator accounts for Azure SQL Server must not use predictable or common names such as "admin" or "administrator." Predictable account names make privileged accounts easy to discover and enable targeted brute-force and credential-stuffing attacks.
+
+In Ansible, verify the `azure.azcollection.azure_ad_serviceprincipal` (or `azure_ad_serviceprincipal`) task's `ad_user` property is defined, non-empty, and set to a non-predictable, unique name. This rule flags tasks where `ad_user` is missing or `null`, or where the value matches common predictable names (case-insensitive) such as `admin`, `administrator`, `sqladmin`, `root`, `user`, `azure_admin`, `azure_administrator`, or `guest`. Use a clear, non-guessable name for `ad_user`. For example:
 
 ```yaml
 - name: Create AD service principal for Azure SQL admin

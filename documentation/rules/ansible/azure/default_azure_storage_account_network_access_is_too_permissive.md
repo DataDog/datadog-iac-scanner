@@ -1,10 +1,10 @@
 ---
-title: "Default Azure Storage Account Network Access Is Too Permissive"
+title: "Default Azure storage account network access is too permissive"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/default_azure_storage_account_network_access_is_too_permissive"
   id: "ca4df748-613a-4fbf-9c76-f02cbd580307"
-  display_name: "Default Azure Storage Account Network Access Is Too Permissive"
+  display_name: "Default Azure storage account network access is too permissive"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Storage accounts must not permit broad public access or use a permissive default ACL because public network access or a default-allow policy can expose blobs, queues, and file storage to unauthorized users and increase the risk of data exfiltration. For Ansible resources using `azure.azcollection.azure_rm_storageaccount` or `azure_rm_storageaccount`, explicitly set `public_network_access` to `Disabled` and set `network_acls.default_action` to `Deny`. Resources that omit `public_network_access` (the default is `Enabled`), that set `public_network_access: Enabled`, or that set `network_acls.default_action: Allow` will be flagged. Secure configuration example:
+Storage accounts must not permit broad public access or use a permissive default ACL. Public network access or a default-allow policy can expose blobs, queues, and file storage to unauthorized users, increasing the risk of data exfiltration.
+
+For Ansible resources using `azure.azcollection.azure_rm_storageaccount` or `azure_rm_storageaccount`, explicitly set `public_network_access` to `Disabled` and set `network_acls.default_action` to `Deny`. Resources that omit `public_network_access` (the default is `Enabled`), that set `public_network_access: Enabled`, or that set `network_acls.default_action: Allow` are flagged.
+
+Secure configuration example:
 
 ```yaml
 - name: Create secure Azure Storage Account

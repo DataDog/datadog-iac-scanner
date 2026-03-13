@@ -1,10 +1,10 @@
 ---
-title: "Small Activity Log Retention Period"
+title: "Small activity log retention period"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/small_activity_log_retention_period"
   id: "37fafbea-dedb-4e0d-852e-d16ee0589326"
-  display_name: "Small Activity Log Retention Period"
+  display_name: "Small activity log retention period"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Activity Log retention must be configured to retain logs for at least 365 days (or indefinitely) because short retention windows hinder incident response, forensic investigations, and regulatory compliance. For Ansible `azure.azcollection.azure_rm_monitorlogprofile` / `azure_rm_monitorlogprofile` resources, the `retention_policy.enabled` property must be `true` and `retention_policy.days` must be set to `365` or greater, or to `0` to retain logs indefinitely. Tasks that omit `retention_policy`, set `retention_policy.enabled` to `false` (or `no`), or set `retention_policy.days` to a value between 1 and 364 will be flagged.
+Activity Log retention must be configured to retain logs for at least 365 days (or indefinitely). Short retention windows hinder incident response, forensic investigations, and regulatory compliance.
+
+For Ansible `azure.azcollection.azure_rm_monitorlogprofile` / `azure_rm_monitorlogprofile` resources, the `retention_policy.enabled` property must be `true` and `retention_policy.days` must be set to `365` or greater, or to `0` to retain logs indefinitely. Tasks that omit `retention_policy`, set `retention_policy.enabled` to `false` (or `no`), or set `retention_policy.days` to a value between 1 and 364 are flagged.
 
 Secure configuration example:
 
