@@ -1,10 +1,10 @@
 ---
-title: "Hardcoded AWS Access Key"
+title: "Hardcoded AWS access key"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/hardcoded_aws_access_key"
   id: "c2f15af3-66a0-4176-a56e-e4711e502e5c"
-  display_name: "Hardcoded AWS Access Key"
+  display_name: "Hardcoded AWS access key"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Embedding AWS access keys in EC2 user data exposes credentials to source control, logs, and anyone with access to the instance, allowing attackers to access or escalate privileges in your AWS account. This rule checks Ansible tasks using the `community.aws.ec2_instance` or `ec2_instance` modules and flags the `user_data` property when it contains patterns matching AWS Access Key IDs (20 uppercase alphanumeric characters) or Secret Access Keys (40-character base64-like strings). Do not hardcode credentials; assign an IAM instance profile to the instance or retrieve secrets at runtime from AWS Secrets Manager or SSM Parameter Store and inject them securely. Resources whose `user_data` contains sequences matching those key patterns will be flagged.
+Embedding AWS access keys in EC2 user data exposes credentials to source control, logs, and anyone with access to the instance. Attackers can use these credentials to access or escalate privileges in your AWS account.
+
+This rule checks Ansible tasks using the `community.aws.ec2_instance` or `ec2_instance` modules and flags the `user_data` property when it contains patterns matching AWS Access Key IDs (20 uppercase alphanumeric characters) or Secret Access Keys (40-character base64-like strings). Resources whose `user_data` contains sequences matching those key patterns are flagged.
+
+Do not hardcode credentials. Assign an IAM instance profile to the instance or retrieve secrets at runtime from AWS Secrets Manager or AWS Systems Manager Parameter Store and inject them securely.
 
 Secure example using an instance profile and avoiding embedded keys:
 

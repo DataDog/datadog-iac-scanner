@@ -1,10 +1,10 @@
 ---
-title: "Instance Uses Metadata Service IMDSv1"
+title: "Instance uses metadata service IMDSv1"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/instance_uses_metadata_service_IMDSv1"
   id: "b9ef8c0e-1392-4df4-aa84-2e0f95681c75"
-  display_name: "Instance Uses Metadata Service IMDSv1"
+  display_name: "Instance uses metadata service IMDSv1"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-The EC2 instance metadata service should require IMDSv2 session tokens to reduce the risk of metadata and credential exposure via SSRF or from compromised instances. For Ansible-managed EC2 resources (`amazon.aws.ec2_instance`, `community.aws.ec2_instance`, `community.aws.autoscaling_launch_config`, `community.aws.ec2_lc`), the `metadata_options.http_tokens` property must be set to `required` to enforce IMDSv2. Resources missing `metadata_options`, missing `metadata_options.http_tokens`, or where `http_tokens` is not `required` will be flagged as insecure.
+The EC2 instance metadata service should require IMDSv2 session tokens to reduce the risk of metadata and credential exposure via SSRF or from compromised instances.
+
+For Ansible-managed EC2 resources (`amazon.aws.ec2_instance`, `community.aws.ec2_instance`, `community.aws.autoscaling_launch_config`, `community.aws.ec2_lc`), the `metadata_options.http_tokens` property must be set to `required` to enforce IMDSv2. Resources missing `metadata_options`, missing `metadata_options.http_tokens`, or where `http_tokens` is not `required` are flagged as insecure.
 
 Secure configuration example:
 

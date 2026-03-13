@@ -1,10 +1,10 @@
 ---
-title: "IAM Database Auth Not Enabled"
+title: "IAM database authentication is not enabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_database_auth_not_enabled"
   id: "0ed012a4-9199-43d2-b9e4-9bd049a48aa4"
-  display_name: "IAM Database Auth Not Enabled"
+  display_name: "IAM database authentication is not enabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-IAM database authentication should be enabled to avoid reliance on static database passwords and to centralize access control, reducing the risk of credential leakage and making rotation and auditing easier. For Ansible RDS resources using the `community.aws.rds_instance` or `rds_instance` modules, the `enable_iam_database_authentication` property must be defined and set to `true`. This check only applies to engines, engine versions, and instance types that support IAM authentication (the policy validates `engine`, `engine_version`, and `instance_type`); resources where the property is missing or set to `false` will be flagged. Secure Ansible example:
+IAM database authentication should be enabled to avoid reliance on static database passwords and centralize access control. This reduces the risk of credential leakage and makes rotation and auditing easier.
+
+For Ansible RDS resources using the `community.aws.rds_instance` or `rds_instance` modules, the `enable_iam_database_authentication` property must be defined and set to `true`. This check only applies to engines, engine versions, and instance types that support IAM authentication. The policy validates `engine`, `engine_version`, and `instance_type`. Resources where the property is missing or set to `false` are flagged.
+
+Secure Ansible example:
 
 ```yaml
 - name: Create RDS instance with IAM auth enabled

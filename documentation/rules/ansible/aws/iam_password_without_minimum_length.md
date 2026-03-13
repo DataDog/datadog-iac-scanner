@@ -1,10 +1,10 @@
 ---
-title: "IAM Password Without Minimum Length"
+title: "IAM password without minimum length"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_password_without_minimum_length"
   id: "8bc2168c-1723-4eeb-a6f3-a1ba614b9a6d"
-  display_name: "IAM Password Without Minimum Length"
+  display_name: "IAM password without minimum length"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-IAM password policies must enforce a minimum length to reduce the risk of credential brute-force and credential-stuffing attacks and to limit the effectiveness of weak passwords. This rule checks Ansible tasks using `community.aws.iam_password_policy` or `iam_password_policy` and requires the `min_pw_length` or `minimum_password_length` property to be set to a numeric value of at least 8. Tasks missing both properties will be flagged as MissingAttribute, and tasks where the configured value is less than 8 will be flagged as IncorrectValue. Configure the property to 8 or higher; for example, a secure Ansible task:
+IAM password policies must enforce a minimum length to reduce the risk of credential brute-force and credential-stuffing attacks and limit the effectiveness of weak passwords.
+
+This rule checks Ansible tasks using `community.aws.iam_password_policy` or `iam_password_policy` and requires `min_pw_length` or `minimum_password_length` to be set to a numeric value of at least 8. Tasks missing both properties are flagged as MissingAttribute. Tasks where the configured value is less than 8 are flagged as IncorrectValue. Configure the property to 8 or higher.
+
+Secure example:
 
 ```yaml
 - name: Enforce IAM password policy

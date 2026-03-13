@@ -1,10 +1,10 @@
 ---
-title: "EFS Not Encrypted"
+title: "EFS not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/efs_not_encrypted"
   id: "727c4fd4-d604-4df6-a179-7713d3c85e20"
-  display_name: "EFS Not Encrypted"
+  display_name: "EFS not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-EFS file systems must have encryption enabled to protect data at rest and to prevent exposure of file system contents, snapshots, and backups if storage media or backups are compromised. For Ansible tasks using the `community.aws.efs` or `efs` modules the `encrypt` property must be defined and set to `true`. Resources that omit `encrypt` or have `encrypt: false` will be flagged as misconfigured. Secure example:
+EFS file systems must have encryption enabled to protect data at rest and prevent exposure of file system contents, snapshots, and backups if storage media is compromised. For Ansible tasks using the `community.aws.efs` or `efs` modules, the `encrypt` property must be defined and set to `true`. Resources that omit `encrypt` or have `encrypt: false` are flagged as misconfigured. 
+
+Secure example:
 
 ```yaml
 - name: Create encrypted EFS filesystem

@@ -1,10 +1,10 @@
 ---
-title: "EFS Without Tags"
+title: "EFS without tags"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/efs_without_tags"
   id: "b8a9852c-9943-4973-b8d5-77dae9352851"
-  display_name: "EFS Without Tags"
+  display_name: "EFS without tags"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-EFS filesystems must have tags defined to ensure reliable asset identification and to support tag-based access control, cost allocation, and automated lifecycle or compliance policies. For Ansible tasks using the `community.aws.efs` or `efs` modules, the `tags` property must be present and contain at least one key/value pair. Tasks that omit the `tags` property or provide an empty mapping will be flagged as missing required metadata.
+EFS filesystems must have tags defined to support asset identification, tag-based access control, cost allocation, and automated lifecycle or compliance policies. For Ansible tasks using the `community.aws.efs` or `efs` modules, the `tags` property must be present and contain at least one key/value pair. Tasks that omit the `tags` property or provide an empty mapping are flagged as missing required metadata.
 
 Secure example:
 

@@ -1,10 +1,10 @@
 ---
-title: "ElastiCache Without VPC"
+title: "ElastiCache without VPC"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/elasticache_without_vpc"
   id: "5527dcfc-94f9-4bf6-b7d4-1b78850cf41f"
-  display_name: "ElastiCache Without VPC"
+  display_name: "ElastiCache without VPC"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-ElastiCache clusters must be launched in a VPC to provide network isolation and reduce the risk of unauthorized access to cached data or lateral movement within your environment. In Ansible playbooks, tasks using the `community.aws.elasticache` or `elasticache` modules must set the `cache_subnet_group` property to the name of an existing ElastiCache subnet group. Tasks where `cache_subnet_group` is undefined or null will be flagged because omission typically results in resources being created outside a VPC or without the intended subnet isolation.
+ElastiCache clusters must be launched in a VPC to provide network isolation and reduce the risk of unauthorized access to cached data or lateral movement within your environment.
+
+In Ansible playbooks, tasks using the `community.aws.elasticache` or `elasticache` modules must set the `cache_subnet_group` property to the name of an existing ElastiCache subnet group. A task where `cache_subnet_group` is undefined or null is flagged because omission typically results in resources being created outside a VPC or without the intended subnet isolation.
 
 Secure Ansible example:
 
