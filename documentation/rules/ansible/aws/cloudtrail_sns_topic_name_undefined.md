@@ -1,10 +1,10 @@
 ---
-title: "CloudTrail SNS Topic Name Undefined"
+title: "CloudTrail SNS topic name undefined"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudtrail_sns_topic_name_undefined"
   id: "5ba316a9-c466-4ec1-8d5b-bc6107dc9a92"
-  display_name: "CloudTrail SNS Topic Name Undefined"
+  display_name: "CloudTrail SNS topic name undefined"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-CloudTrail should be configured to publish notifications to an SNS topic so important trail events and log delivery issues can trigger alerts and automated responses; without an SNS target you may miss timely notifications about suspicious activity or failures. For Ansible CloudTrail tasks (modules `community.aws.cloudtrail` or `cloudtrail`) the `sns_topic_name` property must be defined and non-null. Tasks missing `sns_topic_name` or with it set to `null`/empty will be flagged; ensure the value references an existing SNS topic (or create one in the same playbook) so CloudTrail can publish notifications.
+CloudTrail should be configured to publish notifications to an SNS topic so trail events and log delivery issues can trigger alerts and automated responses. Without an SNS target, you may miss timely notifications about suspicious activity or failures.
+
+For Ansible CloudTrail tasks (modules `community.aws.cloudtrail` or `cloudtrail`), the `sns_topic_name` property must be defined and non-null. Tasks missing `sns_topic_name` or with it set to `null`/empty are flagged. Ensure the value references an existing SNS topic (or create one in the same playbook) so CloudTrail can publish notifications.
 
 Secure example:
 

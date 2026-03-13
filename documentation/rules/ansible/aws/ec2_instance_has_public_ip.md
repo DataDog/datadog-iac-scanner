@@ -1,10 +1,10 @@
 ---
-title: "EC2 Instance Has Public IP"
+title: "EC2 instance has public IP"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ec2_instance_has_public_ip"
   id: "a8b0c58b-cd25-4b53-9ad0-55bca0be0bc1"
-  display_name: "EC2 Instance Has Public IP"
+  display_name: "EC2 instance has public IP"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,17 @@ meta:
 
 ### Description
 
-EC2 instances and launch templates that automatically receive a public IPv4 address are exposed directly to the internet, increasing the attack surface and the risk of unauthorized access or exploitation. For Ansible tasks, check these module properties: `amazon.aws.ec2` / `ec2` → `assign_public_ip`; `community.aws.ec2_launch_template` / `ec2_launch_template` → `network_interfaces.associate_public_ip_address`; and `community.aws.ec2_instance` / `ec2_instance` → `network.assign_public_ip`. Each property must be explicitly set to `false` (or `'no'`) or omitted; the rule flags resources where the property is truthy (e.g., `true`, `yes`) because there is no safe default. Secure examples:
+EC2 instances and launch templates that automatically receive a public IPv4 address are exposed directly to the internet, increasing the attack surface and the risk of unauthorized access or exploitation.
+
+For Ansible tasks, check the following module properties:
+
+- For `amazon.aws.ec2` / `ec2`: `assign_public_ip`
+- For `community.aws.ec2_launch_template` / `ec2_launch_template`: `network_interfaces.associate_public_ip_address`
+- For `community.aws.ec2_instance` / `ec2_instance`: `network.assign_public_ip`
+
+Each property must be explicitly set to `false` (or `'no'`) or omitted. The rule flags resources where the property is truthy (for example, `true`, `yes`) because there is no safe default. 
+
+Secure examples:
 
 ```yaml
 - name: Launch instance without public IP (ec2_instance)

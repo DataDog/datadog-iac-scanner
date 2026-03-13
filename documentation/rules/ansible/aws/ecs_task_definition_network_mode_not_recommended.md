@@ -1,10 +1,10 @@
 ---
-title: "ECS Task Definition Network Mode Not Recommended"
+title: "ECS task definition network mode not recommended"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ecs_task_definition_network_mode_not_recommended"
   id: "01aec7c2-3e4d-4274-ae47-2b8fea22fd1f"
-  display_name: "ECS Task Definition Network Mode Not Recommended"
+  display_name: "ECS task definition network mode not recommended"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-ECS task definitions must use the awsvpc network mode so each task receives its own ENI and can be isolated with security groups and VPC controls; without awsvpc tasks may share the host network namespace or lack per-task security group enforcement, increasing exposure to lateral movement and unintended network access. The `network_mode` property in Ansible `community.aws.ecs_taskdefinition` or `ecs_taskdefinition` resources must be set to `"awsvpc"`. Resources missing `network_mode` or with values such as `"host"`, `"bridge"`, or `"none"` will be flagged. Note: AWS Fargate requires `awsvpc`, and using legacy modes causes tasks to share host networking and bypass per-task security group rules.
+ECS task definitions must use the `awsvpc` network mode so each task receives its own ENI and can be isolated with security groups and VPC controls. Without `awsvpc`, tasks may share the host network namespace or lack per-task security group enforcement, increasing exposure to lateral movement and unintended network access.
+
+The `network_mode` property in Ansible `community.aws.ecs_taskdefinition` or `ecs_taskdefinition` resources must be set to `"awsvpc"`. Resources missing `network_mode` or with values such as `"host"`, `"bridge"`, or `"none"` are flagged. AWS Fargate requires `awsvpc`, and using legacy modes causes tasks to share host networking and bypass per-task security group rules.
 
 Secure configuration example:
 

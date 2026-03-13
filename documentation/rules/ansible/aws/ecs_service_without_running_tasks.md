@@ -1,10 +1,10 @@
 ---
-title: "ECS Service Without Running Tasks"
+title: "ECS service without running tasks"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ecs_service_without_running_tasks"
   id: "f5c45127-1d28-4b49-a692-0b97da1c3a84"
-  display_name: "ECS Service Without Running Tasks"
+  display_name: "ECS service without running tasks"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-ECS services must define a deployment configuration to avoid deployments or scaling events from temporarily leaving zero tasks running, which can cause application downtime and loss of availability. For Ansible ECS tasks using the `community.aws.ecs_service` or `ecs_service` modules, the `deployment_configuration` property must be present and include the `minimum_healthy_percent` and `maximum_percent` keys. Resources missing `deployment_configuration` or missing either `minimum_healthy_percent` or `maximum_percent` will be flagged; this rule checks for the presence of those keys (it does not validate numeric ranges). Ensure `minimum_healthy_percent` is set so at least one task remains running during deployments according to your desired task count.
+ECS services must define a deployment configuration to avoid deployments or scaling events from temporarily leaving zero tasks running, which can cause application downtime and loss of availability.
+
+For Ansible ECS tasks using the `community.aws.ecs_service` or `ecs_service` modules, the `deployment_configuration` property must be present and include the `minimum_healthy_percent` and `maximum_percent` keys. Resources missing `deployment_configuration` or missing either `minimum_healthy_percent` or `maximum_percent` are flagged. This rule checks for the presence of those keys and does not validate numeric ranges. Ensure `minimum_healthy_percent` is set so at least one task remains running during deployments according to your desired task count.
 
 Secure example (Ansible task):
 

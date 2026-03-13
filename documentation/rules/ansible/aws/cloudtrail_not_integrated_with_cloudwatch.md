@@ -1,10 +1,10 @@
 ---
-title: "CloudTrail Not Integrated With CloudWatch"
+title: "CloudTrail not integrated with CloudWatch"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudtrail_not_integrated_with_cloudwatch"
   id: "ebb2118a-03bc-4d53-ab43-d8750f5cb8d3"
-  display_name: "CloudTrail Not Integrated With CloudWatch"
+  display_name: "CloudTrail not integrated with CloudWatch"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-CloudTrail must be integrated with CloudWatch Logs so events are available for real-time detection, alerting, and centralized log analysis, and so forensic evidence is retained for incident investigation. For Ansible tasks using the `community.aws.cloudtrail` or `cloudtrail` modules, the `cloudwatch_logs_role_arn` and `cloudwatch_logs_log_group_arn` properties must be defined. The `cloudwatch_logs_role_arn` should be an IAM role ARN that allows CloudTrail to publish to CloudWatch Logs and `cloudwatch_logs_log_group_arn` should reference the destination Log Group ARN; tasks missing either property will be flagged.
+CloudTrail must be integrated with CloudWatch Logs so events are available for real-time detection, alerting, and centralized log analysis, and so forensic evidence is retained for incident investigation.
+
+For Ansible tasks using the `community.aws.cloudtrail` or `cloudtrail` modules, the `cloudwatch_logs_role_arn` and `cloudwatch_logs_log_group_arn` properties must be defined. `cloudwatch_logs_role_arn` should be an IAM role ARN that allows CloudTrail to publish to CloudWatch Logs. `cloudwatch_logs_log_group_arn` should reference the destination Log Group ARN. Tasks missing either property are flagged.
 
 Secure configuration example:
 

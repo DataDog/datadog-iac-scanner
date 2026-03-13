@@ -1,10 +1,10 @@
 ---
-title: "EC2 Instance Using Default VPC"
+title: "EC2 instance using default VPC"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ec2_instance_using_default_vpc"
   id: "8833f180-96f1-46f4-9147-849aafa56029"
-  display_name: "EC2 Instance Using Default VPC"
+  display_name: "EC2 instance using default VPC"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Launching EC2 instances into a default VPC increases exposure because default VPCs often have permissive networking defaults and are not tailored with least-privilege network controls, making it harder to enforce isolation and harder to audit access. In Ansible playbooks using the `amazon.aws.ec2` or `ec2` module, the `vpc_subnet_id` parameter must not reference a subnet that belongs to a default VPC. This rule flags EC2 tasks where `vpc_subnet_id` is templated to a registered `amazon.aws.ec2_vpc_subnet`/`ec2_vpc_subnet` and the corresponding subnet’s `vpc_id` contains the string "default". Ensure subnets referenced by `vpc_subnet_id` are created in a non-default VPC (for example, `vpc-0abc1234`) rather than a value containing "default".
+Launching EC2 instances into a default VPC increases exposure because default VPCs often have permissive networking defaults that are not tailored with least-privilege network controls. This makes it harder to enforce isolation and audit access. In Ansible playbooks using the `amazon.aws.ec2` or `ec2` module, the `vpc_subnet_id` parameter must not reference a subnet that belongs to a default VPC. This rule flags EC2 tasks where `vpc_subnet_id` is templated to a registered `amazon.aws.ec2_vpc_subnet`/`ec2_vpc_subnet` and the corresponding subnet's `vpc_id` contains the string "default". Ensure subnets referenced by `vpc_subnet_id` are created in a non-default VPC (for example, `vpc-0abc1234`) rather than a value containing "default".
 
 Secure example with a subnet in a non-default VPC:
 

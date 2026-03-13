@@ -1,10 +1,10 @@
 ---
-title: "DB Security Group With Public Scope"
+title: "DB security group with public scope"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/db_security_group_with_public_scope"
   id: "0956aedf-6a7a-478b-ab56-63e2b19923ad"
-  display_name: "DB Security Group With Public Scope"
+  display_name: "DB security group with public scope"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Security groups must not allow unrestricted IP ranges because a cidr_ip of 0.0.0.0/0 grants access from the entire Internet and exposes instances to unauthorized access, brute-force attacks, and data exfiltration. For Ansible tasks using the `amazon.aws.ec2_group` or `ec2_group` modules, check the `rules` (ingress) and `rules_egress` (egress) entries and ensure each `cidr_ip` is not `0.0.0.0/0`; prefer specific trusted CIDRs, private address ranges (for example `10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`), or references to other security groups. This rule flags any `ec2_group.rules[].cidr_ip` or `ec2_group.rules_egress[].cidr_ip` set to a public scope such as `0.0.0.0/0`; review and replace wide-open CIDRs with least-privilege network ranges or security-group references.
+Security groups must not allow unrestricted IP ranges because a `cidr_ip` of `0.0.0.0/0` grants access from the entire Internet and exposes instances to unauthorized access, brute-force attacks, and data exfiltration.
+
+For Ansible tasks using the `amazon.aws.ec2_group` or `ec2_group` modules, check the `rules` (ingress) and `rules_egress` (egress) entries and ensure each `cidr_ip` is not `0.0.0.0/0`. Prefer specific trusted CIDRs, private address ranges (for example `10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`), or references to other security groups.
+
+This rule flags any `ec2_group.rules[].cidr_ip` or `ec2_group.rules_egress[].cidr_ip` set to a public scope such as `0.0.0.0/0`. Review and replace wide-open CIDRs with least-privilege network ranges or security-group references.
 
 Secure Ansible example with restricted CIDRs:
 

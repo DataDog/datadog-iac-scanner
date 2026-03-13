@@ -1,10 +1,10 @@
 ---
-title: "Cross-Account IAM Assume Role Policy Without ExternalId or MFA"
+title: "Cross-account IAM assume role policy without ExternalId or MFA"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cross_account_iam_assume_role_policy_without_external_id_or_mfa"
   id: "af167837-9636-4086-b815-c239186b9dda"
-  display_name: "Cross-Account IAM Assume Role Policy Without ExternalId or MFA"
+  display_name: "Cross-account IAM assume role policy without ExternalId or MFA"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Cross-account IAM role trust policies that allow sts:AssumeRole to external principals must require an ExternalId or MFA to prevent unintended or unauthorized access from third-party accounts. Without an ExternalId or a Condition requiring MFA, an external principal (including other-account root principals) that can assume the role may gain access to sensitive resources or perform privileged actions. In Ansible `community.aws.iam_role` and `iam_role` tasks, the `assume_role_policy_document` Statement with `Effect: Allow` and `Action: sts:AssumeRole` that names a cross-account `Principal` (for example an ARN that includes another account or `:root`) must include a `Condition` containing either `sts:ExternalId` (e.g., `StringEquals`) or `aws:MultiFactorAuthPresent` set to `true`. Resources missing the required Condition or that allow cross-account assume-role without ExternalId or MFA will be flagged.
+Cross-account IAM role trust policies that allow `sts:AssumeRole` to external principals must require an `ExternalId` or MFA to prevent unintended or unauthorized access from third-party accounts. Without an `ExternalId` or a `Condition` requiring MFA, an external principal (including other-account root principals) that can assume the role may gain access to sensitive resources or perform privileged actions.
+
+In Ansible `community.aws.iam_role` and `iam_role` tasks, the `assume_role_policy_document` `Statement` with `Effect: Allow` and `Action: sts:AssumeRole` that names a cross-account `Principal` (for example, an ARN that includes another account or `:root`) must include a `Condition` containing either `sts:ExternalId` (for example, `StringEquals`) or `aws:MultiFactorAuthPresent` set to `true`. Resources missing the required `Condition` or that allow cross-account assume-role without `ExternalId` or MFA are flagged.
 
 Secure trust policy examples:
 
