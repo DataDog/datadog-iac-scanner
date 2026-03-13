@@ -1,10 +1,10 @@
 ---
-title: "Batch Job Definition With Privileged Container Properties"
+title: "Batch job definition with privileged container properties"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/batch_job_definition_with_privileged_container_properties"
   id: "defe5b18-978d-4722-9325-4d1975d3699f"
-  display_name: "Batch Job Definition With Privileged Container Properties"
+  display_name: "Batch job definition with privileged container properties"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Batch job definitions must not enable privileged containers because privileged mode weakens container isolation and can allow containers to access host resources or escalate privileges, increasing the risk of host compromise and lateral movement. For Ansible, tasks using the `community.aws.aws_batch_job_definition` or `aws_batch_job_definition` modules must not set the `privileged` parameter to `true`; the `privileged` setting should be omitted or explicitly set to `false` in the job definition's container properties. Resources with `privileged: true` will be flagged; only enable privileged mode when absolutely required and after applying additional host hardening, access controls, and justification.
+Batch job definitions must not enable privileged containers. Privileged mode weakens container isolation and can allow containers to access host resources or escalate privileges, increasing the risk of host compromise and lateral movement.
+
+For Ansible, tasks using the `community.aws.aws_batch_job_definition` or `aws_batch_job_definition` modules must not set the `privileged` parameter to `true`. The `privileged` setting should be omitted or explicitly set to `false` in the job definition's container properties. Resources with `privileged: true` are flagged. Only enable privileged mode when absolutely required and after applying additional host hardening, access controls, and justification.
 
 Secure example:
 

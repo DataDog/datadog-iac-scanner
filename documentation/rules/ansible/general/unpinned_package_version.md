@@ -1,10 +1,10 @@
 ---
-title: "Unpinned Package Version"
+title: "Unpinned package version"
 group_id: "Ansible / Common"
 meta:
   name: "general/unpinned_package_version"
   id: "c05e2c20-0a2c-4686-b1f8-5f0a5612d4e8"
-  display_name: "Unpinned Package Version"
+  display_name: "Unpinned package version"
   cloud_provider: "Common"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Package installer tasks that set `state: latest` without pinning a `version` or enabling `update_only` can cause unintended upgrades, introducing breaking changes, regressions, or service disruptions and making deployments non-reproducible. Check Ansible package installer modules (for example `apt`, `yum`, `dnf`, `pip`) for the task properties: `state` must not be `latest` unless a `version` is specified or `update_only` is set to `true`; tasks with `state: latest` and no `version` and missing or `false` `update_only` will be flagged. Remediate by pinning packages to explicit versions for deterministic installs, or set `update_only: true` when you only want to upgrade already-installed packages.
+Package installer tasks that set `state: latest` without pinning a `version` or enabling `update_only` can cause unintended upgrades. This may introduce breaking changes, regressions, or service disruptions and make deployments non-reproducible.
+
+Ansible package installer modules (for example `apt`, `yum`, `dnf`, `pip`) are checked for the following task properties: `state` must not be `latest` unless a `version` is specified or `update_only` is set to `true`. Tasks with `state: latest` and no `version` and missing or `false` `update_only` are flagged.
+
+Remediate by pinning packages to explicit versions for deterministic installs, or set `update_only: true` when you only want to upgrade already-installed packages.
 
 Secure example — pin a version:
 
@@ -37,9 +41,7 @@ Secure example — pin a version:
   apt:
     name: mypkg=1.2.3
     state: present
-```
-
-Secure example — allow only updates to already-installed packages:
+```Secure example — allow only updates to already-installed packages:
 
 ```yaml
 - name: Update installed packages only

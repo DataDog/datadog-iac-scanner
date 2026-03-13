@@ -1,10 +1,10 @@
 ---
-title: "Logging of Sensitive Data In Defaults"
+title: "Logging of sensitive data in defaults"
 group_id: "Ansible / Ansible Config"
 meta:
   name: "config/logging_of_sensitive_data_in_defaults"
   id: "c6473dae-8477-4119-88b7-b909b435ce7b"
-  display_name: "Logging of Sensitive Data In Defaults"
+  display_name: "Logging of sensitive data in defaults"
   cloud_provider: "Ansible Config"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-The Ansible 'no_log' setting must be enabled to prevent sensitive data such as passwords, tokens, or PII from being written to logs and becoming accessible to unauthorized users or retained in build artifacts. This rule applies to resources of type `ansible_config` in the `defaults` group: the `no_log` property must be defined and set to boolean `true`. Resources missing the `no_log` property or with `no_log=false` will be flagged as insecure. Secure configuration example for ansible.cfg:
+The Ansible `no_log` setting must be enabled to prevent sensitive data such as passwords, tokens, or PII from being written to logs. Exposed log data can be accessed by unauthorized users or retained in build artifacts. This rule applies to resources of type `ansible_config` in the `defaults` group. The `no_log` property must be defined and set to boolean `true`. Resources missing the `no_log` property or with `no_log` set to `false` are flagged as insecure. 
+
+Secure configuration example for ansible.cfg:
 
 ```ini
 [defaults]

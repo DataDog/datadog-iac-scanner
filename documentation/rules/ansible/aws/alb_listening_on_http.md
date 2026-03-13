@@ -1,10 +1,10 @@
 ---
-title: "ALB Listening on HTTP"
+title: "ALB listening on HTTP"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/alb_listening_on_http"
   id: "f81d63d2-c5d7-43a4-a5b5-66717a41c895"
-  display_name: "ALB Listening on HTTP"
+  display_name: "ALB listening on HTTP"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Application Load Balancers must terminate TLS and use HTTPS listeners to protect traffic in transit and prevent interception or downgrade attacks; serving application traffic over plain HTTP exposes credentials and sensitive data to eavesdropping. For Ansible ALB resources (modules `community.aws.elb_application_lb` and `elb_application_lb`) ensure the `listeners[].Protocol` property is set to `"HTTPS"`. Resources missing the `Protocol` property or with `Protocol` set to any value other than `"HTTPS"` will be flagged. When using HTTPS, also configure a valid TLS certificate (for example via `Certificates: - CertificateArn: ...`) or implement an HTTP listener only to perform redirects to HTTPS rather than serving plaintext.
+Application Load Balancers (ALB) must terminate TLS and use HTTPS listeners to protect traffic in transit and prevent interception or downgrade attacks. Serving application traffic over plain HTTP exposes credentials and sensitive data to eavesdropping.
+
+For Ansible ALB resources (modules `community.aws.elb_application_lb` and `elb_application_lb`), ensure the `listeners[].Protocol` property is set to `"HTTPS"`. Resources missing the `Protocol` property or with `Protocol` set to any value other than `"HTTPS"` are flagged. When using HTTPS, also configure a valid TLS certificate (for example via `Certificates: - CertificateArn: ...`) or implement an HTTP listener only to perform redirects to HTTPS rather than serving plaintext.
 
 Secure configuration example:
 

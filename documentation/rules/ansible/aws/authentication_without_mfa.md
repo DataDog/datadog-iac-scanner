@@ -1,10 +1,10 @@
 ---
-title: "Authentication Without MFA"
+title: "Authentication without MFA"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/authentication_without_mfa"
   id: "eee107f9-b3d8-45d3-b9c6-43b5a7263ce1"
-  display_name: "Authentication Without MFA"
+  display_name: "Authentication without MFA"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Assume-role operations should require multi-factor authentication (MFA) to provide a second authentication factor and reduce the risk that compromised credentials or automated workflows can silently assume privileged roles. In Ansible, tasks using the `community.aws.sts_assume_role` or `sts_assume_role` modules must define both `mfa_serial_number` (the IAM MFA device ARN or serial) and `mfa_token` (the one-time MFA code). Tasks missing either property or with those properties undefined will be flagged. Supply `mfa_token` securely at runtime (for example via Ansible Vault, environment variables, or an interactive prompt) and ensure `mfa_serial_number` references the correct MFA device ARN (e.g., `arn:aws:iam::123456789012:mfa/username`).
+Assume-role operations should require multi-factor authentication (MFA) to provide a second authentication factor and reduce the risk that compromised credentials or automated workflows can silently assume privileged roles.
+
+In Ansible, tasks using the `community.aws.sts_assume_role` or `sts_assume_role` modules must define both `mfa_serial_number` (the IAM MFA device ARN or serial) and `mfa_token` (the one-time MFA code). Tasks missing either property or with those properties undefined are flagged.
+
+Supply `mfa_token` securely at runtime (for example via Ansible Vault, environment variables, or an interactive prompt) and ensure `mfa_serial_number` references the correct MFA device ARN (for example, `arn:aws:iam::123456789012:mfa/username`).
 
 ## Compliant Code Examples
 ```yaml

@@ -1,10 +1,10 @@
 ---
-title: "Root Account Has Active Access Keys"
+title: "Root account has active access keys"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/root_account_has_active_access_keys"
   id: "e71d0bc7-d9e8-4e6e-ae90-0a4206db6f40"
-  display_name: "Root Account Has Active Access Keys"
+  display_name: "Root account has active access keys"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-The AWS root account must not have active access keys because active root credentials grant full, account-wide privileges and a leaked key would allow immediate and complete compromise of the environment. This rule inspects Ansible tasks using the `community.aws.iam` or `iam` modules and flags entries where `iam.iam_type == "user"` and `iam.name` contains "root" and the `access_key_state` property is set to `"active"`. The `access_key_state` property must not be `"active"` for root account entries; resources should either omit root access keys or have `access_key_state` set to `"inactive"`, and any task with `access_key_state="active"` will be flagged. Remove or deactivate root access keys and use IAM users or roles with least privilege for automation and service access instead of relying on root credentials.
+Active root access keys grant full, account-wide privileges. A leaked key could lead to immediate and complete compromise of the environment. This rule inspects Ansible tasks using the `community.aws.iam` or `iam` modules and flags entries where `iam.iam_type` is set to `"user"`, `iam.name` contains "root", and `access_key_state` is set to `"active"`.
+
+The `access_key_state` property must not be `"active"` for root account entries. Resources should either omit root access keys or set `access_key_state` to `"inactive"`. Any task with `access_key_state` set to `"active"` is flagged. Remove or deactivate root access keys and use IAM users or roles with least privilege for automation and service access.
 
 ## Compliant Code Examples
 ```yaml

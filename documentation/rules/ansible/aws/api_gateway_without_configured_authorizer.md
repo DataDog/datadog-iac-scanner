@@ -1,10 +1,10 @@
 ---
-title: "API Gateway Without Configured Authorizer"
+title: "API Gateway without configured authorizer"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_without_configured_authorizer"
   id: "b16cdb37-ce15-4ab2-8401-d42b05d123fc"
-  display_name: "API Gateway Without Configured Authorizer"
+  display_name: "API Gateway without configured authorizer"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-API Gateway REST APIs must have an API Gateway Authorizer configured so requests are authenticated before reaching backend integrations; without an authorizer, APIs can be invoked anonymously, increasing the risk of unauthorized access, data exposure, and abuse of backend services. For Ansible resources using `community.aws.aws_api_gateway` or `aws_api_gateway`, ensure the API's Swagger/OpenAPI definition—provided via the `swagger_file`, `swagger_dict`, or `swagger_text` property—includes an `x-amazon-apigateway-authorizer` entry in `components.securitySchemes` and that operations reference the authorizer (via `security` at the operation or global level). Resources that omit all three swagger properties, or whose Swagger/OpenAPI content does not contain `x-amazon-apigateway-authorizer`, will be flagged as missing an authorizer. Include a valid authorizer definition and reference it from your paths to remediate the finding.
+API Gateway REST APIs must have an API Gateway authorizer configured so that requests are authenticated before reaching backend integrations. Without an authorizer, APIs can be invoked anonymously, increasing the risk of unauthorized access, data exposure, and abuse of backend services.
+
+For Ansible resources using `community.aws.aws_api_gateway` or `aws_api_gateway`, ensure the API's Swagger/OpenAPI definition—provided via the `swagger_file`, `swagger_dict`, or `swagger_text` property—includes an `x-amazon-apigateway-authorizer` entry in `components.securitySchemes` and that operations reference the authorizer (via `security` at the operation or global level).
+
+Resources that omit all three swagger properties, or whose Swagger/OpenAPI content does not contain `x-amazon-apigateway-authorizer`, are flagged as missing an authorizer. Include a valid authorizer definition and reference it from your paths to remediate the finding.
 
 Secure example with an OpenAPI components authorizer and operation-level security:
 

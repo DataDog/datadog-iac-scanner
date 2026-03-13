@@ -1,10 +1,10 @@
 ---
-title: "API Gateway X-Ray Disabled"
+title: "API Gateway X-Ray disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_xray_disabled"
   id: "2059155b-27fd-441e-b616-6966c468561f"
-  display_name: "API Gateway X-Ray Disabled"
+  display_name: "API Gateway X-Ray disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-API Gateway resources should have AWS X-Ray tracing enabled to provide end-to-end request visibility and support detection and investigation of anomalous or malicious activity. For Ansible tasks that use the `community.aws.aws_api_gateway` or `aws_api_gateway` modules, the `tracing_enabled` property must be defined and set to `true`. Tasks missing `tracing_enabled` or with `tracing_enabled: false` will be flagged because they disable observability needed for effective incident response and root-cause analysis.
+API Gateway resources should have AWS X-Ray tracing enabled to provide end-to-end request visibility and support detection of anomalous or malicious activity. For Ansible tasks that use the `community.aws.aws_api_gateway` or `aws_api_gateway` modules, set the `tracing_enabled` property to `true`. Tasks missing `tracing_enabled` or with `tracing_enabled: false` are flagged because they disable observability needed for effective incident response and root-cause analysis.
 
 Secure Ansible task example:
 

@@ -1,10 +1,10 @@
 ---
-title: "Vulnerable Default SSL Certificate"
+title: "Vulnerable default SSL certificate"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/vulnerable_default_ssl_certificate"
   id: "fb8f8929-afeb-4c46-99f0-a6cf410f7df4"
-  display_name: "Vulnerable Default SSL Certificate"
+  display_name: "Vulnerable default SSL certificate"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-CloudFront distributions should use custom SSL certificates rather than the default CloudFront certificate to enable serving content on custom domain names and to enforce strong, managed TLS settings for data in transit. For Ansible tasks using `community.aws.cloudfront_distribution` or `cloudfront_distribution`, the `viewer_certificate.cloudfront_default_certificate` property must be `false` or not defined; if `viewer_certificate.acm_certificate_arn` or `viewer_certificate.iam_certificate_id` is provided, then `viewer_certificate.ssl_support_method` and `viewer_certificate.minimum_protocol_version` must also be defined. Resources with `cloudfront_default_certificate=true` or with a custom certificate but missing `ssl_support_method` or `minimum_protocol_version` will be flagged. Use a secure `viewer_certificate` block that references a custom ACM or IAM certificate and explicitly sets the SSL support method and a modern minimum protocol version.
+CloudFront distributions should use custom SSL certificates rather than the default CloudFront certificate. Custom certificates enable serving content on custom domain names and enforce strong, managed TLS settings for data in transit.
+
+For Ansible tasks using `community.aws.cloudfront_distribution` or `cloudfront_distribution`, the `viewer_certificate.cloudfront_default_certificate` property must be `false` or not defined. If `viewer_certificate.acm_certificate_arn` or `viewer_certificate.iam_certificate_id` is provided, then `viewer_certificate.ssl_support_method` and `viewer_certificate.minimum_protocol_version` must also be defined.
+
+Resources with `cloudfront_default_certificate` set to `true`, or with a custom certificate but missing `ssl_support_method` or `minimum_protocol_version`, are flagged. Use a secure `viewer_certificate` block that references a custom ACM or IAM certificate and explicitly sets the SSL support method and a modern minimum protocol version.
 
 Secure example for an Ansible CloudFront distribution:
 

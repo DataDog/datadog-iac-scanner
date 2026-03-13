@@ -1,10 +1,10 @@
 ---
-title: "Network Policy Disabled"
+title: "Network policy disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/network_policy_disabled"
   id: "98e04ca0-34f5-4c74-8fec-d2e611ce2790"
-  display_name: "Network Policy Disabled"
+  display_name: "Network policy disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Kubernetes Engine clusters must have Network Policy enabled to enforce pod-to-pod network segmentation and limit lateral movement; without it, workloads can communicate unrestricted and a compromised pod could access other services or sensitive data. For Ansible-managed GKE clusters using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `network_policy.enabled` property must be `true` and `addons_config.network_policy_config.disabled` must be `false`. Resources missing the `network_policy` or `addons_config.network_policy_config` blocks, or with `network_policy.enabled=false` or `addons_config.network_policy_config.disabled=true`, will be flagged as misconfigured.
+Kubernetes Engine clusters must have network policy enabled to enforce pod-to-pod network segmentation and limit lateral movement. Without it, workloads can communicate unrestricted and a compromised pod could access other services or sensitive data.
+
+For Ansible-managed GKE clusters using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `network_policy.enabled` property must be `true` and `addons_config.network_policy_config.disabled` must be `false`. Resources missing the `network_policy` or `addons_config.network_policy_config` blocks, or with `network_policy.enabled` set to `false` or `addons_config.network_policy_config.disabled` set to `true`, are flagged as misconfigured.
 
 Secure Ansible configuration example:
 

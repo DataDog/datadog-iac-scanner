@@ -1,10 +1,10 @@
 ---
-title: "API Gateway With CloudWatch Logging Disabled"
+title: "API Gateway with CloudWatch Logs disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_with_cloudwatch_logging_disabled"
   id: "72a931c2-12f5-40d1-93cc-47bff2f7aa2a"
-  display_name: "API Gateway With CloudWatch Logging Disabled"
+  display_name: "API gateway with CloudWatch Logs disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-APIs must send request logs and execution traces to CloudWatch Logs so activity, errors, and suspicious behavior can be detected and investigated; without a configured log group you lose critical visibility for incident response and troubleshooting. In Ansible, tasks using the `community.aws.cloudwatchlogs_log_group` or `cloudwatchlogs_log_group` modules must include the `log_group_name` property to create or reference a specific CloudWatch Logs group. Tasks missing `log_group_name` (or with it unset) will be flagged; set `log_group_name` to a stable, descriptive string and ensure API Gateway access logging or tracing is pointed to that group.
+APIs must send request logs and execution traces to CloudWatch Logs so activity, errors, and suspicious behavior can be detected and investigated. Without a configured log group, you lose critical visibility for incident response and troubleshooting.
+
+In Ansible, tasks using the `community.aws.cloudwatchlogs_log_group` or `cloudwatchlogs_log_group` modules must include the `log_group_name` property to create or reference a specific CloudWatch Logs group. Tasks missing `log_group_name` (or with it unset) are flagged. Set `log_group_name` to a stable, descriptive string and ensure API Gateway access logging or tracing is pointed to that group.
 
 Secure configuration example:
 

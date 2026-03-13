@@ -1,10 +1,10 @@
 ---
-title: "SQS Policy Allows All Actions"
+title: "SQS policy allows all actions"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sqs_policy_allows_all_actions"
   id: "ed9b3beb-92cf-44d9-a9d2-171eeba569d4"
-  display_name: "SQS Policy Allows All Actions"
+  display_name: "SQS policy allows all actions"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-SQS queue policies must not grant wildcard ('*') actions because allowing all actions to a principal enables unauthorized access, message retrieval or deletion, and queue modification, which can lead to data exposure or service disruption. For Ansible SQS resources (`community.aws.sqs_queue` and `sqs_queue`), inspect the `policy` document and ensure no Statement with `Effect: "Allow"` has `Action` equal to `*` or contains `*`. Resources with `Action='*'` or `Action` arrays that include `*` will be flagged; instead, specify explicit SQS actions (for example `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`) and restrict principals to the minimum required.
+SQS queue policies must not grant wildcard (`*`) actions. Allowing all actions on a queue enables unauthorized access, message retrieval or deletion, and queue modification, which can lead to data exposure or service disruption.
+
+For Ansible SQS resources (`community.aws.sqs_queue` and `sqs_queue`), inspect the `policy` document and ensure no `Statement` with `Effect: "Allow"` has `Action` set to `*` or contains `*`. Resources with `Action` set to `*` or `Action` arrays that include `*` are flagged. Instead, specify explicit SQS actions (for example, `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`) and restrict principals to the minimum required.
 
 Secure example with explicit actions and principal:
 

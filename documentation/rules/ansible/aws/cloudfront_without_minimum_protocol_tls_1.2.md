@@ -1,10 +1,10 @@
 ---
-title: "CloudFront Without Minimum Protocol TLS 1.2"
+title: "CloudFront without minimum protocol TLS 1.2"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudfront_without_minimum_protocol_tls_1.2"
   id: "d0c13053-d2c8-44a6-95da-d592996e9e67"
-  display_name: "CloudFront Without Minimum Protocol TLS 1.2"
+  display_name: "CloudFront without minimum protocol TLS 1.2"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-CloudFront distributions must enforce modern TLS for viewer connections to prevent interception and downgrade to weaker protocols. The Ansible `community.aws.cloudfront_distribution` (or `cloudfront_distribution`) resource must include a `viewer_certificate` block and its `minimum_protocol_version` property must be set to a TLS 1.2 variant (for example `TLSv1.2_2018` or `TLSv1.2_2019`). Tasks that omit `viewer_certificate` or specify a `minimum_protocol_version` that is not a TLS 1.2 variant will be flagged.
+CloudFront distributions must enforce modern TLS for viewer connections to prevent interception and protocol downgrades. The Ansible `community.aws.cloudfront_distribution` (or `cloudfront_distribution`) resource must include a `viewer_certificate` block with `minimum_protocol_version` set to a TLS 1.2 variant (for example, `TLSv1.2_2018` or `TLSv1.2_2019`).
+
+Tasks that omit `viewer_certificate` or specify a `minimum_protocol_version` that is not a TLS 1.2 variant are flagged.
 
 Secure configuration example:
 

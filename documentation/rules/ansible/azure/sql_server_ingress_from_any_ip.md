@@ -1,10 +1,10 @@
 ---
-title: "SQLServer Ingress From Any IP"
+title: "SQLServer ingress from any IP"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/sql_server_ingress_from_any_ip"
   id: "f4e9ff70-0f3b-4c50-a713-26cbe7ec4039"
-  display_name: "SQLServer Ingress From Any IP"
+  display_name: "SQLServer ingress from any IP"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Allowing an Azure SQL firewall rule to accept connections from the entire internet (start_ip_address = 0.0.0.0 and end_ip_address = 255.255.255.255) exposes database servers to unauthorized access and credential brute-force attacks. Check Ansible resources using the azure.azcollection.azure_rm_sqlfirewallrule (or azure_rm_sqlfirewallrule) module and ensure the `start_ip_address` and `end_ip_address` properties are not set to these all-IPs values. Resources with `start_ip_address='0.0.0.0'` and `end_ip_address='255.255.255.255'` will be flagged; restrict firewall rules to specific client IPs or CIDR ranges, or use Virtual Network-based rules to limit access. Secure example with a single allowed IP:
+Allowing an Azure SQL firewall rule to accept connections from the entire internet (`start_ip_address` set to `0.0.0.0` and `end_ip_address` set to `255.255.255.255`) exposes database servers to unauthorized access and credential brute-force attacks.
+
+This rule checks Ansible resources using the `azure.azcollection.azure_rm_sqlfirewallrule` (or `azure_rm_sqlfirewallrule`) module. Resources with `start_ip_address` set to `0.0.0.0` and `end_ip_address` set to `255.255.255.255` are flagged. Restrict firewall rules to specific client IPs or CIDR ranges, or use virtual network-based rules to limit access. 
+
+Secure example with a single allowed IP:
 
 ```yaml
 - name: Add SQL firewall rule for a specific IP
