@@ -1,10 +1,10 @@
 ---
-title: "API Gateway Without SSL Certificate"
+title: "API Gateway without SSL certificate"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_without_ssl_certificate"
   id: "b47b98ab-e481-4a82-8bb1-1ab39fd36e33"
-  display_name: "API Gateway Without SSL Certificate"
+  display_name: "API Gateway without SSL certificate"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-API Gateway integrations must validate TLS/SSL certificates to ensure backend endpoints are authentic and to prevent man-in-the-middle attacks that can expose credentials or sensitive data. The `validate_certs` property in Ansible `community.aws.aws_api_gateway` and `aws_api_gateway` tasks must be defined and set to a truthy value (Ansible `yes` or `true`). Resources missing this property or with `validate_certs: no`/false will be flagged. If your backend uses self-signed certificates, prefer adding the CA to a trusted store or using proper certificate management rather than disabling certificate validation.
+API Gateway integrations must validate TLS/SSL certificates to ensure backend endpoints are authentic and prevent man-in-the-middle attacks that can expose credentials or sensitive data.
+
+The `validate_certs` property in Ansible `community.aws.aws_api_gateway` and `aws_api_gateway` tasks must be defined and set to a truthy value (Ansible `yes` or `true`). Resources missing this property or with `validate_certs` set to `no` or `false` are flagged.
+
+If your backend uses self-signed certificates, prefer adding the CA to a trusted store or using proper certificate management rather than disabling certificate validation.
 
 Secure example Ansible task:
 

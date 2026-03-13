@@ -1,10 +1,10 @@
 ---
-title: "IAM Policies Attached To User"
+title: "IAM policies attached to user"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_policies_attached_to_user"
   id: "eafe4bc3-1042-4f88-b988-1939e64bf060"
-  display_name: "IAM Policies Attached To User"
+  display_name: "IAM policies attached to user"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Attaching IAM policies directly to individual IAM users increases the risk of privilege sprawl, makes permissions harder to audit and revoke, and magnifies impact if a user's credentials are compromised. For Ansible `community.aws.iam_policy` or `iam_policy` tasks, the `iam_type` property must be set to `group` or `role` rather than `user`. Resources missing the `iam_type` property or with `iam_type: user` will be flagged; attach policies to groups or roles to centralize permission management and enable role-based access patterns. 
+Attaching IAM policies directly to individual IAM users increases the risk of privilege sprawl, makes permissions harder to audit and revoke, and magnifies impact if a user's credentials are compromised.
+
+For Ansible `community.aws.iam_policy` or `iam_policy` tasks, the `iam_type` property must be set to `group` or `role` rather than `user`. Resources missing the `iam_type` property or with `iam_type` set to `user` are flagged. Attach policies to groups or roles to centralize permission management and enable role-based access patterns.
 
 Secure example (attach policy to a role):
 

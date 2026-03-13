@@ -1,10 +1,10 @@
 ---
-title: "Ansible Tower Exposed To Internet"
+title: "Ansible Tower exposed to the internet"
 group_id: "Ansible / Ansible Inventory"
 meta:
   name: "hosts/ansible_tower_exposed_to_internet"
   id: "1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc"
-  display_name: "Ansible Tower Exposed To Internet"
+  display_name: "Ansible Tower exposed to the internet"
   cloud_provider: "Ansible Inventory"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Ansible Tower hosts must not be assigned public IP addresses because exposing Tower to the public internet increases the risk of unauthorized access and credential compromise of your automation infrastructure. Check the Ansible inventory resource (`ansible_inventory`) for entries under `all.children.tower.hosts` and ensure each host value is a private IP address (RFC1918) or an internal DNS name rather than a public IP. Resources with hosts set to public IPs will be flagged; use private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), internal hostnames, and place Tower behind a VPN, bastion host, or firewall/security-group restrictions to limit exposure.
+Ansible Tower hosts must not be assigned public IP addresses. Exposing Tower to the public internet increases the risk of unauthorized access and credential compromise of your automation infrastructure. Check the Ansible inventory resource (`ansible_inventory`) for entries under `all.children.tower.hosts` and ensure each host value is a private IP address (RFC1918) or an internal DNS name rather than a public IP. Resources with hosts set to public IPs are flagged.
+
+Use private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) or internal hostnames, and place Tower behind a VPN, bastion host, or firewall/security-group restrictions to limit exposure.
 
 Secure inventory example with a private IP:
 
