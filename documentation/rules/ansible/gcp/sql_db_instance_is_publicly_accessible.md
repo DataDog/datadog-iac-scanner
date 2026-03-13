@@ -1,10 +1,10 @@
 ---
-title: "SQL DB Instance Publicly Accessible"
+title: "SQL DB instance publicly accessible"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/sql_db_instance_is_publicly_accessible"
   id: "7d7054c0-3a52-4e9b-b9ff-cbfe16a2378b"
-  display_name: "SQL DB Instance Publicly Accessible"
+  display_name: "SQL DB instance publicly accessible"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Cloud SQL instances must not be publicly accessible because allowing access from 0.0.0.0/0 or enabling public IPv4 without restricted networks exposes databases to unauthorized access and data exfiltration. For Ansible tasks using the `google.cloud.gcp_sql_instance` or `gcp_sql_instance` module, ensure `settings.ip_configuration.authorized_networks` does not contain an entry with `value: "0.0.0.0"`; authorized networks should be explicit trusted CIDRs. If no `authorized_networks` are defined, `settings.ip_configuration.ipv4_enabled` must be set to `false` (or omitted/disabled) to prevent public IPv4 access. Resources missing `settings.ip_configuration` should be defined with a restricted `authorized_networks` list or have `ipv4_enabled: false`; instances with `value="0.0.0.0"` or with IPv4 enabled and no authorized networks will be flagged.
+Cloud SQL instances must not be publicly accessible. Allowing access from `0.0.0.0/0` or enabling public IPv4 without restricted networks exposes databases to unauthorized access and data exfiltration.
+
+For Ansible tasks using the `google.cloud.gcp_sql_instance` or `gcp_sql_instance` module, ensure `settings.ip_configuration.authorized_networks` does not contain an entry with `value: "0.0.0.0"`. Authorized networks should be explicit trusted CIDRs. If no `authorized_networks` are defined, `settings.ip_configuration.ipv4_enabled` must be set to `false` (or omitted/disabled) to prevent public IPv4 access. Resources missing `settings.ip_configuration` should be defined with a restricted `authorized_networks` list or have `ipv4_enabled: false`. Instances with `value` set to `"0.0.0.0"` or with IPv4 enabled and no authorized networks are flagged.
 
 Secure configuration examples:
 

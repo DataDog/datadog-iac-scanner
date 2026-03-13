@@ -1,10 +1,10 @@
 ---
-title: "GKE Master Authorized Networks Disabled"
+title: "GKE master authorized networks disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/gke_master_authorized_networks_disabled"
   id: "d43366c5-80b0-45de-bbe8-2338f4ab0a83"
-  display_name: "GKE Master Authorized Networks Disabled"
+  display_name: "GKE master authorized networks disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-GKE clusters must enable master authorized networks to restrict access to the Kubernetes control plane to trusted network ranges and prevent unauthorized or network-based access that could lead to cluster compromise. For Ansible resources using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `master_authorized_networks_config` property must be defined and its `enabled` field set to `true`. Resources missing `master_authorized_networks_config` or with `master_authorized_networks_config.enabled=false` will be flagged as insecure. Optionally include CIDR entries to specify allowed client networks via `master_authorized_networks_config.cidr_blocks`.
+GKE clusters must enable master authorized networks to restrict access to the Kubernetes control plane to trusted network ranges. Without this restriction, unauthorized or network-based access could lead to cluster compromise.
+
+For Ansible resources using `google.cloud.gcp_container_cluster` or `gcp_container_cluster`, the `master_authorized_networks_config` property must be defined and its `enabled` field set to `true`. Resources missing `master_authorized_networks_config` or with `master_authorized_networks_config.enabled` set to `false` are flagged as insecure. Optionally, include CIDR entries to specify allowed client networks via `master_authorized_networks_config.cidr_blocks`.
 
 Secure Ansible example:
 

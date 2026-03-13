@@ -1,10 +1,10 @@
 ---
-title: "CDN Configuration Is Missing"
+title: "CDN configuration is missing"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cdn_configuration_is_missing"
   id: "b25398a2-0625-4e61-8e4d-a1bb23905bf6"
-  display_name: "CDN Configuration Is Missing"
+  display_name: "CDN configuration is missing"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-CloudFront distributions must be enabled and include at least one origin so traffic is routed through the CDN and benefits from CloudFront protections such as caching, TLS termination, WAF rules, and DDoS mitigation; a disabled or origin-less distribution can cause traffic to bypass the CDN and expose origin servers. This rule inspects Ansible tasks using the `community.aws.cloudfront_distribution` or `cloudfront_distribution` modules and requires the `enabled` property to be present and set to `true`, and the `origins` property to be defined with at least one origin entry. Tasks missing `enabled` or `origins`, or with `enabled: false`, will be flagged as misconfigured. 
+CloudFront distributions must be enabled and include at least one origin so traffic is routed through the CDN. This ensures requests benefit from CloudFront protections such as caching, TLS termination, WAF rules, and DDoS mitigation. A disabled or origin-less distribution can cause traffic to bypass the CDN and expose origin servers.
+
+This rule inspects Ansible tasks using the `community.aws.cloudfront_distribution` or `cloudfront_distribution` modules. It requires the `enabled` property to be present and set to `true`, and the `origins` property to be defined with at least one origin entry. Tasks missing `enabled` or `origins`, or with `enabled: false`, are flagged as misconfigured.
 
 Secure example:
 

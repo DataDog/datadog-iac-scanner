@@ -1,10 +1,10 @@
 ---
-title: "AWS Password Policy With Unchangeable Passwords"
+title: "AWS password policy with unchangeable passwords"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/aws_password_policy_with_unchangeable_passwords"
   id: "e28ceb92-d588-4166-aac5-766c8f5b7472"
-  display_name: "AWS Password Policy With Unchangeable Passwords"
+  display_name: "AWS password policy with unchangeable passwords"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-IAM password policies must permit users to change their own passwords so compromised, expired, or weak credentials can be rotated and account recovery workflows remain effective. In Ansible tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules, the boolean property controlling this must be defined and set to true — either `allow_pw_change` or `allow_password_change` depending on module version. Tasks that omit these properties or set them to false/`no` will be flagged because disabling password changes prevents credential rotation and hampers incident response and account hygiene.
+IAM password policies must permit users to change their own passwords so compromised, expired, or weak credentials can be rotated and account recovery workflows remain effective. In Ansible tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules, the boolean property controlling this must be defined and set to `true` — either `allow_pw_change` or `allow_password_change` depending on module version.
+
+Tasks that omit these properties or set them to `false`/`no` are flagged because disabling password changes prevents credential rotation and hampers incident response and account hygiene.
 
 Secure Ansible example:
 

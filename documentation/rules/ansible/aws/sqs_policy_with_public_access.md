@@ -1,10 +1,10 @@
 ---
-title: "SQS Policy With Public Access"
+title: "SQS policy with public access"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sqs_policy_with_public_access"
   id: "d994585f-defb-4b51-b6d2-c70f020ceb10"
-  display_name: "SQS Policy With Public Access"
+  display_name: "SQS policy with public access"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-SQS queue policies must not grant Allow permissions to a wildcard principal ('*') combined with wildcard actions, because that gives any principal unrestricted ability to send, receive, delete, or otherwise manipulate queue messages, risking data exposure, message loss, or unauthorized message injection. In Ansible tasks using the `community.aws.sqs_queue` or `sqs_queue` module, inspect the `policy` property for policy statements where `Effect` is `"Allow"` and `Principal` is `"*"` (either `Principal == "*" ` or `Principal.AWS` contains `"*"`) and `Action` contains `"*"`; such statements will be flagged. Instead, define explicit principals (AWS account ARNs, IAM role/user ARNs, or service principals) and restrict `Action` to the minimal SQS actions required (for example `sqs:SendMessage`, `sqs:ReceiveMessage`), optionally adding conditions (source ARN/IP, VPC) to further limit access.
+SQS queue policies must not grant Allow permissions to a wildcard principal (`*`) combined with wildcard actions, as this gives any principal unrestricted ability to send, receive, delete, or otherwise manipulate queue messages, risking data exposure, message loss, or unauthorized message injection. In Ansible tasks using the `community.aws.sqs_queue` or `sqs_queue` module, inspect the `policy` property for policy statements where `Effect` is `"Allow"`, `Principal` is `"*"` (either `Principal == "*"` or `Principal.AWS` contains `"*"`), and `Action` contains `"*"`. Such statements are flagged.
+
+Define explicit principals (AWS account ARNs, IAM role/user ARNs, or service principals) and restrict `Action` to the minimal SQS actions required (for example, `sqs:SendMessage`, `sqs:ReceiveMessage`). You can optionally add conditions (source ARN/IP, VPC) to further limit access.
 
 Secure configuration example:
 

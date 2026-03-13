@@ -1,10 +1,10 @@
 ---
-title: "Certificate Has Expired"
+title: "Certificate has expired"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/certificate_has_expired"
   id: "5a443297-19d4-4381-9e5b-24faf947ec22"
-  display_name: "Certificate Has Expired"
+  display_name: "Certificate has expired"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Expired SSL/TLS certificates cause service outages by breaking TLS handshakes and undermine trust in encrypted connections, which can result in failed client connections and compliance or security issues. In Ansible, tasks using the `community.aws.aws_acm` module must reference a certificate whose `certificate.expiration_date` is a future date; this rule flags `community.aws.aws_acm` tasks where `certificate.expiration_date` is in the past. Renew or replace any expired certificates—e.g., request a new ACM certificate or update the task to point to a renewed certificate—so `certificate.expiration_date` reflects a valid future date.
+Expired SSL/TLS certificates cause service outages by breaking TLS handshakes and undermine trust in encrypted connections. This can result in failed client connections and compliance or security issues. In Ansible, tasks using the `community.aws.aws_acm` module must reference a certificate whose `certificate.expiration_date` is a future date. This rule flags `community.aws.aws_acm` tasks where `certificate.expiration_date` is in the past. Renew or replace any expired certificates—for example, request a new ACM certificate or update the task to point to a renewed certificate—so `certificate.expiration_date` reflects a valid future date.
 
 ## Compliant Code Examples
 ```yaml

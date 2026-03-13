@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Allowing API Gateway to invoke a Lambda using a wildcard source ARN like '/*/*' grants any API, stage, or method the ability to invoke the function, which can result in unintended public or cross-account invocation and increase the risk of unauthorized execution. In Ansible tasks using the `community.aws.lambda_policy` or `lambda_policy` modules, the `source_arn` property must not be set to `'/*/*'`; instead specify the full execute-api ARN (for example `arn:aws:execute-api:<region>:<account-id>:<api-id>/<stage>/<HTTP-VERB>/<resource>`). This rule flags policies where `action` is `lambda:InvokeFunction` or `lambda:*` and `principal` is `apigateway.amazonaws.com` or `*` while `source_arn` matches `/*/*`; also avoid using a wildcard principal and prefer the explicit `apigateway.amazonaws.com` principal with a narrowed `source_arn`. Secure configuration example:
+Allowing API Gateway to invoke a Lambda using a wildcard source ARN like `/*/*` grants any API, stage, or method the ability to invoke the function. This can result in unintended public or cross-account invocation and increase the risk of unauthorized execution.
+
+In Ansible tasks using the `community.aws.lambda_policy` or `lambda_policy` modules, the `source_arn` property must not be set to `/*/*`. Instead, specify the full execute-api ARN (for example `arn:aws:execute-api:<region>:<account-id>:<api-id>/<stage>/<HTTP-VERB>/<resource>`).
+
+This rule flags policies where `action` is `lambda:InvokeFunction` or `lambda:*` and `principal` is `apigateway.amazonaws.com` or `*` while `source_arn` matches `/*/*`. Avoid using a wildcard principal and prefer the explicit `apigateway.amazonaws.com` principal with a narrowed `source_arn`. 
+
+Secure configuration example:
 
 ```yaml
 - name: Allow specific API Gateway to invoke Lambda

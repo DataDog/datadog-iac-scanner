@@ -1,10 +1,10 @@
 ---
-title: "Security Group is Not Configured"
+title: "Security group is not configured"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/security_group_is_not_configured"
   id: "da4f2739-174f-4cdd-b9ef-dc3f14b5931f"
-  display_name: "Security Group is Not Configured"
+  display_name: "Security group is not configured"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-A subnet without an associated Network Security Group (NSG) lacks network-level access controls, increasing exposure to unauthorized access and enabling lateral movement between resources. For Ansible `azure_rm_subnet` resources (modules `azure.azcollection.azure_rm_subnet` and `azure_rm_subnet`) the `security_group` or `security_group_name` property must be defined and set to a non-empty value. Resources that omit these properties or set them to null/empty strings will be flagged. Ensure the value references the appropriate NSG (name or ID) for your environment.
+A subnet without an associated Network Security Group (NSG) lacks network-level access controls, increasing exposure to unauthorized access and enabling lateral movement between resources.
+
+For Ansible `azure_rm_subnet` resources (modules `azure.azcollection.azure_rm_subnet` and `azure_rm_subnet`), the `security_group` or `security_group_name` property must be defined and set to a non-empty value. Resources that omit these properties or set them to null/empty strings are flagged. Ensure the value references the appropriate NSG (name or ID) for your environment.
 
 Secure configuration example:
 

@@ -1,10 +1,10 @@
 ---
-title: "IAM Policies With Full Privileges"
+title: "IAM policies with full privileges"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_policies_with_full_privileges"
   id: "e401d614-8026-4f4b-9af9-75d1197461ba"
-  display_name: "IAM Policies With Full Privileges"
+  display_name: "IAM policies with full privileges"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-IAM policies must not grant full administrative privileges (Allow for all actions on all resources) because such statements enable privilege escalation and allow any principal holding the policy to access, modify, or delete resources account-wide. For Ansible managed policy resources (modules `community.aws.iam_managed_policy` and `iam_managed_policy`), inspect the `policy` document’s `Statement` entries and ensure you do not have a `Statement` with `Effect: Allow` where `Action` is `"*"` and `Resource` is `"*"`. Define explicit action lists and restrict `Resource` to specific ARNs or use condition keys to enforce least privilege; if full admin rights are truly required, attach AWS-managed administrative policies only to trusted admin roles or groups. Statements matching `Effect=Allow` with both `Action='*'` and `Resource='*'` will be flagged.
+IAM policies must not grant full administrative privileges (Allow for all actions on all resources). Such statements enable privilege escalation and allow any principal with the policy to access, modify, or delete resources account-wide. For Ansible managed policy resources (modules `community.aws.iam_managed_policy` and `iam_managed_policy`), inspect the `policy` document's `Statement` entries. Ensure no `Statement` has `Effect: Allow` where `Action` is `"*"` and `Resource` is `"*"`. Define explicit action lists and restrict `Resource` to specific ARNs, or use condition keys to enforce least privilege. If full admin rights are truly required, attach AWS-managed administrative policies only to trusted admin roles or groups. Statements matching `Effect` set to `Allow` with both `Action` set to `'*'` and `Resource` set to `'*'` are flagged.
 
 Secure example with explicit actions and narrowed resources:
 

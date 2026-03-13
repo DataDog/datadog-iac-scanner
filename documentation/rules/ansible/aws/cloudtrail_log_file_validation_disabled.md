@@ -1,10 +1,10 @@
 ---
-title: "CloudTrail Log File Validation Disabled"
+title: "CloudTrail log file validation disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudtrail_log_file_validation_disabled"
   id: "4d8681a2-3d30-4c89-8070-08acd142748e"
-  display_name: "CloudTrail Log File Validation Disabled"
+  display_name: "CloudTrail log file validation disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-CloudTrail log file validation must be enabled to detect tampering of delivered log files and to preserve the integrity of audit data used for incident response and compliance. For Ansible tasks using the `community.aws.cloudtrail` or `cloudtrail` module, one of the properties `enable_log_file_validation` or `log_file_validation_enabled` must be defined and set to `true` (or `yes`). Resources missing both properties or with these properties set to `false`, `no`, or any non-true value will be flagged as insecure.
+CloudTrail log file validation must be enabled to detect tampering of delivered log files and preserve the integrity of audit data used for incident response and compliance.
+
+For Ansible tasks using the `community.aws.cloudtrail` or `cloudtrail` module, one of the properties `enable_log_file_validation` or `log_file_validation_enabled` must be defined and set to `true` (or `yes`). Resources missing both properties or with these properties set to `false`, `no`, or any non-`true` value are flagged as insecure.
 
 Secure Ansible example:
 

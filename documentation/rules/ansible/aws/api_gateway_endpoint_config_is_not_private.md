@@ -1,10 +1,10 @@
 ---
-title: "API Gateway Endpoint Config is Not Private"
+title: "API Gateway endpoint config is not private"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_endpoint_config_is_not_private"
   id: "559439b2-3e9c-4739-ac46-17e3b24ec215"
-  display_name: "API Gateway Endpoint Config is Not Private"
+  display_name: "API Gateway endpoint config is not private"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-API Gateway endpoint type must be set to PRIVATE to prevent the API from being exposed to the public internet, which otherwise increases attack surface and can enable unauthorized access or data exfiltration. For Ansible tasks using the `community.aws.aws_api_gateway` or `aws_api_gateway` modules, the `endpoint_type` property must be defined and set to `PRIVATE`; tasks missing this property or with `endpoint_type` != `PRIVATE` will be flagged. A PRIVATE endpoint restricts access to VPC endpoints, so ensure the required VPC endpoint/networking is configured to allow authorized clients to reach the API.
+API Gateway endpoint type must be set to `PRIVATE` to prevent the API from being exposed to the public internet, which increases attack surface and can enable unauthorized access or data exfiltration.
+
+For Ansible tasks using the `community.aws.aws_api_gateway` or `aws_api_gateway` modules, the `endpoint_type` property must be defined and set to `PRIVATE`. Tasks missing this property or with `endpoint_type` not set to `PRIVATE` are flagged. A `PRIVATE` endpoint restricts access to VPC endpoints, so ensure the required VPC endpoint and networking is configured to allow authorized clients to reach the API.
 
 Secure Ansible task example:
 

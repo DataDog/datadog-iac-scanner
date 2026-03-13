@@ -1,10 +1,10 @@
 ---
-title: "CloudFront Logging Disabled"
+title: "CloudFront logging disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudfront_logging_disabled"
   id: "d31cb911-bf5b-4eb6-9fc3-16780c77c7bd"
-  display_name: "CloudFront Logging Disabled"
+  display_name: "CloudFront logging disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-CloudFront distributions must have access logging enabled to record viewer requests for incident investigation and auditing; without logs you cannot reliably detect abuse, investigate incidents, or meet audit requirements. For Ansible CloudFront distribution resources (modules `community.aws.cloudfront_distribution` and `cloudfront_distribution`) the `logging` property must be defined and `logging.enabled` set to `true`; tasks missing `logging` or with `logging.enabled: false` will be flagged. Also ensure a valid S3 bucket is specified in `logging.bucket` as the log destination.
+CloudFront distributions must have access logging enabled to record viewer requests for incident investigation and auditing. Without logs, you cannot reliably detect abuse, investigate incidents, or meet audit requirements.
+
+For Ansible CloudFront distribution resources (modules `community.aws.cloudfront_distribution` and `cloudfront_distribution`), the `logging` property must be defined and `logging.enabled` set to `true`. Tasks missing `logging` or with `logging.enabled: false` are flagged. Ensure a valid S3 bucket is specified in `logging.bucket` as the log destination.
 
 Secure configuration example:
 

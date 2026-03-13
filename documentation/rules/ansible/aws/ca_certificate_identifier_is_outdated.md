@@ -1,10 +1,10 @@
 ---
-title: "CA Certificate Identifier Is Outdated"
+title: "CA certificate identifier is outdated"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ca_certificate_identifier_is_outdated"
   id: "5eccd62d-8b4d-46d3-83ea-1879f3cbd3ce"
-  display_name: "CA Certificate Identifier Is Outdated"
+  display_name: "CA certificate identifier is outdated"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-RDS instances must specify a CA certificate identifier so the database uses a known AWS CA for TLS connections and to avoid broken or insecure certificate chains during CA rotations. For Ansible RDS resources (modules `community.aws.rds_instance` and `rds_instance`) the `ca_certificate_identifier` property must be defined and set to `rds-ca-2019`. Resources missing this property or specifying a different value will be flagged; update the value if AWS publishes a newer CA identifier.
+RDS instances must specify a CA certificate identifier so the database uses a known AWS CA for TLS connections and avoids broken or insecure certificate chains during CA rotations. For Ansible RDS resources (modules `community.aws.rds_instance` and `rds_instance`), the `ca_certificate_identifier` property must be defined and set to `rds-ca-2019`. Resources missing this property or specifying a different value are flagged. Update the value if AWS publishes a newer CA identifier.
 
 Secure Ansible task example:
 

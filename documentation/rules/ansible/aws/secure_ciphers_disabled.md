@@ -1,10 +1,10 @@
 ---
-title: "Secure Ciphers Disabled"
+title: "Secure ciphers disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/secure_ciphers_disabled"
   id: "218413a0-c716-4b94-9e08-0bb70d854709"
-  display_name: "Secure Ciphers Disabled"
+  display_name: "Secure ciphers disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-CloudFront distributions that do not enforce a modern minimum TLS protocol version can allow legacy TLS/SSL versions, increasing the risk of downgrade attacks and interception of data in transit. For Ansible CloudFront resources (modules `community.aws.cloudfront_distribution` and `cloudfront_distribution`), the `viewer_certificate.minimum_protocol_version` property must be defined and set to `TLSv1.1` or `TLSv1.2` (preferably `TLSv1.2`) when using a custom certificate (`viewer_certificate.cloudfront_default_certificate=false`). Resources that omit `minimum_protocol_version` or specify any other value will be flagged. Secure configuration example for Ansible:
+CloudFront distributions that do not enforce a modern minimum TLS protocol version can allow legacy TLS/SSL versions, increasing the risk of downgrade attacks and interception of data in transit.
+
+For Ansible CloudFront resources (modules `community.aws.cloudfront_distribution` and `cloudfront_distribution`), the `viewer_certificate.minimum_protocol_version` property must be defined and set to `TLSv1.1` or `TLSv1.2` (preferably `TLSv1.2`) when using a custom certificate (`viewer_certificate.cloudfront_default_certificate` set to `false`). Resources that omit `minimum_protocol_version` or specify any other value are flagged. 
+
+Secure configuration example for Ansible:
 
 ```yaml
 - name: Create CloudFront distribution with secure TLS

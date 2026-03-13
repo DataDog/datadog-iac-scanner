@@ -1,10 +1,10 @@
 ---
-title: "Insecure Relative Path Resolution"
+title: "Insecure relative path resolution"
 group_id: "Ansible / Common"
 meta:
   name: "general/insecure_relative_path_resolution"
   id: "8d22ae91-6ac1-459f-95be-d37bd373f244"
-  display_name: "Insecure Relative Path Resolution"
+  display_name: "Insecure relative path resolution"
   cloud_provider: "Common"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Using upward-relative src paths in Ansible copy or template tasks (for example '../templates' or '../files') can cause unpredictable file selection and accidental inclusion of unintended or sensitive files because the path is resolved against the current working directory, which may differ across control hosts or CI runs. This rule examines tasks that use the modules `copy`, `win_copy`, `template`, `win_template`, `ansible.builtin.copy`, and `ansible.builtin.template` and flags cases where the task's `src` property contains a `../<folder>` segment that references the role folders (e.g., `../files`, `../templates`, `../win_templates`). Fix by placing assets in the role's `files`/`templates` directories and referencing them by name, or use absolute paths or `{{ role_path }}` when necessary so `src` does not include upward-traversal segments; any task whose `src` contains such `..` traversals will be flagged.
+Using upward-relative src paths in Ansible copy or template tasks (for example, `../templates` or `../files`) can cause unpredictable file selection and accidental inclusion of sensitive files. The path is resolved against the current working directory, which may differ across control hosts or CI runs.
+
+This rule examines tasks that use the modules `copy`, `win_copy`, `template`, `win_template`, `ansible.builtin.copy`, and `ansible.builtin.template`. Any task whose `src` property contains a `../<folder>` segment referencing role folders (for example, `../files`, `../templates`, `../win_templates`) is flagged.
+
+Fix by placing assets in the role's `files`/`templates` directories and referencing them by name, or use absolute paths or `{{ role_path }}` when necessary so `src` does not include upward-traversal segments.
 
 Secure examples:
 

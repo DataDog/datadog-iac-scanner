@@ -1,10 +1,10 @@
 ---
-title: "Automatic Minor Upgrades Disabled"
+title: "Automatic minor upgrades disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/automatic_minor_upgrades_disabled"
   id: "857f8808-e96a-4ba8-a9b7-f2d4ec6cad94"
-  display_name: "Automatic Minor Upgrades Disabled"
+  display_name: "Automatic minor upgrades disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-RDS instances should have automatic minor engine upgrades enabled so critical security patches and bug fixes are applied promptly and database engines do not remain exposed to known vulnerabilities or drift out of compliance. For Ansible RDS tasks using the `community.aws.rds_instance` or `rds_instance` modules, the `auto_minor_version_upgrade` property must be defined and set to `true`. Tasks that omit this property or set `auto_minor_version_upgrade: false` will be flagged; enabling this setting ensures minor engine patches are applied automatically during the instance's maintenance window.
+RDS instances should have automatic minor engine upgrades enabled so critical security patches and bug fixes are applied promptly, preventing exposure to known vulnerabilities or compliance drift.
+
+For Ansible RDS tasks using the `community.aws.rds_instance` or `rds_instance` modules, the `auto_minor_version_upgrade` property must be defined and set to `true`. Tasks that omit this property or set `auto_minor_version_upgrade: false` are flagged. Enabling this setting ensures minor engine patches are applied automatically during the instance's maintenance window.
 
 Secure Ansible example:
 
