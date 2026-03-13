@@ -1,10 +1,10 @@
 ---
-title: "RDS Associated with Public Subnet"
+title: "RDS instance associated with a public subnet"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/rds_associated_with_public_subnet"
   id: "16732649-4ff6-4cd2-8746-e72c13fae4b8"
-  display_name: "RDS Associated with Public Subnet"
+  display_name: "RDS instance associated with a public subnet"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-RDS instances must not be placed in public subnets because an internet-routable subnet exposes the database endpoint to the internet, increasing the risk of unauthorized access and data exfiltration. This rule inspects Ansible tasks that create RDS instances (resource types `community.aws.rds_instance` or `rds_instance`) and requires the subnet group property (`db_subnet_group_name` or `subnet_group`) to reference a subnet group composed only of private subnets. It verifies the referenced subnet group tasks (`community.aws.rds_subnet_group` or `rds_subnet_group`) and the subnet tasks (`amazon.aws.ec2_vpc_subnet` or `ec2_vpc_subnet`); any subnet with `cidr` equal to `0.0.0.0/0` or `ipv6_cidr` equal to `::/0` is treated as public and will trigger a finding. Resources missing the subnet-group property or where the subnet group includes any public subnet will be flagged; ensure subnet groups list subnets using private CIDR ranges and that registered subnet task names match the entries in the subnet group.
+RDS instances must not be placed in public subnets because an internet-routable subnet exposes the database endpoint to the internet, increasing the risk of unauthorized access and data exfiltration. This rule inspects Ansible tasks that create RDS instances (resource types `community.aws.rds_instance` or `rds_instance`) and requires the subnet group property (`db_subnet_group_name` or `subnet_group`) to reference a subnet group composed only of private subnets.
+
+It verifies the referenced subnet group tasks (`community.aws.rds_subnet_group` or `rds_subnet_group`) and the subnet tasks (`amazon.aws.ec2_vpc_subnet` or `ec2_vpc_subnet`). Any subnet with `cidr` equal to `0.0.0.0/0` or `ipv6_cidr` equal to `::/0` is treated as public and triggers a finding.
+
+Resources that are missing the subnet-group property or that include any public subnet in the subnet group are flagged. Ensure subnet groups list subnets using private CIDR ranges and that registered subnet task names match the entries in the subnet group.
 
 Secure example with private subnet CIDRs:
 

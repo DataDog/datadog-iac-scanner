@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket With All Permissions"
+title: "S3 bucket with all permissions"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_with_all_permissions"
   id: "6a6d7e56-c913-4549-b5c5-5221e624d2ec"
-  display_name: "S3 Bucket With All Permissions"
+  display_name: "S3 bucket with all permissions"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-S3 bucket policies must not grant all actions to all principals, because a statement that sets Effect='Allow' with both Action='*' and Principal='*' effectively makes the bucket publicly accessible and can enable data exfiltration or unauthorized modification/deletion. For Ansible resources using the `amazon.aws.s3_bucket` or `s3_bucket` modules, inspect the resource `policy` document's `Statement` entries and flag any statement where `Effect` is `Allow` and both `Action` and `Principal` contain the wildcard `*` (including arrays that include `*`). Resources with such statements will be flagged; instead restrict `Principal` to explicit ARNs, account IDs, or service principals and scope `Action` to the minimum required permissions following least privilege.
+S3 bucket policies must not grant all actions to all principals. A statement that sets `Effect`=`Allow` with both `Action`=`*` and `Principal`=`*` effectively makes the bucket publicly accessible and can enable data exfiltration or unauthorized modification/deletion.
+
+For Ansible resources using the `amazon.aws.s3_bucket` or `s3_bucket` modules, inspect the resource `policy` document's `Statement` entries. Any statement where `Effect` is `Allow` and both `Action` and `Principal` contain the wildcard `*` (including arrays that include `*`) is flagged.
+
+Restrict `Principal` to explicit ARNs, account IDs, or service principals and scope `Action` to the minimum required permissions following least privilege.
 
 Secure example policy statement:
 

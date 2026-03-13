@@ -1,10 +1,10 @@
 ---
-title: "Redshift Publicly Accessible"
+title: "Redshift publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/redshift_publicly_accessible"
   id: "5c6b727b-1382-4629-8ba9-abd1365e5610"
-  display_name: "Redshift Publicly Accessible"
+  display_name: "Redshift publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Redshift clusters must not be publicly accessible because exposing cluster endpoints to the internet increases the risk of unauthorized access, data exfiltration, and brute-force attacks. For Ansible, check tasks using the `redshift` or `community.aws.redshift` modules: the `publicly_accessible` parameter must be set to `false`. This rule flags any task where `publicly_accessible` is `true`; explicitly set `publicly_accessible: false` in your task to ensure the cluster is not reachable from the public internet (relying on implicit defaults may be ambiguous across versions).
+Redshift clusters must not be publicly accessible. Exposing cluster endpoints to the internet increases the risk of unauthorized access, data exfiltration, and brute-force attacks. For Ansible, check tasks using the `redshift` or `community.aws.redshift` modules: the `publicly_accessible` parameter must be set to `false`. This rule flags any task where `publicly_accessible` is `true`. Explicitly set `publicly_accessible: false` in your task to ensure the cluster is not reachable from the public internet. Relying on implicit defaults may be ambiguous across versions.
 
 Secure configuration example:
 

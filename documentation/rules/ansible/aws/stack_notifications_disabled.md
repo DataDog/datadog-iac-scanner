@@ -1,10 +1,10 @@
 ---
-title: "Stack Notifications Disabled"
+title: "Stack notifications disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/stack_notifications_disabled"
   id: "d39761d7-94ab-45b0-ab5e-27c44e381d58"
-  display_name: "Stack Notifications Disabled"
+  display_name: "Stack notifications disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-CloudFormation stacks should publish notifications so operators are alerted to important stack events (for example, failed deployments or unexpected stack changes); without notifications, security incidents or configuration drift can go undetected and response will be delayed. In Ansible, tasks using the `amazon.aws.cloudformation` or legacy `cloudformation` module must define the `notification_arns` parameter and set it to one or more SNS topic ARNs. Resources missing `notification_arns` will be flagged for remediation.
+CloudFormation stacks should publish notifications so operators are alerted to important stack events, such as failed deployments or unexpected stack changes. Without notifications, security incidents or configuration drift can go undetected and response times increase. In Ansible, tasks using the `amazon.aws.cloudformation` or legacy `cloudformation` module must define the `notification_arns` parameter and set it to one or more SNS topic ARNs. Resources missing `notification_arns` are flagged for remediation.
 
 Secure example:
 

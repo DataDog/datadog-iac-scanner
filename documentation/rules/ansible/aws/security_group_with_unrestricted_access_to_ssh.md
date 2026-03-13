@@ -1,10 +1,10 @@
 ---
-title: "Security Group With Unrestricted Access To SSH"
+title: "Security group with unrestricted access to SSH"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/security_group_with_unrestricted_access_to_ssh"
   id: "57ced4b9-6ba4-487b-8843-b65562b90c77"
-  display_name: "Security Group With Unrestricted Access To SSH"
+  display_name: "Security group with unrestricted access to SSH"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-SSH (TCP port 22) must not be exposed to public CIDR ranges because it enables unauthorized remote access and increases the risk of brute-force or credential-stuffing attacks and lateral movement. This check inspects Ansible tasks using `amazon.aws.ec2_group` or `ec2_group` and flags entries in the `rules` list where `from_port`/`to_port` cover port 22 (or are both `-1` indicating all ports) and `cidr_ip` or `cidr_ipv6` specify public CIDRs such as `0.0.0.0/0` or `::/0`. Require `cidr_ip`/`cidr_ipv6` to be limited to specific trusted IP ranges (or remove SSH from the security group and enforce access via a bastion host or VPN); any rule that leaves SSH open to public CIDRs will be flagged. Secure example restricting SSH to a single trusted address:
+SSH (TCP port 22) must not be exposed to public CIDR ranges because it enables unauthorized remote access and increases the risk of brute-force or credential-stuffing attacks and lateral movement.
+
+This check inspects Ansible tasks using `amazon.aws.ec2_group` or `ec2_group` and flags entries in the `rules` list where `from_port`/`to_port` cover port 22 (or are both `-1` indicating all ports) and `cidr_ip` or `cidr_ipv6` specify public CIDRs such as `0.0.0.0/0` or `::/0`. Limit `cidr_ip`/`cidr_ipv6` to specific trusted IP ranges, or remove SSH from the security group and enforce access through a bastion host or VPN. Any rule that leaves SSH open to public CIDRs is flagged. 
+
+Secure example restricting SSH to a single trusted address:
 
 ```yaml
 - name: my-secure-sg

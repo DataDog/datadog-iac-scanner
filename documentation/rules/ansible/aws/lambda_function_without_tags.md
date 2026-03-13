@@ -1,10 +1,10 @@
 ---
-title: "Lambda Function Without Tags"
+title: "Lambda function without tags"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/lambda_function_without_tags"
   id: "265d9725-2fb8-42a2-bc57-3279c5db82d5"
-  display_name: "Lambda Function Without Tags"
+  display_name: "Lambda function without tags"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-AWS Lambda functions should be tagged so resources can be reliably inventoried and assigned ownership, and so tag-based access controls and automated security or operational workflows can include them. In Ansible playbooks, tasks using the `community.aws.lambda` or legacy `lambda` module must define the `tags` property as a mapping/dictionary; resources where `tags` is undefined will be flagged. Ensure `tags` is present on the module invocation and contains at least the necessary keys for your organization (for example `Owner`, `Environment`, or `Project`).
+AWS Lambda functions should be tagged so resources can be reliably inventoried and assigned ownership. Tags also enable tag-based access controls and automated security or operational workflows.
+
+In Ansible playbooks, tasks using the `community.aws.lambda` or legacy `lambda` module must define the `tags` property as a mapping/dictionary. Resources where `tags` is undefined are flagged. Ensure `tags` is present on the module invocation and contains at least the necessary keys for your organization (for example, `Owner`, `Environment`, or `Project`).
 
 Secure example:
 

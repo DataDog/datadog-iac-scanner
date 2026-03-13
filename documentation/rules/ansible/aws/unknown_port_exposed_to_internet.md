@@ -1,10 +1,10 @@
 ---
-title: "Unknown Port Exposed To Internet"
+title: "Unknown port exposed to internet"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/unknown_port_exposed_to_internet"
   id: "722b0f24-5a64-4cca-aa96-cfc26b7e3a5b"
-  display_name: "Unknown Port Exposed To Internet"
+  display_name: "Unknown port exposed to internet"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Security groups must not expose unknown or undocumented TCP ports to the entire Internet because exposing unexpected ports increases attack surface and makes it easier for attackers to discover and exploit unintended services. This rule inspects Ansible tasks using the `amazon.aws.ec2_group` and `ec2_group` modules and checks each `rules` entry: it flags rules where any port in the range from `from_port` to `to_port` is not found in the recognized TCP ports map and where `cidr_ip` equals `0.0.0.0/0` or `cidr_ipv6` equals `::/0` (entire network). To remediate, restrict ingress to only known, required ports and limit CIDR ranges to trusted networks or reference other security groups; review and document any non-standard ports before allowing public access. Secure example for Ansible `ec2_group` with a single, known port limited to a specific IPv4 range:
+Security groups must not expose unknown or undocumented TCP ports to the entire Internet. Exposing unexpected ports increases attack surface and makes it easier for attackers to discover and exploit unintended services.
+
+This rule inspects Ansible tasks using the `amazon.aws.ec2_group` and `ec2_group` modules. It checks each `rules` entry and flags rules where any port in the range from `from_port` to `to_port` is not found in the recognized TCP ports map and where `cidr_ip` equals `0.0.0.0/0` or `cidr_ipv6` equals `::/0` (entire network).
+
+To remediate, restrict ingress to only known, required ports and limit CIDR ranges to trusted networks or reference other security groups. Review and document any non-standard ports before allowing public access. 
+
+Secure example for Ansible `ec2_group` with a single, known port limited to a specific IPv4 range:
 
 ```yaml
 - name: Create security group with restricted HTTPS access

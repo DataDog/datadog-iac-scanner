@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket Allows Delete Action From All Principals"
+title: "S3 bucket allows delete action from all principals"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_allows_delete_action_from_all_principals"
   id: "6fa44721-ef21-41c6-8665-330d59461163"
-  display_name: "S3 Bucket Allows Delete Action From All Principals"
+  display_name: "S3 bucket allows delete action from all principals"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-S3 bucket policies must not grant delete permissions to all principals ('*'), because public delete rights can enable unauthorized data tampering or complete data loss by allowing anyone on the internet to remove objects or buckets. For Ansible S3 resources (`amazon.aws.s3_bucket` or `s3_bucket`), ensure the `policy` document contains no Statement with `Effect: "Allow"`, `Principal: "*"`, and an `Action` that includes delete operations (for example `s3:DeleteObject` or `s3:DeleteBucket`). This rule flags bucket resources whose `policy` includes an Allow statement granting delete-related actions to the wildcard principal; instead, restrict delete permissions to specific AWS account IDs, IAM roles/ARNs, or remove delete actions for public principals.  
+S3 bucket policies must not grant delete permissions to all principals (`*`). Public delete rights can enable unauthorized data tampering or complete data loss by allowing anyone on the internet to remove objects or buckets.
+
+For Ansible S3 resources (`amazon.aws.s3_bucket` or `s3_bucket`), ensure the `policy` document contains no Statement with `Effect: "Allow"`, `Principal: "*"`, and an `Action` that includes delete operations (for example `s3:DeleteObject` or `s3:DeleteBucket`).
+
+This rule flags bucket resources whose `policy` includes an Allow statement granting delete-related actions to the wildcard principal. Instead, restrict delete permissions to specific AWS account IDs, IAM roles/ARNs, or remove delete actions for public principals.
 
 Secure example restricting delete to a specific AWS account:
 

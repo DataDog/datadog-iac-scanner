@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket Allows Get Action From All Principals"
+title: "S3 bucket allows GET action from all principals"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_allows_get_action_from_all_principals"
   id: "53bce6a8-5492-4b1b-81cf-664385f0c4bf"
-  display_name: "S3 Bucket Allows Get Action From All Principals"
+  display_name: "S3 bucket allows GET action from all principals"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-S3 bucket policies must not grant Get actions to all principals ("*"), because allowing public read access exposes bucket objects to unauthorized disclosure and accidental data leaks. For Ansible S3 bucket resources (modules `amazon.aws.s3_bucket` and `s3_bucket`), inspect the `policy` property for any Statement with `Effect: "Allow"`, `Principal: "*"`, and an `Action` that includes Get operations (for example `s3:GetObject` or any action name containing "Get"); such statements will be flagged. Instead, restrict access by specifying explicit principals (AWS account IDs, roles, or ARNs), narrowing the allowed actions, or adding conditions (IP/VPC, MFA, or other constraints); if public access is required, use presigned URLs or a controlled distribution layer rather than a public bucket policy.
+S3 bucket policies must not grant Get actions to all principals ("*"). Allowing public read access exposes bucket objects to unauthorized disclosure and accidental data leaks. For Ansible S3 bucket resources (modules `amazon.aws.s3_bucket` and `s3_bucket`), inspect the `policy` property for any Statement with `Effect: "Allow"`, `Principal: "*"`, and an `Action` that includes Get operations (for example, `s3:GetObject` or any action name containing "Get"). Such statements are flagged.
+
+Restrict access by specifying explicit principals (AWS account IDs, roles, or ARNs), narrowing the allowed actions, or adding conditions (IP/VPC, MFA, or other constraints). If public access is required, use presigned URLs or a controlled distribution layer rather than a public bucket policy.
 
 Secure example with an explicit principal:
 

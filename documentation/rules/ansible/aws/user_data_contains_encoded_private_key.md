@@ -1,10 +1,10 @@
 ---
-title: "User Data Contains Encoded Private Key"
+title: "User data contains encoded private key"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/user_data_contains_encoded_private_key"
   id: "c09f4d3e-27d2-4d46-9453-abbe9687a64e"
-  display_name: "User Data Contains Encoded Private Key"
+  display_name: "User data contains encoded private key"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Embedding base64-encoded private keys in EC2 launch configuration user data exposes sensitive credentials that can be decoded and used to impersonate instances or access private services, resulting in credential compromise and lateral movement. This rule inspects Ansible tasks using the `community.aws.ec2_lc` or `ec2_lc` modules and flags the `user_data` property when it contains the base64 prefix `LS0tLS1CR`, which corresponds to the start of an RSA private key header (`-----BEGIN R...`). Remove any private keys from `user_data` and instead store secrets in a secure secrets manager or fetch them at runtime using instance IAM roles or a secure provisioning service; tasks embedding keys will be flagged.
+Embedding base64-encoded private keys in EC2 launch configuration user data exposes sensitive credentials that can be decoded and used to impersonate instances or access private services, resulting in credential compromise and lateral movement.
+
+This rule inspects Ansible tasks using the `community.aws.ec2_lc` or `ec2_lc` modules and flags the `user_data` property when it contains the base64 prefix `LS0tLS1CR`, which corresponds to the start of an RSA private key header (`-----BEGIN R...`).
+
+Remove any private keys from `user_data` and instead store secrets in a secure secrets manager or fetch them at runtime using instance IAM roles. Tasks embedding keys are flagged.
 
 ## Compliant Code Examples
 ```yaml

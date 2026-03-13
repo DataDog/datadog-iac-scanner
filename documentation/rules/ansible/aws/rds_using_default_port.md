@@ -1,10 +1,10 @@
 ---
-title: "RDS Using Default Port"
+title: "RDS instance uses a default port"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/rds_using_default_port"
   id: "2cb674f6-32f9-40be-97f2-62c0dc38f0d5"
-  display_name: "RDS Using Default Port"
+  display_name: "RDS instance uses a default port"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Using the database engine's default port makes instances easy for attackers to discover and target with automated scanning and exploit tooling, increasing the likelihood of brute-force, credential stuffing, or other network-based attacks. For Ansible RDS tasks using the `community.aws.rds_instance` or `rds_instance` modules, the `port` property must not be set to the engine default; choose a non-default port and ensure access is restricted at the network level (security groups/ACLs). This rule flags module tasks where `port` equals the engine default: MySQL/MariaDB/Aurora = 3306, PostgreSQL = 5432, Oracle = 1521, and SQL Server = 1433. Note that this check flags explicit `port` settings that match defaults; if `port` is omitted the engine may still use its default port, so also verify engine behavior and enforce least-privilege network access.
+Using the database engine's default port makes instances easy for attackers to discover and target with automated scanning and exploit tooling, increasing the likelihood of brute-force, credential stuffing, or other network-based attacks. For Ansible RDS tasks using the `community.aws.rds_instance` or `rds_instance` modules, the `port` property must not be set to the engine default. Choose a non-default port and ensure access is restricted at the network level (security groups/ACLs).
+
+This rule flags module tasks where `port` equals the engine default: MySQL/MariaDB/Aurora = 3306, PostgreSQL = 5432, Oracle = 1521, and SQL Server = 1433. This check flags explicit `port` settings that match defaults. If `port` is omitted, the engine may still use its default port, so also verify engine behavior and enforce least-privilege network access.
 
 Secure configuration example (MySQL using a non-default port):
 

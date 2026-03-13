@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket Without Versioning"
+title: "S3 bucket without versioning"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_without_versioning"
   id: "9232306a-f839-40aa-b3ef-b352001da9a5"
-  display_name: "S3 Bucket Without Versioning"
+  display_name: "S3 bucket without versioning"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-S3 buckets must have versioning enabled to protect objects from accidental or malicious deletion and to retain prior versions for recovery, forensics, and compliance. For Ansible tasks using the `amazon.aws.s3_bucket` or `s3_bucket` modules, the `versioning` property must be defined and set to `true`; when omitted the module defaults to versioning disabled. This rule flags tasks where the `versioning` key is missing or explicitly set to `false`.
+S3 buckets must have versioning enabled to protect objects from accidental or malicious deletion and retain prior versions for recovery, forensics, and compliance. For Ansible tasks using the `amazon.aws.s3_bucket` or `s3_bucket` modules, the `versioning` property must be defined and set to `true`. When omitted, the module defaults to versioning disabled. This rule flags tasks where the `versioning` key is missing or explicitly set to `false`.
 
 Secure configuration example:
 

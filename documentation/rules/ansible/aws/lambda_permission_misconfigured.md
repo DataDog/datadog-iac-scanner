@@ -1,10 +1,10 @@
 ---
-title: "Lambda Permission Misconfigured"
+title: "Lambda permission misconfigured"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/lambda_permission_misconfigured"
   id: "3ddf3417-424d-420d-8275-0724dc426520"
-  display_name: "Lambda Permission Misconfigured"
+  display_name: "Lambda permission misconfigured"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Lambda permission statements must set the action to 'lambda:InvokeFunction' so callers are limited to invoking the function and to avoid granting broader or unintended Lambda privileges. Check Ansible tasks that use the `community.aws.lambda_policy` or `lambda_policy` modules; the `action` property must be defined and set to the exact string `lambda:InvokeFunction`. Tasks missing the `action` property or using any other value (for example `lambda:*`, a different Lambda action, or an empty value) will be flagged because they can either over‑privilege callers or result in misconfigured access. Secure example with the action explicitly set:
+Lambda permission statements must set the action to `lambda:InvokeFunction` so callers are limited to invoking the function and cannot receive broader or unintended Lambda privileges.
+
+Check Ansible tasks that use the `community.aws.lambda_policy` or `lambda_policy` modules. The `action` property must be defined and set to the exact string `lambda:InvokeFunction`. Tasks missing the `action` property or using any other value (for example `lambda:*`, a different Lambda action, or an empty value) are flagged because they can over-privilege callers or result in misconfigured access.
+
+Secure example with the action explicitly set:
 
 ```yaml
 - name: Allow S3 to invoke my Lambda

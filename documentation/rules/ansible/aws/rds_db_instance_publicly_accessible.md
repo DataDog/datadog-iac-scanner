@@ -1,10 +1,10 @@
 ---
-title: "RDS DB Instance Publicly Accessible"
+title: "RDS DB instance is not publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/rds_db_instance_publicly_accessible"
   id: "c09e3ca5-f08a-4717-9c87-3919c5e6d209"
-  display_name: "RDS DB Instance Publicly Accessible"
+  display_name: "RDS DB instance is not publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-RDS instances must not be configured as publicly accessible because exposing a database to the public internet increases the risk of unauthorized access and enables brute-force or credential‑stuffing attacks. In Ansible RDS tasks using the community.aws.rds_instance, rds_instance, community.aws.rds, or rds modules, ensure the `publicly_accessible` property is set to `false`; tasks with `publicly_accessible: true` will be flagged. If the property is omitted the modules default to `false`, but explicitly setting it to `false` and placing instances in private subnets with restrictive security groups provides defense-in-depth.
+RDS instances must not be configured as publicly accessible. Exposing a database to the public internet increases the risk of unauthorized access and enables brute-force or credential-stuffing attacks.
+
+In Ansible RDS tasks using the `community.aws.rds_instance`, `rds_instance`, `community.aws.rds`, or `rds` modules, ensure the `publicly_accessible` property is set to `false`. Tasks with `publicly_accessible: true` are flagged. If the property is omitted, the modules default to `false`, but explicitly setting it to `false` and placing instances in private subnets with restrictive security groups provides defense-in-depth.
 
 Secure example:
 

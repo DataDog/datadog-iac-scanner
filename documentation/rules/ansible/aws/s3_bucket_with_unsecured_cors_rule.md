@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket with Unsecured CORS Rule"
+title: "S3 bucket with unsecured CORS rule"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_with_unsecured_cors_rule"
   id: "3505094c-f77c-4ba0-95da-f83db712f86c"
-  display_name: "S3 Bucket with Unsecured CORS Rule"
+  display_name: "S3 bucket with unsecured CORS rule"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-S3 CORS rules must restrict allowed origins, methods, and headers to prevent unintended cross-origin access and data exfiltration; overly permissive CORS (wildcard origins, all methods, or all headers) can allow arbitrary web pages to interact with or read bucket resources. For Ansible resources `community.aws.aws_s3_cors` and `aws_s3_cors`, inspect each `rules` entry: `allowed_origins` should specify specific trusted origins (avoid `"*"` or unnecessarily broad lists), `allowed_methods` must not be `["*"]` and should include only the HTTP verbs required by your application, and `allowed_headers` must not be `["*"]` and should be limited to the headers actually needed. Rules with wildcard `allowed_methods` or `allowed_headers`, or with wildcard or overly broad/multiple origins will be flagged; prefer a single explicit origin or a narrowly-scoped set and the minimal set of methods and headers.
+S3 CORS rules must restrict allowed origins, methods, and headers to prevent unintended cross-origin access and data exfiltration. Overly permissive CORS (wildcard origins, all methods, or all headers) can allow arbitrary web pages to interact with or read bucket resources.
+
+For Ansible resources `community.aws.aws_s3_cors` and `aws_s3_cors`, inspect each `rules` entry. `allowed_origins` should specify trusted origins (avoid `"*"` or unnecessarily broad lists). `allowed_methods` must not be `["*"]` and should include only the HTTP verbs required by your application. `allowed_headers` must not be `["*"]` and should be limited to the headers actually needed.
+
+Rules with wildcard `allowed_methods` or `allowed_headers`, or with wildcard or overly broad origins are flagged. Prefer a single explicit origin or a narrowly-scoped set and the minimal set of methods and headers.
 
 Secure example:
 

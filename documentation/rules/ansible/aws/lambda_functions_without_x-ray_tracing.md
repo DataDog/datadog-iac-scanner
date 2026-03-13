@@ -1,10 +1,10 @@
 ---
-title: "Lambda Functions Without X-Ray Tracing"
+title: "Lambda functions without X-Ray tracing"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/lambda_functions_without_x-ray_tracing"
   id: "71397b34-1d50-4ee1-97cb-c96c34676f74"
-  display_name: "Lambda Functions Without X-Ray Tracing"
+  display_name: "Lambda functions without X-Ray tracing"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-Lambda functions should have active AWS X-Ray tracing enabled to provide end-to-end request visibility and to accelerate detection and investigation of performance problems and security incidents. For Ansible `community.aws.lambda` or `lambda` module tasks, the `tracing_mode` property must be defined and set to `Active`. Tasks that omit `tracing_mode` or set it to any value other than `Active` will be flagged.
+Lambda functions should have active AWS X-Ray tracing enabled to provide end-to-end request visibility and help detect performance problems and security incidents. For Ansible `community.aws.lambda` or `lambda` module tasks, the `tracing_mode` property must be defined and set to `Active`. Tasks that omit `tracing_mode` or set it to any value other than `Active` are flagged.
 
 Secure Ansible example:
 

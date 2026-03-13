@@ -1,10 +1,10 @@
 ---
-title: "SQS Queue Exposed"
+title: "SQS queue exposed"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sqs_queue_exposed"
   id: "86b0efa7-4901-4edd-a37a-c034bec6645a"
-  display_name: "SQS Queue Exposed"
+  display_name: "SQS queue exposed"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Granting the wildcard principal ('*') Allow access in an SQS queue policy makes the queue publicly accessible, allowing unauthorized users or principals to send, receive, or modify messages and increasing the risk of data exposure and message injection. For Ansible SQS tasks (modules `community.aws.sqs_queue` or `sqs_queue`), inspect the `policy` property and ensure no policy Statement has `"Effect": "Allow"` with `"Principal": "*"`; statements must specify explicit principals (for example AWS account ARNs) or include restrictive conditions. Resources with policy statements where `Principal == "*" ` and `Effect == "Allow"` will be flagged; replace wildcard principals with explicit ARNs or add conditions such as `aws:SourceAccount` or `aws:SourceVpce` to restrict access.
+Granting the wildcard principal (`*`) `Allow` access in an SQS queue policy makes the queue publicly accessible. Unauthorized users or principals can send, receive, or modify messages, increasing the risk of data exposure and message injection.
+
+For Ansible SQS tasks (modules `community.aws.sqs_queue` or `sqs_queue`), inspect the `policy` property and ensure no policy Statement has `"Effect": "Allow"` with `"Principal": "*"`. Statements must specify explicit principals (for example AWS account ARNs) or include restrictive conditions.
+
+Resources with policy statements where `Principal == "*" ` and `Effect == "Allow"` are flagged. Replace wildcard principals with explicit ARNs or add conditions such as `aws:SourceAccount` or `aws:SourceVpce` to restrict access.
 
 Secure example (Ansible task with explicit principal):
 

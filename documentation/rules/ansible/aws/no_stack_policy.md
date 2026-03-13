@@ -1,10 +1,10 @@
 ---
-title: "No Stack Policy"
+title: "No stack policy"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/no_stack_policy"
   id: "ffe0fd52-7a8b-4a5c-8fc7-49844418e6c9"
-  display_name: "No Stack Policy"
+  display_name: "No stack policy"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-CloudFormation stacks should have a stack policy to prevent unintended or unauthorized updates to stack resources, protecting critical resources from accidental changes or deployment mistakes. For Ansible tasks using the `amazon.aws.cloudformation` or `cloudformation` modules, the `stack_policy` property must be defined and set to a valid JSON policy that restricts update actions. Resources missing the `stack_policy` property or with it undefined will be flagged; provide a JSON policy string (or file content) that explicitly denies Update actions for any logical resource IDs you want to protect.
+CloudFormation stacks should have a stack policy to prevent unintended or unauthorized updates to stack resources, protecting critical resources from accidental changes or deployment mistakes.
+
+For Ansible tasks using the `amazon.aws.cloudformation` or `cloudformation` modules, the `stack_policy` property must be defined and set to a valid JSON policy that restricts update actions. Resources missing the `stack_policy` property or with it undefined are flagged. Provide a JSON policy string (or file content) that explicitly denies Update actions for any logical resource IDs you want to protect.
 
 Secure configuration example:
 

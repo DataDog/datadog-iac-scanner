@@ -1,10 +1,10 @@
 ---
-title: "Security Group Ingress Not Restricted"
+title: "Security group ingress not restricted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/security_group_ingress_not_restricted"
   id: "ea6bc7a6-d696-4dcf-a788-17fa03c17c81"
-  display_name: "Security Group Ingress Not Restricted"
+  display_name: "Security group ingress not restricted"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Security groups must not allow unrestricted ingress from the public internet to all protocols and ports because such rules expose instances to network scanning, exploitation, and unauthorized access. In Ansible `amazon.aws.ec2_group` and `ec2_group` resources, each `rules` entry must not combine `from_port: 0` and `to_port: 0` with a non-explicit `proto` and an entire-network CIDR such as `cidr_ip: 0.0.0.0/0` or `cidr_ipv6: ::/0`. The `proto` property must be an explicit protocol (e.g., `tcp`, `udp`, `icmp`, `icmpv6` or numeric values `1`, `6`, `17`, `58`); rules where `proto` is missing or set to a catch-all (for example `-1`/`all`) together with ports `0-0` and an entire-network CIDR will be flagged. To fix this, restrict the CIDR to trusted IP ranges or specify the exact protocol and port range required for the service. 
+Security groups must not allow unrestricted ingress from the public internet to all protocols and ports. Such rules expose instances to network scanning, exploitation, and unauthorized access.
+
+In Ansible `amazon.aws.ec2_group` and `ec2_group` resources, each `rules` entry must not combine `from_port: 0` and `to_port: 0` with a non-explicit `proto` and an entire-network CIDR such as `cidr_ip: 0.0.0.0/0` or `cidr_ipv6: ::/0`.
+
+The `proto` property must be an explicit protocol such as `tcp`, `udp`, `icmp`, `icmpv6`, or numeric values `1`, `6`, `17`, `58`. Rules where `proto` is missing or set to a catch-all (`-1`/`all`) with ports `0-0` and an entire-network CIDR are flagged.
+
+To fix this, restrict the CIDR to trusted IP ranges or specify the exact protocol and port range required for the service.
 
 Secure configuration example:
 

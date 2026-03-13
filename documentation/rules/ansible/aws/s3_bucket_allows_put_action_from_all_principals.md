@@ -1,10 +1,10 @@
 ---
-title: "S3 Bucket Allows Put Action From All Principals"
+title: "S3 bucket allows put action from all principals"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_allows_put_action_from_all_principals"
   id: "a0f1bfe0-741e-473f-b3b2-13e66f856fab"
-  display_name: "S3 Bucket Allows Put Action From All Principals"
+  display_name: "S3 bucket allows put action from all principals"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-S3 bucket policy statements that Allow Put actions to all principals (Principal='*' and Effect='Allow') let anyone upload or overwrite objects, risking data tampering, malware injection, and unauthorized exposure of sensitive data. This rule inspects Ansible `amazon.aws.s3_bucket` and `s3_bucket` resources' `policy` statements and flags any statement where `Effect` is `"Allow"`, `Principal` is `"*"`, and `Action` includes Put operations (for example `s3:PutObject` or any action name containing "Put"). Remediate by restricting Put permissions to explicit principals (AWS account ARNs, IAM role ARNs, or service principals), applying least-privilege permissions and conditions, or removing public Put permissions entirely.
+S3 bucket policy statements that allow put actions to all principals (`Principal='*'` and `Effect='Allow'`) let anyone upload or overwrite objects, risking data tampering, malware injection, and unauthorized exposure of sensitive data.
+
+This rule inspects Ansible `amazon.aws.s3_bucket` and `s3_bucket` resources' `policy` statements and flags any statement where `Effect` is `"Allow"`, `Principal` is `"*"`, and `Action` includes Put operations (for example `s3:PutObject` or any action name containing "Put").
+
+Remediate by restricting Put permissions to explicit principals, such as AWS account ARNs, IAM role ARNs, or service principals. Apply least-privilege permissions and conditions, or remove public Put permissions entirely.
 
 Secure example with a restricted principal:
 

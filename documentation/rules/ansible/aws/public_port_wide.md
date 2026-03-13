@@ -1,10 +1,10 @@
 ---
-title: "Public Port Wide"
+title: "Public port with wide port range"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/public_port_wide"
   id: "71ea648a-d31a-4b5a-a589-5674243f1c33"
-  display_name: "Public Port Wide"
+  display_name: "Public port with wide port range"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Security groups must not allow a wide port range to the entire internet because exposing multiple ports publicly increases attack surface and enables broad port scanning, automated exploitation, and easier lateral movement. For Ansible `amazon.aws.ec2_group` or `ec2_group` resources, check `rules[].from_port` and `rules[].to_port` and ensure rules where `to_port - from_port > 0` are not paired with `cidr_ip` equal to `0.0.0.0/0` or `cidr_ipv6` equal to `::/0`. Rules that require external access should restrict CIDR ranges to trusted networks or be split into specific single-port entries; any rule defining a port range together with an entire-network CIDR will be flagged. Secure example restricting access to a single port and a specific CIDR:
+Security groups must not allow a wide port range to the entire internet. Exposing multiple ports publicly increases attack surface and enables broad port scanning, automated exploitation, and easier lateral movement.
+
+For Ansible `amazon.aws.ec2_group` or `ec2_group` resources, check `rules[].from_port` and `rules[].to_port` and ensure rules where `to_port - from_port > 0` are not paired with `cidr_ip` set to `0.0.0.0/0` or `cidr_ipv6` set to `::/0`. Rules that require external access should restrict CIDR ranges to trusted networks or use specific single-port entries. Any rule defining a port range with an entire-network CIDR is flagged. 
+
+Secure example restricting access to a single port and a specific CIDR:
 
 ```yaml
 my_sg:

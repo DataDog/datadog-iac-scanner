@@ -1,10 +1,10 @@
 ---
-title: "AD Admin Not Configured For SQL Server"
+title: "AD admin not configured for SQL server"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/ad_admin_not_configured_for_sql_server"
   id: "b176e927-bbe2-44a6-a9c3-041417137e5f"
-  display_name: "AD Admin Not Configured For SQL Server"
+  display_name: "AD admin not configured for SQL server"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-SQL servers should have an Active Directory administrator configured to enforce centralized identity, stronger authentication, and auditable access controls; relying solely on SQL authentication increases attack surface and makes access management and auditing more difficult. For Ansible, tasks using the `azure.azcollection.azure_rm_sqlserver` or `azure_rm_sqlserver` module must define the `ad_user` property and set it to a valid Azure AD principal (for example a user UPN or objectId). Resources missing `ad_user` or with it empty/undefined will be flagged.
+SQL servers should have an Active Directory administrator configured to enforce centralized identity, stronger authentication, and auditable access controls. Relying solely on SQL authentication increases the attack surface and makes access management and auditing more difficult. For Ansible, tasks using the `azure.azcollection.azure_rm_sqlserver` or `azure_rm_sqlserver` module must define the `ad_user` property and set it to a valid Azure AD principal (for example, a user UPN or objectId). Resources missing `ad_user` or with it empty or undefined are flagged.
 
 Secure example:
 

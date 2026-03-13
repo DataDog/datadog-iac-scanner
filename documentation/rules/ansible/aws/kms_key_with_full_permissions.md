@@ -1,10 +1,10 @@
 ---
-title: "KMS Key With Vulnerable Policy"
+title: "KMS key with vulnerable policy"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/kms_key_with_full_permissions"
   id: "5b9d237a-57d5-4177-be0e-71434b0fef47"
-  display_name: "KMS Key With Vulnerable Policy"
+  display_name: "KMS key with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-KMS key policies that grant broad permissions (for example, Allow statements containing "kms:*" or wildcard principals) or that lack Conditions can permit unauthorized principals to use, manage, or delete keys, increasing the risk of data exposure or loss. For Ansible tasks using the `community.aws.aws_kms` or `aws_kms` modules, inspect the `policy` property: either omit a custom `policy` so the key uses a safe default, or ensure any provided `policy` does not include `Effect: "Allow"` statements that lack a `Condition` and contain wildcard actions like `kms:*` or wildcard principals (for example, `"*"` or account-wide ARNs). This rule flags KMS resources where a custom `policy` is present and contains an Allow statement without a `Condition` that includes wildcard `kms:*` in `Action` or a wildcard `Principal`; it also flags cases where a custom `policy` is supplied when your organization requires the property to be undefined. Secure examples — either omit the policy to use safer defaults or supply a restrictive policy that specifies explicit principals, limited actions, and Conditions:
+KMS key policies that grant broad permissions—such as Allow statements containing `kms:*` or wildcard principals—or that lack conditions can permit unauthorized principals to use, manage, or delete keys. This increases the risk of data exposure or loss.
+
+For Ansible tasks using the `community.aws.aws_kms` or `aws_kms` modules, inspect the `policy` property. Either omit a custom `policy` so the key uses a safe default, or ensure any provided `policy` does not include `Effect: "Allow"` statements that lack a `Condition` and contain wildcard actions like `kms:*` or wildcard principals (such as `"*"` or account-wide ARNs).
+
+This rule flags KMS resources where a custom `policy` contains an Allow statement without a `Condition` that includes wildcard `kms:*` in `Action` or a wildcard `Principal`. It also flags cases where a custom `policy` is supplied when your organization requires the property to be undefined.
+
+Secure examples — either omit the policy to use safer defaults or supply a restrictive policy that specifies explicit principals, limited actions, and Conditions:
 
 ```yaml
 - name: Create KMS key using default policy
