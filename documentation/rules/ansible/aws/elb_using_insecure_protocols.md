@@ -1,10 +1,10 @@
 ---
-title: "ELB Using Insecure Protocols"
+title: "ELB using insecure protocols"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/elb_using_insecure_protocols"
   id: "730a5951-2760-407a-b032-dd629b55c23a"
-  display_name: "ELB Using Insecure Protocols"
+  display_name: "ELB using insecure protocols"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,13 @@ meta:
 
 ### Description
 
-Load balancer listeners must use secure TLS policies to prevent protocol downgrade and known cryptographic vulnerabilities that could allow interception or decryption of client traffic. For Ansible ELB modules (`community.aws.elb_network_lb`, `elb_network_lb`, `community.aws.elb_application_lb`, `elb_application_lb`) the `listeners` property must be defined and each listener must include the `SslPolicy` property set to a modern, secure policy (not legacy SSL/TLS protocol policies). This rule flags resources missing `listeners`, listeners missing `SslPolicy`, and any `SslPolicy` equal to the insecure values `Protocol-SSLv2`, `Protocol-SSLv3`, `Protocol-TLSv1`, or `Protocol-TLSv1.1`. Secure example (use a TLS 1.2+ policy):
+Load balancer listeners must use secure TLS policies to prevent protocol downgrade and known cryptographic vulnerabilities that could allow interception or decryption of client traffic.
+
+For Ansible ELB modules (`community.aws.elb_network_lb`, `elb_network_lb`, `community.aws.elb_application_lb`, `elb_application_lb`), the `listeners` property must be defined and each listener must include `SslPolicy` set to a modern, secure policy (not legacy SSL/TLS protocol policies).
+
+This rule flags resources missing `listeners`, listeners missing `SslPolicy`, or any `SslPolicy` set to `Protocol-SSLv2`, `Protocol-SSLv3`, `Protocol-TLSv1`, or `Protocol-TLSv1.1`. 
+
+Secure example (use a TLS 1.2+ policy):
 
 ```yaml
 - name: create application load balancer

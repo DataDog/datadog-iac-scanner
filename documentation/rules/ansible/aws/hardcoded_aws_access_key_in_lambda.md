@@ -1,10 +1,10 @@
 ---
-title: "Hardcoded AWS Access Key In Lambda"
+title: "Hardcoded AWS access key in Lambda"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/hardcoded_aws_access_key_in_lambda"
   id: "f34508b9-f574-4330-b42d-88c44cced645"
-  display_name: "Hardcoded AWS Access Key In Lambda"
+  display_name: "Hardcoded AWS access key in Lambda"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Hardcoding AWS secret access keys in Ansible Lambda tasks exposes credentials to source control, logs, and build artifacts and allows attackers who obtain the key to impersonate the account and access AWS resources. This check targets Ansible tasks using the `community.aws.lambda` or `lambda` modules and flags tasks that include an `aws_access_key` property containing a 40-character plaintext secret (matched by regex `^[A-Za-z0-9/+=]{40}$`). Do not set `aws_access_key` or `aws_secret_key` inline; instead supply credentials via IAM instance/profile roles, shared AWS credential profiles, environment variables, or encrypted secrets (Ansible Vault or a secrets manager), or reference vaulted/lookup variables in the task. Tasks with a literal 40-character `aws_access_key` value will be flagged; omitting the properties to rely on role-based auth or referencing vaulted variables is acceptable.
+Hardcoding AWS secret access keys in Ansible Lambda tasks exposes credentials to source control, logs, and build artifacts. Attackers who obtain the key can impersonate the account and access AWS resources. This check targets Ansible tasks using the `community.aws.lambda` or `lambda` modules and flags tasks that include an `aws_access_key` property containing a 40-character plaintext secret (matched by regex `^[A-Za-z0-9/+=]{40}$`).
+
+Do not set `aws_access_key` or `aws_secret_key` inline. Instead, supply credentials via IAM instance/profile roles, shared AWS credential profiles, environment variables, or encrypted secrets (Ansible Vault or a secrets manager). You can also reference vaulted or lookup variables in the task. Tasks with a literal 40-character `aws_access_key` value are flagged. Omitting the properties to rely on role-based auth or referencing vaulted variables is acceptable.
 
 Secure examples:
 

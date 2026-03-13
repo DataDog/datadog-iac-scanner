@@ -1,10 +1,10 @@
 ---
-title: "Instance With No VPC"
+title: "Instance with no VPC"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/instance_with_no_vpc"
   id: "61d1a2d0-4db8-405a-913d-5d2ce49dff6f"
-  display_name: "Instance With No VPC"
+  display_name: "Instance with no VPC"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-EC2 instances must be launched into a VPC subnet so they are subject to VPC network controls such as security groups, network ACLs, private addressing, and VPC flow logs; without a subnet assignment instances can lack network isolation and be exposed to the public network or miss critical network monitoring. For Ansible EC2 modules (`community.aws.ec2_instance`, `ec2_instance`, `amazon.aws.ec2`, `ec2`) the `vpc_subnet_id` property must be defined and set to a valid VPC subnet ID. Tasks with `state` equal to `absent` or `list` are ignored; resources missing `vpc_subnet_id` or with it undefined will be flagged.
+EC2 instances must be launched into a VPC subnet so they are subject to VPC network controls such as security groups, network ACLs, private addressing, and VPC flow logs. Without a subnet assignment, instances can lack network isolation and be exposed to the public network or miss critical network monitoring.
+
+For Ansible EC2 modules (`community.aws.ec2_instance`, `ec2_instance`, `amazon.aws.ec2`, `ec2`), the `vpc_subnet_id` property must be defined and set to a valid VPC subnet ID. Tasks with `state` equal to `absent` or `list` are ignored. Resources missing `vpc_subnet_id` or with it undefined are flagged.
 
 Secure example Ansible task:
 

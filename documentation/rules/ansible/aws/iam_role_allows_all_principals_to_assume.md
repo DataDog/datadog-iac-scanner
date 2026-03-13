@@ -1,10 +1,10 @@
 ---
-title: "IAM Role Allows All Principals To Assume"
+title: "IAM role allows all principals to assume"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_role_allows_all_principals_to_assume"
   id: "babdedcf-d859-43da-9a7b-6d72e661a8fd"
-  display_name: "IAM Role Allows All Principals To Assume"
+  display_name: "IAM role allows all principals to assume"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Specifying the account root or an entire AWS account as a principal (ARNs that end with ":root") grants every identity in that account the ability to assume the role or act as that principal, increasing the risk of privilege escalation, lateral movement, and unauthorized access if any identity is compromised. This rule checks Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules and flags policy statements where `policy.Statement[].Principal.AWS` contains `:root`. Principal values must be explicit and least-privileged—use specific IAM role or user ARNs or service principals instead of account-root ARNs (or wildcards); resources with `Principal.AWS` containing `:root` will be flagged. Secure example with an explicit principal:
+Specifying the account root or an entire AWS account as a principal (ARNs that end with `:root`) grants every identity in that account the ability to assume the role or act as that principal. This increases the risk of privilege escalation, lateral movement, and unauthorized access if any identity is compromised.
+
+This rule checks Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules and flags policy statements where `policy.Statement[].Principal.AWS` contains `:root`. Principal values must be explicit and least-privileged — use specific IAM role or user ARNs or service principals instead of account-root ARNs (or wildcards). Resources with `Principal.AWS` containing `:root` are flagged. 
+
+Secure example with an explicit principal:
 
 ```json
 {

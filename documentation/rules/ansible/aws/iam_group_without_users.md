@@ -1,10 +1,10 @@
 ---
-title: "IAM Group Without Users"
+title: "IAM group without users"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_group_without_users"
   id: "f509931b-bbb0-443c-bd9b-10e92ecf2193"
-  display_name: "IAM Group Without Users"
+  display_name: "IAM group without users"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-IAM groups should explicitly include at least one user to ensure group membership and any attached permissions are intentional, auditable, and not left orphaned. This rule checks Ansible `community.aws.iam_group` and `iam_group` tasks and requires the `users` property to be defined and non-null (a list containing one or more usernames). Resources missing the `users` property or with `users: null` or an empty list will be flagged; either populate the list with the intended user names or remove unused groups and associated policies.
+IAM groups should include at least one user to ensure group membership and any attached permissions are intentional, auditable, and not left orphaned.
+
+This rule checks Ansible `community.aws.iam_group` and `iam_group` tasks and requires the `users` property to be defined and non-null (a list containing one or more usernames). Resources missing the `users` property or with `users: null` or an empty list are flagged. Either populate the list with the intended usernames or remove unused groups and associated policies.
 
 Secure configuration example:
 

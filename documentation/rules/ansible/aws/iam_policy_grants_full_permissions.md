@@ -1,10 +1,10 @@
 ---
-title: "IAM Policy Grants Full Permissions"
+title: "IAM policy grants full permissions"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_policy_grants_full_permissions"
   id: "b5ed026d-a772-4f07-97f9-664ba0b116f8"
-  display_name: "IAM Policy Grants Full Permissions"
+  display_name: "IAM policy grants full permissions"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-IAM managed policies must not include statements that Allow all actions on all resources, as wildcard Allow statements grant unrestricted privileges, greatly increase blast radius, and raise the risk of privilege escalation or data exposure. For Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules, examine the policy document's `Statement` entries: any statement with `Effect: "Allow"` must not have both `Action` and `Resource` set to `"*"`. This rule flags tasks where `policy.Statement[].Action == "*"` and `policy.Statement[].Resource == "*"`, and you should instead scope `Action` to specific API operations and `Resource` to concrete ARNs or apply conditions to limit access.
+IAM managed policies must not include statements that allow all actions on all resources. Wildcard Allow statements grant unrestricted privileges, greatly increase blast radius, and raise the risk of privilege escalation or data exposure.
+
+For Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules, examine the policy document's `Statement` entries: any statement with `Effect: "Allow"` must not have both `Action` and `Resource` set to `"*"`. This rule flags tasks where `policy.Statement[].Action == "*"` and `policy.Statement[].Resource == "*"`. Instead, scope `Action` to specific API operations and `Resource` to concrete ARNs, or apply conditions to limit access.
 
 Secure example with scoped actions and resources:
 

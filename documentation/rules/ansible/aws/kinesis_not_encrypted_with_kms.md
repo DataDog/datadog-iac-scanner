@@ -1,10 +1,10 @@
 ---
-title: "Kinesis Not Encrypted With KMS"
+title: "Kinesis not encrypted with KMS"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/kinesis_not_encrypted_with_kms"
   id: "f2ea6481-1d31-4d40-946a-520dc6321dd7"
-  display_name: "Kinesis Not Encrypted With KMS"
+  display_name: "Kinesis not encrypted with KMS"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-Kinesis Data Streams must have server-side encryption enabled to protect stream data and metadata at rest and to reduce the risk of unauthorized access or data exposure. For Ansible resources using the `community.aws.kinesis_stream` or `kinesis_stream` module, the `encryption_state` property must be set to `"enabled"` and the `encryption_type` property must be defined and not set to `"NONE"`. If `encryption_type` is `"KMS"`, a valid `key_id` (KMS key ARN or ID) must also be provided. Resources missing these properties or with `encryption_state != "enabled"`, `encryption_type == "NONE"`, or `encryption_type == "KMS"` without `key_id` will be flagged.
+Kinesis Data Streams must have server-side encryption enabled to protect stream data and metadata at rest and reduce the risk of unauthorized access or data exposure.
+
+For Ansible resources using the `community.aws.kinesis_stream` or `kinesis_stream` module, the `encryption_state` property must be set to `"enabled"` and the `encryption_type` property must be defined and not set to `"NONE"`. If `encryption_type` is `"KMS"`, a valid `key_id` (KMS key ARN or ID) must also be provided.
+
+Resources missing these properties or with `encryption_state != "enabled"`, `encryption_type == "NONE"`, or `encryption_type == "KMS"` without `key_id` are flagged.
 
 Secure Ansible configuration example:
 

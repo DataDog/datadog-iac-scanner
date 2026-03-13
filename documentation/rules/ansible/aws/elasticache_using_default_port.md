@@ -1,10 +1,10 @@
 ---
-title: "ElastiCache Using Default Port"
+title: "ElastiCache using default port"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/elasticache_using_default_port"
   id: "7cc6c791-5f68-4816-a564-b9b699f9d26e"
-  display_name: "ElastiCache Using Default Port"
+  display_name: "ElastiCache using default port"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-ElastiCache instances using the engine default ports are easy for attackers and automated scanners to discover and target, increasing the risk of unauthorized access and automated exploitation. In Ansible, tasks that use the `community.aws.elasticache` or `elasticache` module must not set the `cache_port` property to the engine defaults: `6379` when `engine: redis` and `11211` when `engine: memcached`. Resources with `cache_port` equal to these default values will be flagged; instead, choose a non-standard port and enforce network access controls (security groups/subnets) to limit exposure. Secure example changing the default port:
+ElastiCache instances using engine default ports are easy for attackers and automated scanners to discover and target, increasing the risk of unauthorized access and automated exploitation.
+
+In Ansible, tasks that use the `community.aws.elasticache` or `elasticache` module must not set the `cache_port` property to the engine defaults: `6379` when `engine: redis` and `11211` when `engine: memcached`. Resources with `cache_port` equal to these default values are flagged. Choose a non-standard port and enforce network access controls (security groups/subnets) to limit exposure.
+
+Secure example changing the default port:
 
 ```yaml
 - name: Create Redis ElastiCache cluster with non-default port
