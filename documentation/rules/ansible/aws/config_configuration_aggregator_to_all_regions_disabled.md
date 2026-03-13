@@ -1,10 +1,10 @@
 ---
-title: "Configuration Aggregator to All Regions Disabled"
+title: "Configuration aggregator to all regions disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/config_configuration_aggregator_to_all_regions_disabled"
   id: "a2fdf451-89dd-451e-af92-bf6c0f4bab96"
-  display_name: "Configuration Aggregator to All Regions Disabled"
+  display_name: "Configuration aggregator to all regions disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-AWS Config aggregators must collect configuration data from all AWS Regions to provide centralized, complete visibility of resource state and ensure cross‑region misconfigurations and compliance violations are detected. For Ansible tasks using the `community.aws.aws_config_aggregator` or `aws_config_aggregator` modules, set the `all_aws_regions` property to `true` under the relevant `account_sources` entries or the `organization_source` block. Resources that omit `all_aws_regions` or have it set to `false` will be flagged as they do not provide full regional coverage.
+AWS Config aggregators must collect configuration data from all AWS Regions to provide centralized, complete visibility of resource state. This ensures cross-region misconfigurations and compliance violations are detected.
+
+For Ansible tasks using the `community.aws.aws_config_aggregator` or `aws_config_aggregator` modules, set the `all_aws_regions` property to `true` under the relevant `account_sources` entries or the `organization_source` block. Resources that omit `all_aws_regions` or have it set to `false` are flagged, as they do not provide full regional coverage.
 
 Secure examples for Ansible (account and organization sources):
 

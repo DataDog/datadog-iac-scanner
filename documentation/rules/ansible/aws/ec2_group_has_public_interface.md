@@ -1,10 +1,10 @@
 ---
-title: "EC2 Group Has Public Interface"
+title: "EC2 security group allows public access"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ec2_group_has_public_interface"
   id: "5330b503-3319-44ff-9b1c-00ee873f728a"
-  display_name: "EC2 Group Has Public Interface"
+  display_name: "EC2 security group allows public access"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Security group rules must not permit ingress from the public internet (0.0.0.0/0 or ::/0) because such open rules expose instances to unauthorized access and automated attacks. In Ansible tasks using the `amazon.aws.ec2_group` or `ec2_group` modules, each entry in the `rules` list must not set `cidr_ip` to `0.0.0.0/0` or `cidr_ipv6` to `::/0`. This rule flags any `rules` item with those values; instead restrict access to specific CIDR ranges, reference other security groups, or require access via a bastion/VPN. Secure example with a restricted CIDR:
+Security group rules must not permit ingress from the public internet (`0.0.0.0/0` or `::/0`). Open rules expose instances to unauthorized access and automated attacks. In Ansible tasks using the `amazon.aws.ec2_group` or `ec2_group` modules, each entry in the `rules` list must not set `cidr_ip` to `0.0.0.0/0` or `cidr_ipv6` to `::/0`. This rule flags any `rules` item with those values. Instead, restrict access to specific CIDR ranges, reference other security groups, or require access via a bastion/VPN. 
+
+Secure example with a restricted CIDR:
 
 ```yaml
 - name: create ssh access for admin network

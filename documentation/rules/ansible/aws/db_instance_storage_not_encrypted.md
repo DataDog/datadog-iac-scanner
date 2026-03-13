@@ -1,10 +1,10 @@
 ---
-title: "DB Instance Storage Not Encrypted"
+title: "DB instance storage not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/db_instance_storage_not_encrypted"
   id: "7dfb316c-a6c2-454d-b8a2-97f147b0c0ff"
-  display_name: "DB Instance Storage Not Encrypted"
+  display_name: "DB instance storage not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-RDS instances must have storage encryption enabled to protect data at rest, including database files, automated backups, and snapshots, from unauthorized access if storage media or snapshots are compromised. For Ansible resources using the `community.aws.rds_instance` or `rds_instance` modules, the `storage_encrypted` property must be set to `true`. If you are using a customer-managed key, also define `kms_key_id`; this rule flags instances where `storage_encrypted` is undefined or set to `false` and no `kms_key_id` is provided.
+RDS instances must have storage encryption enabled to protect data at rest, including database files, automated backups, and snapshots. Without encryption, this data is exposed to unauthorized access if storage media or snapshots are compromised.
+
+For Ansible resources using the `community.aws.rds_instance` or `rds_instance` modules, set `storage_encrypted` to `true`. If you are using a customer-managed key, also define `kms_key_id`. This rule flags instances where `storage_encrypted` is undefined or set to `false` and no `kms_key_id` is provided.
 
 ```yaml
 - name: Create encrypted RDS instance

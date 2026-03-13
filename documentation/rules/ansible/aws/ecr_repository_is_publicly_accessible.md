@@ -1,10 +1,10 @@
 ---
-title: "ECR Repository Is Publicly Accessible"
+title: "ECR repository is publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ecr_repository_is_publicly_accessible"
   id: "fb5a5df7-6d74-4243-ab82-ff779a958bfd"
-  display_name: "ECR Repository Is Publicly Accessible"
+  display_name: "ECR repository is publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "CRITICAL"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-ECR repository policies must not grant Allow permissions to the wildcard principal ('*'), because that makes repositories publicly accessible and allows unauthorized accounts to pull or push container images, increasing the risk of data exposure and supply-chain compromise. Check Ansible ECS/ECR tasks using the `community.aws.ecs_ecr` or `ecs_ecr` modules: in the resource `policy` document, any statement with `"Effect": "Allow"` must not have `Principal` equal to `"*"`. Resources with an Allow statement whose `Principal` is `"*"` will be flagged; instead specify explicit principals such as AWS account ARNs, IAM role ARNs, or service principals, or restrict access using condition keys (for example `aws:PrincipalOrgID`) as appropriate. Secure example with an explicit AWS account principal:
+ECR repository policies must not grant Allow permissions to the wildcard principal (`*`). This makes repositories publicly accessible and allows unauthorized accounts to pull or push container images, increasing the risk of data exposure and supply-chain compromise.
+
+Check Ansible ECS/ECR tasks using the `community.aws.ecs_ecr` or `ecs_ecr` modules: in the resource `policy` document, any statement with `"Effect": "Allow"` must not have `Principal` equal to `"*"`. Resources with an Allow statement whose `Principal` is `"*"` are flagged. Instead, specify explicit principals such as AWS account ARNs, IAM role ARNs, or service principals, or restrict access using condition keys (for example, `aws:PrincipalOrgID`).
+
+Secure example with an explicit AWS account principal:
 
 ```json
 {

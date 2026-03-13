@@ -1,10 +1,10 @@
 ---
-title: "DB Security Group Open To Large Scope"
+title: "DB security group open to large scope"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/db_security_group_open_to_large_scope"
   id: "ea0ed1c7-9aef-4464-b7c7-94c762da3640"
-  display_name: "DB Security Group Open To Large Scope"
+  display_name: "DB security group open to large scope"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Security group rules that use CIDR blocks containing 256 or more IP addresses broaden the attack surface and make unauthorized access or lateral movement easier. For Ansible EC2 security groups (modules `amazon.aws.ec2_group` and `ec2_group`), ensure each rule's `cidr_ip` is a CIDR with a prefix length greater than 24 (for example `/25`–`/32`) so the subnet contains fewer than 256 addresses. This rule flags any task where `rules[].cidr_ip` has a prefix length of 24 or less (for example `10.0.0.0/24`, `10.0.0.0/16`, or `0.0.0.0/0`). If broader access is required, prefer tighter subnetting, explicit host IPs, or using security-group references instead of large CIDR ranges.
+Security group rules that use CIDR blocks containing 256 or more IP addresses broaden the attack surface and make unauthorized access or lateral movement easier.
+
+For Ansible EC2 security groups (modules `amazon.aws.ec2_group` and `ec2_group`), ensure each rule's `cidr_ip` is a CIDR with a prefix length greater than 24 (for example `/25`–`/32`) so the subnet contains fewer than 256 addresses. This rule flags any task where `rules[].cidr_ip` has a prefix length of 24 or less (for example, `10.0.0.0/24`, `10.0.0.0/16`, or `0.0.0.0/0`). If broader access is required, prefer tighter subnetting, explicit host IPs, or security-group references instead of large CIDR ranges.
 
 Secure Ansible example with a narrow CIDR (/32 single host):
 

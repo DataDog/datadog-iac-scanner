@@ -1,10 +1,10 @@
 ---
-title: "CMK Rotation Disabled"
+title: "CMK rotation disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cmk_rotation_disabled"
   id: "af96d737-0818-4162-8c41-40d969bd65d1"
-  display_name: "CMK Rotation Disabled"
+  display_name: "CMK rotation disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "LOW"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Customer Master Keys (CMKs) must have automatic key rotation enabled to limit the time a compromised key can be used and to satisfy key lifecycle and compliance best practices. In Ansible, for tasks using the `community.aws.aws_kms` module, when `enabled: true` and the key is not scheduled for deletion (no `pending_window` defined), the `enable_key_rotation` property must be present and set to `true`. Resources missing `enable_key_rotation` or with `enable_key_rotation: false` will be flagged as misconfigured.
+Customer Master Keys (CMKs) must have automatic key rotation enabled to limit how long a compromised key can be used and to meet key lifecycle and compliance requirements.
+
+In Ansible, for tasks using the `community.aws.aws_kms` module, when `enabled: true` and the key is not scheduled for deletion (no `pending_window` defined), the `enable_key_rotation` property must be present and set to `true`. Resources missing `enable_key_rotation` or with `enable_key_rotation: false` are flagged as misconfigured.
 
 Secure configuration example:
 

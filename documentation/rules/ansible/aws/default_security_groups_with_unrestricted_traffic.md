@@ -1,10 +1,10 @@
 ---
-title: "Default Security Groups With Unrestricted Traffic"
+title: "Default security groups with unrestricted traffic"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/default_security_groups_with_unrestricted_traffic"
   id: "8010e17a-00e9-4635-a692-90d6bcec68bd"
-  display_name: "Default Security Groups With Unrestricted Traffic"
+  display_name: "Default security groups with unrestricted traffic"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "HIGH"
@@ -28,7 +28,9 @@ meta:
 
 ### Description
 
-Security groups that allow inbound or outbound CIDR ranges of `0.0.0.0/0` or `::/0` expose resources to the entire internet, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration. For Ansible `amazon.aws.ec2_group` or `ec2_group` tasks, inspect the `rules` and `rules_egress` entries and ensure the `cidr_ip` and `cidr_ipv6` properties are not set to `0.0.0.0/0` or `::/0`. Tasks containing `cidr_ip: 0.0.0.0/0` or `cidr_ipv6: ::/0` will be flagged; restrict access to specific CIDR ranges or reference other security groups instead of using global open CIDRs.
+Security groups that allow inbound or outbound CIDR ranges of `0.0.0.0/0` or `::/0` expose resources to the entire internet, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration.
+
+For Ansible `amazon.aws.ec2_group` or `ec2_group` tasks, inspect the `rules` and `rules_egress` entries and ensure the `cidr_ip` and `cidr_ipv6` properties are not set to `0.0.0.0/0` or `::/0`. Tasks containing `cidr_ip: 0.0.0.0/0` or `cidr_ipv6: ::/0` are flagged. Restrict access to specific CIDR ranges or reference other security groups instead of using global open CIDRs.
 
 Secure configuration example:
 

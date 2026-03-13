@@ -1,10 +1,10 @@
 ---
-title: "CodeBuild Not Encrypted"
+title: "CodeBuild project is not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/codebuild_not_encrypted"
   id: "a1423864-2fbc-4f46-bfe1-fbbf125c71c9"
-  display_name: "CodeBuild Not Encrypted"
+  display_name: "CodeBuild project is not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -28,7 +28,11 @@ meta:
 
 ### Description
 
-CodeBuild projects must have a KMS encryption key configured so build artifacts, cached data, and logs are protected at rest and not left vulnerable if underlying storage is accessed. For Ansible resources using the `community.aws.aws_codebuild` or `aws_codebuild` modules, the `encryption_key` property must be defined and set to a valid AWS KMS key ARN or alias (for example `arn:aws:kms:...` or `alias/your-key-alias`). Resources missing `encryption_key` or with it undefined will be flagged. Example secure task:
+CodeBuild projects must have a KMS encryption key configured so build artifacts, cached data, and logs are protected at rest.
+
+For Ansible resources using the `community.aws.aws_codebuild` or `aws_codebuild` modules, the `encryption_key` property must be defined and set to a valid AWS KMS key ARN or alias (for example `arn:aws:kms:...` or `alias/your-key-alias`). Resources missing `encryption_key` or with it undefined are flagged. 
+
+Example secure task:
 
 ```yaml
 - name: create codebuild project
