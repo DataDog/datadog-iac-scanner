@@ -70,6 +70,9 @@ var (
 	cicdOnRegex                                     = regexp.MustCompile(`\s*on:\s*`)
 	cicdJobsRegex                                   = regexp.MustCompile(`\s*jobs:\s*`)
 	cicdStepsRegex                                  = regexp.MustCompile(`\s*steps:\s*`)
+	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
+	dependabotUpdatesRegex                          = regexp.MustCompile(`\s*updates:\s*`)
+	dependabotPackageEcosystemRegex                 = regexp.MustCompile(`\s*package-ecosystem:\s*`)
 	queryRegexPathsAnsible                          = regexp.MustCompile(fmt.Sprintf(`^.*?%s(?:group|host)_vars%s.*$`, regexp.QuoteMeta(string(os.PathSeparator)), regexp.QuoteMeta(string(os.PathSeparator)))) //nolint:lll
 )
 
@@ -96,7 +99,7 @@ var (
 	supportedRegexes = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
 		"buildah":              {"buildah"},
-		"cicd":                 {"cicd"},
+		"cicd":                 {"cicd", "dependabot"},
 		"cloudformation":       {"cloudformation"},
 		"crossplane":           {"crossplane"},
 		"knative":              {"knative"},
@@ -129,6 +132,8 @@ const (
 	dockerfile = "dockerfile"
 	crossplane = "crossplane"
 	knative    = "knative"
+	cicd       = "cicd"
+	dependabot = "dependabot"
 	sizeMb     = 1048576
 )
 
@@ -267,6 +272,13 @@ var types = map[string]regexSlice{
 			cicdOnRegex,
 			cicdJobsRegex,
 			cicdStepsRegex,
+		},
+	},
+	"dependabot": {
+		[]*regexp.Regexp{
+			dependabotVersionRegex,
+			dependabotUpdatesRegex,
+			dependabotPackageEcosystemRegex,
 		},
 	},
 }
@@ -533,8 +545,11 @@ func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<
 
 func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte) string {
 	if returnType != "" {
-		if returnType == "cdkTf" {
+		switch returnType {
+		case "cdkTf":
 			return terraform
+		case dependabot:
+			return cicd
 		}
 		if utils.Contains(returnType, armRegexTypes) {
 			return arm
