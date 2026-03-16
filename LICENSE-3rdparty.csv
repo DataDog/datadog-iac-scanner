@@ -335,6 +335,7 @@ core,github.com/lib/pq/scram,MIT,"Copyright (c) 2011-2013, 'pq' Contributors. Po
 core,github.com/liggitt/tabwriter,BSD-3-Clause,Copyright (c) 2009 The Go Authors. All rights reserved
 core,github.com/mattn/go-colorable,MIT,Copyright (c) 2016 Yasuhiro Matsumoto
 core,github.com/mattn/go-isatty,MIT,Copyright (c) Yasuhiro MATSUMOTO <mattn.jp@gmail.com>
+core,github.com/mattn/go-pointer,MIT,Copyright (c) 2019 Yasuhiro Matsumoto
 core,github.com/mattn/go-runewidth,MIT,Copyright (c) 2016 Yasuhiro Matsumoto
 core,github.com/mitchellh/copystructure,MIT,Copyright (c) 2014 Mitchell Hashimoto
 core,github.com/mitchellh/go-wordwrap,MIT,Copyright (c) 2014 Mitchell Hashimoto
@@ -463,6 +464,7 @@ core,github.com/prometheus/procfs/internal/fs,Apache-2.0,Copyright 2012-2015 The
 core,github.com/prometheus/procfs/internal/util,Apache-2.0,Copyright 2012-2015 The Prometheus Authors
 core,github.com/rcrowley/go-metrics,BSD-2-Clause-Views,Copyright 2012 Richard Crowley. All rights reserved
 core,github.com/relex/aini,MIT,Copyright (c) 2020 RELEX Oy
+core,github.com/rmuir/tree-sitter-ghactions/bindings/go,MIT,Copyright (c) 2025 Robert Muir
 core,github.com/rs/zerolog,MIT,Copyright (c) 2017 Olivier Poitrey
 core,github.com/rs/zerolog/internal/cbor,MIT,Copyright (c) 2017 Olivier Poitrey
 core,github.com/rs/zerolog/internal/json,MIT,Copyright (c) 2017 Olivier Poitrey
@@ -524,6 +526,8 @@ core,github.com/tdewolff/parse/v2/strconv,MIT,Copyright (c) 2015 Taco de Wolff
 core,github.com/tidwall/gjson,MIT,Copyright (c) 2016 Josh Baker
 core,github.com/tidwall/match,MIT,Copyright (c) 2016 Josh Baker
 core,github.com/tidwall/pretty,MIT,Copyright (c) 2017 Josh Baker
+core,github.com/tree-sitter/go-tree-sitter,MIT,Copyright (c) 2024 Amaan Qureshi <amaanq12@gmail.com>
+core,github.com/tree-sitter/tree-sitter-bash/bindings/go,MIT,Copyright (c) 2017 Max Brunsfeld
 core,github.com/urfave/cli/v3,MIT,Copyright (c) 2023 urfave/cli maintainers
 core,github.com/valyala/fastjson,MIT,Copyright (c) 2018 Aliaksandr Valialkin
 core,github.com/valyala/fastjson/fastfloat,MIT,Copyright (c) 2018 Aliaksandr Valialkin
