@@ -1,0 +1,13 @@
+{
+  "id": "d4e5f6a7-b8c9-40d1-e2f3-h2b2n4d7e8f9",
+  "queryName": "Bot Conditions",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "GitHub Actions workflows that check for bot actors using spoofable contexts like github.actor or github.triggering_actor can be bypassed by attackers. These contexts can be manipulated by creating usernames that end with '[bot]' or match bot IDs. For example, an attacker could create a user named 'malicious-dependabot[bot]' to bypass security checks. Workflows triggered by events like pull_request_target, issues, issue_comment, and others should use event-specific user contexts (e.g., github.event.pull_request.user.login, github.event.comment.user.login) instead. The rule identifies bot checks in both dominating conditions (like 'github.actor == dependabot[bot]' or checks with OR operators) which always pass for matching actors, and non-dominating conditions (with AND operators) which depend on other factors. Known vulnerable bot IDs include: 29110 (dependabot integration ID), 49699333 (dependabot[bot]), 27856297 (dependabot-preview[bot]), and 29139614 (renovate[bot]).",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/bot_conditions",
+  "platform": "CICD",
+  "descriptionID": "d4e5f6a7",
+  "cloudProvider": "common",
+  "cwe": "290",
+  "providerUrl": "https://securitylab.github.com/research/github-actions-preventing-pwn-requests/"
+}

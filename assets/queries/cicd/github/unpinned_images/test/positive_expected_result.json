@@ -1,0 +1,32 @@
+[
+  {
+    "queryName": "Unpinned Images",
+    "severity": "HIGH",
+    "line": 9
+  },
+  {
+    "queryName": "Unpinned Images",
+    "severity": "HIGH",
+    "line": 18
+  },
+  {
+    "queryName": "Unpinned Images",
+    "severity": "HIGH",
+    "line": 28
+  },
+  {
+    "queryName": "Unpinned Images",
+    "severity": "HIGH",
+    "line": 41
+  },
+  {
+    "queryName": "Unpinned Images",
+    "severity": "HIGH",
+    "line": 48
+  },
+  {
+    "queryName": "Unpinned Images",
+    "severity": "HIGH",
+    "line": 58
+  }
+]

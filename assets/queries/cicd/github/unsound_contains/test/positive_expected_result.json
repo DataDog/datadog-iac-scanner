@@ -1,0 +1,32 @@
+[
+  {
+    "queryName": "Unsound Contains",
+    "severity": "HIGH",
+    "line": 8
+  },
+  {
+    "queryName": "Unsound Contains",
+    "severity": "HIGH",
+    "line": 16
+  },
+  {
+    "queryName": "Unsound Contains",
+    "severity": "HIGH",
+    "line": 25
+  },
+  {
+    "queryName": "Unsound Contains",
+    "severity": "HIGH",
+    "line": 33
+  },
+  {
+    "queryName": "Unsound Contains",
+    "severity": "HIGH",
+    "line": 41
+  },
+  {
+    "queryName": "Unsound Contains",
+    "severity": "HIGH",
+    "line": 47
+  }
+]

@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Hardcoded Container Credentials",
+    "severity": "HIGH",
+    "line": 11
+  }
+]

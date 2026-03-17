@@ -1,0 +1,13 @@
+{
+  "id": "d0e1f2a3-b4c5-46d7-e8f9-a0b1c2d3e4f5",
+  "queryName": "Hardcoded Container Credentials",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Container credentials should never be hardcoded directly in workflow files. Hardcoded passwords are visible to anyone with read access to the repository and are stored in version control history forever. Instead, sensitive credentials should be stored as GitHub secrets and referenced using expressions like ${{ secrets.DOCKER_PASSWORD }}. This applies to both job-level containers and service containers that require authentication to private registries.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/hardcoded_container_credentials",
+  "platform": "CICD",
+  "descriptionID": "d0e1f2a3",
+  "cloudProvider": "common",
+  "cwe": "798",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idcontainercredentials"
+}
