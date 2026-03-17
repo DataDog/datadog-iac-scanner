@@ -1,0 +1,13 @@
+{
+  "id": "e5f6a7b8-c9d0-41e2-f3a4-b5c6d7e8f9a0",
+  "queryName": "Unsound Contains",
+  "severity": "HIGH",
+  "category": "Insecure Defaults",
+  "descriptionText": "Using contains() with a space-separated string to check if a user-controllable value matches allowed values can be bypassed. For example, contains('refs/heads/main refs/heads/develop', github.ref) is intended to check if a branch is either main or develop, but an attacker can bypass this by creating a branch like 'refs/heads/main/malicious' or 'refs/heads/main ' (with trailing space). The contains() function performs substring matching, not exact matching, so these attacker-controlled values will match even though they're not in the intended set. This is especially dangerous when the second argument is a user-controllable context like github.ref, github.actor, github.head_ref, env.*, or inputs.*. Use explicit equality checks (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') or a proper JSON array (contains(fromJSON('[\"refs/heads/main\", \"refs/heads/develop\"]'), github.ref)) instead.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unsound_contains",
+  "platform": "CICD",
+  "descriptionID": "e5f6a7b8",
+  "cloudProvider": "common",
+  "cwe": "CWE-185",
+  "providerUrl": "https://docs.github.com/en/actions/learn-github-actions/expressions#contains"
+}

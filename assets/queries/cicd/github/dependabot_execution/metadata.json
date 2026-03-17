@@ -1,0 +1,13 @@
+{
+  "id": "f3a4b5c6-d7e8-49f0-a1b2-c3d4e5f6a7b8",
+  "queryName": "Dependabot Execution",
+  "severity": "HIGH",
+  "category": "Supply-Chain",
+  "descriptionText": "Dependabot should not be configured to allow insecure external code execution. The insecure-external-code-execution setting controls whether Dependabot can execute arbitrary code from dependencies during the update process. When set to 'allow', Dependabot will execute install scripts and other code from dependencies, which could be exploited by malicious actors who compromise or create malicious packages. This significantly expands the attack surface and could lead to supply chain attacks. The setting should either be set to 'deny' or omitted entirely (it defaults to 'deny'). Only use 'allow' if you have a specific, well-understood need and trust all your dependencies implicitly.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/dependabot_execution",
+  "platform": "CICD",
+  "descriptionID": "f3a4b5c6",
+  "cloudProvider": "common",
+  "cwe": "CWE-94",
+  "providerUrl": "https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file#insecure-external-code-execution"
+}

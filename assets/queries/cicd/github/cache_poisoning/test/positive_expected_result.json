@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Cache Poisoning",
+    "severity": "HIGH",
+    "line": 12
+  }
+]
