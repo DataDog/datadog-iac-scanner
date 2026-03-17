@@ -2,6 +2,6 @@
 	{
 		"queryName": "BigQuery Dataset Is Public",
 		"severity": "HIGH",
-		"line": 5
+		"line": 6
 	}
 ]

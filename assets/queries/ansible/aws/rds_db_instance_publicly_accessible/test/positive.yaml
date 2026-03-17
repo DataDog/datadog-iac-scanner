@@ -1,6 +1,7 @@
 ---
 - name: community - Create a DB instance using the default AWS KMS encryption key
   community.aws.rds_instance:
+    db_instance_identifier: my-db-1
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -11,7 +12,8 @@
     allocated_storage: "{{ allocated_storage }}"
     publicly_accessible: Yes
 - name: community - Basic mysql provisioning example
-  community.aws.rds:
+  community.aws.rds_instance:
+    db_instance_identifier: my-db-2
     command: create
     instance_name: new-database
     db_engine: MySQL

@@ -1,8 +1,8 @@
-- name: example3
-  amazon.aws.ec2:
+- name: Launch instance default type without ebs_optimized
+  community.aws.ec2_instance:
+    name: app-server-3
     key_name: mykey
-    image: ami-123456
-    wait: yes
-    group: default
-    count: 3
+    image_id: ami-123456
     vpc_subnet_id: subnet-29e63245
+    network:
+      assign_public_ip: false

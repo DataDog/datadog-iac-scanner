@@ -1,39 +1,12 @@
-# Basic user creation example
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: '{{ item }}'
+# Non-root user with access key: not exposed
+- name: Create regular user access key
+  community.aws.iam_access_key:
+    user_name: jcleese
     state: present
-    password: '{{ temp_pass }}'
-    access_key_state: create
-  loop:
-  - jcleese
-  - mpython
 
-# Basic user creation example
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: root
-    state: present
-    password: '{{ temp_pass }}'
-    access_key_state: active
-
-- name: Create Two Groups, Mario and Luigi
-  community.aws.iam:
-    iam_type: group
-    name: '{{ item }}'
-    state: present
-  loop:
-  - Mario
-  - Luigi
-  register: new_groups
-
-- name: Update user
-  community.aws.iam:
-    iam_type: user
-    name: jdavila
-    state: update
-    access_key_state: inactive
-    groups: '{{ item.created_group.group_name }}'
-  loop: '{{ new_groups.results }}'
+# Root user but key is absent: not exposed
+- name: Delete root access key
+  community.aws.iam_access_key:
+    user_name: root
+    id: AKIA1EXAMPLE1EXAMPLE
+    state: absent

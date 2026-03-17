@@ -7,6 +7,6 @@
   {
     "queryName": "IAM Database Auth Not Enabled",
     "severity": "MEDIUM",
-    "line": 22
+    "line": 23
   }
 ]

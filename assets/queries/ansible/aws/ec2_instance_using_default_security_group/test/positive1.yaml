@@ -1,10 +1,11 @@
-- name: example
-  amazon.aws.ec2:
+- name: Launch instance with default SG
+  community.aws.ec2_instance:
+    name: web-server
     key_name: mykey
     instance_type: t2.micro
-    image: ami-123456
+    image_id: ami-123456
     wait: yes
-    group: default
-    count: 3
+    security_group: default
     vpc_subnet_id: subnet-29e63245
-    assign_public_ip: yes
+    network:
+      assign_public_ip: false

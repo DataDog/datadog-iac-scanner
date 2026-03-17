@@ -2,11 +2,11 @@
   {
     "queryName": "S3 Bucket ACL Allows Read to All Users",
     "severity": "HIGH",
-    "line": 6
+    "line": 7
   },
   {
     "queryName": "S3 Bucket ACL Allows Read to All Users",
     "severity": "HIGH",
-    "line": 11
+    "line": 13
   }
 ]

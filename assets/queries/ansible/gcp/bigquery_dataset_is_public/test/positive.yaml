@@ -1,6 +1,7 @@
 ---
 - name: create a dataset
   google.cloud.gcp_bigquery_dataset:
+    dataset_id: my_dataset
     name: my_example_dataset
     access:
       - special_group: allAuthenticatedUsers
