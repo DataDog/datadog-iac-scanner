@@ -1,0 +1,32 @@
+[
+  {
+    "queryName": "Unsound condition",
+    "severity": "HIGH",
+    "line": 8
+  },
+  {
+    "queryName": "Unsound condition",
+    "severity": "HIGH",
+    "line": 18
+  },
+  {
+    "queryName": "Unsound condition",
+    "severity": "HIGH",
+    "line": 24
+  },
+  {
+    "queryName": "Unsound condition",
+    "severity": "HIGH",
+    "line": 30
+  },
+  {
+    "queryName": "Unsound condition",
+    "severity": "HIGH",
+    "line": 35
+  },
+  {
+    "queryName": "Unsound condition",
+    "severity": "HIGH",
+    "line": 40
+  }
+]

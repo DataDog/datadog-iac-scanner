@@ -1,0 +1,13 @@
+{
+  "id": "d4e5f6a7-b8c9-40d1-e2f3-h2b2n4d7e8f9",
+  "queryName": "Bot conditions",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "GitHub Actions `if` conditions should not rely on top-level actor contexts like `github.actor`, `github.triggering_actor`, or their ID variants. Attacker-controlled usernames ending with `[bot]` or reused integration IDs can bypass actor checks and grant unintended access.\n\nThis rule inspects job and step-level `if` expressions and flags comparisons where spoofable contexts are checked against bot names or IDs, such as `github.actor == 'dependabot[bot]'` or `github.actor_id == '49699333'`. Instead, use event-specific user contexts so the actor is taken from the triggering event payload. For `pull_request` or `pull_request_target`, use `github.event.pull_request.user.login` / `github.event.pull_request.user.id`. For `issue_comment` and `discussion_comment`, use `github.event.comment.user.login` / `.id`. For `pull_request_review`, use `github.event.review.user.login` / `.id`. For `issues`, use `github.event.issue.user.login` / `.id`.\n\nKnown vulnerable bot IDs include `29110`, `49699333`, `27856297`, and `29139614`.\n\nSecure example replacing `github.actor` with an event-specific context:\n\n```yaml\njobs:\n  test:\n    runs-on: ubuntu-latest\n    if: github.event.pull_request.user.login == 'dependabot[bot]'\n    steps:\n      - name: Test Step\n        if: github.event.pull_request.user.login == 'dependabot[bot]'\n        run: echo \"hello\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/bot_conditions",
+  "platform": "CICD",
+  "descriptionID": "d4e5f6a7",
+  "cloudProvider": "common",
+  "cwe": "290",
+  "providerUrl": "https://securitylab.github.com/research/github-actions-preventing-pwn-requests/"
+}

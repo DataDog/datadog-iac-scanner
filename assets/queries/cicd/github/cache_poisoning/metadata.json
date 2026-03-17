@@ -1,0 +1,13 @@
+{
+  "id": "e5f6a7b8-c9d0-41e2-f3a4-a2c6d7e8f9a0",
+  "queryName": "Cache poisoning",
+  "severity": "HIGH",
+  "category": "Supply-Chain",
+  "descriptionText": "Publishing workflows that build and publish runtime artifacts must not write to dependency caches. A poisoned cache can introduce malicious dependencies into packages, releases, or container images, leading to supply-chain compromise. For example, using writable caches exposed to pull request workflows. \n\nThis rule inspects GitHub Actions workflow job steps. The `uses` key identifies cache-aware actions such as `actions/cache`, `actions/setup-go`, `actions/setup-node`, `actions/setup-python`, `Swatinem/rust-cache`, and others. It also identifies `with` mappings containing cache-related controls.\n\nWhen a job is triggered by release events or contains well-known publisher steps, `cache-write` flags must be disabled. For example, set `lookup-only: true` for `actions/cache` and `cache: false` for boolean `cache` controls. Steps missing a disabling flag, explicitly enabling caching, or relying on an action's default caching behavior will be flagged. Some actions use string-valued fields to control caching, and non-configurable actions cannot be automatically fixed.\n\nSecure examples:\n\n```yaml\n- uses: actions/cache@v4\n  with:\n    path: |\n      ~/.cargo/registry\n      ~/.cargo/git\n    key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}\n    lookup-only: true\n```\n\n```yaml\n- uses: actions/setup-go@v4\n  with:\n    go-version: '1.21'\n    cache: false\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/cache_poisoning",
+  "platform": "CICD",
+  "descriptionID": "e5f6a7b8",
+  "cloudProvider": "common",
+  "cwe": "349",
+  "providerUrl": "https://adnanthekhan.com/2024/05/06/breaking-rulesets-github-artifact-poisoning/"
+}
