@@ -1,0 +1,13 @@
+name: Hardcoded Container Credentials
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: private.registry.com/image:latest
+      credentials:
+        username: myuser
+        password: mypassword123
+    steps:
+      - run: echo "Running in container"

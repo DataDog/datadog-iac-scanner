@@ -1,0 +1,13 @@
+{
+  "id": "e8f9a0b1-c2d3-44e5-f6a7-b8c9d0e1f2a3",
+  "queryName": "GitHub Environment File Injection",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Detects dangerous writes to GITHUB_ENV or GITHUB_PATH environment files in workflows with dangerous triggers (pull_request_target or workflow_run). Writing user-controlled data to these files can allow attackers to inject environment variables or modify the PATH, potentially leading to code execution. This is especially dangerous in workflows triggered by pull_request_target or workflow_run as they run with elevated privileges. Note: This is a simplified regex-based implementation and may have false positives/negatives compared to full shell script parsing.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/github_env",
+  "platform": "CICD",
+  "descriptionID": "e8f9a0b1",
+  "cloudProvider": "common",
+  "cwe": "94",
+  "providerUrl": "https://securitylab.github.com/research/github-actions-untrusted-input/"
+}

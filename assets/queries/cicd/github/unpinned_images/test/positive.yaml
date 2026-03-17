@@ -1,0 +1,60 @@
+name: Unpinned Container Images
+on: push
+
+jobs:
+  # Case 1: Literal unpinned container image
+  test_unpinned_container:
+    runs-on: ubuntu-latest
+    container:
+      image: node:18
+    steps:
+      - run: npm test
+
+  # Case 2: Literal unpinned service image
+  test_unpinned_service:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+    steps:
+      - run: npm test
+
+  # Case 3: Expression-based container image (matrix with unpinned images)
+  test_matrix_unpinned_container:
+    strategy:
+      matrix:
+        image: [node:18, node:20]
+    container:
+      image: ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+
+  # Case 4: Expression-based service image (matrix with unpinned images)
+  test_matrix_unpinned_service:
+    strategy:
+      matrix:
+        db_image: [postgres:14, postgres:15]
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: ${{ matrix.db_image }}
+    steps:
+      - run: npm test
+
+  # Case 5: Expression-based container image (non-matrix)
+  test_expression_container:
+    container:
+      image: ${{ inputs.container_image }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+
+  # Case 6: Expression-based service image (non-matrix)
+  test_expression_service:
+    runs-on: ubuntu-latest
+    services:
+      cache:
+        image: ${{ github.event.inputs.redis_image }}
+    steps:
+      - run: npm test

@@ -1,0 +1,47 @@
+name: Pinned Container Images
+on: push
+
+jobs:
+  # Case 1: Pinned container image (literal)
+  test_pinned_container:
+    runs-on: ubuntu-latest
+    container:
+      image: node@sha256:b4f0e0bdeb578043c518244e9f0f11f7e8b6d1a0f9f4e6e1e1f0a4f7c7e3c5a8
+    steps:
+      - run: npm test
+
+  # Case 2: Pinned service image (literal)
+  test_pinned_service:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres@sha256:c5e1c2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1
+    steps:
+      - run: npm test
+
+  # Case 3: Matrix-based expression with pinned images (container)
+  test_matrix_pinned_container:
+    strategy:
+      matrix:
+        image:
+          - node@sha256:b4f0e0bdeb578043c518244e9f0f11f7e8b6d1a0f9f4e6e1e1f0a4f7c7e3c5a8
+          - node@sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1
+    container:
+      image: ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+
+  # Case 4: Matrix-based expression with pinned images (service)
+  test_matrix_pinned_service:
+    strategy:
+      matrix:
+        db_image:
+          - postgres@sha256:c5e1c2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1
+          - postgres@sha256:d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1c2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: ${{ matrix.db_image }}
+    steps:
+      - run: npm test

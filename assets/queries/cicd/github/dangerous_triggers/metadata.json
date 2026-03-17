@@ -1,0 +1,13 @@
+{
+  "id": "a7b8c9d0-e1f2-43a4-b5c6-d7e8f9a0b1c2",
+  "queryName": "Dangerous Workflow Triggers",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "The pull_request_target and workflow_run triggers are fundamentally dangerous and almost always used insecurely. The pull_request_target trigger runs in the context of the base repository with access to secrets and write permissions, even when triggered by untrusted pull requests from forks. This makes it trivial for attackers to exfiltrate secrets or modify the repository by simply opening a pull request. The workflow_run trigger has similar security implications as it executes with elevated privileges in response to other workflow completions. These triggers should be avoided unless absolutely necessary, and if used, require extremely careful implementation with explicit security controls.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/dangerous_triggers",
+  "platform": "CICD",
+  "descriptionID": "a7b8c9d0",
+  "cloudProvider": "common",
+  "cwe": "346",
+  "providerUrl": "https://securitylab.github.com/research/github-actions-preventing-pwn-requests/"
+}
