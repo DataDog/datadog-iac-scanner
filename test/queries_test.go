@@ -219,7 +219,7 @@ func testQuery(tb testing.TB, entry queryEntry, filesPath []string, expectedVuln
 	vulnerabilities, err := inspector.Inspect(
 		ctx,
 		scanID,
-		getFileMetadatas(tb, filesPath),
+		getFileMetadatas(tb, filesPath, entry.platform),
 		[]string{BaseTestsScanPath},
 		platforms,
 	)
