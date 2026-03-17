@@ -325,6 +325,7 @@ func createInspectorAndGetVulnerabilities(ctx context.Context, t testing.TB,
 		getFilesMetadatasWithContent(
 			t,
 			testParams.samplePath(t),
+			testParams.platform,
 			testParams.sampleContent(t),
 		),
 		[]string{BaseTestsScanPath},
