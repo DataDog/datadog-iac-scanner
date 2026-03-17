@@ -1,23 +1,26 @@
 package Cx
 
-import data.generic.ansible as ans_lib
-import data.generic.common as common_lib 
+import data.generic.ansible as ansLib
+import data.generic.common as common_lib
+
+canonical := "redshift"
 
 CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	modules := {"redshift", "community.aws.redshift"}
+	task := ansLib.tasks[id][t]
+	variant := ansLib.get_variants(canonical)[_]
+	redshift := task[variant]
+	ansLib.checkState(redshift)
 
-	redshift := task[modules[m]]
 	redshift.port == 5439
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(redshift, "identifier", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.port", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(redshift, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.port", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "redshift.port should not be set to 5439",
 		"keyActualValue": "redshift.port is set to 5439",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], "port"], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "port"], []),
 	}
 }

@@ -3,11 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"google.cloud.gcp_compute_instance", "gcp_compute_instance"}
+canonical := "gcp_compute_instance"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	instance := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	instance := task[variant]
 	ansLib.checkState(instance)
 
 	instance.auth_kind == "serviceaccount"
@@ -15,9 +16,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(instance, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(instance, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "gcp_compute_instance.service_account_email should be defined",
 		"keyActualValue": "gcp_compute_instance.service_account_email is undefined",
@@ -26,7 +27,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	instance := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	instance := task[variant]
 	ansLib.checkState(instance)
 
 	instance.auth_kind == "serviceaccount"
@@ -36,9 +38,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(instance, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.service_account_email", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(instance, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.service_account_email", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_compute_instance.service_account_email should not be empty",
 		"keyActualValue": "gcp_compute_instance.service_account_email is empty",
@@ -47,7 +49,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	instance := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	instance := task[variant]
 	ansLib.checkState(instance)
 
 	instance.auth_kind == "serviceaccount"
@@ -58,9 +61,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(instance, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.service_account_email", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(instance, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.service_account_email", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_compute_instance.service_account_email should be an email",
 		"keyActualValue": "gcp_compute_instance.service_account_email is not an email",
@@ -69,7 +72,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	instance := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	instance := task[variant]
 	ansLib.checkState(instance)
 
 	instance.auth_kind == "serviceaccount"
@@ -78,9 +82,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(instance, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.service_account_email", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(instance, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.service_account_email", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_compute_instance.service_account_email should not be a default Google Compute Engine service account",
 		"keyActualValue": "gcp_compute_instance.service_account_email is a default Google Compute Engine service account",

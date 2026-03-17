@@ -2,19 +2,21 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "sqs_queue"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.sqs_queue", "sqs_queue"}
-	sqsQueue := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	sqsQueue := task[variant]
 	ansLib.checkState(sqsQueue)
 
 	not sqsQueue.kms_master_key_id
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(sqsQueue, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.kms_master_key_id", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(sqsQueue, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.kms_master_key_id", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "'kms_master_key_id' should be set",
 		"keyActualValue": "'kms_master_key_id' is undefined",

@@ -3,11 +3,12 @@ package Cx
 import data.generic.ansible as ans_lib
 import data.generic.common as common_lib
 
-modules := {"community.aws.iam_managed_policy", "iam_managed_policy"}
+canonical := "iam_managed_policy"
 
 CxPolicy[result] {
 	task := ans_lib.tasks[id][t]
-	iamPolicy := task[modules[m]]
+	variant := ans_lib.get_variants(canonical)[_]
+	iamPolicy := task[variant]
 	ans_lib.checkState(iamPolicy)
 
 	st := common_lib.get_statement(common_lib.get_policy(iamPolicy.policy))
@@ -19,12 +20,12 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(iamPolicy, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.policy", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ans_lib.get_resource_name(iamPolicy, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.policy", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "iam_managed_policy.policy.Statement.Principal.AWS should not contain '*'",
 		"keyActualValue": "iam_managed_policy.policy.Statement.Principal.AWS contains '*'",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], "policy"], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "policy"], []),
 	}
 }

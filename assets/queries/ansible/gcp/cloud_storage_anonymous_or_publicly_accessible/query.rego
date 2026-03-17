@@ -3,11 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"google.cloud.gcp_storage_bucket", "gcp_storage_bucket"}
+canonical := "gcp_storage_bucket"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	bucket := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	bucket := task[variant]
 	ansLib.checkState(bucket)
 
 	not common_lib.valid_key(bucket, "acl")
@@ -15,9 +16,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(bucket, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(bucket, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "gcp_storage_bucket.default_object_acl should be defined",
 		"keyActualValue": "gcp_storage_bucket.default_object_acl is undefined",
@@ -26,16 +27,17 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	bucket := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	bucket := task[variant]
 	ansLib.checkState(bucket)
 
 	check(bucket.acl.entity)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(bucket, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.acl.entity", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(bucket, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.acl.entity", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_storage_bucket.acl.entity should not be 'allUsers' or 'allAuthenticatedUsers'",
 		"keyActualValue": "gcp_storage_bucket.acl.entity is 'allUsers' or 'allAuthenticatedUsers'",
@@ -44,7 +46,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	bucket := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	bucket := task[variant]
 	ansLib.checkState(bucket)
 
 	not common_lib.valid_key(bucket, "acl")
@@ -52,9 +55,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(bucket, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.default_object_acl.entity", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(bucket, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.default_object_acl.entity", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_storage_bucket.default_object_acl.entity should not be 'allUsers' or 'allAuthenticatedUsers'",
 		"keyActualValue": "gcp_storage_bucket.default_object_acl.entity is 'allUsers' or 'allAuthenticatedUsers'",

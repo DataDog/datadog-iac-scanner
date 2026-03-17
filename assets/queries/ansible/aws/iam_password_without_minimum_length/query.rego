@@ -3,20 +3,21 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.iam_password_policy", "iam_password_policy"}
+canonical := "iam_password_policy"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	policy := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	policy := task[variant]
 	ansLib.checkState(policy)
 
 	not getName(policy)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": task.name,
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(policy, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "iam_password_policy.min_pw_length/minimum_password_length should be set and no less than 8",
 		"keyActualValue": "iam_password_policy.min_pw_length/minimum_password_length is undefined",
@@ -25,7 +26,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	policy := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	policy := task[variant]
 	ansLib.checkState(policy)
 
 	variableName := getName(policy)
@@ -33,9 +35,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": task.name,
-		"searchKey": sprintf("name={{%s}}.{{%s}}.{{min_pw_length}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(policy, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.{{min_pw_length}}", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("iam_password_policy.%s should be set and no less than 8", [variableName]),
 		"keyActualValue": sprintf("iam_password_policy.%s is less than 8", [variableName]),

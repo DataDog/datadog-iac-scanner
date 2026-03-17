@@ -1,14 +1,15 @@
 package Cx
 
-import data.generic.ansible as ans_lib
+import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.aws_ses_identity_policy", "aws.aws_ses_identity_policy"}
+canonical := "ses_identity_policy"
 
 CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	sesPolicy := task[modules[m]]
-	ans_lib.checkState(sesPolicy)
+	task := ansLib.tasks[id][t]
+	variant := ansLib.get_variants(canonical)[_]
+	sesPolicy := task[variant]
+	ansLib.checkState(sesPolicy)
 
 	st := common_lib.get_statement(common_lib.get_policy(sesPolicy.policy))
 	statement := st[_]
@@ -19,12 +20,12 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(sesPolicy, "identity", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.policy", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(sesPolicy, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.policy", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy' should not allow IAM actions to all principals",
 		"keyActualValue": "'policy' allows IAM actions to all principals",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], "policy"], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "policy"], []),
 	}
 }

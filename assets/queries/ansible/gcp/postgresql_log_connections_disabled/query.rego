@@ -3,11 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"google.cloud.gcp_sql_instance", "gcp_sql_instance"}
+canonical := "gcp_sql_instance"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	gcp_task := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	gcp_task := task[variant]
 	ansLib.checkState(gcp_task)
 
 	contains(gcp_task.database_version, "POSTGRES")
@@ -15,9 +16,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(gcp_task, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(gcp_task, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "gcp_sql_instance.settings.databaseFlags should be defined",
 		"keyActualValue": "gcp_sql_instance.settings.databaseFlags is not defined",
@@ -26,7 +27,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	gcp_task := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	gcp_task := task[variant]
 	ansLib.checkState(gcp_task)
 
 	contains(gcp_task.database_version, "POSTGRES")
@@ -34,9 +36,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(gcp_task, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.settings.databaseFlags", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(gcp_task, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.settings.databaseFlags", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_sql_instance.settings.databaseFlags should have 'log_connections' flag set to 'on'",
 		"keyActualValue": "gcp_sql_instance.settings.databaseFlags has 'log_connections' flag set to 'off'",

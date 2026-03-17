@@ -3,10 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
+canonical := "cloudfront_distribution"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.cloudfront_distribution", "cloudfront_distribution"}
-	cloudfront := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cloudfront := task[variant]
 
 	ansLib.checkState(cloudfront)
 	certificate := cloudfront.viewer_certificate.cloudfront_default_certificate
@@ -14,20 +16,20 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cloudfront, "distribution_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.viewer_certificate.cloudfront_default_certificate", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cloudfront, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.viewer_certificate.cloudfront_default_certificate", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Attribute 'cloudfront_default_certificate' should be 'false' or not defined",
 		"keyActualValue": "Attribute 'cloudfront_default_certificate' is 'true'",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m]], ["viewer_certificate", "cloudfront_default_certificate"]),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant], ["viewer_certificate", "cloudfront_default_certificate"]),
 	}
 }
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.cloudfront_distribution", "cloudfront_distribution"}
-	cloudfront := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cloudfront := task[variant]
 
 	ansLib.checkState(cloudfront)
 	hasCustomConfig(cloudfront.viewer_certificate)
@@ -38,14 +40,14 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cloudfront, "distribution_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.viewer_certificate", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cloudfront, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.viewer_certificate", [task.name, variant]),
 		"searchValue": attr,
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": sprintf("Attribute %s should be defined when one of 'acm_certificate_arn' or 'iam_certificate_id' is declared.", [attr]),
 		"keyActualValue": sprintf("Attribute '%s' is not defined", [attr]),
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m]], ["viewer_certificate"]),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant], ["viewer_certificate"]),
 	}
 }
 

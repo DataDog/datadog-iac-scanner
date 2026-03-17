@@ -3,20 +3,21 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"google.cloud.gcp_container_cluster", "gcp_container_cluster"}
+canonical := "gcp_container_cluster"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	cluster := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cluster := task[variant]
 	ansLib.checkState(cluster)
 
 	not common_lib.valid_key(cluster, "master_auth")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cluster, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cluster, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "gcp_container_cluster.master_auth should be defined",
 		"keyActualValue": "gcp_container_cluster.master_auth is undefined",
@@ -25,7 +26,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	cluster := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cluster := task[variant]
 	ansLib.checkState(cluster)
 	fields := ["username", "password"]
 	field := fields[f]
@@ -34,9 +36,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cluster, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.master_auth", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cluster, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.master_auth", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": sprintf("gcp_container_cluster.master_auth.%s should be defined", [fields[f]]),
 		"keyActualValue": sprintf("gcp_container_cluster.master_auth.%s is undefined", [fields[f]]),
@@ -45,7 +47,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	cluster := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cluster := task[variant]
 	ansLib.checkState(cluster)
 	fields := ["username", "password"]
 
@@ -54,9 +57,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cluster, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.master_auth.%s", [task.name, modules[m], fields[f]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cluster, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.master_auth.%s", [task.name, variant, fields[f]]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("gcp_container_cluster.master_auth.%s should be empty", [fields[f]]),
 		"keyActualValue": sprintf("gcp_container_cluster.master_auth.%s is not empty", [fields[f]]),

@@ -1,36 +1,40 @@
 package Cx
 
-import data.generic.ansible as ans_lib
+import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.aws_api_gateway", "aws_api_gateway"}
+# wafv2_resources has no canonical mapping; keep as local set for cross-task check
+wafVariants := {"community.aws.wafv2_resources", "wafv2_resources"}
+
+canonical := "api_gateway"
 
 CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	api := task[modules[m]]
-	ans_lib.checkState(api)
+	task := ansLib.tasks[id][t]
+	variant := ansLib.get_variants(canonical)[_]
+	api := task[variant]
+	ansLib.checkState(api)
 
 	not has_waf_associated(api.stage)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(api, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(api, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "API Gateway Stage should be associated with a Web Application Firewall",
 		"keyActualValue": "API Gateway Stage is not associated with a Web Application Firewall",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m]], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant], []),
 	}
 }
 
 has_waf_associated(stage) {
-	waf := {"community.aws.wafv2_resources", "wafv2_resources"}
-
-    task2 := ans_lib.tasks[_][_]
-	wafResource := task2[waf[_]]
-    ans_lib.checkState(wafResource)
-    contains(wafResource.arn, "arn:aws:apigateway:")
-    associatedStage := split(wafResource.arn, "/")
-    associatedStage[4] == stage
+	some wv
+	wafVariants[wv]
+	task2 := ansLib.tasks[_][_]
+	wafResource := task2[wv]
+	ansLib.checkState(wafResource)
+	contains(wafResource.arn, "arn:aws:apigateway:")
+	associatedStage := split(wafResource.arn, "/")
+	associatedStage[4] == stage
 }

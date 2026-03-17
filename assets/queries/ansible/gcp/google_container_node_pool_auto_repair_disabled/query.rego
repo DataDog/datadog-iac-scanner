@@ -3,20 +3,21 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"google.cloud.gcp_container_node_pool", "gcp_container_node_pool"}
+canonical := "gcp_container_node_pool"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	gcpContainer := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	gcpContainer := task[variant]
 	ansLib.checkState(gcpContainer)
 
 	not common_lib.valid_key(gcpContainer, "management")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(gcpContainer, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(gcpContainer, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "gcp_container_node_pool.management should be defined",
 		"keyActualValue": "gcp_container_node_pool.management is undefined",
@@ -25,18 +26,19 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	gcpContainer := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	gcpContainer := task[variant]
 	ansLib.checkState(gcpContainer)
 
 	not ansLib.isAnsibleTrue(gcpContainer.management.auto_repair)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(gcpContainer, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.management.auto_repair", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(gcpContainer, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.management.auto_repair", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_container_node_pool.management.auto_repair should be set to true",
-		"keyActualValue": "gcp_container_node_poolmanagement.auto_repair is set to false",
+		"keyActualValue": "gcp_container_node_pool.management.auto_repair is set to false",
 	}
 }

@@ -2,10 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "ecs_service"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.ecs_service", "ecs_service"}
-	ecs := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	ecs := task[variant]
 	ansLib.checkState(ecs)
 
 	is_string(ecs.role)
@@ -13,9 +15,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ecs, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.role", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ecs, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.role", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "ecs_service.role should not be an admin role",
 		"keyActualValue": "ecs_service.role is an admin role",

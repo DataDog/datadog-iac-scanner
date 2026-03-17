@@ -2,21 +2,23 @@ package Cx
 
 import data.generic.ansible as ansLib
 
-modules := {"community.aws.aws_config_aggregator", "aws_config_aggregator"}
+canonical := "config_aggregator"
+
+fields := ["account_sources", "organization_source"]
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	configAggregator := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	configAggregator := task[variant]
 	ansLib.checkState(configAggregator)
-	fields := ["account_sources", "organization_source"]
 
 	not ansLib.isAnsibleTrue(configAggregator[fields[f]].all_aws_regions)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(configAggregator, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.%s.all_aws_regions", [task.name, modules[m], fields[f]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(configAggregator, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.%s.all_aws_regions", [task.name, variant, fields[f]]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("'aws_config_aggregator.%s' should have all_aws_regions set to true", [fields[f]]),
 		"keyActualValue": sprintf("'aws_config_aggregator.%s' has all_aws_regions set to false", [fields[f]]),

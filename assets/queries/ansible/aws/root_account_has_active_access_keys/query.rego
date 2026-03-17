@@ -2,25 +2,27 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "iam_access_key"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.iam", "iam"}
-	iam := task[modules[m]]
-	ansLib.checkState(iam)
+	variant := ansLib.get_variants(canonical)[_]
+	resource := task[variant]
+	ansLib.checkState(resource)
 
-	is_string(iam.access_key_state)
-	lower(iam.access_key_state) == "active"
-	iam.iam_type == "user"
-	is_string(iam.name)
-	contains(lower(iam.name), "root")
+	is_string(resource.user_name)
+	contains(lower(resource.user_name), "root")
+
+	object.get(resource, "active", true) == true
+	object.get(resource, "state", "present") != "absent"
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(iam, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(resource, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "iam should not be active for a root account",
-		"keyActualValue": "iam is active for a root account",
+		"keyExpectedValue": "iam_access_key should not be active for a root account",
+		"keyActualValue": "iam_access_key is active for a root account",
 	}
 }

@@ -2,10 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "gcp_bigquery_dataset"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"google.cloud.gcp_bigquery_dataset", "gcp_bigquery_dataset"}
-	bigquery_dataset := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	bigquery_dataset := task[variant]
 	ansLib.checkState(bigquery_dataset)
 
 	access := bigquery_dataset.access
@@ -13,9 +15,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(bigquery_dataset, "name", object.get(object.get(bigquery_dataset, "dataset_reference", {}), "dataset_id", task.name)),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.access", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(bigquery_dataset, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.access", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_bigquery_dataset.access.special_group should not equal to 'allAuthenticatedUsers'",
 		"keyActualValue": "gcp_bigquery_dataset.access.special_group is equal to 'allAuthenticatedUsers'",

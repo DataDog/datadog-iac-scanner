@@ -2,10 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "azure_rm_storageaccount"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"azure.azcollection.azure_rm_storageaccount", "azure_rm_storageaccount"}
-	storageaccount := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	storageaccount := task[variant]
 	ansLib.checkState(storageaccount)
 
 	lower(storageaccount.network_acls.default_action) == "deny"
@@ -13,9 +15,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(storageaccount, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.network_acls.bypass", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(storageaccount, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.network_acls.bypass", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "azure_rm_storageaccount.network_acls.bypass should not be set or contain 'AzureServices'",
 		"keyActualValue": "azure_rm_storageaccount.network_acls.bypass does not contain 'AzureServices' ",

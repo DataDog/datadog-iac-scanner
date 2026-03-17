@@ -1,55 +1,53 @@
 package Cx
 
-import data.generic.ansible as ans_lib
+import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
+# ec2_instance with security_group (string) containing default
 CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	modules := {"amazon.aws.ec2", "ec2"}
-	ec2 := task[modules[m]]
-	ans_lib.checkState(ec2)
+	task := ansLib.tasks[id][t]
+	canonical := "ec2_instance"
+	variant := ansLib.get_variants(canonical)[_]
+	inst := task[variant]
+	ansLib.checkState(inst)
 
-	sgs := {"group", "group_id"}
+	common_lib.valid_key(inst, "security_group")
+	is_string(inst.security_group)
+	contains(lower(inst.security_group), "default")
 
-	is_array(ec2[sgs[s]])
-	sgName := ec2[sgs[s]][idx]
+	result := {
+		"documentId": id,
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(inst, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.security_group", [task.name, variant]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "'security_group' should not be using default security group",
+		"keyActualValue": "'security_group' is using default security group",
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "security_group"], []),
+	}
+}
 
+# ec2_instance with security_groups (array) containing default
+CxPolicy[result] {
+	task := ansLib.tasks[id][t]
+	canonical := "ec2_instance"
+	variant := ansLib.get_variants(canonical)[_]
+	inst := task[variant]
+	ansLib.checkState(inst)
+
+	common_lib.valid_key(inst, "security_groups")
+	is_array(inst.security_groups)
+	sgName := inst.security_groups[idx]
 	contains(lower(sgName), "default")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ec2, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, modules[m], sgs[s]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(inst, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.security_groups", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("'%s' should not be using default security group", [sgs[s]]),
-		"keyActualValue":  sprintf("'%s' is using default security group", [sgs[s]]),
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], sgs[s]], [idx]),
+		"keyExpectedValue": "'security_groups' should not be using default security group",
+		"keyActualValue": "'security_groups' is using default security group",
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "security_groups"], [idx]),
 	}
 }
-
-CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	modules := {"amazon.aws.ec2", "ec2"}
-	ec2 := task[modules[m]]
-	ans_lib.checkState(ec2)
-
-	sgs := {"group", "group_id"}
-
-	is_string(ec2[sgs[s]])
-	sgName := ec2[sgs[s]]
-
-	contains(lower(sgName), "default")
-
-	result := {
-		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ec2, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, modules[m], sgs[s]]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("'%s' should not be using default security group", [sgs[s]]),
-		"keyActualValue":  sprintf("'%s' is using default security group", [sgs[s]]),
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], sgs[s]], []),
-	}
-}
-

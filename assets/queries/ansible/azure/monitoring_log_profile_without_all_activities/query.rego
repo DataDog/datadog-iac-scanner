@@ -3,11 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"azure.azcollection.azure_rm_monitorlogprofile", "azure_rm_monitorlogprofile"}
+canonical := "azure_rm_monitorlogprofile"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	azureMonitor := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	azureMonitor := task[variant]
 	ansLib.checkState(azureMonitor)
 	categories := azureMonitor.categories
 	elem := ["write", "action", "delete"][_]
@@ -16,9 +17,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(azureMonitor, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.categories", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(azureMonitor, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.categories", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "azure_rm_monitorlogprofile.categories should have all categories, Write, Action and Delete",
 		"keyActualValue": "azure_rm_monitorlogprofile.categories does not have all categories, Write, Action and Delete",
@@ -27,16 +28,17 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	azureMonitor := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	azureMonitor := task[variant]
 	ansLib.checkState(azureMonitor)
 
 	not common_lib.valid_key(azureMonitor, "categories")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(azureMonitor, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(azureMonitor, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "azure_rm_monitorlogprofile.categories should be defined",
 		"keyActualValue": "azure_rm_monitorlogprofile.categories is undefined",

@@ -1,38 +1,40 @@
 package Cx
 
 import data.generic.common as common_lib
-import data.generic.ansible as ans_lib
+import data.generic.ansible as ansLib
+
+canonical := "azure_rm_containerregistry"
 
 CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	modules := {"azure.azcollection.azure_rm_containerregistry", "azure_rm_containerregistry"}
-	containerRegistry := task[modules[m]]
-	ans_lib.checkState(containerRegistry)
+	task := ansLib.tasks[id][t]
+	variant := ansLib.get_variants(canonical)[_]
+	containerRegistry := task[variant]
+	ansLib.checkState(containerRegistry)
 
 	not checkLocks(containerRegistry, task)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(containerRegistry, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(containerRegistry, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("'%s' should be referenced by an existing lock", [modules[m]]),
-		"keyActualValue": sprintf("'%s' is not referenced by an existing lock", [modules[m]]),
-		"searchLine": common_lib.build_search_line(["playbooks", task, modules[m]], []),
+		"keyExpectedValue": sprintf("'%s' should be referenced by an existing lock", [variant]),
+		"keyActualValue": sprintf("'%s' is not referenced by an existing lock", [variant]),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant], []),
 	}
 }
 
 matches(containerRegistry, taskContainerRegistry, taskLock) {
 	taskLock.resource_group == containerRegistry.resource_group
 } else {
-	id := sprintf("%s.id", [taskContainerRegistry.register])
-	contains(taskLock.managed_resource_id, id)
+	reg_id := sprintf("%s.id", [taskContainerRegistry.register])
+	contains(taskLock.managed_resource_id, reg_id)
 }
 
 checkLocks(containerRegistry, taskContainerRegistry) {
-	modules := {"azure.azcollection.azure_rm_lock", "azure_rm_lock"}
-	taskLock := ans_lib.tasks[_][_][modules[_]]
-	ans_lib.checkState(taskLock)
+	variant := ansLib.get_variants("azure_rm_lock")[_]
+	taskLock := ansLib.tasks[_][_][variant]
+	ansLib.checkState(taskLock)
 	matches(containerRegistry, taskContainerRegistry, taskLock)
 }

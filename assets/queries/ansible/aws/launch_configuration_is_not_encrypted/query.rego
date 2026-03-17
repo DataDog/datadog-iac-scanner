@@ -3,20 +3,22 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.ec2_lc", "ec2_lc"}
+# ec2_lc is variant of autoscaling_launch_config
+canonical := "autoscaling_launch_config"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	ec2_lc := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	ec2_lc := task[variant]
 	ansLib.checkState(ec2_lc)
 
 	not common_lib.valid_key(ec2_lc, "volumes")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ec2_lc, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ec2_lc, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "ec2_lc.volumes should be set",
 		"keyActualValue": "ec2_lc.volumes is undefined",
@@ -25,7 +27,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	ec2_lc := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	ec2_lc := task[variant]
 	ansLib.checkState(ec2_lc)
 
 	volume := ec2_lc.volumes[j]
@@ -33,9 +36,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ec2_lc, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.volumes", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ec2_lc, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.volumes", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": sprintf("ec2_lc.volumes[%d].encrypted should be set", [j]),
 		"keyActualValue": sprintf("ec2_lc.volumes[%d].encrypted is undefined", [j]),
@@ -44,7 +47,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	ec2_lc := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	ec2_lc := task[variant]
 	ansLib.checkState(ec2_lc)
 
 	volume := ec2_lc.volumes[j]
@@ -53,9 +57,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ec2_lc, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.volumes", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ec2_lc, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.volumes", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("ec2_lc.volumes[%d].encrypted should be set to true or yes", [j]),
 		"keyActualValue": sprintf("ec2_lc.volumes[%d].encrypted is not set to true or yes", [j]),

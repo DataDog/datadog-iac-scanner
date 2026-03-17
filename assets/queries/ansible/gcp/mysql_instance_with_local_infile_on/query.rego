@@ -2,10 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "gcp_sql_instance"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"google.cloud.gcp_sql_instance", "gcp_sql_instance"}
-	instance := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	instance := task[variant]
 	ansLib.checkState(instance)
 
 	contains(instance.database_version, "MYSQL")
@@ -13,9 +15,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(instance, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.settings.database_flags", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(instance, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.settings.database_flags", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "cloud_gcp_sql_instance.settings.database_flags should be correct",
 		"keyActualValue": "cloud_gcp_sql_instance.settings.database_flags.name is 'local_infile' and cloud_gcp_sql_instance.settings.database_flags.value is not 'off'",

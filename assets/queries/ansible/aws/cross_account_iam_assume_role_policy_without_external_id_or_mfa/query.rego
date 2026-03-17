@@ -1,21 +1,21 @@
 package Cx
 
-import data.generic.ansible as ans_lib
+import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.iam_role", "iam_role"}
+canonical := "iam_role"
 
 CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	iamRole := task[modules[m]]
-	ans_lib.checkState(iamRole)
+	task := ansLib.tasks[id][t]
+	variant := ansLib.get_variants(canonical)[_]
+	iamRole := task[variant]
+	ansLib.checkState(iamRole)
 
 	policy := iamRole.assume_role_policy_document
 	st := common_lib.get_statement(common_lib.get_policy(policy))
 	statement := st[_]
 
 	common_lib.is_allow_effect(statement)
-
 	common_lib.is_cross_account(statement)
 	common_lib.is_assume_role(statement)
 
@@ -24,12 +24,12 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(iamRole, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.assume_role_policy_document", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(iamRole, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.assume_role_policy_document", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "assume_role_policy_document should not contain ':root",
 		"keyActualValue": "assume_role_policy_document contains ':root'",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], "assume_role_policy_document"], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "assume_role_policy_document"], []),
 	}
 }

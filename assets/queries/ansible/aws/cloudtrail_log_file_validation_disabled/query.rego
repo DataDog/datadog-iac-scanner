@@ -3,11 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.cloudtrail", "cloudtrail"}
+canonical := "cloudtrail"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	cloudtrail := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cloudtrail := task[variant]
 	ansLib.checkState(cloudtrail)
 
 	not common_lib.valid_key(cloudtrail, "enable_log_file_validation")
@@ -15,9 +16,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cloudtrail, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cloudtrail, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "cloudtrail.enable_log_file_validation or cloudtrail.log_file_validation_enabled should be defined",
 		"keyActualValue": "cloudtrail.enable_log_file_validation and cloudtrail.log_file_validation_enabled are undefined",
@@ -26,7 +27,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	cloudtrail := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cloudtrail := task[variant]
 	ansLib.checkState(cloudtrail)
 	attributes := {"enable_log_file_validation", "log_file_validation_enabled"}
 
@@ -36,9 +38,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cloudtrail, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, modules[m], attr]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cloudtrail, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, variant, attr]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("cloudtrail.%s should be set to true or yes", [attr]),
 		"keyActualValue": sprintf("cloudtrail.%s is not set to true nor yes", [attr]),

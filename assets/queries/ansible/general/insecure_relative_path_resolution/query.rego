@@ -2,19 +2,16 @@ package Cx
 
 import data.generic.ansible as ansLib
 
-module_to_folder = {
-    "copy": "files",
-    "win_copy": "files",
-    "template": "templates",
-    "win_template": "win_templates",
-	"ansible.builtin.template": "templates",
-	"ansible.builtin.copy": "files",
+# [canonical, folder] for modules that use src with relative path
+canonical_with_folder[[canonical, folder]] {
+	[canonical, folder] := [["copy", "files"], ["template", "templates"], ["win_copy", "files"], ["win_template", "win_templates"]][_]
 }
 
 CxPolicy[result] {
+	[canonical, folder] := canonical_with_folder[_]
 	task := ansLib.tasks[id][t]
-	folder := module_to_folder[m]
-	copyOrTemplate := task[m]
+	variant := ansLib.get_variants(canonical)[_]
+	copyOrTemplate := task[variant]
 	ansLib.checkState(copyOrTemplate)
 
 	relative_path := sprintf("../%s", [folder])
@@ -22,12 +19,11 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": m,
-		"resourceName": object.get(copyOrTemplate, "dest", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.src", [task.name, m]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(copyOrTemplate, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.src", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("%s.src should not be a relative path", [m]),
-		"keyActualValue": sprintf("%s.src is a relative path", [m]),
+		"keyExpectedValue": sprintf("%s.src should not be a relative path", [variant]),
+		"keyActualValue": sprintf("%s.src is a relative path", [variant]),
 	}
 }
-

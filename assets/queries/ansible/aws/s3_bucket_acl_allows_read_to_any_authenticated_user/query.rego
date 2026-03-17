@@ -2,21 +2,23 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "s3_object"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"amazon.aws.aws_s3", "aws_s3"}
-	s3 := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	s3 := task[variant]
 	ansLib.checkState(s3)
 
 	s3.permission == "authenticated-read"
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(s3, "bucket", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.permission", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(s3, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.permission", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "aws_s3 should not have read access for all authenticated users",
-		"keyActualValue": "aws_s3 has read access for all authenticated users",
+		"keyExpectedValue": "s3_object should not have read access for all authenticated users",
+		"keyActualValue": "s3_object has read access for all authenticated users",
 	}
 }
