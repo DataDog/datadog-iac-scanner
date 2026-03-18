@@ -71,11 +71,14 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	// Since we are only looking at keys we can ignore the second value passed through '=' and '[]'
 	for _, key := range strings.Split(sanitizedSubstring, ".") {
 		substr1, _ := detector.GenerateSubstrings(ctx, key, extractedString, lines, curLineRes.lineRes)
-		curLineRes, start, end = curLineRes.detectCurrentLine(lines, fmt.Sprintf("%s:", substr1), "", true, file.IDInfo, helmID)
+		var iterStart, iterEnd model.ResourceLine
+		curLineRes, iterStart, iterEnd = curLineRes.detectCurrentLine(lines, fmt.Sprintf("%s:", substr1), "", true, file.IDInfo, helmID)
 
 		if curLineRes.breakRes {
 			break
 		}
+		start = iterStart
+		end = iterEnd
 	}
 
 	// Look at dupHistory to see if the last element was duplicate, if so
@@ -148,15 +151,15 @@ func (d detectCurlLine) detectCurrentLine(lines []string, str1,
 		if str1 != "" && str2 != "" {
 			if strings.Contains(lines[i], str1) && strings.Contains(lines[i], str2) {
 				distances[i] = levenshtein.ComputeDistance(detector.ExtractLineFragment(lines[i], str2, byKey), str2)
-				starts[i] = model.ResourceLine{Line: i, Col: 0}
-				ends[i] = model.ResourceLine{Line: i, Col: len(lines[i])}
+				starts[i] = model.ResourceLine{Line: i + 1, Col: 0}
+				ends[i] = model.ResourceLine{Line: i + 1, Col: len(lines[i])}
 			}
 		} else if str1 != "" {
 			if strings.Contains(lines[i], str1) {
 				distances[i] = levenshtein.ComputeDistance(
 					detector.ExtractLineFragment(strings.TrimSpace(lines[i]), str1, byKey), str1)
-				starts[i] = model.ResourceLine{Line: i, Col: 0}
-				ends[i] = model.ResourceLine{Line: i, Col: len(lines[i])}
+				starts[i] = model.ResourceLine{Line: i + 1, Col: 0}
+				ends[i] = model.ResourceLine{Line: i + 1, Col: len(lines[i])}
 			}
 		}
 	}

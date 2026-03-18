@@ -57,6 +57,20 @@ spec:
     restartPolicy: Never
 `
 
+var OriginalDataPartialMatch = `# KICS_HELM_ID_0:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          securityContext: {}
+          image: nginx
+`
+
 var OriginalData3 = `# KICS_HELM_ID_0:
 apiVersion: v1
 kind: Pod
@@ -135,11 +149,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 				ResolvedFile:          "test-connection.yaml",
 				VulnerablilityLocation: model.ResourceLocation{
 					Start: model.ResourceLine{
-						Line: 10,
+						Line: 11,
 						Col:  0,
 					},
 					End: model.ResourceLine{
-						Line: 10,
+						Line: 11,
 						Col:  13,
 					},
 				},
@@ -178,11 +192,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 				ResolvedFile:          "test-dup_values.yaml",
 				VulnerablilityLocation: model.ResourceLocation{
 					Start: model.ResourceLine{
-						Line: 10,
+						Line: 11,
 						Col:  0,
 					},
 					End: model.ResourceLine{
-						Line: 10,
+						Line: 11,
 						Col:  13,
 					},
 				},
@@ -218,12 +232,52 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 				ResolvedFile:          "test-dups.yaml",
 				VulnerablilityLocation: model.ResourceLocation{
 					Start: model.ResourceLine{
-						Line: 27,
+						Line: 28,
 						Col:  0,
 					},
 					End: model.ResourceLine{
-						Line: 27,
+						Line: 28,
 						Col:  13,
+					},
+				},
+			},
+		},
+		{
+			name: "test_preserve_location_when_final_key_missing",
+			args: args{
+				file: &model.FileMetadata{
+					ID:                "1",
+					ScanID:            "console",
+					Document:          model.Document{},
+					Kind:              model.KindHELM,
+					FilePath:          "deployment.yaml",
+					HelmID:            "# KICS_HELM_ID_0",
+					OriginalData:      OriginalDataPartialMatch,
+					LinesOriginalData: utils.SplitLines(OriginalDataPartialMatch),
+					Content:           ``,
+				},
+				searchKey:     "KICS_HELM_ID_0.spec.template.spec.containers.securityContext.runAsNonRoot",
+				logWithFields: &zerolog.Logger{},
+				outputLines:   1,
+			},
+			want: model.VulnerabilityLines{
+				Line: 10,
+				VulnLines: &[]model.CodeLine{
+					{
+						Position: 10,
+						Line:     "          securityContext: {}",
+					},
+				},
+				LineWithVulnerability: "          securityContext",
+				ResolvedFile:          "deployment.yaml",
+				VulnerablilityLocation: model.ResourceLocation{
+					Start: model.ResourceLine{
+						Line: 11,
+						Col:  0,
+					},
+					End: model.ResourceLine{
+						Line: 11,
+						Col:  29,
 					},
 				},
 			},
