@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	ioFs "io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,7 +27,8 @@ import (
 // FileSystemSourceProvider provides a path to be scanned
 // and a list of files which will not be scanned
 type FileSystemSourceProvider struct {
-	paths    []string
+	paths []string
+	// Only used to store the exclusion from the scanParameters
 	excludes map[string][]os.FileInfo
 	mu       sync.RWMutex
 }
@@ -60,7 +62,7 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string) 
 		if err != nil {
 			return nil, err
 		}
-		if err := fs.AddExcluded(ctx, excludePaths); err != nil {
+		if err := fs.AddExcluded(ctx, fs.excludes, excludePaths); err != nil {
 			return nil, err
 		}
 	}
@@ -69,7 +71,7 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string) 
 }
 
 // AddExcluded add new excluded files to the File System Source Provider
-func (s *FileSystemSourceProvider) AddExcluded(ctx context.Context, excludePaths []string) error {
+func (s *FileSystemSourceProvider) AddExcluded(ctx context.Context, excludes map[string][]os.FileInfo, excludePaths []string) error {
 	contextLogger := logger.FromContext(ctx)
 	for _, excludePath := range excludePaths {
 		info, err := os.Stat(excludePath)
@@ -84,12 +86,10 @@ func (s *FileSystemSourceProvider) AddExcluded(ctx context.Context, excludePaths
 			}
 			return errors.Wrap(err, "failed to open excluded file")
 		}
-		s.mu.Lock()
-		if _, ok := s.excludes[info.Name()]; !ok {
-			s.excludes[info.Name()] = make([]os.FileInfo, 0)
+		if _, ok := excludes[info.Name()]; !ok {
+			excludes[info.Name()] = make([]os.FileInfo, 0)
 		}
-		s.excludes[info.Name()] = append(s.excludes[info.Name()], info)
-		s.mu.Unlock()
+		excludes[info.Name()] = append(excludes[info.Name()], info)
 	}
 	return nil
 }
@@ -135,6 +135,10 @@ func ignoreDamagedFiles(ctx context.Context, path string) bool {
 // GetSources tries to open file or directory and execute sink function on it
 func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 	extensions model.Extensions, sink Sink, resolverSink ResolverSink) error {
+	s.mu.RLock()
+	excludes := make(map[string][]os.FileInfo, len(s.excludes))
+	maps.Copy(excludes, s.excludes)
+	s.mu.RUnlock()
 	for _, scanPath := range s.paths {
 		fileInfo, err := os.Stat(scanPath)
 		if err != nil {
@@ -155,7 +159,7 @@ func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 			continue
 		}
 
-		err = s.walkDir(ctx, scanPath, false, sink, resolverSink, extensions)
+		err = s.walkDir(ctx, scanPath, false, sink, resolverSink, extensions, excludes)
 		if err != nil {
 			return errors.Wrap(err, "failed to walk directory")
 		}
@@ -167,6 +171,10 @@ func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 // GetParallelSources is an alternative to GetSources, parallelising the task
 func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 	extensions model.Extensions, sink Sink, resolverSink ResolverSink) error {
+	s.mu.RLock()
+	excludes := make(map[string][]os.FileInfo, len(s.excludes))
+	maps.Copy(excludes, s.excludes)
+	s.mu.RUnlock()
 	contextLogger := logger.FromContext(ctx)
 
 	// Phase 1: Collect all file paths to process
@@ -192,7 +200,7 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 		}
 
 		// Directory - collect all files first
-		files, err := s.collectFiles(ctx, scanPath, false, resolverSink, extensions)
+		files, err := s.collectFiles(ctx, scanPath, false, resolverSink, extensions, excludes)
 		if err != nil {
 			return errors.Wrap(err, "failed to collect files")
 		}
@@ -207,7 +215,7 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 
 // collectFiles walks the directory tree and collects file paths without processing them, except Helm files
 func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string, resolved bool,
-	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
+	resolverSink ResolverSink, extensions model.Extensions, excludes map[string][]os.FileInfo) (files []string, err error) {
 	contextLogger := logger.FromContext(ctx)
 
 	err = filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
@@ -215,7 +223,7 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 			return err
 		}
 
-		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolved); shouldSkip {
+		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolved, excludes); shouldSkip {
 			return skipFolder
 		}
 
@@ -225,7 +233,7 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 			if errRes != nil {
 				return nil
 			}
-			if errAdd := s.AddExcluded(ctx, excluded); errAdd != nil {
+			if errAdd := s.AddExcluded(ctx, excludes, excluded); errAdd != nil {
 				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
 			}
 			resolved = true
@@ -346,14 +354,14 @@ func (s *FileSystemSourceProvider) feedFilesToWorkers(ctx context.Context, files
 }
 
 func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string, resolved bool,
-	sink Sink, resolverSink ResolverSink, extensions model.Extensions) error {
+	sink Sink, resolverSink ResolverSink, extensions model.Extensions, excludes map[string][]os.FileInfo) error {
 	contextLogger := logger.FromContext(ctx)
 	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolved); shouldSkip {
+		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolved, excludes); shouldSkip {
 			return skipFolder
 		}
 
@@ -363,7 +371,7 @@ func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 			if errRes != nil {
 				return nil
 			}
-			if errAdd := s.AddExcluded(ctx, excluded); errAdd != nil {
+			if errAdd := s.AddExcluded(ctx, excludes, excluded); errAdd != nil {
 				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
 			}
 			resolved = true
@@ -401,23 +409,21 @@ func openScanFile(ctx context.Context, scanPath string, extensions model.Extensi
 }
 
 func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.FileInfo, extensions model.Extensions,
-	path string, resolved bool) (bool, error) {
+	path string, resolved bool, excludes map[string][]os.FileInfo) (bool, error) {
 	contextLogger := logger.FromContext(ctx)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if info.IsDir() {
 		// exclude terraform cache folders
 		if queryRegexExcludeTerraCache.MatchString(path) {
 			contextLogger.Info().Msgf("Directory ignored: %s", path)
 
-			err := s.AddExcluded(ctx, []string{info.Name()})
+			err := s.AddExcluded(ctx, excludes, []string{info.Name()})
 			if err != nil {
 				return true, err
 			}
 			return true, filepath.SkipDir
 		}
-		if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
+		if f, ok := excludes[info.Name()]; ok && containsFile(f, info) {
 			contextLogger.Info().Msgf("Directory ignored: %s", path)
 			return true, filepath.SkipDir
 		}
@@ -428,7 +434,7 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 		return false, nil
 	}
 
-	if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
+	if f, ok := excludes[info.Name()]; ok && containsFile(f, info) {
 		return true, nil
 	}
 	ext, _ := utils.GetExtension(ctx, path)

@@ -473,7 +473,7 @@ func TestFileSystemSourceProvider_checkConditions(t *testing.T) {
 				paths:    tt.fields.paths,
 				excludes: tt.fields.excludes,
 			}
-			if got, err := s.checkConditions(ctx, tt.args.info, tt.args.extensions, tt.args.path, false); got != tt.want.got || err != tt.want.err {
+			if got, err := s.checkConditions(ctx, tt.args.info, tt.args.extensions, tt.args.path, false, s.excludes); got != tt.want.got || err != tt.want.err {
 				t.Errorf("FileSystemSourceProvider.checkConditions() = %v, want %v", err, tt.want)
 			}
 		})
@@ -535,11 +535,11 @@ func TestFileSystemSourceProvider_AddExcluded(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.fields.fs.AddExcluded(ctx, tt.args.excludePaths)
+			err := tt.fields.fs.AddExcluded(ctx, tt.fields.fs.excludes, tt.args.excludePaths)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddExcluded() = %v, wantErr = %v", err, tt.wantErr)
 			}
-			got := getFSExcludes(tt.fields.fs)
+			got := getFSExcludes(tt.fields.fs.excludes)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("AddExcluded() = %v, want = %v", got, tt.want)
 			}
@@ -575,9 +575,10 @@ func initFs(paths, excluded []string) (*FileSystemSourceProvider, error) {
 	return NewFileSystemSourceProvider(ctx, paths, excluded)
 }
 
-func getFSExcludes(fsystem *FileSystemSourceProvider) []string {
+// Only used for testing purposes
+func getFSExcludes(excludes map[string][]os.FileInfo) []string {
 	excluded := make([]string, 0)
-	for key := range fsystem.excludes {
+	for key := range excludes {
 		excluded = append(excluded, key)
 	}
 	return excluded
