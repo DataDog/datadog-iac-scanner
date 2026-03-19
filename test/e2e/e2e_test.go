@@ -114,12 +114,14 @@ func Test_E2EExclusions(t *testing.T) {
 			name:     "cicd no exclusions",
 			testFile: filepath.Join("fixtures", "cicd-no-exclusions.yaml"),
 			expectedOutput: scan.ScanStats{
-				Violations: 2,
+				Violations: 4,
 				Files:      1,
-				Rules:      14,
+				Rules:      26,
 				ViolationBreakdowns: map[string]map[string]int{
 					"LOW": {
 						"555ab8f9-2001-455e-a077-f2d0f41e2fb9": 1,
+						"a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6": 1,
+						"f6a7b8c9-d0e1-42f3-a4b5-c6d7e8f9a0b1": 1,
 					},
 					"MEDIUM": {
 						"d946b13a-0b2b-49c5-b560-45b9666373e1": 1,
@@ -131,10 +133,14 @@ func Test_E2EExclusions(t *testing.T) {
 			name:     "cicd disabled rule inline",
 			testFile: filepath.Join("fixtures", "cicd-inline-disabled-rule.yaml"),
 			expectedOutput: scan.ScanStats{
-				Violations: 1,
+				Violations: 3,
 				Files:      1,
-				Rules:      14,
+				Rules:      26,
 				ViolationBreakdowns: map[string]map[string]int{
+					"LOW": {
+						"a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6": 1,
+						"f6a7b8c9-d0e1-42f3-a4b5-c6d7e8f9a0b1": 1,
+					},
 					"MEDIUM": {
 						"d946b13a-0b2b-49c5-b560-45b9666373e1": 1,
 					},
