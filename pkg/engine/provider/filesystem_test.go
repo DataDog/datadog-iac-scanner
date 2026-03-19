@@ -535,7 +535,7 @@ func TestFileSystemSourceProvider_AddExcluded(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.fields.fs.AddExcluded(ctx, tt.args.excludePaths)
+			err := tt.fields.fs.addExcluded(ctx, tt.args.excludePaths)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddExcluded() = %v, wantErr = %v", err, tt.wantErr)
 			}

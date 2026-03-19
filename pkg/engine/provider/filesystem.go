@@ -55,12 +55,13 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string) 
 		paths:    osPaths,
 		excludes: ex,
 	}
+
 	for _, exclude := range excludes {
 		excludePaths, err := GetExcludePaths(ctx, exclude)
 		if err != nil {
 			return nil, err
 		}
-		if err := fs.AddExcluded(ctx, excludePaths); err != nil {
+		if err := fs.addExcluded(ctx, excludePaths); err != nil {
 			return nil, err
 		}
 	}
@@ -69,7 +70,8 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string) 
 }
 
 // AddExcluded add new excluded files to the File System Source Provider
-func (s *FileSystemSourceProvider) AddExcluded(ctx context.Context, excludePaths []string) error {
+// Hold a mutex before calling this function
+func (s *FileSystemSourceProvider) addExcluded(ctx context.Context, excludePaths []string) error {
 	contextLogger := logger.FromContext(ctx)
 	for _, excludePath := range excludePaths {
 		info, err := os.Stat(excludePath)
@@ -84,12 +86,10 @@ func (s *FileSystemSourceProvider) AddExcluded(ctx context.Context, excludePaths
 			}
 			return errors.Wrap(err, "failed to open excluded file")
 		}
-		s.mu.Lock()
 		if _, ok := s.excludes[info.Name()]; !ok {
 			s.excludes[info.Name()] = make([]os.FileInfo, 0)
 		}
 		s.excludes[info.Name()] = append(s.excludes[info.Name()], info)
-		s.mu.Unlock()
 	}
 	return nil
 }
@@ -225,9 +225,11 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 			if errRes != nil {
 				return nil
 			}
-			if errAdd := s.AddExcluded(ctx, excluded); errAdd != nil {
+			s.mu.Lock()
+			if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
 				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
 			}
+			s.mu.Unlock()
 			resolved = true
 			return nil
 		}
@@ -363,9 +365,11 @@ func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 			if errRes != nil {
 				return nil
 			}
-			if errAdd := s.AddExcluded(ctx, excluded); errAdd != nil {
+			s.mu.Lock()
+			if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
 				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
 			}
+			s.mu.Unlock()
 			resolved = true
 			return nil
 		}
@@ -403,15 +407,15 @@ func openScanFile(ctx context.Context, scanPath string, extensions model.Extensi
 func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.FileInfo, extensions model.Extensions,
 	path string, resolved bool) (bool, error) {
 	contextLogger := logger.FromContext(ctx)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if info.IsDir() {
 		// exclude terraform cache folders
 		if queryRegexExcludeTerraCache.MatchString(path) {
 			contextLogger.Info().Msgf("Directory ignored: %s", path)
 
-			err := s.AddExcluded(ctx, []string{info.Name()})
+			err := s.addExcluded(ctx, []string{info.Name()})
 			if err != nil {
 				return true, err
 			}
