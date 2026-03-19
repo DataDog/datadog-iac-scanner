@@ -1,13 +1,15 @@
 package Cx
 
-import data.generic.ansible as ans_lib
+import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
+canonical := "azure_rm_roledefinition"
+
 CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	modules := {"azure.azcollection.azure_rm_roledefinition", "azure_rm_roledefinition"}
-	roleDefinition := task[modules[m]]
-	ans_lib.checkState(roleDefinition)
+	task := ansLib.tasks[id][t]
+	variant := ansLib.get_variants(canonical)[_]
+	roleDefinition := task[variant]
+	ansLib.checkState(roleDefinition)
 
 	actions := roleDefinition.permissions[p].actions
 
@@ -15,13 +17,13 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(roleDefinition, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.permissions.actions", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(roleDefinition, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.permissions.actions", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("%s.permissions[%d].actions should not allow custom role creation", [modules[m], p]),
-		"keyActualValue": sprintf("%s.permissions[%d].actions allows custom role creation", [modules[m], p]),
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], "permissions", p, "actions"], []),
+		"keyExpectedValue": sprintf("%s.permissions[%d].actions should not allow custom role creation", [variant, p]),
+		"keyActualValue": sprintf("%s.permissions[%d].actions allows custom role creation", [variant, p]),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "permissions", p, "actions"], []),
 	}
 }
 

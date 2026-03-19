@@ -3,89 +3,142 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
+# Rule 1: mode == "preserve" not allowed for modules other than copy/template
+# One body per canonical that can have mode but is not copy/template
+preserve_check_canonicals := {"archive", "assemble", "file", "get_url", "lineinfile", "replace"}
 
 CxPolicy[result] {
+	preserve_check_canonicals[canonical]
 	task := ansLib.tasks[id][e]
-    action := task[m]
-    action.mode == "preserve"
-    
-    modules_with_preserve := ["copy", "template"]
-    count([x | x := modules_with_preserve[mp]; x == m]) == 0
-    
+	variant := ansLib.get_variants(canonical)[_]
+	action := task[variant]
+	action.mode == "preserve"
+
 	result := {
 		"documentId": id,
-		"resourceType": m,
-		"resourceName": object.get(action, "dest", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, m]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(action, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("%s does not allow setting 'preserve' value for 'mode' key", [m]),
-		"keyActualValue": sprintf("'Mode' key of %s is set to 'preserve'", [m]),
+		"keyExpectedValue": sprintf("%s does not allow setting 'preserve' value for 'mode' key", [variant]),
+		"keyActualValue": sprintf("'Mode' key of %s is set to 'preserve'", [variant]),
 	}
 }
 
-CxPolicy[result] {
-	task := ansLib.tasks[id][_]
-    modules := [
-        "archive", "community.general.archive", "assemble", "ansible.builtin.assemble", "copy", "ansible.builtin.copy", "file", "ansible.builtin.file", 
-        "get_url", "ansible.builtin.get_url", "template", "ansible.builtin.template",
-    ]
-	action := task[modules[m]]
+# Rule 2: archive, assemble, copy, file, get_url, template - mode should be set when creating files/dirs
+file_creation_canonicals := {"archive", "assemble", "copy", "file", "get_url", "template"}
 
-    state := object.get(action, "state", "none")
+CxPolicy[result] {
+	file_creation_canonicals[canonical]
+	task := ansLib.tasks[id][_]
+	variant := ansLib.get_variants(canonical)[_]
+	action := task[variant]
+
+	state := object.get(action, "state", "none")
 	state != "absent"
-    state != "link"
+	state != "link"
 
 	not common_lib.valid_key(action, "recurse")
-    not file_module(action, modules[m])
-    
+	not file_module(action, variant)
 	not common_lib.valid_key(action, "mode")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(action, "dest", object.get(action, "path", task.name)),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(action, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
-		"keyExpectedValue": sprintf("All the permissions set in %s about creating files/directories", [modules[m]]),
-		"keyActualValue": sprintf("There are some permissions missing in %s and might create directory/file", [modules[m]]),
+		"keyExpectedValue": sprintf("All the permissions set in %s about creating files/directories", [variant]),
+		"keyActualValue": sprintf("There are some permissions missing in %s and might create directory/file", [variant]),
 	}
 }
 
+# Rule 3: blockinfile, htpasswd, ini_file, lineinfile - create true but mode not set
+create_default_blockinfile := false
+create_default_htpasswd := true
+create_default_ini_file := true
+create_default_lineinfile := false
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][_]
-    modules := {
-        "blockinfile": false,
-        "ansible.builtin.blockinfile": false,
-        "htpasswd": true,
-        "community.general.htpasswd": true,
-        "ini_file": true,
-        "community.general.ini_file": true,
-        "lineinfile": false,
-        "ansible.builtin.lineinfile": false,
-    }
-
-	action := task[m]
-    not common_lib.valid_key(action, "mode")
-
-    bool := modules[m]
-    object.get(action, "create", bool) == true
+	canonical := "blockinfile"
+	variant := ansLib.get_variants(canonical)[_]
+	action := task[variant]
+	not common_lib.valid_key(action, "mode")
+	object.get(action, "create", create_default_blockinfile) == true
 
 	result := {
 		"documentId": id,
-		"resourceType": m,
-		"resourceName": object.get(action, "path", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, m]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(action, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("%s 'create' key should set to 'false' or 'mode' key should be defined", [m]),
-		"keyActualValue": sprintf("%s 'create' key is set to 'true' and 'mode' key is not defined", [m]),
+		"keyExpectedValue": sprintf("%s 'create' key should set to 'false' or 'mode' key should be defined", [variant]),
+		"keyActualValue": sprintf("%s 'create' key is set to 'true' and 'mode' key is not defined", [variant]),
 	}
 }
 
-file_module(action, module_name){
-    module_name == "file"
-    object.get(action, "state", "file") == "file"
+CxPolicy[result] {
+	task := ansLib.tasks[id][_]
+	canonical := "htpasswd"
+	variant := ansLib.get_variants(canonical)[_]
+	action := task[variant]
+	not common_lib.valid_key(action, "mode")
+	object.get(action, "create", create_default_htpasswd) == true
+
+	result := {
+		"documentId": id,
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(action, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": sprintf("%s 'create' key should set to 'false' or 'mode' key should be defined", [variant]),
+		"keyActualValue": sprintf("%s 'create' key is set to 'true' and 'mode' key is not defined", [variant]),
+	}
+}
+
+CxPolicy[result] {
+	task := ansLib.tasks[id][_]
+	canonical := "ini_file"
+	variant := ansLib.get_variants(canonical)[_]
+	action := task[variant]
+	not common_lib.valid_key(action, "mode")
+	object.get(action, "create", create_default_ini_file) == true
+
+	result := {
+		"documentId": id,
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(action, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": sprintf("%s 'create' key should set to 'false' or 'mode' key should be defined", [variant]),
+		"keyActualValue": sprintf("%s 'create' key is set to 'true' and 'mode' key is not defined", [variant]),
+	}
+}
+
+CxPolicy[result] {
+	task := ansLib.tasks[id][_]
+	canonical := "lineinfile"
+	variant := ansLib.get_variants(canonical)[_]
+	action := task[variant]
+	not common_lib.valid_key(action, "mode")
+	object.get(action, "create", create_default_lineinfile) == true
+
+	result := {
+		"documentId": id,
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(action, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": sprintf("%s 'create' key should set to 'false' or 'mode' key should be defined", [variant]),
+		"keyActualValue": sprintf("%s 'create' key is set to 'true' and 'mode' key is not defined", [variant]),
+	}
+}
+
+file_module(action, module_name) {
+	module_name == "file"
+	object.get(action, "state", "file") == "file"
 } else {
 	module_name == "ansible.builtin.file"
-    object.get(action, "state", "file") == "file"
+	object.get(action, "state", "file") == "file"
 }

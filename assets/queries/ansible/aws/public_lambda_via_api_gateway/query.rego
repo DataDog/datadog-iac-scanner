@@ -2,10 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "lambda_policy"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.lambda_policy", "lambda_policy"}
-	lambdaPolicy := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	lambdaPolicy := task[variant]
 	ansLib.checkState(lambdaPolicy)
 
 	lambdaAction(lambdaPolicy.action)
@@ -14,9 +16,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(lambdaPolicy, "function_name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.source_arn", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(lambdaPolicy, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.source_arn", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "lambda_policy.source_arn should not equal to '/*/*'",
 		"keyActualValue": "lambda_policy.source_arn is equal to '/*/*'",

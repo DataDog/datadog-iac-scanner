@@ -2,10 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "ec2_group"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"amazon.aws.ec2_group", "ec2_group"}
-	group := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	group := task[variant]
 	ansLib.checkState(group)
 
 	searchKey := getCidrBlock(group)
@@ -16,9 +18,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(group, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, modules[m], searchKey]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(group, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, variant, searchKey]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("ec2_group.%s should not contain the value '%s'", [errorPath, errorValue]),
 		"keyActualValue": sprintf("ec2_group.%s contains value '%s'", [errorPath, errorValue]),

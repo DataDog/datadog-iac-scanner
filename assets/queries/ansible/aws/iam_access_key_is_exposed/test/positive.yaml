@@ -1,38 +1,8 @@
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: "{{ item }}"
+- name: Create non-root user with active access key
+  community.aws.iam_access_key:
+    user_name: jcleese
     state: present
-    password: "{{ temp_pass }}"
-    access_key_state: active
-  loop:
-    - jcleese
-    - mpython
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: "{{ item }}"
+- name: Create another non-root user with active access key
+  community.aws.iam_access_key:
+    user_name: mpython
     state: present
-    password: "{{ temp_pass }}"
-    access_key_state: active
-  loop:
-    - root
-    - mpython
-- name: Create Two Groups, Mario and Luigi
-  community.aws.iam:
-    iam_type: group
-    name: "{{ item }}"
-    state: present
-    access_key_state: active
-  loop:
-    - Mario
-    - Luigi
-  register: new_groups
-- name: Update user
-  community.aws.iam:
-    iam_type: user
-    name: jdavila
-    state: update
-    access_key_state: active
-    groups: "{{ item.created_group.group_name }}"
-  loop: "{{ new_groups.results }}"

@@ -2,19 +2,21 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "ec2_ami"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"amazon.aws.ec2_ami", "ec2_ami"}
-	ec2Ami := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	ec2Ami := task[variant]
 	ansLib.checkState(ec2Ami)
 
 	amiIsShared(ec2Ami.launch_permissions)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ec2Ami, "image_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.launch_permissions", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ec2Ami, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.launch_permissions", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "ec2_ami.launch_permissions just allows one user to launch the AMI",
 		"keyActualValue": "ec2_ami.launch_permissions allows more than one user to launch the AMI",

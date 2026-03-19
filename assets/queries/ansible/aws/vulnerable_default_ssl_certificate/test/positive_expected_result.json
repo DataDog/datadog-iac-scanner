@@ -2,16 +2,16 @@
   {
     "queryName": "Vulnerable Default SSL Certificate",
     "severity": "MEDIUM",
-    "line": 6
+    "line": 7
   },
   {
     "queryName": "Vulnerable Default SSL Certificate",
     "severity": "MEDIUM",
-    "line": 15
+    "line": 17
   },
   {
     "queryName": "Vulnerable Default SSL Certificate",
     "severity": "MEDIUM",
-    "line": 15
+    "line": 17
   }
 ]

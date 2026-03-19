@@ -5,25 +5,20 @@ import data.generic.common as common_lib
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.ec2_instance", "ec2_instance", "amazon.aws.ec2", "ec2"}
-	ec2 := task[modules[m]]
-	checkState(ec2)
+	canonical := "ec2_instance"
+	variant := ansLib.get_variants(canonical)[_]
+	ec2 := task[variant]
+	ansLib.checkState(ec2)
 
 	not common_lib.valid_key(ec2, "vpc_subnet_id")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ec2, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ec2, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
-		"keyExpectedValue": sprintf("%s.vpc_subnet_id should be set", [modules[m]]),
-		"keyActualValue": sprintf("%s.vpc_subnet_id is undefined", [modules[m]]),
+		"keyExpectedValue": sprintf("%s.vpc_subnet_id should be set", [variant]),
+		"keyActualValue": sprintf("%s.vpc_subnet_id is undefined", [variant]),
 	}
-}
-
-checkState(task) {
-	state := object.get(task, "state", "undefined")
-	state != "absent"
-	state != "list"
 }

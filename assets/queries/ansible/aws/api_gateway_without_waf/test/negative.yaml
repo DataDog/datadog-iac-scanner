@@ -6,6 +6,7 @@
     arn: "arn:aws:apigateway:region::/restapis/api-id/stages/produ"
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
   community.aws.aws_api_gateway:
+    name: my-api
     swagger_file: my_api.yml
     stage: produ
     cache_enabled: true

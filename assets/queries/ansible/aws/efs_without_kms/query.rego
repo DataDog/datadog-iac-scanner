@@ -3,20 +3,21 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.efs", "efs"}
+canonical := "efs"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	efs := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	efs := task[variant]
 	ansLib.checkState(efs)
 
 	not common_lib.valid_key(efs, "kms_key_id")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(efs, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(efs, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "efs.kms_key_id should be set",
 		"keyActualValue": "efs.kms_key_id is undefined",

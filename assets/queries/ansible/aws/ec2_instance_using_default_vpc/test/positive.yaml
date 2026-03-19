@@ -1,12 +1,13 @@
-- name: example
-  amazon.aws.ec2:
+- name: Launch instance in subnet from default VPC
+  community.aws.ec2_instance:
+    name: db-instance
     key_name: mykey
     instance_type: t2.micro
-    image: ami-123456
+    image_id: ami-123456
     wait: yes
-    count: 3
     vpc_subnet_id: "{{ my_subnet.subnet.id }}"
-    assign_public_ip: yes
+    network:
+      assign_public_ip: false
 - name: Create subnet for database server
   amazon.aws.ec2_vpc_subnet:
     state: present

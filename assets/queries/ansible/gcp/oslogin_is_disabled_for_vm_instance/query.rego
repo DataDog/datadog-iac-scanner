@@ -3,10 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
+canonical := "gcp_compute_instance"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"google.cloud.gcp_compute_instance", "gcp_compute_instance"}
-	instance := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	instance := task[variant]
 	metadata := instance.metadata
 	ansLib.checkState(instance)
 
@@ -16,9 +18,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(instance, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.metadata.enable-oslogin", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(instance, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.metadata.enable-oslogin", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_compute_instance.metadata.enable-oslogin should be true",
 		"keyActualValue": "gcp_compute_instance.metadata.enable-oslogin is false",

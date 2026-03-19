@@ -3,25 +3,25 @@ package Cx
 import data.generic.ansible as ans_lib
 import data.generic.common as common_lib
 
-rds := {"community.aws.rds_instance", "rds_instance"}
-
-sgs := {"community.aws.rds_subnet_group", "rds_subnet_group"}
-
-sbs := {"amazon.aws.ec2_vpc_subnet", "ec2_vpc_subnet"}
+canonical_rds := "rds_instance"
+canonical_sg := "rds_subnet_group"
+canonical_subnet := "ec2_vpc_subnet"
 
 options := {"db_subnet_group_name", "subnet_group"}
 
 CxPolicy[result] {
 	task := ans_lib.tasks[id][t]
-	rds_instance := task[rds[r]]
+	variant_rds := ans_lib.get_variants(canonical_rds)[_]
+	rds_instance := task[variant_rds]
 	ans_lib.checkState(rds_instance)
 
-	# get subnet group name
+	# get subnet group name (RDS can use either key)
 	subnetGroupName := rds_instance[options[o]]
 
-	# get subnet group
+	# get subnet group task
 	tk := ans_lib.tasks[_][_]
-	sg := tk[sgs[_]]
+	variant_sg := ans_lib.get_variants(canonical_sg)[_]
+	sg := tk[variant_sg]
 	ans_lib.checkState(sg)
 	sg.name == subnetGroupName
 
@@ -33,13 +33,13 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": rds[r],
-		"resourceName": object.get(rds_instance, "db_instance_identifier", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, rds[r], options[o]]),
+		"resourceType": canonical_rds,
+		"resourceName": ans_lib.get_resource_name(rds_instance, canonical_rds, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, variant_rds, options[o]]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "RDS should not be running in a public subnet",
 		"keyActualValue": "RDS is running in a public subnet",
-		"searchLine": common_lib.build_search_line(["playbooks", t, rds[r], options[o]], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant_rds, options[o]], []),
 	}
 }
 
@@ -49,7 +49,6 @@ unrestricted_cidr(sb) {
 	sb.ipv6_cidr == "::/0"
 }
 
-
 is_public(subnets) {
 	subnet := subnets[_]
 	subnetNameUnclean := split(subnet, ".")[0]
@@ -57,7 +56,8 @@ is_public(subnets) {
 	subnetNameClean := replace(subnetNameHalfClean, "{{", "")
 
 	tk := ans_lib.tasks[_][_]
-	sb := tk[sbs[_]]
+	variant_subnet := ans_lib.get_variants(canonical_subnet)[_]
+	sb := tk[variant_subnet]
 	ans_lib.checkState(sb)
 
 	tk.register == subnetNameClean

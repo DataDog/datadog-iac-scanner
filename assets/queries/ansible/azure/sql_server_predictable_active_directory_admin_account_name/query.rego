@@ -1,31 +1,33 @@
 package Cx
 
 import data.generic.ansible as ansLib
-import data.generic.common as commonLib
+import data.generic.common as common_lib
 
-modules := {"azure.azcollection.azure_ad_serviceprincipal", "azure_ad_serviceprincipal"}
+canonical := "azure_rm_adserviceprincipal"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	ad := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	ad := task[variant]
 	ansLib.checkState(ad)
 
-	commonLib.emptyOrNull(ad.ad_user)
+	common_lib.emptyOrNull(ad.ad_user)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ad, "app_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.ad_user", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ad, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.ad_user", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "azure_ad_serviceprincipal.ad_user should be neither empty nor null",
-		"keyActualValue": "azure_ad_serviceprincipal.ad_user is empty or null",
+		"keyExpectedValue": "azure_rm_adserviceprincipal.ad_user should be neither empty nor null",
+		"keyActualValue": "azure_rm_adserviceprincipal.ad_user is empty or null",
 	}
 }
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	ad := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	ad := task[variant]
 	ansLib.checkState(ad)
 
 	is_string(ad.ad_user)
@@ -33,17 +35,16 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ad, "app_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.ad_user", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ad, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.ad_user", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "azure_ad_serviceprincipal.ad_user should not be predictable",
-		"keyActualValue": "azure_ad_serviceprincipal.ad_user is predictable",
+		"keyExpectedValue": "azure_rm_adserviceprincipal.ad_user should not be predictable",
+		"keyActualValue": "azure_rm_adserviceprincipal.ad_user is predictable",
 	}
 }
 
 check_predictable(name) {
 	predictable_names := {"admin", "administrator", "sqladmin", "root", "user", "azure_admin", "azure_administrator", "guest"}
-	some i
 	predictable_names[i] == lower(name)
 }

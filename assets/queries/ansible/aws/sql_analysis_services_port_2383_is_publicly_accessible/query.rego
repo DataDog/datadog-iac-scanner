@@ -2,12 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
-modules := {"amazon.aws.ec2_group", "ec2_group"}
+canonical := "ec2_group"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"amazon.aws.ec2_group", "ec2_group"}
-	ec2_group := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	ec2_group := task[variant]
 	ansLib.checkState(ec2_group)
 
 	rule := ec2_group.rules[index]
@@ -17,9 +17,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(ec2_group, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.rules", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(ec2_group, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.rules", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("ec2_group.rules[%d] shouldn't open the SQL analysis services port (2383)", [index]),
 		"keyActualValue": sprintf("ec2_group.rules[%d] opens the SQL analysis services port (2383)", [index]),

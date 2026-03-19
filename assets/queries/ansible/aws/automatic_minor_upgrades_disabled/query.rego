@@ -3,20 +3,21 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.rds_instance", "rds_instance"}
+canonical := "rds_instance"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	rds_instance := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	rds_instance := task[variant]
 	ansLib.checkState(rds_instance)
 
 	ansLib.isAnsibleFalse(rds_instance.auto_minor_version_upgrade)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(rds_instance, "db_instance_identifier", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.auto_minor_version_upgrade", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(rds_instance, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.auto_minor_version_upgrade", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "rds_instance.auto_minor_version_upgrade should be true",
 		"keyActualValue": "rds_instance.auto_minor_version_upgrade is false",
@@ -25,16 +26,17 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	rds_instance := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	rds_instance := task[variant]
 	ansLib.checkState(rds_instance)
 
 	not common_lib.valid_key(rds_instance, "auto_minor_version_upgrade")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(rds_instance, "db_instance_identifier", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(rds_instance, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "rds_instance.auto_minor_version_upgrade should be set",
 		"keyActualValue": "rds_instance.auto_minor_version_upgrade is undefined",

@@ -2,19 +2,21 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "s3_bucket"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"amazon.aws.s3_bucket", "s3_bucket"}
-	s3_bucket := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	s3_bucket := task[variant]
 	ansLib.checkState(s3_bucket)
 
 	s3_bucket.encryption == "none"
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(s3_bucket, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.encryption", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(s3_bucket, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.encryption", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "s3_bucket.encryption should not be 'none'",
 		"keyActualValue": "s3_bucket.encryption is 'none'",

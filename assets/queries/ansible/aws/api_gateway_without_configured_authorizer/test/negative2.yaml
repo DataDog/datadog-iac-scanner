@@ -1,5 +1,6 @@
 - name: Setup AWS API Gateway setup on AWS and deploy API definition22222
   community.aws.aws_api_gateway:
+    name: my-api
     swagger_dict:
       {
         "openapi": "3.0.0",

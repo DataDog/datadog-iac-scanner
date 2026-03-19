@@ -3,10 +3,12 @@ package Cx
 import data.generic.ansible as ans_lib
 import data.generic.common as common_lib
 
+canonical := "sqs_queue"
+
 CxPolicy[result] {
 	task := ans_lib.tasks[id][t]
-	modules := {"community.aws.sqs_queue", "sqs_queue"}
-	sqsPolicy := task[modules[m]]
+	variant := ans_lib.get_variants(canonical)[_]
+	sqsPolicy := task[variant]
 	ans_lib.checkState(sqsPolicy)
 
 	st := common_lib.get_statement(common_lib.get_policy(sqsPolicy.policy))
@@ -17,12 +19,12 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(sqsPolicy, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.policy", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ans_lib.get_resource_name(sqsPolicy, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.policy", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "sqs_queue.policy.Statement should not contain Action equal to '*'",
 		"keyActualValue": "sqs_queue.policy.Statement contains Action equal to '*'",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], "policy"], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "policy"], []),
 	}
 }

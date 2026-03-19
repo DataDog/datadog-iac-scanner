@@ -2,10 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "azure_rm_postgresqlconfiguration"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"azure.azcollection.azure_rm_postgresqlconfiguration", "azure_rm_postgresqlconfiguration"}
-	postgresql_configuration := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	postgresql_configuration := task[variant]
 	ansLib.checkState(postgresql_configuration)
 
 	is_string(postgresql_configuration.name)
@@ -16,9 +18,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(postgresql_configuration, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.value", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(postgresql_configuration, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.value", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "azure_rm_postgresqlconfiguration.value should equal to 'on'",
 		"keyActualValue": "azure_rm_postgresqlconfiguration.value is not equal to 'on'",

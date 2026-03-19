@@ -2,20 +2,23 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "lambda_policy"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.lambda_policy", "lambda_policy"}
-	lambda := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	lambda := task[variant]
+	ansLib.checkState(lambda)
 
 	contains(lambda.principal, "*")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(lambda, "function_name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.principal", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(lambda, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.principal", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("name={{%s}}.{{%s}}.principal shouldn't contain a wildcard", [task.name, modules[m]]),
-		"keyActualValue": sprintf("name={{%s}}.{{%s}}.principal contains a wildcard", [task.name, modules[m]]),
+		"keyExpectedValue": sprintf("name={{%s}}.{{%s}}.principal shouldn't contain a wildcard", [task.name, variant]),
+		"keyActualValue": sprintf("name={{%s}}.{{%s}}.principal contains a wildcard", [task.name, variant]),
 	}
 }

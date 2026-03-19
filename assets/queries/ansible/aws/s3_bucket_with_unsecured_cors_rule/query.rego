@@ -1,25 +1,26 @@
 package Cx
 
-import data.generic.ansible as ans_lib
+import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.aws_s3_cors", "aws_s3_cors"}
+canonical := "s3_cors"
 
 CxPolicy[result] {
-	task := ans_lib.tasks[id][t]
-	cors := task[modules[m]]
-	ans_lib.checkState(cors)
+	task := ansLib.tasks[id][t]
+	variant := ansLib.get_variants(canonical)[_]
+	cors := task[variant]
+	ansLib.checkState(cors)
 
 	rule := cors.rules[c]
 	common_lib.unsecured_cors_rule(rule.allowed_methods, rule.allowed_headers, rule.allowed_origins)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cors, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.rules", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cors, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.rules", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("%s[%d] should not allow all methods, all headers or several origins", [modules[m], c]),
-		"keyActualValue": sprintf("%s[%d] allows all methods, all headers or several origins", [modules[m], c]),
+		"keyExpectedValue": sprintf("%s[%d] should not allow all methods, all headers or several origins", [variant, c]),
+		"keyActualValue": sprintf("%s[%d] allows all methods, all headers or several origins", [variant, c]),
 	}
 }

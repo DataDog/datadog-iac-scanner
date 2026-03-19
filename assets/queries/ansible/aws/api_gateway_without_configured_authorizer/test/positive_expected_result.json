@@ -2,7 +2,7 @@
   {
     "queryName": "API Gateway Without Configured Authorizer",
     "severity": "MEDIUM",
-    "line": 3,
+    "line": 4,
     "fileName": "positive1.yaml"
   },
   {
@@ -14,13 +14,13 @@
   {
     "queryName": "API Gateway Without Configured Authorizer",
     "severity": "MEDIUM",
-    "line": 3,
+    "line": 4,
     "fileName": "positive3.yaml"
   },
   {
     "queryName": "API Gateway Without Configured Authorizer",
     "severity": "MEDIUM",
-    "line": 3,
+    "line": 4,
     "fileName": "positive4.yaml"
   }
 ]

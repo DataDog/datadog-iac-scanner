@@ -2,11 +2,12 @@ package Cx
 
 import data.generic.ansible as ansLib
 
-modules := {"community.aws.cloudfront_distribution", "cloudfront_distribution"}
+canonical := "cloudfront_distribution"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	cloudfront_distribution := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cloudfront_distribution := task[variant]
 	ansLib.checkState(cloudfront_distribution)
 	fields := ["default_cache_behavior", "cache_behaviors"]
 
@@ -14,9 +15,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cloudfront_distribution, "distribution_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.%s.viewer_protocol_policy", [task.name, modules[m], fields[f]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cloudfront_distribution, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.%s.viewer_protocol_policy", [task.name, variant, fields[f]]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("cloudfront_distribution.%s.viewer_protocol_policy should be 'https-only' or 'redirect-to-https'", [fields[f]]),
 		"keyActualValue": sprintf("cloudfront_distribution.%s.viewer_protocol_policy isn't 'https-only' or 'redirect-to-https'", [fields[f]]),

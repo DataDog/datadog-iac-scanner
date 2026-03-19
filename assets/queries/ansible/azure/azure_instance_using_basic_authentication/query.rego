@@ -1,25 +1,30 @@
 package Cx
 
-import future.keywords.if
+import data.generic.ansible as ansLib
+
+canonical := "azure_rm_virtualmachine"
 
 CxPolicy[result] {
-	vm := input.document[i].playbooks[k].azure_rm_virtualmachine
-    is_linux_vm(vm)
-    not vm.ssh_password_enabled == false
-    not vm.linux_config.disable_password_authentication == false
+	task := ansLib.tasks[id][t]
+	variant := ansLib.get_variants(canonical)[_]
+	vm := task[variant]
+	ansLib.checkState(vm)
+	is_linux_vm(vm)
+	not vm.ssh_password_enabled == false
+	not vm.linux_config.disable_password_authentication == false
 	result := {
-		"documentId": input.document[i].id,
-		"resourceType": "azure_rm_virtualmachine",
-		"resourceName": vm.name,
-		"searchKey": sprintf("name={{%s}}.azure_rm_virtualmachine", [input.document[i].playbooks[k].name]),
+		"documentId": id,
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(vm, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
-		"keyExpectedValue": sprintf("'azure_rm_virtualmachine[%s]' should be using SSH keys for authentication", [vm.name]),
-		"keyActualValue": sprintf("'azure_rm_virtualmachine[%s]' is using username and password for authentication", [vm.name]),
+		"keyExpectedValue": sprintf("'%s[%s]' should be using SSH keys for authentication", [canonical, ansLib.get_resource_name(vm, canonical, task)]),
+		"keyActualValue": sprintf("'%s[%s]' is using username and password for authentication", [canonical, ansLib.get_resource_name(vm, canonical, task)]),
 	}
 }
 
 is_linux_vm(vm) {
-    lower(vm.os_type) == "linux"
+	lower(vm.os_type) == "linux"
 } else {
-    not vm.os_type
+	not vm.os_type
 }

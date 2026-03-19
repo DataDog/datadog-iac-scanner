@@ -2,16 +2,16 @@
   {
     "queryName": "SQL Server Predictable Active Directory Account Name",
     "severity": "LOW",
-    "line": 7
+    "line": 8
   },
   {
     "queryName": "SQL Server Predictable Active Directory Account Name",
     "severity": "LOW",
-    "line": 13
+    "line": 15
   },
   {
     "queryName": "SQL Server Predictable Active Directory Account Name",
     "severity": "LOW",
-    "line": 19
+    "line": 22
   }
 ]

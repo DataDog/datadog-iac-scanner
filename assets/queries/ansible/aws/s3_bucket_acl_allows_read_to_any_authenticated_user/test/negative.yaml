@@ -1,9 +1,11 @@
 - name: Create an empty bucket
   amazon.aws.aws_s3:
     bucket: mybucket
+    object: my-object
     mode: create
 - name: Create an empty bucket2
   amazon.aws.aws_s3:
     bucket: mybucket
+    object: my-object-2
     mode: create
     permission: private

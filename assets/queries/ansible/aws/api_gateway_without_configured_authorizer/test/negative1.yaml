@@ -1,5 +1,6 @@
 - name: Setup AWS API Gateway setup on AWS and deploy API definition3
   community.aws.aws_api_gateway:
+    name: my-api
     swagger_file: swaggerFile.yaml
     stage: production
     cache_enabled: true

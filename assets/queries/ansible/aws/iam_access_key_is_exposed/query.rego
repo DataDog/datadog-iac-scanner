@@ -2,22 +2,27 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "iam_access_key"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.iam", "iam"}
-	iamuser := task[modules[m]]
-	ansLib.checkState(iamuser)
+	variant := ansLib.get_variants(canonical)[_]
+	resource := task[variant]
+	ansLib.checkState(resource)
 
-	lower(iamuser.access_key_state) == "active"
-	not contains(lower(iamuser.name), "root")
+	is_string(resource.user_name)
+	not contains(lower(resource.user_name), "root")
+
+	object.get(resource, "active", true) == true
+	object.get(resource, "state", "present") != "absent"
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(iamuser, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.access_key_state", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(resource, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "iam.name should be 'root' for an active access key",
-		"keyActualValue": sprintf("iam.name is '%s' for an active access key", [iamuser.name]),
+		"keyExpectedValue": "iam_access_key should not be active for a non-root user",
+		"keyActualValue": sprintf("iam_access_key is active for non-root user '%s'", [resource.user_name]),
 	}
 }

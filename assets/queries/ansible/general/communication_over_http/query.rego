@@ -3,11 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
+canonical := "uri"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"ansible.builtin.uri"}
-	builtin_uri := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	builtin_uri := task[variant]
 	ansLib.checkState(builtin_uri)
 
 	url := builtin_uri.url
@@ -15,12 +16,12 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(builtin_uri, "url", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.url", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(builtin_uri, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.url", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "ansible.builtin.uri.url should be accessed via the HTTPS protocol",
 		"keyActualValue": "ansible.builtin.uri.url is accessed via the HTTP protocol'",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], "url"], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "url"], []),
 	}
 }

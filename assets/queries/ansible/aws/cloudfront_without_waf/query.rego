@@ -2,19 +2,21 @@ package Cx
 
 import data.generic.ansible as ansLib
 
+canonical := "cloudfront_distribution"
+
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	modules := {"community.aws.cloudfront_distribution", "cloudfront_distribution"}
-	cloudfront := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cloudfront := task[variant]
 	ansLib.checkState(cloudfront)
 
 	not cloudfront.web_acl_id
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cloudfront, "distribution_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cloudfront, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "cloudfront_distribution.web_acl_id should be defined",
 		"keyActualValue": "cloudfront_distribution.web_acl_id is undefined",

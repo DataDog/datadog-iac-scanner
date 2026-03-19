@@ -2,21 +2,21 @@
   {
     "queryName": "EBS Volume Encryption Disabled",
     "severity": "HIGH",
-    "line": 5
+    "line": 6
   },
   {
     "queryName": "EBS Volume Encryption Disabled",
     "severity": "HIGH",
-    "line": 12
+    "line": 14
   },
   {
     "queryName": "EBS Volume Encryption Disabled",
     "severity": "HIGH",
-    "line": 19
+    "line": 22
   },
   {
     "queryName": "EBS Volume Encryption Disabled",
     "severity": "HIGH",
-    "line": 24
+    "line": 27
   }
 ]

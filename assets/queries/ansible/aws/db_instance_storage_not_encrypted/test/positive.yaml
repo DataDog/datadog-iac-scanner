@@ -1,6 +1,7 @@
 ---
 - name: foo
   community.aws.rds_instance:
+    db_instance_identifier: my-db-1
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -11,6 +12,7 @@
     allocated_storage: "{{ allocated_storage }}"
 - name: foo2
   community.aws.rds_instance:
+    db_instance_identifier: my-db-2
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -21,6 +23,7 @@
     allocated_storage: "{{ allocated_storage }}"
 - name: foo3
   community.aws.rds_instance:
+    db_instance_identifier: my-db-3
     id: test-encrypted-db
     state: present
     engine: mariadb

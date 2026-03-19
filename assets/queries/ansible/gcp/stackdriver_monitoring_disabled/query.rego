@@ -3,20 +3,21 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"google.cloud.gcp_container_cluster", "gcp_container_cluster"}
+canonical := "gcp_container_cluster"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	cluster := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cluster := task[variant]
 	ansLib.checkState(cluster)
 
 	not common_lib.valid_key(cluster, "monitoring_service")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cluster, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cluster, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "gcp_container_cluster.monitoring_service should be defined",
 		"keyActualValue": "gcp_container_cluster.monitoring_service is undefined",
@@ -25,7 +26,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	cluster := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	cluster := task[variant]
 	ansLib.checkState(cluster)
 
 	is_string(cluster.monitoring_service)
@@ -33,9 +35,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cluster, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.monitoring_service", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(cluster, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.monitoring_service", [task.name, variant]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "gcp_container_cluster.monitoring_service should not be 'none'",
 		"keyActualValue": "gcp_container_cluster.monitoring_service is 'none'",

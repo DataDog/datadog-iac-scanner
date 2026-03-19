@@ -3,12 +3,12 @@ package Cx
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
-modules := {"community.aws.aws_api_gateway", "aws_api_gateway"}
+canonical := "api_gateway"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-
-	apiGateway := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	apiGateway := task[variant]
 	ansLib.checkState(apiGateway)
 
 	content_info := get_content(apiGateway)
@@ -18,19 +18,19 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(apiGateway, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, modules[m], content_info.attribute]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(apiGateway, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.%s", [task.name, variant, content_info.attribute]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("'%s.%s' should have an authorizer set", [modules[m], content_info.attribute]),
-		"keyActualValue": sprintf("'%s.%s' does not have a authorizer set", [modules[m], content_info.attribute]),
+		"keyExpectedValue": sprintf("'%s.%s' should have an authorizer set", [variant, content_info.attribute]),
+		"keyActualValue": sprintf("'%s.%s' does not have a authorizer set", [variant, content_info.attribute]),
 	}
 }
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-
-	apiGateway := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	apiGateway := task[variant]
 	ansLib.checkState(apiGateway)
 
 	text := apiGateway.swagger_text
@@ -39,31 +39,31 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(apiGateway, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.swagger_text", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(apiGateway, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.swagger_text", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("'%s.swagger_text' should have an authorizer set", [modules[m]]),
-		"keyActualValue": sprintf("'%s.swagger_text' does not have a authorizer set", [modules[m]]),
+		"keyExpectedValue": sprintf("'%s.swagger_text' should have an authorizer set", [variant]),
+		"keyActualValue": sprintf("'%s.swagger_text' does not have a authorizer set", [variant]),
 	}
 }
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-
-	apiGateway := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	apiGateway := task[variant]
 	ansLib.checkState(apiGateway)
 
 	without_authorizer(apiGateway)
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(apiGateway, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(apiGateway, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("'%s' should have swagger_file, swagger_text or swagger_dict set", [modules[m]]),
-		"keyActualValue": sprintf("'%s' does not have swagger_file, swagger_text or swagger_dict set", [modules[m]]),
+		"keyExpectedValue": sprintf("'%s' should have swagger_file, swagger_text or swagger_dict set", [variant]),
+		"keyActualValue": sprintf("'%s' does not have swagger_file, swagger_text or swagger_dict set", [variant]),
 	}
 }
 

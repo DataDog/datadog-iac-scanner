@@ -2,20 +2,21 @@ package Cx
 
 import data.generic.ansible as ansLib
 
-modules := {"community.aws.elb_application_lb", "elb_application_lb"}
+canonical := "elb_application_lb"
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	applicationLb := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	applicationLb := task[variant]
 	ansLib.checkState(applicationLb)
 
 	applicationLb.listeners[index].Protocol != "HTTPS"
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(applicationLb, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.listeners.Protocol=%s", [task.name, modules[m], applicationLb.listeners[index].Protocol]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(applicationLb, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.listeners.Protocol=%s", [task.name, variant, applicationLb.listeners[index].Protocol]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'aws_elb_application_lb' Protocol should be 'HTTP'",
 		"keyActualValue": "'aws_elb_application_lb' Protocol it's not 'HTTP'",
@@ -24,7 +25,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	task := ansLib.tasks[id][t]
-	applicationLb := task[modules[m]]
+	variant := ansLib.get_variants(canonical)[_]
+	applicationLb := task[variant]
 	ansLib.checkState(applicationLb)
 
 	applicationLb.listeners[index]
@@ -32,9 +34,9 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(applicationLb, "name", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.listeners", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ansLib.get_resource_name(applicationLb, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.listeners", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "'aws_elb_application_lb' Protocol should be 'HTTP'",
 		"keyActualValue": "'aws_elb_application_lb' Protocol is missing",

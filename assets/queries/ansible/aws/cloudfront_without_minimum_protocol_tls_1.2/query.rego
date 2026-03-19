@@ -3,30 +3,32 @@ package Cx
 import data.generic.ansible as ans_lib
 import data.generic.common as common_lib
 
-modules := {"community.aws.cloudfront_distribution", "cloudfront_distribution"}
+canonical := "cloudfront_distribution"
 
 CxPolicy[result] {
 	task := ans_lib.tasks[id][t]
-	cloudfront := task[modules[m]]
+	variant := ans_lib.get_variants(canonical)[_]
+	cloudfront := task[variant]
 
 	ans_lib.checkState(cloudfront)
 	not common_lib.valid_key(cloudfront, "viewer_certificate")
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cloudfront, "distribution_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ans_lib.get_resource_name(cloudfront, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "cloudfront_distribution.viewer_certificate should be defined",
 		"keyActualValue": "cloudfront_distribution.viewer_certificate is undefined",
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m]], []),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant], []),
 	}
 }
 
 CxPolicy[result] {
 	task := ans_lib.tasks[id][t]
-	cloudfront := task[modules[m]]
+	variant := ans_lib.get_variants(canonical)[_]
+	cloudfront := task[variant]
 
 	ans_lib.checkState(cloudfront)
 	protocol_version := cloudfront.viewer_certificate.minimum_protocol_version
@@ -35,12 +37,12 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": id,
-		"resourceType": modules[m],
-		"resourceName": object.get(cloudfront, "distribution_id", task.name),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.viewer_certificate.minimum_protocol_version", [task.name, modules[m]]),
+		"resourceType": canonical,
+		"resourceName": ans_lib.get_resource_name(cloudfront, canonical, task),
+		"searchKey": sprintf("name={{%s}}.{{%s}}.viewer_certificate.minimum_protocol_version", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("name={{%s}}.{{%s}}.viewer_certificate.minimum_protocol_version' should be TLSv1.2_x", [task.name, modules[m]]),
-		"keyActualValue": sprintf("name={{%s}}.{{%s}}.viewer_certificate.minimum_protocol_version' is %s", [task.name, modules[m], protocol_version]),
-		"searchLine": common_lib.build_search_line(["playbooks", t, modules[m], "viewer_certificate", "minimum_protocol_version"], []),
+		"keyExpectedValue": sprintf("name={{%s}}.{{%s}}.viewer_certificate.minimum_protocol_version' should be TLSv1.2_x", [task.name, variant]),
+		"keyActualValue": sprintf("name={{%s}}.{{%s}}.viewer_certificate.minimum_protocol_version' is %s", [task.name, variant, protocol_version]),
+		"searchLine": common_lib.build_search_line(["playbooks", t, variant, "viewer_certificate", "minimum_protocol_version"], []),
 	}
 }
