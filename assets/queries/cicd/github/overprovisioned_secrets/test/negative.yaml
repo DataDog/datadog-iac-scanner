@@ -1,0 +1,12 @@
+name: Proper Secret Usage
+on: push
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy with specific secret
+        run: |
+          curl -H "Authorization: Bearer ${{ secrets.DEPLOY_TOKEN }}" \
+               -H "API-Key: ${{ secrets.API_KEY }}" \
+               https://api.example.com/deploy

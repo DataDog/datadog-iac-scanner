@@ -1,0 +1,143 @@
+name: Trusted Publishing Test - Positive Cases
+on:
+  push:
+    branches: [main]
+
+jobs:
+  pypi-manual-password:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish to PyPI with password
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  rubygems-no-trusted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Release gem without trusted publishing
+        uses: rubygems/release-gem@v1
+
+  rubygems-disabled-trusted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Release gem with trusted publishing disabled
+        uses: rubygems/release-gem@v1
+        with:
+          setup-trusted-publisher: false
+
+  rubygems-manual-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure RubyGems with manual token
+        uses: rubygems/configure-rubygems-credentials@main
+        with:
+          api-token: ${{ secrets.RUBYGEMS_API_KEY }}
+          gem-server: https://rubygems.org
+
+  npm-manual-auth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          always-auth: true
+
+  cargo-publish-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish to crates.io
+        run: cargo publish
+
+  twine-upload-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish to PyPI with twine
+        run: twine upload dist/*
+
+  npm-publish-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish to npm
+        run: npm publish
+
+  gem-push-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push gem
+        run: gem push mygem-1.0.0.gem
+
+  poetry-publish-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish with poetry
+        run: poetry publish
+
+  yarn-publish-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish with yarn
+        run: yarn publish
+
+  pnpm-publish-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish with pnpm
+        run: pnpm publish
+
+  nuget-push-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push to NuGet
+        run: nuget push MyPackage.nupkg
+
+  dotnet-nuget-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push with dotnet
+        run: dotnet nuget push MyPackage.nupkg
+
+  uv-publish-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish with uv
+        run: uv publish
+
+  python-m-twine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish with python -m twine
+        run: python -m twine upload dist/*

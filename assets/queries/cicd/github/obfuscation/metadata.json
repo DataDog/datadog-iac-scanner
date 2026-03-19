@@ -1,0 +1,13 @@
+{
+  "id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+  "queryName": "Obfuscation",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "GitHub Actions references contain obfuscated path components that serve no functional purpose but make pattern matching and security analysis difficult. This includes dot references (.), parent directory traversals (..), and empty path components (multiple slashes). While these patterns are technically valid GitHub Actions syntax, they can be used to bypass security tools and make code reviews harder. For example, 'actions/checkout////@v4' is functionally equivalent to 'actions/checkout@v4', and 'github/codeql-action/./init@v2' is equivalent to 'github/codeql-action/init@v2'. These obfuscation patterns should be normalized to their simplified forms. Note: Local actions (starting with ./) are legitimate and not flagged by this rule.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/obfuscation",
+  "platform": "CICD",
+  "descriptionID": "a1b2c3d4",
+  "cloudProvider": "common",
+  "cwe": "710",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsuses"
+}

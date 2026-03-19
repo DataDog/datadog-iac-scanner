@@ -1,0 +1,25 @@
+name: Using Superfluous Actions
+on: push
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release with action
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v1.0.0
+
+      - name: Comment with action
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: 1
+          body: LGTM
+
+      - name: Run Docker with action
+        uses: addnab/docker-run-action@v3
+        with:
+          image: alpine:latest
+          run: echo "Hello"

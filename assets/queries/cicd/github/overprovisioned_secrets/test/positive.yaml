@@ -1,0 +1,14 @@
+name: Overprovisioned Secrets
+on: push
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Export all secrets
+        run: echo '${{ toJSON(secrets) }}'
+
+      - name: Dynamic secret access
+        run: |
+          SECRET_NAME="DEPLOY_TOKEN_${{ matrix.env }}"
+          echo ${{ secrets[format('DEPLOY_TOKEN_{0}', matrix.env)] }}

@@ -1,0 +1,13 @@
+{
+  "id": "b8c9d0e1-f2a3-44b5-c6d7-e8f9a0b1c2d3",
+  "queryName": "Self-Hosted Runner",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Self-hosted runners in public repositories pose significant security risks due to potential persistence between workflow runs. Unlike GitHub-hosted runners which are ephemeral and cleaned between each job, self-hosted runners may retain state, files, and credentials from previous executions. In public repositories, this is especially dangerous as any user can open a pull request that triggers workflows on these runners, potentially accessing secrets, modifying the runner environment, or establishing persistence for future attacks. Self-hosted runners are identified by the 'self-hosted' label as the first element in the runs-on configuration. Expression-based runner selection is also flagged as it may expand to self-hosted runners at runtime.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/self_hosted_runner",
+  "platform": "CICD",
+  "descriptionID": "b8c9d0e1",
+  "cloudProvider": "common",
+  "cwe": "665",
+  "providerUrl": "https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#self-hosted-runner-security"
+}

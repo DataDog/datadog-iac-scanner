@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Overprovisioned Secrets",
+    "severity": "MEDIUM",
+    "line": 9
+  },
+  {
+    "queryName": "Overprovisioned Secrets",
+    "severity": "MEDIUM",
+    "line": 12
+  }
+]

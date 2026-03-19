@@ -1,0 +1,42 @@
+name: Self Hosted Runner
+on: push
+
+jobs:
+  # Case 1: Literal self-hosted in array
+  test:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+
+  # Case 2a: Expression-based runner (string) - matrix with self-hosted
+  test_matrix_expression:
+    strategy:
+      matrix:
+        runner: [self-hosted, ubuntu-latest]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+
+  # Case 2b: Expression-based runner (array) - variable reference
+  test_expression_array:
+    runs-on: ["${{ inputs.runner }}"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+
+  # Case 2c: Expression-based runner (string) - simple expression
+  test_expression_string:
+    runs-on: ${{ github.event.inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+
+  # Case 3: Runner group (implies self-hosted)
+  test_runner_group:
+    runs-on:
+      group: my-runner-group
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
