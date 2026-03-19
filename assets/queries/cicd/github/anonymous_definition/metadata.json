@@ -1,0 +1,13 @@
+{
+  "id": "a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6",
+  "queryName": "Anonymous Definition",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Workflows and jobs without names can be hard to find in the GitHub UI and reduce code maintainability. Workflows without a name are harder to track and identify, especially in repositories with multiple workflows. Jobs without names also make it difficult to understand the workflow structure at a glance.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/anonymous_definition",
+  "platform": "CICD",
+  "descriptionID": "a1b2c3d4",
+  "cloudProvider": "common",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#name",
+  "cwe": "710"
+}

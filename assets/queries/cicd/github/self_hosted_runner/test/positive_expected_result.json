@@ -1,0 +1,27 @@
+[
+  {
+    "queryName": "Self-Hosted Runner",
+    "severity": "MEDIUM",
+    "line": 7
+  },
+  {
+    "queryName": "Self-Hosted Runner",
+    "severity": "MEDIUM",
+    "line": 17
+  },
+  {
+    "queryName": "Self-Hosted Runner",
+    "severity": "MEDIUM",
+    "line": 24
+  },
+  {
+    "queryName": "Self-Hosted Runner",
+    "severity": "MEDIUM",
+    "line": 31
+  },
+  {
+    "queryName": "Self-Hosted Runner",
+    "severity": "MEDIUM",
+    "line": 38
+  }
+]

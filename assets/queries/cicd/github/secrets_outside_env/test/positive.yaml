@@ -1,0 +1,11 @@
+name: Secrets Outside Environment
+on: push
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy with secrets
+        run: |
+          echo "Deploying..."
+          curl -H "Authorization: Bearer ${{ secrets.DEPLOY_TOKEN }}" https://api.example.com/deploy

@@ -1,0 +1,12 @@
+{
+  "id": "b5c6d7e8-f9a0-41b2-c3d4-e5f6a7b8c9d0",
+  "queryName": "Superfluous Actions",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Some GitHub Actions provide functionality that is already built into GitHub-hosted runners, making them superfluous. Using these actions adds unnecessary dependencies and potential security risks. Examples include: release actions when 'gh release' CLI is available; comment creation actions when 'gh pr comment' / 'gh issue comment' are available; Docker run actions when 'docker run' or container steps work natively; and toolchain setup actions when package managers like rustup/cargo are already installed. Using built-in runner functionality is simpler, faster, more maintainable, and reduces the attack surface by eliminating third-party action dependencies. Consider using script steps with built-in tools instead.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/superfluous_actions",
+  "platform": "CICD",
+  "descriptionID": "b5c6d7e8",
+  "cloudProvider": "common",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/about-workflows"
+}

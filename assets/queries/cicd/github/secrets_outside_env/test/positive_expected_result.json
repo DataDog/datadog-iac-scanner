@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Secrets Outside Environment",
+    "severity": "MEDIUM",
+    "line": 9
+  }
+]

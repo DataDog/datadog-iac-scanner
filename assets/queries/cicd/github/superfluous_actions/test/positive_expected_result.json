@@ -1,0 +1,17 @@
+[
+  {
+    "queryName": "Superfluous Actions",
+    "severity": "LOW",
+    "line": 11
+  },
+  {
+    "queryName": "Superfluous Actions",
+    "severity": "LOW",
+    "line": 16
+  },
+  {
+    "queryName": "Superfluous Actions",
+    "severity": "LOW",
+    "line": 22
+  }
+]
