@@ -1,12 +1,17 @@
-# Non-root user with access key: not exposed
-- name: Create regular user access key
-  community.aws.iam_access_key:
-    user_name: jcleese
-    state: present
-
-# Root user but key is absent: not exposed
-- name: Delete root access key
+# Root user with active key (covered by root_account_has_active_access_keys)
+- name: Create root access key
   community.aws.iam_access_key:
     user_name: root
-    id: AKIA1EXAMPLE1EXAMPLE
+    state: present
+
+# Non-root user with inactive key
+- name: Create inactive access key
+  community.aws.iam_access_key:
+    user_name: jcleese
+    active: false
+
+# Non-root user with absent state
+- name: Remove access key
+  community.aws.iam_access_key:
+    user_name: jdavila
     state: absent

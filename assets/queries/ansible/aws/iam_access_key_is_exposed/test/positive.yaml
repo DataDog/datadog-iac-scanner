@@ -1,5 +1,8 @@
-# Root user with active access key (default active=true) - should flag
-- name: Create root access key
+- name: Create non-root user with active access key
   community.aws.iam_access_key:
-    user_name: root
+    user_name: jcleese
+    state: present
+- name: Create another non-root user with active access key
+  community.aws.iam_access_key:
+    user_name: mpython
     state: present

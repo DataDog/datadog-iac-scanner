@@ -11,15 +11,18 @@ CxPolicy[result] {
 	ansLib.checkState(resource)
 
 	is_string(resource.user_name)
-	contains(lower(resource.user_name), "root")
+	not contains(lower(resource.user_name), "root")
+
+	object.get(resource, "active", true) == true
+	object.get(resource, "state", "present") != "absent"
 
 	result := {
 		"documentId": id,
 		"resourceType": canonical,
 		"resourceName": ansLib.get_resource_name(resource, canonical, task),
-		"searchKey": sprintf("name={{%s}}.{{%s}}.access_key_state", [task.name, variant]),
+		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, variant]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "iam_access_key should not be active for root user",
-		"keyActualValue": sprintf("iam_access_key is active for user '%s' (root)", [resource.user_name]),
+		"keyExpectedValue": "iam_access_key should not be active for a non-root user",
+		"keyActualValue": sprintf("iam_access_key is active for non-root user '%s'", [resource.user_name]),
 	}
 }
