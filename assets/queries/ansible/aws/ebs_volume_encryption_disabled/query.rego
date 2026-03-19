@@ -10,6 +10,7 @@ CxPolicy[result] {
 	variant := ansLib.get_variants(canonical)[_]
 	ec2_vol := task[variant]
 	ansLib.checkState(ec2_vol)
+	object.get(ec2_vol, "state", "present") != "list"
 
 	ansLib.isAnsibleFalse(ec2_vol.encrypted)
 
@@ -29,6 +30,7 @@ CxPolicy[result] {
 	variant := ansLib.get_variants(canonical)[_]
 	ec2_vol := task[variant]
 	ansLib.checkState(ec2_vol)
+	object.get(ec2_vol, "state", "present") != "list"
 
 	not common_lib.valid_key(ec2_vol, "encrypted")
 
