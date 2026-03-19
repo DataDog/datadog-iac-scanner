@@ -8,6 +8,6 @@
   "platform": "CICD",
   "descriptionID": "d946b13a",
   "cloudProvider": "common",
-  "cwe": "CWE-732",
+  "cwe": "732",
   "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#permissions"
 }

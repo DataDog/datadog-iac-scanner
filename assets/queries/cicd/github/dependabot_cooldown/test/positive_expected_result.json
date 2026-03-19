@@ -1,0 +1,22 @@
+[
+  {
+    "queryName": "Dependabot cooldown",
+    "severity": "MEDIUM",
+    "line": 9
+  },
+  {
+    "queryName": "Dependabot cooldown",
+    "severity": "MEDIUM",
+    "line": 12
+  },
+  {
+    "queryName": "Dependabot cooldown",
+    "severity": "MEDIUM",
+    "line": 22
+  },
+  {
+    "queryName": "Dependabot cooldown",
+    "severity": "MEDIUM",
+    "line": 30
+  }
+]

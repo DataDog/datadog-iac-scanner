@@ -1,0 +1,23 @@
+[
+  {
+    "queryName": "Concurrency limits",
+    "severity": "LOW",
+    "line": 5
+  },
+  {
+    "queryName": "Concurrency limits",
+    "severity": "LOW",
+    "line": 22
+  },
+  {
+    "queryName": "Concurrency limits",
+    "severity": "LOW",
+    "line": 33
+  },
+  {
+    "queryName": "Concurrency limits",
+    "severity": "LOW",
+    "line": 5,
+    "fileName": "positive2.yaml"
+  }
+]

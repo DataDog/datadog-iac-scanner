@@ -1,0 +1,27 @@
+[
+  {
+    "queryName": "Obfuscation",
+    "severity": "LOW",
+    "line": 9
+  },
+  {
+    "queryName": "Obfuscation",
+    "severity": "LOW",
+    "line": 12
+  },
+  {
+    "queryName": "Obfuscation",
+    "severity": "LOW",
+    "line": 15
+  },
+  {
+    "queryName": "Obfuscation",
+    "severity": "LOW",
+    "line": 18
+  },
+  {
+    "queryName": "Obfuscation",
+    "severity": "LOW",
+    "line": 21
+  }
+]

@@ -1,0 +1,34 @@
+version: 2
+updates:
+  # Valid: Exactly at threshold (7 days)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+
+  # Valid: Above threshold (14 days)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 14
+
+  # Valid: Well above threshold (30 days)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 30
+
+  # Valid: With additional cooldown settings
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 10
+      dependency-type: "production"

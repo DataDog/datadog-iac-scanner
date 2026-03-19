@@ -1,0 +1,37 @@
+name: Workflow without Cancel in Progress
+on: pull_request
+
+# Workflow-level concurrency without cancel-in-progress
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+---
+# Job-level concurrency without cancel-in-progress
+name: Job Level Concurrency
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: test-${{ github.ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+---
+# Missing concurrency at both levels
+name: No Concurrency
+on: pull_request
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm run deploy

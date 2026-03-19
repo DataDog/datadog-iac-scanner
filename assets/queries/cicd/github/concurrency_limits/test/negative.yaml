@@ -1,0 +1,54 @@
+# Workflow with proper concurrency control
+name: Workflow with Concurrency Control
+on: pull_request
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+---
+# Reusable workflow (should be skipped)
+name: Reusable Workflow
+on: workflow_call
+
+concurrency:
+  group: reusable-${{ github.ref }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm build
+---
+# Job-level concurrency with cancel-in-progress
+name: Job Level Concurrency
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: test-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+---
+# Reusable workflow call (should be skipped)
+name: Workflow Calling Reusable
+on: push
+
+concurrency:
+  group: caller-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  call-reusable:
+    uses: ./.github/workflows/reusable.yml

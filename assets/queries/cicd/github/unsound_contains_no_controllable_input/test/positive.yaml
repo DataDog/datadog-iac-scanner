@@ -1,0 +1,10 @@
+name: Unsound Contains Usage
+on: pull_request
+
+jobs:
+  # Case 1: Contains with non-user-controllable context
+  test_safe_context:
+    runs-on: ubuntu-latest
+    if: ${{ contains('push pull_request', github.event_name) }}
+    steps:
+      - run: echo "This is informational, not high severity"

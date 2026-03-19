@@ -1,0 +1,13 @@
+{
+  "id": "af2c88c9-e360-4dc6-88ad-0f57085d54b8",
+  "queryName": "Obfuscation",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Obfuscated GitHub Actions usage (for example, weird `uses:` paths or needlessly complex/fenced expressions) makes workflows harder to audit and can hide malicious or unintended behavior.\n\nFor repository action references, the step `uses` property must not contain empty path components, `.` or `..`. It should be normalized to the concrete form `owner/repo[/path]@ref` so pattern-matching and provenance analysis work reliably.\n\nFor expressions anywhere routable text is allowed (such as step inputs/outputs and workflow fields), constant-reducible expressions should be replaced by their evaluated constant, and computed index expressions should be avoided. When replacing an entire fenced expression written `${{ ... }}`, the fix must remove the fencing to preserve semantics. Fixes for reducible sub-expressions should target only the subfragment.\n\nThis rule flags step `uses` values with empty components or `.`/`..`, fenced expressions that can be constant-reduced, and computed index expressions. Automated fixes normalize `uses` paths and either replace full expressions with their evaluated value or rewrite only the reducible subexpression when possible.\n\nSecure examples:\n\n```yaml\n# normalized repository action reference\n- uses: actions/checkout@v4\n```\n\n```yaml\n# replace constant-fenced expression with its evaluated value\noutputs:\n  iac/terraform/attribution.tfm--release_created: steps.release.outputs.iac/terraform/attribution.tfm--release_created\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/obfuscation",
+  "platform": "CICD",
+  "descriptionID": "a1b2c3d4",
+  "cloudProvider": "common",
+  "cwe": "710",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsuses"
+}
