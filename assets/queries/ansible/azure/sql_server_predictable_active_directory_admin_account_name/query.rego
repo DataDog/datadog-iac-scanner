@@ -46,6 +46,5 @@ CxPolicy[result] {
 
 check_predictable(name) {
 	predictable_names := {"admin", "administrator", "sqladmin", "root", "user", "azure_admin", "azure_administrator", "guest"}
-	some i
 	predictable_names[i] == lower(name)
 }

@@ -8,7 +8,6 @@ import data.generic.common as common_lib
 preserve_check_canonicals := {"archive", "assemble", "file", "get_url", "lineinfile", "replace"}
 
 CxPolicy[result] {
-	some canonical
 	preserve_check_canonicals[canonical]
 	task := ansLib.tasks[id][e]
 	variant := ansLib.get_variants(canonical)[_]
@@ -30,7 +29,6 @@ CxPolicy[result] {
 file_creation_canonicals := {"archive", "assemble", "copy", "file", "get_url", "template"}
 
 CxPolicy[result] {
-	some canonical
 	file_creation_canonicals[canonical]
 	task := ansLib.tasks[id][_]
 	variant := ansLib.get_variants(canonical)[_]

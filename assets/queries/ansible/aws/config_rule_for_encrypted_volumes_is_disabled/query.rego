@@ -38,7 +38,6 @@ first_config_rule_task(doc_id, task_index) {
 }
 
 earlier_config_task(doc_id, task_index) {
-	some i
 	task := ansLib.tasks[doc_id][i]
 	i < task_index
 	variant := ansLib.get_variants(canonical)[_]

@@ -11,7 +11,6 @@ CxPolicy[result] {
 	ansLib.checkState(taskComputeInstance)
 
 	service_accounts := taskComputeInstance.service_accounts
-	some s
 	scopes := service_accounts[s].scopes
 	lower(scopes[_]) == "cloud-platform"
 

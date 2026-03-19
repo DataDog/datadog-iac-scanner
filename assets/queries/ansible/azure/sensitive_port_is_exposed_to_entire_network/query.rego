@@ -63,7 +63,6 @@ containsDP(port, dpr) = containing {
 	regex.match(sprintf("(^|\\s|,)%d(-|,|$|\\s)", [port]), dpr)
 	containing := true
 } else = containing {
-	some var
 	ports := split(dpr, ",")
 	sublist := split(ports[var], "-")
 	to_number(trim(sublist[0], " ")) <= port

@@ -27,6 +27,5 @@ CxPolicy[result] {
 
 check_database_flags_content(database_flags) {
 	cmd := ["fatal", "panic", "log", "error", "warning", "notice", "info", "debug1", "debug2", "debug3", "debug4", "debug5"]
-	some k
 	contains(database_flags.value, cmd[k])
 }

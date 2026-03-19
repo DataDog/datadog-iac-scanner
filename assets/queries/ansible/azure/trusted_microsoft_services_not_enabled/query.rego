@@ -30,6 +30,5 @@ containsAzureService(bypass) {
 
 containsAzureService(bypass) {
 	values := split(bypass, ",")
-	some j
 	values[j] == "AzureServices"
 }

@@ -29,7 +29,6 @@ CxPolicy[result] {
 }
 
 has_waf_associated(stage) {
-	some wv
 	wafVariants[wv]
 	task2 := ansLib.tasks[_][_]
 	wafResource := task2[wv]

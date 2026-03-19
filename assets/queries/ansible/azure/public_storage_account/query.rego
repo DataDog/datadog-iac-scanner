@@ -33,7 +33,6 @@ CxPolicy[result] {
 
 	ip_rules := storageaccount.network_acls.ip_rules
 
-	some j
 	ip_rules[j].value == "0.0.0.0/0"
 
 	result := {

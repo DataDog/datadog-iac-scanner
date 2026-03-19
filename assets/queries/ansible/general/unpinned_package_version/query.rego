@@ -12,7 +12,6 @@ installer_canonicals := {
 }
 
 CxPolicy[result] {
-	some canonical
 	installer_canonicals[canonical]
 	task := ansLib.tasks[id][_]
 	variant := ansLib.get_variants(canonical)[_]
@@ -35,7 +34,6 @@ CxPolicy[result] {
 }
 
 CxPolicy[result] {
-	some canonical
 	installer_canonicals[canonical]
 	task := ansLib.tasks[id][_]
 	variant := ansLib.get_variants(canonical)[_]
