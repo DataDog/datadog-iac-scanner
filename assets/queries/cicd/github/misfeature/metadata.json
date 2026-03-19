@@ -1,0 +1,13 @@
+{
+  "id": "a4b5c6d7-e8f9-40a1-b2c3-d4e5f6a7b8c9",
+  "queryName": "Misfeature",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Certain GitHub Actions features should be avoided because they have known limitations or better alternatives. This rule detects: (1) Usage of the pip-install input with actions/setup-python, which installs packages directly into a global Python environment rather than a virtual environment, leading to inconsistent behavior across different runners and Python versions. (2) Usage of shell: cmd for Windows command prompt, which has no formal grammar, multiple line continuation mechanisms that prevent reliable analysis, and hasn't been the default Windows shell since 2019. For Python package management, always use a virtual environment. For Windows shells, prefer 'shell: pwsh' (PowerShell) or 'shell: bash' for better analysis and reliability.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/misfeature",
+  "platform": "CICD",
+  "descriptionID": "a4b5c6d7",
+  "cloudProvider": "common",
+  "cwe": "710",
+  "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+}

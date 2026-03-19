@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Misfeature",
+    "severity": "LOW",
+    "line": 14
+  },
+  {
+    "queryName": "Misfeature",
+    "severity": "LOW",
+    "line": 17
+  }
+]
