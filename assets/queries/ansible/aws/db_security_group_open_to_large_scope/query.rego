@@ -1,7 +1,6 @@
 package Cx
 
 import data.generic.ansible as ansLib
-import data.generic.common as common_lib
 
 canonical := "ec2_group"
 
