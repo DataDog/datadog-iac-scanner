@@ -1,12 +1,12 @@
 [
   {
-    "queryName": "SQS Policy With Public Access",
+    "queryName": "SQS policy with public access",
     "severity": "MEDIUM",
     "line": 10,
     "fileName": "positive.yaml"
   },
   {
-    "queryName": "SQS Policy With Public Access",
+    "queryName": "SQS policy with public access",
     "severity": "MEDIUM",
     "line": 28,
     "fileName": "positive.yaml"

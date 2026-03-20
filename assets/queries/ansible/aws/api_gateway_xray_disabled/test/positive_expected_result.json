@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "API Gateway X-Ray Disabled",
+    "queryName": "API Gateway X-Ray disabled",
     "severity": "LOW",
     "line": 9
   },
   {
-    "queryName": "API Gateway X-Ray Disabled",
+    "queryName": "API Gateway X-Ray disabled",
     "severity": "LOW",
     "line": 13
   }

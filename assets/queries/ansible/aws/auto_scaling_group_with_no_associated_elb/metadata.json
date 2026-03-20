@@ -1,13 +1,13 @@
 {
   "id": "050f085f-a8db-4072-9010-2cca235cc02f",
-  "queryName": "Auto Scaling Group With No Associated ELB",
+  "queryName": "Auto Scaling Group with no associated ELB",
   "severity": "MEDIUM",
   "category": "Availability",
-  "descriptionText": "Auto Scaling Groups must be associated with a load balancer so new instances receive traffic and so health checks can detect and replace unhealthy instances; without a load balancer, instances may not serve requests and application availability and scaling behavior can be impacted. For Ansible ec2_asg tasks (modules `community.aws.ec2_asg` and `ec2_asg`), the `load_balancers` property must be defined and set to a non-empty list of Classic ELB names. Tasks missing the `load_balancers` property or with `load_balancers: []` will be flagged. If you use Application Load Balancers with target groups instead of Classic ELBs, configure `target_group_arns` accordingly—this rule only validates the `load_balancers` attribute.\n\nSecure example:\n\n```yaml\n- name: Create Auto Scaling Group with ELB\n  community.aws.ec2_asg:\n    name: my-asg\n    launch_template: my-launch-template\n    min_size: 2\n    max_size: 5\n    load_balancers:\n      - my-classic-elb\n```",
+  "descriptionText": "Auto Scaling Groups must be associated with a load balancer so new instances receive traffic and health checks can detect and replace unhealthy instances. Without a load balancer, instances may not serve requests, and application availability and scaling behavior can be impacted.\n\nFor Ansible `autoscaling_group` tasks (modules `amazon.aws.autoscaling_group` and `autoscaling_group`), the `load_balancers` property must be defined and set to a non-empty list of Classic ELB names. Tasks missing the `load_balancers` property or with `load_balancers: []` are flagged. If you use Application Load Balancers with target groups instead of Classic ELBs, configure `target_group_arns` accordingly—this rule only validates the `load_balancers` attribute.\n\nSecure example:\n\n```yaml\n- name: Create Auto Scaling Group with ELB\n  amazon.aws.autoscaling_group:\n    name: my-asg\n    launch_template: my-launch-template\n    min_size: 2\n    max_size: 5\n    load_balancers:\n      - my-classic-elb\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/auto_scaling_group_with_no_associated_elb",
   "platform": "Ansible",
   "descriptionID": "57b5fbca",
   "cloudProvider": "aws",
   "cwe": "400",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/ec2_asg_module.html#parameter-load_balancers"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/autoscaling_group_module.html#parameter-load_balancers"
 }

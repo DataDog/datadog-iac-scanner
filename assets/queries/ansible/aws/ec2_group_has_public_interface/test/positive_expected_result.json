@@ -1,8 +1,8 @@
 [
-	{
-		"queryName": "EC2 Group Has Public Interface",
-		"severity": "HIGH",
-		"line": 22,
-		"fileName": "positive.yaml"
-	}
+  {
+    "queryName": "EC2 security group allows public access",
+    "severity": "HIGH",
+    "line": 22,
+    "fileName": "positive.yaml"
+  }
 ]

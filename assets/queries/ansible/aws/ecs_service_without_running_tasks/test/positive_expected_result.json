@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "ECS Service Without Running Tasks",
+    "queryName": "ECS service without running tasks",
     "severity": "LOW",
     "line": 2
   }

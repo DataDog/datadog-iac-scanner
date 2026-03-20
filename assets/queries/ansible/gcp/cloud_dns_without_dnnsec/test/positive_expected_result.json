@@ -1,17 +1,17 @@
 [
-	{
-		"queryName": "Cloud DNS Without DNSSEC",
-		"severity": "MEDIUM",
-		"line": 3
-	},
-	{
-		"queryName": "Cloud DNS Without DNSSEC",
-		"severity": "MEDIUM",
-		"line": 20
-	},
-	{
-		"queryName": "Cloud DNS Without DNSSEC",
-		"severity": "MEDIUM",
-		"line": 33
-	}
+  {
+    "queryName": "Cloud DNS without DNSSEC",
+    "severity": "MEDIUM",
+    "line": 3
+  },
+  {
+    "queryName": "Cloud DNS without DNSSEC",
+    "severity": "MEDIUM",
+    "line": 20
+  },
+  {
+    "queryName": "Cloud DNS without DNSSEC",
+    "severity": "MEDIUM",
+    "line": 33
+  }
 ]

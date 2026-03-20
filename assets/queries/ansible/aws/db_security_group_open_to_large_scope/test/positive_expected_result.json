@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "DB Security Group Open To Large Scope",
+    "queryName": "DB security group open to large scope",
     "severity": "HIGH",
     "line": 22
   }

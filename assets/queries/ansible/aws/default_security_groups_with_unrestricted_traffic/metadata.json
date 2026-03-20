@@ -1,9 +1,9 @@
 {
   "id": "8010e17a-00e9-4635-a692-90d6bcec68bd",
-  "queryName": "Default Security Groups With Unrestricted Traffic",
+  "queryName": "Default security groups with unrestricted traffic",
   "severity": "HIGH",
   "category": "Networking and Firewall",
-  "descriptionText": "Security groups that allow inbound or outbound CIDR ranges of `0.0.0.0/0` or `::/0` expose resources to the entire internet, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration. For Ansible `amazon.aws.ec2_group` or `ec2_group` tasks, inspect the `rules` and `rules_egress` entries and ensure the `cidr_ip` and `cidr_ipv6` properties are not set to `0.0.0.0/0` or `::/0`. Tasks containing `cidr_ip: 0.0.0.0/0` or `cidr_ipv6: ::/0` will be flagged; restrict access to specific CIDR ranges or reference other security groups instead of using global open CIDRs.\n\nSecure configuration example:\n\n```yaml\nmy_security_group:\n  amazon.aws.ec2_group:\n    name: my-sg\n    rules:\n      - proto: tcp\n        from_port: 22\n        to_port: 22\n        cidr_ip: 203.0.113.0/24\n    rules_egress:\n      - proto: -1\n        from_port: 0\n        to_port: 0\n        cidr_ip: 10.0.0.0/16\n```",
+  "descriptionText": "Security groups that allow inbound or outbound CIDR ranges of `0.0.0.0/0` or `::/0` expose resources to the entire internet, increasing the risk of unauthorized access, brute-force attacks, and data exfiltration.\n\nFor Ansible `amazon.aws.ec2_group` or `ec2_group` tasks, inspect the `rules` and `rules_egress` entries and ensure the `cidr_ip` and `cidr_ipv6` properties are not set to `0.0.0.0/0` or `::/0`. Tasks containing `cidr_ip: 0.0.0.0/0` or `cidr_ipv6: ::/0` are flagged. Restrict access to specific CIDR ranges or reference other security groups instead of using global open CIDRs.\n\nSecure configuration example:\n\n```yaml\nmy_security_group:\n  amazon.aws.ec2_group:\n    name: my-sg\n    rules:\n      - proto: tcp\n        from_port: 22\n        to_port: 22\n        cidr_ip: 203.0.113.0/24\n    rules_egress:\n      - proto: -1\n        from_port: 0\n        to_port: 0\n        cidr_ip: 10.0.0.0/16\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/default_security_groups_with_unrestricted_traffic",
   "platform": "Ansible",
   "descriptionID": "6fd8f0e1",

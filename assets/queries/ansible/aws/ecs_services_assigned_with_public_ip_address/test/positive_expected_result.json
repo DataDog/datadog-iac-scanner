@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "ECS Services assigned with public IP address",
+    "queryName": "ECS services should not be assigned public IP addresses",
     "severity": "MEDIUM",
     "line": 19
   }

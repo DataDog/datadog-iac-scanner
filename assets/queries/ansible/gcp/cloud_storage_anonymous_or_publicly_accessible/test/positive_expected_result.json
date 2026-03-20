@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Cloud Storage Anonymous or Publicly Accessible",
+    "queryName": "Cloud storage anonymous or publicly accessible",
     "severity": "CRITICAL",
     "line": 11
   },
   {
-    "queryName": "Cloud Storage Anonymous or Publicly Accessible",
+    "queryName": "Cloud storage anonymous or publicly accessible",
     "severity": "CRITICAL",
     "line": 22
   },
   {
-    "queryName": "Cloud Storage Anonymous or Publicly Accessible",
+    "queryName": "Cloud storage anonymous or publicly accessible",
     "severity": "CRITICAL",
     "line": 28
   }

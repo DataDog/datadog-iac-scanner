@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "IP Forwarding Enabled",
+    "queryName": "IP forwarding enabled",
     "severity": "MEDIUM",
     "line": 22
   }

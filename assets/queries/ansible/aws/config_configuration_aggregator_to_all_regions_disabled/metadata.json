@@ -1,14 +1,14 @@
 {
   "id": "a2fdf451-89dd-451e-af92-bf6c0f4bab96",
-  "queryName": "Configuration Aggregator to All Regions Disabled",
+  "queryName": "Configuration aggregator to all regions disabled",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "AWS Config aggregators must collect configuration data from all AWS Regions to provide centralized, complete visibility of resource state and ensure cross‑region misconfigurations and compliance violations are detected. For Ansible tasks using the `community.aws.aws_config_aggregator` or `aws_config_aggregator` modules, set the `all_aws_regions` property to `true` under the relevant `account_sources` entries or the `organization_source` block. Resources that omit `all_aws_regions` or have it set to `false` will be flagged as they do not provide full regional coverage.\n\nSecure examples for Ansible (account and organization sources):\n\n```yaml\n- name: Create AWS Config Aggregator (account sources)\n  community.aws.aws_config_aggregator:\n    name: my-config-aggregator\n    account_sources:\n      - account_ids: ['123456789012']\n        all_aws_regions: true\n\n- name: Create AWS Config Aggregator (organization source)\n  community.aws.aws_config_aggregator:\n    name: org-config-aggregator\n    organization_source:\n      role_arn: arn:aws:iam::111122223333:role/ConfigAggregatorRole\n      all_aws_regions: true\n```",
+  "descriptionText": "AWS Config aggregators must collect configuration data from all AWS Regions to provide centralized, complete visibility of resource state. This ensures cross-region misconfigurations and compliance violations are detected.\n\nFor Ansible tasks using the `community.aws.config_aggregator` or `aws_config_aggregator` modules, set the `all_aws_regions` property to `true` under the relevant `account_sources` entries or the `organization_source` block. Resources that omit `all_aws_regions` or have it set to `false` are flagged, as they do not provide full regional coverage.\n\nSecure examples for Ansible (account and organization sources):\n\n```yaml\n- name: Create AWS Config Aggregator (account sources)\n  community.aws.config_aggregator:\n    name: my-config-aggregator\n    account_sources:\n      - account_ids: ['123456789012']\n        all_aws_regions: true\n\n- name: Create AWS Config Aggregator (organization source)\n  community.aws.config_aggregator:\n    name: org-config-aggregator\n    organization_source:\n      role_arn: arn:aws:iam::111122223333:role/ConfigAggregatorRole\n      all_aws_regions: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/config_configuration_aggregator_to_all_regions_disabled",
   "platform": "Ansible",
   "descriptionID": "c6e4ac23",
   "cloudProvider": "aws",
   "cwe": "285",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/aws_config_aggregator_module.html#parameter-organization_source"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/config_aggregator_module.html#parameter-organization_source"
 }

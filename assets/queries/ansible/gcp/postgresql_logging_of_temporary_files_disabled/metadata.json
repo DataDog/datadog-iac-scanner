@@ -1,9 +1,9 @@
 {
   "id": "d6fae5b6-ada9-46c0-8b36-3108a2a2f77b",
-  "queryName": "PostgreSQL Logging Of Temporary Files Disabled",
+  "queryName": "PostgreSQL logging of temporary files disabled",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "The PostgreSQL `log_temp_files` flag should be set to `0` so that all temporary file creation is logged, providing visibility into queries that spill to disk and helping detect potential data exposure or performance issues. Check Ansible Cloud SQL instance resources using the `google.cloud.gcp_sql_instance` or `gcp_sql_instance` modules; the `settings.database_flags` entry with `name: log_temp_files` must have `value: \"0\"`. Resources missing this flag or with a different value will be flagged. In Ansible, `database_flags` is a list of name/value pairs, so specify the flag explicitly as shown below.\n\n```yaml\n- name: Create Cloud SQL instance\n  google.cloud.gcp_sql_instance:\n    name: my-postgres\n    database_version: POSTGRES_13\n    settings:\n      database_flags:\n        - name: log_temp_files\n          value: \"0\"\n```",
+  "descriptionText": "The PostgreSQL `log_temp_files` flag should be set to `0` so that all temporary file creation is logged. This provides visibility into queries that spill to disk and helps detect potential data exposure or performance issues.\n\nCheck Ansible Cloud SQL instance resources using the `google.cloud.gcp_sql_instance` or `gcp_sql_instance` modules. The `settings.database_flags` entry with `name: log_temp_files` must have `value: \"0\"`. Resources missing this flag or with a different value are flagged. In Ansible, `database_flags` is a list of name/value pairs, so specify the flag explicitly as shown below.\n\n```yaml\n- name: Create Cloud SQL instance\n  google.cloud.gcp_sql_instance:\n    name: my-postgres\n    database_version: POSTGRES_13\n    settings:\n      database_flags:\n        - name: log_temp_files\n          value: \"0\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/postgresql_logging_of_temporary_files_disabled",
   "platform": "Ansible",
   "descriptionID": "764f0b06",

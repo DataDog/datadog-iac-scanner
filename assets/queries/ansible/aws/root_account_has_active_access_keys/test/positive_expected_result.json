@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Root Account Has Active Access Keys",
+    "queryName": "Root account has active access keys",
     "severity": "HIGH",
     "line": 3
   }

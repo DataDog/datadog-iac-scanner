@@ -1,9 +1,9 @@
 {
   "id": "7cc6c791-5f68-4816-a564-b9b699f9d26e",
-  "queryName": "ElastiCache Using Default Port",
+  "queryName": "ElastiCache using default port",
   "severity": "LOW",
   "category": "Networking and Firewall",
-  "descriptionText": "ElastiCache instances using the engine default ports are easy for attackers and automated scanners to discover and target, increasing the risk of unauthorized access and automated exploitation. In Ansible, tasks that use the `community.aws.elasticache` or `elasticache` module must not set the `cache_port` property to the engine defaults: `6379` when `engine: redis` and `11211` when `engine: memcached`. Resources with `cache_port` equal to these default values will be flagged; instead, choose a non-standard port and enforce network access controls (security groups/subnets) to limit exposure. Secure example changing the default port:\n\n```yaml\n- name: Create Redis ElastiCache cluster with non-default port\n  community.aws.elasticache:\n    name: my-redis-cluster\n    engine: redis\n    cache_port: 6380\n    # other required properties...\n```",
+  "descriptionText": "ElastiCache instances using engine default ports are easy for attackers and automated scanners to discover and target, increasing the risk of unauthorized access and automated exploitation.\n\nIn Ansible, tasks that use the `community.aws.elasticache` or `elasticache` module must not set the `cache_port` property to the engine defaults: `6379` when `engine: redis` and `11211` when `engine: memcached`. Resources with `cache_port` equal to these default values are flagged. Choose a non-standard port and enforce network access controls (security groups/subnets) to limit exposure.\n\nSecure example changing the default port:\n\n```yaml\n- name: Create Redis ElastiCache cluster with non-default port\n  community.aws.elasticache:\n    name: my-redis-cluster\n    engine: redis\n    cache_port: 6380\n    # other required properties...\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/elasticache_using_default_port",
   "platform": "Ansible",
   "descriptionID": "be73fca3",

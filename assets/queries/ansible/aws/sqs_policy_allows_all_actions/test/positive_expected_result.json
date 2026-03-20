@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "SQS Policy Allows All Actions",
+    "queryName": "SQS policy allows all actions",
     "severity": "HIGH",
     "line": 10,
     "fileName": "positive.yaml"

@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Stack Notifications Disabled",
+    "queryName": "Stack notifications disabled",
     "severity": "LOW",
     "line": 2
   }

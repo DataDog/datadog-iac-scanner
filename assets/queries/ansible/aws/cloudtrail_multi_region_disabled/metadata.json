@@ -1,14 +1,14 @@
 {
   "id": "6ad087d7-a509-4b20-b853-9ef6f5ebaa98",
-  "queryName": "CloudTrail Multi Region Disabled",
+  "queryName": "CloudTrail multi-region is disabled",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "CloudTrail must be configured as a multi-region trail so that API activity across all AWS regions is captured for comprehensive auditing and timely incident response; without multi-region logging, cross-region activity can be missed, hindering detection, forensics, and compliance. For Ansible CloudTrail resources (modules `community.aws.cloudtrail` or `cloudtrail`) the `is_multi_region_trail` property must be defined and set to `true`. Resources that omit `is_multi_region_trail` or have `is_multi_region_trail: false` will be flagged. Secure example (Ansible):\n\n```yaml\n- name: Create multi-region CloudTrail\n  community.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-trail-bucket\n    is_multi_region_trail: true\n    state: present\n```",
+  "descriptionText": "CloudTrail must be configured as a multi-region trail so that API activity across all AWS regions is captured. This ensures comprehensive auditing and timely incident response. Without multi-region logging, cross-region activity can be missed, hindering detection, forensics, and compliance.\n\nFor Ansible CloudTrail resources (modules `amazon.aws.cloudtrail` or `cloudtrail`), the `is_multi_region_trail` property must be defined and set to `true`. Resources that omit `is_multi_region_trail` or have `is_multi_region_trail: false` are flagged.\n\nSecure example (Ansible):\n\n```yaml\n- name: Create multi-region CloudTrail\n  amazon.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-trail-bucket\n    is_multi_region_trail: true\n    state: present\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudtrail_multi_region_disabled",
   "platform": "Ansible",
   "descriptionID": "8c4873bf",
   "cloudProvider": "aws",
   "cwe": "778",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html#parameter-is_multi_region_trail"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html#parameter-is_multi_region_trail"
 }

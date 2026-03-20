@@ -1,13 +1,13 @@
 {
   "id": "133fee21-37ef-45df-a563-4d07edc169f4",
-  "queryName": "CMK Is Unusable",
+  "queryName": "CMK is unusable",
   "severity": "MEDIUM",
   "category": "Availability",
-  "descriptionText": "KMS Customer Master Keys (CMKs) must be usable because disabled or scheduled-for-deletion keys cannot decrypt data and may cause service outages or data inaccessibility. For Ansible, verify `community.aws.aws_kms` tasks: the `enabled` property must be defined and set to `true`, and the `pending_window` property must be absent (undefined). Tasks with `enabled: false` or missing `enabled` will be flagged, and any task that sets `pending_window` (scheduling the key for deletion) will also be flagged because it renders the key unusable after the pending window expires. Secure example for Ansible:\n\n```yaml\n- name: create KMS key\n  community.aws.aws_kms:\n    name: my-key\n    description: \"Key for encrypting secrets\"\n    state: present\n    enabled: true\n```",
+  "descriptionText": "KMS Customer Master Keys (CMKs) must be usable, as disabled or scheduled-for-deletion keys cannot decrypt data and may cause service outages or data inaccessibility.\n\nIn Ansible `amazon.aws.kms_key` tasks, ensure `enabled` is defined and set to `true`, and that `pending_window` is not defined. Tasks with `enabled` set to `false` or with `enabled` undefined are flagged. Any task that sets `pending_window` (scheduling the key for deletion) is also flagged because it renders the key unusable after the pending window expires.\n\nSecure example for Ansible:\n\n```yaml\n- name: create KMS key\n  amazon.aws.kms_key:\n    name: my-key\n    description: \"Key for encrypting secrets\"\n    state: present\n    enabled: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cmk_is_unusable",
   "platform": "Ansible",
   "descriptionID": "cb70e349",
   "cloudProvider": "aws",
   "cwe": "693",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/aws_kms_module.html#parameter-enabled"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/kms_key_module.html#parameter-enabled"
 }

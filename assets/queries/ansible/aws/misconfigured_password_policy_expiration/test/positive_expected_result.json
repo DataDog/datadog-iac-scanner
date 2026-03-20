@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Misconfigured Password Policy Expiration",
+    "queryName": "Misconfigured password policy expiration",
     "severity": "LOW",
     "line": 2
   },
   {
-    "queryName": "Misconfigured Password Policy Expiration",
+    "queryName": "Misconfigured password policy expiration",
     "severity": "LOW",
     "line": 21
   },
   {
-    "queryName": "Misconfigured Password Policy Expiration",
+    "queryName": "Misconfigured password policy expiration",
     "severity": "LOW",
     "line": 33
   }

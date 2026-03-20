@@ -1,31 +1,31 @@
 [
   {
-    "queryName": "PostgreSQL Log Duration Not Set",
+    "queryName": "PostgreSQL log duration not set",
     "severity": "MEDIUM",
     "line": 6
   },
   {
-    "queryName": "PostgreSQL Log Duration Not Set",
+    "queryName": "PostgreSQL log duration not set",
     "severity": "MEDIUM",
     "line": 12
   },
   {
-    "queryName": "PostgreSQL Log Duration Not Set",
+    "queryName": "PostgreSQL log duration not set",
     "severity": "MEDIUM",
     "line": 18
   },
   {
-    "queryName": "PostgreSQL Log Duration Not Set",
+    "queryName": "PostgreSQL log duration not set",
     "severity": "MEDIUM",
     "line": 24
   },
   {
-    "queryName": "PostgreSQL Log Duration Not Set",
+    "queryName": "PostgreSQL log duration not set",
     "severity": "MEDIUM",
     "line": 30
   },
   {
-    "queryName": "PostgreSQL Log Duration Not Set",
+    "queryName": "PostgreSQL log duration not set",
     "severity": "MEDIUM",
     "line": 36
   }

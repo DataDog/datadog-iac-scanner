@@ -1,9 +1,9 @@
 {
   "id": "c6fc6f29-dc04-46b6-99ba-683c01aff350",
-  "queryName": "Serial Ports Are Enabled For VM Instances",
+  "queryName": "Serial ports are enabled for VM instances",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
-  "descriptionText": "Enabling the serial console on Google Compute Engine VMs grants low-level interactive access to the instance console, which can bypass network/SSH controls and allow actors who know project/instance details to interact with or tamper with the VM. In Ansible, check tasks using `google.cloud.gcp_compute_instance` or `gcp_compute_instance` and ensure the `metadata.serial-port-enable` property is either undefined or explicitly set to `false`. Tasks with `metadata.serial-port-enable: true` will be flagged; remediate by removing the metadata key or setting it to `false`.\n\nSecure Ansible example:\n\n```yaml\n- name: Create GCE instance with serial port disabled\n  google.cloud.gcp_compute_instance:\n    name: my-vm\n    machine_type: e2-medium\n    metadata:\n      \"serial-port-enable\": false\n```",
+  "descriptionText": "Enabling the serial console on Google Compute Engine VMs grants low-level interactive access to the instance console. This can bypass network and SSH controls, allowing actors who know project or instance details to interact with or tamper with the VM.\n\nIn Ansible, check tasks using `google.cloud.gcp_compute_instance` or `gcp_compute_instance` and ensure the `metadata.serial-port-enable` property is either undefined or explicitly set to `false`. Tasks with `metadata.serial-port-enable: true` are flagged. Remediate by removing the metadata key or setting it to `false`.\n\nSecure Ansible example:\n\n```yaml\n- name: Create GCE instance with serial port disabled\n  google.cloud.gcp_compute_instance:\n    name: my-vm\n    machine_type: e2-medium\n    metadata:\n      \"serial-port-enable\": false\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/serial_ports_enabled_for_vm_instances",
   "platform": "Ansible",
   "descriptionID": "7f8ab7a4",

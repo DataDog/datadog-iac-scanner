@@ -1,12 +1,12 @@
 [
   {
-    "queryName": "Ansible Tower Exposed To Internet",
+    "queryName": "Ansible Tower exposed to the internet",
     "severity": "MEDIUM",
     "line": 1,
     "fileName": "positive1.ini"
   },
   {
-    "queryName": "Ansible Tower Exposed To Internet",
+    "queryName": "Ansible Tower exposed to the internet",
     "severity": "MEDIUM",
     "line": 24,
     "fileName": "positive2.yaml"

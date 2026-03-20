@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "CloudFront Logging Disabled",
+    "queryName": "CloudFront logging disabled",
     "severity": "MEDIUM",
     "line": 2
   },
   {
-    "queryName": "CloudFront Logging Disabled",
+    "queryName": "CloudFront logging disabled",
     "severity": "MEDIUM",
     "line": 62
   }

@@ -1,7 +1,7 @@
 [
-	{
-		"queryName": "User Data Contains Encoded Private Key",
-		"severity": "HIGH",
-		"line": 9
-	}
+  {
+    "queryName": "User data contains encoded private key",
+    "severity": "HIGH",
+    "line": 9
+  }
 ]

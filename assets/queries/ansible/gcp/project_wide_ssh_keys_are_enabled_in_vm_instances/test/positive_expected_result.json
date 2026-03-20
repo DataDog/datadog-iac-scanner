@@ -1,17 +1,17 @@
 [
-	{
-		"queryName": "Project-wide SSH Keys Are Enabled In VM Instances",
-		"severity": "MEDIUM",
-		"line": 5
-	},
-	{
-		"queryName": "Project-wide SSH Keys Are Enabled In VM Instances",
-		"severity": "MEDIUM",
-		"line": 11
-	},
-	{
-		"queryName": "Project-wide SSH Keys Are Enabled In VM Instances",
-		"severity": "MEDIUM",
-		"line": 17
-	}
+  {
+    "queryName": "Project-wide SSH keys are enabled in VM instances",
+    "severity": "MEDIUM",
+    "line": 5
+  },
+  {
+    "queryName": "Project-wide SSH keys are enabled in VM instances",
+    "severity": "MEDIUM",
+    "line": 11
+  },
+  {
+    "queryName": "Project-wide SSH keys are enabled in VM instances",
+    "severity": "MEDIUM",
+    "line": 17
+  }
 ]

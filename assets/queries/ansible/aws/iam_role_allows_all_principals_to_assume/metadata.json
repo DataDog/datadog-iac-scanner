@@ -1,14 +1,14 @@
 {
   "id": "babdedcf-d859-43da-9a7b-6d72e661a8fd",
-  "queryName": "IAM Role Allows All Principals To Assume",
+  "queryName": "IAM role allows all principals to assume",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "Specifying the account root or an entire AWS account as a principal (ARNs that end with \":root\") grants every identity in that account the ability to assume the role or act as that principal, increasing the risk of privilege escalation, lateral movement, and unauthorized access if any identity is compromised. This rule checks Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules and flags policy statements where `policy.Statement[].Principal.AWS` contains `:root`. Principal values must be explicit and least-privileged—use specific IAM role or user ARNs or service principals instead of account-root ARNs (or wildcards); resources with `Principal.AWS` containing `:root` will be flagged. Secure example with an explicit principal:\n\n```json\n{\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"AWS\": \"arn:aws:iam::123456789012:role/SpecificRole\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ],\n  \"Version\": \"2012-10-17\"\n}\n```",
+  "descriptionText": "Specifying the account root or an entire AWS account as a principal (ARNs that end with `:root`) grants every identity in that account the ability to assume the role or act as that principal. This increases the risk of privilege escalation, lateral movement, and unauthorized access if any identity is compromised.\n\nThis rule checks Ansible tasks using the `amazon.aws.iam_managed_policy` or `iam_managed_policy` modules and flags policy statements where `policy.Statement[].Principal.AWS` contains `:root`. Principal values must be explicit and least-privileged — use specific IAM role or user ARNs or service principals instead of account-root ARNs (or wildcards). Resources with `Principal.AWS` containing `:root` are flagged. \n\nSecure example with an explicit principal:\n\n```json\n{\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"AWS\": \"arn:aws:iam::123456789012:role/SpecificRole\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ],\n  \"Version\": \"2012-10-17\"\n}\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_role_allows_all_principals_to_assume",
   "platform": "Ansible",
   "descriptionID": "58219ae0",
   "cloudProvider": "aws",
   "cwe": "284",
   "oldSeverity": "LOW",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/iam_managed_policy_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_managed_policy_module.html"
 }

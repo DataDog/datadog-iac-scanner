@@ -1,14 +1,14 @@
 {
   "id": "ebb2118a-03bc-4d53-ab43-d8750f5cb8d3",
-  "queryName": "CloudTrail Not Integrated With CloudWatch",
+  "queryName": "CloudTrail not integrated with CloudWatch",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "CloudTrail must be integrated with CloudWatch Logs so events are available for real-time detection, alerting, and centralized log analysis, and so forensic evidence is retained for incident investigation. For Ansible tasks using the `community.aws.cloudtrail` or `cloudtrail` modules, the `cloudwatch_logs_role_arn` and `cloudwatch_logs_log_group_arn` properties must be defined. The `cloudwatch_logs_role_arn` should be an IAM role ARN that allows CloudTrail to publish to CloudWatch Logs and `cloudwatch_logs_log_group_arn` should reference the destination Log Group ARN; tasks missing either property will be flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create CloudTrail with CloudWatch Logs integration\n  community.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-bucket\n    is_multi_region_trail: yes\n    cloudwatch_logs_role_arn: arn:aws:iam::123456789012:role/CloudTrail_CloudWatch_Logs_Role\n    cloudwatch_logs_log_group_arn: arn:aws:logs:us-east-1:123456789012:log-group:/aws/cloudtrail\n```",
+  "descriptionText": "CloudTrail must be integrated with CloudWatch Logs so events are available for real-time detection, alerting, and centralized log analysis, and so forensic evidence is retained for incident investigation.\n\nFor Ansible tasks using the `amazon.aws.cloudtrail` or `cloudtrail` modules, the `cloudwatch_logs_role_arn` and `cloudwatch_logs_log_group_arn` properties must be defined. `cloudwatch_logs_role_arn` should be an IAM role ARN that allows CloudTrail to publish to CloudWatch Logs. `cloudwatch_logs_log_group_arn` should reference the destination Log Group ARN. Tasks missing either property are flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create CloudTrail with CloudWatch Logs integration\n  amazon.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-bucket\n    is_multi_region_trail: yes\n    cloudwatch_logs_role_arn: arn:aws:iam::123456789012:role/CloudTrail_CloudWatch_Logs_Role\n    cloudwatch_logs_log_group_arn: arn:aws:logs:us-east-1:123456789012:log-group:/aws/cloudtrail\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudtrail_not_integrated_with_cloudwatch",
   "platform": "Ansible",
   "descriptionID": "fbc987a2",
   "cloudProvider": "aws",
   "cwe": "778",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html"
 }

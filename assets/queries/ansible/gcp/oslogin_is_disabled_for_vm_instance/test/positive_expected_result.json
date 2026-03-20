@@ -1,7 +1,7 @@
 [
-	{
-		"queryName": "OSLogin Is Disabled In VM Instance",
-		"severity": "MEDIUM",
-		"line": 5
-	}
+  {
+    "queryName": "OSLogin is disabled in VM instance",
+    "severity": "MEDIUM",
+    "line": 5
+  }
 ]

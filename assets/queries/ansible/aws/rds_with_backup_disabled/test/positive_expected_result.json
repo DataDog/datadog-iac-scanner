@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "RDS With Backup Disabled",
+    "queryName": "RDS instance with backup disabled",
     "severity": "MEDIUM",
     "line": 10
   }

@@ -1,13 +1,13 @@
 {
   "id": "66477506-6abb-49ed-803d-3fa174cd5f6a",
-  "queryName": "Launch Configuration Is Not Encrypted",
+  "queryName": "Launch configuration is not encrypted",
   "severity": "HIGH",
   "category": "Encryption",
-  "descriptionText": "Block device volumes in EC2 launch configurations must be encrypted to protect data at rest and any snapshots or AMIs from exposure if storage media or snapshots are compromised. For Ansible tasks using the `community.aws.ec2_lc` or `ec2_lc` modules, ensure the `volumes` list is defined and each volume entry sets `encrypted: true` (Ansible `yes` is also acceptable) under `ec2_lc.volumes`. Ephemeral (instance-store) volumes do not support encryption and are excluded; this rule flags launch configurations missing the `volumes` property, any volume entries without an `encrypted` property, or volumes where `encrypted` is explicitly false. Example secure configuration for an Ansible `ec2_lc` task:\n\n```yaml\n- name: Create launch configuration with encrypted volumes\n  community.aws.ec2_lc:\n    name: my-launch-config\n    image_id: ami-0123456789abcdef0\n    instance_type: t3.medium\n    volumes:\n      - device_name: /dev/xvda\n        volume_size: 50\n        volume_type: gp2\n        encrypted: true\n        delete_on_termination: yes\n```",
+  "descriptionText": "Block device volumes in EC2 launch configurations must be encrypted to protect data at rest and prevent exposure of snapshots or AMIs if storage media is compromised.\n\nFor Ansible tasks using the `community.aws.autoscaling_launch_config` or `autoscaling_launch_config` modules, ensure the `volumes` list is defined and each volume entry sets `encrypted: true` (Ansible `yes` is also acceptable) under `ec2_lc.volumes`. Ephemeral (instance-store) volumes do not support encryption and are excluded. This rule flags launch configurations missing the `volumes` property, any volume entries without an `encrypted` property, or volumes where `encrypted` is explicitly false.\n\nExample secure configuration for an Ansible `autoscaling_launch_config` task:\n\n```yaml\n- name: Create launch configuration with encrypted volumes\n  community.aws.autoscaling_launch_config:\n    name: my-launch-config\n    image_id: ami-0123456789abcdef0\n    instance_type: t3.medium\n    volumes:\n      - device_name: /dev/xvda\n        volume_size: 50\n        volume_type: gp2\n        encrypted: true\n        delete_on_termination: yes\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/launch_configuration_is_not_encrypted",
   "platform": "Ansible",
   "descriptionID": "57b9aee0",
   "cloudProvider": "aws",
   "cwe": "311",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/ec2_lc_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/autoscaling_launch_config_module.html"
 }
