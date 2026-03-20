@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Compute Instance Is Publicly Accessible",
+    "queryName": "Compute instance is publicly accessible",
     "severity": "MEDIUM",
     "line": 6
   }

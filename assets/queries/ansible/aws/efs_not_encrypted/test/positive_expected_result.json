@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "EFS Not Encrypted",
+    "queryName": "EFS not encrypted",
     "severity": "HIGH",
     "line": 6
   },
   {
-    "queryName": "EFS Not Encrypted",
+    "queryName": "EFS not encrypted",
     "severity": "HIGH",
     "line": 17
   },
   {
-    "queryName": "EFS Not Encrypted",
+    "queryName": "EFS not encrypted",
     "severity": "HIGH",
     "line": 25
   }

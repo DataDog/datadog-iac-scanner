@@ -1,7 +1,7 @@
 [
   {
     "line": 9,
-    "queryName": "Batch Job Definition With Privileged Container Properties",
+    "queryName": "Batch job definition with privileged container properties",
     "severity": "HIGH"
   }
 ]

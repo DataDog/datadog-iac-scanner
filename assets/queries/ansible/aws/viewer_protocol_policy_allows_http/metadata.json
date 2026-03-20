@@ -1,9 +1,9 @@
 {
   "id": "a6d27cf7-61dc-4bde-ae08-3b353b609f76",
-  "queryName": "Cloudfront Viewer Protocol Policy Allows HTTP",
+  "queryName": "CloudFront viewer protocol policy allows HTTP",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "Checks if the connection between CloudFront and the viewer is encrypted",
+  "descriptionText": "CloudFront distributions must enforce HTTPS for viewer connections to prevent sensitive data from being transmitted in plaintext and reduce the risk of downgrade or man-in-the-middle attacks.\n\nFor Ansible CloudFront resources (modules `community.aws.cloudfront_distribution` or `cloudfront_distribution`), the `viewer_protocol_policy` property in `default_cache_behavior` and in each `cache_behaviors` entry must be set to `https-only` or `redirect-to-https`. Tasks with `viewer_protocol_policy` set to `allow-all` or without an explicit secure setting are flagged. Ensure every cache behavior explicitly specifies a secure policy.\n\nSecure configuration example:\n\n```yaml\n- name: Create CloudFront distribution\n  community.aws.cloudfront_distribution:\n    origin:\n      - id: origin1\n        domain_name: example.com\n    default_cache_behavior:\n      viewer_protocol_policy: https-only\n    cache_behaviors:\n      - path_pattern: /images/*\n        viewer_protocol_policy: redirect-to-https\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/viewer_protocol_policy_allows_http",
   "platform": "Ansible",
   "descriptionID": "5dd1ca8b",

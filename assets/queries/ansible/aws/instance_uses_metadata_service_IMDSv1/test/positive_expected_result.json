@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Instance Uses Metadata Service IMDSv1",
+    "queryName": "Instance uses metadata service IMDSv1",
     "severity": "LOW",
     "line": 10
   },
   {
-    "queryName": "Instance Uses Metadata Service IMDSv1",
+    "queryName": "Instance uses metadata service IMDSv1",
     "severity": "LOW",
     "line": 21
   }

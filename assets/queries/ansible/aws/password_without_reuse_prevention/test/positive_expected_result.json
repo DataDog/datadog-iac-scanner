@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Password Without Reuse Prevention",
+    "queryName": "Password without reuse prevention",
     "severity": "LOW",
     "line": 3
   },
   {
-    "queryName": "Password Without Reuse Prevention",
+    "queryName": "Password without reuse prevention",
     "severity": "LOW",
     "line": 23
   },
   {
-    "queryName": "Password Without Reuse Prevention",
+    "queryName": "Password without reuse prevention",
     "severity": "LOW",
     "line": 26
   }

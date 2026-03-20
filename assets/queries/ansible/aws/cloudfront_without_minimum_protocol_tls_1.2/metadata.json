@@ -1,9 +1,9 @@
 {
   "id": "d0c13053-d2c8-44a6-95da-d592996e9e67",
-  "queryName": "CloudFront Without Minimum Protocol TLS 1.2",
+  "queryName": "CloudFront without minimum protocol TLS 1.2",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "CloudFront Minimum Protocol version should be at least TLS 1.2",
+  "descriptionText": "CloudFront distributions must enforce modern TLS for viewer connections to prevent interception and protocol downgrades. The Ansible `community.aws.cloudfront_distribution` (or `cloudfront_distribution`) resource must include a `viewer_certificate` block with `minimum_protocol_version` set to a TLS 1.2 variant (for example, `TLSv1.2_2018` or `TLSv1.2_2019`).\n\nTasks that omit `viewer_certificate` or specify a `minimum_protocol_version` that is not a TLS 1.2 variant are flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create CloudFront distribution with TLS 1.2 minimum\n  community.aws.cloudfront_distribution:\n    state: present\n    enabled: yes\n    origins:\n      - id: myOrigin\n        domain_name: origin.example.com\n    viewer_certificate:\n      acm_certificate_arn: arn:aws:acm:us-east-1:123456789012:certificate/abcd-ef01-2345-6789\n      ssl_support_method: sni-only\n      minimum_protocol_version: TLSv1.2_2018\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudfront_without_minimum_protocol_tls_1.2",
   "platform": "Ansible",
   "descriptionID": "b0a58f2f",

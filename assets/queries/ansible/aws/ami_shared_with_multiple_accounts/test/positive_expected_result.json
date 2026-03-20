@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "AMI Shared With Multiple Accounts",
+    "queryName": "AMI shared with multiple accounts",
     "severity": "MEDIUM",
     "line": 6
   },
   {
-    "queryName": "AMI Shared With Multiple Accounts",
+    "queryName": "AMI shared with multiple accounts",
     "severity": "MEDIUM",
     "line": 13
   }

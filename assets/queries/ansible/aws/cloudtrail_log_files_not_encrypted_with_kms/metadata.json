@@ -1,13 +1,13 @@
 {
   "id": "f5587077-3f57-4370-9b4e-4eb5b1bac85b",
-  "queryName": "CloudTrail Log Files Not Encrypted With KMS",
+  "queryName": "CloudTrail log files not encrypted with KMS",
   "severity": "LOW",
   "category": "Encryption",
-  "descriptionText": "Logs delivered by CloudTrail should be encrypted using KMS to increase security of your CloudTrail",
+  "descriptionText": "CloudTrail log deliveries must be encrypted with an AWS KMS customer-managed key to protect audit logs at rest and ensure strict key access control, rotation, and usage auditing. In Ansible tasks using the `amazon.aws.cloudtrail` or `cloudtrail` module, the `kms_key_id` parameter must be defined and set to a KMS key ARN or alias (for example `arn:aws:kms:region:account-id:key/KEY-ID` or `alias/my-key`).\n\nTasks missing `kms_key_id` are flagged. Without a customer-managed key, you lose control over key access, rotation, and usage auditing.\n\nSecure configuration example:\n\n```yaml\n- name: Create CloudTrail with KMS encryption\n  amazon.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-cloudtrail-bucket\n    kms_key_id: arn:aws:kms:us-east-1:123456789012:key/abcd1234-ef56-7890-abcd-EXAMPLE\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudtrail_log_files_not_encrypted_with_kms",
   "platform": "Ansible",
   "descriptionID": "d3b81fde",
   "cloudProvider": "aws",
   "cwe": "311",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html"
 }

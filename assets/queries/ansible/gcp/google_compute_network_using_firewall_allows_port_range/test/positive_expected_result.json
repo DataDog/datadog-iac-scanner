@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Google Compute Network Using Firewall Rule that Allows Port Range",
+    "queryName": "Google Compute network using firewall rule that allows port range",
     "severity": "LOW",
     "line": 19,
     "fileName": "positive.yaml"

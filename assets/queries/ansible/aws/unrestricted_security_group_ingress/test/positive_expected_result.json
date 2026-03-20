@@ -1,21 +1,21 @@
 [
   {
-    "queryName": "Unrestricted Security Group Ingress",
+    "queryName": "Unrestricted security group ingress",
     "severity": "HIGH",
     "line": 14
   },
   {
-    "queryName": "Unrestricted Security Group Ingress",
+    "queryName": "Unrestricted security group ingress",
     "severity": "HIGH",
     "line": 28
   },
   {
-    "queryName": "Unrestricted Security Group Ingress",
+    "queryName": "Unrestricted security group ingress",
     "severity": "HIGH",
     "line": 41
   },
   {
-    "queryName": "Unrestricted Security Group Ingress",
+    "queryName": "Unrestricted security group ingress",
     "severity": "HIGH",
     "line": 55
   }

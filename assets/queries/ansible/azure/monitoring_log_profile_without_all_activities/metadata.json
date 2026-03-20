@@ -1,9 +1,9 @@
 {
   "id": "89f84a1e-75f8-47c5-83b5-bee8e2de4168",
-  "queryName": "Monitoring Log Profile Without All Activities",
+  "queryName": "Monitoring log profile without all activities",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "Monitoring log profile captures all the activities (Action, Write, Delete)",
+  "descriptionText": "Monitor log profiles must include the Write, Action, and Delete categories so Azure records operations, configuration changes, and deletions. These records support detection, auditing, and forensic investigations.\n\nIn Ansible tasks using `azure.azcollection.azure_rm_monitorlogprofile` (or `azure_rm_monitorlogprofile`), the `categories` property must be defined as a list and include the values `Write`, `Action`, and `Delete` (case-insensitive). Tasks missing the `categories` property or omitting any of these categories are flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create monitor log profile\n  azure_rm_monitorlogprofile:\n    name: myLogProfile\n    categories:\n      - Write\n      - Action\n      - Delete\n    locations:\n      - eastus\n    retention_policy:\n      enabled: false\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/monitoring_log_profile_without_all_activities",
   "platform": "Ansible",
   "descriptionID": "cb93f630",

@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Cloud SQL Instance With Contained Database Authentication On",
+    "queryName": "Cloud SQL instance with contained database authentication on",
     "severity": "HIGH",
     "line": 10
   }

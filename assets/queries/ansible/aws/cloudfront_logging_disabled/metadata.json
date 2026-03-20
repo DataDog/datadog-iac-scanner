@@ -1,9 +1,9 @@
 {
   "id": "d31cb911-bf5b-4eb6-9fc3-16780c77c7bd",
-  "queryName": "CloudFront Logging Disabled",
+  "queryName": "CloudFront logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "AWS CloudFront distributions should have logging enabled to collect all viewer requests, which means the attribute 'logging' should be defined with 'enabled' set to true",
+  "descriptionText": "CloudFront distributions must have access logging enabled to record viewer requests for incident investigation and auditing. Without logs, you cannot reliably detect abuse, investigate incidents, or meet audit requirements.\n\nFor Ansible CloudFront distribution resources (modules `community.aws.cloudfront_distribution` and `cloudfront_distribution`), the `logging` property must be defined and `logging.enabled` set to `true`. Tasks missing `logging` or with `logging.enabled: false` are flagged. Ensure a valid S3 bucket is specified in `logging.bucket` as the log destination.\n\nSecure configuration example:\n\n```yaml\n- name: Create CloudFront distribution with logging enabled\n  community.aws.cloudfront_distribution:\n    origin:\n      - id: my-origin\n        domain_name: origin.example.com\n    enabled: yes\n    logging:\n      enabled: true\n      bucket: my-log-bucket.s3.amazonaws.com\n      include_cookies: false\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudfront_logging_disabled",
   "platform": "Ansible",
   "descriptionID": "1bfc2dfd",

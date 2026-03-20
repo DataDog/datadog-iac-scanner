@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Cluster Labels Disabled",
+    "queryName": "Cluster labels disabled",
     "severity": "LOW",
     "line": 2
   },
   {
-    "queryName": "Cluster Labels Disabled",
+    "queryName": "Cluster labels disabled",
     "severity": "LOW",
     "line": 17
   },
   {
-    "queryName": "Cluster Labels Disabled",
+    "queryName": "Cluster labels disabled",
     "severity": "LOW",
     "line": 47
   }

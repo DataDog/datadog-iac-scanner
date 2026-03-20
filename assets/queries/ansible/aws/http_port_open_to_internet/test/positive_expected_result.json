@@ -1,36 +1,36 @@
 [
   {
-    "queryName": "HTTP Port Open To Internet",
+    "queryName": "HTTP port open to internet",
     "severity": "MEDIUM",
     "line": 9
   },
   {
-    "queryName": "HTTP Port Open To Internet",
+    "queryName": "HTTP port open to internet",
     "severity": "MEDIUM",
     "line": 23
   },
   {
-    "queryName": "HTTP Port Open To Internet",
+    "queryName": "HTTP port open to internet",
     "severity": "MEDIUM",
     "line": 36
   },
   {
-    "queryName": "HTTP Port Open To Internet",
+    "queryName": "HTTP port open to internet",
     "severity": "MEDIUM",
     "line": 49
   },
   {
-    "queryName": "HTTP Port Open To Internet",
+    "queryName": "HTTP port open to internet",
     "severity": "MEDIUM",
     "line": 64
   },
   {
-    "queryName": "HTTP Port Open To Internet",
+    "queryName": "HTTP port open to internet",
     "severity": "MEDIUM",
     "line": 79
   },
   {
-    "queryName": "HTTP Port Open To Internet",
+    "queryName": "HTTP port open to internet",
     "severity": "MEDIUM",
     "line": 93
   }

@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Stackdriver Logging Disabled",
+    "queryName": "Stackdriver logging disabled",
     "severity": "MEDIUM",
     "line": 3
   },
   {
-    "queryName": "Stackdriver Logging Disabled",
+    "queryName": "Stackdriver logging disabled",
     "severity": "MEDIUM",
     "line": 32
   }

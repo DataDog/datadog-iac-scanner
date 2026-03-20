@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "IAM Database Auth Not Enabled",
+    "queryName": "IAM database authentication is not enabled",
     "severity": "MEDIUM",
     "line": 9
   },
   {
-    "queryName": "IAM Database Auth Not Enabled",
+    "queryName": "IAM database authentication is not enabled",
     "severity": "MEDIUM",
     "line": 23
   }

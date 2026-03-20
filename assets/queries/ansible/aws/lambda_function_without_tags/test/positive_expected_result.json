@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Lambda Function Without Tags",
+    "queryName": "Lambda function without tags",
     "severity": "LOW",
     "line": 2
   }

@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "S3 Bucket Without Server-side-encryption",
+    "queryName": "S3 bucket without server-side encryption",
     "severity": "HIGH",
     "line": 5
   }

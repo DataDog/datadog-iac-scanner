@@ -1,26 +1,26 @@
 [
   {
-    "queryName": "GKE Basic Authentication Enabled",
+    "queryName": "GKE basic authentication enabled",
     "severity": "MEDIUM",
     "line": 3
   },
   {
-    "queryName": "GKE Basic Authentication Enabled",
+    "queryName": "GKE basic authentication enabled",
     "severity": "MEDIUM",
     "line": 18
   },
   {
-    "queryName": "GKE Basic Authentication Enabled",
+    "queryName": "GKE basic authentication enabled",
     "severity": "MEDIUM",
     "line": 32
   },
   {
-    "queryName": "GKE Basic Authentication Enabled",
+    "queryName": "GKE basic authentication enabled",
     "severity": "MEDIUM",
     "line": 47
   },
   {
-    "queryName": "GKE Basic Authentication Enabled",
+    "queryName": "GKE basic authentication enabled",
     "severity": "MEDIUM",
     "line": 63
   }

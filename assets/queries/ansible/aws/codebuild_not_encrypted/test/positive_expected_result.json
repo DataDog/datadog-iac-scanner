@@ -1,8 +1,7 @@
 [
-	{
-		"queryName": "CodeBuild Not Encrypted",
-		"severity": "MEDIUM",
-		"line": 2
-	}
-
+  {
+    "queryName": "CodeBuild project is not encrypted",
+    "severity": "MEDIUM",
+    "line": 2
+  }
 ]

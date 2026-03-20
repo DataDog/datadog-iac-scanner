@@ -1,21 +1,21 @@
 [
   {
-    "queryName": "AKS Monitoring Logging Disabled",
+    "queryName": "AKS monitoring logging disabled",
     "severity": "MEDIUM",
     "line": 2
   },
   {
-    "queryName": "AKS Monitoring Logging Disabled",
+    "queryName": "AKS monitoring logging disabled",
     "severity": "MEDIUM",
     "line": 43
   },
   {
-    "queryName": "AKS Monitoring Logging Disabled",
+    "queryName": "AKS monitoring logging disabled",
     "severity": "MEDIUM",
     "line": 68
   },
   {
-    "queryName": "AKS Monitoring Logging Disabled",
+    "queryName": "AKS monitoring logging disabled",
     "severity": "MEDIUM",
     "line": 94
   }

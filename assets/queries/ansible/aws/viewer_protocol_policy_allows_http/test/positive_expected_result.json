@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Cloudfront Viewer Protocol Policy Allows HTTP",
+    "queryName": "CloudFront viewer protocol policy allows HTTP",
     "severity": "MEDIUM",
     "line": 20
   },
   {
-    "queryName": "Cloudfront Viewer Protocol Policy Allows HTTP",
+    "queryName": "CloudFront viewer protocol policy allows HTTP",
     "severity": "MEDIUM",
     "line": 50
   }

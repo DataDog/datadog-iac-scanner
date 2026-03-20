@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "RDS DB Instance Publicly Accessible",
+    "queryName": "RDS DB instance is not publicly accessible",
     "severity": "CRITICAL",
     "line": 13
   },
   {
-    "queryName": "RDS DB Instance Publicly Accessible",
+    "queryName": "RDS DB instance is not publicly accessible",
     "severity": "CRITICAL",
     "line": 24
   }

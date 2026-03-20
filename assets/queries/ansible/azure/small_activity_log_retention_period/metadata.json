@@ -1,9 +1,9 @@
 {
   "id": "37fafbea-dedb-4e0d-852e-d16ee0589326",
-  "queryName": "Small Activity Log Retention Period",
+  "queryName": "Small activity log retention period",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "Ensure that Activity Log Retention is set 365 days or greater",
+  "descriptionText": "Activity Log retention must be configured to retain logs for at least 365 days (or indefinitely). Short retention windows hinder incident response, forensic investigations, and regulatory compliance.\n\nFor Ansible `azure.azcollection.azure_rm_monitorlogprofile` / `azure_rm_monitorlogprofile` resources, the `retention_policy.enabled` property must be `true` and `retention_policy.days` must be set to `365` or greater, or to `0` to retain logs indefinitely. Tasks that omit `retention_policy`, set `retention_policy.enabled` to `false` (or `no`), or set `retention_policy.days` to a value between 1 and 364 are flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Configure Activity Log retention\n  azure.azcollection.azure_rm_monitorlogprofile:\n    name: my-log-profile\n    locations:\n      - global\n    categories:\n      - Write\n      - Delete\n      - Action\n    retention_policy:\n      enabled: yes\n      days: 365\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/small_activity_log_retention_period",
   "platform": "Ansible",
   "descriptionID": "5bad8aed",

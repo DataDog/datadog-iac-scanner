@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "PostgreSQL Misconfigured Log Messages Flag",
+    "queryName": "PostgreSQL misconfigured log messages flag",
     "severity": "LOW",
     "line": 11
   }

@@ -1,9 +1,9 @@
 {
   "id": "88841d5c-d22d-4b7e-a6a0-89ca50e44b9f",
-  "queryName": "Risky File Permissions",
+  "queryName": "Risky file permissions",
   "severity": "LOW",
   "category": "Supply-Chain",
-  "descriptionText": "Some modules could end up creating new files on disk with permissions that might be too open or unpredictable",
+  "descriptionText": "Files and directories created or modified by Ansible tasks must have explicit, least-privilege file modes. Omitting the `mode` or relying on preserved/default permissions can leave artifacts world-readable or writable, increasing the risk of data exposure and privilege escalation.\n\nThis rule checks file-related modules—`archive`, `assemble`, `copy`, `file`, `get_url`, `template` (including their FQCNs) and content-creation modules like `htpasswd` and `ini_file`. Tasks that create files (task `state` not `absent`/`link`) without defining the `mode` property are flagged.\n\nFor modules that provide a `create` boolean (for example `htpasswd` and `ini_file`), tasks where `create` is true (or defaults to true) and `mode` is not defined are also flagged. `mode: preserve` is only allowed for `copy` and `template` modules. Any other module using `mode: preserve` is reported as invalid.\n\nTo remediate, add an explicit `mode` with an appropriate octal value, or set `create: false` when creation is not desired.\n\n```yaml\n- name: Create config file with restrictive permissions\n  ansible.builtin.file:\n    path: /etc/myapp/config.yml\n    state: file\n    mode: '0640'\n\n- name: Create ini file with explicit mode\n  community.general.ini_file:\n    path: /etc/myapp/settings.ini\n    create: true\n    mode: '0640'\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/general/risky_file_permissions",
   "platform": "Ansible",
   "descriptionID": "1f0e1485",

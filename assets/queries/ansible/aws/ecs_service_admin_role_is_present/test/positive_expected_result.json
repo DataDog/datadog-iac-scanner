@@ -1,7 +1,7 @@
 [
-	{
-		"queryName": "ECS Service Admin Role Is Present",
-		"severity": "HIGH",
-		"line": 9
-	}
+  {
+    "queryName": "ECS service admin role is present",
+    "severity": "HIGH",
+    "line": 9
+  }
 ]

@@ -1,26 +1,26 @@
 [
   {
-    "queryName": "Cluster Master Authentication Disabled",
+    "queryName": "Cluster master authentication disabled",
     "severity": "MEDIUM",
     "line": 3
   },
   {
-    "queryName": "Cluster Master Authentication Disabled",
+    "queryName": "Cluster master authentication disabled",
     "severity": "MEDIUM",
     "line": 18
   },
   {
-    "queryName": "Cluster Master Authentication Disabled",
+    "queryName": "Cluster master authentication disabled",
     "severity": "MEDIUM",
     "line": 32
   },
   {
-    "queryName": "Cluster Master Authentication Disabled",
+    "queryName": "Cluster master authentication disabled",
     "severity": "MEDIUM",
     "line": 46
   },
   {
-    "queryName": "Cluster Master Authentication Disabled",
+    "queryName": "Cluster master authentication disabled",
     "severity": "MEDIUM",
     "line": 61
   }

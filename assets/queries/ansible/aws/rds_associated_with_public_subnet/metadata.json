@@ -1,14 +1,14 @@
 {
   "id": "16732649-4ff6-4cd2-8746-e72c13fae4b8",
-  "queryName": "RDS Associated with Public Subnet",
+  "queryName": "RDS instance associated with a public subnet",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",
-  "descriptionText": "RDS should not run in public subnet",
+  "descriptionText": "RDS instances must not be placed in public subnets because an internet-routable subnet exposes the database endpoint to the internet, increasing the risk of unauthorized access and data exfiltration. This rule inspects Ansible tasks that create RDS instances (resource types `amazon.aws.rds_instance` or `rds_instance`) and requires the subnet group property (`db_subnet_group_name` or `subnet_group`) to reference a subnet group composed only of private subnets.\n\nIt verifies the referenced subnet group tasks (`amazon.aws.rds_subnet_group` or `rds_subnet_group`) and the subnet tasks (`amazon.aws.ec2_vpc_subnet` or `ec2_vpc_subnet`). Any subnet with `cidr` equal to `0.0.0.0/0` or `ipv6_cidr` equal to `::/0` is treated as public and triggers a finding.\n\nResources that are missing the subnet-group property or that include any public subnet in the subnet group are flagged. Ensure subnet groups list subnets using private CIDR ranges and that registered subnet task names match the entries in the subnet group.\n\nSecure example with private subnet CIDRs:\n\n```yaml\n- name: Create private subnet\n  amazon.aws.ec2_vpc_subnet:\n    vpc_id: vpc-123\n    cidr: 10.0.1.0/24\n  register: private_subnet_a\n\n- name: Create RDS subnet group using private subnets\n  amazon.aws.rds_subnet_group:\n    name: my-db-subnet-group\n    subnets:\n      - \"{{ private_subnet_a }}\"\n\n- name: Create RDS instance in private subnet group\n  amazon.aws.rds_instance:\n    db_subnet_group_name: my-db-subnet-group\n    # other RDS properties...\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/rds_associated_with_public_subnet",
   "platform": "Ansible",
   "descriptionID": "89ed6e35",
   "cloudProvider": "aws",
   "cwe": "200",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-db_subnet_group_name"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html#parameter-db_subnet_group_name"
 }

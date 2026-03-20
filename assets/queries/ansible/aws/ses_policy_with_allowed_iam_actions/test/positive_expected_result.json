@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "SES Policy With Allowed IAM Actions",
+    "queryName": "SES policy with allowed IAM actions",
     "severity": "MEDIUM",
     "line": 5,
     "fileName": "positive.yaml"

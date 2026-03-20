@@ -1,9 +1,9 @@
 {
   "id": "75418eb9-39ec-465f-913c-6f2b6a80dc77",
-  "queryName": "RDP Access Is Not Restricted",
+  "queryName": "RDP access is not restricted",
   "severity": "HIGH",
   "category": "Networking and Firewall",
-  "descriptionText": "Check if the Google compute firewall allows unrestricted RDP access. Allowed ports should not contain RDP port 3389",
+  "descriptionText": "Allowing unrestricted RDP (TCP port 3389) ingress exposes hosts to automated brute-force attacks and unauthorized remote access. This rule inspects Ansible `google.cloud.gcp_compute_firewall` and `gcp_compute_firewall` tasks and flags ingress rules whose `source_ranges` include unrestricted CIDRs (for example `0.0.0.0/0` or `::/0`) and whose `allowed` entries include port `3389` (typically `ip_protocol: tcp`).\n\nThe `allowed` property must not include port `3389` for rules that permit unrestricted source ranges. Either remove or disable RDP on the firewall, or restrict `source_ranges` to trusted CIDRs. Consider using a bastion host, VPN, or identity-based access (IAP/SSM) instead of direct RDP. Resources where `direction` is ingress, `source_ranges` contains an unrestricted CIDR, and `allowed[].ports` contains `\"3389\"` are flagged.\n\nSecure example that restricts RDP to a corporate CIDR:\n\n```yaml\n- name: allow-rdp-from-corporate\n  google.cloud.gcp_compute_firewall:\n    name: allow-rdp-corp\n    network: default\n    direction: INGRESS\n    source_ranges:\n      - 10.0.0.0/8\n    allowed:\n      - ip_protocol: tcp\n        ports:\n          - \"3389\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/rdp_access_is_not_restricted",
   "platform": "Ansible",
   "descriptionID": "23f68cd6",

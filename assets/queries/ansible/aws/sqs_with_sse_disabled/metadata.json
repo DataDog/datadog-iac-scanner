@@ -1,9 +1,9 @@
 {
   "id": "e1e7b278-2a8b-49bd-a26e-66a7f70b17eb",
-  "queryName": "SQS With SSE Disabled",
+  "queryName": "SQS queue with SSE disabled",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "Amazon Simple Queue Service (SQS) queue should protect the contents of their messages using Server-Side Encryption (SSE)",
+  "descriptionText": "SQS queues must have server-side encryption (SSE) enabled to protect message contents at rest and in backups. This reduces the risk of exposing sensitive data if someone accesses the underlying storage or compromises credentials.\n\nIn Ansible, tasks using the `community.aws.sqs_queue` or `sqs_queue` modules must define the `kms_master_key_id` property and set it to a valid KMS key identifier (for example, a KMS ARN, key ID, or alias) to enable KMS-backed SSE. Resources missing this property or with it undefined/empty are flagged. Using a customer-managed KMS key (ARN or key ID) is recommended for granular access control and auditability, though the AWS-managed alias (`alias/aws/sqs`) can be used if customer-managed keys are not required.\n\nSecure configuration example:\n\n```yaml\n- name: Create encrypted SQS queue\n  community.aws.sqs_queue:\n    name: my-queue\n    kms_master_key_id: arn:aws:kms:us-east-1:123456789012:key/abcd1234-56ef-78gh-90ij-klmnopqrstuv\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/sqs_with_sse_disabled",
   "platform": "Ansible",
   "descriptionID": "7825cf30",
