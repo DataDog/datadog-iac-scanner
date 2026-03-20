@@ -10,9 +10,8 @@ import (
 	"context"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
-
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -20,6 +19,38 @@ import (
 
 // Parser defines a parser type
 type Parser struct {
+	shellParser      *ShellScriptParser
+	expressionParser *ExpressionParser
+}
+
+// ParsedCommand represents a parsed shell command
+type ParsedCommand struct {
+	Type     string          `json:"type"`    // "command", "pipeline", "redirected_statement"
+	Command  string          `json:"command"` // Command name (e.g., "echo", "cargo")
+	Args     []ParsedArg     `json:"args"`    // Command arguments
+	Redirect *ParsedRedirect `json:"redirect,omitempty"`
+	Pipeline []ParsedCommand `json:"pipeline,omitempty"`
+}
+
+// ParsedArg represents a command argument
+type ParsedArg struct {
+	Type  string `json:"type"`          // "literal", "expansion", "command_substitution"
+	Value string `json:"value"`         // The text content
+	Var   string `json:"var,omitempty"` // Variable name if type is expansion
+}
+
+// ParsedRedirect represents a file redirection
+type ParsedRedirect struct {
+	Operator string    `json:"operator"` // ">>", ">", etc.
+	Target   ParsedArg `json:"target"`   // Redirect target
+}
+
+// ParsedRun represents a fully parsed run block
+type ParsedRun struct {
+	Shell    string          `json:"shell"`           // "bash", "pwsh", etc.
+	Commands []ParsedCommand `json:"commands"`        // All commands found
+	ParseOK  bool            `json:"parse_ok"`        // Whether parsing succeeded
+	Error    string          `json:"error,omitempty"` // Parse error if any
 }
 
 // Resolve - replace or modifies in-memory content before parsing
@@ -78,6 +109,12 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	if len(documents) == 0 {
 		return []byte{}, nil, []int{}, map[string]model.ResolvedFile{}, errors.New("no documents found in yaml file")
 	}
+
+	// Convert keys to string format
+	documents = convertKeysToString(documents)
+
+	// Enhance documents with parsed run blocks
+	p.enhanceWithParsedRuns(ctx, documents)
 
 	linesToIgnore := ignore.GetLines()
 
@@ -201,4 +238,73 @@ func (p *Parser) GetCommentToken() string {
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
+}
+
+// getShellParser returns the shell parser, initializing it if needed
+func (p *Parser) getShellParser() *ShellScriptParser {
+	if p.shellParser == nil {
+		p.shellParser = NewShellScriptParser()
+	}
+	return p.shellParser
+}
+
+// enhanceWithParsedRuns walks through documents and parses run blocks with tree-sitter
+func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Document) {
+	shellParser := p.getShellParser()
+
+	for _, doc := range documents {
+		// Look for jobs in the workflow
+		jobs, ok := doc["jobs"]
+		if !ok {
+			continue
+		}
+
+		jobsMap, ok := jobs.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, j := range jobsMap {
+			job, ok := j.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// Look for steps in the job
+			steps, ok := job["steps"]
+			if !ok {
+				continue
+			}
+
+			stepsSlice, ok := steps.([]interface{})
+			if !ok {
+				continue
+			}
+
+			for _, s := range stepsSlice {
+				step, ok := s.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				// Check if step has a run block
+				runScript, ok := step["run"].(string)
+				if !ok {
+					continue
+				}
+
+				// Determine shell (default to bash)
+				shell := "bash"
+				if shellVal, ok := step["shell"].(string); ok {
+					shell = shellVal
+				}
+
+				// Parse the run block
+				parsed := shellParser.ParseRunBlock(ctx, runScript, shell)
+
+				// Add parsed structure to step
+				step["_parsed_run"] = parsed
+			}
+		}
+	}
 }
