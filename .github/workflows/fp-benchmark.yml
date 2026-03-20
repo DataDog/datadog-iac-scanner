@@ -13,8 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     
     steps:
+    - name: Get Datadog credentials
+      id: dd-sts
+      uses: DataDog/dd-sts-action@8c5343b895b3291bda3e081cd2be96b420ea35a2 # 09 Mar. 2026
+      with:
+        policy: iac-fp-benchmark
+
     - name: Checkout kics repo
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
@@ -53,8 +60,8 @@ jobs:
 
     - name: Run FP evaluation
       env:
-        DD_API_KEY: ${{ secrets.DD_API_KEY }}
-        DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+        DD_API_KEY: ${{ steps.dd-sts.outputs.api_key }}
+        DD_APP_KEY: ${{ steps.dd-sts.outputs.app_key }}
       run: |
         cd iac-benchmarking
         python benchmark-tools/fp_eval.py \
@@ -65,8 +72,8 @@ jobs:
     - name: Submit metrics to Datadog
       if: always()
       env:
-        DD_API_KEY: ${{ secrets.DD_API_KEY }}
-        DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+        DD_API_KEY: ${{ steps.dd-sts.outputs.api_key }}
+        DD_APP_KEY: ${{ steps.dd-sts.outputs.app_key }}
       run: |
         cd iac-benchmarking
         if [ -f results/fp_eval_results.json ]; then
