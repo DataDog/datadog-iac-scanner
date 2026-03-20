@@ -8,6 +8,7 @@ package cicd
 import (
 	"bytes"
 	"context"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -48,6 +49,48 @@ type ParsedRun struct {
 	Commands []ParsedCommand `json:"commands"`        // All commands found
 	ParseOK  bool            `json:"parse_ok"`        // Whether parsing succeeded
 	Error    string          `json:"error,omitempty"` // Parse error if any
+}
+
+// Span represents a text span
+type Span struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
+}
+
+// ExpressionMatch represents a found expression in text
+type ExpressionMatch struct {
+	Full       string `json:"full"`       // Full match including ${{ }}
+	Expression string `json:"expression"` // Just the expression inside
+	FullSpan   Span   `json:"full_span"`  // Span of full match
+	ExprSpan   Span   `json:"expr_span"`  // Span of expression
+}
+
+// ParsedExpression represents a parsed GitHub Actions expression
+type ParsedExpression struct {
+	Raw                   string                `json:"raw"`                      // Original expression text
+	AST                   ASTNode               `json:"ast,omitempty"`            // Parsed AST
+	ParseOK               bool                  `json:"parse_ok"`                 // Whether parsing succeeded
+	Error                 string                `json:"error,omitempty"`          // Parse error if any
+	ConstantReducible     bool                  `json:"constant_reducible"`       // Can be evaluated at parse time
+	ConstantSubexprs      []ParsedSubExpression `json:"constant_subexprs"`        // Sub-expressions that are constant
+	ComputedIndices       []ParsedSubExpression `json:"computed_indices"`         // Dynamic array/object accesses
+	HasSecretsExpansion   bool                  `json:"has_secrets_expansion"`    // Uses toJSON(secrets) pattern
+	SecretsExpansionNodes []ParsedSubExpression `json:"secrets_expansion_nodes"`  // Nodes with secrets expansion
+	HasDynamicSecretKey   bool                  `json:"has_dynamic_secret_key"`   // Uses secrets[variable]
+	DynamicSecretKeyNodes []ParsedSubExpression `json:"dynamic_secret_key_nodes"` // Nodes with dynamic secret access
+}
+
+// ParsedSubExpression represents a sub-expression in the AST
+type ParsedSubExpression struct {
+	Type  string `json:"type"`  // Type of sub-expression
+	Value string `json:"value"` // Text value
+}
+
+// ASTNode represents a simplified AST node
+type ASTNode struct {
+	Type     string    `json:"type"`               // Node type from tree-sitter
+	Value    string    `json:"value,omitempty"`    // Text content
+	Children []ASTNode `json:"children,omitempty"` // Child nodes
 }
 
 // Resolve - replace or modifies in-memory content before parsing
@@ -112,6 +155,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	// Enhance documents with parsed run blocks
 	p.enhanceWithParsedRuns(documents)
+
+	// Enhance documents with parsed expressions
+	p.enhanceWithParsedExpressions(documents)
 
 	linesToIgnore := ignore.GetLines()
 
@@ -292,6 +338,66 @@ func (p *Parser) enhanceWithParsedRuns(documents []model.Document) {
 				// Add parsed structure to step
 				step["_parsed_run"] = parsed
 			}
+		}
+	}
+}
+
+// enhanceWithParsedExpressions walks through documents and parses GitHub Actions expressions
+func (p *Parser) enhanceWithParsedExpressions(documents []model.Document) {
+	for _, doc := range documents {
+		p.parseExpressionsInValue(doc)
+	}
+}
+
+// parseExpressionsInValue recursively walks a value and parses any expressions found
+func (p *Parser) parseExpressionsInValue(value interface{}) {
+	switch v := value.(type) {
+	case model.Document, map[string]interface{}:
+		// Handle maps (documents, jobs, steps, env, with blocks, etc.)
+		// Convert to map for uniform handling
+		var m map[string]interface{}
+		if doc, ok := v.(model.Document); ok {
+			m = doc
+		} else {
+			m = v.(map[string]interface{})
+		}
+
+		for key, val := range m {
+			// Collect all expressions found in this value (string or array)
+			var allExpressions []ExpressionMatch
+
+			// Check if the value is a string with expressions
+			switch typedValue := val.(type) {
+			case string:
+				allExpressions = extractExpressionsFromString(typedValue)
+			case []interface{}:
+				for _, elem := range typedValue {
+					if strElem, ok := elem.(string); ok {
+						expressions := extractExpressionsFromString(strElem)
+						allExpressions = append(allExpressions, expressions...)
+					}
+				}
+			}
+
+			// If we found any expressions, parse and store them
+			if len(allExpressions) > 0 {
+				parsedExprs := make([]ParsedExpression, 0, len(allExpressions))
+				for _, expr := range allExpressions {
+					parsed := parseExpression(expr)
+					parsedExprs = append(parsedExprs, *parsed)
+				}
+				// Add parsed expressions to the map under a special key
+				exprKey := "_parsed_expressions_" + strings.ReplaceAll(key, "-", "_")
+				m[exprKey] = parsedExprs
+			}
+
+			// Recurse into nested structures
+			p.parseExpressionsInValue(val)
+		}
+
+	case []interface{}:
+		for _, item := range v {
+			p.parseExpressionsInValue(item)
 		}
 	}
 }
