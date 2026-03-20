@@ -417,6 +417,8 @@ github.com/redis/go-redis/v9 v9.7.3 h1:YpPyAayJV+XErNsatSElgRZZVCwXX9QzkKYNvO7x0
 github.com/redis/go-redis/v9 v9.7.3/go.mod h1:bGUrSggJ9X9GUmZpZNEOQKaANxSGgOEBRltRTZHSvrA=
 github.com/relex/aini v1.6.0 h1:iIMLsRWYtXKYS3edGz3EDpBxvLOiMAfSCUXjr4A8jbY=
 github.com/relex/aini v1.6.0/go.mod h1:Lrud1Ua+Sfmz7ajfXG3Gi6hf9dI5fKssfRz97DrMZjA=
+github.com/rmuir/tree-sitter-ghactions v0.2.5 h1:c63UkRP+4U2o9kiCay6Jt1YVpKuUUNY0LXaL2w49Fxo=
+github.com/rmuir/tree-sitter-ghactions v0.2.5/go.mod h1:yechDWXHUOYzel1WC90R7R3HJopCWf2AasbZ++/N00w=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/rs/xid v1.6.0/go.mod h1:7XoLgs4eV+QndskICGsho+ADou8ySMSjJKDIan90Nz0=

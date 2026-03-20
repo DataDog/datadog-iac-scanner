@@ -22,6 +22,7 @@ require (
 	github.com/open-policy-agent/opa v1.13.2
 	github.com/pkg/errors v0.9.1
 	github.com/relex/aini v1.6.0
+	github.com/rmuir/tree-sitter-ghactions v0.2.5
 	github.com/rs/zerolog v1.34.0
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/sosedoff/ansible-vault-go v0.2.0
