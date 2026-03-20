@@ -24,11 +24,11 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-port)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html#parameter-port)
 
 ### Description
 
-Using the database engine's default port makes instances easy for attackers to discover and target with automated scanning and exploit tooling, increasing the likelihood of brute-force, credential stuffing, or other network-based attacks. For Ansible RDS tasks using the `community.aws.rds_instance` or `rds_instance` modules, the `port` property must not be set to the engine default. Choose a non-default port and ensure access is restricted at the network level (security groups/ACLs).
+Using the database engine's default port makes instances easy for attackers to discover and target with automated scanning and exploit tooling, increasing the likelihood of brute-force, credential stuffing, or other network-based attacks. For Ansible RDS tasks using the `amazon.aws.rds_instance` or `rds_instance` modules, the `port` property must not be set to the engine default. Choose a non-default port and ensure access is restricted at the network level (security groups/ACLs).
 
 This rule flags module tasks where `port` equals the engine default: MySQL/MariaDB/Aurora = 3306, PostgreSQL = 5432, Oracle = 1521, and SQL Server = 1433. This check flags explicit `port` settings that match defaults. If `port` is omitted, the engine may still use its default port, so also verify engine behavior and enforce least-privilege network access.
 
@@ -36,7 +36,7 @@ Secure configuration example (MySQL using a non-default port):
 
 ```yaml
 - name: Create RDS instance with non-default port
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_instance_identifier: my-db
     engine: mysql
     port: 3307
@@ -45,7 +45,7 @@ Secure configuration example (MySQL using a non-default port):
 ## Compliant Code Examples
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -59,7 +59,7 @@ Secure configuration example (MySQL using a non-default port):
 
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: sqlserver-ee
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -73,7 +73,7 @@ Secure configuration example (MySQL using a non-default port):
 
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: postgres
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -87,7 +87,7 @@ Secure configuration example (MySQL using a non-default port):
 ## Non-Compliant Code Examples
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: postgres
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -101,7 +101,7 @@ Secure configuration example (MySQL using a non-default port):
 
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: oracle-ee
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -115,7 +115,7 @@ Secure configuration example (MySQL using a non-default port):
 
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: sqlserver-ee
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small

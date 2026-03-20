@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/aws_ses_identity_policy_module.html#parameter-policy)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/ses_identity_policy_module.html#parameter-policy)
 
 ### Description
 
 SES identity policies must not grant Allow permissions for all actions to all principals. A wildcard Action (`*`) combined with a wildcard Principal (`*`) lets any actor perform any API operation on the identity, enabling email spoofing, unauthorized sending, and potential privilege escalation.
 
-This rule checks Ansible resources of type `community.aws.aws_ses_identity_policy` and `aws.aws_ses_identity_policy`. The `policy` document must not contain statements with `"Effect": "Allow"` where `Action` is `"*"` (or contains `"*"`) and `Principal` is a wildcard (for example `"*"` or `{"AWS":"*"}`). Resources with such statements are flagged.
+This rule checks Ansible resources of type `community.aws.ses_identity_policy` and `aws.aws_ses_identity_policy`. The `policy` document must not contain statements with `"Effect": "Allow"` where `Action` is `"*"` (or contains `"*"`) and `Principal` is a wildcard (for example `"*"` or `{"AWS":"*"}`). Resources with such statements are flagged.
 
 Specify explicit principals (AWS account ARNs or service principals) and restrict `Action` to the minimum required SES API operations. Secure example showing a restricted policy:
 
 ```yaml
 - name: Attach SES identity policy
-  community.aws.aws_ses_identity_policy:
+  community.aws.ses_identity_policy:
     identity: "example.com"
     policy: |
       {
@@ -55,7 +55,7 @@ Specify explicit principals (AWS account ARNs or service principals) and restric
 ## Compliant Code Examples
 ```yaml
 - name: add sending authorization policy to email identity2
-  community.aws.aws_ses_identity_policy:
+  community.aws.ses_identity_policy:
     identity: example@example.com
     policy_name: ExamplePolicy
     policy: >
@@ -79,7 +79,7 @@ Specify explicit principals (AWS account ARNs or service principals) and restric
 ## Non-Compliant Code Examples
 ```yaml
 - name: add sending authorization policy to email identityyy
-  community.aws.aws_ses_identity_policy:
+  community.aws.ses_identity_policy:
     identity: example@example.com
     policy_name: ExamplePolicy
     policy: >

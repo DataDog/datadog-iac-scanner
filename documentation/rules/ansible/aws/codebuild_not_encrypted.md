@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/aws_codebuild_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/codebuild_project_module.html)
 
 ### Description
 
 CodeBuild projects must have a KMS encryption key configured so build artifacts, cached data, and logs are protected at rest.
 
-For Ansible resources using the `community.aws.aws_codebuild` or `aws_codebuild` modules, the `encryption_key` property must be defined and set to a valid AWS KMS key ARN or alias (for example `arn:aws:kms:...` or `alias/your-key-alias`). Resources missing `encryption_key` or with it undefined are flagged. 
+For Ansible resources using the `community.aws.codebuild_project` or `aws_codebuild` modules, the `encryption_key` property must be defined and set to a valid AWS KMS key ARN or alias (for example `arn:aws:kms:...` or `alias/your-key-alias`). Resources missing `encryption_key` or with it undefined are flagged. 
 
 Example secure task:
 
 ```yaml
 - name: create codebuild project
-  community.aws.aws_codebuild:
+  community.aws.codebuild_project:
     name: my-build
     encryption_key: arn:aws:kms:us-east-1:123456789012:key/abcd1234-ef56-7890-abcd-123456ef7890
     # other required properties...
@@ -45,7 +45,7 @@ Example secure task:
 ## Compliant Code Examples
 ```yaml
 - name: My project v2
-  community.aws.aws_codebuild:
+  community.aws.codebuild_project:
     description: My nice little project
     service_role: arn:aws:iam::123123:role/service-role/code-build-service-role
     source:
@@ -69,7 +69,7 @@ Example secure task:
 ## Non-Compliant Code Examples
 ```yaml
 - name: My project
-  community.aws.aws_codebuild:
+  community.aws.codebuild_project:
     description: My nice little project v2
     service_role: "arn:aws:iam::123123:role/service-role/code-build-service-role"
     source:

@@ -24,17 +24,17 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html)
 
 ### Description
 
 RDS instances must have storage encryption enabled to protect data at rest, including database files, automated backups, and snapshots. Without encryption, this data is exposed to unauthorized access if storage media or snapshots are compromised.
 
-For Ansible resources using the `community.aws.rds_instance` or `rds_instance` modules, set `storage_encrypted` to `true`. If you are using a customer-managed key, also define `kms_key_id`. This rule flags instances where `storage_encrypted` is undefined or set to `false` and no `kms_key_id` is provided.
+For Ansible resources using the `amazon.aws.rds_instance` or `rds_instance` modules, set `storage_encrypted` to `true`. If you are using a customer-managed key, also define `kms_key_id`. This rule flags instances where `storage_encrypted` is undefined or set to `false` and no `kms_key_id` is provided.
 
 ```yaml
 - name: Create encrypted RDS instance
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_instance_identifier: mydb
     engine: mysql
     allocated_storage: 20
@@ -47,7 +47,7 @@ For Ansible resources using the `community.aws.rds_instance` or `rds_instance` m
 ## Compliant Code Examples
 ```yaml
 - name: foo
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -57,7 +57,7 @@ For Ansible resources using the `community.aws.rds_instance` or `rds_instance` m
     password: '{{ password }}'
     allocated_storage: '{{ allocated_storage }}'
 - name: foo2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -67,7 +67,7 @@ For Ansible resources using the `community.aws.rds_instance` or `rds_instance` m
     password: '{{ password }}'
     allocated_storage: '{{ allocated_storage }}'
 - name: foo3
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -82,7 +82,7 @@ For Ansible resources using the `community.aws.rds_instance` or `rds_instance` m
 ```yaml
 ---
 - name: foo
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -92,7 +92,7 @@ For Ansible resources using the `community.aws.rds_instance` or `rds_instance` m
     password: "{{ password }}"
     allocated_storage: "{{ allocated_storage }}"
 - name: foo2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -102,7 +102,7 @@ For Ansible resources using the `community.aws.rds_instance` or `rds_instance` m
     password: "{{ password }}"
     allocated_storage: "{{ allocated_storage }}"
 - name: foo3
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb

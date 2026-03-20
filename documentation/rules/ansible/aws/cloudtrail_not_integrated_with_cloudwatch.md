@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html)
 
 ### Description
 
 CloudTrail must be integrated with CloudWatch Logs so events are available for real-time detection, alerting, and centralized log analysis, and so forensic evidence is retained for incident investigation.
 
-For Ansible tasks using the `community.aws.cloudtrail` or `cloudtrail` modules, the `cloudwatch_logs_role_arn` and `cloudwatch_logs_log_group_arn` properties must be defined. `cloudwatch_logs_role_arn` should be an IAM role ARN that allows CloudTrail to publish to CloudWatch Logs. `cloudwatch_logs_log_group_arn` should reference the destination Log Group ARN. Tasks missing either property are flagged.
+For Ansible tasks using the `amazon.aws.cloudtrail` or `cloudtrail` modules, the `cloudwatch_logs_role_arn` and `cloudwatch_logs_log_group_arn` properties must be defined. `cloudwatch_logs_role_arn` should be an IAM role ARN that allows CloudTrail to publish to CloudWatch Logs. `cloudwatch_logs_log_group_arn` should reference the destination Log Group ARN. Tasks missing either property are flagged.
 
 Secure configuration example:
 
 ```yaml
 - name: Create CloudTrail with CloudWatch Logs integration
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     name: my-trail
     s3_bucket_name: my-bucket
     is_multi_region_trail: yes
@@ -47,7 +47,7 @@ Secure configuration example:
 ## Compliant Code Examples
 ```yaml
 - name: create multi-region trail with validation and tags negative
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -65,7 +65,7 @@ Secure configuration example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: positive1
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -77,7 +77,7 @@ Secure configuration example:
       environment: dev
       Name: default
 - name: positive2
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -90,7 +90,7 @@ Secure configuration example:
       environment: dev
       Name: default
 - name: positive3
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket

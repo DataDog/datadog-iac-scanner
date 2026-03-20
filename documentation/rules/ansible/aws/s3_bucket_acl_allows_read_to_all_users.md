@@ -24,17 +24,17 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/aws_s3_module.html#parameter-permission)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/s3_object_module.html#parameter-permission)
 
 ### Description
 
 S3 buckets must not be configured to allow read access to all users. Public-read ACLs make objects and metadata accessible to anyone on the internet, risking data exposure and compliance violations.
 
-For Ansible tasks using the amazon.aws.aws_s3 or aws_s3 modules, the `permission` parameter must not be set to values that start with `public-read` (for example `public-read` or `public-read-write`). Tasks with `permission` omitted or set to restrictive values such as `private`, or that rely on explicit bucket policies to grant scoped access, are acceptable. Resources with `permission` starting with `public-read` are flagged. Secure configuration example:
+For Ansible tasks using the `amazon.aws.s3_object` or `s3_object` modules, the `permission` parameter must not be set to values that start with `public-read` (for example `public-read` or `public-read-write`). Tasks with `permission` omitted or set to restrictive values such as `private`, or that rely on explicit bucket policies to grant scoped access, are acceptable. Resources with `permission` starting with `public-read` are flagged. Secure configuration example:
 
 ```yaml
 - name: Create S3 bucket with private ACL
-  amazon.aws.aws_s3:
+  amazon.aws.s3_object:
     bucket: my-bucket
     permission: private
     mode: create
@@ -43,12 +43,12 @@ For Ansible tasks using the amazon.aws.aws_s3 or aws_s3 modules, the `permission
 ## Compliant Code Examples
 ```yaml
 - name: Create an empty bucket
-  amazon.aws.aws_s3:
+  amazon.aws.s3_object:
     bucket: mybucket
     mode: create
     permission: private
 - name: Create an empty bucket2
-  amazon.aws.aws_s3:
+  amazon.aws.s3_object:
     bucket: mybucket
     mode: create
 
@@ -57,12 +57,12 @@ For Ansible tasks using the amazon.aws.aws_s3 or aws_s3 modules, the `permission
 ```yaml
 ---
 - name: Create an empty bucket
-  amazon.aws.aws_s3:
+  amazon.aws.s3_object:
     bucket: mybucket
     mode: create
     permission: public-read
 - name: Create an empty bucket2
-  amazon.aws.aws_s3:
+  amazon.aws.s3_object:
     bucket: mybucket
     mode: create
     permission: public-read-write

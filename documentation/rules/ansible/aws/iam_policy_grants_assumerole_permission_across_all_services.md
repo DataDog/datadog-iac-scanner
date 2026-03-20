@@ -24,18 +24,18 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_managed_policy_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_managed_policy_module.html)
 
 ### Description
 
 Policy statements that use a wildcard principal (`*`) with `Effect` set to `Allow` grant trust or permissions to any AWS principal. This can enable unauthorized accounts or external services to assume roles or perform actions, increasing the risk of privilege escalation and data exposure.
 
-In Ansible resources `community.aws.iam_managed_policy` and `iam_managed_policy`, check the `policy.Statement[].Effect` and `policy.Statement[].Principal.AWS` properties. Statements must not have an `Allow` effect combined with `Principal.AWS` equal to or containing `"*"`. This rule flags managed policy resources where any statement authorizes `"*"` as a principal. Replace wildcards with explicit principals such as AWS account IDs, ARNs, or specific service principals to limit trust to known entities.
+In Ansible resources `amazon.aws.iam_managed_policy` and `iam_managed_policy`, check the `policy.Statement[].Effect` and `policy.Statement[].Principal.AWS` properties. Statements must not have an `Allow` effect combined with `Principal.AWS` equal to or containing `"*"`. This rule flags managed policy resources where any statement authorizes `"*"` as a principal. Replace wildcards with explicit principals such as AWS account IDs, ARNs, or specific service principals to limit trust to known entities.
 
 ## Compliant Code Examples
 ```yaml
 - name: Create IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: ManagedPolicy
     policy:
       Version: '2012-10-17'
@@ -50,7 +50,7 @@ In Ansible resources `community.aws.iam_managed_policy` and `iam_managed_policy`
 ## Non-Compliant Code Examples
 ```yaml
 - name: Create IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: "ManagedPolicy"
     policy:
       Version: "2012-10-17"

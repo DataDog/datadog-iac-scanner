@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_managed_policy_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_managed_policy_module.html)
 
 ### Description
 
 IAM managed policies must not include statements that allow all actions on all resources. Wildcard Allow statements grant unrestricted privileges, greatly increase blast radius, and raise the risk of privilege escalation or data exposure.
 
-For Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules, examine the policy document's `Statement` entries: any statement with `Effect: "Allow"` must not have both `Action` and `Resource` set to `"*"`. This rule flags tasks where `policy.Statement[].Action == "*"` and `policy.Statement[].Resource == "*"`. Instead, scope `Action` to specific API operations and `Resource` to concrete ARNs, or apply conditions to limit access.
+For Ansible tasks using the `amazon.aws.iam_managed_policy` or `iam_managed_policy` modules, examine the policy document's `Statement` entries: any statement with `Effect: "Allow"` must not have both `Action` and `Resource` set to `"*"`. This rule flags tasks where `policy.Statement[].Action == "*"` and `policy.Statement[].Resource == "*"`. Instead, scope `Action` to specific API operations and `Resource` to concrete ARNs, or apply conditions to limit access.
 
 Secure example with scoped actions and resources:
 
 ```yaml
 - name: Create IAM managed policy with scoped permissions
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     name: ExampleReadOnlyPolicy
     policy:
       Version: "2012-10-17"
@@ -53,7 +53,7 @@ Secure example with scoped actions and resources:
 ## Compliant Code Examples
 ```yaml
 - name: Create IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: ManagedPolicy
     policy:
       Version: '2012-10-17'
@@ -68,7 +68,7 @@ Secure example with scoped actions and resources:
 
 ```yaml
 - name: Create IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: ManagedPolicy
     policy:
       Version: '2012-10-17'
@@ -83,7 +83,7 @@ Secure example with scoped actions and resources:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Create IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: "ManagedPolicy"
     policy:
       Version: "2012-10-17"

@@ -24,11 +24,11 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_module.html#parameter-vpc_subnet_id)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_instance_module.html#parameter-vpc_subnet_id)
 
 ### Description
 
-Launching EC2 instances into a default VPC increases exposure because default VPCs often have permissive networking defaults that are not tailored with least-privilege network controls. This makes it harder to enforce isolation and audit access. In Ansible playbooks using the `amazon.aws.ec2` or `ec2` module, the `vpc_subnet_id` parameter must not reference a subnet that belongs to a default VPC. This rule flags EC2 tasks where `vpc_subnet_id` is templated to a registered `amazon.aws.ec2_vpc_subnet`/`ec2_vpc_subnet` and the corresponding subnet's `vpc_id` contains the string "default". Ensure subnets referenced by `vpc_subnet_id` are created in a non-default VPC (for example, `vpc-0abc1234`) rather than a value containing "default".
+Launching EC2 instances into a default VPC increases exposure because default VPCs often have permissive networking defaults that are not tailored with least-privilege network controls. This makes it harder to enforce isolation and audit access. In Ansible playbooks using the `amazon.aws.ec2_instance` or `ec2_instance` module, the `vpc_subnet_id` parameter must not reference a subnet that belongs to a default VPC. This rule flags EC2 tasks where `vpc_subnet_id` is templated to a registered `amazon.aws.ec2_vpc_subnet`/`ec2_vpc_subnet` and the corresponding subnet's `vpc_id` contains the string "default". Ensure subnets referenced by `vpc_subnet_id` are created in a non-default VPC (for example, `vpc-0abc1234`) rather than a value containing "default".
 
 Secure example with a subnet in a non-default VPC:
 
@@ -41,24 +41,18 @@ Secure example with a subnet in a non-default VPC:
   register: my_subnet
 
 - name: launch instance in the custom subnet
-  amazon.aws.ec2:
-    vpc_subnet_id: "{{ my_subnet.subnet.id }}"
-    image: ami-0123456789abcdef0
+  amazon.aws.ec2_instance:
+    name: my-instance
+    image_id: ami-0123456789abcdef0
     instance_type: t3.micro
+    vpc_subnet_id: "{{ my_subnet.subnet.id }}"
     wait: true
+    network:
+      assign_public_ip: false
 ```
 
 ## Compliant Code Examples
 ```yaml
-- name: example2
-  amazon.aws.ec2:
-    key_name: mykey
-    instance_type: t2.micro
-    image: ami-123456
-    wait: yes
-    count: 3
-    vpc_subnet_id: "{{ my_subnet2.subnet.id }}"
-    assign_public_ip: yes
 - name: Create subnet for database server2
   amazon.aws.ec2_vpc_subnet:
     state: present
@@ -67,19 +61,20 @@ Secure example with a subnet in a non-default VPC:
     tags:
       Name: Database Subnet
   register: my_subnet2
+- name: example2
+  amazon.aws.ec2_instance:
+    name: db-instance
+    key_name: mykey
+    instance_type: t2.micro
+    image_id: ami-123456
+    wait: yes
+    vpc_subnet_id: "{{ my_subnet2.subnet.id }}"
+    network:
+      assign_public_ip: true
 
 ```
 ## Non-Compliant Code Examples
 ```yaml
-- name: example
-  amazon.aws.ec2:
-    key_name: mykey
-    instance_type: t2.micro
-    image: ami-123456
-    wait: yes
-    count: 3
-    vpc_subnet_id: "{{ my_subnet.subnet.id }}"
-    assign_public_ip: yes
 - name: Create subnet for database server
   amazon.aws.ec2_vpc_subnet:
     state: present
@@ -88,5 +83,15 @@ Secure example with a subnet in a non-default VPC:
     tags:
       Name: Database Subnet
   register: my_subnet
+- name: example
+  amazon.aws.ec2_instance:
+    name: db-instance
+    key_name: mykey
+    instance_type: t2.micro
+    image_id: ami-123456
+    wait: yes
+    vpc_subnet_id: "{{ my_subnet.subnet.id }}"
+    network:
+      assign_public_ip: true
 
 ```

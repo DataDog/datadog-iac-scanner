@@ -24,13 +24,13 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/aws_kms_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/kms_key_module.html)
 
 ### Description
 
 KMS key policies that grant broad permissions—such as Allow statements containing `kms:*` or wildcard principals—or that lack conditions can permit unauthorized principals to use, manage, or delete keys. This increases the risk of data exposure or loss.
 
-For Ansible tasks using the `community.aws.aws_kms` or `aws_kms` modules, inspect the `policy` property. Either omit a custom `policy` so the key uses a safe default, or ensure any provided `policy` does not include `Effect: "Allow"` statements that lack a `Condition` and contain wildcard actions like `kms:*` or wildcard principals (such as `"*"` or account-wide ARNs).
+For Ansible tasks using the `amazon.aws.kms_key` or `aws_kms` modules, inspect the `policy` property. Either omit a custom `policy` so the key uses a safe default, or ensure any provided `policy` does not include `Effect: "Allow"` statements that lack a `Condition` and contain wildcard actions like `kms:*` or wildcard principals (such as `"*"` or account-wide ARNs).
 
 This rule flags KMS resources where a custom `policy` contains an Allow statement without a `Condition` that includes wildcard `kms:*` in `Action` or a wildcard `Principal`. It also flags cases where a custom `policy` is supplied when your organization requires the property to be undefined.
 
@@ -38,7 +38,7 @@ Secure examples — either omit the policy to use safer defaults or supply a res
 
 ```yaml
 - name: Create KMS key using default policy
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: alias/my-key
     description: "Encryption key for app"
     state: present
@@ -46,7 +46,7 @@ Secure examples — either omit the policy to use safer defaults or supply a res
 
 ```yaml
 - name: Create KMS key with restricted policy
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: alias/my-key
     policy:
       Version: "2012-10-17"
@@ -67,7 +67,7 @@ Secure examples — either omit the policy to use safer defaults or supply a res
 ## Compliant Code Examples
 ```yaml
 - name: Update IAM policy on an existing KMS key
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: my-kms-key
     policy: |
       { Id: auto-ebs-2, Statement: [{Action: [kms:Encrypt, kms:Decrypt, kms:ReEncrypt*,
@@ -85,7 +85,7 @@ Secure examples — either omit the policy to use safer defaults or supply a res
 ```yaml
 ---
 - name: Update IAM policy on an existing KMS key2
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: my-kms-key
     state: present
 
@@ -94,7 +94,7 @@ Secure examples — either omit the policy to use safer defaults or supply a res
 ```yaml
 ---
 - name: Update IAM policy on an existing KMS key
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: my-kms-key
     policy: {'Id': 'auto-ebs-2', 'Statement': [{'Action': ['kms:*'], 'Effect': 'Allow', 'Principal': {'AWS': '*'}, 'Resource': '*', 'Sid': 'Allow access through EBS for all principals in the account that are authorized to use EBS'}, {'Action': ['kms:Describe*', 'kms:Get*', 'kms:List*', 'kms:RevokeGrant'], 'Effect': 'Allow', 'Principal': {'AWS': 'arn:aws:iam::111111111111:root'}, 'Resource': '*', 'Sid': 'Allow direct access to key metadata to the account'}], 'Version': '2012-10-17'}
     state: present

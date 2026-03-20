@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html)
 
 ### Description
 
 CloudTrail log file validation must be enabled to detect tampering of delivered log files and preserve the integrity of audit data used for incident response and compliance.
 
-For Ansible tasks using the `community.aws.cloudtrail` or `cloudtrail` module, one of the properties `enable_log_file_validation` or `log_file_validation_enabled` must be defined and set to `true` (or `yes`). Resources missing both properties or with these properties set to `false`, `no`, or any non-`true` value are flagged as insecure.
+For Ansible tasks using the `amazon.aws.cloudtrail` or `cloudtrail` module, one of the properties `enable_log_file_validation` or `log_file_validation_enabled` must be defined and set to `true` (or `yes`). Resources missing both properties or with these properties set to `false`, `no`, or any non-`true` value are flagged as insecure.
 
 Secure Ansible example:
 
 ```yaml
 - name: Create CloudTrail with log file validation enabled
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     name: my-trail
     s3_bucket_name: my-trail-bucket
     enable_log_file_validation: true
@@ -45,7 +45,7 @@ Secure Ansible example:
 ## Compliant Code Examples
 ```yaml
 - name: create multi-region trail with validation and tags v2
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -59,7 +59,7 @@ Secure Ansible example:
       environment: dev
       Name: default
 - name: create multi-region trail with validation and tags v3
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -77,7 +77,7 @@ Secure Ansible example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: create multi-region trail with validation and tags
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -90,7 +90,7 @@ Secure Ansible example:
       environment: dev
       Name: default
 - name: create multi-region trail with validation and tags v7
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket

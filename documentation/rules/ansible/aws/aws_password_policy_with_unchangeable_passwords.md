@@ -24,11 +24,11 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_password_policy_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_password_policy_module.html)
 
 ### Description
 
-IAM password policies must permit users to change their own passwords so compromised, expired, or weak credentials can be rotated and account recovery workflows remain effective. In Ansible tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules, the boolean property controlling this must be defined and set to `true` — either `allow_pw_change` or `allow_password_change` depending on module version.
+IAM password policies must permit users to change their own passwords so compromised, expired, or weak credentials can be rotated and account recovery workflows remain effective. In Ansible tasks using the `amazon.aws.iam_password_policy` or `iam_password_policy` modules, the boolean property controlling this must be defined and set to `true` — either `allow_pw_change` or `allow_password_change` depending on module version.
 
 Tasks that omit these properties or set them to `false`/`no` are flagged because disabling password changes prevents credential rotation and hampers incident response and account hygiene.
 
@@ -36,14 +36,14 @@ Secure Ansible example:
 
 ```yaml
 - name: Ensure IAM password policy allows user password changes
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     allow_password_change: true
 ```
 
 ## Compliant Code Examples
 ```yaml
 - name: Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -59,7 +59,7 @@ Secure Ansible example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -71,7 +71,7 @@ Secure Ansible example:
     pw_reuse_prevent: 5
     pw_expire: false
 - name: Alias Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false

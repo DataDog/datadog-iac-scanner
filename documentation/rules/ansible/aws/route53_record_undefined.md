@@ -24,17 +24,17 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/route53_module.html#parameter-value)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/route53_module.html#parameter-value)
 
 ### Description
 
-Route 53 record resources must include one or more record values so DNS entries are created and resolve correctly. Missing values can lead to service disruption, broken name resolution, or unintended traffic routing. For Ansible tasks using the `community.aws.route53` or `route53` modules, the `value` parameter must be present and non-null, typically as a list of one or more string values. Tasks missing the `value` parameter, with `value: null`, or with an empty list are flagged.
+Route 53 record resources must include one or more record values so DNS entries are created and resolve correctly. Missing values can lead to service disruption, broken name resolution, or unintended traffic routing. For Ansible tasks using the `amazon.aws.route53` or `route53` modules, the `value` parameter must be present and non-null, typically as a list of one or more string values. Tasks missing the `value` parameter, with `value: null`, or with an empty list are flagged.
 
 Secure example Ansible task:
 
 ```yaml
 - name: Create A record for app.example.com
-  community.aws.route53:
+  amazon.aws.route53:
     zone: example.com
     record: app
     type: A
@@ -46,7 +46,7 @@ Secure example Ansible task:
 ## Compliant Code Examples
 ```yaml
 - name: Use a routing policy to distribute traffic
-  community.aws.route53:
+  amazon.aws.route53:
     state: present
     zone: foo.com
     record: www.foo.com
@@ -62,7 +62,7 @@ Secure example Ansible task:
 ```yaml
 ---
 - name: Use a routing policy to distribute traffic02
-  community.aws.route53:
+  amazon.aws.route53:
     state: present
     zone: foo.com
     record: www.foo.com
@@ -73,7 +73,7 @@ Secure example Ansible task:
     weight: 100
     health_check: "d994b780-3150-49fd-9205-356abdd42e75"
 - name: Use a routing policy to distribute traffic03
-  community.aws.route53:
+  amazon.aws.route53:
     state: present
     zone: foo.com
     record: www.foo.com

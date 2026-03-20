@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/aws_api_gateway_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/api_gateway_module.html)
 
 ### Description
 
 API Gateway endpoint type must be set to `PRIVATE` to prevent the API from being exposed to the public internet, which increases attack surface and can enable unauthorized access or data exfiltration.
 
-For Ansible tasks using the `community.aws.aws_api_gateway` or `aws_api_gateway` modules, the `endpoint_type` property must be defined and set to `PRIVATE`. Tasks missing this property or with `endpoint_type` not set to `PRIVATE` are flagged. A `PRIVATE` endpoint restricts access to VPC endpoints, so ensure the required VPC endpoint and networking is configured to allow authorized clients to reach the API.
+For Ansible tasks using the `community.aws.api_gateway` or `api_gateway` modules, the `endpoint_type` property must be defined and set to `PRIVATE`. Tasks missing this property or with `endpoint_type` not set to `PRIVATE` are flagged. A `PRIVATE` endpoint restricts access to VPC endpoints, so ensure the required VPC endpoint and networking is configured to allow authorized clients to reach the API.
 
 Secure Ansible task example:
 
 ```yaml
 - name: Create private API Gateway
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     name: my-private-api
     endpoint_type: PRIVATE
     state: present
@@ -45,7 +45,7 @@ Secure Ansible task example:
 ## Compliant Code Examples
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true
@@ -58,7 +58,7 @@ Secure Ansible task example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true

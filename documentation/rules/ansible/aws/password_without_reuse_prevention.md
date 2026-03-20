@@ -24,26 +24,26 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_password_policy_module.html#parameter-pw_reuse_prevent)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_password_policy_module.html#parameter-pw_reuse_prevent)
 
 ### Description
 
 IAM password policies must prevent reuse of previous passwords to reduce the risk of account compromise from credential stuffing and replay of older credentials.
 
-For Ansible tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules, define one of the reuse-prevention properties (`password_reuse_prevent`, `pw_reuse_prevent`, or `prevent_reuse`) and set it to a positive integer greater than 0. This specifies how many prior passwords are disallowed. This rule flags tasks where none of these properties are present or where the property is explicitly set to `0`.
+For Ansible tasks using the `amazon.aws.iam_password_policy` or `iam_password_policy` modules, define one of the reuse-prevention properties (`password_reuse_prevent`, `pw_reuse_prevent`, or `prevent_reuse`) and set it to a positive integer greater than 0. This specifies how many prior passwords are disallowed. This rule flags tasks where none of these properties are present or where the property is explicitly set to `0`.
 
 Secure example (prevents reuse of the last 5 passwords):
 
 ```yaml
 - name: Enforce IAM password reuse prevention
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     password_reuse_prevent: 5
 ```
 
 ## Compliant Code Examples
 ```yaml
 - name: Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -55,7 +55,7 @@ Secure example (prevents reuse of the last 5 passwords):
     pw_reuse_prevent: 5
     pw_expire: false
 - name: Password policy for AWS account2
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -67,7 +67,7 @@ Secure example (prevents reuse of the last 5 passwords):
     password_reuse_prevent: 5
     pw_expire: false
 - name: Password policy for AWS account3
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -84,7 +84,7 @@ Secure example (prevents reuse of the last 5 passwords):
 ```yaml
 ---
 - name: Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -95,7 +95,7 @@ Secure example (prevents reuse of the last 5 passwords):
     pw_max_age: 60
     pw_expire: false
 - name: Password policy for AWS account2
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -107,7 +107,7 @@ Secure example (prevents reuse of the last 5 passwords):
     password_reuse_prevent: 0
     pw_expire: false
 - name: Password policy for AWS account3
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false

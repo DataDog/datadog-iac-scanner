@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/lambda_policy_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/lambda_policy_module.html)
 
 ### Description
 
 Lambda function permissions must not use wildcard principals (`*`). This effectively allows any AWS account or anonymous principal to invoke the function, increasing the risk of unauthorized invocations and data exposure.
 
-In Ansible, check tasks using the `community.aws.lambda_policy` or `lambda_policy` modules and ensure the `principal` property does not contain `*` or other wildcard values. The `principal` must specify explicit principals such as an AWS account ARN, role ARN, or service principal (for example, `arn:aws:iam::123456789012:role/MyRole` or `events.amazonaws.com`). Tasks where `principal` includes `*` are flagged.
+In Ansible, check tasks using the `amazon.aws.lambda_policy` or `lambda_policy` modules and ensure the `principal` property does not contain `*` or other wildcard values. The `principal` must specify explicit principals such as an AWS account ARN, role ARN, or service principal (for example, `arn:aws:iam::123456789012:role/MyRole` or `events.amazonaws.com`). Tasks where `principal` includes `*` are flagged.
 
 Secure example using an explicit service principal:
 
 ```yaml
 - name: Allow EventBridge to invoke Lambda
-  community.aws.lambda_policy:
+  amazon.aws.lambda_policy:
     state: present
     function_name: my-function
     principal: events.amazonaws.com
@@ -47,7 +47,7 @@ Secure example using an explicit service principal:
 ## Compliant Code Examples
 ```yaml
 - name: Lambda S3 event notification negative
-  community.aws.lambda_policy:
+  amazon.aws.lambda_policy:
     state: present
     function_name: functionName
     alias: Dev
@@ -61,7 +61,7 @@ Secure example using an explicit service principal:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Lambda S3 event notification
-  community.aws.lambda_policy:
+  amazon.aws.lambda_policy:
     state: present
     function_name: functionName
     alias: Dev

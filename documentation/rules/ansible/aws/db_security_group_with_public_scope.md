@@ -81,7 +81,7 @@ Secure Ansible example with restricted CIDRs:
 ## Non-Compliant Code Examples
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small

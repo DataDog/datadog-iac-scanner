@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-auto_minor_version_upgrade)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html#parameter-auto_minor_version_upgrade)
 
 ### Description
 
 RDS instances must not be configured as publicly accessible. Exposing a database to the public internet increases the risk of unauthorized access and enables brute-force or credential-stuffing attacks.
 
-In Ansible RDS tasks using the `community.aws.rds_instance`, `rds_instance`, `community.aws.rds`, or `rds` modules, ensure the `publicly_accessible` property is set to `false`. Tasks with `publicly_accessible: true` are flagged. If the property is omitted, the modules default to `false`, but explicitly setting it to `false` and placing instances in private subnets with restrictive security groups provides defense-in-depth.
+In Ansible RDS tasks using the `amazon.aws.rds_instance` or `rds_instance` modules, ensure the `publicly_accessible` property is set to `false`. Tasks with `publicly_accessible: true` are flagged. If the property is omitted, the modules default to `false`, but explicitly setting it to `false` and placing instances in private subnets with restrictive security groups provides defense-in-depth.
 
 Secure example:
 
 ```yaml
 - name: Create RDS instance (private)
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_instance_identifier: mydb
     engine: postgres
     instance_class: db.t3.medium
@@ -46,7 +46,7 @@ Secure example:
 ## Compliant Code Examples
 ```yaml
 - name: create RDS instance in default VPC and default subnet group02
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -68,7 +68,7 @@ Secure example:
 ```yaml
 ---
 - name: community - Create a DB instance using the default AWS KMS encryption key
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -78,18 +78,14 @@ Secure example:
     password: "{{ password }}"
     allocated_storage: "{{ allocated_storage }}"
     publicly_accessible: Yes
-- name: community - Basic mysql provisioning example
-  community.aws.rds:
-    command: create
-    instance_name: new-database
-    db_engine: MySQL
-    size: 10
-    instance_type: db.m1.small
-    username: mysql_admin
-    password: 1nsecure
-    publicly_accessible: "true"
-    tags:
-      Environment: testing
-      Application: cms
+- name: Create RDS instance publicly accessible
+  amazon.aws.rds_instance:
+    db_instance_identifier: new-database
+    engine: mysql
+    db_instance_class: db.t3.medium
+    username: admin
+    password: "{{ password }}"
+    allocated_storage: 10
+    publicly_accessible: true
 
 ```

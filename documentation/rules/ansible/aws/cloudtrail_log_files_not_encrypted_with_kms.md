@@ -24,11 +24,11 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html)
 
 ### Description
 
-CloudTrail log deliveries must be encrypted with an AWS KMS customer-managed key to protect audit logs at rest and ensure strict key access control, rotation, and usage auditing. In Ansible tasks using the `community.aws.cloudtrail` or `cloudtrail` module, the `kms_key_id` parameter must be defined and set to a KMS key ARN or alias (for example `arn:aws:kms:region:account-id:key/KEY-ID` or `alias/my-key`).
+CloudTrail log deliveries must be encrypted with an AWS KMS customer-managed key to protect audit logs at rest and ensure strict key access control, rotation, and usage auditing. In Ansible tasks using the `amazon.aws.cloudtrail` or `cloudtrail` module, the `kms_key_id` parameter must be defined and set to a KMS key ARN or alias (for example `arn:aws:kms:region:account-id:key/KEY-ID` or `alias/my-key`).
 
 Tasks missing `kms_key_id` are flagged. Without a customer-managed key, you lose control over key access, rotation, and usage auditing.
 
@@ -36,7 +36,7 @@ Secure configuration example:
 
 ```yaml
 - name: Create CloudTrail with KMS encryption
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     name: my-trail
     s3_bucket_name: my-cloudtrail-bucket
     kms_key_id: arn:aws:kms:us-east-1:123456789012:key/abcd1234-ef56-7890-abcd-EXAMPLE
@@ -45,7 +45,7 @@ Secure configuration example:
 ## Compliant Code Examples
 ```yaml
 - name: create multi-region trail with validation and tags v2
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -63,7 +63,7 @@ Secure configuration example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: no sns topic name
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket

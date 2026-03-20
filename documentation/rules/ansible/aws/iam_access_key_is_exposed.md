@@ -24,96 +24,45 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_access_key_module.html)
 
 ### Description
 
-Active, long‑lived access keys for non‑root IAM users increase the risk of credential compromise and unauthorized API access because leaked keys can be used to impersonate users and perform privileged actions. This rule inspects Ansible tasks that use the `community.aws.iam` or `iam` modules and flags tasks where the `access_key_state` property is set to `active` while the `name` property does not contain `root`.
+Active, long‑lived access keys for non‑root IAM users increase the risk of credential compromise and unauthorized API access because leaked keys can be used to impersonate users and perform privileged actions. This rule inspects Ansible tasks that use the `amazon.aws.iam_access_key` or `iam_access_key` modules and flags tasks where the `active` property is `true` (or absent, since `true` is the default) and the `state` is not `absent`, while the `user_name` property does not contain `root`.
 
-Resources with `access_key_state` set to `active` for non‑root users are flagged. Remediate by removing or setting unused keys to `inactive`, rotating keys frequently, or replacing long‑lived keys with IAM roles and temporary credentials. The check is case‑insensitive and treats any username containing the substring `root` as the root account exception.
+Resources with active access keys for non‑root users are flagged. Remediate by removing or deactivating unused keys, rotating keys frequently, or replacing long‑lived keys with IAM roles and temporary credentials. The check is case‑insensitive and treats any username containing the substring `root` as the root account exception.
 
 ## Compliant Code Examples
 ```yaml
-# Basic user creation example
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: '{{ item }}'
+# Root user with active key (covered by a separate rule, not flagged here)
+- name: Create root access key
+  amazon.aws.iam_access_key:
+    user_name: root
     state: present
-    password: '{{ temp_pass }}'
-    access_key_state: create
-  loop:
-  - jcleese
-  - mpython
 
-# Basic user creation example
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: root
-    state: present
-    password: '{{ temp_pass }}'
-    access_key_state: active
+# Non-root user with inactive key
+- name: Create inactive access key
+  amazon.aws.iam_access_key:
+    user_name: jcleese
+    active: false
 
-- name: Create Two Groups, Mario and Luigi
-  community.aws.iam:
-    iam_type: group
-    name: '{{ item }}'
-    state: present
-  loop:
-  - Mario
-  - Luigi
-  register: new_groups
-
-- name: Update user
-  community.aws.iam:
-    iam_type: user
-    name: jdavila
-    state: update
-    access_key_state: inactive
-    groups: '{{ item.created_group.group_name }}'
-  loop: '{{ new_groups.results }}'
+# Non-root user with absent state
+- name: Remove access key
+  amazon.aws.iam_access_key:
+    user_name: jdavila
+    state: absent
 
 ```
 ## Non-Compliant Code Examples
 ```yaml
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: "{{ item }}"
+- name: Create non-root user with active access key
+  amazon.aws.iam_access_key:
+    user_name: jcleese
     state: present
-    password: "{{ temp_pass }}"
-    access_key_state: active
-  loop:
-    - jcleese
-    - mpython
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: "{{ item }}"
+
+- name: Create another non-root user with active access key
+  amazon.aws.iam_access_key:
+    user_name: mpython
     state: present
-    password: "{{ temp_pass }}"
-    access_key_state: active
-  loop:
-    - root
-    - mpython
-- name: Create Two Groups, Mario and Luigi
-  community.aws.iam:
-    iam_type: group
-    name: "{{ item }}"
-    state: present
-    access_key_state: active
-  loop:
-    - Mario
-    - Luigi
-  register: new_groups
-- name: Update user
-  community.aws.iam:
-    iam_type: user
-    name: jdavila
-    state: update
-    access_key_state: active
-    groups: "{{ item.created_group.group_name }}"
-  loop: "{{ new_groups.results }}"
 
 ```

@@ -24,13 +24,13 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_managed_policy_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_managed_policy_module.html)
 
 ### Description
 
 Specifying the account root or an entire AWS account as a principal (ARNs that end with `:root`) grants every identity in that account the ability to assume the role or act as that principal. This increases the risk of privilege escalation, lateral movement, and unauthorized access if any identity is compromised.
 
-This rule checks Ansible tasks using the `community.aws.iam_managed_policy` or `iam_managed_policy` modules and flags policy statements where `policy.Statement[].Principal.AWS` contains `:root`. Principal values must be explicit and least-privileged — use specific IAM role or user ARNs or service principals instead of account-root ARNs (or wildcards). Resources with `Principal.AWS` containing `:root` are flagged. 
+This rule checks Ansible tasks using the `amazon.aws.iam_managed_policy` or `iam_managed_policy` modules and flags policy statements where `policy.Statement[].Principal.AWS` contains `:root`. Principal values must be explicit and least-privileged — use specific IAM role or user ARNs or service principals instead of account-root ARNs (or wildcards). Resources with `Principal.AWS` containing `:root` are flagged. 
 
 Secure example with an explicit principal:
 
@@ -52,7 +52,7 @@ Secure example with an explicit principal:
 ## Compliant Code Examples
 ```yaml
 - name: Create IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: ManagedPolicy
     policy:
       Version: '2012-10-17'
@@ -67,7 +67,7 @@ Secure example with an explicit principal:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Create IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: "ManagedPolicy"
     policy:
       Version: "2012-10-17"
@@ -80,7 +80,7 @@ Secure example with an explicit principal:
     make_default: false
     state: present
 - name: Create2 IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: "ManagedPolicy2"
     policy: >
       {

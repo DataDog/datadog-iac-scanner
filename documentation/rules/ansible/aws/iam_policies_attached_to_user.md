@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_policy_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_policy_module.html)
 
 ### Description
 
 Attaching IAM policies directly to individual IAM users increases the risk of privilege sprawl, makes permissions harder to audit and revoke, and magnifies impact if a user's credentials are compromised.
 
-For Ansible `community.aws.iam_policy` or `iam_policy` tasks, the `iam_type` property must be set to `group` or `role` rather than `user`. Resources missing the `iam_type` property or with `iam_type` set to `user` are flagged. Attach policies to groups or roles to centralize permission management and enable role-based access patterns.
+For Ansible `amazon.aws.iam_policy` or `iam_policy` tasks, the `iam_type` property must be set to `group` or `role` rather than `user`. Resources missing the `iam_type` property or with `iam_type` set to `user` are flagged. Attach policies to groups or roles to centralize permission management and enable role-based access patterns.
 
 Secure example (attach policy to a role):
 
 ```yaml
 - name: Attach policy to role
-  community.aws.iam_policy:
+  amazon.aws.iam_policy:
     name: my-policy
     policy_document: "{{ lookup('file', 'my-policy.json') }}"
     iam_type: role
@@ -46,7 +46,7 @@ Secure example (attach policy to a role):
 ## Compliant Code Examples
 ```yaml
 - name: Assign a policy called Admin to the administrators group
-  community.aws.iam_policy:
+  amazon.aws.iam_policy:
     iam_type: group
     iam_name: administrators
     policy_name: Admin
@@ -57,7 +57,7 @@ Secure example (attach policy to a role):
 ## Non-Compliant Code Examples
 ```yaml
 - name: Assign a policy called Admin to user
-  community.aws.iam_policy:
+  amazon.aws.iam_policy:
     iam_type: user
     iam_name: administrators
     policy_name: Admin
