@@ -30,14 +30,14 @@ meta:
 
 Assume-role operations should require multi-factor authentication (MFA) to provide a second authentication factor and reduce the risk that compromised credentials or automated workflows can silently assume privileged roles.
 
-In Ansible, tasks using the `community.aws.sts_assume_role` or `sts_assume_role` modules must define both `mfa_serial_number` (the IAM MFA device ARN or serial) and `mfa_token` (the one-time MFA code). Tasks missing either property or with those properties undefined are flagged.
+In Ansible, tasks using the `amazon.aws.sts_assume_role` or `sts_assume_role` modules must define both `mfa_serial_number` (the IAM MFA device ARN or serial) and `mfa_token` (the one-time MFA code). Tasks missing either property or with those properties undefined are flagged.
 
 Supply `mfa_token` securely at runtime (for example via Ansible Vault, environment variables, or an interactive prompt) and ensure `mfa_serial_number` references the correct MFA device ARN (for example, `arn:aws:iam::123456789012:mfa/username`).
 
 ## Compliant Code Examples
 ```yaml
 - name: Assume an existing role
-  community.aws.sts_assume_role:
+  amazon.aws.sts_assume_role:
     mfa_serial_number: '{{ mfa_devices.mfa_devices[0].serial_number }}'
     mfa_token: weewew
     role_arn: arn:aws:iam::123456789012:role/someRole
@@ -56,7 +56,7 @@ Supply `mfa_token` securely at runtime (for example via Ansible Vault, environme
 ## Non-Compliant Code Examples
 ```yaml
 - name: Assume an existing role
-  community.aws.sts_assume_role:
+  amazon.aws.sts_assume_role:
     mfa_serial_number: "{{ mfa_devices.mfa_devices[0].serial_number }}"
     role_arn: "arn:aws:iam::123456789012:role/someRole"
     role_session_name: "someRoleSession"

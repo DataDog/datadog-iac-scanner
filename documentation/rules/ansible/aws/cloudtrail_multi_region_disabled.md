@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html#parameter-is_multi_region_trail)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html#parameter-is_multi_region_trail)
 
 ### Description
 
 CloudTrail must be configured as a multi-region trail so that API activity across all AWS regions is captured. This ensures comprehensive auditing and timely incident response. Without multi-region logging, cross-region activity can be missed, hindering detection, forensics, and compliance.
 
-For Ansible CloudTrail resources (modules `community.aws.cloudtrail` or `cloudtrail`), the `is_multi_region_trail` property must be defined and set to `true`. Resources that omit `is_multi_region_trail` or have `is_multi_region_trail: false` are flagged.
+For Ansible CloudTrail resources (modules `amazon.aws.cloudtrail` or `cloudtrail`), the `is_multi_region_trail` property must be defined and set to `true`. Resources that omit `is_multi_region_trail` or have `is_multi_region_trail: false` are flagged.
 
 Secure example (Ansible):
 
 ```yaml
 - name: Create multi-region CloudTrail
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     name: my-trail
     s3_bucket_name: my-trail-bucket
     is_multi_region_trail: true
@@ -46,7 +46,7 @@ Secure example (Ansible):
 ## Compliant Code Examples
 ```yaml
 - name: example1
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -64,7 +64,7 @@ Secure example (Ansible):
 ## Non-Compliant Code Examples
 ```yaml
 - name: example1
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket

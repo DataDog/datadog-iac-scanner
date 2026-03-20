@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/ec2_lc_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/autoscaling_launch_config_module.html)
 
 ### Description
 
 Block device volumes in EC2 launch configurations must be encrypted to protect data at rest and prevent exposure of snapshots or AMIs if storage media is compromised.
 
-For Ansible tasks using the `community.aws.ec2_lc` or `ec2_lc` modules, ensure the `volumes` list is defined and each volume entry sets `encrypted: true` (Ansible `yes` is also acceptable) under `ec2_lc.volumes`. Ephemeral (instance-store) volumes do not support encryption and are excluded. This rule flags launch configurations missing the `volumes` property, any volume entries without an `encrypted` property, or volumes where `encrypted` is explicitly false.
+For Ansible tasks using the `community.aws.autoscaling_launch_config` or `autoscaling_launch_config` modules, ensure the `volumes` list is defined and each volume entry sets `encrypted: true` (Ansible `yes` is also acceptable) under `ec2_lc.volumes`. Ephemeral (instance-store) volumes do not support encryption and are excluded. This rule flags launch configurations missing the `volumes` property, any volume entries without an `encrypted` property, or volumes where `encrypted` is explicitly false.
 
-Example secure configuration for an Ansible `ec2_lc` task:
+Example secure configuration for an Ansible `autoscaling_launch_config` task:
 
 ```yaml
 - name: Create launch configuration with encrypted volumes
-  community.aws.ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: my-launch-config
     image_id: ami-0123456789abcdef0
     instance_type: t3.medium
@@ -51,7 +51,7 @@ Example secure configuration for an Ansible `ec2_lc` task:
 ## Compliant Code Examples
 ```yaml
 - name: note that encrypted volumes are only supported in >= Ansible 2.4 v4
-  ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default
@@ -65,7 +65,7 @@ Example secure configuration for an Ansible `ec2_lc` task:
       delete_on_termination: true
       encrypted: yes
 - name: note that encrypted volumes are only supported in >= Ansible 2.4 v5
-  community.aws.ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default
@@ -83,7 +83,7 @@ Example secure configuration for an Ansible `ec2_lc` task:
 ## Non-Compliant Code Examples
 ```yaml
 - name: note that encrypted volumes are only supported in >= Ansible 2.4
-  community.aws.ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default
@@ -97,7 +97,7 @@ Example secure configuration for an Ansible `ec2_lc` task:
       delete_on_termination: true
       encrypted: no
 - name: note that encrypted volumes are only supported in >= Ansible 2.4 v2
-  ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default
@@ -110,7 +110,7 @@ Example secure configuration for an Ansible `ec2_lc` task:
       iops: 3000
       delete_on_termination: true
 - name: note that encrypted volumes are only supported in >= Ansible 2.4 v3
-  ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default

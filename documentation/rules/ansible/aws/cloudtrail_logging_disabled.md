@@ -24,17 +24,17 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html#parameter-enable_logging)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html#parameter-enable_logging)
 
 ### Description
 
 CloudTrail logging must be enabled to record AWS API activity for detection, auditing, and forensic investigations, and to meet compliance requirements. Disabling logging can allow malicious or accidental changes to go undetected.
 
-In Ansible, tasks using the `community.aws.cloudtrail` or `cloudtrail` modules must have the `enable_logging` property set to `true`. This rule flags tasks where `enable_logging` is explicitly set to `false`. Ensure the property is present and set to `true` to enable delivery of management events and logs. Example secure Ansible task:
+In Ansible, tasks using the `amazon.aws.cloudtrail` or `cloudtrail` modules must have the `enable_logging` property set to `true`. This rule flags tasks where `enable_logging` is explicitly set to `false`. Ensure the property is present and set to `true` to enable delivery of management events and logs. Example secure Ansible task:
 
 ```yaml
 - name: Ensure CloudTrail logging is enabled
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     name: my-trail
     s3_bucket_name: my-cloudtrail-bucket
     enable_logging: true
@@ -43,7 +43,7 @@ In Ansible, tasks using the `community.aws.cloudtrail` or `cloudtrail` modules m
 ## Compliant Code Examples
 ```yaml
 - name: example
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     enable_logging: true
@@ -52,7 +52,7 @@ In Ansible, tasks using the `community.aws.cloudtrail` or `cloudtrail` modules m
 ## Non-Compliant Code Examples
 ```yaml
 - name: example
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     enable_logging: false

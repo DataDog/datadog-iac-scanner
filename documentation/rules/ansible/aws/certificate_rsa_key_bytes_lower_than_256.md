@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/2.10/collections/community/aws/aws_acm_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/acm_certificate_module.html)
 
 ### Description
 
 Certificates must use sufficiently strong RSA keys to prevent cryptographic compromise. RSA keys smaller than 2048 bits can be factored with modern compute, enabling certificate impersonation and decryption of TLS traffic.
 
-For Ansible tasks using the `community.aws.aws_acm` module, ensure the `certificate.rsa_key_bytes` property is defined and set to at least `256` (bytes), which corresponds to 2048 bits. Resources missing this property or with `rsa_key_bytes < 256` are flagged as insecure. Larger values (for example, `rsa_key_bytes: 512` for 4096-bit keys) are acceptable.
+For Ansible tasks using the `community.aws.acm_certificate` module, ensure the `certificate.rsa_key_bytes` property is defined and set to at least `256` (bytes), which corresponds to 2048 bits. Resources missing this property or with `rsa_key_bytes < 256` are flagged as insecure. Larger values (for example, `rsa_key_bytes: 512` for 4096-bit keys) are acceptable.
 
 Secure example:
 
 ```yaml
 - name: Request ACM certificate with 2048-bit RSA key
-  community.aws.aws_acm:
+  community.aws.acm_certificate:
     name: example-cert
     certificate:
       rsa_key_bytes: 256
@@ -46,7 +46,7 @@ Secure example:
 ## Compliant Code Examples
 ```yaml
 - name: upload a self-signed certificate2
-  community.aws.aws_acm:
+  community.aws.acm_certificate:
     certificate: "{{ lookup('file', 'rsa4096.pem' ) }}"
     privateKey: "{{ lookup('file', 'key.pem' ) }}"
     name_tag: my_cert
@@ -56,7 +56,7 @@ Secure example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: upload a self-signed certificate
-  community.aws.aws_acm:
+  community.aws.acm_certificate:
     certificate: "{{ lookup('file', 'rsa1024.pem' ) }}"
     privateKey: "{{ lookup('file', 'key.pem' ) }}"
     name_tag: my_cert

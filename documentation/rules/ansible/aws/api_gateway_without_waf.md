@@ -30,7 +30,7 @@ meta:
 
 API Gateway stages should be protected by an AWS WAF Web ACL to block common web threats (for example SQL injection, XSS, and malicious request patterns) before they reach backend services. Ensure your IaC defines a WAFv2 WebACLAssociation that links a Web ACL to the API Gateway stage. The association's `ResourceArn` (or Terraform `resource_arn`) must reference the API Gateway stage ARN (for REST APIs: arn:aws:apigateway:<region>::/restapis/<api-id>/stages/<stage-name>).
 
-This rule checks Ansible API Gateway resources (modules `community.aws.aws_api_gateway` or `aws_api_gateway`) and expects a corresponding WAFv2 association (for example, `community.aws.wafv2_resources`/`wafv2_resources`) that targets the same stage. Resources missing a WebACLAssociation or where `ResourceArn` does not point to the stage are flagged.
+This rule checks Ansible API Gateway resources (modules `community.aws.api_gateway` or `api_gateway`) and expects a corresponding WAFv2 association (for example, `community.aws.wafv2_resources`/`wafv2_resources`) that targets the same stage. Resources missing a WebACLAssociation or where `ResourceArn` does not point to the stage are flagged.
 
 Secure CloudFormation example:
 
@@ -51,7 +51,7 @@ WebACLAssociation:
     state: present
     arn: "arn:aws:apigateway:region::/restapis/api-id/stages/produ"
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     swagger_file: my_api.yml
     stage: produ
     cache_enabled: true
@@ -70,7 +70,7 @@ WebACLAssociation:
     state: present
     arn: "arn:aws:apigateway:region::/restapis/api-id/stages/prod"
 - name: Setup AWS API Gateway setup on AWS and deploy API definition2
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true

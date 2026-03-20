@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/aws_batch_job_definition_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/batch_job_definition_module.html)
 
 ### Description
 
 Batch job definitions must not enable privileged containers. Privileged mode weakens container isolation and can allow containers to access host resources or escalate privileges, increasing the risk of host compromise and lateral movement.
 
-For Ansible, tasks using the `community.aws.aws_batch_job_definition` or `aws_batch_job_definition` modules must not set the `privileged` parameter to `true`. The `privileged` setting should be omitted or explicitly set to `false` in the job definition's container properties. Resources with `privileged: true` are flagged. Only enable privileged mode when absolutely required and after applying additional host hardening, access controls, and justification.
+For Ansible, tasks using the `community.aws.batch_job_definition` or `aws_batch_job_definition` modules must not set the `privileged` parameter to `true`. The `privileged` setting should be omitted or explicitly set to `false` in the job definition's container properties. Resources with `privileged: true` are flagged. Only enable privileged mode when absolutely required and after applying additional host hardening, access controls, and justification.
 
 Secure example:
 
 ```yaml
 - name: Register Batch job definition without privileged mode
-  community.aws.aws_batch_job_definition:
+  community.aws.batch_job_definition:
     name: my-batch-job
     container_properties:
       image: my-image:latest
@@ -48,7 +48,7 @@ Secure example:
 ## Compliant Code Examples
 ```yaml
 - name: My Batch Job Definition
-  community.aws.aws_batch_job_definition:
+  community.aws.batch_job_definition:
     job_definition_name: My Batch Job Definition without privilege
     state: present
     type: container
@@ -67,7 +67,7 @@ Secure example:
     attempts: 3
   register: job_definition_create_result
 - name: My Batch Job Definition without explicit privilege
-  community.aws.aws_batch_job_definition:
+  community.aws.batch_job_definition:
     job_definition_name: My Batch Job Definition
     state: present
     type: container
@@ -89,7 +89,7 @@ Secure example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: My Batch Job Definition
-  community.aws.aws_batch_job_definition:
+  community.aws.batch_job_definition:
     job_definition_name: My Batch Job Definition
     state: present
     type: container

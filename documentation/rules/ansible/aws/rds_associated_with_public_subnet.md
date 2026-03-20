@@ -24,13 +24,13 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-db_subnet_group_name)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html#parameter-db_subnet_group_name)
 
 ### Description
 
-RDS instances must not be placed in public subnets because an internet-routable subnet exposes the database endpoint to the internet, increasing the risk of unauthorized access and data exfiltration. This rule inspects Ansible tasks that create RDS instances (resource types `community.aws.rds_instance` or `rds_instance`) and requires the subnet group property (`db_subnet_group_name` or `subnet_group`) to reference a subnet group composed only of private subnets.
+RDS instances must not be placed in public subnets because an internet-routable subnet exposes the database endpoint to the internet, increasing the risk of unauthorized access and data exfiltration. This rule inspects Ansible tasks that create RDS instances (resource types `amazon.aws.rds_instance` or `rds_instance`) and requires the subnet group property (`db_subnet_group_name` or `subnet_group`) to reference a subnet group composed only of private subnets.
 
-It verifies the referenced subnet group tasks (`community.aws.rds_subnet_group` or `rds_subnet_group`) and the subnet tasks (`amazon.aws.ec2_vpc_subnet` or `ec2_vpc_subnet`). Any subnet with `cidr` equal to `0.0.0.0/0` or `ipv6_cidr` equal to `::/0` is treated as public and triggers a finding.
+It verifies the referenced subnet group tasks (`amazon.aws.rds_subnet_group` or `rds_subnet_group`) and the subnet tasks (`amazon.aws.ec2_vpc_subnet` or `ec2_vpc_subnet`). Any subnet with `cidr` equal to `0.0.0.0/0` or `ipv6_cidr` equal to `::/0` is treated as public and triggers a finding.
 
 Resources that are missing the subnet-group property or that include any public subnet in the subnet group are flagged. Ensure subnet groups list subnets using private CIDR ranges and that registered subnet task names match the entries in the subnet group.
 
@@ -44,13 +44,13 @@ Secure example with private subnet CIDRs:
   register: private_subnet_a
 
 - name: Create RDS subnet group using private subnets
-  community.aws.rds_subnet_group:
+  amazon.aws.rds_subnet_group:
     name: my-db-subnet-group
     subnets:
       - "{{ private_subnet_a }}"
 
 - name: Create RDS instance in private subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_subnet_group_name: my-db-subnet-group
     # other RDS properties...
 ```
@@ -58,7 +58,7 @@ Secure example with private subnet CIDRs:
 ## Compliant Code Examples
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -67,7 +67,7 @@ Secure example with private subnet CIDRs:
     cluster_id: ansible-test-cluster
     db_subnet_group_name: my_subnet_group2
 - name: Add or change a subnet group2
-  community.aws.rds_subnet_group:
+  amazon.aws.rds_subnet_group:
     state: present
     name: my_subnet_group2
     description: My Fancy Ex Parrot Subnet Group
@@ -87,7 +87,7 @@ Secure example with private subnet CIDRs:
 ## Non-Compliant Code Examples
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -96,7 +96,7 @@ Secure example with private subnet CIDRs:
     cluster_id: ansible-test-cluster
     db_subnet_group_name: my_subnet_group
 - name: Add or change a subnet group
-  community.aws.rds_subnet_group:
+  amazon.aws.rds_subnet_group:
     state: present
     name: my_subnet_group
     description: My Fancy Ex Parrot Subnet Group

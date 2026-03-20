@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html)
 
 ### Description
 
 CloudTrail should be configured to publish notifications to an SNS topic so trail events and log delivery issues can trigger alerts and automated responses. Without an SNS target, you may miss timely notifications about suspicious activity or failures.
 
-For Ansible CloudTrail tasks (modules `community.aws.cloudtrail` or `cloudtrail`), the `sns_topic_name` property must be defined and non-null. Tasks missing `sns_topic_name` or with it set to `null`/empty are flagged. Ensure the value references an existing SNS topic (or create one in the same playbook) so CloudTrail can publish notifications.
+For Ansible CloudTrail tasks (modules `amazon.aws.cloudtrail` or `cloudtrail`), the `sns_topic_name` property must be defined and non-null. Tasks missing `sns_topic_name` or with it set to `null`/empty are flagged. Ensure the value references an existing SNS topic (or create one in the same playbook) so CloudTrail can publish notifications.
 
 Secure example:
 
 ```yaml
 - name: Create CloudTrail with SNS notifications
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     name: my-trail
     s3_bucket_name: my-cloudtrail-bucket
     sns_topic_name: my-cloudtrail-topic
@@ -48,7 +48,7 @@ Secure example:
 ## Compliant Code Examples
 ```yaml
 - name: sns topic name defined
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -60,14 +60,14 @@ Secure example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: no sns topic name
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
     s3_key_prefix: cloudtrail
     region: us-east-1
 - name: sns topic name defined
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket

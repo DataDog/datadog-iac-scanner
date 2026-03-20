@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/ec2_asg_module.html#parameter-load_balancers)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/autoscaling_group_module.html#parameter-load_balancers)
 
 ### Description
 
 Auto Scaling Groups must be associated with a load balancer so new instances receive traffic and health checks can detect and replace unhealthy instances. Without a load balancer, instances may not serve requests, and application availability and scaling behavior can be impacted.
 
-For Ansible `ec2_asg` tasks (modules `community.aws.ec2_asg` and `ec2_asg`), the `load_balancers` property must be defined and set to a non-empty list of Classic ELB names. Tasks missing the `load_balancers` property or with `load_balancers: []` are flagged. If you use Application Load Balancers with target groups instead of Classic ELBs, configure `target_group_arns` accordingly—this rule only validates the `load_balancers` attribute.
+For Ansible `autoscaling_group` tasks (modules `amazon.aws.autoscaling_group` and `autoscaling_group`), the `load_balancers` property must be defined and set to a non-empty list of Classic ELB names. Tasks missing the `load_balancers` property or with `load_balancers: []` are flagged. If you use Application Load Balancers with target groups instead of Classic ELBs, configure `target_group_arns` accordingly—this rule only validates the `load_balancers` attribute.
 
 Secure example:
 
 ```yaml
 - name: Create Auto Scaling Group with ELB
-  community.aws.ec2_asg:
+  amazon.aws.autoscaling_group:
     name: my-asg
     launch_template: my-launch-template
     min_size: 2
@@ -48,7 +48,7 @@ Secure example:
 ## Compliant Code Examples
 ```yaml
 - name: elb12
-  community.aws.ec2_asg:
+  amazon.aws.autoscaling_group:
     name: special
     load_balancers: [ 'lb1', 'lb2' ]
     availability_zones: [ 'eu-west-1a', 'eu-west-1b' ]
@@ -65,7 +65,7 @@ Secure example:
 
 ```yaml
 - name: elb22
-  ec2_asg:
+  amazon.aws.autoscaling_group:
     name: special
     load_balancers: [ 'lb1', 'lb2' ]
     availability_zones: [ 'eu-west-1a', 'eu-west-1b' ]
@@ -82,7 +82,7 @@ Secure example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: elb2
-  ec2_asg:
+  amazon.aws.autoscaling_group:
     name: special
     availability_zones: [ 'eu-west-1a', 'eu-west-1b' ]
     launch_config_name: 'lc-1'
@@ -98,7 +98,7 @@ Secure example:
 
 ```yaml
 - name: elb1
-  community.aws.ec2_asg:
+  amazon.aws.autoscaling_group:
     name: special
     load_balancers: []
     availability_zones: [ 'eu-west-1a', 'eu-west-1b' ]

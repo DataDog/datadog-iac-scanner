@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_group_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_group_module.html)
 
 ### Description
 
 IAM groups should include at least one user to ensure group membership and any attached permissions are intentional, auditable, and not left orphaned.
 
-This rule checks Ansible `community.aws.iam_group` and `iam_group` tasks and requires the `users` property to be defined and non-null (a list containing one or more usernames). Resources missing the `users` property or with `users: null` or an empty list are flagged. Either populate the list with the intended usernames or remove unused groups and associated policies.
+This rule checks Ansible `amazon.aws.iam_group` and `iam_group` tasks and requires the `users` property to be defined and non-null (a list containing one or more usernames). Resources missing the `users` property or with `users: null` or an empty list are flagged. Either populate the list with the intended usernames or remove unused groups and associated policies.
 
 Secure configuration example:
 
 ```
 - name: Create developers IAM group with users
-  community.aws.iam_group:
+  amazon.aws.iam_group:
     name: developers
     users:
       - alice

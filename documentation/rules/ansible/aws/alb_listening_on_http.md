@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/elb_application_lb_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/elb_application_lb_module.html)
 
 ### Description
 
 Application Load Balancers (ALB) must terminate TLS and use HTTPS listeners to protect traffic in transit and prevent interception or downgrade attacks. Serving application traffic over plain HTTP exposes credentials and sensitive data to eavesdropping.
 
-For Ansible ALB resources (modules `community.aws.elb_application_lb` and `elb_application_lb`), ensure the `listeners[].Protocol` property is set to `"HTTPS"`. Resources missing the `Protocol` property or with `Protocol` set to any value other than `"HTTPS"` are flagged. When using HTTPS, also configure a valid TLS certificate (for example via `Certificates: - CertificateArn: ...`) or implement an HTTP listener only to perform redirects to HTTPS rather than serving plaintext.
+For Ansible ALB resources (modules `amazon.aws.elb_application_lb` and `elb_application_lb`), ensure the `listeners[].Protocol` property is set to `"HTTPS"`. Resources missing the `Protocol` property or with `Protocol` set to any value other than `"HTTPS"` are flagged. When using HTTPS, also configure a valid TLS certificate (for example via `Certificates: - CertificateArn: ...`) or implement an HTTP listener only to perform redirects to HTTPS rather than serving plaintext.
 
 Secure configuration example:
 
 ```yaml
 - name: Create ALB with HTTPS listener
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: my-alb
     state: present
     listeners:
@@ -52,7 +52,7 @@ Secure configuration example:
 ## Compliant Code Examples
 ```yaml
 - name: my_elb_application
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb
     security_groups:
     - sg-12345678
@@ -76,7 +76,7 @@ Secure configuration example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: my_elb_application
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb
     security_groups:
       - sg-12345678
@@ -95,7 +95,7 @@ Secure configuration example:
             TargetGroupName: targetname
     state: present
 - name: my_elb_application2
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb2
     security_groups:
       - sg-12345678

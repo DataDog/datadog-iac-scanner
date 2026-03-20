@@ -24,11 +24,11 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/lambda_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/lambda_module.html)
 
 ### Description
 
-Hardcoding AWS secret access keys in Ansible Lambda tasks exposes credentials to source control, logs, and build artifacts. Attackers who obtain the key can impersonate the account and access AWS resources. This check targets Ansible tasks using the `community.aws.lambda` or `lambda` modules and flags tasks that include an `aws_access_key` property containing a 40-character plaintext secret (matched by regex `^[A-Za-z0-9/+=]{40}$`).
+Hardcoding AWS secret access keys in Ansible Lambda tasks exposes credentials to source control, logs, and build artifacts. Attackers who obtain the key can impersonate the account and access AWS resources. This check targets Ansible tasks using the `amazon.aws.lambda` or `lambda` modules and flags tasks that include an `aws_access_key` property containing a 40-character plaintext secret (matched by regex `^[A-Za-z0-9/+=]{40}$`).
 
 Do not set `aws_access_key` or `aws_secret_key` inline. Instead, supply credentials via IAM instance/profile roles, shared AWS credential profiles, environment variables, or encrypted secrets (Ansible Vault or a secrets manager). You can also reference vaulted or lookup variables in the task. Tasks with a literal 40-character `aws_access_key` value are flagged. Omitting the properties to rely on role-based auth or referencing vaulted variables is acceptable.
 
@@ -36,7 +36,7 @@ Secure examples:
 
 ```yaml
 - name: Deploy Lambda using instance profile (no inline credentials)
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: my_function
     state: present
     region: us-east-1
@@ -44,7 +44,7 @@ Secure examples:
 
 ```yaml
 - name: Deploy Lambda with credentials stored in Ansible Vault
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: my_function
     state: present
     region: us-east-1
@@ -55,7 +55,7 @@ Secure examples:
 ## Compliant Code Examples
 ```yaml
 - name: looped creation
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: '{{ item.name }}'
     state: present
     zip_file: '{{ item.zip_file }}'
@@ -83,7 +83,7 @@ Secure examples:
           key1: '1'
           key2: '2'
 - name: remove tags
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: Lambda function
     state: present
     zip_file: code.zip
@@ -92,7 +92,7 @@ Secure examples:
     handler: hello_python.my_handler
     tags: {}
 - name: Delete Lambda functions HelloWorld and ByeBye
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: '{{ item }}'
     state: absent
     loop:
@@ -103,7 +103,7 @@ Secure examples:
 ## Non-Compliant Code Examples
 ```yaml
 - name: looped creation
-  community.aws.lambda:
+  amazon.aws.lambda:
     aws_access_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
     name: '{{ item.name }}'
     state: present
@@ -132,7 +132,7 @@ Secure examples:
           key1: "1"
           key2: "2"
 - name: remove tags
-  community.aws.lambda:
+  amazon.aws.lambda:
     aws_access_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
     name: 'Lambda function'
     state: present
@@ -142,7 +142,7 @@ Secure examples:
     handler: 'hello_python.my_handler'
     tags: {}
 - name: Delete Lambda functions HelloWorld and ByeBye
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: '{{ item }}'
     state: absent
     loop:

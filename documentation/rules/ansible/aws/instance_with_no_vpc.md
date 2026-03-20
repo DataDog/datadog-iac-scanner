@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_instance_module.html)
 
 ### Description
 
 EC2 instances must be launched into a VPC subnet so they are subject to VPC network controls such as security groups, network ACLs, private addressing, and VPC flow logs. Without a subnet assignment, instances can lack network isolation and be exposed to the public network or miss critical network monitoring.
 
-For Ansible EC2 modules (`community.aws.ec2_instance`, `ec2_instance`, `amazon.aws.ec2`, `ec2`), the `vpc_subnet_id` property must be defined and set to a valid VPC subnet ID. Tasks with `state` equal to `absent` or `list` are ignored. Resources missing `vpc_subnet_id` or with it undefined are flagged.
+For Ansible EC2 modules (`amazon.aws.ec2_instance`, `ec2_instance`), the `vpc_subnet_id` property must be defined and set to a valid VPC subnet ID. Tasks with `state` equal to `absent` or `list` are ignored. Resources missing `vpc_subnet_id` or with it undefined are flagged.
 
 Secure example Ansible task:
 
 ```yaml
 - name: Launch EC2 instance in VPC subnet
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: my-instance
     image_id: ami-0123456789abcdef0
     instance_type: t3.micro
@@ -48,7 +48,7 @@ Secure example Ansible task:
 ## Compliant Code Examples
 ```yaml
 - name: Start an instance and have it begin a Tower callback on boot v3
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: tower-callback-test
     key_name: prod-ssh-key
     vpc_subnet_id: subnet-5ca1ab1e
@@ -65,21 +65,18 @@ Secure example Ansible task:
     tags:
       SomeThing: A value
 - name: Start an instance and have it begin a Tower callback on boot v4
-  amazon.aws.ec2:
+  amazon.aws.ec2_instance:
+    name: my-ec2-instance
     key_name: mykey
     instance_type: t2.micro
-    image: ami-123456
-    wait: yes
-    group: webserver
-    count: 3
+    image_id: ami-123456
     vpc_subnet_id: subnet-29e63245
-    assign_public_ip: yes
 
 ```
 ## Non-Compliant Code Examples
 ```yaml
 - name: Start an instance and have it begin a Tower callback on boot
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: "tower-callback-test"
     key_name: "prod-ssh-key"
     security_group: default
@@ -95,13 +92,10 @@ Secure example Ansible task:
     tags:
       SomeThing: "A value"
 - name: Start an instance and have it begin a Tower callback on boot v2
-  amazon.aws.ec2:
+  amazon.aws.ec2_instance:
+    name: my-ec2-instance
     key_name: mykey
     instance_type: t2.micro
-    image: ami-123456
-    wait: yes
-    group: webserver
-    count: 3
-    assign_public_ip: yes
+    image_id: ami-123456
 
 ```

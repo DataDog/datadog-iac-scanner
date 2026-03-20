@@ -24,11 +24,11 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/elb_application_lb_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/elb_application_lb_module.html)
 
 ### Description
 
-ELB listeners must specify a strong SSL/TLS policy because weak cipher suites can enable protocol downgrade, interception, or decryption of traffic between clients and the load balancer. For Ansible ELB Application and Network load balancer modules (`community.aws.elb_application_lb`, `elb_application_lb`, `community.aws.elb_network_lb`, `elb_network_lb`), the `listeners` list must be defined and each listener must include the `SslPolicy` property set to a non-weak policy.
+ELB listeners must specify a strong SSL/TLS policy because weak cipher suites can enable protocol downgrade, interception, or decryption of traffic between clients and the load balancer. For Ansible ELB Application and Network load balancer modules (`amazon.aws.elb_application_lb`, `elb_application_lb`, `community.aws.elb_network_lb`, `elb_network_lb`), the `listeners` list must be defined and each listener must include the `SslPolicy` property set to a non-weak policy.
 
 Resources missing `listeners` or listener entries missing `SslPolicy` are flagged. Any `SslPolicy` that matches a known weak policy in your baseline should be replaced with an AWS-managed strong policy (for example, a TLS 1.2+ policy) or a custom policy that excludes weak ciphers.
 
@@ -36,7 +36,7 @@ Secure configuration example:
 
 ```yaml
 - name: Create ALB with strong TLS policy
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: my-alb
     listeners:
       - Protocol: HTTPS
@@ -49,7 +49,7 @@ Secure configuration example:
 ```yaml
 #this code is a correct code for which the query should not find any result
 - name: elb1
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb1
     security_groups:
     - sg-12345678
@@ -94,7 +94,7 @@ Secure configuration example:
 ```yaml
 #this is a problematic code where the query should report a result(s)
 - name: elb1
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb1
     security_groups:
       - sg-12345678
@@ -104,7 +104,7 @@ Secure configuration example:
       - subnet-abcdef000
     state: present
 - name: elb2
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb2
     security_groups:
       - sg-12345678
@@ -123,7 +123,7 @@ Secure configuration example:
             TargetGroupName: # Required. The name of the target group
     state: present
 - name: elb3
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb3
     security_groups:
       - sg-12345678

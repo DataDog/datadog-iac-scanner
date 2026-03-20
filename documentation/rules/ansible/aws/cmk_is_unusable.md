@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/aws_kms_module.html#parameter-enabled)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/kms_key_module.html#parameter-enabled)
 
 ### Description
 
 KMS Customer Master Keys (CMKs) must be usable, as disabled or scheduled-for-deletion keys cannot decrypt data and may cause service outages or data inaccessibility.
 
-In Ansible `community.aws.aws_kms` tasks, ensure `enabled` is defined and set to `true`, and that `pending_window` is not defined. Tasks with `enabled` set to `false` or with `enabled` undefined are flagged. Any task that sets `pending_window` (scheduling the key for deletion) is also flagged because it renders the key unusable after the pending window expires.
+In Ansible `amazon.aws.kms_key` tasks, ensure `enabled` is defined and set to `true`, and that `pending_window` is not defined. Tasks with `enabled` set to `false` or with `enabled` undefined are flagged. Any task that sets `pending_window` (scheduling the key for deletion) is also flagged because it renders the key unusable after the pending window expires.
 
 Secure example for Ansible:
 
 ```yaml
 - name: create KMS key
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     name: my-key
     description: "Key for encrypting secrets"
     state: present
@@ -46,7 +46,7 @@ Secure example for Ansible:
 ## Compliant Code Examples
 ```yaml
 - name: Update IAM policy on an existing KMS key
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: my-kms-key
     policy: '{"Version": "2012-10-17", "Id": "my-kms-key-permissions", "Statement": [ { <SOME STATEMENT> } ]}'
     state: present
@@ -56,7 +56,7 @@ Secure example for Ansible:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Update IAM policy on an existing KMS key2
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: my-kms-key
     policy: '{"Version": "2012-10-17", "Id": "my-kms-key-permissions", "Statement": [ { <SOME STATEMENT> } ]}'
     state: present
@@ -66,7 +66,7 @@ Secure example for Ansible:
 
 ```yaml
 - name: Update IAM policy on an existing KMS key1
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: my-kms-key
     policy: '{"Version": "2012-10-17", "Id": "my-kms-key-permissions", "Statement": [ { <SOME STATEMENT> } ]}'
     state: present

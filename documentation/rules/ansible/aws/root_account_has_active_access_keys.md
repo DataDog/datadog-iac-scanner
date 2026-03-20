@@ -24,41 +24,29 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_access_key_module.html)
 
 ### Description
 
-Active root access keys grant full, account-wide privileges. A leaked key could lead to immediate and complete compromise of the environment. This rule inspects Ansible tasks using the `community.aws.iam` or `iam` modules and flags entries where `iam.iam_type` is set to `"user"`, `iam.name` contains "root", and `access_key_state` is set to `"active"`.
+Active root access keys grant full, account-wide privileges. A leaked key could lead to immediate and complete compromise of the environment. This rule inspects Ansible tasks using the `amazon.aws.iam_access_key` or `iam_access_key` modules and flags entries where `user_name` contains "root", the `active` property is `true` (or absent, since `true` is the default), and `state` is not `absent`.
 
-The `access_key_state` property must not be `"active"` for root account entries. Resources should either omit root access keys or set `access_key_state` to `"inactive"`. Any task with `access_key_state` set to `"active"` is flagged. Remove or deactivate root access keys and use IAM users or roles with least privilege for automation and service access.
+The `active` property must not be `true` for root account entries. Resources should either omit root access keys or set `active` to `false`. Any task with an active root access key is flagged. Remove or deactivate root access keys and use IAM users or roles with least privilege for automation and service access.
 
 ## Compliant Code Examples
 ```yaml
 #this code is a correct code for which the query should not find any result
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: '{{ root }}'
-    state: present
-    password: '{{ temp_pass }}'
-    access_key_state: inactive
-  loop:
-  - jcleese
-  - mpython
+- name: Create root access key but inactive
+  amazon.aws.iam_access_key:
+    user_name: root
+    active: false
 
 ```
 ## Non-Compliant Code Examples
 ```yaml
 #this is a problematic code where the query should report a result(s)
-- name: Create two new IAM users with API keys
-  community.aws.iam:
-    iam_type: user
-    name: "{{ root }}"
+- name: Create root access key
+  amazon.aws.iam_access_key:
+    user_name: root
     state: present
-    password: "{{ temp_pass }}"
-    access_key_state: active
-  loop:
-    - jcleese
-    - mpython
 
 ```

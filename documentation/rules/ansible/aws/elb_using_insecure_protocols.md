@@ -24,13 +24,13 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/elb_application_lb_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/elb_application_lb_module.html)
 
 ### Description
 
 Load balancer listeners must use secure TLS policies to prevent protocol downgrade and known cryptographic vulnerabilities that could allow interception or decryption of client traffic.
 
-For Ansible ELB modules (`community.aws.elb_network_lb`, `elb_network_lb`, `community.aws.elb_application_lb`, `elb_application_lb`), the `listeners` property must be defined and each listener must include `SslPolicy` set to a modern, secure policy (not legacy SSL/TLS protocol policies).
+For Ansible ELB modules (`community.aws.elb_network_lb`, `elb_network_lb`, `amazon.aws.elb_application_lb`, `elb_application_lb`), the `listeners` property must be defined and each listener must include `SslPolicy` set to a modern, secure policy (not legacy SSL/TLS protocol policies).
 
 This rule flags resources missing `listeners`, listeners missing `SslPolicy`, or any `SslPolicy` set to `Protocol-SSLv2`, `Protocol-SSLv3`, `Protocol-TLSv1`, or `Protocol-TLSv1.1`. 
 
@@ -38,7 +38,7 @@ Secure example (use a TLS 1.2+ policy):
 
 ```yaml
 - name: create application load balancer
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: my-alb
     listeners:
       - Protocol: HTTPS
@@ -51,7 +51,7 @@ Secure example (use a TLS 1.2+ policy):
 ```yaml
 #this code is a correct code for which the query should not find any result
 - name: elb1
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb1
     security_groups:
     - sg-12345678
@@ -96,7 +96,7 @@ Secure example (use a TLS 1.2+ policy):
 ```yaml
 #this is a problematic code where the query should report a result(s)
 - name: elb1
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb1
     security_groups:
       - sg-12345678
@@ -106,7 +106,7 @@ Secure example (use a TLS 1.2+ policy):
       - subnet-abcdef000
     state: present
 - name: elb2
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb2
     security_groups:
       - sg-12345678
@@ -125,7 +125,7 @@ Secure example (use a TLS 1.2+ policy):
             TargetGroupName: # Required. The name of the target group
     state: present
 - name: elb3
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb3
     security_groups:
       - sg-12345678

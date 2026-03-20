@@ -24,7 +24,7 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_module.html#parameter-assign_public_ip)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_instance_module.html)
 
 ### Description
 
@@ -32,9 +32,8 @@ EC2 instances and launch templates that automatically receive a public IPv4 addr
 
 For Ansible tasks, check the following module properties:
 
-- For `amazon.aws.ec2` / `ec2`: `assign_public_ip`
-- For `community.aws.ec2_launch_template` / `ec2_launch_template`: `network_interfaces.associate_public_ip_address`
-- For `community.aws.ec2_instance` / `ec2_instance`: `network.assign_public_ip`
+- For `amazon.aws.ec2_launch_template` / `ec2_launch_template`: `network_interfaces.associate_public_ip_address`
+- For `amazon.aws.ec2_instance` / `ec2_instance`: `network.assign_public_ip`
 
 Each property must be explicitly set to `false` (or `'no'`) or omitted. The rule flags resources where the property is truthy (for example, `true`, `yes`) because there is no safe default. 
 
@@ -42,13 +41,13 @@ Secure examples:
 
 ```yaml
 - name: Launch instance without public IP (ec2_instance)
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: my-instance
     network:
       assign_public_ip: false
 
 - name: Create launch template without public IP
-  community.aws.ec2_launch_template:
+  amazon.aws.ec2_launch_template:
     name: my-template
     network_interfaces:
       - device_index: 0
@@ -57,20 +56,22 @@ Secure examples:
 
 ## Compliant Code Examples
 ```yaml
-- amazon.aws.ec2:
+- name: Launch instance without public IP
+  amazon.aws.ec2_instance:
+    name: my-instance
     key_name: mykey
     instance_type: t2.micro
-    count: 3
     vpc_subnet_id: subnet-29e63245
-    assign_public_ip: false
+    network:
+      assign_public_ip: false
 - name: Create an ec2 launch template
-  community.aws.ec2_launch_template:
+  amazon.aws.ec2_launch_template:
     name: my_template
     image_id: ami-04b762b4289fba92b
     key_name: my_ssh_key
     instance_type: t2.micro
 - name: Create an ec2 launch template
-  community.aws.ec2_launch_template:
+  amazon.aws.ec2_launch_template:
     name: "my_template"
     image_id: "ami-04b762b4289fba92b"
     key_name: my_ssh_key
@@ -88,14 +89,15 @@ Secure examples:
 ## Non-Compliant Code Examples
 ```yaml
 - name: example
-  amazon.aws.ec2:
+  amazon.aws.ec2_instance:
+    name: my-instance
     key_name: mykey
     instance_type: t2.micro
-    count: 3
     vpc_subnet_id: subnet-29e63245
-    assign_public_ip: yes
+    network:
+      assign_public_ip: yes
 - name: Create an ec2 launch template
-  community.aws.ec2_launch_template:
+  amazon.aws.ec2_launch_template:
     name: "my_template"
     image_id: "ami-04b762b4289fba92b"
     key_name: my_ssh_key
@@ -103,7 +105,7 @@ Secure examples:
     network_interfaces:
       associate_public_ip_address: true
 - name: start an instance with a public IP address
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: "public-compute-instance"
     key_name: "prod-ssh-key"
     vpc_subnet_id: subnet-5ca1ab1e

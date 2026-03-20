@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html)
 
 ### Description
 
 IAM database authentication should be enabled to avoid reliance on static database passwords and centralize access control. This reduces the risk of credential leakage and makes rotation and auditing easier.
 
-For Ansible RDS resources using the `community.aws.rds_instance` or `rds_instance` modules, the `enable_iam_database_authentication` property must be defined and set to `true`. This check only applies to engines, engine versions, and instance types that support IAM authentication. The policy validates `engine`, `engine_version`, and `instance_type`. Resources where the property is missing or set to `false` are flagged.
+For Ansible RDS resources using the `amazon.aws.rds_instance` or `rds_instance` modules, the `enable_iam_database_authentication` property must be defined and set to `true`. This check only applies to engines, engine versions, and instance types that support IAM authentication. The policy validates `engine`, `engine_version`, and `instance_type`. Resources where the property is missing or set to `false` are flagged.
 
 Secure Ansible example:
 
 ```yaml
 - name: Create RDS instance with IAM auth enabled
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_instance_identifier: mydb
     engine: mysql
     engine_version: "8.0"
@@ -47,7 +47,7 @@ Secure Ansible example:
 ## Compliant Code Examples
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -58,7 +58,7 @@ Secure Ansible example:
 
 
 - name: Create a DB instance using the default AWS KMS encryption key
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -70,21 +70,21 @@ Secure Ansible example:
     enable_iam_database_authentication: true
 
 - name: remove the DB instance without a final snapshot
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: '{{ instance_id }}'
     state: absent
     skip_final_snapshot: true
     enable_iam_database_authentication: true
 
 - name: remove the DB instance with a final snapshot
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: '{{ instance_id }}'
     state: absent
     final_snapshot_identifier: '{{ snapshot_id }}'
     enable_iam_database_authentication: true
 
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -94,7 +94,7 @@ Secure Ansible example:
     enable_iam_database_authentication: "No"
 
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: mariadb
     engine_version: 10.2.43
     db_instance_identifier: ansible-test-aurora-db-instance
@@ -107,7 +107,7 @@ Secure Ansible example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: mysql
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -118,7 +118,7 @@ Secure Ansible example:
 
 
 - name: Create a DB instance using the default AWS KMS encryption key
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb

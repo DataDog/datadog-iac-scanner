@@ -24,20 +24,20 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/ec2_lc_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/autoscaling_launch_config_module.html)
 
 ### Description
 
 Embedding base64-encoded private keys in EC2 launch configuration user data exposes sensitive credentials that can be decoded and used to impersonate instances or access private services, resulting in credential compromise and lateral movement.
 
-This rule inspects Ansible tasks using the `community.aws.ec2_lc` or `ec2_lc` modules and flags the `user_data` property when it contains the base64 prefix `LS0tLS1CR`, which corresponds to the start of an RSA private key header (`-----BEGIN R...`).
+This rule inspects Ansible tasks using the `community.aws.autoscaling_launch_config` or `autoscaling_launch_config` modules and flags the `user_data` property when it contains the base64 prefix `LS0tLS1CR`, which corresponds to the start of an RSA private key header (`-----BEGIN R...`).
 
 Remove any private keys from `user_data` and instead store secrets in a secure secrets manager or fetch them at runtime using instance IAM roles. Tasks embedding keys are flagged.
 
 ## Compliant Code Examples
 ```yaml
 - name: note that encrypted volumes are only supported in >= Ansible 2.4
-  community.aws.ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default
@@ -54,7 +54,7 @@ Remove any private keys from `user_data` and instead store secrets in a secure s
     - device_name: /dev/sdb
       ephemeral: ephemeral0
 - name: note that encrypted volumes are only supported in >= Ansible 2.4.2
-  community.aws.ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special2
     image_id: ami-XXX
     key_name: default
@@ -76,7 +76,7 @@ Remove any private keys from `user_data` and instead store secrets in a secure s
 ```yaml
 ---
 - name: note that encrypted volumes are only supported in >= Ansible 2.4
-  community.aws.ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default

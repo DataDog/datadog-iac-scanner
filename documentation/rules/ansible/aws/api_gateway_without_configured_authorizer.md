@@ -24,13 +24,13 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/aws_api_gateway_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/api_gateway_module.html)
 
 ### Description
 
 API Gateway REST APIs must have an API Gateway authorizer configured so that requests are authenticated before reaching backend integrations. Without an authorizer, APIs can be invoked anonymously, increasing the risk of unauthorized access, data exposure, and abuse of backend services.
 
-For Ansible resources using `community.aws.aws_api_gateway` or `aws_api_gateway`, ensure the API's Swagger/OpenAPI definition—provided via the `swagger_file`, `swagger_dict`, or `swagger_text` property—includes an `x-amazon-apigateway-authorizer` entry in `components.securitySchemes` and that operations reference the authorizer (via `security` at the operation or global level).
+For Ansible resources using `community.aws.api_gateway` or `api_gateway`, ensure the API's Swagger/OpenAPI definition—provided via the `swagger_file`, `swagger_dict`, or `swagger_text` property—includes an `x-amazon-apigateway-authorizer` entry in `components.securitySchemes` and that operations reference the authorizer (via `security` at the operation or global level).
 
 Resources that omit all three swagger properties, or whose Swagger/OpenAPI content does not contain `x-amazon-apigateway-authorizer`, are flagged as missing an authorizer. Include a valid authorizer definition and reference it from your paths to remediate the finding.
 
@@ -56,7 +56,7 @@ paths:
 ## Compliant Code Examples
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition3
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     swagger_file: swaggerFile.yaml
     stage: production
     cache_enabled: true
@@ -69,7 +69,7 @@ paths:
 
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition22222
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     swagger_dict:
       {
         "openapi": "3.0.0",
@@ -112,7 +112,7 @@ paths:
 
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API 222
-  aws_api_gateway:
+  community.aws.api_gateway:
     swagger_text: |
       openapi: 3.0.0
       info:
@@ -143,7 +143,7 @@ paths:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition2
-  aws_api_gateway:
+  community.aws.api_gateway:
     stage: production
     cache_enabled: true
     cache_size: "1.6"
@@ -155,7 +155,7 @@ paths:
 
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API 222
-  aws_api_gateway:
+  community.aws.api_gateway:
     swagger_file: swaggerFileWithoutAuthorizer.yaml
     stage: production
     cache_enabled: true
@@ -168,7 +168,7 @@ paths:
 
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API 222
-  aws_api_gateway:
+  community.aws.api_gateway:
     swagger_text: |
       openapi: 3.0.0
       info:

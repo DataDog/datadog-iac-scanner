@@ -24,24 +24,24 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/iam_password_policy_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_password_policy_module.html)
 
 ### Description
 
-IAM account password policies must enforce regular password expiration to limit exposure from compromised or leaked credentials and reduce the risk of long-lived unauthorized access. In Ansible, tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules must define `pw_max_age` or `password_max_age` with a value of 90 days or fewer. Resources that omit both properties or set either to a value greater than 90 are flagged.
+IAM account password policies must enforce regular password expiration to limit exposure from compromised or leaked credentials and reduce the risk of long-lived unauthorized access. In Ansible, tasks using the `amazon.aws.iam_password_policy` or `iam_password_policy` modules must define `pw_max_age` or `password_max_age` with a value of 90 days or fewer. Resources that omit both properties or set either to a value greater than 90 are flagged.
 
 Secure configuration example:
 
 ```yaml
 - name: Enforce IAM password expiration
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     password_max_age: 90
 ```
 
 ## Compliant Code Examples
 ```yaml
 - name: Missing Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -57,7 +57,7 @@ Secure configuration example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Missing Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -68,7 +68,7 @@ Secure configuration example:
     pw_reuse_prevent: 5
     pw_expire: false
 - name: Extreme Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -80,7 +80,7 @@ Secure configuration example:
     pw_reuse_prevent: 5
     pw_expire: false
 - name: Alias extreme Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false

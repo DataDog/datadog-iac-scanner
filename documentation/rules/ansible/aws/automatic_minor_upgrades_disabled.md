@@ -24,19 +24,19 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-auto_minor_version_upgrade)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html#parameter-auto_minor_version_upgrade)
 
 ### Description
 
 RDS instances should have automatic minor engine upgrades enabled so critical security patches and bug fixes are applied promptly, preventing exposure to known vulnerabilities or compliance drift.
 
-For Ansible RDS tasks using the `community.aws.rds_instance` or `rds_instance` modules, the `auto_minor_version_upgrade` property must be defined and set to `true`. Tasks that omit this property or set `auto_minor_version_upgrade: false` are flagged. Enabling this setting ensures minor engine patches are applied automatically during the instance's maintenance window.
+For Ansible RDS tasks using the `amazon.aws.rds_instance` or `rds_instance` modules, the `auto_minor_version_upgrade` property must be defined and set to `true`. Tasks that omit this property or set `auto_minor_version_upgrade: false` are flagged. Enabling this setting ensures minor engine patches are applied automatically during the instance's maintenance window.
 
 Secure Ansible example:
 
 ```yaml
 - name: create RDS instance with automatic minor upgrades
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     name: mydb
     engine: postgres
     instance_type: db.t3.medium
@@ -46,7 +46,7 @@ Secure Ansible example:
 ## Compliant Code Examples
 ```yaml
 - name: negative - create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -55,7 +55,7 @@ Secure Ansible example:
     cluster_id: ansible-test-cluster
     auto_minor_version_upgrade: true
 - name: negative - Create a DB instance using the default AWS KMS encryption key
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -66,7 +66,7 @@ Secure Ansible example:
     allocated_storage: '{{ allocated_storage }}'
     auto_minor_version_upgrade: yes
 - name: negative - Create a DB instance using the default AWS KMS encryption key
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -82,7 +82,7 @@ Secure Ansible example:
 ```yaml
 ---
 - name: community - create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -91,7 +91,7 @@ Secure Ansible example:
     cluster_id: ansible-test-cluster
     auto_minor_version_upgrade: false
 - name: community - Create a DB instance using the default AWS KMS encryption key
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     id: test-encrypted-db
     state: present
     engine: mariadb

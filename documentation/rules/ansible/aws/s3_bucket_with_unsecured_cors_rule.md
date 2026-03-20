@@ -24,13 +24,13 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/aws_s3_cors_module.html#parameter-rules)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/s3_cors_module.html#parameter-rules)
 
 ### Description
 
 S3 CORS rules must restrict allowed origins, methods, and headers to prevent unintended cross-origin access and data exfiltration. Overly permissive CORS (wildcard origins, all methods, or all headers) can allow arbitrary web pages to interact with or read bucket resources.
 
-For Ansible resources `community.aws.aws_s3_cors` and `aws_s3_cors`, inspect each `rules` entry. `allowed_origins` should specify trusted origins (avoid `"*"` or unnecessarily broad lists). `allowed_methods` must not be `["*"]` and should include only the HTTP verbs required by your application. `allowed_headers` must not be `["*"]` and should be limited to the headers actually needed.
+For Ansible resources `community.aws.s3_cors` and `s3_cors`, inspect each `rules` entry. `allowed_origins` should specify trusted origins (avoid `"*"` or unnecessarily broad lists). `allowed_methods` must not be `["*"]` and should include only the HTTP verbs required by your application. `allowed_headers` must not be `["*"]` and should be limited to the headers actually needed.
 
 Rules with wildcard `allowed_methods` or `allowed_headers`, or with wildcard or overly broad origins are flagged. Prefer a single explicit origin or a narrowly-scoped set and the minimal set of methods and headers.
 
@@ -38,7 +38,7 @@ Secure example:
 
 ```yaml
 - name: Configure S3 CORS
-  community.aws.aws_s3_cors:
+  community.aws.s3_cors:
     name: my-bucket
     rules:
       - allowed_origins:
@@ -54,7 +54,7 @@ Secure example:
 ## Compliant Code Examples
 ```yaml
 - name: Create s3 bucket
-  community.aws.aws_s3_cors:
+  community.aws.s3_cors:
     name: mys3bucket3
     state: present
     rules:
@@ -74,7 +74,7 @@ Secure example:
 
 ```yaml
 - name: Create s3 bucket1
-  aws_s3_cors:
+  community.aws.s3_cors:
     name: mys3bucket4
     state: present
     rules:
@@ -94,7 +94,7 @@ Secure example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: Create s3 bucket4
-  aws_s3_cors:
+  community.aws.s3_cors:
     name: mys3bucket2
     state: present
     rules:
@@ -117,7 +117,7 @@ Secure example:
 
 ```yaml
 - name: Create s3 bucket2
-  community.aws.aws_s3_cors:
+  community.aws.s3_cors:
     name: mys3bucket
     state: present
     rules:

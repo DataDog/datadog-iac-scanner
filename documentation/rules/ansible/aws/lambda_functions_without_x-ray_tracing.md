@@ -24,17 +24,17 @@ meta:
 
 #### Learn More
 
- - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/community/aws/lambda_module.html)
+ - [Provider Reference](https://docs.ansible.com/ansible/latest/collections/amazon/aws/lambda_module.html)
 
 ### Description
 
-Lambda functions should have active AWS X-Ray tracing enabled to provide end-to-end request visibility and help detect performance problems and security incidents. For Ansible `community.aws.lambda` or `lambda` module tasks, the `tracing_mode` property must be defined and set to `Active`. Tasks that omit `tracing_mode` or set it to any value other than `Active` are flagged.
+Lambda functions should have active AWS X-Ray tracing enabled to provide end-to-end request visibility and help detect performance problems and security incidents. For Ansible `amazon.aws.lambda` or `lambda` module tasks, the `tracing_mode` property must be defined and set to `Active`. Tasks that omit `tracing_mode` or set it to any value other than `Active` are flagged.
 
 Secure Ansible example:
 
 ```yaml
 - name: Create Lambda with active X-Ray tracing
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: my_lambda_function
     state: present
     runtime: python3.9
@@ -45,7 +45,7 @@ Secure Ansible example:
 ## Compliant Code Examples
 ```yaml
 - name: looped creation V3
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: '{{ item.name }}'
     state: present
     zip_file: '{{ item.zip_file }}'
@@ -78,7 +78,7 @@ Secure Ansible example:
 ## Non-Compliant Code Examples
 ```yaml
 - name: looped creation
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: '{{ item.name }}'
     state: present
     zip_file: '{{ item.zip_file }}'
@@ -106,7 +106,7 @@ Secure Ansible example:
       key1: "1"
       key2: "2"
 - name: looped creation V2
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: '{{ item.name }}'
     state: present
     zip_file: '{{ item.zip_file }}'
