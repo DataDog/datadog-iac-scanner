@@ -1,9 +1,9 @@
 {
   "id": "f5c45127-1d28-4b49-a692-0b97da1c3a84",
-  "queryName": "ECS Service Without Running Tasks",
+  "queryName": "ECS service without running tasks",
   "severity": "LOW",
   "category": "Availability",
-  "descriptionText": "ECS Service should have at least 1 task running",
+  "descriptionText": "ECS services must define a deployment configuration to avoid deployments or scaling events from temporarily leaving zero tasks running, which can cause application downtime and loss of availability.\n\nFor Ansible ECS tasks using the `community.aws.ecs_service` or `ecs_service` modules, the `deployment_configuration` property must be present and include the `minimum_healthy_percent` and `maximum_percent` keys. Resources missing `deployment_configuration` or missing either `minimum_healthy_percent` or `maximum_percent` are flagged. This rule checks for the presence of those keys and does not validate numeric ranges. Ensure `minimum_healthy_percent` is set so at least one task remains running during deployments according to your desired task count.\n\nSecure example (Ansible task):\n\n```yaml\n- name: my-ecs-service\n  community.aws.ecs_service:\n    name: my-service\n    cluster: my-cluster\n    task_definition: my-task:1\n    desired_count: 2\n    deployment_configuration:\n      maximum_percent: 200\n      minimum_healthy_percent: 50\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ecs_service_without_running_tasks",
   "platform": "Ansible",
   "descriptionID": "dce30fcb",

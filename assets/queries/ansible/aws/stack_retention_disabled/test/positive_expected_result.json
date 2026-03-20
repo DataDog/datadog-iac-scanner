@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Stack Retention Disabled",
+    "queryName": "Stack retention disabled",
     "severity": "MEDIUM",
     "line": 2
   },
   {
-    "queryName": "Stack Retention Disabled",
+    "queryName": "Stack retention disabled",
     "severity": "MEDIUM",
     "line": 23
   }

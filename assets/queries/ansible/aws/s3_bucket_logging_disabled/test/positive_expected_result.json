@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "S3 Bucket Logging Disabled",
+    "queryName": "S3 bucket logging disabled",
     "severity": "MEDIUM",
     "line": 6
   }

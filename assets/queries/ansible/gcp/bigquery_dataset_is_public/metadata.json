@@ -1,9 +1,9 @@
 {
   "id": "2263b286-2fe9-4747-a0ae-8b4768a2bbd2",
-  "queryName": "BigQuery Dataset Is Public",
+  "queryName": "BigQuery dataset is public",
   "severity": "HIGH",
   "category": "Access Control",
-  "descriptionText": "BigQuery dataset is anonymously or publicly accessible",
+  "descriptionText": "BigQuery datasets must not grant access to the special group `allAuthenticatedUsers`. This allows any Google account to access the dataset, increasing the risk of sensitive data exposure and regulatory non-compliance.\n\nFor Ansible tasks using the `google.cloud.gcp_bigquery_dataset` (or `gcp_bigquery_dataset`) module, validate the `access` entries and ensure no entry has `special_group` set to `\"allAuthenticatedUsers\"` (checked case-insensitively). Resources with `access` entries where `special_group` equals `allAuthenticatedUsers` are flagged. Restrict dataset access to specific users, groups, domains, or predefined roles instead.\n\nSecure Ansible task example (do not include `special_group: allAuthenticatedUsers`):\n\n```yaml\n- name: Create BigQuery dataset with restricted access\n  google.cloud.gcp_bigquery_dataset:\n    dataset_id: my_dataset\n    access:\n      - role: READER\n        userByEmail: alice@example.com\n      - role: OWNER\n        groupByEmail: admins@example.com\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/bigquery_dataset_is_public",
   "platform": "Ansible",
   "descriptionID": "72ba0b75",

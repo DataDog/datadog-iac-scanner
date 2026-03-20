@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Configuration Aggregator to All Regions Disabled",
+    "queryName": "Configuration aggregator to all regions disabled",
     "severity": "LOW",
     "line": 10
   },
   {
-    "queryName": "Configuration Aggregator to All Regions Disabled",
+    "queryName": "Configuration aggregator to all regions disabled",
     "severity": "LOW",
     "line": 24
   }

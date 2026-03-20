@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Certificate Has Expired",
+    "queryName": "Certificate has expired",
     "severity": "MEDIUM",
     "line": 3
   }

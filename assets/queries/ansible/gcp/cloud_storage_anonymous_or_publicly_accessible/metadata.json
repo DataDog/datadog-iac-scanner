@@ -1,9 +1,9 @@
 {
   "id": "086031e1-9d4a-4249-acb3-5bfe4c363db2",
-  "queryName": "Cloud Storage Anonymous or Publicly Accessible",
+  "queryName": "Cloud storage anonymous or publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",
-  "descriptionText": "Cloud Storage Buckets must not be anonymously or publicly accessible, which means the attribute 'entity' must not be 'allUsers' or 'allAuthenticatedUsers'",
+  "descriptionText": "Cloud Storage buckets must not be anonymously or publicly accessible. Setting an ACL entity to `allUsers` or `allAuthenticatedUsers` grants broad read or write access to anyone on the internet or to any authenticated Google account, risking data exposure or unauthorized modification.\n\nFor Ansible `gcp_storage_bucket` resources (modules `google.cloud.gcp_storage_bucket` and `gcp_storage_bucket`), ensure neither the `acl.entity` nor the `default_object_acl.entity` property is set to `allUsers` or `allAuthenticatedUsers`. If a bucket does not define `acl`, `default_object_acl` must be explicitly defined and must not contain those public entities. Tasks missing `default_object_acl` or with either entity set to `allUsers`/`allAuthenticatedUsers` are flagged.",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cloud_storage_anonymous_or_publicly_accessible",
   "platform": "Ansible",
   "descriptionID": "bdebc5b5",

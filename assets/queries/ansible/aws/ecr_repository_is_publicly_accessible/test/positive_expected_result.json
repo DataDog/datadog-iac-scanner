@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "ECR Repository Is Publicly Accessible",
+    "queryName": "ECR repository is publicly accessible",
     "severity": "CRITICAL",
     "line": 4
   },
   {
-    "queryName": "ECR Repository Is Publicly Accessible",
+    "queryName": "ECR repository is publicly accessible",
     "severity": "CRITICAL",
     "line": 17
   }

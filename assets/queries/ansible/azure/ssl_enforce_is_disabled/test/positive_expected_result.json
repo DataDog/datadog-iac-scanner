@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "SSL Enforce Disabled",
+    "queryName": "SSL enforce disabled",
     "severity": "MEDIUM",
     "line": 2
   },
   {
-    "queryName": "SSL Enforce Disabled",
+    "queryName": "SSL enforce disabled",
     "severity": "MEDIUM",
     "line": 21
   }

@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "MySQL Instance With Local Infile On",
+    "queryName": "MySQL instance with local infile on",
     "severity": "HIGH",
     "line": 10
   }

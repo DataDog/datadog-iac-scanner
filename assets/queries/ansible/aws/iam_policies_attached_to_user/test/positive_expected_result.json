@@ -1,7 +1,7 @@
 [
-	{
-		"queryName": "IAM Policies Attached To User",
-		"severity": "MEDIUM",
-		"line": 3
-	}
+  {
+    "queryName": "IAM policies attached to user",
+    "severity": "MEDIUM",
+    "line": 3
+  }
 ]

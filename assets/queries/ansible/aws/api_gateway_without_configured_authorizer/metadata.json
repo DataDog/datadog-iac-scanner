@@ -1,13 +1,13 @@
 {
   "id": "b16cdb37-ce15-4ab2-8401-d42b05d123fc",
-  "queryName": "API Gateway Without Configured Authorizer",
+  "queryName": "API Gateway without configured authorizer",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "API Gateway REST API should have an API Gateway Authorizer",
+  "descriptionText": "API Gateway REST APIs must have an API Gateway authorizer configured so that requests are authenticated before reaching backend integrations. Without an authorizer, APIs can be invoked anonymously, increasing the risk of unauthorized access, data exposure, and abuse of backend services.\n\nFor Ansible resources using `community.aws.api_gateway` or `api_gateway`, ensure the API's Swagger/OpenAPI definition—provided via the `swagger_file`, `swagger_dict`, or `swagger_text` property—includes an `x-amazon-apigateway-authorizer` entry in `components.securitySchemes` and that operations reference the authorizer (via `security` at the operation or global level).\n\nResources that omit all three swagger properties, or whose Swagger/OpenAPI content does not contain `x-amazon-apigateway-authorizer`, are flagged as missing an authorizer. Include a valid authorizer definition and reference it from your paths to remediate the finding.\n\nSecure example with an OpenAPI components authorizer and operation-level security:\n\n```yaml\nopenapi: \"3.0.1\"\ncomponents:\n  securitySchemes:\n    MyLambdaAuthorizer:\n      x-amazon-apigateway-authorizer:\n        type: token\n        authorizerUri: arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:MyAuthFunction/invocations\nsecurity:\n  - MyLambdaAuthorizer: []\npaths:\n  /resource:\n    get:\n      security:\n        - MyLambdaAuthorizer: []\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/api_gateway_without_configured_authorizer",
   "platform": "Ansible",
   "descriptionID": "e7b28671",
   "cloudProvider": "aws",
   "cwe": "284",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/aws_api_gateway_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/api_gateway_module.html"
 }

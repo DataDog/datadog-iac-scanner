@@ -1,12 +1,12 @@
 [
   {
-    "queryName": "KMS Key With Vulnerable Policy",
+    "queryName": "KMS key with vulnerable policy",
     "severity": "HIGH",
     "line": 5,
     "fileName": "positive.yaml"
   },
   {
-    "queryName": "KMS Key With Vulnerable Policy",
+    "queryName": "KMS key with vulnerable policy",
     "severity": "HIGH",
     "line": 3,
     "fileName": "positive2.yaml"

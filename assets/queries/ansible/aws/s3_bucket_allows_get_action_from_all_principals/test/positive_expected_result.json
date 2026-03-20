@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "S3 Bucket Allows Get Action From All Principals",
+    "queryName": "S3 bucket allows GET action from all principals",
     "severity": "HIGH",
     "line": 6,
     "fileName": "positive.yaml"

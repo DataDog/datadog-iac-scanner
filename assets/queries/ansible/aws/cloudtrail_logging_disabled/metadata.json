@@ -1,14 +1,14 @@
 {
   "id": "d4a73c49-cbaa-4c6f-80ee-d6ef5a3a26f5",
-  "queryName": "CloudTrail Logging Disabled",
+  "queryName": "CloudTrail logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "Checks if logging is enabled for CloudTrail.",
+  "descriptionText": "CloudTrail logging must be enabled to record AWS API activity for detection, auditing, and forensic investigations, and to meet compliance requirements. Disabling logging can allow malicious or accidental changes to go undetected.\n\nIn Ansible, tasks using the `amazon.aws.cloudtrail` or `cloudtrail` modules must have the `enable_logging` property set to `true`. This rule flags tasks where `enable_logging` is explicitly set to `false`. Ensure the property is present and set to `true` to enable delivery of management events and logs. Example secure Ansible task:\n\n```yaml\n- name: Ensure CloudTrail logging is enabled\n  amazon.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-cloudtrail-bucket\n    enable_logging: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudtrail_logging_disabled",
   "platform": "Ansible",
   "descriptionID": "c29f6786",
   "cloudProvider": "aws",
   "cwe": "778",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html#parameter-enable_logging"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html#parameter-enable_logging"
 }

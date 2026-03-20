@@ -1,9 +1,9 @@
 {
   "id": "5c80db8e-03f5-43a2-b4af-1f3f87018157",
-  "queryName": "Role Definition Allows Custom Role Creation",
+  "queryName": "Role definition allows custom role creation",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "Role Definition should not allow custom role creation (Microsoft.Authorization/roleDefinitions/write)",
+  "descriptionText": "Role definitions must not grant the ability to create or modify other role definitions (`Microsoft.Authorization/roleDefinitions/write`). This capability enables privilege escalation and persistent unauthorized access by allowing creation of custom roles with elevated permissions.\n\nIn Ansible playbooks using the `azure.azcollection.azure_rm_roledefinition` or `azure_rm_roledefinition` modules, the `permissions[].actions` array must not include the literal action `Microsoft.Authorization/roleDefinitions/write` and must not be a wildcard (`*`). This rule flags tasks where `permissions.actions` is `[\"*\"]` or contains `Microsoft.Authorization/roleDefinitions/write`. Ensure the actions list contains only the specific, least-privilege actions required for the role.\n\nSecure example with no role-definition write permission:\n\n```yaml\n- name: example role\n  azure.azcollection.azure_rm_roledefinition:\n    name: customReadOnlyRole\n    scope: /subscriptions/00000000-0000-0000-0000-000000000000\n    permissions:\n      - actions:\n          - \"Microsoft.Storage/storageAccounts/read\"\n          - \"Microsoft.Compute/virtualMachines/read\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/role_definition_allows_custom_role_creation",
   "platform": "Ansible",
   "descriptionID": "6296166a",

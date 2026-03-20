@@ -1,12 +1,12 @@
 [
   {
-    "queryName": "IAM Role Allows All Principals To Assume",
+    "queryName": "IAM role allows all principals to assume",
     "severity": "MEDIUM",
     "line": 5,
     "fileName": "positive.yaml"
   },
   {
-    "queryName": "IAM Role Allows All Principals To Assume",
+    "queryName": "IAM role allows all principals to assume",
     "severity": "MEDIUM",
     "line": 19,
     "fileName": "positive.yaml"

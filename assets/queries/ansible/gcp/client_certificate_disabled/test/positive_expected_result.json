@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Client Certificate Disabled",
+    "queryName": "Client certificate disabled",
     "severity": "HIGH",
     "line": 3
   },
   {
-    "queryName": "Client Certificate Disabled",
+    "queryName": "Client certificate disabled",
     "severity": "HIGH",
     "line": 18
   },
   {
-    "queryName": "Client Certificate Disabled",
+    "queryName": "Client certificate disabled",
     "severity": "HIGH",
     "line": 37
   }

@@ -1,9 +1,9 @@
 {
   "id": "b28bcd2f-c309-490e-ab7c-35fc4023eb26",
-  "queryName": "Google Compute SSL Policy Weak Cipher In Use",
+  "queryName": "Google Compute SSL policy weak cipher in use",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "This query confirms if Google Compute SSL Policy Weak Chyper Suits is Enabled, to do so we need to check if TLS is TLS_1_2, because other version have Weak Chypers",
+  "descriptionText": "Compute SSL policies must enforce a minimum TLS version of `TLS_1_2` to prevent use of older, vulnerable protocol versions and weak cipher suites. The `min_tls_version` property on `google.cloud.gcp_compute_ssl_policy` (or `gcp_compute_ssl_policy`) resources must be defined and set to `TLS_1_2`. Resources that omit `min_tls_version` or set it to any other value are flagged.\n\n```yaml\n- name: Create SSL policy with TLS 1.2 minimum\n  google.cloud.gcp_compute_ssl_policy:\n    name: my-ssl-policy\n    profile: MODERN\n    min_tls_version: TLS_1_2\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/google_compute_ssl_policy_weak_cipher_in_use",
   "platform": "Ansible",
   "descriptionID": "bb785f44",

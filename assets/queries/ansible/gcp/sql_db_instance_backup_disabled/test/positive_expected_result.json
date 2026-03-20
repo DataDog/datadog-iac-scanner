@@ -1,21 +1,21 @@
 [
   {
-    "queryName": "SQL DB Instance Backup Disabled",
+    "queryName": "SQL DB instance backup disabled",
     "severity": "MEDIUM",
     "line": 3
   },
   {
-    "queryName": "SQL DB Instance Backup Disabled",
+    "queryName": "SQL DB instance backup disabled",
     "severity": "MEDIUM",
     "line": 13
   },
   {
-    "queryName": "SQL DB Instance Backup Disabled",
+    "queryName": "SQL DB instance backup disabled",
     "severity": "MEDIUM",
     "line": 24
   },
   {
-    "queryName": "SQL DB Instance Backup Disabled",
+    "queryName": "SQL DB instance backup disabled",
     "severity": "MEDIUM",
     "line": 38
   }

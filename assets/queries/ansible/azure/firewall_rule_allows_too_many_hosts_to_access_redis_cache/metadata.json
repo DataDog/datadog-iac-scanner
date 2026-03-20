@@ -1,9 +1,9 @@
 {
   "id": "69f72007-502e-457b-bd2d-5012e31ac049",
-  "queryName": "Firewall Rule Allows Too Many Hosts To Access Redis Cache",
+  "queryName": "Firewall rule allows too many hosts to access Redis Cache",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
-  "descriptionText": "Check if any firewall rule allows too many hosts to access Redis Cache.",
+  "descriptionText": "Redis Cache firewall rules should restrict the IP address range to minimize attack surface and prevent broad network access that could allow unauthorized access or lateral movement.\n\nIn Ansible, tasks using `azure.azcollection.azure_rm_rediscachefirewallrule` or `azure_rm_rediscachefirewallrule` must set `start_ip_address` and `end_ip_address` so the numeric range covers at most 255 hosts. Any rule where the computed range (`abs(end - start)`) is greater than 255 is flagged.\n\nResources missing these properties or defining overly large ranges should be tightened to a single IP or a narrow range. Alternatively, replace them with network-level controls such as private endpoints or service endpoints to limit access.\n\nSecure example with a small allowed range:\n\n```yaml\n- name: Allow small Redis access range\n  azure.azcollection.azure_rm_rediscachefirewallrule:\n    resource_group: my-rg\n    name: my-redis\n    start_ip_address: 10.0.0.10\n    end_ip_address: 10.0.0.20\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/firewall_rule_allows_too_many_hosts_to_access_redis_cache",
   "platform": "Ansible",
   "descriptionID": "99f14985",

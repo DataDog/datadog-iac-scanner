@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "AWS Password Policy With Unchangeable Passwords",
+    "queryName": "AWS password policy with unchangeable passwords",
     "severity": "LOW",
     "line": 9
   },
   {
-    "queryName": "AWS Password Policy With Unchangeable Passwords",
+    "queryName": "AWS password policy with unchangeable passwords",
     "severity": "LOW",
     "line": 21
   }

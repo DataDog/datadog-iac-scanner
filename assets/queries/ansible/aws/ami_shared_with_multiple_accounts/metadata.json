@@ -1,9 +1,9 @@
 {
   "id": "a19b2942-142e-4e2b-93b7-6cf6a6c8d90f",
-  "queryName": "AMI Shared With Multiple Accounts",
+  "queryName": "AMI shared with multiple accounts",
   "severity": "MEDIUM",
   "category": "Access Control",
-  "descriptionText": "Limits access to AWS AMIs by checking if more than one account is using the same image",
+  "descriptionText": "AMIs must not be broadly shared. Granting multiple AWS accounts or group-based access increases the attack surface and can expose embedded credentials, custom configurations, or vulnerable images to unintended parties.\n\nFor Ansible tasks using the `amazon.aws.ec2_ami` or `ec2_ami` modules, `launch_permissions` should be restricted to at most one explicit AWS account and must not include `group_names`. This rule flags tasks where `launch_permissions.group_names` is present or where `launch_permissions.user_ids` contains more than one entry. \n\nSecure example with a single allowed account:\n\n```yaml\n- name: Register AMI with restricted launch permissions\n  amazon.aws.ec2_ami:\n    name: my-ami\n    image_id: ami-0123456789abcdef0\n    launch_permissions:\n      user_ids:\n        - \"123456789012\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ami_shared_with_multiple_accounts",
   "platform": "Ansible",
   "descriptionID": "2117f1c7",

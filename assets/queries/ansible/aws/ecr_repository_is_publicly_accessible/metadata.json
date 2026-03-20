@@ -1,9 +1,9 @@
 {
   "id": "fb5a5df7-6d74-4243-ab82-ff779a958bfd",
-  "queryName": "ECR Repository Is Publicly Accessible",
+  "queryName": "ECR repository is publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",
-  "descriptionText": "Amazon ECR image repositories shouldn't have public access",
+  "descriptionText": "ECR repository policies must not grant Allow permissions to the wildcard principal (`*`). This makes repositories publicly accessible and allows unauthorized accounts to pull or push container images, increasing the risk of data exposure and supply-chain compromise.\n\nCheck Ansible ECS/ECR tasks using the `community.aws.ecs_ecr` or `ecs_ecr` modules: in the resource `policy` document, any statement with `\"Effect\": \"Allow\"` must not have `Principal` equal to `\"*\"`. Resources with an Allow statement whose `Principal` is `\"*\"` are flagged. Instead, specify explicit principals such as AWS account ARNs, IAM role ARNs, or service principals, or restrict access using condition keys (for example, `aws:PrincipalOrgID`).\n\nSecure example with an explicit AWS account principal:\n\n```json\n{\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:root\" },\n      \"Action\": [ \"ecr:GetDownloadUrlForLayer\", \"ecr:BatchGetImage\" ],\n      \"Resource\": \"arn:aws:ecr:us-east-1:123456789012:repository/my-repo\"\n    }\n  ]\n}\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ecr_repository_is_publicly_accessible",
   "platform": "Ansible",
   "descriptionID": "060d624f",

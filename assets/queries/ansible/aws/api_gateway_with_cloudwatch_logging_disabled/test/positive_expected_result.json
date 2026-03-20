@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "API Gateway With CloudWatch Logging Disabled",
+    "queryName": "API Gateway with CloudWatch Logs disabled",
     "severity": "MEDIUM",
     "line": 3
   }

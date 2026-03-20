@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "CloudTrail Multi Region Disabled",
+    "queryName": "CloudTrail multi-region is disabled",
     "severity": "LOW",
     "line": 7
   }

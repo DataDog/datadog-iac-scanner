@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Google Container Node Pool Auto Repair Disabled",
+    "queryName": "Google container node pool auto repair disabled",
     "severity": "MEDIUM",
     "line": 13
   },
   {
-    "queryName": "Google Container Node Pool Auto Repair Disabled",
+    "queryName": "Google container node pool auto repair disabled",
     "severity": "MEDIUM",
     "line": 26
   },
   {
-    "queryName": "Google Container Node Pool Auto Repair Disabled",
+    "queryName": "Google container node pool auto repair disabled",
     "severity": "MEDIUM",
     "line": 29
   }

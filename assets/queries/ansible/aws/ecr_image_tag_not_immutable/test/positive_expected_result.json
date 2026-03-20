@@ -1,13 +1,12 @@
 [
-	{
-		"queryName": "ECR Image Tag Not Immutable",
-		"severity": "MEDIUM",
-		"line": 2
-	},
-
-	{
-		"queryName": "ECR Image Tag Not Immutable",
-		"severity": "MEDIUM",
-		"line": 7
-	}
+  {
+    "queryName": "ECR image tag not immutable",
+    "severity": "MEDIUM",
+    "line": 2
+  },
+  {
+    "queryName": "ECR image tag not immutable",
+    "severity": "MEDIUM",
+    "line": 7
+  }
 ]

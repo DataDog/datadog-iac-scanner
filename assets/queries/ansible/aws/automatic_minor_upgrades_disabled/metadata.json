@@ -1,13 +1,13 @@
 {
   "id": "857f8808-e96a-4ba8-a9b7-f2d4ec6cad94",
-  "queryName": "Automatic Minor Upgrades Disabled",
+  "queryName": "Automatic minor upgrades disabled",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "RDS instance should have automatic minor upgrades enabled, which means the attribute 'auto_minor_version_upgrade' must be set to true.",
+  "descriptionText": "RDS instances should have automatic minor engine upgrades enabled so critical security patches and bug fixes are applied promptly, preventing exposure to known vulnerabilities or compliance drift.\n\nFor Ansible RDS tasks using the `amazon.aws.rds_instance` or `rds_instance` modules, the `auto_minor_version_upgrade` property must be defined and set to `true`. Tasks that omit this property or set `auto_minor_version_upgrade: false` are flagged. Enabling this setting ensures minor engine patches are applied automatically during the instance's maintenance window.\n\nSecure Ansible example:\n\n```yaml\n- name: create RDS instance with automatic minor upgrades\n  amazon.aws.rds_instance:\n    name: mydb\n    engine: postgres\n    instance_type: db.t3.medium\n    auto_minor_version_upgrade: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/automatic_minor_upgrades_disabled",
   "platform": "Ansible",
   "descriptionID": "7734a8b1",
   "cloudProvider": "aws",
   "cwe": "665",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-auto_minor_version_upgrade"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html#parameter-auto_minor_version_upgrade"
 }

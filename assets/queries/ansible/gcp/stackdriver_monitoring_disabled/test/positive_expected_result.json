@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Stackdriver Monitoring Disabled",
+    "queryName": "Stackdriver monitoring disabled",
     "severity": "MEDIUM",
     "line": 3
   },
   {
-    "queryName": "Stackdriver Monitoring Disabled",
+    "queryName": "Stackdriver monitoring disabled",
     "severity": "MEDIUM",
     "line": 32
   }

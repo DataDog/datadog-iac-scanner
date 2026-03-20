@@ -1,13 +1,13 @@
 {
   "id": "4d8681a2-3d30-4c89-8070-08acd142748e",
-  "queryName": "CloudTrail Log File Validation Disabled",
+  "queryName": "CloudTrail log file validation disabled",
   "severity": "LOW",
   "category": "Observability",
-  "descriptionText": "CloudTrail log file validation should be enabled to determine whether a log file has not been tampered",
+  "descriptionText": "CloudTrail log file validation must be enabled to detect tampering of delivered log files and preserve the integrity of audit data used for incident response and compliance.\n\nFor Ansible tasks using the `amazon.aws.cloudtrail` or `cloudtrail` module, one of the properties `enable_log_file_validation` or `log_file_validation_enabled` must be defined and set to `true` (or `yes`). Resources missing both properties or with these properties set to `false`, `no`, or any non-`true` value are flagged as insecure.\n\nSecure Ansible example:\n\n```yaml\n- name: Create CloudTrail with log file validation enabled\n  amazon.aws.cloudtrail:\n    name: my-trail\n    s3_bucket_name: my-trail-bucket\n    enable_log_file_validation: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cloudtrail_log_file_validation_disabled",
   "platform": "Ansible",
   "descriptionID": "04302074",
   "cloudProvider": "aws",
   "cwe": "778",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/cloudtrail_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/cloudtrail_module.html"
 }

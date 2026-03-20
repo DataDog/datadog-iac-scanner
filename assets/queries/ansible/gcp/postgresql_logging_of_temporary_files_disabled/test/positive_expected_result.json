@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "PostgreSQL Logging Of Temporary Files Disabled",
+    "queryName": "PostgreSQL logging of temporary files disabled",
     "severity": "LOW",
     "line": 10
   }

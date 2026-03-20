@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "DNSSEC Using RSASHA1",
+    "queryName": "DNSSEC using RSASHA1",
     "severity": "MEDIUM",
     "line": 13
   }

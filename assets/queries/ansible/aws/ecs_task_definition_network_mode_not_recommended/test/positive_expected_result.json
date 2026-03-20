@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "ECS Task Definition Network Mode Not Recommended",
+    "queryName": "ECS task definition network mode not recommended",
     "severity": "MEDIUM",
     "line": 15
   },
   {
-    "queryName": "ECS Task Definition Network Mode Not Recommended",
+    "queryName": "ECS task definition network mode not recommended",
     "severity": "MEDIUM",
     "line": 31
   }

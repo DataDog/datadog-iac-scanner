@@ -1,9 +1,9 @@
 {
   "id": "092bae86-6105-4802-99d2-99cd7e7431f3",
-  "queryName": "Disk Encryption Disabled",
+  "queryName": "Disk encryption disabled",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "VM disks for critical VMs must be encrypted with Customer Supplied Encryption Keys (CSEK) or with Customer-managed encryption keys (CMEK), which means the attribute 'disk_encryption_key' must be defined and its sub attributes 'raw_key' or 'kms_key_self_link' must also be defined",
+  "descriptionText": "VM disks must be encrypted using customer-supplied (CSEK) or customer-managed (CMEK) keys. This ensures you retain control over key lifecycle and reduces the risk of cloud-managed keys being used to decrypt sensitive data without your authorization.\n\nFor Ansible resources using `google.cloud.gcp_compute_disk` (or `gcp_compute_disk`), the `disk_encryption_key` property must be defined and contain either a non-empty `kms_key_name` (CMEK) or a non-empty `raw_key` (CSEK). This rule flags disks where `disk_encryption_key` is missing or `null`, where both `raw_key` and `kms_key_name` are absent, or where either subproperty is an empty string.\n\nPrefer using `kms_key_name` (a full KMS crypto key resource name, for example, `projects/.../locations/.../keyRings/.../cryptoKeys/...`) and avoid hardcoding `raw_key` in source code—store secrets in a secure secret manager.\n\nSecure configuration examples:\n\n```yaml\n- name: create disk with CMEK\n  google.cloud.gcp_compute_disk:\n    name: my-disk\n    zone: us-central1-a\n    size_gb: 100\n    disk_encryption_key:\n      kms_key_name: projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key\n```\n\n```yaml\n- name: create disk with CSEK (raw key stored securely, not in plaintext)\n  google.cloud.gcp_compute_disk:\n    name: my-disk\n    zone: us-central1-a\n    size_gb: 100\n    disk_encryption_key:\n      raw_key: REDACTED_BASE64_KEY\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/disk_encryption_disabled",
   "platform": "Ansible",
   "descriptionID": "1272593c",

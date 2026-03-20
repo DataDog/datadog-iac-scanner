@@ -1,17 +1,17 @@
 [
-	{
-		"queryName": "DB Instance Storage Not Encrypted",
-		"severity": "HIGH",
-		"line": 8
-	},
-	{
-		"queryName": "DB Instance Storage Not Encrypted",
-		"severity": "HIGH",
-		"line": 19
-	},
-	{
-		"queryName": "DB Instance Storage Not Encrypted",
-		"severity": "HIGH",
-		"line": 25
-	}
+  {
+    "queryName": "DB instance storage not encrypted",
+    "severity": "HIGH",
+    "line": 8
+  },
+  {
+    "queryName": "DB instance storage not encrypted",
+    "severity": "HIGH",
+    "line": 19
+  },
+  {
+    "queryName": "DB instance storage not encrypted",
+    "severity": "HIGH",
+    "line": 25
+  }
 ]
