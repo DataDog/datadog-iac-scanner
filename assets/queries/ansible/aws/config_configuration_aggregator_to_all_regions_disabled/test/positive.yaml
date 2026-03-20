@@ -1,5 +1,5 @@
 - name: Create cross-account aggregator
-  community.aws.aws_config_aggregator:
+  community.aws.config_aggregator:
     name: test_config_rule
     state: present
     account_sources:
@@ -11,7 +11,7 @@
     organization_source:
       all_aws_regions: yes
 - name: Create cross-account aggregator2
-  community.aws.aws_config_aggregator:
+  community.aws.config_aggregator:
     name: test_config_rule
     state: present
     account_sources:

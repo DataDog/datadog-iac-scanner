@@ -1,5 +1,5 @@
 #this is a problematic code where the query should report a result(s)
 - name: Create root access key
-  community.aws.iam_access_key:
+  amazon.aws.iam_access_key:
     user_name: root
     state: present

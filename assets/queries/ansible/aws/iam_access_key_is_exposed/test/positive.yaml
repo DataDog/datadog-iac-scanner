@@ -1,8 +1,8 @@
 - name: Create non-root user with active access key
-  community.aws.iam_access_key:
+  amazon.aws.iam_access_key:
     user_name: jcleese
     state: present
 - name: Create another non-root user with active access key
-  community.aws.iam_access_key:
+  amazon.aws.iam_access_key:
     user_name: mpython
     state: present

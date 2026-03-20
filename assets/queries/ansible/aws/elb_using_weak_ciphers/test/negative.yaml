@@ -1,6 +1,6 @@
 #this code is a correct code for which the query should not find any result
 - name: elb1
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb1
     security_groups:
     - sg-12345678

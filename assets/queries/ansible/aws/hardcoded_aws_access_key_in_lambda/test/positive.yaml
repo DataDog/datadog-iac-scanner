@@ -1,5 +1,5 @@
 - name: looped creation
-  community.aws.lambda:
+  amazon.aws.lambda:
     aws_access_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
     name: '{{ item.name }}'
     state: present
@@ -28,7 +28,7 @@
           key1: "1"
           key2: "2"
 - name: remove tags
-  community.aws.lambda:
+  amazon.aws.lambda:
     aws_access_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
     name: 'Lambda function'
     state: present
@@ -38,7 +38,7 @@
     handler: 'hello_python.my_handler'
     tags: {}
 - name: Delete Lambda functions HelloWorld and ByeBye
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: '{{ item }}'
     state: absent
     loop:

@@ -1,5 +1,5 @@
 - name: Launch instance default type without ebs_optimized
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: app-server-3
     key_name: mykey
     image_id: ami-123456

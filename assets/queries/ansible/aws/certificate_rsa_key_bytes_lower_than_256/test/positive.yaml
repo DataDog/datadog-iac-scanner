@@ -1,5 +1,5 @@
 - name: upload a self-signed certificate
-  community.aws.aws_acm:
+  community.aws.acm_certificate:
     certificate: "{{ lookup('file', 'rsa1024.pem' ) }}"
     privateKey: "{{ lookup('file', 'key.pem' ) }}"
     name_tag: my_cert

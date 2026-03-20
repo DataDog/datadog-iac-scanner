@@ -5,13 +5,13 @@
     vpc_subnet_id: subnet-29e63245
     assign_public_ip: false
 - name: Create an ec2 launch template
-  community.aws.ec2_launch_template:
+  amazon.aws.ec2_launch_template:
     name: my_template
     image_id: ami-04b762b4289fba92b
     key_name: my_ssh_key
     instance_type: t2.micro
 - name: Create an ec2 launch template
-  community.aws.ec2_launch_template:
+  amazon.aws.ec2_launch_template:
     name: "my_template"
     image_id: "ami-04b762b4289fba92b"
     key_name: my_ssh_key

@@ -1,6 +1,6 @@
 ---
 - name: community - create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -9,7 +9,7 @@
     cluster_id: ansible-test-cluster
     auto_minor_version_upgrade: false
 - name: community - Create a DB instance using the default AWS KMS encryption key
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present

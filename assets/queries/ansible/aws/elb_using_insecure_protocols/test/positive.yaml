@@ -1,6 +1,6 @@
 #this is a problematic code where the query should report a result(s)
 - name: elb1
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb1
     security_groups:
       - sg-12345678
@@ -10,7 +10,7 @@
       - subnet-abcdef000
     state: present
 - name: elb2
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb2
     security_groups:
       - sg-12345678
@@ -29,7 +29,7 @@
             TargetGroupName: # Required. The name of the target group
     state: present
 - name: elb3
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb3
     security_groups:
       - sg-12345678

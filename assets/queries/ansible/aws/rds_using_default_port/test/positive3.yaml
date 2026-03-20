@@ -1,5 +1,5 @@
 - name: create minimal aurora instance in default VPC and default subnet group2
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: oracle-ee
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small

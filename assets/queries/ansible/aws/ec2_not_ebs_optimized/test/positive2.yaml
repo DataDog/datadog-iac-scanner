@@ -1,5 +1,5 @@
 - name: Launch t2.micro with ebs_optimized false
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: app-server-2
     key_name: mykey
     instance_type: t2.micro

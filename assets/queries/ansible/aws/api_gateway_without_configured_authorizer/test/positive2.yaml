@@ -1,5 +1,5 @@
 - name: Setup AWS API Gateway setup on AWS and deploy API definition2
-  aws_api_gateway:
+  community.aws.api_gateway:
     name: my-api
     stage: production
     cache_enabled: true

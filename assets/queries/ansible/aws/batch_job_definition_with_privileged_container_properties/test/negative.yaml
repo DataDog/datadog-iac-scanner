@@ -1,5 +1,5 @@
 - name: My Batch Job Definition
-  community.aws.aws_batch_job_definition:
+  community.aws.batch_job_definition:
     job_definition_name: My Batch Job Definition without privilege
     state: present
     type: container
@@ -18,7 +18,7 @@
     attempts: 3
   register: job_definition_create_result
 - name: My Batch Job Definition without explicit privilege
-  community.aws.aws_batch_job_definition:
+  community.aws.batch_job_definition:
     job_definition_name: My Batch Job Definition
     state: present
     type: container

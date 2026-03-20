@@ -1,5 +1,5 @@
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -10,7 +10,7 @@
 
 
 - name: Create a DB instance using the default AWS KMS encryption key
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present
@@ -23,7 +23,7 @@
     enable_iam_database_authentication: true
 
 - name: remove the DB instance without a final snapshot
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_instance_identifier: test-db-remove-1
     id: '{{ instance_id }}'
     state: absent
@@ -31,7 +31,7 @@
     enable_iam_database_authentication: true
 
 - name: remove the DB instance with a final snapshot
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     db_instance_identifier: test-db-remove-2
     id: '{{ instance_id }}'
     state: absent
@@ -39,7 +39,7 @@
     enable_iam_database_authentication: true
 
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: aurora
     db_instance_identifier: ansible-test-aurora-db-instance
     instance_type: db.t2.small
@@ -49,7 +49,7 @@
     enable_iam_database_authentication: "No"
 
 - name: create minimal aurora instance in default VPC and default subnet group
-  community.aws.rds_instance:
+  amazon.aws.rds_instance:
     engine: mariadb
     engine_version: 10.2.43
     db_instance_identifier: ansible-test-aurora-db-instance

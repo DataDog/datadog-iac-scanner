@@ -1,5 +1,5 @@
 - name: Create a role with description and tags3
-  community.aws.iam_role:
+  amazon.aws.iam_role:
     name: mynewrole3
     assume_role_policy_document: >
       {

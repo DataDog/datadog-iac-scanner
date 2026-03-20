@@ -1,5 +1,5 @@
 - name: Update IAM policy on an existing KMS key
-  community.aws.aws_kms:
+  amazon.aws.kms_key:
     alias: my-kms-key
     policy: |
       { Id: auto-ebs-2, Statement: [{Action: [kms:Encrypt, kms:Decrypt, kms:ReEncrypt*,

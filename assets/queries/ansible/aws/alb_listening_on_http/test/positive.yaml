@@ -1,5 +1,5 @@
 - name: my_elb_application
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb
     security_groups:
       - sg-12345678
@@ -18,7 +18,7 @@
             TargetGroupName: targetname
     state: present
 - name: my_elb_application2
-  community.aws.elb_application_lb:
+  amazon.aws.elb_application_lb:
     name: myelb2
     security_groups:
       - sg-12345678

@@ -1,5 +1,5 @@
 - name: Use a routing policy to distribute traffic
-  community.aws.route53:
+  amazon.aws.route53:
     state: present
     zone: foo.com
     record: www.foo.com

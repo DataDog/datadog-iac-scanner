@@ -1,6 +1,6 @@
 ---
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     name: my-api
     swagger_file: my_api.yml
     stage: production
@@ -10,7 +10,7 @@
     endpoint_type: EDGE
     state: present
 - name: Update API definition to deploy new version
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     name: my-api-v2
     api_id: 'abc123321cba'
     swagger_file: my_api.yml
