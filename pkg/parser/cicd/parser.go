@@ -3,7 +3,7 @@
  *
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
-package yaml
+package cicd
 
 import (
 	"bytes"
@@ -130,15 +130,7 @@ func (p *Parser) SupportedExtensions() []string {
 // SupportedTypes returns types supported by this parser, which are ansible, cloudFormation, k8s
 func (p *Parser) SupportedTypes() map[string]bool {
 	return map[string]bool{
-		"ansible":                 true,
-		"cloudformation":          true,
-		"kubernetes":              true,
-		"crossplane":              true,
-		"knative":                 true,
-		"openapi":                 true,
-		"googledeploymentmanager": true,
-		"pulumi":                  true,
-		"serverlessfw":            true,
+		"cicd": true,
 	}
 }
 

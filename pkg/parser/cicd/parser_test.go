@@ -3,7 +3,7 @@
  *
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
-package yaml
+package cicd
 
 import (
 	"context"
@@ -32,15 +32,7 @@ func TestParser_SupportedExtensions(t *testing.T) {
 func TestParser_SupportedTypes(t *testing.T) {
 	p := &Parser{}
 	require.Equal(t, map[string]bool{
-		"ansible":                 true,
-		"cloudformation":          true,
-		"kubernetes":              true,
-		"crossplane":              true,
-		"knative":                 true,
-		"openapi":                 true,
-		"googledeploymentmanager": true,
-		"pulumi":                  true,
-		"serverlessfw":            true,
+		"cicd": true,
 	}, p.SupportedTypes())
 }
 
