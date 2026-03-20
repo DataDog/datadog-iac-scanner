@@ -1,14 +1,14 @@
 {
   "id": "e28ceb92-d588-4166-aac5-766c8f5b7472",
-  "queryName": "AWS Password Policy With Unchangeable Passwords",
+  "queryName": "AWS password policy with unchangeable passwords",
   "severity": "LOW",
   "category": "Insecure Configurations",
-  "descriptionText": "IAM password policies must permit users to change their own passwords so compromised, expired, or weak credentials can be rotated and account recovery workflows remain effective. In Ansible tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules, the boolean property controlling this must be defined and set to true — either `allow_pw_change` or `allow_password_change` depending on module version. Tasks that omit these properties or set them to false/`no` will be flagged because disabling password changes prevents credential rotation and hampers incident response and account hygiene.\n\nSecure Ansible example:\n\n```yaml\n- name: Ensure IAM password policy allows user password changes\n  community.aws.iam_password_policy:\n    allow_password_change: true\n```",
+  "descriptionText": "IAM password policies must permit users to change their own passwords so compromised, expired, or weak credentials can be rotated and account recovery workflows remain effective. In Ansible tasks using the `amazon.aws.iam_password_policy` or `iam_password_policy` modules, the boolean property controlling this must be defined and set to `true` — either `allow_pw_change` or `allow_password_change` depending on module version.\n\nTasks that omit these properties or set them to `false`/`no` are flagged because disabling password changes prevents credential rotation and hampers incident response and account hygiene.\n\nSecure Ansible example:\n\n```yaml\n- name: Ensure IAM password policy allows user password changes\n  amazon.aws.iam_password_policy:\n    allow_password_change: true\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/aws_password_policy_with_unchangeable_passwords",
   "platform": "Ansible",
   "descriptionID": "5a7cf92f",
   "cloudProvider": "aws",
   "cwe": "620",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/iam_password_policy_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_password_policy_module.html"
 }

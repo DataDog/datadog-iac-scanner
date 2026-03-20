@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "SQL Server Predictable Admin Account Name",
+    "queryName": "SQL Server predictable admin account name",
     "severity": "LOW",
     "line": 7
   },
   {
-    "queryName": "SQL Server Predictable Admin Account Name",
+    "queryName": "SQL Server predictable admin account name",
     "severity": "LOW",
     "line": 14
   },
   {
-    "queryName": "SQL Server Predictable Admin Account Name",
+    "queryName": "SQL Server predictable admin account name",
     "severity": "LOW",
     "line": 21
   }

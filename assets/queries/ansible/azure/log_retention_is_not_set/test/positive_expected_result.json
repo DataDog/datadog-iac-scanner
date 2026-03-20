@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Log Retention Is Not Set",
+    "queryName": "Log retention is not set",
     "severity": "MEDIUM",
     "line": 7
   }

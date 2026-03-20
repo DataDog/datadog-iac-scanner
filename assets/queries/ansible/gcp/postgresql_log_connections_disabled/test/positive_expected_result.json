@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "PostgreSQL Log Connections Disabled",
+    "queryName": "PostgreSQL log connections disabled",
     "severity": "MEDIUM",
     "line": 5
   },
   {
-    "queryName": "PostgreSQL Log Connections Disabled",
+    "queryName": "PostgreSQL log connections disabled",
     "severity": "MEDIUM",
     "line": 16
   }

@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "AKS Network Policy Misconfigured",
+    "queryName": "AKS network policy misconfigured",
     "severity": "LOW",
     "line": 10
   },
   {
-    "queryName": "AKS Network Policy Misconfigured",
+    "queryName": "AKS network policy misconfigured",
     "severity": "LOW",
     "line": 24
   }

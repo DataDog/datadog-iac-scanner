@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "Storage Container Is Publicly Accessible",
+    "queryName": "Storage container is publicly accessible",
     "severity": "HIGH",
     "line": 9
   },
   {
-    "queryName": "Storage Container Is Publicly Accessible",
+    "queryName": "Storage container is publicly accessible",
     "severity": "HIGH",
     "line": 17
   }

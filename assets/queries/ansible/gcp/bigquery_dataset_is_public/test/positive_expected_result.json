@@ -1,7 +1,7 @@
 [
-	{
-		"queryName": "BigQuery Dataset Is Public",
-		"severity": "HIGH",
-		"line": 6
-	}
+  {
+    "queryName": "BigQuery dataset is public",
+    "severity": "HIGH",
+    "line": 6
+  }
 ]

@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "AMI Not Encrypted",
+    "queryName": "AMI not encrypted",
     "severity": "MEDIUM",
     "line": 6
   },
   {
-    "queryName": "AMI Not Encrypted",
+    "queryName": "AMI not encrypted",
     "severity": "MEDIUM",
     "line": 13
   }

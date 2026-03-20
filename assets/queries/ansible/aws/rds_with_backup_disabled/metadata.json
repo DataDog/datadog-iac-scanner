@@ -1,13 +1,13 @@
 {
   "id": "e69890e6-fce5-461d-98ad-cb98318dfc96",
-  "queryName": "RDS With Backup Disabled",
+  "queryName": "RDS instance with backup disabled",
   "severity": "MEDIUM",
   "category": "Backup",
-  "descriptionText": "An RDS instance with automated backups disabled (backup_retention_period set to 0) cannot perform point-in-time recovery and is at increased risk of permanent data loss and regulatory non‑compliance. For Ansible resources using `community.aws.rds_instance` or `rds_instance`, the `backup_retention_period` property must be defined and set to an integer greater than 0 (value is in days). Resources missing this property or with `backup_retention_period: 0` will be flagged; set it to at least 1 (commonly 7 or more) based on your recovery objectives. Secure configuration example for Ansible:\n\n```yaml\n- name: Create RDS instance with automated backups\n  community.aws.rds_instance:\n    db_instance_identifier: mydb\n    engine: postgres\n    instance_class: db.t3.medium\n    allocated_storage: 20\n    backup_retention_period: 7\n```",
+  "descriptionText": "An RDS instance with automated backups disabled (`backup_retention_period` set to `0`) cannot perform point-in-time recovery and is at increased risk of permanent data loss and regulatory non‑compliance.\n\nFor Ansible resources using `amazon.aws.rds_instance` or `rds_instance`, the `backup_retention_period` property must be defined and set to an integer greater than `0` (value is in days). Resources missing this property or with `backup_retention_period: 0` are flagged. Set it to at least `1` (commonly 7 or more) based on your recovery objectives.\n\nSecure configuration example for Ansible:\n\n```yaml\n- name: Create RDS instance with automated backups\n  amazon.aws.rds_instance:\n    db_instance_identifier: mydb\n    engine: postgres\n    instance_class: db.t3.medium\n    allocated_storage: 20\n    backup_retention_period: 7\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/rds_with_backup_disabled",
   "platform": "Ansible",
   "descriptionID": "51f94eee",
   "cloudProvider": "aws",
   "cwe": "754",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-backup_retention_period"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html#parameter-backup_retention_period"
 }

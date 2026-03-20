@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Redis Not Compliant",
+    "queryName": "Redis not compliant",
     "severity": "HIGH",
     "line": 6
   }

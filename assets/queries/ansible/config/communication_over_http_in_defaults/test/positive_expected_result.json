@@ -1,7 +1,7 @@
 [
-	{
-		"queryName": "Communication Over HTTP In Defaults",
-		"severity": "MEDIUM",
-		"line": 5
-	}
+  {
+    "queryName": "Communication over HTTP in defaults",
+    "severity": "MEDIUM",
+    "line": 5
+  }
 ]

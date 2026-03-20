@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "S3 Bucket With All Permissions",
+    "queryName": "S3 bucket with all permissions",
     "severity": "CRITICAL",
     "line": 5
   }

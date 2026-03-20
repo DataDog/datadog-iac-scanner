@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "CA Certificate Identifier Is Outdated",
+    "queryName": "CA certificate identifier is outdated",
     "severity": "MEDIUM",
     "line": 10
   },
   {
-    "queryName": "CA Certificate Identifier Is Outdated",
+    "queryName": "CA certificate identifier is outdated",
     "severity": "MEDIUM",
     "line": 12
   }

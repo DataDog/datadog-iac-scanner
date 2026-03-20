@@ -1,13 +1,13 @@
 {
   "id": "d5ec2080-340a-4259-b885-f833c4ea6a31",
-  "queryName": "Certificate RSA Key Bytes Lower Than 256",
+  "queryName": "Certificate RSA key bytes lower than 256",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
-  "descriptionText": "Certificates must use sufficiently strong RSA keys to prevent cryptographic compromise; RSA keys smaller than 2048 bits can be factored with modern compute, enabling certificate impersonation and decryption of TLS traffic. For Ansible tasks using the `community.aws.aws_acm` module, ensure the `certificate.rsa_key_bytes` property is defined and set to at least `256` (bytes), which corresponds to 2048 bits. Resources missing this property or with `rsa_key_bytes < 256` will be flagged as insecure; larger values (for example, `rsa_key_bytes: 512` for 4096-bit keys) are acceptable.\n\nSecure example:\n\n```yaml\n- name: Request ACM certificate with 2048-bit RSA key\n  community.aws.aws_acm:\n    name: example-cert\n    certificate:\n      rsa_key_bytes: 256\n    state: present\n```",
+  "descriptionText": "Certificates must use sufficiently strong RSA keys to prevent cryptographic compromise. RSA keys smaller than 2048 bits can be factored with modern compute, enabling certificate impersonation and decryption of TLS traffic.\n\nFor Ansible tasks using the `community.aws.acm_certificate` module, ensure the `certificate.rsa_key_bytes` property is defined and set to at least `256` (bytes), which corresponds to 2048 bits. Resources missing this property or with `rsa_key_bytes < 256` are flagged as insecure. Larger values (for example, `rsa_key_bytes: 512` for 4096-bit keys) are acceptable.\n\nSecure example:\n\n```yaml\n- name: Request ACM certificate with 2048-bit RSA key\n  community.aws.acm_certificate:\n    name: example-cert\n    certificate:\n      rsa_key_bytes: 256\n    state: present\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/certificate_rsa_key_bytes_lower_than_256",
   "platform": "Ansible",
   "descriptionID": "97dc7eba",
   "cloudProvider": "aws",
   "cwe": "295",
-  "providerUrl": "https://docs.ansible.com/ansible/2.10/collections/community/aws/aws_acm_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/acm_certificate_module.html"
 }

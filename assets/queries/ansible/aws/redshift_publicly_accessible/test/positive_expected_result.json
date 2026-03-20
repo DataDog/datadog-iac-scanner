@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Redshift Publicly Accessible",
+    "queryName": "Redshift publicly accessible",
     "severity": "HIGH",
     "line": 9
   },
   {
-    "queryName": "Redshift Publicly Accessible",
+    "queryName": "Redshift publicly accessible",
     "severity": "HIGH",
     "line": 17
   },
   {
-    "queryName": "Redshift Publicly Accessible",
+    "queryName": "Redshift publicly accessible",
     "severity": "HIGH",
     "line": 25
   }

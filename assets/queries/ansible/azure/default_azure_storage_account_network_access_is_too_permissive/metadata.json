@@ -1,9 +1,9 @@
 {
   "id": "ca4df748-613a-4fbf-9c76-f02cbd580307",
-  "queryName": "Default Azure Storage Account Network Access Is Too Permissive",
+  "queryName": "Default Azure storage account network access is too permissive",
   "severity": "HIGH",
   "category": "Access Control",
-  "descriptionText": "Storage accounts must not permit broad public access or use a permissive default ACL because public network access or a default-allow policy can expose blobs, queues, and file storage to unauthorized users and increase the risk of data exfiltration. For Ansible resources using `azure.azcollection.azure_rm_storageaccount` or `azure_rm_storageaccount`, explicitly set `public_network_access` to `Disabled` and set `network_acls.default_action` to `Deny`. Resources that omit `public_network_access` (the default is `Enabled`), that set `public_network_access: Enabled`, or that set `network_acls.default_action: Allow` will be flagged. Secure configuration example:\n\n```yaml\n- name: Create secure Azure Storage Account\n  azure_rm_storageaccount:\n    resource_group: my-rg\n    name: mystorageacct\n    location: eastus\n    public_network_access: Disabled\n    network_acls:\n      default_action: Deny\n```",
+  "descriptionText": "Storage accounts must not permit broad public access or use a permissive default ACL. Public network access or a default-allow policy can expose blobs, queues, and file storage to unauthorized users, increasing the risk of data exfiltration.\n\nFor Ansible resources using `azure.azcollection.azure_rm_storageaccount` or `azure_rm_storageaccount`, explicitly set `public_network_access` to `Disabled` and set `network_acls.default_action` to `Deny`. Resources that omit `public_network_access` (the default is `Enabled`), that set `public_network_access: Enabled`, or that set `network_acls.default_action: Allow` are flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Create secure Azure Storage Account\n  azure_rm_storageaccount:\n    resource_group: my-rg\n    name: mystorageacct\n    location: eastus\n    public_network_access: Disabled\n    network_acls:\n      default_action: Deny\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/default_azure_storage_account_network_access_is_too_permissive",
   "platform": "Ansible",
   "descriptionID": "ca4df748",

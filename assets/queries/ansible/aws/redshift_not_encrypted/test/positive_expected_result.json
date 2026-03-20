@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Redshift Not Encrypted",
+    "queryName": "Redshift cluster is not encrypted",
     "severity": "HIGH",
     "line": 2
   },
   {
-    "queryName": "Redshift Not Encrypted",
+    "queryName": "Redshift cluster is not encrypted",
     "severity": "HIGH",
     "line": 19
   },
   {
-    "queryName": "Redshift Not Encrypted",
+    "queryName": "Redshift cluster is not encrypted",
     "severity": "HIGH",
     "line": 29
   }

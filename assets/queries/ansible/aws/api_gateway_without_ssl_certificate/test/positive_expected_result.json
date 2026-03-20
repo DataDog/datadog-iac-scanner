@@ -1,25 +1,22 @@
 [
-	{
-		"queryName": "API Gateway Without SSL Certificate",
-		"severity": "MEDIUM",
-		"line": 7
-	},
-
-	{
-		"queryName": "API Gateway Without SSL Certificate",
-		"severity": "MEDIUM",
-		"line": 9
-	},
-
-	{
-		"queryName": "API Gateway Without SSL Certificate",
-		"severity": "MEDIUM",
-		"line": 24
-	},
-
-	{
-		"queryName": "API Gateway Without SSL Certificate",
-		"severity": "MEDIUM",
-		"line": 26
-	}
+  {
+    "queryName": "API Gateway without SSL certificate",
+    "severity": "MEDIUM",
+    "line": 7
+  },
+  {
+    "queryName": "API Gateway without SSL certificate",
+    "severity": "MEDIUM",
+    "line": 9
+  },
+  {
+    "queryName": "API Gateway without SSL certificate",
+    "severity": "MEDIUM",
+    "line": 24
+  },
+  {
+    "queryName": "API Gateway without SSL certificate",
+    "severity": "MEDIUM",
+    "line": 26
+  }
 ]

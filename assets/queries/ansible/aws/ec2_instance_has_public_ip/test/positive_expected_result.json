@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "EC2 Instance Has Public IP",
+    "queryName": "EC2 instance has public IP",
     "severity": "MEDIUM",
     "line": 8
   },
   {
-    "queryName": "EC2 Instance Has Public IP",
+    "queryName": "EC2 instance has public IP",
     "severity": "MEDIUM",
     "line": 17
   }

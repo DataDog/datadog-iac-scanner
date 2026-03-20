@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "Launch Configuration Is Not Encrypted",
+    "queryName": "Launch configuration is not encrypted",
     "severity": "HIGH",
     "line": 8
   },
   {
-    "queryName": "Launch Configuration Is Not Encrypted",
+    "queryName": "Launch configuration is not encrypted",
     "severity": "HIGH",
     "line": 22
   },
   {
-    "queryName": "Launch Configuration Is Not Encrypted",
+    "queryName": "Launch configuration is not encrypted",
     "severity": "HIGH",
     "line": 29
   }

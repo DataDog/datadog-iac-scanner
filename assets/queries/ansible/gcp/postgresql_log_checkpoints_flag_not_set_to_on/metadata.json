@@ -1,9 +1,9 @@
 {
   "id": "89afe3f0-4681-4ce3-89ed-896cebd4277c",
-  "queryName": "PostgreSQL log_checkpoints Flag Not Set To ON",
+  "queryName": "PostgreSQL log_checkpoints flag not set to on",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "PostgreSQL Cloud SQL instances must have the `log_checkpoints` flag enabled so checkpoint events are recorded; without these logs, crash recovery and forensic analysis are hindered and it becomes harder to detect or investigate anomalous or destructive activity. For Ansible tasks using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, the `settings.databaseFlags` list must include an entry with `name: log_checkpoints` and `value: on`. Tasks that omit the `settings` block, omit `databaseFlags`, or have `log_checkpoints` set to any value other than `on` will be flagged. Secure example configuration in an Ansible task:\n\n```yaml\n- name: Create Cloud SQL PostgreSQL instance with checkpoint logging\n  google.cloud.gcp_sql_instance:\n    name: my-postgres-instance\n    database_version: POSTGRES_13\n    settings:\n      databaseFlags:\n        - name: log_checkpoints\n          value: on\n```",
+  "descriptionText": "PostgreSQL Cloud SQL instances must have the `log_checkpoints` flag enabled so checkpoint events are recorded. Without these logs, crash recovery and forensic analysis are hindered, making it harder to detect or investigate anomalous or destructive activity.\n\nFor Ansible tasks using `google.cloud.gcp_sql_instance` or `gcp_sql_instance`, the `settings.databaseFlags` list must include an entry with `name: log_checkpoints` and `value: on`. Tasks that omit the `settings` block, omit `databaseFlags`, or have `log_checkpoints` set to any value other than `on` are flagged.\n\nSecure example configuration in an Ansible task:\n\n```yaml\n- name: Create Cloud SQL PostgreSQL instance with checkpoint logging\n  google.cloud.gcp_sql_instance:\n    name: my-postgres-instance\n    database_version: POSTGRES_13\n    settings:\n      databaseFlags:\n        - name: log_checkpoints\n          value: on\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/postgresql_log_checkpoints_flag_not_set_to_on",
   "platform": "Ansible",
   "descriptionID": "4cdc64c3",

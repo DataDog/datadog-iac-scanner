@@ -1,14 +1,14 @@
 {
   "id": "5eccd62d-8b4d-46d3-83ea-1879f3cbd3ce",
-  "queryName": "CA Certificate Identifier Is Outdated",
+  "queryName": "CA certificate identifier is outdated",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "RDS instances must specify a CA certificate identifier so the database uses a known AWS CA for TLS connections and to avoid broken or insecure certificate chains during CA rotations. For Ansible RDS resources (modules `community.aws.rds_instance` and `rds_instance`) the `ca_certificate_identifier` property must be defined and set to `rds-ca-2019`. Resources missing this property or specifying a different value will be flagged; update the value if AWS publishes a newer CA identifier.\n\nSecure Ansible task example:\n\n```yaml\n- name: create RDS instance with CA\n  community.aws.rds_instance:\n    db_instance_identifier: my-db\n    engine: mysql\n    instance_class: db.t3.medium\n    allocated_storage: 20\n    username: admin\n    password: secret\n    ca_certificate_identifier: rds-ca-2019\n```",
+  "descriptionText": "RDS instances must specify a CA certificate identifier so the database uses a known AWS CA for TLS connections and avoids broken or insecure certificate chains during CA rotations. For Ansible RDS resources (modules `amazon.aws.rds_instance` and `rds_instance`), the `ca_certificate_identifier` property must be defined and set to `rds-ca-2019`. Resources missing this property or specifying a different value are flagged. Update the value if AWS publishes a newer CA identifier.\n\nSecure Ansible task example:\n\n```yaml\n- name: create RDS instance with CA\n  amazon.aws.rds_instance:\n    db_instance_identifier: my-db\n    engine: mysql\n    instance_class: db.t3.medium\n    allocated_storage: 20\n    username: admin\n    password: secret\n    ca_certificate_identifier: rds-ca-2019\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ca_certificate_identifier_is_outdated",
   "platform": "Ansible",
   "descriptionID": "d92aa922",
   "cloudProvider": "aws",
   "cwe": "295",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/rds_instance_module.html#parameter-ca_certificate_identifier"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/rds_instance_module.html#parameter-ca_certificate_identifier"
 }

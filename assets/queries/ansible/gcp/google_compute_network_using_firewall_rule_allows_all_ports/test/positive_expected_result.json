@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Google Compute Network Using Firewall Rule that Allows All Ports",
+    "queryName": "Google Compute network using firewall rule that allows all ports",
     "severity": "MEDIUM",
     "line": 19,
     "fileName": "positive.yaml"

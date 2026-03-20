@@ -1,16 +1,16 @@
 [
   {
-    "queryName": "SQL DB Instance Publicly Accessible",
+    "queryName": "SQL DB instance publicly accessible",
     "severity": "CRITICAL",
     "line": 12
   },
   {
-    "queryName": "SQL DB Instance Publicly Accessible",
+    "queryName": "SQL DB instance publicly accessible",
     "severity": "CRITICAL",
     "line": 24
   },
   {
-    "queryName": "SQL DB Instance Publicly Accessible",
+    "queryName": "SQL DB instance publicly accessible",
     "severity": "CRITICAL",
     "line": 34
   }

@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "High Google KMS Crypto Key Rotation Period",
+    "queryName": "High Google KMS crypto key rotation period",
     "severity": "MEDIUM",
     "line": 18
   },
   {
-    "queryName": "High Google KMS Crypto Key Rotation Period",
+    "queryName": "High Google KMS crypto key rotation period",
     "severity": "MEDIUM",
     "line": 23
   }

@@ -1,14 +1,14 @@
 [
-	{
-		"queryName": "Logging of Sensitive Data In Defaults",
-		"severity": "LOW",
-        "filename": "positive1.cfg",
-		"line": 1
-	},
-    {
-		"queryName": "Logging of Sensitive Data In Defaults",
-		"severity": "LOW",
-        "filename": "positive2.cfg",
-		"line": 39
-	}
+  {
+    "queryName": "Logging of sensitive data in defaults",
+    "severity": "LOW",
+    "filename": "positive1.cfg",
+    "line": 1
+  },
+  {
+    "queryName": "Logging of sensitive data in defaults",
+    "severity": "LOW",
+    "filename": "positive2.cfg",
+    "line": 39
+  }
 ]

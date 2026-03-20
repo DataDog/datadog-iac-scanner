@@ -1,9 +1,9 @@
 {
   "id": "b9ef8c0e-1392-4df4-aa84-2e0f95681c75",
-  "queryName": "Instance Uses Metadata Service IMDSv1",
+  "queryName": "Instance uses metadata service IMDSv1",
   "severity": "LOW",
   "category": "Insecure Configurations",
-  "descriptionText": "The EC2 instance metadata service should require IMDSv2 session tokens to reduce the risk of metadata and credential exposure via SSRF or from compromised instances. For Ansible-managed EC2 resources (`amazon.aws.ec2_instance`, `community.aws.ec2_instance`, `community.aws.autoscaling_launch_config`, `community.aws.ec2_lc`), the `metadata_options.http_tokens` property must be set to `required` to enforce IMDSv2. Resources missing `metadata_options`, missing `metadata_options.http_tokens`, or where `http_tokens` is not `required` will be flagged as insecure.\n\nSecure configuration example:\n\n```yaml\n- name: Launch EC2 instance with IMDSv2 required\n  amazon.aws.ec2_instance:\n    name: my-instance\n    image_id: ami-0123456789abcdef0\n    instance_type: t3.micro\n    metadata_options:\n      http_tokens: required\n```",
+  "descriptionText": "The EC2 instance metadata service should require IMDSv2 session tokens to reduce the risk of metadata and credential exposure via SSRF or from compromised instances.\n\nFor Ansible-managed EC2 resources (`amazon.aws.ec2_instance`, `community.aws.autoscaling_launch_config`), the `metadata_options.http_tokens` property must be set to `required` to enforce IMDSv2. Resources missing `metadata_options`, missing `metadata_options.http_tokens`, or where `http_tokens` is not `required` are flagged as insecure.\n\nSecure configuration example:\n\n```yaml\n- name: Launch EC2 instance with IMDSv2 required\n  amazon.aws.ec2_instance:\n    name: my-instance\n    image_id: ami-0123456789abcdef0\n    instance_type: t3.micro\n    metadata_options:\n      http_tokens: required\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/instance_uses_metadata_service_imdsv1",
   "platform": "Ansible",
   "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/ec2_instance_module.html",

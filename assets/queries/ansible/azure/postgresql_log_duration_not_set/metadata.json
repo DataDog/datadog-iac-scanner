@@ -1,9 +1,9 @@
 {
   "id": "729ebb15-8060-40f7-9017-cb72676a5487",
-  "queryName": "PostgreSQL Log Duration Not Set",
+  "queryName": "PostgreSQL log duration not set",
   "severity": "MEDIUM",
   "category": "Observability",
-  "descriptionText": "Enable the PostgreSQL server parameter `log_duration` to record statement execution durations; without duration logging, slow queries and malicious long-running activity can go undetected, hindering timely detection and forensic investigation. In Ansible tasks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` module, the parameter entry with `name: log_duration` must have `value: 'ON'`. Tasks missing the `value` property or with a value other than `ON` (case-insensitive) will be flagged.\n\nSecure Ansible task example:\n\n```yaml\n- name: Enable log_duration for PostgreSQL server\n  azure.azcollection.azure_rm_postgresqlconfiguration:\n    resource_group: myResourceGroup\n    server_name: myPostgresServer\n    name: log_duration\n    value: \"ON\"\n```",
+  "descriptionText": "Enable the PostgreSQL server parameter `log_duration` to record statement execution durations. Without duration logging, slow queries and malicious long-running activity can go undetected, hindering timely detection and forensic investigation.\n\nIn Ansible tasks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` module, the parameter entry with `name: log_duration` must have `value: 'ON'`. Tasks missing the `value` property or with a value other than `ON` (case-insensitive) are flagged.\n\nSecure Ansible task example:\n\n```yaml\n- name: Enable log_duration for PostgreSQL server\n  azure.azcollection.azure_rm_postgresqlconfiguration:\n    resource_group: myResourceGroup\n    server_name: myPostgresServer\n    name: log_duration\n    value: \"ON\"\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/postgresql_log_duration_not_set",
   "platform": "Ansible",
   "descriptionID": "a30f009d",

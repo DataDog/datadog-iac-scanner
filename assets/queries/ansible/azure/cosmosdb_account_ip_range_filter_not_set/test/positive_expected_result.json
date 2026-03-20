@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "CosmosDB Account IP Range Filter Not Set",
+    "queryName": "CosmosDB account IP range filter not set",
     "severity": "CRITICAL",
     "line": 2
   }

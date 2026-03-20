@@ -1,31 +1,31 @@
 [
   {
-    "queryName": "PostgreSQL Log Connections Not Set",
+    "queryName": "PostgreSQL log connections not set",
     "severity": "MEDIUM",
     "line": 7
   },
   {
-    "queryName": "PostgreSQL Log Connections Not Set",
+    "queryName": "PostgreSQL log connections not set",
     "severity": "MEDIUM",
     "line": 13
   },
   {
-    "queryName": "PostgreSQL Log Connections Not Set",
+    "queryName": "PostgreSQL log connections not set",
     "severity": "MEDIUM",
     "line": 19
   },
   {
-    "queryName": "PostgreSQL Log Connections Not Set",
+    "queryName": "PostgreSQL log connections not set",
     "severity": "MEDIUM",
     "line": 25
   },
   {
-    "queryName": "PostgreSQL Log Connections Not Set",
+    "queryName": "PostgreSQL log connections not set",
     "severity": "MEDIUM",
     "line": 31
   },
   {
-    "queryName": "PostgreSQL Log Connections Not Set",
+    "queryName": "PostgreSQL log connections not set",
     "severity": "MEDIUM",
     "line": 37
   }

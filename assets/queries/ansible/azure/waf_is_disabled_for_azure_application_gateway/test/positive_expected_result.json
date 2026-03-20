@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "WAF Is Disabled For Azure Application Gateway",
+    "queryName": "WAF is disabled for Azure Application Gateway",
     "severity": "MEDIUM",
     "line": 7
   }

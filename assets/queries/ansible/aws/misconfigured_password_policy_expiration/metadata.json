@@ -1,14 +1,14 @@
 {
   "id": "3f2cf811-88fa-4eda-be45-7a191a18aba9",
-  "queryName": "Misconfigured Password Policy Expiration",
+  "queryName": "Misconfigured password policy expiration",
   "severity": "LOW",
   "category": "Best Practices",
-  "descriptionText": "IAM account password policies must enforce regular password expiration to limit the window of exposure for compromised or leaked credentials and to reduce the risk of long-lived unauthorized access. In Ansible, tasks using the `community.aws.iam_password_policy` or `iam_password_policy` modules must define `pw_max_age` or `password_max_age` with a value of 90 days or fewer (no more than 90). Resources that omit both properties or set either property to a value greater than 90 will be flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Enforce IAM password expiration\n  community.aws.iam_password_policy:\n    password_max_age: 90\n```",
+  "descriptionText": "IAM account password policies must enforce regular password expiration to limit exposure from compromised or leaked credentials and reduce the risk of long-lived unauthorized access. In Ansible, tasks using the `amazon.aws.iam_password_policy` or `iam_password_policy` modules must define `pw_max_age` or `password_max_age` with a value of 90 days or fewer. Resources that omit both properties or set either to a value greater than 90 are flagged.\n\nSecure configuration example:\n\n```yaml\n- name: Enforce IAM password expiration\n  amazon.aws.iam_password_policy:\n    password_max_age: 90\n```",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/misconfigured_password_policy_expiration",
   "platform": "Ansible",
   "descriptionID": "80db60d5",
   "cloudProvider": "aws",
   "cwe": "521",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/iam_password_policy_module.html"
+  "providerUrl": "https://docs.ansible.com/ansible/latest/collections/amazon/aws/iam_password_policy_module.html"
 }

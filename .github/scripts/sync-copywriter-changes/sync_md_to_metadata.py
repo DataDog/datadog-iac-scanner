@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple
 
 def extract_informations_from_md(
     content: str,
-) -> tuple[str | None, str | None, str | None, str | None]:
+) -> tuple[str | None, str | None, str | None, str | None, str | None]:
     """
     Extract the informations from markdown content.
 
@@ -27,7 +27,7 @@ def extract_informations_from_md(
         content: Markdown content (full file including frontmatter)
 
     Returns:
-        Query name, description, severity and category
+        Query name, description, severity, category and provider_url
     """
 
     # Extract query name from title in frontmatter
@@ -64,7 +64,15 @@ def extract_informations_from_md(
     if category_match:
         category = category_match.group(1).strip()
 
-    return query_name, description, severity, category
+    # Extract Provider Reference URL from Learn More section
+    provider_url = None
+    provider_url_pattern = r'\[Provider Reference\]\((https?://[^)]+)\)'
+    provider_url_match = re.search(provider_url_pattern, content)
+
+    if provider_url_match:
+        provider_url = provider_url_match.group(1).strip()
+
+    return query_name, description, severity, category, provider_url
 
 
 def find_json_paths(
@@ -130,6 +138,7 @@ def update_metadata_json(
     description: str | None,
     severity: str | None,
     category: str | None,
+    provider_url: str | None = None,
     dry_run: bool = False,
 ) -> bool:
     """
@@ -185,6 +194,13 @@ def update_metadata_json(
         changes.append(f"  category: '{new_category}' -> '{category}'")
         if not dry_run:
             metadata["category"] = category
+
+    # Update providerUrl
+    if provider_url and metadata.get("providerUrl") != provider_url:
+        old_provider_url = metadata.get("providerUrl", "")
+        changes.append(f"  providerUrl: '{old_provider_url}' -> '{provider_url}'")
+        if not dry_run:
+            metadata["providerUrl"] = provider_url
 
     if changes:
         print(f"\n{'[DRY RUN] ' if dry_run else ''}Updating {metadata_path}:")
@@ -308,7 +324,7 @@ def sync_md_to_metadata(
                 content = f.read()
 
             # Extract information from full markdown content
-            name, description, severity, category = extract_informations_from_md(
+            name, description, severity, category, provider_url = extract_informations_from_md(
                 content
             )
 
@@ -334,6 +350,7 @@ def sync_md_to_metadata(
                 description,
                 severity,
                 category,
+                provider_url,
                 dry_run,
             )
             positive_updated = update_positive_expected_result_json(

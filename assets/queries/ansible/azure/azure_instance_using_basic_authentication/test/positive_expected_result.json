@@ -1,6 +1,6 @@
 [
   {
-    "queryName": "Azure Instance Using Basic Authentication",
+    "queryName": "Azure instance using basic authentication",
     "severity": "MEDIUM",
     "line": 3,
     "fileName": "positive.yaml"

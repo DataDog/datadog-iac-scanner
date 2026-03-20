@@ -1,11 +1,11 @@
 [
   {
-    "queryName": "AKS RBAC Disabled",
+    "queryName": "AKS RBAC disabled",
     "severity": "MEDIUM",
     "line": 21
   },
   {
-    "queryName": "AKS RBAC Disabled",
+    "queryName": "AKS RBAC disabled",
     "severity": "MEDIUM",
     "line": 23
   }

@@ -1,9 +1,9 @@
 {
   "id": "c62746cf-92d5-4649-9acf-7d48d086f2ee",
-  "queryName": "Storage Account Not Using Latest TLS Encryption Version",
+  "queryName": "Storage account not using latest TLS encryption version",
   "severity": "MEDIUM",
   "category": "Encryption",
-  "descriptionText": "Storage accounts must enforce TLS 1.2 to protect data in transit and to prevent use of older, vulnerable TLS versions or downgrade attacks. For Ansible, the `azure_rm_storageaccount` or `azure.azcollection.azure_rm_storageaccount` resource must include the `minimum_tls_version` property set to `\"TLS1_2\"`. Resources missing `minimum_tls_version` or configured with any value other than `\"TLS1_2\"` (for example `\"TLS1_0\"` or `\"TLS1_1\"`) will be flagged.",
+  "descriptionText": "Storage accounts must enforce TLS 1.2 to protect data in transit and prevent downgrade attacks using older, vulnerable TLS versions. For Ansible, the `azure_rm_storageaccount` or `azure.azcollection.azure_rm_storageaccount` resource must include the `minimum_tls_version` property set to `\"TLS1_2\"`. Resources missing `minimum_tls_version` or configured with any value other than `\"TLS1_2\"` (for example `\"TLS1_0\"` or `\"TLS1_1\"`) are flagged.",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/storage_account_not_using_latest_tls_encryption_version",
   "platform": "Ansible",
   "descriptionID": "f050a4f3",
