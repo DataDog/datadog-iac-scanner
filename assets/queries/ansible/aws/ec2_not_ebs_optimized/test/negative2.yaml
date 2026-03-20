@@ -1,5 +1,5 @@
 - name: Launch instance type EBS-optimized by default
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: app-server
     key_name: mykey
     instance_type: m5.large

@@ -1,5 +1,5 @@
 - name: Create IAM Managed Policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     name: my-iam-policy
     policy_name: "ManagedPolicy"
     policy:

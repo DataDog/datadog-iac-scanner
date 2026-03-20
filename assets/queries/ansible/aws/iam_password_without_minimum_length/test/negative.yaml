@@ -1,5 +1,5 @@
 - name: Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -12,7 +12,7 @@
     pw_expire: false
 
 - name: aws_iam_account_password_policy
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     minimum_password_length: 8
     require_symbols: false

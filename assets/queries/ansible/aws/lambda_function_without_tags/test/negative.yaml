@@ -1,5 +1,5 @@
 - name: add tags
-  community.aws.lambda:
+  amazon.aws.lambda:
     name: 'Lambda function'
     state: present
     zip_file: 'code.zip'

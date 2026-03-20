@@ -1,5 +1,5 @@
 - name: Start an instance and have it begin a Tower callback on boot v3
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: tower-callback-test
     key_name: prod-ssh-key
     vpc_subnet_id: subnet-5ca1ab1e

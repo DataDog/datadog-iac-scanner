@@ -1,5 +1,5 @@
 - name: create multi-region trail with validation and tags negative
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket

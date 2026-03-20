@@ -1,5 +1,5 @@
 - name: Launch instance in subnet from default VPC
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: db-instance
     key_name: mykey
     instance_type: t2.micro

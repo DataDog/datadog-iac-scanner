@@ -6,7 +6,7 @@
     swagger_file: my_api.yml
     validate_certs: yes
 - name: Setup AWS API Gateway setup on AWS and deploy API definition v2
-  community.aws.aws_api_gateway:
+  community.aws.api_gateway:
     name: my-api-v2
     swagger_file: my_api.yml
     stage: production

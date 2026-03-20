@@ -1,5 +1,5 @@
 - name: Launch EBS-optimized type with false
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: app-server
     key_name: mykey
     instance_type: m5.large

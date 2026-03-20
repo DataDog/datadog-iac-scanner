@@ -1,5 +1,5 @@
 - name: My project v2
-  community.aws.aws_codebuild:
+  community.aws.codebuild_project:
     name: my-codebuild-project
     description: My nice little project
     service_role: arn:aws:iam::123123:role/service-role/code-build-service-role

@@ -1,5 +1,5 @@
 - name: Create an ec2 launch template
-  community.aws.ec2_launch_template:
+  amazon.aws.ec2_launch_template:
     name: "my_template"
     image_id: "ami-04b762b4289fba92b"
     key_name: my_ssh_key
@@ -7,7 +7,7 @@
     network_interfaces:
       associate_public_ip_address: true
 - name: start an instance with a public IP address
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: "public-compute-instance"
     key_name: "prod-ssh-key"
     vpc_subnet_id: subnet-5ca1ab1e
