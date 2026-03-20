@@ -44,7 +44,7 @@ lint: mod-tidy
 build: ## go build
 build: generate
 	$(call print-target)
-	@go build -o ${TARGET_BIN} -ldflags "-X ${CONSTANTS_PATH}.SCMCommit=${COMMIT} -X ${CONSTANTS_PATH}.Version=${VERSION} -X ${CONSTANTS_PATH}.BaseURL=${DESCRIPTIONS_URL}" \
+	@CGO_ENABLED=1 go build -mod=mod -o ${TARGET_BIN} -ldflags "-X ${CONSTANTS_PATH}.SCMCommit=${COMMIT} -X ${CONSTANTS_PATH}.Version=${VERSION} -X ${CONSTANTS_PATH}.BaseURL=${DESCRIPTIONS_URL}" \
 		github.com/DataDog/datadog-iac-scanner/cmd/scanner
 
 

@@ -28,6 +28,8 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tdewolff/minify/v2 v2.24.9
 	github.com/tidwall/gjson v1.18.0
+	github.com/tree-sitter/go-tree-sitter v0.25.0
+	github.com/tree-sitter/tree-sitter-bash v0.25.1
 	github.com/urfave/cli/v3 v3.6.2
 	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/yargevad/filepathx v1.0.0
@@ -114,6 +116,7 @@ require (
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/lib/pq v1.11.2 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
+	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/term v0.5.2 // indirect

@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -389,45 +388,6 @@ func Test_Resolve(t *testing.T) {
 	resolved, _, err := parser.Resolve(ctx, []byte(have), "test.yaml", true, 15)
 	require.NoError(t, err)
 	require.Equal(t, []byte(have), resolved)
-}
-
-func TestYaml_processElements(t *testing.T) {
-	type args struct {
-		elements map[string]interface{}
-		filePath string
-	}
-	tests := []struct {
-		name     string
-		args     args
-		wantCert map[string]interface{}
-		wantSwag string
-	}{
-		{
-			name: "test_process_elements",
-			args: args{
-				elements: map[string]interface{}{
-					"swagger_file": "test",
-					"certificate":  filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-				},
-				filePath: filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-			},
-			wantCert: map[string]interface{}{
-				"expiration_date": [3]int{2022, 3, 27},
-				"file":            filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-				"rsa_key_bytes":   512,
-			},
-			wantSwag: "test",
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			processElements(ctx, tt.args.elements, tt.args.filePath)
-			require.Equal(t, tt.wantCert, tt.args.elements["certificate"])
-			require.Equal(t, tt.wantSwag, tt.args.elements["swagger_file"])
-		})
-	}
 }
 
 func TestModel_TestYamlParser(t *testing.T) {

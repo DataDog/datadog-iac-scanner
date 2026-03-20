@@ -26,7 +26,7 @@ builds:
       - -X github.com/DataDog/datadog-iac-scanner/internal/constants.Version={{ .Version }}
       - -X github.com/DataDog/datadog-iac-scanner/internal/constants.SCMCommit={{ .Commit }}
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
 
 archives:
   - ids: [datadog-iac-scanner]
