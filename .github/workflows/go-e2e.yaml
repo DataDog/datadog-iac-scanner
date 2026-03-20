@@ -38,15 +38,15 @@ jobs:
             ${{ runner.OS }}-build-${{ env.cache-name }}
             ${{ runner.OS }}-build-
             ${{ runner.OS }}-
-      - name: Get Modules
-        run: go mod vendor
       - name: Build datadog-iac-scanner
         run: |
+          CGO_ENABLED=1
           COMMIT=$(git rev-parse HEAD)
           VERSION=snapshot-$(echo ${COMMIT} | cut -c1-8)
-          go build -o bin/datadog-iac-scanner -mod=vendor -tags dev -ldflags "-X ${CONSTANTS_PATH}.SCMCommit=${COMMIT} -X ${CONSTANTS_PATH}.Version=${VERSION}" ./cmd/scanner
+          go build -o bin/datadog-iac-scanner -tags dev -ldflags "-X ${CONSTANTS_PATH}.SCMCommit=${COMMIT} -X ${CONSTANTS_PATH}.Version=${VERSION}" ./cmd/scanner
       - name: Run E2E Tests
         run: |
+          CGO_ENABLED=1
           go test -tags dev -timeout 1500s -json ./e2e > results.json || cat results.json
       - name: Generate E2E Report
         if: always()
