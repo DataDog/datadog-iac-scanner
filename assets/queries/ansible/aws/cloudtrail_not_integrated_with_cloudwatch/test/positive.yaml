@@ -1,5 +1,5 @@
 - name: positive1
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -11,7 +11,7 @@
       environment: dev
       Name: default
 - name: positive2
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket
@@ -24,7 +24,7 @@
       environment: dev
       Name: default
 - name: positive3
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket

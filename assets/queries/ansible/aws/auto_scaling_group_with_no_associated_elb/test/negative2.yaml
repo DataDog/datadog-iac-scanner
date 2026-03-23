@@ -1,5 +1,5 @@
 - name: elb22
-  ec2_asg:
+  amazon.aws.autoscaling_group:
     name: special
     load_balancers: [ 'lb1', 'lb2' ]
     availability_zones: [ 'eu-west-1a', 'eu-west-1b' ]

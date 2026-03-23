@@ -1,5 +1,5 @@
 - name: Create s3 bucket4
-  aws_s3_cors:
+  community.aws.s3_cors:
     name: mys3bucket2
     state: present
     rules:

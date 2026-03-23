@@ -1,5 +1,5 @@
 - name: Missing Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -10,7 +10,7 @@
     pw_reuse_prevent: 5
     pw_expire: false
 - name: Extreme Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -22,7 +22,7 @@
     pw_reuse_prevent: 5
     pw_expire: false
 - name: Alias extreme Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false

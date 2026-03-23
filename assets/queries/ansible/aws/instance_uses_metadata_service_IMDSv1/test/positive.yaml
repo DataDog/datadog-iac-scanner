@@ -10,7 +10,7 @@
       http_tokens: optional
 
 - name: start an instance with legacy naming and metadata options
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: "public-metadataoptions-instance-legacy"
     vpc_subnet_id: subnet-5calable
     instance_type: t3.small

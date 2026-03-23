@@ -1,5 +1,5 @@
 - name: example1
-  community.aws.cloudtrail:
+  amazon.aws.cloudtrail:
     state: present
     name: default
     s3_bucket_name: mylogbucket

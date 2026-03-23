@@ -1,5 +1,5 @@
 - name: Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false
@@ -11,7 +11,7 @@
     pw_reuse_prevent: 5
     pw_expire: false
 - name: Alias Password policy for AWS account
-  community.aws.iam_password_policy:
+  amazon.aws.iam_password_policy:
     state: present
     min_pw_length: 8
     require_symbols: false

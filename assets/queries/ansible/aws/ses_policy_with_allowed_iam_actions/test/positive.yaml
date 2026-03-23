@@ -1,5 +1,5 @@
 - name: add sending authorization policy to email identityyy
-  community.aws.aws_ses_identity_policy:
+  community.aws.ses_identity_policy:
     identity: example@example.com
     policy_name: ExamplePolicy
     policy: >

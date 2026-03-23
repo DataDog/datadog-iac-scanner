@@ -1,5 +1,5 @@
 - name: My Batch Job Definition
-  community.aws.aws_batch_job_definition:
+  community.aws.batch_job_definition:
     job_definition_name: My Batch Job Definition
     state: present
     type: container

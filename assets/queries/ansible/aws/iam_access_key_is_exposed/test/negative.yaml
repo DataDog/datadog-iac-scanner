@@ -1,17 +1,17 @@
 # Root user with active key (covered by root_account_has_active_access_keys)
 - name: Create root access key
-  community.aws.iam_access_key:
+  amazon.aws.iam_access_key:
     user_name: root
     state: present
 
 # Non-root user with inactive key
 - name: Create inactive access key
-  community.aws.iam_access_key:
+  amazon.aws.iam_access_key:
     user_name: jcleese
     active: false
 
 # Non-root user with absent state
 - name: Remove access key
-  community.aws.iam_access_key:
+  amazon.aws.iam_access_key:
     user_name: jdavila
     state: absent

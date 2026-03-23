@@ -1,5 +1,5 @@
 - name: Launch instance with custom SG
-  community.aws.ec2_instance:
+  amazon.aws.ec2_instance:
     name: web-server
     key_name: mykey
     instance_type: t2.micro

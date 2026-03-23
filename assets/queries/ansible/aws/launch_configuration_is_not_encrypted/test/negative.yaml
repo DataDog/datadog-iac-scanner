@@ -1,5 +1,5 @@
 - name: note that encrypted volumes are only supported in >= Ansible 2.4 v4
-  ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default
@@ -13,7 +13,7 @@
       delete_on_termination: true
       encrypted: yes
 - name: note that encrypted volumes are only supported in >= Ansible 2.4 v5
-  community.aws.ec2_lc:
+  community.aws.autoscaling_launch_config:
     name: special
     image_id: ami-XXX
     key_name: default

@@ -1,5 +1,5 @@
 - name: Lambda S3 event notification negative
-  community.aws.lambda_policy:
+  amazon.aws.lambda_policy:
     state: present
     function_name: functionName
     alias: Dev
