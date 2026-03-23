@@ -28,7 +28,17 @@ meta:
 
 ### Description
 
-GitHub Actions workflows can be triggered by a variety of events. Each trigger includes a GitHub context with details about the event, such as the user who triggered it, the branch name, and other relevant information. Some of this data, like the base repository name, changeset hash, or pull request number, is typically not controlled by the user and is unlikely to be used for injection.
+GitHub Actions steps that run arbitrary JavaScript via actions/github-script must not incorporate untrusted event fields into their script blocks because attackers can inject content that leads to code injection or unauthorized API calls and potentially exfiltrate secrets. Check workflow steps where `uses` starts with `actions/github-script` and ensure the `with.script` value does not reference user-controlled GitHub context properties such as `github.event.pull_request.*`, `github.event.issue.*`, `github.event.comment.*`, `github.event.discussion.*`, or `github.event.workflow_run.*`; steps whose script contains these patterns will be flagged. If processing event data is required, validate and sanitize inputs, restrict workflow permissions (avoid `pull_request_target` when running untrusted content), or perform parsing in a hardened action or external service with least privilege.
+
+Secure example that avoids using event fields:
+
+```yaml
+- name: Safe script
+  uses: actions/github-script@v6
+  with:
+    script: |
+      core.info('No user-controlled event data used.')
+```
 
 ## Compliant Code Examples
 ```yaml

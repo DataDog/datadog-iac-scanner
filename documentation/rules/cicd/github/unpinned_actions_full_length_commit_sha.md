@@ -28,7 +28,14 @@ meta:
 
 ### Description
 
-Pinning an action to a full-length commit SHA is currently the only way to use it as an immutable release. This helps mitigate the risk of a bad actor introducing a backdoor, as doing so would require generating a SHA-1 collision for a valid Git object. When choosing a SHA, ensure it comes from the action's original repository and not a fork.
+Steps that reference external GitHub Actions must be pinned to a full-length commit SHA to ensure the action's code is immutable and to reduce supply-chain tampering or unexpected behavior from upstream updates. The rule inspects the `uses` property in `step` attributes and requires the value to end with `@` followed by a 40-character lowercase hexadecimal commit SHA (pattern `@[a-f0-9]{40}`). Entries that do not match this pattern will be flagged. The check ignores local actions referenced with relative paths, starting with `./`, and references beginning with `actions/`. When pinning, use a commit SHA from the action's original repository so the pinned reference matches the intended source.
+
+Secure example with a pinned action:
+
+```yaml
+- name: Build and push
+  uses: docker/build-push-action@e3b0c44298fc1c149afbf4c8996fb92427ae41e4
+```
 
 ## Compliant Code Examples
 ```yaml
