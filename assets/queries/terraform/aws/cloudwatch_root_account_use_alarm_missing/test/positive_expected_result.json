@@ -2,25 +2,25 @@
   {
     "queryName": "CloudWatch root account use missing",
     "severity": "MEDIUM",
-    "line": 1,
+    "line": 3,
     "fileName": "positive1.tf"
   },
   {
     "queryName": "CloudWatch root account use missing",
     "severity": "MEDIUM",
-    "line": 1,
+    "line": 3,
     "fileName": "positive2.tf"
   },
   {
     "queryName": "CloudWatch root account use missing",
     "severity": "MEDIUM",
-    "line": 1,
+    "line": 3,
     "fileName": "positive3.tf"
   },
   {
     "queryName": "CloudWatch root account use missing",
     "severity": "MEDIUM",
-    "line": 1,
+    "line": 17,
     "fileName": "positive4.tf"
   }
 ]
