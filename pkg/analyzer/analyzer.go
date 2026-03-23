@@ -805,7 +805,7 @@ func (a *Analyzer) checkIgnore(ctx context.Context, fileSize int64, hasGitIgnore
 		a.Exc = append(a.Exc, fullPath)
 
 		if exceededFileSize {
-			contextLogger.Error().Msgf("file %s exceeds maximum file size of %d Mb", fullPath, a.MaxFileSize)
+			contextLogger.Warn().Msgf("file %s exceeds maximum file size of %d Mb", fullPath, a.MaxFileSize)
 		}
 	}
 	return ignoreFiles
