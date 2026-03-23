@@ -462,7 +462,7 @@ var sarifTests = []sarifTest{
 							ResultRuleIndex: 1,
 							ResultKind:      "informational",
 							ResultMessage: sarifMessage{
-								Text:              "test",
+								Text:              "test info",
 								MessageProperties: sarifProperties{"platform": ""},
 							},
 							ResultLocations: []SarifLocation{
@@ -741,7 +741,7 @@ var sarifTests = []sarifTest{
 							ResultRuleID:    "test dockerfile",
 							ResultRuleIndex: 0,
 							ResultKind:      "",
-							ResultMessage:   sarifMessage{Text: "test dockerfile issue", MessageProperties: nil},
+							ResultMessage:   sarifMessage{Text: "test dockerfile", MessageProperties: nil},
 							ResultLocations: []SarifLocation{
 								{
 									PhysicalLocation: sarifPhysicalLocation{
