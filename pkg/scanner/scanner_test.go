@@ -19,7 +19,7 @@ import (
 
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
-	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 )
 
 var (
