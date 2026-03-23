@@ -537,7 +537,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				ResultRuleIndex: ruleIndex,
 				ResultLevel:     severityLevelEquivalence[issue.Severity],
 				ResultMessage: sarifMessage{
-					Text: issue.Files[idx].KeyActualValue,
+					Text: issue.QueryName,
 				},
 				ResultLocations: []SarifLocation{
 					{
