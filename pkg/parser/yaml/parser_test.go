@@ -22,31 +22,8 @@ func TestParser_GetKind(t *testing.T) {
 	require.Equal(t, model.KindYAML, p.GetKind())
 }
 
-// TestParser_SupportedExtensions tests the functions [SupportedExtensions()] and all the methods called by them
-func TestParser_SupportedExtensions(t *testing.T) {
-	p := &Parser{}
-	require.Equal(t, []string{".yaml", ".yml"}, p.SupportedExtensions())
-}
-
-// TestParser_SupportedExtensions tests the functions [SupportedTypes()] and all the methods called by them
-func TestParser_SupportedTypes(t *testing.T) {
-	p := &Parser{}
-	require.Equal(t, map[string]bool{
-		"ansible":                 true,
-		"cloudformation":          true,
-		"kubernetes":              true,
-		"crossplane":              true,
-		"knative":                 true,
-		"openapi":                 true,
-		"googledeploymentmanager": true,
-		"pulumi":                  true,
-		"serverlessfw":            true,
-	}, p.SupportedTypes())
-}
-
 // TestParser_Parse tests the functions [Parse()] and all the methods called by them
 func TestParser_Parse(t *testing.T) { //nolint
-	p := &Parser{}
 	have := []string{`
 # dd-iac-scan ignore-block
 martin:
@@ -364,7 +341,7 @@ resources:
 	ctx := context.Background()
 	for idx, tt := range have {
 		t.Run(fmt.Sprintf("test_parse_case_%d", idx), func(t *testing.T) {
-			_, doc, linesToIgnore, _, err := p.Parse(ctx, []byte(tt), "test.yaml", true, 15)
+			_, doc, linesToIgnore, _, err := Parse(ctx, []byte(tt), "test.yaml", true, 15)
 			if want[idx].wantErr {
 				require.Error(t, err)
 			} else {
@@ -392,10 +369,8 @@ func Test_Resolve(t *testing.T) {
 	martin2:
 		name: test2
 	`
-	parser := &Parser{}
 
-	resolved, _, err := parser.Resolve(ctx, []byte(have), "test.yaml", true, 15)
-	require.NoError(t, err)
+	resolved, _ := resolve(ctx, []byte(have), "test.yaml", true, 15)
 	require.Equal(t, []byte(have), resolved)
 }
 
@@ -466,8 +441,7 @@ func TestModel_TestYamlParser(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := Parser{}
-			_, got, _, _, err := parser.Parse(ctx, []byte(tt.sample), "", true, 15)
+			_, got, _, _, err := Parse(ctx, []byte(tt.sample), "", true, 15)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {

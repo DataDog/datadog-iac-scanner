@@ -6,16 +6,11 @@
 package cicd
 
 import (
-	"bytes"
 	"context"
 	"strings"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
-	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
-	"github.com/pkg/errors"
-	"gopkg.in/yaml.v3"
+	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 )
 
 // Parser defines a parser type
@@ -93,21 +88,6 @@ type ASTNode struct {
 	Children []ASTNode `json:"children,omitempty"` // Child nodes
 }
 
-// Resolve - replace or modifies in-memory content before parsing
-func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
-	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile, err error) {
-	// Resolve files passed as arguments with file resolver (e.g. file://)
-	res := file.NewResolver(yaml.Unmarshal, yaml.Marshal, p.SupportedExtensions())
-	resolvedFilesCache := make(map[string]file.ResolvedFile)
-	resolved = res.Resolve(ctx, fileContent, filename, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
-
-	if len(res.ResolvedFiles) == 0 {
-		return fileContent, res.ResolvedFiles, nil
-	}
-
-	return resolved, res.ResolvedFiles, nil
-}
-
 // Parse parses yaml/yml file and returns it as a Document
 func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int) (
@@ -116,42 +96,14 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	resolved, resolvedFiles, err = p.Resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	ignore := &model.Ignore{}
-
-	// Parse all documents as nodes
-	dec := yaml.NewDecoder(bytes.NewReader(resolved))
-	for {
-		var node yaml.Node
-		if err := dec.Decode(&node); err != nil {
-			break
-		}
-
-		// Process each document node
-		if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
-			// Get the actual content (not the document wrapper)
-			contentNode := node.Content[0]
-			doc := model.Document{}
-			if err := doc.UnmarshalYAML(ctx, contentNode, ignore); err != nil {
-				return []byte{}, nil, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed to unmarshal yaml")
-			}
-
-			if len(doc) > 0 {
-				documents = append(documents, doc)
-			}
-		}
-	}
-
-	if len(documents) == 0 {
-		return []byte{}, nil, []int{}, map[string]model.ResolvedFile{}, errors.New("no documents found in yaml file")
-	}
-
 	// Convert keys to string format
-	documents = convertKeysToString(documents)
+	documents = yamlParser.ConvertKeysToString(documents)
 
 	// Enhance documents with parsed run blocks
 	p.enhanceWithParsedRuns(documents)
@@ -159,47 +111,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	// Enhance documents with parsed expressions
 	p.enhanceWithParsedExpressions(documents)
 
-	linesToIgnore := ignore.GetLines()
-
 	// UnmarshalYAML already adds line tracking, so we can use documents directly
-	return resolved, convertKeysToString(addExtraInfo(ctx, documents, filePath)), linesToIgnore, resolvedFiles, nil
-}
-
-// convertKeysToString goes through every document to convert map[interface{}]interface{}
-// to map[string]interface{}
-func convertKeysToString(docs []model.Document) []model.Document {
-	documents := make([]model.Document, 0, len(docs))
-	for _, doc := range docs {
-		for key, value := range doc {
-			doc[key] = convert(value)
-		}
-		documents = append(documents, doc)
-	}
-	return documents
-}
-
-// convert goes recursively through the keys in the given value and converts nested maps type of map[interface{}]interface{}
-// to map[string]interface{}
-func convert(value interface{}) interface{} {
-	switch t := value.(type) {
-	case map[interface{}]interface{}:
-		mapStr := map[string]interface{}{}
-		for key, val := range t {
-			if t, ok := key.(string); ok {
-				mapStr[t] = convert(val)
-			}
-		}
-		return mapStr
-	case []interface{}:
-		for key, val := range t {
-			t[key] = convert(val)
-		}
-	case model.Document:
-		for key, val := range t {
-			t[key] = convert(val)
-		}
-	}
-	return value
+	return resolved, documents, ignoreLines, resolvedFiles, nil
 }
 
 // SupportedExtensions returns extensions supported by this parser, which are yaml and yml extension
@@ -217,60 +130,6 @@ func (p *Parser) SupportedTypes() map[string]bool {
 // GetKind returns YAML constant kind
 func (p *Parser) GetKind() model.FileKind {
 	return model.KindYAML
-}
-
-func processCertContent(ctx context.Context, elements map[string]interface{}, content, filePath string) {
-	var certInfo map[string]interface{}
-	if content != "" {
-		certInfo = utils.AddCertificateInfo(ctx, filePath, content)
-		if certInfo != nil {
-			elements["certificate"] = certInfo
-		}
-	}
-}
-
-func processElements(ctx context.Context, elements map[string]interface{}, filePath string) {
-	if elements["certificate"] != nil {
-		processCertContent(ctx, elements, utils.CheckCertificate(elements["certificate"].(string)), filePath)
-	}
-}
-
-func addExtraInfo(ctx context.Context, documents []model.Document, filePath string) []model.Document {
-	for _, documentPlaybooks := range documents { // iterate over documents
-		if playbooks, ok := documentPlaybooks["playbooks"]; ok {
-			processPlaybooks(ctx, playbooks, filePath)
-		}
-	}
-
-	return documents
-}
-
-func processPlaybooks(ctx context.Context, playbooks interface{}, filePath string) {
-	contextLogger := logger.FromContext(ctx)
-	sliceResources, ok := playbooks.([]interface{})
-	if !ok { // prevent panic if playbooks is not a slice
-		contextLogger.Warn().Msgf("Failed to parse playbooks: %s", filePath)
-		return
-	}
-	for _, resources := range sliceResources { // iterate over playbooks
-		processPlaybooksElements(ctx, resources, filePath)
-	}
-}
-
-func processPlaybooksElements(ctx context.Context, resources interface{}, filePath string) {
-	contextLogger := logger.FromContext(ctx)
-	mapResources, ok := resources.(map[string]interface{})
-	if !ok {
-		contextLogger.Warn().Msgf("Failed to parse playbooks elements: %s", filePath)
-		return
-	}
-	for _, value := range mapResources {
-		mapValue, ok := value.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		processElements(ctx, mapValue, filePath)
-	}
 }
 
 // GetCommentToken return the comment token of YAML - #
