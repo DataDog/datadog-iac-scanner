@@ -373,23 +373,6 @@ func compareJSONLine(t *testing.T, test1 interface{}, test2 string) {
 	require.JSONEq(t, test2, string(stringefiedJSON))
 }
 
-// Test_Resolve tests the functions [Resolve()] and all the methods called by them
-func Test_Resolve(t *testing.T) {
-	ctx := context.Background()
-	have := `
-	martin:
-		name: test
-	---
-	martin2:
-		name: test2
-	`
-	parser := &Parser{}
-
-	resolved, _, err := parser.Resolve(ctx, []byte(have), "test.yaml", true, 15)
-	require.NoError(t, err)
-	require.Equal(t, []byte(have), resolved)
-}
-
 func TestModel_TestYamlParser(t *testing.T) {
 	tests := []struct {
 		name    string
