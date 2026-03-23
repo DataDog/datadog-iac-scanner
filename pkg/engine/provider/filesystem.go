@@ -155,7 +155,7 @@ func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 			continue
 		}
 
-		err = s.walkDir(ctx, scanPath, false, sink, resolverSink, extensions)
+		err = s.walkDir(ctx, scanPath, sink, resolverSink, extensions)
 		if err != nil {
 			return errors.Wrap(err, "failed to walk directory")
 		}
@@ -192,7 +192,7 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 		}
 
 		// Directory - collect all files first
-		files, err := s.collectFiles(ctx, scanPath, false, resolverSink, extensions)
+		files, err := s.collectFiles(ctx, scanPath, resolverSink, extensions)
 		if err != nil {
 			return errors.Wrap(err, "failed to collect files")
 		}
@@ -206,16 +206,17 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 }
 
 // collectFiles walks the directory tree and collects file paths without processing them, except Helm files
-func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string, resolved bool,
+func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
 	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
 	contextLogger := logger.FromContext(ctx)
+	var resolvedChartPaths []string
 
 	err = filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolved); shouldSkip {
+		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedChartPaths); shouldSkip {
 			return skipFolder
 		}
 
@@ -230,7 +231,7 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
 			}
 			s.mu.Unlock()
-			resolved = true
+			resolvedChartPaths = append(resolvedChartPaths, path)
 			return nil
 		}
 		// -----------------------------------------------------------------
@@ -347,15 +348,16 @@ func (s *FileSystemSourceProvider) feedFilesToWorkers(ctx context.Context, files
 	}
 }
 
-func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string, resolved bool,
+func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 	sink Sink, resolverSink ResolverSink, extensions model.Extensions) error {
 	contextLogger := logger.FromContext(ctx)
+	var resolvedChartPaths []string
 	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolved); shouldSkip {
+		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedChartPaths); shouldSkip {
 			return skipFolder
 		}
 
@@ -370,7 +372,7 @@ func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
 			}
 			s.mu.Unlock()
-			resolved = true
+			resolvedChartPaths = append(resolvedChartPaths, path)
 			return nil
 		}
 		// -----------------------------------------------------------------
@@ -405,7 +407,7 @@ func openScanFile(ctx context.Context, scanPath string, extensions model.Extensi
 }
 
 func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.FileInfo, extensions model.Extensions,
-	path string, resolved bool) (bool, error) {
+	path string, resolvedChartPaths []string) (bool, error) {
 	contextLogger := logger.FromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -426,7 +428,7 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 			return true, filepath.SkipDir
 		}
 		_, err := os.Stat(filepath.Join(path, "Chart.yaml"))
-		if err != nil || resolved {
+		if err != nil || isUnderResolvedChart(path, resolvedChartPaths) {
 			return true, nil
 		}
 		return false, nil
@@ -440,6 +442,15 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 		return true, nil
 	}
 	return false, nil
+}
+
+func isUnderResolvedChart(path string, resolvedChartPaths []string) bool {
+	for _, chartRoot := range resolvedChartPaths {
+		if strings.HasPrefix(path, chartRoot+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsFile(fileList []os.FileInfo, target os.FileInfo) bool {

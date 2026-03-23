@@ -473,7 +473,7 @@ func TestFileSystemSourceProvider_checkConditions(t *testing.T) {
 				paths:    tt.fields.paths,
 				excludes: tt.fields.excludes,
 			}
-			if got, err := s.checkConditions(ctx, tt.args.info, tt.args.extensions, tt.args.path, false); got != tt.want.got || err != tt.want.err {
+			if got, err := s.checkConditions(ctx, tt.args.info, tt.args.extensions, tt.args.path, nil); got != tt.want.got || err != tt.want.err {
 				t.Errorf("FileSystemSourceProvider.checkConditions() = %v, want %v", err, tt.want)
 			}
 		})
@@ -626,4 +626,89 @@ func TestProvider_getExcludePaths(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestIsUnderResolvedChart(t *testing.T) {
+	tests := []struct {
+		name               string
+		path               string
+		resolvedChartPaths []string
+		want               bool
+	}{
+		{
+			name:               "empty resolved list",
+			path:               filepath.FromSlash("k8s/chart-a/templates"),
+			resolvedChartPaths: nil,
+			want:               false,
+		},
+		{
+			name:               "subdirectory of resolved chart is skipped",
+			path:               filepath.FromSlash("k8s/chart-a/templates"),
+			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
+			want:               true,
+		},
+		{
+			name:               "sibling chart is not skipped",
+			path:               filepath.FromSlash("k8s/chart-b"),
+			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
+			want:               false,
+		},
+		{
+			name:               "chart root itself is not considered under itself",
+			path:               filepath.FromSlash("k8s/chart-a"),
+			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
+			want:               false,
+		},
+		{
+			name:               "path sharing a prefix but different directory is not skipped",
+			path:               filepath.FromSlash("k8s/chart"),
+			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
+			want:               false,
+		},
+		{
+			name: "subdirectory matched against multiple resolved charts",
+			path: filepath.FromSlash("k8s/chart-b/templates"),
+			resolvedChartPaths: []string{
+				filepath.FromSlash("k8s/chart-a"),
+				filepath.FromSlash("k8s/chart-b"),
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isUnderResolvedChart(tt.path, tt.resolvedChartPaths)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGetSources_multipleHelmCharts(t *testing.T) {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
+		t.Fatalf("failed to change dir: %s", err)
+	}
+
+	ctx := context.Background()
+	fs, err := NewFileSystemSourceProvider(ctx,
+		[]string{filepath.FromSlash("test/fixtures/multi_helm")}, []string{})
+	require.NoError(t, err)
+
+	resolvedDirs := make([]string, 0)
+	countingResolverSink := func(_ context.Context, filename string) ([]string, error) {
+		info, statErr := os.Stat(filename)
+		if statErr == nil && info.IsDir() {
+			if _, chartErr := os.Stat(filepath.Join(filename, "Chart.yaml")); chartErr == nil {
+				resolvedDirs = append(resolvedDirs, filepath.Base(filename))
+			}
+		}
+		return []string{}, nil
+	}
+
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}},
+		mockSink, countingResolverSink)
+	require.NoError(t, err)
+
+	require.ElementsMatch(t, []string{"chart-a", "chart-b"}, resolvedDirs,
+		"both sibling Helm charts must be sent to the resolver, not just the first one")
 }
