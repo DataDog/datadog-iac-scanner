@@ -102,7 +102,7 @@ var sarifTests = []sarifTest{
 									RuleID:               "test",
 									RuleName:             "test",
 									RuleShortDescription: sarifMessage{Text: "test"},
-									RuleFullDescription:  sarifMessage{Text: "test description\nRule ID: [1]"},
+									RuleFullDescription:  sarifMessage{Text: "test description"},
 									DefaultConfiguration: sarifConfiguration{
 										Level: "note",
 									},
@@ -205,7 +205,7 @@ var sarifTests = []sarifTest{
 									RuleID:               "test",
 									RuleName:             "test",
 									RuleShortDescription: sarifMessage{Text: "test"},
-									RuleFullDescription:  sarifMessage{Text: "test description\nRule ID: [1]"},
+									RuleFullDescription:  sarifMessage{Text: "test description"},
 									DefaultConfiguration: sarifConfiguration{
 										Level: "error",
 									},
@@ -360,7 +360,7 @@ var sarifTests = []sarifTest{
 									RuleID:               "test",
 									RuleName:             "test",
 									RuleShortDescription: sarifMessage{Text: "test"},
-									RuleFullDescription:  sarifMessage{Text: "test description\nRule ID: [test]"},
+									RuleFullDescription:  sarifMessage{Text: "test description"},
 									DefaultConfiguration: sarifConfiguration{
 										Level: "error",
 									},
@@ -383,7 +383,7 @@ var sarifTests = []sarifTest{
 									RuleID:               "test info",
 									RuleName:             "test info",
 									RuleShortDescription: sarifMessage{Text: "test"},
-									RuleFullDescription:  sarifMessage{Text: "test description/nRule ID: [test info]"},
+									RuleFullDescription:  sarifMessage{Text: "test description"},
 									DefaultConfiguration: sarifConfiguration{
 										Level: "none",
 									},
@@ -578,7 +578,7 @@ var sarifTests = []sarifTest{
 									RuleID:               "test",
 									RuleName:             "test",
 									RuleShortDescription: sarifMessage{Text: "test"},
-									RuleFullDescription:  sarifMessage{Text: "test description\nRule ID: [1]"},
+									RuleFullDescription:  sarifMessage{Text: "test description"},
 									DefaultConfiguration: sarifConfiguration{
 										Level: "error",
 									},
@@ -714,7 +714,7 @@ var sarifTests = []sarifTest{
 									RuleID:               "test dockerfile",
 									RuleName:             "test dockerfile",
 									RuleShortDescription: sarifMessage{Text: "test dockerfile"},
-									RuleFullDescription:  sarifMessage{Text: "test dockerfile description\nRule ID: [dockerfile-test-1]"},
+									RuleFullDescription:  sarifMessage{Text: "test dockerfile description"},
 									DefaultConfiguration: sarifConfiguration{
 										Level: "error",
 									},

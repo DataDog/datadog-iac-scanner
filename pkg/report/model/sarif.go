@@ -378,7 +378,7 @@ func (sr *sarifReport) buildSarifRule(queryMetadata *ruleMetadata, cisMetadata r
 			RuleID:               queryMetadata.queryName,
 			RuleName:             queryMetadata.queryName,
 			RuleShortDescription: sarifMessage{Text: queryMetadata.queryName},
-			RuleFullDescription:  sarifMessage{Text: fmt.Sprintf("%s\nRule ID: [%s]", queryMetadata.queryDescription, queryMetadata.queryID)},
+			RuleFullDescription:  sarifMessage{Text: queryMetadata.queryDescription},
 			DefaultConfiguration: sarifConfiguration{Level: severityLevelEquivalence[queryMetadata.severity]},
 			// Relationships:        relationships,
 			HelpURI: helpURI,
