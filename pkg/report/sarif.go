@@ -41,7 +41,6 @@ func PrintSarifReport(ctx context.Context, path, filename string, body interface
 		if err != nil {
 			return err
 		}
-		sarifReport.SetToolVersionType(ctx, sciInfo.RunType)
 
 		body = sarifReport
 	}

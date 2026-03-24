@@ -148,7 +148,7 @@ func Test_E2EExclusions(t *testing.T) {
 			params, ctx := scan.GetDefaultParameters(context.Background(), "")
 			params.Path = []string{tt.testFile}
 			params.OutputPath = t.TempDir()
-			params.SCIInfo = model.SCIInfo{DiffAware: model.DiffAware{Enabled: false}, RunType: "code_update", RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"}}
+			params.SCIInfo = model.SCIInfo{DiffAware: model.DiffAware{Enabled: false}, RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"}}
 			params.FlagEvaluator = featureflags.NewLocalEvaluator()
 			metadata, err := console.ExecuteScan(ctx, params)
 			require.NoError(t, err)

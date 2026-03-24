@@ -189,7 +189,6 @@ type SarifReport interface {
 	GetGUIDFromRelationships(idx int, cweID string) string
 	AddTags(ctx context.Context, summary *model.Summary, diffAware *model.DiffAware) error
 	ResolveFilepaths(basePath string) error
-	SetToolVersionType(ctx context.Context, runType string)
 }
 
 type sarifReport struct {
@@ -587,16 +586,6 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 		return issue.CWE
 	}
 	return ""
-}
-
-func (sr *sarifReport) SetToolVersionType(ctx context.Context, runType string) {
-	contextLogger := logger.FromContext(ctx)
-	if runType != "" {
-		for idx := range sr.Runs {
-			sr.Runs[idx].Tool.Driver.ToolVersion = runType
-		}
-		contextLogger.Info().Msgf("Tool version set to %s", runType)
-	}
 }
 
 func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diffAware *model.DiffAware) error {
