@@ -28,7 +28,30 @@ meta:
 
 ### Description
 
-Default permissions for the GITHUB_TOKEN are expected to be restricted (contents: read and packages: read). Your repository may require a different setup, so consider defining permissions for each job following the least privilege principle to restrict the impact of a possible compromise. Permissions can be defined at the job or the workflow level.
+Workflows or jobs that do not explicitly define the GitHub Actions `permissions` mapping leave the `GITHUB_TOKEN` with repository default scopes, increasing the blast radius if the token is compromised and enabling unintended access. The `permissions` property must be set either at the workflow root or per job to declare least-privilege scopes for the `GITHUB_TOKEN`. This rule flags workflows missing the top-level `permissions` when all jobs also omit permissions, and it flags individual jobs that lack `permissions` when other jobs in the same workflow do define them. Define only the scopes required by the workflow or job, for example `contents: read` and `packages: read`, to minimize access.
+
+Secure workflow-level and job-level examples:
+
+```yaml
+# Workflow-level permissions
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "build"
+
+  publish:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "publish"
+```
 
 ## Compliant Code Examples
 ```yaml

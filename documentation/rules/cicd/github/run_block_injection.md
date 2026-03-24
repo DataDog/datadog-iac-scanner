@@ -28,7 +28,18 @@ meta:
 
 ### Description
 
-GitHub Actions workflows can be triggered by a variety of events. Each trigger includes a GitHub context with details about the event, such as the user who triggered it, the branch name, and other relevant information. Some of this data, like the base repository name, changeset hash, or pull request number, is typically not controlled by the user and is unlikely to be used for injection.
+Run steps in GitHub Actions must not interpolate or execute GitHub event fields that can be controlled by external users, because untrusted event data such as PR/issue/discussion titles and bodies, comments, branch names, and commit metadata can contain shell metacharacters or crafted payloads that lead to command injection, arbitrary code execution on runners, or misuse of repository secrets. This risk is amplified for privileged triggers such as `pull_request_target` and some `workflow_run` scenarios. Inspect the `run` property for direct references to GitHub context attributes such as `github.event.pull_request.*`, `github.event.issue.*`, `github.event.comment.*`, `github.event.discussion.*`, `github.event.workflow_run.*`, `github.head_ref`, and `github.*.authors.*`. Flag any step where the `run` string contains these patterns. To remediate, avoid shell-interpolating untrusted event data; instead, validate or sanitize inputs, use repository secrets or explicitly whitelisted values, or pass data through actions that perform strict parsing and validation before executing commands. 
+
+Secure example that avoids using untrusted event fields:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Safe run
+        run: echo "Build triggered for repository ${{ github.repository }}" 
+```
 
 ## Compliant Code Examples
 ```yaml
@@ -152,5 +163,6 @@ jobs:
       - name: Echo Discussion Title
         run: |
           echo "Discussion Title: ${{ github.event.discussion.title }}"
+          echo "Miaou"
 
 ```
