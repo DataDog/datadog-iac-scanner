@@ -7,6 +7,7 @@ package model
 
 type SCIInfo struct {
 	DiffAware            DiffAware
+	RepositoryDir        string
 	RepositoryCommitInfo RepositoryCommitInfo `json:"repository_commit_info"`
 	OrgId                int64                `json:"org_id"`
 }

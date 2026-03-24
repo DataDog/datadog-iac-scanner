@@ -46,15 +46,16 @@ func DevPathAdapter(path string) string {
 	case "/path/e2e/fixtures/samples/configs/config.yaml":
 		path = strings.ReplaceAll(path, "config.yaml", "config-dev.yaml")
 	}
+	wd, _ := filepath.Abs(".")
 	regex := regexp.MustCompile(`/path/\w+/`)
 	matches := regex.FindString(path)
 	switch matches {
 	case "":
 		return path
 	case "/path/e2e/":
-		return strings.ReplaceAll(path, matches, "")
+		return strings.ReplaceAll(path, matches, wd+"/")
 	default:
-		return strings.ReplaceAll(path, "/path/", "../")
+		return strings.ReplaceAll(path, "/path/", wd+"/../")
 	}
 }
 
