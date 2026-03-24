@@ -149,7 +149,6 @@ var sarifTests = []sarifTest{
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
 									model.SCIInfo{
-										RunType: "",
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
 											Branch:        "",
@@ -248,7 +247,6 @@ var sarifTests = []sarifTest{
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
 									model.SCIInfo{
-										RunType: "",
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
 											Branch:        "",
@@ -441,7 +439,6 @@ var sarifTests = []sarifTest{
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
 									model.SCIInfo{
-										RunType: "",
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
 											Branch:        "",
@@ -479,7 +476,6 @@ var sarifTests = []sarifTest{
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
 									model.SCIInfo{
-										RunType: "",
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
 											Branch:        "",
@@ -621,7 +617,6 @@ var sarifTests = []sarifTest{
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
 									model.SCIInfo{
-										RunType: "",
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
 											Branch:        "",
