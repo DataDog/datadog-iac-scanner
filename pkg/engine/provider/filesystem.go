@@ -26,14 +26,14 @@ import (
 // FileSystemSourceProvider provides a path to be scanned
 // and a list of files which will not be scanned
 type FileSystemSourceProvider struct {
-	paths    []string
-	excludes map[string][]os.FileInfo
-	mu       sync.RWMutex
+	paths         []string
+	excludes      map[string][]os.FileInfo
+	mu            sync.RWMutex
+	maxNumWorkers int
 }
 
 const (
 	minNumWorkers = 4
-	maxNumWorkers = 64
 )
 
 var (
@@ -43,7 +43,7 @@ var (
 )
 
 // NewFileSystemSourceProvider initializes a FileSystemSourceProvider with path and files that will be ignored
-func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string) (*FileSystemSourceProvider, error) {
+func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string, maxNumWorkers int) (*FileSystemSourceProvider, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msgf("provider.NewFileSystemSourceProvider()")
 	ex := make(map[string][]os.FileInfo, len(excludes))
@@ -52,8 +52,9 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string) 
 		osPaths[idx] = filepath.FromSlash(path)
 	}
 	fs := &FileSystemSourceProvider{
-		paths:    osPaths,
-		excludes: ex,
+		paths:         osPaths,
+		excludes:      ex,
+		maxNumWorkers: maxNumWorkers,
 	}
 
 	for _, exclude := range excludes {
@@ -293,8 +294,8 @@ func (s *FileSystemSourceProvider) calculateWorkerCount() int {
 	if numWorkers < 1 {
 		numWorkers = minNumWorkers
 	}
-	if numWorkers > maxNumWorkers {
-		numWorkers = maxNumWorkers
+	if numWorkers > s.maxNumWorkers {
+		numWorkers = s.maxNumWorkers
 	}
 	return numWorkers
 }

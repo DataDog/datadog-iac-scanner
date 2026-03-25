@@ -133,7 +133,7 @@ func createParserSourceProvider(path string) ([]*parser.Parser,
 		Add(terraformParser.NewDefault()).
 		Build([]string{""}, []string{""})
 
-	mockFilesSource, _ := provider.NewFileSystemSourceProvider(ctx, []string{path}, []string{})
+	mockFilesSource, _ := provider.NewFileSystemSourceProvider(ctx, []string{path}, []string{}, 32)
 
 	mockResolver, _ := resolver.NewBuilder().Build(ctx)
 

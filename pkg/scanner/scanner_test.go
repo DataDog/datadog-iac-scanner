@@ -93,7 +93,7 @@ func TestScanner_StartScan(t *testing.T) {
 
 func createServices(types, cloudProviders []string) (serviceSlice, *storage.MemoryStorage, error) {
 	ctx := context.Background()
-	filesSource, err := provider.NewFileSystemSourceProvider(ctx, []string{filepath.FromSlash("../../test")}, []string{})
+	filesSource, err := provider.NewFileSystemSourceProvider(ctx, []string{filepath.FromSlash("../../test")}, []string{}, 32)
 	if err != nil {
 		return nil, nil, err
 	}

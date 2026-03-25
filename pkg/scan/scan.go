@@ -297,7 +297,7 @@ func (c *Client) getFileSystemSourceProvider(ctx context.Context, paths []string
 		excludePaths = append(excludePaths, c.ScanParams.ExcludePaths...)
 	}
 
-	filesSource, err := provider.NewFileSystemSourceProvider(ctx, paths, excludePaths)
+	filesSource, err := provider.NewFileSystemSourceProvider(ctx, paths, excludePaths, c.ScanParams.MaxNumWorkers)
 	if err != nil {
 		return nil, err
 	}

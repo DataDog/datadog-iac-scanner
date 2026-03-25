@@ -37,6 +37,7 @@ func Test_ExecuteScan(t *testing.T) {
 				ScanID:                  "console",
 				MaxResolverDepth:        15,
 				FlagEvaluator:           featureflags.NewLocalEvaluator(),
+				MaxNumWorkers:           32,
 			},
 			ctx:                  context.Background(),
 			expectedResultsCount: 5,

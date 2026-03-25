@@ -59,6 +59,7 @@ type Parameters struct {
 	SCIInfo                     model.SCIInfo
 	FlagEvaluator               featureflags.FlagEvaluator
 	DownloadQueriesFromDatadog  bool
+	MaxNumWorkers               int
 }
 
 // Client represents a scan client
@@ -114,6 +115,7 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		UseOldSeverities:            false,
 		MaxResolverDepth:            15,
 		ExcludePlatform:             []string{""},
+		MaxNumWorkers:               32,
 	}, logCtx
 }
 

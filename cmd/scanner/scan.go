@@ -73,6 +73,11 @@ var scanAction = &cli.Command{
 			Usage:   "a list of platform types to scan",
 			Value:   GetSupportedPlatforms(),
 		},
+		&cli.IntFlag{
+			Name:  "max-num-workers",
+			Usage: "Max workers running parallel jobs for parallel parsing",
+			Value: 32,
+		},
 		&cli.BoolFlag{
 			Name:   "x-parallelparsing",
 			Hidden: true,
@@ -142,6 +147,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		ExcludePaths:               config.ExcludePaths,
 		IncludeQueries:             config.IncludeQueries,
 		DownloadQueriesFromDatadog: c.Bool("x-downloadqueriesfromdatadog"),
+		MaxNumWorkers:              c.Int("max-num-workers"),
 	}
 
 	metadata, err := console.ExecuteScan(ctx, params)
