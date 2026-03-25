@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,4 +63,24 @@ func Test_DecryptAnsibleVault(t *testing.T) {
 			require.Equal(t, test.ansibleVaultDecrypted, got)
 		})
 	}
+}
+
+func Test_ReadVaultPassword(t *testing.T) {
+	t.Run("returns empty string for empty path", func(t *testing.T) {
+		require.Equal(t, "", ReadVaultPassword(""))
+	})
+
+	t.Run("returns empty string for non-existent file", func(t *testing.T) {
+		require.Equal(t, "", ReadVaultPassword("/nonexistent/path/to/vault_password"))
+	})
+
+	t.Run("reads and trims password from file", func(t *testing.T) {
+		f, err := os.CreateTemp(t.TempDir(), "vault_password")
+		require.NoError(t, err)
+		_, err = f.WriteString("cosmic\n")
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+
+		require.Equal(t, "cosmic", ReadVaultPassword(f.Name()))
+	})
 }
