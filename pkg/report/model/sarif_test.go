@@ -877,7 +877,8 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 	}
 
 	report := NewSarifReport().(*sarifReport)
-	cwe := report.BuildSarifIssue(ctx, &queryResult, model.SCIInfo{})
+	cwe, err := report.BuildSarifIssue(ctx, &queryResult, model.SCIInfo{})
+	require.NoError(t, err)
 
 	// Verify CWE was returned
 	require.Equal(t, "284", cwe)

@@ -133,7 +133,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		MaxResolverDepth:           c.Int("max-resolver-depth"),
 		ExcludePlatform:            []string{""},
 		PayloadPath:                payloadPath,
-		SCIInfo:                    model.SCIInfo{RepositoryCommitInfo: *repoInfo},
+		SCIInfo:                    model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:              getFeatureFlagEvaluator(c),
 		ExcludeCategories:          config.ExcludeCategories,
 		ExcludeQueries:             append(c.StringSlice("exclude-queries"), config.ExcludeQueries...),

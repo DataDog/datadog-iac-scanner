@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -184,11 +183,10 @@ type SarifRun struct {
 
 // SarifReport represents a usable sarif report reference
 type SarifReport interface {
-	BuildSarifIssue(ctx context.Context, issue *model.QueryResult, sciInfo model.SCIInfo) string
+	BuildSarifIssue(ctx context.Context, issue *model.QueryResult, sciInfo model.SCIInfo) (string, error)
 	RebuildTaxonomies(cwes []string, guids map[string]string)
 	GetGUIDFromRelationships(idx int, cweID string) string
 	AddTags(ctx context.Context, summary *model.Summary, diffAware *model.DiffAware) error
-	ResolveFilepaths(basePath string) error
 }
 
 type sarifReport struct {
@@ -431,9 +429,13 @@ func (sr *sarifReport) RebuildTaxonomies(cwes []string, guids map[string]string)
 }
 
 // BuildSarifIssue creates a new entries in Results (one for each file) and new entry in Rules and Taxonomy if necessary
-// nolint:gocritic
-func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryResult, sciInfo model.SCIInfo) string {
+// nolint:gocritic,gocyclo
+func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryResult, sciInfo model.SCIInfo) (string, error) {
 	contextLogger := logger.FromContext(ctx)
+	repoPath, err := getRepoPath(&sciInfo)
+	if err != nil {
+		return "", err
+	}
 	if len(issue.Files) > 0 {
 		metadata := ruleMetadata{
 			queryID:          issue.QueryID,
@@ -530,7 +532,10 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				vulnerability.Line,
 			)
 
-			absoluteFilePath := strings.ReplaceAll(issue.Files[idx].FileName, "../", "")
+			artifactPath, err := resolvePath(repoPath, issue.Files[idx].FileName)
+			if err != nil {
+				return "", err
+			}
 			result := sarifResult{
 				ResultRuleID:    issue.QueryName,
 				ResultRuleIndex: ruleIndex,
@@ -541,7 +546,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				ResultLocations: []SarifLocation{
 					{
 						PhysicalLocation: sarifPhysicalLocation{
-							ArtifactLocation: sarifArtifactLocation{ArtifactURI: absoluteFilePath},
+							ArtifactLocation: sarifArtifactLocation{ArtifactURI: artifactPath},
 							Region: model.SarifRegion{
 								StartLine:   resourceStartLocation.Line,
 								EndLine:     resourceEndLocation.Line,
@@ -557,7 +562,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				PartialFingerprints: SarifPartialFingerprints{
 					DatadogFingerprint: GetDatadogFingerprintHash(
 						sciInfo,
-						absoluteFilePath,
+						artifactPath,
 						issue.Platform,
 						resourceType,
 						resourceName,
@@ -583,9 +588,9 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 			}
 			sr.Runs[0].Results = append(sr.Runs[0].Results, result)
 		}
-		return issue.CWE
+		return issue.CWE, nil
 	}
-	return ""
+	return "", nil
 }
 
 func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diffAware *model.DiffAware) error {
@@ -627,13 +632,24 @@ func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diff
 	return nil
 }
 
-func (sr *sarifReport) ResolveFilepaths(basePath string) error {
-	for idx := range sr.Runs[0].Results {
-		artifactLocation := &sr.Runs[0].Results[idx].ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI
-		resolvedLocation := strings.TrimPrefix(*artifactLocation, basePath+"/")
-		sr.Runs[0].Results[idx].ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI = resolvedLocation
+func getRepoPath(sciInfo *model.SCIInfo) (string, error) {
+	repoDir := sciInfo.RepositoryDir
+	if sciInfo.RepositoryDir == "" {
+		repoDir = "."
 	}
-	return nil
+	return filepath.Abs(repoDir)
+}
+
+func resolvePath(root, path string) (string, error) {
+	if abs, err := filepath.Abs(path); err != nil {
+		return "", err
+	} else if rel, err := filepath.Rel(root, abs); err != nil {
+		return "", err
+	} else if rel == "." {
+		return "", nil
+	} else {
+		return rel, nil
+	}
 }
 
 // nolint:gocritic

@@ -27,18 +27,14 @@ func PrintSarifReport(ctx context.Context, path, filename string, body interface
 		sarifReport := reportModel.NewSarifReport()
 		auxGUID := map[string]string{}
 		for idx := range summary.Queries {
-			x := sarifReport.BuildSarifIssue(ctx, &summary.Queries[idx], *sciInfo)
-			if x != "" {
-				guid := sarifReport.GetGUIDFromRelationships(idx, x)
-				auxGUID[x] = guid
+			if cwe, err := sarifReport.BuildSarifIssue(ctx, &summary.Queries[idx], *sciInfo); err != nil {
+				return err
+			} else if cwe != "" {
+				guid := sarifReport.GetGUIDFromRelationships(idx, cwe)
+				auxGUID[cwe] = guid
 			}
 		}
-		err = sarifReport.AddTags(ctx, &summary, &sciInfo.DiffAware)
-		if err != nil {
-			return err
-		}
-		err = sarifReport.ResolveFilepaths(path)
-		if err != nil {
+		if err := sarifReport.AddTags(ctx, &summary, &sciInfo.DiffAware); err != nil {
 			return err
 		}
 
