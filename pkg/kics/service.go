@@ -67,6 +67,13 @@ type Service struct {
 	MaxFileSize    int
 }
 
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, mbConst)
+		return &b
+	},
+}
+
 // PrepareSources will prepare the sources to be scanned
 func (s *Service) PrepareSources(ctx context.Context,
 	scanID string,
@@ -79,31 +86,34 @@ func (s *Service) PrepareSources(ctx context.Context,
 	// CxSAST query under review
 	contextLogger.Info().Msgf("Getting sources")
 	var err error
+
+	var sink = func(ctx context.Context, filename string, rc io.ReadCloser) error {
+		data := bufferPool.Get().(*[]byte)
+		if data == nil {
+			dataSlice := make([]byte, mbConst)
+			data = &dataSlice
+		}
+		defer bufferPool.Put(data)
+		return s.sink(ctx, filename, scanID, rc, *data, openAPIResolveReferences, maxResolverDepth)
+	}
+	var resolverSink = func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
+		return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
+	}
+
 	// TODO: Remove this if / else upon finishing dogfooding phase
 	if ok := flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing); ok {
 		err = s.SourceProvider.GetParallelSources(
 			ctx,
 			s.Parser.SupportedExtensions(),
-			func(ctx context.Context, filename string, rc io.ReadCloser) error {
-				// data will be used as buffer as the sink is used multiple times concurrently
-				data := make([]byte, mbConst)
-				return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
-			},
-			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
-				return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
-			},
+			sink,
+			resolverSink,
 		)
 	} else {
 		err = s.SourceProvider.GetSources(
 			ctx,
 			s.Parser.SupportedExtensions(),
-			func(ctx context.Context, filename string, rc io.ReadCloser) error {
-				data := make([]byte, mbConst)
-				return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
-			},
-			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
-				return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
-			},
+			sink,
+			resolverSink,
 		)
 	}
 	if err != nil {
