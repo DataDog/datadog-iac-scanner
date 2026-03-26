@@ -590,6 +590,12 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 		contentNode = node.Content[0]
 	}
 
+	// A scalar root means the document is empty/null (e.g. a comment-only vars file).
+	// No platform can be detected; skip silently.
+	if contentNode.Kind == yamlParser.ScalarNode {
+		return ""
+	}
+
 	var yamlContent model.Document
 	if err := yamlContent.UnmarshalYAML(ctx, contentNode, nil); err != nil {
 		contextLogger.Warn().Msgf("failed to unmarshal yaml file (%s): %s", path, err)

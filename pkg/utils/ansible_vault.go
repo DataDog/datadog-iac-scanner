@@ -8,6 +8,7 @@ package utils
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -57,7 +58,7 @@ func ReadVaultPassword(filePath string) string {
 	if filePath == "" {
 		return ""
 	}
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return ""
 	}
