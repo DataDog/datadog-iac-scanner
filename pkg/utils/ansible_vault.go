@@ -22,8 +22,7 @@ var ansibleVaultHeaderPattern = regexp.MustCompile(`^\s*\$ANSIBLE_VAULT`)
 // DecryptAnsibleVault verifies if the fileContent is encrypted by ansible-vault. If yes, the function decrypts it
 func DecryptAnsibleVault(ctx context.Context, fileContent []byte, secret string) []byte {
 	contextLogger := logger.FromContext(ctx)
-	match := ansibleVaultHeaderPattern.Match(fileContent)
-	if secret != "" && match {
+	if secret != "" && IsAnsibleVaultEncrypted(fileContent) {
 		content, err := vault.Decrypt(string(fileContent), secret)
 		if err == nil {
 			contextLogger.Info().Msg("Decrypting Ansible Vault file")

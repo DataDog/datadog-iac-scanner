@@ -7,9 +7,11 @@ package ansibleconfig
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/comments"
@@ -118,8 +120,12 @@ func emptyDocument() *model.Document {
 // A broad match on "files" is safe here because SupportedTypes() returns only "ansible",
 // so only Ansible-typed repos reach this parser.
 func isInsideFilesDir(filePath string) bool {
-	normalized := filepath.ToSlash(filePath)
-	for _, part := range strings.Split(normalized, "/") {
+	for _, part := range strings.FieldsFunc(filepath.Clean(filePath), func(r rune) bool {
+		if r > unicode.MaxLatin1 {
+			return false
+		}
+		return os.IsPathSeparator(uint8(r))
+	}) {
 		if part == "files" {
 			return true
 		}

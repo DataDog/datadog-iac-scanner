@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -632,7 +633,12 @@ func checkForAnsibleByPaths(path string) bool {
 // It requires a preceding "roles" or "ansible" path component to avoid false positives on
 // non-Ansible repos that happen to have their own templates/ directories.
 func isInsideAnsibleTemplatesDir(path string) bool {
-	parts := strings.Split(filepath.ToSlash(path), "/")
+	parts := strings.FieldsFunc(filepath.Clean(path), func(r rune) bool {
+		if r > unicode.MaxLatin1 {
+			return false
+		}
+		return os.IsPathSeparator(uint8(r))
+	})
 	seenSignal := false
 	for _, part := range parts {
 		if part == "ansible" || part == "roles" {
