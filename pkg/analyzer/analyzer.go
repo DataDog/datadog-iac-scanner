@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -564,8 +565,18 @@ func checkHelm(ctx context.Context, path string) bool {
 }
 
 func checkYamlPlatform(ctx context.Context, content []byte, path string) string {
+	// Ansible 'templates/' directories contain Jinja2 files; {{ }} syntax is invalid YAML.
+	if isInsideAnsibleTemplatesDir(path) {
+		return ""
+	}
+
 	contextLogger := logger.FromContext(ctx)
-	content = utils.DecryptAnsibleVault(ctx, content, os.Getenv("ANSIBLE_VAULT_PASSWORD_FILE"))
+
+	content = utils.DecryptAnsibleVault(ctx, content, utils.GetVaultPassword())
+
+	if utils.IsAnsibleVaultEncrypted(content) {
+		return ""
+	}
 
 	// Parse as Node to manually call Datadog's version of UnmarshalYAML with context
 	var node yamlParser.Node
@@ -578,6 +589,12 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 	contentNode := &node
 	if node.Kind == yamlParser.DocumentNode && len(node.Content) > 0 {
 		contentNode = node.Content[0]
+	}
+
+	// A scalar root means the document is empty/null (e.g. a comment-only vars file).
+	// No platform can be detected; skip silently.
+	if contentNode.Kind == yamlParser.ScalarNode {
+		return ""
 	}
 
 	var yamlContent model.Document
@@ -610,6 +627,28 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 
 func checkForAnsibleByPaths(path string) bool {
 	return queryRegexPathsAnsible.MatchString(path)
+}
+
+// isInsideAnsibleTemplatesDir reports whether path is inside an Ansible templates directory.
+// It requires a preceding "roles" or "ansible" path component to avoid false positives on
+// non-Ansible repos that happen to have their own templates/ directories.
+func isInsideAnsibleTemplatesDir(path string) bool {
+	parts := strings.FieldsFunc(filepath.Clean(path), func(r rune) bool {
+		if r > unicode.MaxLatin1 {
+			return false
+		}
+		return os.IsPathSeparator(uint8(r))
+	})
+	seenSignal := false
+	for _, part := range parts {
+		if part == "ansible" || part == "roles" {
+			seenSignal = true
+		}
+		if part == "templates" && seenSignal {
+			return true
+		}
+	}
+	return false
 }
 
 func checkForAnsible(yamlContent model.Document) bool {

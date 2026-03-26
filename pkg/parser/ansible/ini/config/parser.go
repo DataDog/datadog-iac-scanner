@@ -7,8 +7,11 @@ package ansibleconfig
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/comments"
@@ -26,6 +29,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
+	// Files in Ansible 'files/' directories are raw host artifacts, not IaC config.
+	if isInsideFilesDir(filePath) {
+		return fileContent, []model.Document{}, []int{}, nil, nil
+	}
+
 	reader := strings.NewReader(string(fileContent))
 	configparser.Delimiters("=")
 	inline := configparser.InlineCommentPrefixes([]string{";"})
@@ -106,4 +114,21 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 
 func emptyDocument() *model.Document {
 	return &model.Document{}
+}
+
+// isInsideFilesDir reports whether filePath has a "files" path component.
+// A broad match on "files" is safe here because SupportedTypes() returns only "ansible",
+// so only Ansible-typed repos reach this parser.
+func isInsideFilesDir(filePath string) bool {
+	for _, part := range strings.FieldsFunc(filepath.Clean(filePath), func(r rune) bool {
+		if r > unicode.MaxLatin1 {
+			return false
+		}
+		return os.IsPathSeparator(uint8(r))
+	}) {
+		if part == "files" {
+			return true
+		}
+	}
+	return false
 }

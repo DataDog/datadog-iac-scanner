@@ -439,3 +439,40 @@ func TestAnalyzer_Analyze(t *testing.T) {
 		})
 	}
 }
+
+func Test_checkYamlPlatform_emptyFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		content []byte
+	}{
+		{"comment-only vars file", []byte("---\n# vars file for sshconf\n\n")},
+		{"blank document", []byte("---\n")},
+		{"completely empty", []byte("")},
+	}
+	ctx := context.Background()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := checkYamlPlatform(ctx, tt.content, "ansible/roles/sshd/vars/main.yml")
+			require.Equal(t, "", got)
+		})
+	}
+}
+
+func Test_isInsideAnsibleTemplatesDir(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"templates", false},
+		{"my-templates/foo.yaml", false},
+		{"frontend/templates/config.yaml", false},
+		{"roles/web/templates/nginx.conf.j2", true},
+		{"ansible/roles/kube-scheduler/templates/config.yaml", true},
+		{"ansible/templates/main.yaml", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			require.Equal(t, tt.want, isInsideAnsibleTemplatesDir(tt.path))
+		})
+	}
+}

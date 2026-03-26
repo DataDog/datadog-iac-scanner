@@ -37,19 +37,21 @@ func TestParser_SupportedTypes(t *testing.T) {
 // TestParser_Parse tests the functions [Parse()] and all the methods called by them
 func TestParser_Parse(t *testing.T) {
 	type args struct {
-		content []byte
+		content  []byte
+		filePath string
 	}
 	tests := []struct {
-		name    string
-		p       *Parser
-		args    args
-		want    string
-		wantErr bool
+		name          string
+		p             *Parser
+		args          args
+		wantDocuments int
+		wantErr       bool
 	}{
 		{
 			name: "CFG to model.Document",
 			p:    &Parser{},
 			args: args{
+				filePath: "ansible.cfg",
 				content: []byte(`
 [defaults]
 inventory = /etc/ansible/hosts
@@ -73,27 +75,50 @@ ssh_args = -o ControlMaster=auto -o ControlPersist=30m -o ControlPath=/tmp/ansib
 profile_tasks = yes
 `),
 			},
-			want:    "",
-			wantErr: false,
+			wantDocuments: 1,
+			wantErr:       false,
+		},
+		{
+			name: "skip non-INI file inside ansible files/ dir",
+			p:    &Parser{},
+			args: args{
+				filePath: "packer/common/ansible/files/etc/sysctl.conf",
+				content: []byte(`
+net.core.rmem_max = 26214400
+net.ipv4.tcp_rmem = 4096 87380 26214400
+`),
+			},
+			wantDocuments: 0,
+			wantErr:       false,
+		},
+		{
+			name: "skip non-INI file inside role files/ dir",
+			p:    &Parser{},
+			args: args{
+				filePath: "ansible/roles/base/files/nsswitch.conf",
+				content: []byte(`
+passwd:         compat cache systemd
+group:          compat cache systemd
+`),
+			},
+			wantDocuments: 0,
+			wantErr:       false,
 		},
 	}
 
 	ctx := context.Background()
-	for i, tt := range tests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &Parser{}
-			switch i {
-			case 0:
-				_, got, _, _, err := p.Parse(ctx, tt.args.content, "", true, 15)
-				if (err != nil) != tt.wantErr {
-					t.Errorf("Parser() error = %v, wantErr %v", err, tt.wantErr)
-					return
-				}
-				_, err = json.Marshal(got)
-				if err != nil {
-					t.Errorf("json.Marshal() error = %v, wantErr %v", err, tt.wantErr)
-					return
-				}
+			_, got, _, _, err := p.Parse(ctx, tt.args.content, tt.args.filePath, true, 15)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Parser() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			require.Equal(t, tt.wantDocuments, len(got))
+			_, err = json.Marshal(got)
+			if err != nil {
+				t.Errorf("json.Marshal() error = %v", err)
 			}
 		})
 	}

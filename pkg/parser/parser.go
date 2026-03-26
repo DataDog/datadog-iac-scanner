@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -138,7 +137,7 @@ func (c *Parser) Parse(
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ParsedDocument, error) {
 	contextLogger := logger.FromContext(ctx)
-	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, os.Getenv("ANSIBLE_VAULT_PASSWORD_FILE"))
+	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, utils.GetVaultPassword())
 
 	if c.isValidExtension(ctx, filePath) {
 		resolved, obj, igLines, resolvedFiles, err := c.parsers.Parse(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
