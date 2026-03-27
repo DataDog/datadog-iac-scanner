@@ -173,7 +173,7 @@ func TestShellParser_parseRunBlock_UnsupportedShell(t *testing.T) {
 	result := parseRunBlock(script, "powershell")
 
 	require.False(t, result.ParseOK)
-	assert.Contains(t, result.Error, "PowerShell")
+	assert.Contains(t, result.Error.Error(), "PowerShell")
 }
 
 func TestShellParser_parseRunBlock_InvalidScript(t *testing.T) {

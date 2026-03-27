@@ -6,6 +6,7 @@
 package cicd
 
 import (
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -66,11 +67,11 @@ func parseRunBlock(runScript, shell string) *ParsedRun {
 	case pwsh, powershell:
 		// PowerShell not yet supported - Go bindings not available
 		result.ParseOK = false
-		result.Error = "PowerShell parsing not yet supported"
+		result.Error = fmt.Errorf("PowerShell parsing not yet supported")
 		return result
 	default:
 		result.ParseOK = false
-		result.Error = "unsupported shell: " + shell
+		result.Error = fmt.Errorf("unsupported shell: %s", shell)
 		return result
 	}
 
@@ -81,7 +82,7 @@ func parseRunBlock(runScript, shell string) *ParsedRun {
 
 	if err != nil {
 		result.ParseOK = false
-		result.Error = "failed to set Parser language"
+		result.Error = fmt.Errorf("failed to set Parser language")
 		return result
 	}
 
@@ -90,7 +91,7 @@ func parseRunBlock(runScript, shell string) *ParsedRun {
 	tree := parser.Parse(scriptBytes, nil)
 	if tree == nil {
 		result.ParseOK = false
-		result.Error = "failed to parse script"
+		result.Error = fmt.Errorf("failed to parse script")
 		return result
 	}
 	defer tree.Close()

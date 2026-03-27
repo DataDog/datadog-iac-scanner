@@ -9,6 +9,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 )
@@ -43,7 +44,7 @@ type ParsedRun struct {
 	Shell    string          `json:"shell"`           // "bash", "pwsh", etc.
 	Commands []ParsedCommand `json:"commands"`        // All commands found
 	ParseOK  bool            `json:"parse_ok"`        // Whether parsing succeeded
-	Error    string          `json:"error,omitempty"` // Parse error if any
+	Error    error           `json:"error,omitempty"` // Parse error if any
 }
 
 // Span represents a text span
@@ -106,7 +107,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	documents = yamlParser.ConvertKeysToString(documents)
 
 	// Enhance documents with parsed run blocks
-	p.enhanceWithParsedRuns(documents)
+	p.enhanceWithParsedRuns(ctx, documents)
 
 	// Enhance documents with parsed expressions
 	p.enhanceWithParsedExpressions(documents)
@@ -143,7 +144,8 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 }
 
 // enhanceWithParsedRuns walks through documents and parses run blocks with tree-sitter
-func (p *Parser) enhanceWithParsedRuns(documents []model.Document) {
+func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Document) {
+	contextLogger := logger.FromContext(ctx)
 	for _, doc := range documents {
 		// Look for jobs in the workflow
 		jobs, ok := doc["jobs"]
@@ -193,6 +195,9 @@ func (p *Parser) enhanceWithParsedRuns(documents []model.Document) {
 
 				// Parse the run block
 				parsed := parseRunBlock(runScript, shell)
+				if parsed.Error != nil {
+					contextLogger.Err(parsed.Error).Msg("Failed to parse shell expressions in run block")
+				}
 
 				// Add parsed structure to step
 				step["_parsed_run"] = parsed
