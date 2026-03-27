@@ -66,7 +66,7 @@ type ParsedExpression struct {
 	Raw                   string                `json:"raw"`                      // Original expression text
 	AST                   ASTNode               `json:"ast,omitempty"`            // Parsed AST
 	ParseOK               bool                  `json:"parse_ok"`                 // Whether parsing succeeded
-	Error                 string                `json:"error,omitempty"`          // Parse error if any
+	Error                 error                 `json:"error,omitempty"`          // Parse error if any
 	ConstantReducible     bool                  `json:"constant_reducible"`       // Can be evaluated at parse time
 	ConstantSubexprs      []ParsedSubExpression `json:"constant_subexprs"`        // Sub-expressions that are constant
 	ComputedIndices       []ParsedSubExpression `json:"computed_indices"`         // Dynamic array/object accesses
@@ -110,7 +110,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	p.enhanceWithParsedRuns(ctx, documents)
 
 	// Enhance documents with parsed expressions
-	p.enhanceWithParsedExpressions(documents)
+	p.enhanceWithParsedExpressions(ctx, documents)
 
 	// UnmarshalYAML already adds line tracking, so we can use documents directly
 	return resolved, documents, ignoreLines, resolvedFiles, nil
@@ -207,14 +207,15 @@ func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Do
 }
 
 // enhanceWithParsedExpressions walks through documents and parses GitHub Actions expressions
-func (p *Parser) enhanceWithParsedExpressions(documents []model.Document) {
+func (p *Parser) enhanceWithParsedExpressions(ctx context.Context, documents []model.Document) {
 	for _, doc := range documents {
-		p.parseExpressionsInValue(doc)
+		p.parseExpressionsInValue(ctx, doc)
 	}
 }
 
 // parseExpressionsInValue recursively walks a value and parses any expressions found
-func (p *Parser) parseExpressionsInValue(value interface{}) {
+func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{}) {
+	contextLogger := logger.FromContext(ctx)
 	switch v := value.(type) {
 	case model.Document, map[string]interface{}:
 		// Handle maps (documents, jobs, steps, env, with blocks, etc.)
@@ -247,7 +248,10 @@ func (p *Parser) parseExpressionsInValue(value interface{}) {
 			if len(allExpressions) > 0 {
 				parsedExprs := make([]ParsedExpression, 0, len(allExpressions))
 				for _, expr := range allExpressions {
-					parsed := parseExpression(expr)
+					parsed := parseExpression(ctx, expr)
+					if parsed.Error != nil {
+						contextLogger.Err(parsed.Error).Msg("Failed to parse ghaction expression")
+					}
 					parsedExprs = append(parsedExprs, *parsed)
 				}
 				// Add parsed expressions to the map under a special key
@@ -256,12 +260,12 @@ func (p *Parser) parseExpressionsInValue(value interface{}) {
 			}
 
 			// Recurse into nested structures
-			p.parseExpressionsInValue(val)
+			p.parseExpressionsInValue(ctx, val)
 		}
 
 	case []interface{}:
 		for _, item := range v {
-			p.parseExpressionsInValue(item)
+			p.parseExpressionsInValue(ctx, item)
 		}
 	}
 }

@@ -6,9 +6,12 @@
 package cicd
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	ghactions "github.com/rmuir/tree-sitter-ghactions/bindings/go"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
@@ -42,7 +45,8 @@ const (
 var ghactionsLang = sitter.NewLanguage(ghactions.Language())
 
 // ParseExpression parses a GitHub Actions expression and returns structured information
-func parseExpression(expr ExpressionMatch) *ParsedExpression {
+func parseExpression(ctx context.Context, expr ExpressionMatch) *ParsedExpression {
+	contextLogger := logger.FromContext(ctx)
 	result := &ParsedExpression{
 		Raw:                 expr.Expression,
 		ParseOK:             false,
@@ -59,6 +63,7 @@ func parseExpression(expr ExpressionMatch) *ParsedExpression {
 	err := parser.SetLanguage(ghactionsLang)
 
 	if err != nil {
+		contextLogger.Err(err).Msgf("Failed to load ghaction tree-sitter language")
 		return result
 	}
 
@@ -66,7 +71,7 @@ func parseExpression(expr ExpressionMatch) *ParsedExpression {
 	exprBytes := []byte(expr.Full)
 	tree := parser.Parse(exprBytes, nil)
 	if tree == nil {
-		result.Error = "failed to parse expression"
+		result.Error = fmt.Errorf("failed to parse expression '%s': invalid syntax", expr.Expression)
 		return result
 	}
 	defer tree.Close()

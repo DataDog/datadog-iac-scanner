@@ -1,6 +1,7 @@
 package cicd
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,6 +39,7 @@ func TestExpressionParser_ExtractExpressions(t *testing.T) {
 }
 
 func TestExpressionParser_ParseSecretsExpansion(t *testing.T) {
+	ctx := context.Background()
 	tests := []struct {
 		name                 string
 		expression           ExpressionMatch
@@ -72,7 +74,7 @@ func TestExpressionParser_ParseSecretsExpansion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseExpression(tt.expression)
+			result := parseExpression(ctx, tt.expression)
 			assert.True(t, result.ParseOK, "parsing should succeed")
 			assert.Equal(t, tt.wantSecretsExpansion, result.HasSecretsExpansion)
 			assert.Equal(t, tt.wantDynamicSecret, result.HasDynamicSecretKey)
@@ -81,6 +83,7 @@ func TestExpressionParser_ParseSecretsExpansion(t *testing.T) {
 }
 
 func TestExpressionParser_ConstantReducible(t *testing.T) {
+	ctx := context.Background()
 	tests := []struct {
 		name             string
 		expression       ExpressionMatch
@@ -109,7 +112,7 @@ func TestExpressionParser_ConstantReducible(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseExpression(tt.expression)
+			result := parseExpression(ctx, tt.expression)
 			assert.True(t, result.ParseOK, "parsing should succeed")
 			assert.Equal(t, tt.wantConstant, result.ConstantReducible)
 			if tt.wantConstantSubs {
