@@ -6,4 +6,4 @@
 # Usage:
 #   python sync_framework_mappings.py --source ~/dd/security-monitoring
 #
-toml>=0.10.0
+toml>=0.10.2
