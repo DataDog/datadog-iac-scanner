@@ -20,7 +20,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/report"
-	"github.com/hashicorp/hcl"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 )
