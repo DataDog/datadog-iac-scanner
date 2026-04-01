@@ -18,37 +18,30 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Parser defines a parser type
-type Parser struct {
-}
-
 // Resolve - replace or modifies in-memory content before parsing
-func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
-	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile, err error) {
+func resolve(ctx context.Context, fileContent []byte, filename string,
+	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile) {
 	// Resolve files passed as arguments with file resolver (e.g. file://)
-	res := file.NewResolver(yaml.Unmarshal, yaml.Marshal, p.SupportedExtensions())
+	res := file.NewResolver(yaml.Unmarshal, yaml.Marshal, SupportedExtensions())
 	resolvedFilesCache := make(map[string]file.ResolvedFile)
 	resolved = res.Resolve(ctx, fileContent, filename, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
 
 	if len(res.ResolvedFiles) == 0 {
-		return fileContent, res.ResolvedFiles, nil
+		return fileContent, res.ResolvedFiles
 	}
 
-	return resolved, res.ResolvedFiles, nil
+	return resolved, res.ResolvedFiles
 }
 
 // Parse parses yaml/yml file and returns it as a Document
-func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
+func Parse(ctx context.Context, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int) (
 	resolved []byte,
 	documents []model.Document,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	resolved, resolvedFiles, err = p.Resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
+	resolved, resolvedFiles = resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
 
 	ignore := &model.Ignore{}
 
@@ -81,13 +74,12 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	linesToIgnore := ignore.GetLines()
 
-	// UnmarshalYAML already adds line tracking, so we can use documents directly
-	return resolved, convertKeysToString(addExtraInfo(ctx, documents, filePath)), linesToIgnore, resolvedFiles, nil
+	return resolved, documents, linesToIgnore, resolvedFiles, nil
 }
 
 // convertKeysToString goes through every document to convert map[interface{}]interface{}
 // to map[string]interface{}
-func convertKeysToString(docs []model.Document) []model.Document {
+func ConvertKeysToString(docs []model.Document) []model.Document {
 	documents := make([]model.Document, 0, len(docs))
 	for _, doc := range docs {
 		for key, value := range doc {
@@ -123,29 +115,8 @@ func convert(value interface{}) interface{} {
 }
 
 // SupportedExtensions returns extensions supported by this parser, which are yaml and yml extension
-func (p *Parser) SupportedExtensions() []string {
+func SupportedExtensions() []string {
 	return []string{".yaml", ".yml"}
-}
-
-// SupportedTypes returns types supported by this parser, which are ansible, cloudFormation, k8s
-func (p *Parser) SupportedTypes() map[string]bool {
-	return map[string]bool{
-		"ansible":                 true,
-		"cloudformation":          true,
-		"kubernetes":              true,
-		"crossplane":              true,
-		"knative":                 true,
-		"openapi":                 true,
-		"googledeploymentmanager": true,
-		"pulumi":                  true,
-		"serverlessfw":            true,
-		"cicd":                    true,
-	}
-}
-
-// GetKind returns YAML constant kind
-func (p *Parser) GetKind() model.FileKind {
-	return model.KindYAML
 }
 
 func processCertContent(ctx context.Context, elements map[string]interface{}, content, filePath string) {
@@ -164,7 +135,7 @@ func processElements(ctx context.Context, elements map[string]interface{}, fileP
 	}
 }
 
-func addExtraInfo(ctx context.Context, documents []model.Document, filePath string) []model.Document {
+func AddExtraInfo(ctx context.Context, documents []model.Document, filePath string) []model.Document {
 	for _, documentPlaybooks := range documents { // iterate over documents
 		if playbooks, ok := documentPlaybooks["playbooks"]; ok {
 			processPlaybooks(ctx, playbooks, filePath)
@@ -200,14 +171,4 @@ func processPlaybooksElements(ctx context.Context, resources interface{}, filePa
 		}
 		processElements(ctx, mapValue, filePath)
 	}
-}
-
-// GetCommentToken return the comment token of YAML - #
-func (p *Parser) GetCommentToken() string {
-	return "#"
-}
-
-// StringifyContent converts original content into string formatted version
-func (p *Parser) StringifyContent(content []byte) (string, error) {
-	return string(content), nil
 }

@@ -25,7 +25,8 @@ import (
 	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
-	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
+	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scanner"
@@ -247,6 +248,7 @@ func (c *Client) createService(
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefaultWithParams(c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
 		Add(&bicepParser.Parser{}).
+		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).

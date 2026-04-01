@@ -60,7 +60,7 @@ func (b *Builder) Build(types, cloudProviders []string) ([]*Parser, error) {
 				platforms = append(platforms, key)
 			}
 			parserSlice = append(parserSlice, &Parser{
-				parsers:    parser,
+				Parsers:    parser,
 				extensions: extensions,
 				Platform:   platforms,
 			})
@@ -75,7 +75,8 @@ var ErrNotSupportedFile = errors.New("unsupported file to parse")
 
 // Parser is a struct that associates a parser to its supported extensions
 type Parser struct {
-	parsers    kindParser
+	// Parsers is public because necessary for testing purposes
+	Parsers    kindParser
 	extensions model.Extensions
 	Platform   []string
 	SCIInfo    model.SCIInfo
@@ -96,7 +97,7 @@ type ParsedDocument struct {
 func (c *Parser) CommentsCommands(ctx context.Context, filePath string, fileContent []byte) model.CommentsCommands {
 	if c.isValidExtension(ctx, filePath) {
 		commentsCommands := make(model.CommentsCommands)
-		commentToken := c.parsers.GetCommentToken()
+		commentToken := c.Parsers.GetCommentToken()
 		if commentToken != "" {
 			lines := strings.Split(string(fileContent), "\n")
 			for _, line := range lines {
@@ -140,12 +141,12 @@ func (c *Parser) Parse(
 	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, utils.GetVaultPassword())
 
 	if c.isValidExtension(ctx, filePath) {
-		resolved, obj, igLines, resolvedFiles, err := c.parsers.Parse(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+		resolved, obj, igLines, resolvedFiles, err := c.Parsers.Parse(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
 		if err != nil {
 			return ParsedDocument{}, err
 		}
 
-		cont, err := c.parsers.StringifyContent(fileContent)
+		cont, err := c.Parsers.StringifyContent(fileContent)
 		if err != nil {
 			contextLogger.Error().Msgf("failed to stringify original content: %s", err)
 			cont = string(fileContent)
@@ -153,7 +154,7 @@ func (c *Parser) Parse(
 
 		return ParsedDocument{
 			Docs:          obj,
-			Kind:          c.parsers.GetKind(),
+			Kind:          c.Parsers.GetKind(),
 			Content:       cont,
 			IgnoreLines:   igLines,
 			CountLines:    bytes.Count(resolved, []byte{'\n'}) + 1,

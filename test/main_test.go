@@ -23,7 +23,8 @@ import (
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
-	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
+	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -162,25 +163,28 @@ func loadQueries(tb testing.TB) []queryEntry {
 	return queriesDir
 }
 
-func getFileMetadatas(t testing.TB, filesPath []string) model.FileMetadatas {
+func getFileMetadatas(t testing.TB, filesPath []string, platform string) model.FileMetadatas {
 	fileMetadatas := make(model.FileMetadatas, 0)
 	for _, path := range filesPath {
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
-		fileMetadatas = append(fileMetadatas, getFilesMetadatasWithContent(t, path, content)...)
+		fileMetadatas = append(fileMetadatas, getFilesMetadatasWithContent(t, path, platform, content)...)
 	}
 	return fileMetadatas
 }
 
-func getFilesMetadatasWithContent(t testing.TB, filePath string, content []byte) model.FileMetadatas {
+func getFilesMetadatasWithContent(t testing.TB, filePath, platform string, content []byte) model.FileMetadatas {
 	combinedParser := getCombinedParser()
 	files := make(model.FileMetadatas, 0)
 
 	ctx := context.Background()
 	for _, parser := range combinedParser {
-		docs, err := parser.Parse(ctx, filePath, content, true, false, 15)
+		docs, _ := parser.Parse(ctx, filePath, content, true, false, 15)
+		if !parser.Parsers.SupportedTypes()[normalizePlatform(platform)] {
+			continue
+		}
 		for _, document := range docs.Docs {
-			require.NoError(t, err)
+
 			files = append(files, model.FileMetadata{
 				ID:                uuid.NewString(),
 				ScanID:            scanID,
@@ -197,12 +201,20 @@ func getFilesMetadatasWithContent(t testing.TB, filePath string, content []byte)
 	return files
 }
 
+func normalizePlatform(platform string) string {
+	if platform == "k8s" {
+		return "kubernetes"
+	}
+	return strings.ToLower(platform)
+}
+
 func getCombinedParser() []*parser.Parser {
 	ctx := context.Background()
 	bd, _ := parser.NewBuilder(ctx).
 		Add(&jsonParser.Parser{}).
 		Add(&yamlParser.Parser{}).
 		Add(&bicepParser.Parser{}).
+		Add(&cicdParser.Parser{}).
 		Add(terraformParser.NewDefault()).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).

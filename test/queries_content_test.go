@@ -249,7 +249,7 @@ func testQueryHasGoodReturnParams(t *testing.T, entry queryEntry) { //nolint
 
 	_, err = inspector.Inspect(ctx, scanID, getFileMetadatas(
 		t,
-		entry.PositiveFiles(t)),
+		entry.PositiveFiles(t), entry.platform),
 		[]string{BaseTestsScanPath},
 		platforms,
 	)

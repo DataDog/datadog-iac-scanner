@@ -3,20 +3,41 @@
  *
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
-package yaml
+package cicd
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
 
+// TestParser_GetKind tests the functions [GetKind()] and all the methods called by them
+func TestParser_GetKind(t *testing.T) {
+	p := &Parser{}
+	require.Equal(t, model.KindYAML, p.GetKind())
+}
+
+// TestParser_SupportedExtensions tests the functions [SupportedExtensions()] and all the methods called by them
+func TestParser_SupportedExtensions(t *testing.T) {
+	p := &Parser{}
+	require.Equal(t, []string{".yaml", ".yml"}, p.SupportedExtensions())
+}
+
+// TestParser_SupportedExtensions tests the functions [SupportedTypes()] and all the methods called by them
+func TestParser_SupportedTypes(t *testing.T) {
+	p := &Parser{}
+	require.Equal(t, map[string]bool{
+		"cicd": true,
+	}, p.SupportedTypes())
+}
+
 // TestParser_Parse tests the functions [Parse()] and all the methods called by them
 func TestParser_Parse(t *testing.T) { //nolint
+	p := &Parser{}
 	have := []string{`
 # dd-iac-scan ignore-block
 martin:
@@ -334,7 +355,7 @@ resources:
 	ctx := context.Background()
 	for idx, tt := range have {
 		t.Run(fmt.Sprintf("test_parse_case_%d", idx), func(t *testing.T) {
-			_, doc, linesToIgnore, _, err := Parse(ctx, []byte(tt), "test.yaml", true, 15)
+			_, doc, linesToIgnore, _, err := p.Parse(ctx, []byte(tt), "test.yaml", true, 15)
 			if want[idx].wantErr {
 				require.Error(t, err)
 			} else {
@@ -350,60 +371,6 @@ func compareJSONLine(t *testing.T, test1 interface{}, test2 string) {
 	stringefiedJSON, err := json.Marshal(&test1)
 	require.NoError(t, err)
 	require.JSONEq(t, test2, string(stringefiedJSON))
-}
-
-// Test_Resolve tests the functions [Resolve()] and all the methods called by them
-func Test_Resolve(t *testing.T) {
-	ctx := context.Background()
-	have := `
-	martin:
-		name: test
-	---
-	martin2:
-		name: test2
-	`
-
-	resolved, _ := resolve(ctx, []byte(have), "test.yaml", true, 15)
-	require.Equal(t, []byte(have), resolved)
-}
-
-func TestYaml_processElements(t *testing.T) {
-	type args struct {
-		elements map[string]interface{}
-		filePath string
-	}
-	tests := []struct {
-		name     string
-		args     args
-		wantCert map[string]interface{}
-		wantSwag string
-	}{
-		{
-			name: "test_process_elements",
-			args: args{
-				elements: map[string]interface{}{
-					"swagger_file": "test",
-					"certificate":  filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-				},
-				filePath: filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-			},
-			wantCert: map[string]interface{}{
-				"expiration_date": [3]int{2022, 3, 27},
-				"file":            filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"),
-				"rsa_key_bytes":   512,
-			},
-			wantSwag: "test",
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			processElements(ctx, tt.args.elements, tt.args.filePath)
-			require.Equal(t, tt.wantCert, tt.args.elements["certificate"])
-			require.Equal(t, tt.wantSwag, tt.args.elements["swagger_file"])
-		})
-	}
 }
 
 func TestModel_TestYamlParser(t *testing.T) {
@@ -434,13 +401,68 @@ func TestModel_TestYamlParser(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, got, _, _, err := Parse(ctx, []byte(tt.sample), "", true, 15)
+			parser := Parser{}
+			_, got, _, _, err := parser.Parse(ctx, []byte(tt.sample), "", true, 15)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
 				compareJSONLine(t, got, tt.want)
 			}
+		})
+	}
+}
+
+// Test_GetCommentToken must get the token that represents a comment
+func Test_GetCommentToken(t *testing.T) {
+	parser := &Parser{}
+	require.Equal(t, "#", parser.GetCommentToken())
+}
+
+func TestYAML_StringifyContent(t *testing.T) {
+	type fields struct {
+		parser Parser
+	}
+	type args struct {
+		content []byte
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "test stringify content",
+			fields: fields{
+				parser: Parser{},
+			},
+			args: args{
+				content: []byte(`
+martin:
+  name: test
+---
+martin2:
+  name: test2
+`),
+			},
+			want: `
+martin:
+  name: test
+---
+martin2:
+  name: test2
+`,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.fields.parser.StringifyContent(tt.args.content)
+			require.Equal(t, tt.wantErr, (err != nil))
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
