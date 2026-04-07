@@ -45,3 +45,40 @@ jobs:
         image: ${{ matrix.db_image }}
     steps:
       - run: npm test
+
+  # Case 5: Expression-based service image (matrix with one unpinned image)
+  test_matrix_unpinned_service_3:
+    strategy:
+      matrix:
+        db_image: postgres@sha256:c5e1c2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: ${{ matrix.db_image }}
+    steps:
+      - run: npm test
+
+  # Case 6: Expression-based service image (matrix with one unpinned image)
+  test_matrix_unpinned_service_4:
+    strategy:
+      matrix:
+        image: postgres
+        tag: ["@sha256:c5e1c2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1", "@sha256:d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1c2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7"]
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: ${{ format('{0}:{1}', matrix.image, matrix.tag) }}
+    steps:
+      - run: npm test
+
+  # Case 7: Expression-based service image (matrix with one unpinned image)
+  test_matrix_unpinned_service_4:
+    strategy:
+      matrix:
+        image: postgres
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: ${{ format('{0}:@sha256:c5e1c2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1', matrix.image) }}
+    steps:
+      - run: npm test
