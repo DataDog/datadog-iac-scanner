@@ -46,45 +46,15 @@ CxPolicy[result] {
 	}
 }
 
-# Helper function to check for unsound condition patterns
 check_unsound_condition(job_or_step) {
 	# Get parsed expressions for the if condition
 	parsed_exprs := job_or_step._parsed_expressions_if[_]
 	parsed_exprs.parse_ok == true
-
 	# Get the raw if condition
 	condition := job_or_step["if"]
-
-	# Check if condition has newlines (indicates block scalar style)
-	contains(condition, "\n")
-}
-
-# Alternative check: Detect conditions that are ONLY expressions with surrounding whitespace
-check_unsound_condition(job_or_step) {
-	# Get parsed expressions for the if condition
-	parsed_exprs := job_or_step._parsed_expressions_if[_]
-	parsed_exprs.parse_ok == true
-
-	# Get the raw if condition
-	condition := job_or_step["if"]
-
-	# Check if condition starts or ends with whitespace (but not newlines)
-	# This catches cases where the expression has padding
-	has_leading_or_trailing_space(condition)
-}
-
-# Helper to detect leading/trailing spaces (but be lenient with single spaces)
-has_leading_or_trailing_space(str) {
-	# Check for leading whitespace beyond a single space
-	startswith(str, "  ")
-}
-
-has_leading_or_trailing_space(str) {
-	# Check for trailing whitespace beyond a single space
-	endswith(str, "  ")
-}
-
-has_leading_or_trailing_space(str) {
-	# Check for tab characters
-	contains(str, "\t")
+	#
+	trimmed := trim_space(condition)
+	startswith(trimmed, "${{")
+	endswith(trimmed, "}}")
+	condition != trimmed
 }

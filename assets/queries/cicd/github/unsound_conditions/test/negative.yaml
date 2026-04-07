@@ -38,8 +38,3 @@ jobs:
       - name: Complex condition
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: echo "Complex but sound"
-
-      # Case 7: Single space is acceptable
-      - name: Single space padding
-        if: " ${{ true }} "
-        run: echo "Single space is fine"

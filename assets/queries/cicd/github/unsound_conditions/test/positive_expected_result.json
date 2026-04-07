@@ -28,5 +28,10 @@
     "queryName": "Unsound condition",
     "severity": "HIGH",
     "line": 40
+  },
+  {
+    "queryName": "Unsound condition",
+    "severity": "HIGH",
+    "line": 45
   }
 ]
