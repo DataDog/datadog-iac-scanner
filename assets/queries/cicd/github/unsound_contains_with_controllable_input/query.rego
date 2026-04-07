@@ -32,18 +32,17 @@ CxPolicy[result] {
 
 	# Determine severity based on context
 	is_user_controllable := check_user_controllable_in_ast(vulnerable_call.second_arg)
-	# Severity is not actually controllable through IaC Scanning
-	# Option 1: Only keep rule for HIGH Severity
-	# Option 2: Keep HIGH Severity for all cases
-	# Option 3: Add mechanism to adapt Severity
+
 	severity := get_severity(is_user_controllable)
+
+	severity == "HIGH"
 
 	result := {
 		"documentId": doc.id,
 		"searchKey": sprintf("jobs.%s.if", [j]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Use explicit equality checks or JSON array with contains() instead of space-separated string",
-		"keyActualValue": sprintf("contains() condition can be bypassed if attacker controls the context value (%s severity)", [severity]),
+		"keyActualValue": sprintf("contains() condition can be bypassed if attacker controls the context value", []),
 		"searchLine": common_lib.build_search_line(["jobs", j, "if"], []),
 		"resourceType": "github_action",
 		"resourceName": j
@@ -70,6 +69,8 @@ CxPolicy[result] {
 	is_user_controllable := check_user_controllable_in_ast(vulnerable_call.second_arg)
 	severity := get_severity(is_user_controllable)
 
+	severity == "HIGH"
+
 	# Get step name if available
 	step_name := object.get(step, "name", sprintf("step-%d", [s]))
 
@@ -78,7 +79,7 @@ CxPolicy[result] {
 		"searchKey": sprintf("jobs.%s.steps[%d].if", [j, s]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Use explicit equality checks or JSON array with contains() instead of space-separated string",
-		"keyActualValue": sprintf("Step '%s' contains() condition can be bypassed (%s severity)", [step_name, severity]),
+		"keyActualValue": sprintf("Step '%s' contains() condition can be bypassed", [step_name]),
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", s, "if"], []),
 		"resourceType": "github_action",
 		"resourceName": step_name
@@ -89,8 +90,7 @@ CxPolicy[result] {
 # Returns an object with first_arg and second_arg if vulnerable pattern found
 find_vulnerable_contains(ast) = result {
 	# Get all nodes from the AST (root and all descendants)
-	all_nodes := get_all_nodes(ast)
-	node := all_nodes[_]
+	walk(ast, [_, node])
 
 	# Check if this is a function_call node with function "contains"
 	node.type == "function_call"
@@ -114,50 +114,10 @@ find_vulnerable_contains(ast) = result {
 	# First argument must be a string literal
 	is_string_literal(first_arg)
 
-	# First argument must contain spaces or delimiters (indicating multiple values)
-	string_value := get_string_value(first_arg)
-	has_delimiter(string_value)
-
 	result := {
 		"first_arg": first_arg,
 		"second_arg": second_arg
 	}
-}
-
-# Collect all nodes from the AST using iteration
-# Rego cannot use recursive function calls, thus the pseudo-iteration
-get_all_nodes(node) = nodes {
-	# Start with the node itself
-	nodes := {node} | get_children_nodes(node)
-}
-
-# Get all descendant nodes iteratively
-get_children_nodes(node) = nodes {
-	# Collect immediate children
-	children := {child | child := node.children[_]}
-
-	# Collect grandchildren and deeper
-	grandchildren := {grandchild |
-		child := node.children[_]
-		grandchild := child.children[_]
-	}
-
-	# Collect great-grandchildren
-	great_grandchildren := {ggchild |
-		child := node.children[_]
-		grandchild := child.children[_]
-		ggchild := grandchild.children[_]
-	}
-
-	# Collect great-great-grandchildren (should be deep enough for most expressions)
-	gggrandchildren := {gggchild |
-		child := node.children[_]
-		grandchild := child.children[_]
-		ggchild := grandchild.children[_]
-		gggchild := ggchild.children[_]
-	}
-
-	nodes := children | grandchildren | great_grandchildren | gggrandchildren
 }
 
 # Check if a node is a string literal
@@ -165,33 +125,16 @@ is_string_literal(node) {
 	node.type == "string"
 }
 
-# Get the string value from a string literal node
-get_string_value(node) = value {
-	# String nodes have a child of type "string_fragment" that contains the actual text
-	string_fragment := node.children[_]
-	string_fragment.type == "string_fragment"
-	value := string_fragment.value
-}
-
-# Check if string contains delimiters (spaces, pipes, etc.)
-has_delimiter(str) {
-	# Check for space
-	contains(str, " ")
-}
-
-has_delimiter(str) {
-	# Check for pipe
-	contains(str, "|")
-}
-
 # Check if an AST node references a user-controllable context
-check_user_controllable_in_ast(node) {
+check_user_controllable_in_ast(node) = true {
 	# Get the full text of the node
 	node_text := get_node_text(node)
 
 	# Check against user-controllable contexts
 	context := user_controllable_contexts[_]
 	startswith(node_text, context)
+} else = false {
+	true
 }
 
 # Get the text representation of a node

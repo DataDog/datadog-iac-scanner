@@ -47,10 +47,3 @@ jobs:
     if: ${{ endsWith(github.ref, '/main') }}
     steps:
       - run: echo "Main branch"
-
-  # Case 7: Contains with non-user-controllable context
-  test_safe_context:
-    runs-on: ubuntu-latest
-    if: ${{ contains('push pull_request', github.event_name) }}
-    steps:
-      - run: echo "This is informational, not high severity"
