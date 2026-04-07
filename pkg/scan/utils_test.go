@@ -451,6 +451,7 @@ func Test_AnalyzePaths(t *testing.T) {
 		{
 			name: "test",
 			analyzer: analyzer.Analyzer{
+				RepoPath: ".",
 				Paths: []string{
 					filepath.Join("..", "..", "assets", "queries", "terraform", "alicloud", "action_trail_logging_all_regions_disabled"),
 					filepath.Join("..", "..", "assets", "queries", "terraform", "alicloud", "actiontrail_trail_oss_bucket_is_publicly_accessible"),

@@ -432,10 +432,6 @@ func (sr *sarifReport) RebuildTaxonomies(cwes []string, guids map[string]string)
 // nolint:gocritic,gocyclo
 func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryResult, sciInfo model.SCIInfo) (string, error) {
 	contextLogger := logger.FromContext(ctx)
-	repoPath, err := getRepoPath(&sciInfo)
-	if err != nil {
-		return "", err
-	}
 	if len(issue.Files) > 0 {
 		metadata := ruleMetadata{
 			queryID:          issue.QueryID,
@@ -532,10 +528,11 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				vulnerability.Line,
 			)
 
-			artifactPath, err := resolvePath(repoPath, issue.Files[idx].FileName)
-			if err != nil {
-				return "", err
+			artifactPath := issue.Files[idx].FileName
+			if artifactPath == "." {
+				artifactPath = ""
 			}
+
 			result := sarifResult{
 				ResultRuleID:    issue.QueryName,
 				ResultRuleIndex: ruleIndex,
@@ -630,26 +627,6 @@ func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diff
 	)
 
 	return nil
-}
-
-func getRepoPath(sciInfo *model.SCIInfo) (string, error) {
-	repoDir := sciInfo.RepositoryDir
-	if sciInfo.RepositoryDir == "" {
-		repoDir = "."
-	}
-	return filepath.Abs(repoDir)
-}
-
-func resolvePath(root, path string) (string, error) {
-	if abs, err := filepath.Abs(path); err != nil {
-		return "", err
-	} else if rel, err := filepath.Rel(root, abs); err != nil {
-		return "", err
-	} else if rel == "." {
-		return "", nil
-	} else {
-		return rel, nil
-	}
 }
 
 // nolint:gocritic

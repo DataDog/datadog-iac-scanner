@@ -233,6 +233,7 @@ func testQueryHasGoodReturnParams(t *testing.T, entry queryEntry) { //nolint
 			FlagEvaluator:  nil,
 		},
 		map[string]bool{},
+		".",
 		60,
 		true,
 		true,

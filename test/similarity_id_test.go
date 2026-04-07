@@ -312,7 +312,7 @@ func createInspectorAndGetVulnerabilities(ctx context.Context, t testing.TB,
 			InputDataPath:  "",
 			FlagEvaluator:  nil,
 		},
-		map[string]bool{}, 60, true, true, 1, false,
+		map[string]bool{}, ".", 60, true, true, 1, false,
 		featureflags.NewLocalEvaluator(),
 	)
 
