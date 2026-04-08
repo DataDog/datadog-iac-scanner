@@ -1,0 +1,14 @@
+name: Dangerous Workflow
+on: 
+  workflow_run:
+    types: [opened, synchronize]
+
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: npm test

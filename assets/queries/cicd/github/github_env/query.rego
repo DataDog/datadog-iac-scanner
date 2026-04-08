@@ -1,11 +1,12 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 CxPolicy[result] {
 	# Only check workflows with dangerous triggers
 	doc := input.document[i]
-	has_dangerous_trigger(doc)
+	cicd_lib.has_dangerous_trigger(doc)
 
 	job := doc.jobs[j]
 	step := job.steps[s]
@@ -27,23 +28,6 @@ CxPolicy[result] {
 		"keyActualValue": "Step writes to GITHUB_ENV or GITHUB_PATH which may allow code execution",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", s, "run"], []),
 	}
-}
-
-
-# Check if workflow has dangerous triggers
-has_dangerous_trigger(doc) {
-	trigger := doc.on
-	trigger == ["pull_request_target", "workflow_run"][_]
-}
-
-has_dangerous_trigger(doc) {
-	trigger := doc.on[_]
-	trigger == ["pull_request_target", "workflow_run"][_]
-}
-
-has_dangerous_trigger(doc) {
-	is_object(doc.on[trigger])
-	trigger == ["pull_request_target", "workflow_run"][_]
 }
 
 # Detect writes to GITHUB_ENV or GITHUB_PATH using tree-sitter parsed data (bash/sh/zsh)
