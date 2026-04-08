@@ -178,10 +178,10 @@ func removeURLCredentials(url string) string {
 	return strings.Replace(url, authGroup, "", 1)
 }
 
-func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObject, downloadDir string) string {
+func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) string {
 	var returnPath string
 	returnPath = replaceIfTemporaryPath(filepath.FromSlash(filePath), pathExtractionMap)
-	returnPath = getRelativePath(downloadDir, returnPath)
+	returnPath = getRelativePath(repoDir, returnPath)
 	return returnPath
 }
 
@@ -189,7 +189,7 @@ func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObje
 //
 //nolint:gocritic
 func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vulnerability,
-	scanID string, pathExtractionMap map[string]ExtractedPathObject, downloadDir string) Summary {
+	scanID string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) Summary {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("model.CreateSummary()")
 	q := make(map[string]QueryResult, len(vulnerabilities))
@@ -217,7 +217,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			}
 		}
 
-		resolvedPath := resolvePath(item.FileName, pathExtractionMap, downloadDir)
+		resolvedPath := resolvePath(item.FileName, pathExtractionMap, repoDir)
 
 		qItem := q[item.QueryID]
 		qItem.Files = append(qItem.Files, VulnerableFile{

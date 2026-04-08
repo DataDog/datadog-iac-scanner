@@ -31,6 +31,7 @@ type Parameters struct {
 	InputData                   string
 	OutputName                  string
 	OutputPath                  string
+	RepoPath                    string
 	Path                        []string
 	PayloadPath                 string
 	PreviewLines                int

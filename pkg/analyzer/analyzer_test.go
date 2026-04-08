@@ -27,6 +27,7 @@ func TestAnalyzer_Analyze(t *testing.T) {
 		gitIgnoreFileName    string
 		excludeGitIgnore     bool
 		MaxFileSize          int
+		repoPath             string
 	}{
 		{
 			name:      "analyze_test_dir_single_path",
@@ -149,6 +150,7 @@ func TestAnalyzer_Analyze(t *testing.T) {
 			gitIgnoreFileName:    "gitignore",
 			excludeGitIgnore:     false,
 			MaxFileSize:          -1,
+			repoPath:             "../../test/fixtures/gitignore",
 		},
 		{
 			name: "analyze_test_not_considering_ignore_file",
@@ -414,7 +416,13 @@ func TestAnalyzer_Analyze(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			exc := []string{""}
 
+			repoPath := "../../test/fixtures"
+			if tt.repoPath != "" {
+				repoPath = tt.repoPath
+			}
+
 			analyzer := &Analyzer{
+				RepoPath:          repoPath,
 				Paths:             tt.paths,
 				Types:             tt.typesFromFlag,
 				ExcludeTypes:      tt.excludeTypesFromFlag,

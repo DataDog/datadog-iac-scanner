@@ -93,9 +93,18 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("unexpected arguments: %v", c.Args().Slice())
 	}
 
-	inputPaths := c.StringSlice("path")
-	outputPath := c.String("output-path")
-	payloadPath := c.String("payload-path")
+	inputPaths, err := getAbsolutePaths(c.StringSlice("path"))
+	if err != nil {
+		return err
+	}
+	outputPath, err := getAbsolutePath(c.String("output-path"))
+	if err != nil {
+		return err
+	}
+	payloadPath, err := getAbsolutePath(c.String("payload-path"))
+	if err != nil {
+		return err
+	}
 	if outputPath != "" {
 		if err := os.MkdirAll(outputPath, dirPerms); err != nil {
 			return err
@@ -116,11 +125,16 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("error reading the configuration: %w", err)
 	}
+	excludePaths, err := getRepoRelativePaths(repoDir, config.ExcludePaths)
+	if err != nil {
+		return err
+	}
 	params := &scan.Parameters{
 		CloudProvider:              []string{""},
 		OutputPath:                 outputPath,
 		OutputName:                 c.String("output-name"),
 		PreviewLines:               3,
+		RepoPath:                   repoDir,
 		Path:                       inputPaths,
 		QueriesPath:                []string{"./assets/queries"},
 		LibrariesPath:              "./assets/libraries",
@@ -139,7 +153,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		ExcludeQueries:             append(c.StringSlice("exclude-queries"), config.ExcludeQueries...),
 		ExcludeResults:             config.ExcludeResults,
 		ExcludeSeverities:          config.ExcludeSeverities,
-		ExcludePaths:               config.ExcludePaths,
+		ExcludePaths:               excludePaths,
 		IncludeQueries:             config.IncludeQueries,
 		DownloadQueriesFromDatadog: c.Bool("x-downloadqueriesfromdatadog"),
 	}
@@ -347,4 +361,44 @@ func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
 	overrides := map[string]bool{}
 	overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
+}
+
+func getAbsolutePath(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	return filepath.Abs(path)
+}
+
+func getAbsolutePaths(paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		res, err := getAbsolutePath(p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+func getRepoRelativePaths(repoDir string, paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if filepath.IsAbs(p) {
+			rel, err := filepath.Rel(repoDir, p)
+			if err != nil {
+				return nil, err
+			}
+			p = rel
+		}
+		if !filepath.IsLocal(p) {
+			return nil, fmt.Errorf("path %q is not relative to the repository root", p)
+		}
+		out = append(out, filepath.Join(repoDir, filepath.Clean(p)))
+	}
+	return out, nil
 }

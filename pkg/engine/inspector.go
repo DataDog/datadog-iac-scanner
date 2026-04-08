@@ -87,6 +87,7 @@ type Inspector struct {
 	excludeResults map[string]bool
 	detector       *detector.DetectLine
 
+	repoPath             string
 	enableCoverageReport bool
 	coverageReport       cover.Report
 	queryExecTimeout     time.Duration
@@ -123,6 +124,7 @@ func NewInspector(
 	tracker Tracker,
 	queryParameters *source.QueryInspectorParameters,
 	excludeResults map[string]bool,
+	repoPath string,
 	queryTimeout int,
 	useOldSeverities bool,
 	needsLog bool,
@@ -173,6 +175,7 @@ func NewInspector(
 		failedQueries:       failedQueries,
 		excludeResults:      excludeResults,
 		detector:            lineDetector,
+		repoPath:            repoPath,
 		queryExecTimeout:    queryExecTimeout,
 		useOldSeverities:    useOldSeverities,
 		numWorkers:          utils.AdjustNumWorkers(numWorkers),
@@ -279,7 +282,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
 
 	// Step 2: Enrich modules with parsed variables
-	rootDir := "." // or infer from files.RootDir, etc.
+	rootDir := c.repoPath
 	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, parsedModules, rootDir)
 
 	var p interface{}

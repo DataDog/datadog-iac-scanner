@@ -157,6 +157,7 @@ type analyzerInfo struct {
 
 // Analyzer keeps all the relevant info for the function Analyze
 type Analyzer struct {
+	RepoPath          string
 	Paths             []string
 	Types             []string
 	ExcludeTypes      []string
@@ -286,6 +287,7 @@ var types = map[string]regexSlice{
 
 var defaultConfigFiles = []string{"pnpm-lock.yaml"}
 
+// nolint:gocyclo
 // Analyze will go through the slice paths given and determine what type of queries should be loaded
 // should be loaded based on the extension of the file and the content
 func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
@@ -297,6 +299,8 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 		ExpectedLOC: 0,
 	}
 
+	gitDir := filepath.Join(a.RepoPath, ".git")
+
 	var files []string
 	var wg sync.WaitGroup
 	// results is the channel shared by the workers that contains the types found
@@ -304,7 +308,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	locCount := make(chan int)
 	ignoreFiles := make([]string, 0)
 	projectConfigFiles := make([]string, 0)
-	hasGitIgnoreFile, gitIgnore := shouldConsiderGitIgnoreFile(ctx, a.Paths[0], a.GitIgnoreFileName, a.ExcludeGitIgnore)
+	hasGitIgnoreFile, gitIgnore := shouldConsiderGitIgnoreFile(ctx, a.RepoPath, a.GitIgnoreFileName, a.ExcludeGitIgnore)
 	// get all the files inside the given paths
 	for _, path := range a.Paths {
 		if _, err := os.Stat(path); err != nil {
@@ -314,10 +318,17 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			if err != nil {
 				return err
 			}
+			if path == gitDir {
+				a.Exc = append(a.Exc, path)
+				return filepath.SkipDir
+			}
 
 			ext, errExt := utils.GetExtension(ctx, path)
 			if errExt == nil {
-				trimmedPath := strings.ReplaceAll(path, a.Paths[0], filepath.Base(a.Paths[0]))
+				trimmedPath, err := filepath.Rel(a.RepoPath, path)
+				if err != nil {
+					return err
+				}
 				ignoreFiles = a.checkIgnore(ctx, info.Size(), hasGitIgnoreFile, gitIgnore, path, trimmedPath, ignoreFiles)
 
 				if isConfigFile(ctx, path, defaultConfigFiles) {
