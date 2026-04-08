@@ -49,7 +49,7 @@ func GetExtension(ctx context.Context, path string) (string, error) {
 
 			if isText {
 				err := fmt.Errorf("file %s does not have a supported extension", path)
-				contextLogger.Info().Msg(err.Error())
+				contextLogger.Debug().Msg(err.Error())
 				return "", err
 			}
 		}
