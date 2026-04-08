@@ -4,12 +4,12 @@ import data.generic.common as common_lib
 import future.keywords.in
 
 # Known cache-aware actions that can be exploited in cache poisoning attacks
-# Format: {"action": "uses_pattern", "disable_field": "field_name", "disable_value": value, "type": "opt_in|opt_out"}
+# Format: {"action": {"disable_field": "field_name", "disable_value": value, "type": "opt_in|opt_out"}}
 cache_aware_actions := {
 	"actions/cache": {"disable_field": "lookup-only", "disable_value": true, "type": "opt_out"},
 	"actions/setup-java": {"disable_field": "cache", "disable_value": "", "type": "opt_in_string"},
 	"actions/setup-go": {"disable_field": "cache", "disable_value": false, "type": "opt_in"},
-	"actions/setup-node": {"disable_field": "cache", "disable_value": "", "type": "opt_in_string"},
+	"actions/setup-node": {"disable_field": "package-manager-cache", "disable_value": false, "type": "opt_out"},
 	"actions/setup-python": {"disable_field": "cache", "disable_value": "", "type": "opt_in_string"},
 	"actions/setup-dotnet": {"disable_field": "cache", "disable_value": false, "type": "opt_in"},
 	"astral-sh/setup-uv": {"disable_field": "enable-cache", "disable_value": false, "type": "opt_in"},
@@ -53,36 +53,37 @@ publisher_actions := {
 }
 
 # Check if the workflow trigger is used for publishing artifacts
-is_publishing_trigger(trigger) {
+is_publishing_trigger(trigger) = true {
 	trigger == "release"
-}
-
-is_publishing_trigger(trigger) {
+} else = true {
 	is_array(trigger)
 	trigger[_] == "release"
-}
-
-is_publishing_trigger(trigger) {
+} else = true {
 	trigger.release
-}
-
-is_publishing_trigger(trigger) {
+} else = true {
 	# Check for push with tags
 	trigger.push.tags
-}
-
-is_publishing_trigger(trigger) {
+} else = true {
 	# Check for push to release branches
 	trigger.push.branches
 	some branch in trigger.push.branches
 	contains(lower(branch), "release")
+} else = false {
+	true
+}
+
+push_disabled(step) = true {
+	startswith(step.uses, "docker/build-push-action")
+	not step.with.push
+} else = false {
+	true
 }
 
 # Check if a step uses a known publisher action
 uses_publisher_action(step) {
-	step.uses
 	some action in publisher_actions
 	startswith(step.uses, action)
+	not push_disabled(step)
 }
 
 # Check if action uses match (handles versions)
@@ -112,6 +113,12 @@ is_cache_enabled(step, config) {
 is_cache_enabled(step, config) {
 	# Opt-out actions enable cache by default
 	config.type == "opt_out"
+	not object.get(step, "with", false)
+}
+
+is_cache_enabled(step, config) {
+	# Opt-out actions enable cache by default
+	config.type == "opt_out"
 	not step["with"][config.disable_field] == config.disable_value
 }
 
@@ -130,6 +137,12 @@ is_cache_enabled(step, config) {
 }
 
 is_cache_enabled(step, config) {
+	# Opt-out actions enable cache by default
+	config.type == "opt_out_string"
+	not object.get(step, "with", false)
+}
+
+is_cache_enabled(step, config) {
 	# Opt-out string actions without the disable value
 	config.type == "opt_out_string"
 	value := step["with"][config.disable_field]
@@ -142,6 +155,12 @@ has_publisher_action(job) {
 	uses_publisher_action(step)
 }
 
+publishing_check(publishing_trigger, job) {
+	publishing_trigger
+} else {
+	has_publisher_action(job)
+}
+
 # Main policy: Flag cache-aware actions in publishing workflows
 CxPolicy[result] {
 	doc := input.document[i]
@@ -149,6 +168,8 @@ CxPolicy[result] {
 
 	# Check if this is a publishing workflow
 	is_publishing := is_publishing_trigger(doc.on)
+
+	publishing_check(is_publishing, job)
 
 	# Find cache-aware steps
 	step := job.steps[k]
@@ -162,32 +183,6 @@ CxPolicy[result] {
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Cache-aware actions should disable caching in publishing workflows",
 		"keyActualValue": sprintf("Step uses %s with caching enabled in a publishing workflow", [cache_info.action]),
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "uses"], []),
-		"resourceType": "github_action",
-		"resourceName": step_name
-	}
-}
-
-# Alternative: Publishing detected by well-known publisher action
-CxPolicy[result] {
-	doc := input.document[i]
-	job := doc.jobs[j]
-
-	# Check if this job has a publisher action
-	has_publisher_action(job)
-
-	# Find cache-aware steps in the same job
-	step := job.steps[k]
-	cache_info := uses_cache_with_config(step)
-	cache_info.is_enabled
-	step_name := object.get(step, "name", sprintf("step-%d", [k]))
-
-	result := {
-		"documentId": doc.id,
-		"searchKey": sprintf("jobs.%s.steps[%d].uses={{%s}}", [j, k, step.uses]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Cache-aware actions should disable caching when publishing artifacts",
-		"keyActualValue": sprintf("Step uses %s with caching enabled in a job that publishes artifacts", [cache_info.action]),
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "uses"], []),
 		"resourceType": "github_action",
 		"resourceName": step_name
