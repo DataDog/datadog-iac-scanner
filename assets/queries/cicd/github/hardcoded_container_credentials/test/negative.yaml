@@ -2,7 +2,7 @@ name: Secure Container Credentials
 on: push
 
 jobs:
-  test:
+  test-container:
     runs-on: ubuntu-latest
     container:
       image: private.registry.com/image:latest
@@ -11,3 +11,12 @@ jobs:
         password: ${{ secrets.REGISTRY_PASSWORD }}
     steps:
       - run: echo "Running in container"
+  test-service:
+    runs-on: ubuntu-latest
+    services:
+      service1:
+        credentials:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+    steps:
+      - run: echo "Running a service"
