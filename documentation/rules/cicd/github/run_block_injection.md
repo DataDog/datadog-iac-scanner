@@ -70,7 +70,7 @@ jobs:
       - name: Checks if Go coverage is at least 80%
         if: env.coverage < 80
         run: |
-          echo "Go coverage is lower than 80%: ${{ env.coverage }}%"
+          echo "Go coverage is lower than 80%: ${{ coverage }}%"
           exit 1
 
 ```
@@ -149,20 +149,34 @@ jobs:
 ```
 
 ```yaml
-name: Discussion Workflow
+name: check-go-coverage
 
 on:
-  discussion:
-    types:
-      - created
+  pull_request_target:
+    branches: [master]
 
 jobs:
-  process_discussion:
+  coverage:
+    name: Check Go coverage
     runs-on: ubuntu-latest
     steps:
-      - name: Echo Discussion Title
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Go 1.22.x
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.x
+      - name: Run test metrics script
+        id: testcov
         run: |
-          echo "Discussion Title: ${{ github.event.discussion.title }}"
-          echo "Miaou"
+          make test-coverage-report | tee test-results
+          echo "coverage=$(cat test-results | grep "Total coverage: " test-results | cut -d ":" -f 2 | bc)" >> $GITHUB_ENV
+      - name: Checks if Go coverage is at least 80%
+        if: env.coverage < 80
+        run: |
+          echo "Go coverage is lower than 80%: ${{ env.coverage }}%"
+          exit 1
 
 ```
