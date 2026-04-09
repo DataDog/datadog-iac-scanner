@@ -44,7 +44,7 @@ func (s *Service) resolverSink(
 			if documents.Kind == "break" {
 				return []string{}, nil
 			}
-			contextLogger.Err(err).Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
+			contextLogger.Error().Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
 			return []string{}, nil
 		}
 
