@@ -49,7 +49,7 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 	}
 	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
-		contextLogger.Err(err).Msgf("failed to parse file content: %s", filename)
+		contextLogger.Error().Msgf("failed to parse file content: %s", filename)
 		return nil
 	}
 
