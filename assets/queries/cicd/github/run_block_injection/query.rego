@@ -189,6 +189,29 @@ CxPolicy[result] {
 	}
 }
 
+CxPolicy[result] {
+	doc := input.document[i]
+	parsed_run := doc.jobs[j].steps[k]._parsed_expressions_run[_]
+
+	walk(parsed_run, [_, node])
+
+	node.type == "dereference_expression"
+
+	matched = containsPatterns(node.value, ["^env\\."])
+	count(matched) > 0
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("run={{%s}}", [parsed_run]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
+		"keyActualValue": "Run block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
+		"resourceType": "github_action",
+		"resourceName": doc.jobs[j].steps[k].name
+	}
+}
+
 
 
 containsPatterns(str, patterns) = matched {
