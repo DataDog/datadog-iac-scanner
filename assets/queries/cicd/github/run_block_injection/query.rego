@@ -3,8 +3,9 @@ package Cx
 import data.generic.common as common_lib
 
 CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "pull_request_target")
 
-	input.document[i].on["pull_request_target"]
 	run := input.document[i].jobs[j].steps[k].run
 
 	patterns := [
@@ -19,6 +20,7 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -27,16 +29,16 @@ CxPolicy[result] {
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
 		"resourceName": input.document[i].jobs[j].steps[k].name
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "issues")
 
-	input.document[i].on["issues"]
-	run := input.document[i].jobs[j].steps[k].run
+	run := doc.jobs[j].steps[k].run
 
 	patterns := [
     "github.event.issue.body",
@@ -44,24 +46,25 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("run={{%s}}", [run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": doc.jobs[j].steps[k].name
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "issue_comment")
 
-	input.document[i].on["issue_comment"]
-	run := input.document[i].jobs[j].steps[k].run
+	run := doc.jobs[j].steps[k].run
 
 	patterns := [
     "github.event.comment.body",
@@ -70,24 +73,25 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("run={{%s}}", [run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": doc.jobs[j].steps[k].name
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "discussion")
 
-	input.document[i].on["discussion"]
-	run := input.document[i].jobs[j].steps[k].run
+	run := doc.jobs[j].steps[k].run
 
 	patterns := [
     "github.event.discussion.body",
@@ -95,24 +99,25 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("run={{%s}}", [run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": doc.jobs[j].steps[k].name
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "discussion_comment")
 
-	input.document[i].on["discussion_comment"]
-	run := input.document[i].jobs[j].steps[k].run
+	run := doc.jobs[j].steps[k].run
 
 	patterns := [
     "github.event.comment.body",
@@ -121,24 +126,25 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("run={{%s}}", [run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": doc.jobs[j].steps[k].name
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "workflow_run")
 
-	input.document[i].on["workflow_run"]
-	run := input.document[i].jobs[j].steps[k].run
+	run := doc.jobs[j].steps[k].run
 
 	patterns := [
     "github.event.workflow.path",
@@ -150,24 +156,24 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("run={{%s}}", [run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": doc.jobs[j].steps[k].name
 	}
 }
 
 CxPolicy[result] {
-
-	input.document[i].on["author"]
-	run := input.document[i].jobs[j].steps[k].run
+	doc := input.document[i]
+	check_trigger(doc, "author")
+	run := doc.jobs[j].steps[k].run
 
 	patterns := [
     "github.*.authors.name",
@@ -175,17 +181,70 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("run={{%s}}", [run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": doc.jobs[j].steps[k].name
+	}
+}
+
+CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "pull_request")
+	run := doc.jobs[j].steps[k].run
+
+	patterns := [
+		"github.event.pull_request.title",
+		"github.event.pull_request.body",
+		"github.head_ref",
+		"github.event.pull_request.head.ref",
+		"github.event.pull_request.head.label",
+		"github.event.pull_request.head.repo."
+	]
+
+	matched = containsPatterns(run, patterns)
+	count(matched) > 0
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("run={{%s}}", [run]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
+		"keyActualValue": "Run block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
+		"resourceType": "github_action",
+		"resourceName": doc.jobs[j].steps[k].name
+	}
+}
+
+CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "workflow_dispatch")
+	run := doc.jobs[j].steps[k].run
+
+	patterns := [
+		"github.event.inputs."
+	]
+
+	matched = containsPatterns(run, patterns)
+	count(matched) > 0
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("run={{%s}}", [run]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
+		"keyActualValue": "Run block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
+		"resourceType": "github_action",
+		"resourceName": doc.jobs[j].steps[k].name
 	}
 }
 
@@ -221,3 +280,11 @@ containsPatterns(str, patterns) = matched {
     }
 }
 
+check_trigger(doc, trigger) {
+	doc.on == trigger
+} else {
+	doc.on[_] == trigger
+} else {
+	doc.on[key]
+	key == trigger
+}

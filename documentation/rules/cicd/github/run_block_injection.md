@@ -131,6 +131,22 @@ jobs:
 ```
 
 ```yaml
+name: Array Trigger Format Test
+
+on: [pull_request, push]
+
+jobs:
+  test_array_trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process PR with array format trigger
+        run: |
+          echo "PR Title: ${{ github.event.pull_request.title }}"
+          echo "Branch: ${{ github.event.pull_request.head.ref }}"
+
+```
+
+```yaml
 name: Issue Comment Workflow
 
 on:

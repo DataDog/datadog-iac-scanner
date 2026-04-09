@@ -8,12 +8,6 @@
   {
     "queryName": "Run block injection",
     "severity": "MEDIUM",
-    "line": 10,
-    "fileName": "positive1.yaml"
-  },
-  {
-    "queryName": "Run block injection",
-    "severity": "MEDIUM",
     "line": 13,
     "fileName": "positive2.yaml"
   },
@@ -52,5 +46,41 @@
     "severity": "MEDIUM",
     "line": 27,
     "fileName": "positive8.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive9.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 10,
+    "fileName": "positive10.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive11.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 16,
+    "fileName": "positive11.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 20,
+    "fileName": "positive11.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 24,
+    "fileName": "positive11.yaml"
   }
 ]
