@@ -131,6 +131,35 @@ jobs:
 ```
 
 ```yaml
+name: Pull Request Injection Test
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  process_pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process PR Title
+        run: |
+          echo "PR Title: ${{ github.event.pull_request.title }}"
+
+      - name: Process PR Body
+        run: |
+          echo "PR Body: ${{ github.event.pull_request.body }}"
+
+      - name: Process Head Ref
+        run: |
+          echo "Head Ref: ${{ github.head_ref }}"
+
+      - name: Process PR Head Label
+        run: |
+          echo "PR Label: ${{ github.event.pull_request.head.label }}"
+
+```
+
+```yaml
 name: Array Trigger Format Test
 
 on: [pull_request, push]
@@ -143,56 +172,5 @@ jobs:
         run: |
           echo "PR Title: ${{ github.event.pull_request.title }}"
           echo "Branch: ${{ github.event.pull_request.head.ref }}"
-
-```
-
-```yaml
-name: Issue Comment Workflow
-
-on:
-  issue_comment:
-    types:
-      - created
-
-jobs:
-  process_issue_comment:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Echo Issue Comment Body
-        run: |
-          echo "Issue Comment Body: ${{ github.event.comment.body }}"
-
-```
-
-```yaml
-name: check-go-coverage
-
-on:
-  pull_request_target:
-    branches: [master]
-
-jobs:
-  coverage:
-    name: Check Go coverage
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Source
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up Go 1.22.x
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.22.x
-      - name: Run test metrics script
-        id: testcov
-        run: |
-          make test-coverage-report | tee test-results
-          echo "coverage=$(cat test-results | grep "Total coverage: " test-results | cut -d ":" -f 2 | bc)" >> $GITHUB_ENV
-      - name: Checks if Go coverage is at least 80%
-        if: env.coverage < 80
-        run: |
-          echo "Go coverage is lower than 80%: ${{ env.coverage }}%"
-          exit 1
 
 ```
