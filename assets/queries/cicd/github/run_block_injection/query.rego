@@ -9,14 +9,14 @@ CxPolicy[result] {
 	run := input.document[i].jobs[j].steps[k].run
 
 	patterns := [
-    "github.head_ref",
-    "github.event.pull_request.body",
-    "github.event.pull_request.head.label",
-    "github.event.pull_request.head.ref",
-    "github.event.pull_request.head.repo.default_branch",
-    "github.event.pull_request.head.repo.description",
-    "github.event.pull_request.head.repo.homepage",
-    "github.event.pull_request.title"
+    "github\\.head_ref",
+    "github\\.event\\.pull_request\\.body",
+    "github\\.event\\.pull_request\\.head\\.label",
+    "github\\.event\\.pull_request\\.head\\.ref",
+    "github\\.event\\.pull_request\\.head\\.repo\\.default_branch",
+    "github\\.event\\.pull_request\\.head\\.repo\\.description",
+    "github\\.event\\.pull_request\\.head\\.repo\\.homepage",
+    "github\\.event\\.pull_request\\.title"
 	]
 
 	matched = containsPatterns(run, patterns)
@@ -41,8 +41,8 @@ CxPolicy[result] {
 	run := doc.jobs[j].steps[k].run
 
 	patterns := [
-    "github.event.issue.body",
-	"github.event.issue.title"
+    "github\\.event\\.issue\\.body",
+	"github\\.event\\.issue\\.title"
 	]
 
 	matched = containsPatterns(run, patterns)
@@ -67,9 +67,9 @@ CxPolicy[result] {
 	run := doc.jobs[j].steps[k].run
 
 	patterns := [
-    "github.event.comment.body",
-	"github.event.issue.body",
-	"github.event.issue.title"
+    "github\\.event\\.comment\\.body",
+	"github\\.event\\.issue\\.body",
+	"github\\.event\\.issue\\.title"
 	]
 
 	matched = containsPatterns(run, patterns)
@@ -94,8 +94,8 @@ CxPolicy[result] {
 	run := doc.jobs[j].steps[k].run
 
 	patterns := [
-    "github.event.discussion.body",
-	"github.event.discussion.title"
+    "github\\.event\\.discussion\\.body",
+	"github\\.event\\.discussion\\.title"
 	]
 
 	matched = containsPatterns(run, patterns)
@@ -120,9 +120,9 @@ CxPolicy[result] {
 	run := doc.jobs[j].steps[k].run
 
 	patterns := [
-    "github.event.comment.body",
-	"github.event.discussion.body",
-	"github.event.discussion.title"
+    "github\\.event\\.comment\\.body",
+	"github\\.event\\.discussion\\.body",
+	"github\\.event\\.discussion\\.title"
 	]
 
 	matched = containsPatterns(run, patterns)
@@ -147,12 +147,12 @@ CxPolicy[result] {
 	run := doc.jobs[j].steps[k].run
 
 	patterns := [
-    "github.event.workflow.path",
-	"github.event.workflow_run.head_branch",
-	"github.event.workflow_run.head_commit.author.email",
-	"github.event.workflow_run.head_commit.author.name",
-	"github.event.workflow_run.head_commit.message",
-	"github.event.workflow_run.head_repository.description"
+    "github\\.event\\.workflow\\.path",
+	"github\\.event\\.workflow_run\\.head_branch",
+	"github\\.event\\.workflow_run\\.head_commit\\.author\\.email",
+	"github\\.event\\.workflow_run\\.head_commit\\.author\\.name",
+	"github\\.event\\.workflow_run\\.head_commit\\.message",
+	"github\\.event\\.workflow_run\\.head_repository\\.description"
 	]
 
 	matched = containsPatterns(run, patterns)
@@ -176,8 +176,8 @@ CxPolicy[result] {
 	run := doc.jobs[j].steps[k].run
 
 	patterns := [
-    "github.*.authors.name",
-	"github.*.authors.email"
+    "github\\..*\\.authors\\.name",
+	"github\\..*\\.authors\\.email"
 	]
 
 	matched = containsPatterns(run, patterns)
@@ -201,12 +201,12 @@ CxPolicy[result] {
 	run := doc.jobs[j].steps[k].run
 
 	patterns := [
-		"github.event.pull_request.title",
-		"github.event.pull_request.body",
-		"github.head_ref",
-		"github.event.pull_request.head.ref",
-		"github.event.pull_request.head.label",
-		"github.event.pull_request.head.repo."
+		"github\\.head_ref",
+		"github\\.event\\.pull_request\\.head.ref",
+		"github\\.event\\.pull_request\\.head.label",
+		"github\\.event\\.pull_request\\.head.repo\\..+",
+		"github\\.event\\.pull_request\\.title",
+		"github\\.event\\.pull_request\\.body",
 	]
 
 	matched = containsPatterns(run, patterns)
@@ -230,7 +230,7 @@ CxPolicy[result] {
 	run := doc.jobs[j].steps[k].run
 
 	patterns := [
-		"github.event.inputs."
+		"github\\.event\\.inputs\\..+"
 	]
 
 	matched = containsPatterns(run, patterns)
