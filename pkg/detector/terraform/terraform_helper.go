@@ -2,6 +2,7 @@ package terraform
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -96,7 +97,71 @@ func resolveListIndex(
 
 	// Search for the attribute in the parsed tree
 	result, lineNum := findInHCLBody(body, attrName, index, currentLine)
+	if result == "" && lineNum == 0 {
+		if line, ok := findTupleElementLineInJsonencodeArgs(body, attrName, index, currentLine); ok {
+			return "", line
+		}
+		return resolveListIndexStringBased(attrName, index, currentLine, lines)
+	}
 	return result, lineNum
+}
+
+// findTupleElementLineInJsonencodeArgs finds attrName = [ ... ] tuple element index inside jsonencode({...})
+// (or nested merge/...) when it is not a top-level block attribute.
+func findTupleElementLineInJsonencodeArgs(body *hclsyntax.Body, attrName string, index, contextLine int) (int, bool) {
+	contextLineHCL := contextLine + 1
+	for _, block := range body.Blocks {
+		start := block.TypeRange.Start.Line
+		end := block.Body.SrcRange.End.Line
+		if contextLineHCL < start || contextLineHCL > end {
+			continue
+		}
+		for _, attr := range block.Body.Attributes {
+			if line := findTupleElementLineInExpr(attr.Expr, attrName, index); line >= 0 {
+				return line, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func findTupleElementLineInExpr(expr hclsyntax.Expression, attrName string, index int) int {
+	switch e := expr.(type) {
+	case *hclsyntax.FunctionCallExpr:
+		if e.Name == "jsonencode" && len(e.Args) > 0 {
+			if line := findTupleElementLineInObject(e.Args[0], attrName, index); line >= 0 {
+				return line
+			}
+		}
+		for _, arg := range e.Args {
+			if line := findTupleElementLineInExpr(arg, attrName, index); line >= 0 {
+				return line
+			}
+		}
+	case *hclsyntax.ObjectConsExpr:
+		if line := findTupleElementLineInObject(e, attrName, index); line >= 0 {
+			return line
+		}
+	}
+	return -1
+}
+
+func findTupleElementLineInObject(expr hclsyntax.Expression, attrName string, index int) int {
+	obj, ok := expr.(*hclsyntax.ObjectConsExpr)
+	if !ok {
+		return -1
+	}
+	for _, item := range obj.Items {
+		if hcl.ExprAsKeyword(item.KeyExpr) != attrName {
+			continue
+		}
+		tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
+		if !ok || index < 0 || index >= len(tup.Exprs) {
+			return -1
+		}
+		return tup.Exprs[index].Range().Start.Line - 1
+	}
+	return -1
 }
 
 func findInHCLBody(body *hclsyntax.Body, attrName string, index, contextLine int) (substr string, lineNum int) {
@@ -170,6 +235,12 @@ func findInHCLBodyScoped(body *hclsyntax.Body, attrName string, index int) (subs
 	return "", 0
 }
 
+func lineDeclaresJSONArray(trimmed, attrName string) bool {
+	norm := whitespaceRegex.ReplaceAllString(trimmed, "")
+	return strings.HasPrefix(norm, attrName+"=[") ||
+		strings.HasPrefix(norm, `"`+attrName+`":[`)
+}
+
 func resolveListIndexStringBased(attrName string, index, currentLine int, lines []string) (substr string, lineNum int) {
 	if index < 0 {
 		return "", 0
@@ -178,8 +249,8 @@ func resolveListIndexStringBased(attrName string, index, currentLine int, lines 
 	countAttr := 0
 	for i := currentLine; i < len(lines); i++ {
 		trimmed := strings.TrimSpace(lines[i])
-		// Case 1: This is an actual array
-		if strings.HasPrefix(trimmed, attrName+" = [") || strings.HasPrefix(trimmed, attrName+"=[") {
+		// Case 1: This is an actual array (HCL or JSON key inside heredoc / string)
+		if lineDeclaresJSONArray(trimmed, attrName) {
 			// Check if it's a single-line array
 			start := strings.Index(trimmed, "[")
 			end := strings.Index(trimmed, "]")
@@ -255,23 +326,57 @@ func getArrayElementLine(attrName string, index int, lines []string, startLine i
 
 	// Parse the array expression, telling HCL that the content starts at line startLine+1 (1-indexed)
 	expr, diags := hclsyntax.ParseExpression([]byte(arrayContent), "", hcl.Pos{Line: startLine + 1, Column: 1})
+	if !diags.HasErrors() {
+		if tuple, ok := expr.(*hclsyntax.TupleConsExpr); ok {
+			if index < 0 || index >= len(tuple.Exprs) {
+				return 0, fmt.Errorf("index %d out of bounds (array has %d elements)", index, len(tuple.Exprs))
+			}
+			// Get the line number of the element (1-indexed from HCL)
+			// Convert to 0-indexed for consistency with the detector's expectations
+			return tuple.Exprs[index].Range().Start.Line - 1, nil
+		}
+	}
+
+	jsonLine, errJSON := getArrayElementLineJSON(arrayContent, index, startLine)
+	if errJSON == nil {
+		return jsonLine, nil
+	}
+
 	if diags.HasErrors() {
-		return 0, fmt.Errorf("parse error: %s", diags.Error())
+		return 0, fmt.Errorf("parse error: %s; json fallback: %v", diags.Error(), errJSON)
 	}
+	return 0, fmt.Errorf("not an array expression; json fallback: %v", errJSON)
+}
 
-	// Check if it's a tuple (array)
-	tuple, ok := expr.(*hclsyntax.TupleConsExpr)
-	if !ok {
-		return 0, fmt.Errorf("not an array expression")
+// getArrayElementLineJSON resolves array element line for JSON array syntax (e.g. inside heredocs).
+func getArrayElementLineJSON(arrayContent string, index, arrayStartLine0 int) (int, error) {
+	dec := json.NewDecoder(strings.NewReader(arrayContent))
+	tok, err := dec.Token()
+	if err != nil {
+		return 0, err
 	}
-
-	if index < 0 || index >= len(tuple.Exprs) {
-		return 0, fmt.Errorf("index %d out of bounds (array has %d elements)", index, len(tuple.Exprs))
+	d, ok := tok.(json.Delim)
+	if !ok || d != '[' {
+		return 0, fmt.Errorf("expected JSON array")
 	}
-
-	// Get the line number of the element (1-indexed from HCL)
-	// Convert to 0-indexed for consistency with the detector's expectations
-	return tuple.Exprs[index].Range().Start.Line - 1, nil
+	for i := 0; dec.More(); i++ {
+		offsetBefore := int(dec.InputOffset())
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return 0, err
+		}
+		if i == index {
+			suffix := arrayContent[offsetBefore:]
+			trimmed := strings.TrimLeft(suffix, " \t\n\r,")
+			pos := offsetBefore + (len(suffix) - len(trimmed))
+			if pos < len(arrayContent) {
+				newlines := strings.Count(arrayContent[:pos], "\n")
+				return arrayStartLine0 + newlines, nil
+			}
+			return 0, fmt.Errorf("empty element position")
+		}
+	}
+	return 0, fmt.Errorf("index %d out of bounds", index)
 }
 
 // extractArrayContent extracts the array content from the attribute definition
@@ -287,7 +392,7 @@ func extractArrayContent(attrName string, lines []string, startLine int) string 
 		// Find the attribute definition
 		if !arrayStarted {
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(whitespaceRegex.ReplaceAllString(trimmed, ""), attrName+"=[") {
+			if lineDeclaresJSONArray(trimmed, attrName) {
 				// Found the array start - determine base indentation
 				indentMatch := indentRegex.FindString(line)
 				baseIndent = len(indentMatch)
