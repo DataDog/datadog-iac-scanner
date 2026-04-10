@@ -536,7 +536,7 @@ var sarifTests = []sarifTest{
 		},
 	},
 	{
-		name: "Should create one occurrence with remediation startLine",
+		name: "Should keep resource location when remediation is empty",
 		vq: []model.QueryResult{
 			{
 				QueryName:   "test",
@@ -559,6 +559,143 @@ var sarifTests = []sarifTest{
 							Start: model.ResourceLine{Line: 2, Col: 1},
 							End:   model.ResourceLine{Line: 3, Col: 2},
 						},
+					},
+				},
+				CWE: "",
+			},
+		},
+		want: sarifReport{
+			Runs: []SarifRun{
+				{
+					Tool: sarifTool{
+						Driver: sarifDriver{
+							Rules: []sarifRule{
+								{
+									RuleID:               "test",
+									RuleName:             "test",
+									RuleShortDescription: sarifMessage{Text: "test"},
+									RuleFullDescription:  sarifMessage{Text: "test description"},
+									DefaultConfiguration: sarifConfiguration{
+										Level: "error",
+									},
+									HelpURI: "https://www.test.com",
+									Relationships: []sarifRelationship{
+										{
+											Relationship: sarifDescriptorReference{
+												ReferenceID:    "CAT000",
+												ReferenceIndex: 0,
+												ToolComponent: sarifComponentReference{
+													ComponentReferenceGUID:  "58cdcc6f-fe41-4724-bfb3-131a93df4c3f",
+													ComponentReferenceName:  "Categories",
+													ComponentReferenceIndex: targetTemplate.ToolComponent.ComponentReferenceIndex,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Results: []sarifResult{
+						{
+							ResultRuleID:    "test",
+							ResultRuleIndex: 0,
+							ResultKind:      "",
+							ResultMessage:   sarifMessage{Text: "test", MessageProperties: nil},
+							ResultLocations: []SarifLocation{
+								{
+									PhysicalLocation: sarifPhysicalLocation{
+										ArtifactLocation: sarifArtifactLocation{ArtifactURI: "test.json"},
+										Region:           model.SarifRegion{StartLine: 1, EndLine: 5, StartColumn: 1, EndColumn: 2},
+									},
+								},
+							},
+							ResultLevel: "warning",
+							ResultProperties: sarifProperties{
+								"tags": []string{"DATADOG_CATEGORY:", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
+							},
+							PartialFingerprints: SarifPartialFingerprints{
+								DatadogFingerprint: GetDatadogFingerprintHash(
+									model.SCIInfo{
+										RepositoryCommitInfo: model.RepositoryCommitInfo{
+											RepositoryUrl: "",
+											Branch:        "",
+											CommitSHA:     "",
+										},
+									},
+									"test.json",
+									"Terraform",
+									"test_resource_type",
+									"test_resource_name",
+									"1",
+									"",
+								),
+							},
+						},
+					},
+					Taxonomies: []sarifTaxonomy{
+						{
+							TaxonomyGUID:             "58cdcc6f-fe41-4724-bfb3-131a93df4c3f",
+							TaxonomyName:             "Categories",
+							TaxonomyFullDescription:  sarifMessage{Text: "Category is not defined"},
+							TaxonomyShortDescription: sarifMessage{Text: "Category is not defined"},
+							TaxonomyDefinitions: []taxonomyDefinitions{
+								{
+									DefinitionGUID:             "",
+									DefinitionName:             "Undefined Category",
+									DefinitionID:               "CAT000",
+									DefinitionShortDescription: cweMessage{Text: "Category is not defined"},
+									DefinitionFullDescription:  cweMessage{Text: "Category is not defined"},
+									HelpURI:                    "",
+								},
+							},
+						},
+						{
+							TaxonomyGUID:                              "1489b0c4-d7ce-4d31-af66-6382a01202e3",
+							TaxonomyName:                              "CWE",
+							TaxonomyFullDescription:                   sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
+							TaxonomyShortDescription:                  sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
+							TaxonomyDownloadURI:                       "https://cwe.mitre.org/data/published/cwe_v4.13.pdf",
+							TaxonomyIsComprehensive:                   true,
+							TaxonomyLanguage:                          "en",
+							TaxonomyMinRequiredLocDataSemanticVersion: "4.13",
+							TaxonomyOrganization:                      "MITRE",
+							TaxonomyRealeaseDateUtc:                   "2023-10-26",
+							TaxonomyDefinitions: []taxonomyDefinitions{
+								{},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		name: "Should use remediation location when remediation is non-empty",
+		vq: []model.QueryResult{
+			{
+				QueryName:   "test",
+				QueryID:     "1",
+				Description: "test description",
+				QueryURI:    "https://www.test.com",
+				Severity:    model.SeverityHigh,
+				Files: []model.VulnerableFile{
+					{
+						KeyActualValue: "test",
+						FileName:       "test.json",
+						Line:           1,
+						ResourceType:   "test_resource_type",
+						ResourceName:   "test_resource_name",
+						ResourceLocation: model.ResourceLocation{
+							Start: model.ResourceLine{Line: 1, Col: 1},
+							End:   model.ResourceLine{Line: 5, Col: 2},
+						},
+						RemediationLocation: model.ResourceLocation{
+							Start: model.ResourceLine{Line: 2, Col: 1},
+							End:   model.ResourceLine{Line: 3, Col: 2},
+						},
+						Remediation:       "not-json",
+						RemediationType: "replacement",
 					},
 				},
 				CWE: "",

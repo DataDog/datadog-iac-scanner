@@ -514,7 +514,9 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				resourceStartLocation.Col = 1
 			}
 
-			if remediationStartLocation.Line >= resourceStartLocation.Line && remediationEndLocation.Line <= resourceEndLocation.Line {
+			if vulnerability.Remediation != "" &&
+				remediationStartLocation.Line >= resourceStartLocation.Line &&
+				remediationEndLocation.Line <= resourceEndLocation.Line {
 				resourceStartLocation = remediationStartLocation
 				resourceEndLocation = remediationEndLocation
 			}
