@@ -8,7 +8,7 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": input.document[i].id,
-		"resourceType": "aws_db_security_group",
+		"resourceType": "aws_default_security_group",
 		"resourceName": tf_lib.get_resource_name(sg, name),
 		"searchKey": sprintf("aws_default_security_group[%s]", [name]),
 		"issueType": "IncorrectValue",

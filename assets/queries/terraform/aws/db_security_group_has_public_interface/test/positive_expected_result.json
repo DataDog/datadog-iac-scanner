@@ -10,5 +10,17 @@
     "severity": "HIGH",
     "line": 9,
     "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "DB security group has public interface",
+    "severity": "HIGH",
+    "line": 10,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "DB security group has public interface",
+    "severity": "HIGH",
+    "line": 18,
+    "fileName": "positive4.tf"
   }
 ]

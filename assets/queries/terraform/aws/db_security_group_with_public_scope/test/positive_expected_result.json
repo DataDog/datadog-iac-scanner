@@ -10,5 +10,11 @@
     "severity": "CRITICAL",
     "line": 85,
     "filename": "positive_module.tf"
+  },
+  {
+    "queryName": "DB security group with public scope",
+    "severity": "CRITICAL",
+    "line": 10,
+    "filename": "positive2.tf"
   }
 ]
