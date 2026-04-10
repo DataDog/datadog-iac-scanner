@@ -20,7 +20,7 @@
   {
     "queryName": "DB security group has public interface",
     "severity": "HIGH",
-    "line": 18,
+    "line": 17,
     "fileName": "positive4.tf"
   }
 ]
