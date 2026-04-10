@@ -2,22 +2,22 @@
   {
     "queryName": "SQS policy with public access",
     "severity": "MEDIUM",
-    "line": 8
+    "line": 15
   },
   {
     "queryName": "SQS policy with public access",
     "severity": "MEDIUM",
-    "line": 39
+    "line": 46
   },
   {
     "queryName": "SQS policy with public access",
     "severity": "MEDIUM",
-    "line": 64
+    "line": 71
   },
   {
     "queryName": "SQS policy with public access",
     "severity": "MEDIUM",
-    "line": 6,
+    "line": 14,
     "fileName": "positive_module.tf"
   }
 ]

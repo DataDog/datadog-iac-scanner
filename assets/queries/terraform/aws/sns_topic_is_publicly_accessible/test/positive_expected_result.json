@@ -2,19 +2,19 @@
   {
     "queryName": "SNS topic is publicly accessible",
     "severity": "CRITICAL",
-    "line": 2,
-    "filename": "positive.tf"
+    "line": 8,
+    "fileName": "positive.tf"
   },
   {
     "queryName": "SNS topic is publicly accessible",
     "severity": "CRITICAL",
-    "line": 12,
+    "line": 29,
     "fileName": "positive_module.tf"
   },
   {
     "queryName": "SNS topic is publicly accessible",
     "severity": "CRITICAL",
-    "line": 4,
-    "filename": "positive2.tf"
+    "line": 11,
+    "fileName": "positive2.tf"
   }
 ]

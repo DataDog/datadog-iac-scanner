@@ -9,7 +9,7 @@ CxPolicy[result] {
 	re_match("Service", resource.assume_role_policy)
 	policy := common_lib.json_unmarshal(resource.assume_role_policy)
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	tf_lib.anyPrincipal(statement)
@@ -18,10 +18,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_iam_role",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_iam_role[%s].assume_role_policy", [name]),
+		"searchKey": sprintf("aws_iam_role[%s].assume_role_policy.Statement[%d].Principal", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'assume_role_policy.Statement.Principal' shouldn't contain '*'",
 		"keyActualValue": "'assume_role_policy.Statement.Principal' contains '*'",
-		"searchLine": common_lib.build_search_line(["resource", "aws_iam_role", name, "assume_role_policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_iam_role", name, "assume_role_policy", "Statement", idx, "Principal"], []),
 	}
 }
