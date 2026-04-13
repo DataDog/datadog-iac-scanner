@@ -196,8 +196,7 @@ jobs:
 name: test-script-run
 
 on:
-  discussion:
-    types: [opened]
+  pull_request:
 
 jobs:
   script-run:
@@ -210,15 +209,7 @@ jobs:
         uses: actions/github-script@latest
         with:
           script: |
-            const fs = require('fs');
-            const body = fs.readFileSync('/tmp/${{ github.event.discussion.title }}.txt', {encoding: 'utf8'});
-
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'Thanks for reporting!'
-            })
+            const head_ref = ${{ github.head_ref }};
 
             return true;
 
