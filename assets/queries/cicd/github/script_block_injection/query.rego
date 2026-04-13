@@ -34,7 +34,7 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
 	}
 }
 
@@ -64,7 +64,7 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
 	}
 }
 
@@ -95,7 +95,7 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with","script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
 	}
 }
 
@@ -125,7 +125,7 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
 	}
 }
 
@@ -156,7 +156,7 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
 	}
 }
 
@@ -190,7 +190,7 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
 	}
 }
 
@@ -220,7 +220,7 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
 	}
 }
 
@@ -253,7 +253,7 @@ CxPolicy[result] {
 		"keyActualValue": "script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "script"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -281,7 +281,7 @@ CxPolicy[result] {
 		"keyActualValue": "script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "script"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -303,3 +303,9 @@ containsPatterns(str, patterns) = matched {
     }
 }
 
+
+get_step_name(step, s) := step_name {
+	step_name := step.name
+} else := step_name {
+	step_name := sprintf("step-%d", [s])
+}

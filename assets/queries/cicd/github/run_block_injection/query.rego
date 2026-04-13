@@ -23,14 +23,14 @@ CxPolicy[result] {
 	count(matched) > 0
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("run={{%s}}", [run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -56,7 +56,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -83,7 +83,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -109,7 +109,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -136,7 +136,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -166,7 +166,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -191,7 +191,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -220,7 +220,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -244,7 +244,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -267,7 +267,7 @@ CxPolicy[result] {
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"],[]),
 		"resourceType": "github_action",
-		"resourceName": doc.jobs[j].steps[k].name
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
@@ -287,4 +287,10 @@ check_trigger(doc, trigger) {
 } else {
 	doc.on[key]
 	key == trigger
+}
+
+get_step_name(step, s) := step_name {
+	step_name := step.name
+} else := step_name {
+	step_name := sprintf("step-%d", [s])
 }
