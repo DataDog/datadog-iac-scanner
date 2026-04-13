@@ -1,6 +1,5 @@
 package Cx
 
-import data.generic.common as common_lib
 import data.generic.terraform as tf_lib
 
 # Single ingress with cidr field
