@@ -3,12 +3,10 @@ package Cx
 import data.generic.common as common_lib
 import data.generic.terraform as tf_lib
 
+# Single ingress with cidr field
 CxPolicy[result] {
 	resource := input.document[i].resource.aws_db_security_group[name]
-
-	cidrs := {"0.0.0.0/0", "::/0"}
-	cidrValue := cidrs[_]
-
+	cidrValue := {"0.0.0.0/0", "::/0"}[_]
 	resource.ingress.cidr == cidrValue
 
 	result := {
@@ -23,12 +21,10 @@ CxPolicy[result] {
 	}
 }
 
+# Array ingress with cidr field
 CxPolicy[result] {
 	resource := input.document[i].resource.aws_db_security_group[name]
-
-	cidrs := {"0.0.0.0/0", "::/0"}
-	cidrValue := cidrs[_]
-
+	cidrValue := {"0.0.0.0/0", "::/0"}[_]
 	resource.ingress[idx].cidr == cidrValue
 
 	result := {
