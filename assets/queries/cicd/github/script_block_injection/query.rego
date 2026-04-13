@@ -13,14 +13,14 @@ CxPolicy[result] {
     script := input.document[i].jobs[j].steps[k]["with"].script
 
 	patterns := [
-    "github.head_ref",
-    "github.event.pull_request.body",
-    "github.event.pull_request.head.label",
-    "github.event.pull_request.head.ref",
-    "github.event.pull_request.head.repo.default_branch",
-    "github.event.pull_request.head.repo.description",
-    "github.event.pull_request.head.repo.homepage",
-    "github.event.pull_request.title"
+    "github\\.head_ref",
+    "github\\.event\\.pull_request\\.body",
+    "github\\.event\\.pull_request\\.head\\.label",
+    "github\\.event\\.pull_request\\.head\\.ref",
+    "github\\.event\\.pull_request\\.head\\.repo\\.default_branch",
+    "github\\.event\\.pull_request\\.head\\.repo\\.description",
+    "github\\.event\\.pull_request\\.head\\.repo\\.homepage",
+    "github\\.event\\.pull_request\\.title"
 	]
 
 	matched = containsPatterns(script, patterns)
@@ -49,8 +49,8 @@ CxPolicy[result] {
     script := input.document[i].jobs[j].steps[k]["with"].script
 
 	patterns := [
-    "github.event.issue.body",
-	"github.event.issue.title"
+    "github\\.event\\.issue\\.body",
+	"github\\.event\\.issue\\.title"
 	]
 
 	matched = containsPatterns(script, patterns)
@@ -79,9 +79,9 @@ CxPolicy[result] {
     script := input.document[i].jobs[j].steps[k]["with"].script
 
 	patterns := [
-    "github.event.comment.body",
-	"github.event.issue.body",
-	"github.event.issue.title"
+    "github\\.event\\.comment\\.body",
+	"github\\.event\\.issue\\.body",
+	"github\\.event\\.issue\\.title"
 	]
 
 	matched = containsPatterns(script, patterns)
@@ -110,8 +110,8 @@ CxPolicy[result] {
     script := input.document[i].jobs[j].steps[k]["with"].script
 
 	patterns := [
-    "github.event.discussion.body",
-	"github.event.discussion.title"
+    "github\\.event\\.discussion\\.body",
+	"github\\.event\\.discussion\\.title"
 	]
 
 	matched = containsPatterns(script, patterns)
@@ -140,9 +140,9 @@ CxPolicy[result] {
     script := input.document[i].jobs[j].steps[k]["with"].script
 
 	patterns := [
-    "github.event.comment.body",
-	"github.event.discussion.body",
-	"github.event.discussion.title"
+    "github\\.event\\.comment\\.body",
+	"github\\.event\\.discussion\\.body",
+	"github\\.event\\.discussion\\.title"
 	]
 
 	matched = containsPatterns(script, patterns)
@@ -171,12 +171,12 @@ CxPolicy[result] {
     script := input.document[i].jobs[j].steps[k]["with"].script
 
 	patterns := [
-    "github.event.workflow.path",
-	"github.event.workflow_run.head_branch",
-	"github.event.workflow_run.head_commit.author.email",
-	"github.event.workflow_run.head_commit.author.name",
-	"github.event.workflow_run.head_commit.message",
-	"github.event.workflow_run.head_repository.description"
+    "github\\.event\\.workflow\\.path",
+	"github\\.event\\.workflow_run\\.head_branch",
+	"github\\.event\\.workflow_run\\.head_commit\\.author\\.email",
+	"github\\.event\\.workflow_run\\.head_commit\\.author\\.name",
+	"github\\.event\\.workflow_run\\.head_commit\\.message",
+	"github\\.event\\.workflow_run\\.head_repository\\.description"
 	]
 
 	matched = containsPatterns(script, patterns)
@@ -205,8 +205,8 @@ CxPolicy[result] {
     script := input.document[i].jobs[j].steps[k]["with"].script
 
 	patterns := [
-    "github.*.authors.name",
-	"github.*.authors.email"
+    "github\\..*\\.authors\\.name",
+	"github\\..*\\.authors\\.email"
 	]
 
 	matched = containsPatterns(script, patterns)
