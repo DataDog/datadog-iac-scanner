@@ -75,6 +75,10 @@ func GetProviderTag(provider string) string {
 	return fmt.Sprintf(providerTag, provider)
 }
 
+func GetSeverityTag(severity model.Severity) string {
+	return fmt.Sprintf(severityTag, severity)
+}
+
 // stringToHash returns a SHA256 hash of the input string.
 func StringToHash(str string) string {
 	hash := sha256.New()

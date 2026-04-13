@@ -203,6 +203,7 @@ const (
 	executionTimeTag         = "DATADOG_EXECUTION_TIME_SECS:%v"
 	ruleTypeProperty         = "DATADOG_RULE_TYPE:IAC_SCANNING"
 	categoryTag              = "DATADOG_CATEGORY:%s"
+	severityTag              = "DATADOG_SEVERITY:%s"
 	platformTag              = "DATADOG_PLATFORM:%s"
 	providerTag              = "DATADOG_PROVIDER:%s"
 	scannedFileCountTag      = "DATADOG_SCANNED_FILE_COUNT:%d"
@@ -453,7 +454,8 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 		ruleIndex := sr.buildSarifRule(&metadata, cisDescriptions)
 
 		categoryTag := GetCategoryTag(issue.Category)
-		tags := []string{categoryTag}
+		severityTag := GetSeverityTag(issue.Severity)
+		tags := []string{categoryTag, severityTag}
 		cwe := issue.CWE
 		if cwe != "" {
 			cweTag := GetCWETag(cwe)
