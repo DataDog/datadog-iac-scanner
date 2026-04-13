@@ -1,0 +1,12 @@
+[
+  {
+    "queryName": "Hardcoded container credentials",
+    "severity": "HIGH",
+    "line": 11
+  },
+  {
+    "queryName": "Hardcoded container credentials",
+    "severity": "HIGH",
+    "line": 20
+  }
+]
