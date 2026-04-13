@@ -420,15 +420,10 @@ func extractArrayContent(attrName string, lines []string, startLine int) string 
 		currentIndent := len(currentIndentMatch)
 		trimmed := strings.TrimSpace(line)
 
-		// Check if array is closed
-		if strings.Contains(line, "]") {
+		// Check if array is closed at our indentation level
+		if strings.Contains(line, "]") && currentIndent <= baseIndent {
 			result.WriteString(line)
-			// Verify this is the closing bracket at our level
-			if currentIndent <= baseIndent || trimmed == "]" {
-				return result.String()
-			}
-			result.WriteString("\n")
-			continue
+			return result.String()
 		}
 
 		// Continue collecting if:

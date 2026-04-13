@@ -10,5 +10,11 @@
     "severity": "HIGH",
     "line": 20,
     "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "SQS queue exposed",
+    "severity": "HIGH",
+    "line": 21,
+    "fileName": "positive3.tf"
   }
 ]

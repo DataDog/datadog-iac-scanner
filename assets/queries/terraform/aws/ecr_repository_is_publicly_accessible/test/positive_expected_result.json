@@ -3,5 +3,11 @@
     "queryName": "ECR repository is publicly accessible",
     "severity": "CRITICAL",
     "line": 15
+  },
+  {
+    "queryName": "ECR repository is publicly accessible",
+    "severity": "CRITICAL",
+    "line": 26,
+    "fileName": "positive2.tf"
   }
 ]

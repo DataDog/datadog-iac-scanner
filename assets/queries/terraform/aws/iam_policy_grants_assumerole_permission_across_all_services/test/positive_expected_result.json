@@ -8,5 +8,11 @@
     "queryName": "IAM policy grants 'AssumeRole' permission across all services",
     "severity": "MEDIUM",
     "line": 76
+  },
+  {
+    "queryName": "IAM policy grants 'AssumeRole' permission across all services",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive2.tf"
   }
 ]

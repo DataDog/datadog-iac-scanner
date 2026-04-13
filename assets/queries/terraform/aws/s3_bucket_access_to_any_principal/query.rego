@@ -9,12 +9,7 @@ CxPolicy[result] {
 	resourceType := pl[r]
 	resource := input.document[i].resource[resourceType][name]
 
-	policy := common_lib.json_unmarshal(resource.policy)
-	st := common_lib.get_statement(policy)
-	statement := st[idx]
-
-	common_lib.is_allow_effect(statement)
-	tf_lib.anyPrincipal(statement)
+	idx := access_to_any_principal(resource.policy)[_]
 
 	result := {
 		"documentId": input.document[i].id,
@@ -33,12 +28,7 @@ CxPolicy[result] {
 	resourceType := pl[r]
 	keyToCheck := common_lib.get_module_equivalent_key("aws", module.source, resourceType, "policy")
 
-	policy := common_lib.json_unmarshal(module[keyToCheck])
-	st := common_lib.get_statement(policy)
-	statement := st[idx]
-
-	common_lib.is_allow_effect(statement)
-	tf_lib.anyPrincipal(statement)
+	idx := access_to_any_principal(module[keyToCheck])[_]
 
 	result := {
 		"documentId": input.document[i].id,
@@ -50,4 +40,15 @@ CxPolicy[result] {
 		"keyActualValue": "'policy.Principal' is equal to or contains '*'",
 		"searchLine": common_lib.build_search_line(["module", name, "policy", "Statement", idx, "Principal"], []),
 	}
+}
+
+access_to_any_principal(policyValue) = indices {
+	policy := common_lib.json_unmarshal(policyValue)
+	st := common_lib.get_statement(policy)
+	indices := [idx |
+		statement := st[idx]
+		common_lib.is_allow_effect(statement)
+		tf_lib.anyPrincipal(statement)
+	]
+	count(indices) > 0
 }
