@@ -943,3 +943,61 @@ const OriginalDataMissingVersioning = `resource "aws_s3_bucket" "no_versioning" 
 	}
   }
   `
+
+const policyStatementPrincipalJSONEncode = `resource "aws_s3_bucket_policy" "x" {
+  bucket = "b"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = "s3:GetObject"
+      Resource  = "*"
+    }]
+  })
+}
+`
+
+const policyStatementPrincipalHeredocJSON = `resource "aws_ecr_repository_policy" "x" {
+  repository = "r"
+
+  policy = <<EOF
+{
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "*"
+    }
+  ]
+}
+EOF
+}
+`
+
+func TestDetectLinePolicyStatementPrincipalJsonencode(t *testing.T) {
+	ctx := context.Background()
+	file := &model.FileMetadata{
+		ScanID:            "t",
+		ID:                "t",
+		Kind:              model.KindTerraform,
+		OriginalData:      policyStatementPrincipalJSONEncode,
+		LinesOriginalData: utils.SplitLines(policyStatementPrincipalJSONEncode),
+	}
+	got := DetectKindLine{}.DetectLine(ctx, file, `aws_s3_bucket_policy[x].policy.Statement[0].Principal`, 3)
+	require.Equal(t, 8, got.Line)
+}
+
+func TestDetectLinePolicyStatementPrincipalHeredocJSON(t *testing.T) {
+	ctx := context.Background()
+	file := &model.FileMetadata{
+		ScanID:            "t",
+		ID:                "t",
+		Kind:              model.KindTerraform,
+		OriginalData:      policyStatementPrincipalHeredocJSON,
+		LinesOriginalData: utils.SplitLines(policyStatementPrincipalHeredocJSON),
+	}
+	got := DetectKindLine{}.DetectLine(ctx, file, `aws_ecr_repository_policy[x].policy.Statement[0].Principal`, 3)
+	require.Equal(t, 9, got.Line)
+}

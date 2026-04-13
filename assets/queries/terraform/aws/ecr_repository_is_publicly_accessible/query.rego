@@ -7,7 +7,7 @@ CxPolicy[result] {
 	resource := input.document[i].resource.aws_ecr_repository_policy[name]
 	policy := common_lib.json_unmarshal(resource.policy)
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	tf_lib.anyPrincipal(statement)
@@ -16,10 +16,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_ecr_repository_policy",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_ecr_repository_policy[%s].policy", [name]),
+		"searchKey": sprintf("aws_ecr_repository_policy[%s].policy.Statement[%d].Principal", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'Statement.Principal' shouldn't contain '*'",
 		"keyActualValue": "'Statement.Principal' contains '*'",
-		"searchLine": common_lib.build_search_line(["resource", "aws_ecr_repository_policy", name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_ecr_repository_policy", name, "policy", "Statement", idx, "Principal"], []),
 	}
 }

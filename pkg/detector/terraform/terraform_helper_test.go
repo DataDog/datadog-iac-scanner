@@ -2,9 +2,12 @@ package terraform
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -248,6 +251,27 @@ func TestExtractArrayContent(t *testing.T) {
     "sg-2"
   ]`,
 		},
+		{
+			name:     "JSON Statement array inside heredoc body",
+			attrName: "Statement",
+			lines: []string{
+				`  policy = <<EOF`,
+				`{`,
+				`  "Statement": [`,
+				`    {`,
+				`      "Effect": "Allow"`,
+				`    }`,
+				`  ]`,
+				`}`,
+				`EOF`,
+			},
+			startLine: 1,
+			wantContent: `[
+    {
+      "Effect": "Allow"
+    }
+  ]`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -353,4 +377,17 @@ func TestGetArrayElementLine(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveListIndexStatementInJsonencodeThirdElement(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "assets", "queries", "terraform", "aws", "s3_bucket_access_to_any_principal", "test", "positive3.tf"))
+	require.NoError(t, err)
+	linesPtr := utils.SplitLines(string(data))
+	lines := *linesPtr
+	ctx := context.Background()
+	// currentLine 9 = line after `policy =` (0-indexed), same as DetectLine when resolving Statement[2]
+	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, data)
+	require.Empty(t, sub)
+	// Third tuple element starts at `{` on file line 41 (1-based) -> index 40
+	require.Equal(t, 40, lineNum)
 }

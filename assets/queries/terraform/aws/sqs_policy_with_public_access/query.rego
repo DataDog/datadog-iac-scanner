@@ -8,7 +8,7 @@ CxPolicy[result] {
 
 	policy := common_lib.json_unmarshal(resource.policy)
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	check_principal(statement.Principal, "*")
@@ -18,11 +18,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_sqs_queue_policy",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_sqs_queue_policy[%s].policy", [name]),
+		"searchKey": sprintf("aws_sqs_queue_policy[%s].policy.Statement[%d].Principal", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy.Statement.Principal.AWS' should not equal '*'",
 		"keyActualValue": "'policy.Statement.Principal.AWS' is equal '*'",
-		"searchLine": common_lib.build_search_line(["resource", "aws_sqs_queue_policy", name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_sqs_queue_policy", name, "policy", "Statement", idx, "Principal"], []),
 	}
 }
 
@@ -34,7 +34,7 @@ CxPolicy[result] {
 
 	policy := common_lib.json_unmarshal(module[keyToCheck])
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	check_principal(statement.Principal, "*")
@@ -44,11 +44,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].%s", [name, keyToCheck]),
+		"searchKey": sprintf("module[%s].%s.Statement[%d].Principal", [name, keyToCheck, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("'module[%s].%s.Statement.Principal.AWS' should not equal '*'", [name, keyToCheck]),
 		"keyActualValue": sprintf("'module[%s].%s.Statement.Principal.AWS' is equal '*'", [name, keyToCheck]),
-		"searchLine": common_lib.build_search_line(["module", name, keyToCheck], []),
+		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx, "Principal"], []),
 	}
 }
 
