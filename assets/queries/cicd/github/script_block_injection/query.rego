@@ -224,6 +224,77 @@ CxPolicy[result] {
 	}
 }
 
+CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "pull_request")
+	step := doc.jobs[j].steps[k]
+
+	uses := step.uses
+    startswith(uses, "actions/github-script")
+    script := step["with"].script
+
+	patterns := [
+		"github\\.head_ref",
+		"github\\.event\\.pull_request\\.head.ref",
+		"github\\.event\\.pull_request\\.head.label",
+		"github\\.event\\.pull_request\\.head.repo\\..+",
+		"github\\.event\\.pull_request\\.title",
+		"github\\.event\\.pull_request\\.body",
+	]
+
+	matched = containsPatterns(script, patterns)
+	count(matched) > 0
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("script={{%s}}", [script]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "script block does not contain dangerous input controlled by user.",
+		"keyActualValue": "script block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "script"],[]),
+		"resourceType": "github_action",
+		"resourceName": doc.jobs[j].steps[k].name
+	}
+}
+
+CxPolicy[result] {
+	doc := input.document[i]
+	check_trigger(doc, "workflow_dispatch")
+	step := doc.jobs[j].steps[k]
+
+	uses := step.uses
+    startswith(uses, "actions/github-script")
+    script := step["with"].script
+
+	patterns := [
+		"github\\.event\\.inputs\\..+"
+	]
+
+	matched = containsPatterns(script, patterns)
+	count(matched) > 0
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("script={{%s}}", [script]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "script block does not contain dangerous input controlled by user.",
+		"keyActualValue": "script block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "script"],[]),
+		"resourceType": "github_action",
+		"resourceName": doc.jobs[j].steps[k].name
+	}
+}
+
+
+check_trigger(doc, trigger) {
+	doc.on == trigger
+} else {
+	doc.on[_] == trigger
+} else {
+	doc.on[key]
+	key == trigger
+}
+
 
 containsPatterns(str, patterns) = matched {
     matched := {pattern |
