@@ -1,0 +1,40 @@
+name: Sound Conditions
+on: push
+
+jobs:
+  # Case 1: Job-level with plain scalar (no block style)
+  job_with_sound_condition:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - run: echo "This is sound"
+
+  # Case 2: Properly fenced conditions
+  test_sound_conditions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Plain scalar condition
+        if: ${{ github.event_name == 'push' }}
+        run: echo "This condition is sound"
+
+      # Case 3: Stripped literal block scalar (|- removes trailing newlines)
+      - name: Stripped literal block scalar
+        if: |-
+          ${{ github.ref == 'refs/heads/main' }}
+        run: echo "This is also sound"
+
+      # Case 4: Stripped folded block scalar (>- removes trailing newlines)
+      - name: Stripped folded block scalar
+        if: >-
+          ${{ github.actor != 'dependabot' }}
+        run: echo "This is sound too"
+
+      # Case 5: Bare expression without quotes (GitHub Actions evaluates this correctly)
+      - name: Bare expression
+        if: github.event_name == 'push'
+        run: echo "No fencing, sound"
+
+      # Case 6: Complex condition without excessive whitespace
+      - name: Complex condition
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: echo "Complex but sound"

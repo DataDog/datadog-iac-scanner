@@ -1,0 +1,49 @@
+name: Unsound Contains Usage
+on: pull_request
+
+jobs:
+  # Case 1: Job-level condition with space-separated branches
+  test_branches:
+    runs-on: ubuntu-latest
+    if: ${{ contains('refs/heads/main refs/heads/develop', github.ref) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+
+  # Case 2: Job-level condition with env variable
+  test_env:
+    runs-on: ubuntu-latest
+    if: ${{ contains('production staging', env.ENVIRONMENT) }}
+    steps:
+      - run: echo "Deploying"
+
+  # Case 3: Step-level condition with github.actor
+  test_step_actor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check actor
+        if: ${{ contains('dependabot renovate', github.actor) }}
+        run: echo "Bot detected"
+
+  # Case 4: Step-level with github.head_ref
+  test_step_ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch
+        if: ${{ contains('feature/ bugfix/', github.head_ref) }}
+        run: echo "Feature or bugfix"
+
+  # Case 5: Using inputs (workflow_dispatch)
+  test_inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check input
+        if: ${{ contains('dev test prod', inputs.environment) }}
+        run: echo "Valid environment"
+
+  # Case 6: Single quotes with pipe delimiter
+  test_pipe_delimiter:
+    runs-on: ubuntu-latest
+    if: ${{ contains('main|develop|staging', github.ref_name) }}
+    steps:
+      - run: echo "Branch check"

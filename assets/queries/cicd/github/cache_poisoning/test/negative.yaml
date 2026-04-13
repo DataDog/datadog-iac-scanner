@@ -1,0 +1,419 @@
+# Test case 1: Cache properly disabled with empty string in release
+name: Secure Publishing Workflow - Node
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        name: secure-node
+        with:
+          node-version: '18'
+          package-manager-cache: false
+
+      - run: npm ci
+
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+---
+# Test case 2: Cache disabled in Python publishing workflow
+name: Secure Python Publishing
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        name: secure-python
+        with:
+          python-version: '3.11'
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+---
+# Test case 3: actions/cache with lookup-only in publishing workflow
+name: Secure Release with Lookup-Only Cache
+on:
+  release:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        name: secure-cache
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          lookup-only: true
+
+      - uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: user/app:latest
+
+---
+# Test case 4: Rust cache properly disabled with lookup-only
+name: Secure Rust Publishing
+on:
+  release:
+    types: [created]
+
+jobs:
+  publish-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+        name: secure-rust
+        with:
+          lookup-only: true
+
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
+---
+# Test case 5: Cache enabled in non-publishing workflow (safe)
+name: Safe Development Build
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        name: safe-pr-cache
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm test
+
+---
+# Test case 6: Java without cache in release
+name: Secure Java Release
+on:
+  push:
+    branches:
+      - 'releases/**'
+
+jobs:
+  publish-java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        name: secure-java
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - run: mvn deploy
+
+---
+# Test case 7: Go with cache disabled (boolean false)
+name: Secure Go Publishing
+on:
+  release:
+
+jobs:
+  publish-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        name: secure-go
+        with:
+          go-version: '1.21'
+          cache: false
+
+      - uses: goreleaser/goreleaser-action@v5
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+---
+# Test case 8: DotNet without cache in Azure deployment
+name: Secure DotNet Azure Deploy
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        name: secure-dotnet
+        with:
+          dotnet-version: '8.0.x'
+          cache: false
+
+      - uses: Azure/functions-action@v1
+        with:
+          app-name: 'my-function-app'
+
+---
+# Test case 9: Ruby without bundler-cache
+name: Secure Ruby Gem Release
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-gem:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        name: secure-ruby
+        with:
+          ruby-version: '3.2'
+          bundler-cache: false
+
+      - uses: rubygems/release-gem@v1
+
+---
+# Test case 10: Gradle with cache-disabled
+name: Secure Gradle Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-gradle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: gradle/actions/setup-gradle@v3
+        name: secure-gradle
+        with:
+          cache-disabled: true
+
+      - run: ./gradlew publish
+
+---
+# Test case 11: Docker buildx without cache
+name: Secure Docker Build
+on:
+  release:
+
+jobs:
+  docker-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+        name: secure-buildx
+        with:
+          cache-binary: false
+
+      - uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: myimage:latest
+
+---
+# Test case 12: Composer with ignore-cache
+name: Secure Composer Release
+on:
+  release:
+
+jobs:
+  publish-php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ramsey/composer-install@v3
+        name: secure-composer
+        with:
+          ignore-cache: 'yes'
+
+      - run: composer publish
+
+---
+# Test case 13: Non-publishing trigger with main branch (safe)
+name: Safe CI Build
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        name: safe-main-cache
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+      - run: pytest
+
+---
+# Test case 14: UV cache disabled in release
+name: Secure UV Release
+on:
+  release:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        name: secure-uv
+        with:
+          enable-cache: false
+
+      - run: uv publish
+
+---
+# Test case 15: mise-action with cache disabled
+name: Secure Mise Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        name: secure-mise
+        with:
+          cache: false
+
+      - uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+
+---
+# Test case 16: GraalVM without cache
+name: Secure GraalVM Release
+on:
+  release:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        name: secure-graalvm
+        with:
+          java-version: '21'
+          distribution: 'graalvm'
+
+      - run: ./gradlew publish
+
+---
+# Test case 17: Bun with no-cache enabled
+name: Secure Bun Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        name: secure-bun
+        with:
+          no-cache: true
+
+      - run: bun publish
+
+---
+# Test case 18: Cache in non-release branch (safe)
+name: Safe Feature Branch
+on:
+  push:
+    branches:
+      - 'feature/*'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Mozilla-Actions/sccache-action@v0.0.5
+        name: safe-sccache
+
+      - run: cargo test
+
+---
+# Test case 19: actions/cache without lookup-only in non-publishing workflow
+name: Secure Release with Lookup-Only Cache
+on:
+  push:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        name: secure-cache
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          push: false
+          tags: user/app:latest

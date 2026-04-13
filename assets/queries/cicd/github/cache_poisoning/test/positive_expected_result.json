@@ -1,0 +1,72 @@
+[
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 13
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 39
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 65
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 91
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 112
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 135
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 156
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 162
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 189
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 212
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 234
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 251
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 275
+  },
+  {
+    "queryName": "Cache poisoning",
+    "severity": "HIGH",
+    "line": 298
+  }
+]

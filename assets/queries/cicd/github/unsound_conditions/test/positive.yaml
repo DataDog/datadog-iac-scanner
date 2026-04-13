@@ -1,0 +1,46 @@
+name: Unsound Conditions
+on: push
+
+jobs:
+  # Case 1: Job-level condition with literal block scalar
+  job_with_unsound_condition:
+    runs-on: ubuntu-latest
+    if: |
+      ${{ github.event_name == 'pull_request' }}
+    steps:
+      - run: echo "This will always run!"
+
+  # Case 2: Step-level literal block scalar
+  test_literal_block:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unsound literal block
+        if: |
+          ${{ github.event_name == 'pull_request' }}
+        run: echo "This will always run!"
+
+      # Case 3: Folded block scalar
+      - name: Unsound folded block
+        if: >
+          ${{ false }}
+        run: echo "This will also always run!"
+
+      # Case 4: Multiple spaces (excessive whitespace)
+      - name: Excessive leading spaces
+        if: "  ${{ github.ref == 'refs/heads/main' }}"
+        run: echo "Has leading spaces"
+
+      # Case 5: Tabs
+      - name: Tab character
+        if: "	${{ true }}"
+        run: echo "Has tab character"
+
+      # Case 6: Trailing spaces
+      - name: Excessive trailing spaces
+        if: "${{ github.actor == 'dependabot' }}  "
+        run: echo "Has trailing spaces"
+
+      # Case 7: Single space
+      - name: Single space padding
+        if: " ${{ true }} "
+        run: echo "Single space is not fine"
