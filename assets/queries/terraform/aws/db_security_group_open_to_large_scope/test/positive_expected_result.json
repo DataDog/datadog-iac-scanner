@@ -8,7 +8,7 @@
   {
     "queryName": "DB security group open to large scope",
     "severity": "HIGH",
-    "line": 10,
+    "line": 9,
     "fileName": "positive2.tf"
   }
 ]

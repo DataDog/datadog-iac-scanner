@@ -1,12 +1,11 @@
-resource "aws_security_group" "positive2" {
-  name        = "db-public-scope"
-  description = "Database security group with public scope"
-  vpc_id      = "vpc-123456"
+resource "aws_db_security_group" "positive2" {
+  name = "rds_sg"
 
   ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr = "10.0.0.0/8"
+  }
+
+  ingress {
+    cidr = "0.0.0.0/0"
   }
 }

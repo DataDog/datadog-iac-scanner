@@ -14,7 +14,7 @@
   {
     "queryName": "DB security group with public scope",
     "severity": "CRITICAL",
-    "line": 10,
+    "line": 9,
     "filename": "positive2.tf"
   }
 ]
