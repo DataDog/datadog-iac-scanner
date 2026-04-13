@@ -3,14 +3,15 @@ package Cx
 import data.generic.common as common_lib
 
 CxPolicy[result] {
+	doc := input.document[i]
 
-	input.document[i].on["pull_request_target"]
+	check_trigger(doc, "pull_request_target")
 
-    uses := input.document[i].jobs[j].steps[k].uses
+    uses := doc.jobs[j].steps[k].uses
 
     startswith(uses, "actions/github-script")
     
-    script := input.document[i].jobs[j].steps[k]["with"].script
+    script := doc.jobs[j].steps[k]["with"].script
 
 	patterns := [
     "github\\.head_ref",
@@ -26,7 +27,7 @@ CxPolicy[result] {
 	matched = containsPatterns(script, patterns)
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
@@ -34,19 +35,20 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
 
-	input.document[i].on["issues"]
+	check_trigger(doc, "issues")
 
-	uses := input.document[i].jobs[j].steps[k].uses
+	uses := doc.jobs[j].steps[k].uses
 
     startswith(uses, "actions/github-script")
     
-    script := input.document[i].jobs[j].steps[k]["with"].script
+    script := doc.jobs[j].steps[k]["with"].script
 
 	patterns := [
     "github\\.event\\.issue\\.body",
@@ -56,7 +58,7 @@ CxPolicy[result] {
 	matched = containsPatterns(script, patterns)
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
@@ -64,19 +66,20 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
 
-	input.document[i].on["issue_comment"]
+	check_trigger(doc, "issue_comment")
 	
-	uses := input.document[i].jobs[j].steps[k].uses
+	uses := doc.jobs[j].steps[k].uses
 
     startswith(uses, "actions/github-script")
     
-    script := input.document[i].jobs[j].steps[k]["with"].script
+    script := doc.jobs[j].steps[k]["with"].script
 
 	patterns := [
     "github\\.event\\.comment\\.body",
@@ -87,7 +90,7 @@ CxPolicy[result] {
 	matched = containsPatterns(script, patterns)
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
@@ -95,19 +98,20 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with","script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
 
-	input.document[i].on["discussion"]
+	check_trigger(doc, "discussion")
 	
-	uses := input.document[i].jobs[j].steps[k].uses
+	uses := doc.jobs[j].steps[k].uses
 
     startswith(uses, "actions/github-script")
     
-    script := input.document[i].jobs[j].steps[k]["with"].script
+    script := doc.jobs[j].steps[k]["with"].script
 
 	patterns := [
     "github\\.event\\.discussion\\.body",
@@ -117,7 +121,7 @@ CxPolicy[result] {
 	matched = containsPatterns(script, patterns)
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
@@ -125,19 +129,20 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
 
-	input.document[i].on["discussion_comment"]
+	check_trigger(doc, "discussion_comment")
 	
-	uses := input.document[i].jobs[j].steps[k].uses
+	uses := doc.jobs[j].steps[k].uses
 
     startswith(uses, "actions/github-script")
     
-    script := input.document[i].jobs[j].steps[k]["with"].script
+    script := doc.jobs[j].steps[k]["with"].script
 
 	patterns := [
     "github\\.event\\.comment\\.body",
@@ -148,7 +153,7 @@ CxPolicy[result] {
 	matched = containsPatterns(script, patterns)
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
@@ -156,19 +161,20 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
 
-	input.document[i].on["workflow_run"]
+	check_trigger(doc, "workflow_run")
 	
-	uses := input.document[i].jobs[j].steps[k].uses
+	uses := doc.jobs[j].steps[k].uses
 
     startswith(uses, "actions/github-script")
     
-    script := input.document[i].jobs[j].steps[k]["with"].script
+    script := doc.jobs[j].steps[k]["with"].script
 
 	patterns := [
     "github\\.event\\.workflow\\.path",
@@ -182,7 +188,7 @@ CxPolicy[result] {
 	matched = containsPatterns(script, patterns)
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
@@ -190,19 +196,20 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
 
-	input.document[i].on["author"]
+	check_trigger(doc, "author")
 	
-	uses := input.document[i].jobs[j].steps[k].uses
+	uses := doc.jobs[j].steps[k].uses
 
     startswith(uses, "actions/github-script")
     
-    script := input.document[i].jobs[j].steps[k]["with"].script
+    script := doc.jobs[j].steps[k]["with"].script
 
 	patterns := [
     "github\\..*\\.authors\\.name",
@@ -212,7 +219,7 @@ CxPolicy[result] {
 	matched = containsPatterns(script, patterns)
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
@@ -220,7 +227,7 @@ CxPolicy[result] {
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"searchValue": matched[m],
 		"resourceType": "github_action",
-		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
