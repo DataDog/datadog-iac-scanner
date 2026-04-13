@@ -686,21 +686,108 @@ rules:
         title: Ansible Tower Exposed To Internet
   cicd:
     github:
+      anonymous_definition:
+        description: Anonymous definition
+        title: Anonymous definition
+      archived_uses:
+        description: Archived uses
+        title: Archived uses
+      artipacked:
+        description: Artipacked
+        title: Artipacked
+      bot_conditions:
+        description: Bot conditions
+        title: Bot conditions
+      cache_poisoning:
+        description: Cache poisoning
+        title: Cache poisoning
+      concurrency_limits:
+        description: Concurrency limits
+        title: Concurrency limits
+      dangerous_triggers:
+        description: Dangerous triggers
+        title: Dangerous triggers
+      dependabot_cooldown:
+        description: Dependabot cooldown
+        title: Dependabot cooldown
+      dependabot_execution:
+        description: Dependabot execution
+        title: Dependabot execution
+      forbidden_uses:
+        description: Forbidden uses
+        title: Forbidden uses
+      github_env:
+        description: GitHub environment file injection
+        title: GitHub environment file injection
+      hardcoded_container_credentials:
+        description: Hardcoded container credentials
+        title: Hardcoded container credentials
+      impostor_commit:
+        description: Impostor commit
+        title: Impostor commit
+      known_vulnerable_actions:
+        description: Known vulnerable actions
+        title: Known vulnerable actions
+      misfeature:
+        description: Misfeature
+        title: Misfeature
+      obfuscation:
+        description: Obfuscation
+        title: Obfuscation
+      overprovisioned_secrets:
+        description: Overprovisioned secrets
+        title: Overprovisioned secrets
+      ref_confusion:
+        description: Ref confusion
+        title: Ref confusion
+      ref_version_mismatch:
+        description: Ref version mismatch
+        title: Ref version mismatch
       run_block_injection:
         description: Run block injection
         title: Run block injection
       script_block_injection:
         description: Script block injection
         title: Script block injection
+      secrets_inherit:
+        description: Secrets inherit
+        title: Secrets inherit
+      secrets_outside_env:
+        description: Secrets outside environment
+        title: Secrets outside environment
+      self_hosted_runner:
+        description: Self-hosted runner
+        title: Self-hosted runner
+      stale_action_refs:
+        description: Stale action refs
+        title: Stale action refs
+      superfluous_actions:
+        description: Superfluous actions
+        title: Superfluous actions
       unpinned_actions_full_length_commit_sha:
         description: Unpinned actions full length commit SHA
         title: Unpinned actions full length commit SHA
+      unpinned_images:
+        description: Unpinned images
+        title: Unpinned images
+      unredacted_secrets:
+        description: Unredacted secrets
+        title: Unredacted secrets
       unsecured_commands:
         description: Unsecured commands
         title: Unsecured commands
+      unsound_conditions:
+        description: Unsound condition
+        title: Unsound condition
+      unsound_contains:
+        description: Unsound contains
+        title: Unsound contains
       unspecified_workflows_permissions:
         description: Unspecified workflows level permissions
         title: Unspecified workflows level permissions
+      use_trusted_publishing:
+        description: Use trusted publishing for authentication
+        title: Use trusted publishing for authentication
   cloudFormation:
     aws:
       access_key_not_rotated_within_90_days:
