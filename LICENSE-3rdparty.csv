@@ -401,7 +401,6 @@ core,github.com/open-policy-agent/opa/storage,Apache-2.0,Copyright 2016 The OPA 
 core,github.com/open-policy-agent/opa/storage/inmem,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/topdown,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/topdown/print,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
-core,github.com/open-policy-agent/opa/util,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/ast,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/ast/internal/scanner,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/ast/internal/tokens,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.

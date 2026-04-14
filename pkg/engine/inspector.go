@@ -32,8 +32,7 @@ import (
 	"github.com/open-policy-agent/opa/cover"         // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"          // nolint:staticcheck
 	"github.com/open-policy-agent/opa/storage/inmem" // nolint:staticcheck
-	"github.com/open-policy-agent/opa/topdown"       // nolint:staticcheck
-	"github.com/open-policy-agent/opa/util"          // nolint:staticcheck
+	"github.com/open-policy-agent/opa/topdown" // nolint:staticcheck
 	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -285,19 +284,15 @@ func (c *Inspector) Inspect(
 	rootDir := c.repoPath
 	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, parsedModules, rootDir)
 
-	var p interface{}
-
-	payload, err := json.Marshal(combinedFiles)
-	if err != nil {
-		return vulnerabilities, err
+	// Convert combined documents directly to OPA AST, skipping the
+	// json.Marshal -> UnmarshalJSON round-trip to avoid intermediate copies.
+	docs := make([]interface{}, len(combinedFiles.Documents))
+	for i, d := range combinedFiles.Documents {
+		docs[i] = map[string]interface{}(d)
 	}
-
-	err = util.UnmarshalJSON(payload, &p)
-	if err != nil {
-		return vulnerabilities, err
-	}
-
-	astPayload, err := ast.InterfaceToValue(p)
+	astPayload, err := ast.InterfaceToValue(map[string]interface{}{
+		"document": docs,
+	})
 	if err != nil {
 		return vulnerabilities, err
 	}
