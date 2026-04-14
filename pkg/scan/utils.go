@@ -57,6 +57,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		Types:             c.ScanParams.Platform,
 		ExcludeTypes:      c.ScanParams.ExcludePlatform,
 		Exc:               c.ScanParams.Config.IgnorePaths,
+		Only:              c.ScanParams.Config.OnlyPaths,
 		GitIgnoreFileName: ".gitignore",
 		ExcludeGitIgnore:  c.ScanParams.ExcludeGitIgnore,
 		MaxFileSize:       c.ScanParams.MaxFileSizeFlag,

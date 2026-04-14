@@ -162,6 +162,7 @@ type Analyzer struct {
 	Types             []string
 	ExcludeTypes      []string
 	Exc               []string
+	Only              []string
 	GitIgnoreFileName string
 	ExcludeGitIgnore  bool
 	MaxFileSize       int
@@ -301,6 +302,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	gitDir := filepath.Join(a.RepoPath, ".git")
 
+	var err error
 	var files []string
 	var wg sync.WaitGroup
 	// results is the channel shared by the workers that contains the types found
@@ -309,6 +311,12 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	ignoreFiles := make([]string, 0)
 	projectConfigFiles := make([]string, 0)
 	hasGitIgnoreFile, gitIgnore := shouldConsiderGitIgnoreFile(ctx, a.RepoPath, a.GitIgnoreFileName, a.ExcludeGitIgnore)
+	if a.Exc, err = expandPaths(ctx, a.Exc); err != nil {
+		return returnAnalyzedPaths, fmt.Errorf("failed to expand ignore-paths: %w", err)
+	}
+	if a.Only, err = expandPaths(ctx, a.Only); err != nil {
+		return returnAnalyzedPaths, fmt.Errorf("failed to expand only-paths: %w", err)
+	}
 	// get all the files inside the given paths
 	for _, path := range a.Paths {
 		if _, err := os.Stat(path); err != nil {
@@ -336,7 +344,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					a.Exc = append(a.Exc, path)
 				}
 
-				if _, ok := possibleFileTypes[ext]; ok && !isExcludedFile(ctx, path, a.Exc) {
+				if _, ok := possibleFileTypes[ext]; ok && !isExcludedFile(path, a.Exc) && isIncludedFile(path, a.Only) {
 					files = append(files, path)
 				}
 			}
@@ -773,19 +781,49 @@ func getKeysFromExcludeTypesFlag(excludeTypesFlag []string) []string {
 	return ks
 }
 
-// isExcludedFile verifies if the path is pointed in the --exclude-paths flag
-func isExcludedFile(ctx context.Context, path string, exc []string) bool {
-	contextLogger := logger.FromContext(ctx)
-	for i := range exc {
-		exclude, err := provider.GetExcludePaths(ctx, exc[i])
+// expandPaths expands a slice of path expressions (which may include globs) into concrete paths.
+//
+// The nil/empty distinction in the return value is intentional and meaningful:
+//   - nil input (or empty input) → nil output: signals "no restriction configured"
+//   - non-empty input → non-nil output (possibly []string{}): signals "restriction is in
+//     effect", even if all glob patterns matched nothing. Callers must treat a non-nil
+//     empty result as "restrict to zero files", not as "no restriction".
+func expandPaths(ctx context.Context, paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	expanded := make([]string, 0, len(paths))
+	for _, p := range paths {
+		exp, err := provider.GetExcludePaths(ctx, p)
 		if err != nil {
-			contextLogger.Err(err).Msg("failed to get exclude paths")
+			return nil, err
 		}
-		for j := range exclude {
-			if exclude[j] == path {
-				contextLogger.Info().Msgf("Excluded file %s from analyzer", path)
-				return true
-			}
+		expanded = append(expanded, exp...)
+	}
+	return expanded, nil
+}
+
+// isIncludedFile returns true if path should be included given the onlyPaths restriction.
+// onlyPaths must be the result of expandPaths:
+//   - nil means no restriction was configured → include all files
+//   - non-nil (even empty) means a restriction is in effect → only matching files pass
+func isIncludedFile(path string, onlyPaths []string) bool {
+	if onlyPaths == nil {
+		return true
+	}
+	for _, p := range onlyPaths {
+		if p == path || strings.HasPrefix(path, p+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// isExcludedFile verifies if the path is in the pre-expanded exclude list
+func isExcludedFile(path string, expandedExc []string) bool {
+	for _, p := range expandedExc {
+		if p == path {
+			return true
 		}
 	}
 	return false

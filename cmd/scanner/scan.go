@@ -131,6 +131,11 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return err
 	}
 	cfg.IgnorePaths = excludePaths
+	onlyPaths, err := getRepoRelativePaths(repoDir, cfg.OnlyPaths)
+	if err != nil {
+		return err
+	}
+	cfg.OnlyPaths = onlyPaths
 	cfg.IgnoreRules = append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...)
 	params := &scan.Parameters{
 		CloudProvider:              []string{""},
