@@ -196,15 +196,13 @@ func (s *DatadogSource) filterRules(ruleset *Ruleset, selection *QueryInspectorP
 		if !s.isWantedCloudProvider(rule.Provider) {
 			continue
 		}
-		if len(selection.IncludeQueries.ByIDs) > 0 {
-			if !isInCaseInsensitiveList(rule.ID, selection.IncludeQueries.ByIDs) {
+		if len(selection.ExactQueries.ByIDs) > 0 {
+			// For ExactQueries, we consider exactly the queries specified by the filter
+			if !isInCaseInsensitiveList(rule.ID, selection.ExactQueries.ByIDs) {
 				continue
 			}
 		} else {
-			if isInCaseInsensitiveList(rule.ID, selection.ExcludeQueries.ByIDs) ||
-				isInCaseInsensitiveList(rule.Category, selection.ExcludeQueries.ByCategories) ||
-				isInCaseInsensitiveList(rule.Severity, selection.ExcludeQueries.BySeverities) ||
-				(!selection.BomQueries && strings.EqualFold(rule.Severity, model.SeverityTrace)) {
+			if !checkIncluded(rule, selection) || checkExcluded(rule, selection) {
 				continue
 			}
 		}
@@ -239,6 +237,18 @@ func (s *DatadogSource) isWantedCloudProvider(provider *string) bool {
 	return isInCaseInsensitiveList(*provider, s.wantedCloudProviders)
 }
 
+func checkExcluded(rule *Rule, selection *QueryInspectorParameters) bool {
+	return isInCaseInsensitiveList(rule.ID, selection.ExcludeQueries.ByIDs) ||
+		isInCaseInsensitiveList(rule.Category, selection.ExcludeQueries.ByCategories) ||
+		isInCaseInsensitiveList(rule.Severity, selection.ExcludeQueries.BySeverities) ||
+		(!selection.BomQueries && strings.EqualFold(rule.Severity, model.SeverityTrace))
+}
+
+func checkIncluded(rule *Rule, selection *QueryInspectorParameters) bool {
+	return isInCaseInsensitiveNotEmptyList(rule.Category, selection.IncludeQueries.ByCategories) &&
+		isInCaseInsensitiveNotEmptyList(rule.Severity, selection.IncludeQueries.BySeverities)
+}
+
 // isInCaseInsensitiveList checks if the given item is in the given list, doing a case-insensitive search.
 func isInCaseInsensitiveList(id string, list []string) bool {
 	for _, item := range list {
@@ -247,6 +257,11 @@ func isInCaseInsensitiveList(id string, list []string) bool {
 		}
 	}
 	return false
+}
+
+// isInCaseInsensitiveNotEmptyList checks if the list is empty or the item is in it, doing a case-insensitive search.
+func isInCaseInsensitiveNotEmptyList(id string, list []string) bool {
+	return len(list) == 0 || isInCaseInsensitiveList(id, list)
 }
 
 // nolint:gocyclo

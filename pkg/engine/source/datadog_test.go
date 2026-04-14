@@ -46,11 +46,11 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
-			name: "IncludeQueries",
+			name: "ExactQueries",
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				IncludeQueries:      IncludeQueries{ByIDs: []string{"rule-2", "rule-3"}},
+				ExactQueries:        ExactQueries{ByIDs: []string{"rule-2", "rule-3"}},
 			},
 			expected: []model.QueryMetadata{
 				/* queries[0] is not included */ queries[1], queries[2],
@@ -112,6 +112,77 @@ func TestQuery(t *testing.T) {
 			},
 			expected: []model.QueryMetadata{
 				queries[0], /* queries[1] has excluded Id */ /* queries[2] has category=Supply-Chain */
+			},
+		},
+		{
+			name: "IncludeQueries BySeverities",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      IncludeQueries{BySeverities: []string{"HIGH"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], /* queries[1] has severity=MEDIUM, queries[2] has severity=TRACE */
+			},
+		},
+		{
+			name: "IncludeQueries ByCategories",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      IncludeQueries{ByCategories: []string{"Backup"}},
+			},
+			expected: []model.QueryMetadata{
+				/* queries[0] has category=Encryption */ queries[1], /* queries[2] has category=Supply-Chain */
+			},
+		},
+		{
+			name: "IncludeQueries BySeverities multiple",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      IncludeQueries{BySeverities: []string{"HIGH", "MEDIUM"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], queries[1], /* queries[2] has severity=TRACE */
+			},
+		},
+		{
+			name: "IncludeQueries BySeverities and ByCategories",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries: IncludeQueries{
+					BySeverities: []string{"HIGH"},
+					ByCategories: []string{"Encryption", "Backup"},
+				},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], /* queries[1]: MEDIUM not in HIGH; queries[2]: TRACE not in HIGH */
+			},
+		},
+		{
+			name: "IncludeQueries and ExcludeQueries",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      IncludeQueries{BySeverities: []string{"HIGH", "MEDIUM"}},
+				ExcludeQueries:      ExcludeQueries{ByCategories: []string{"Backup"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], /* queries[1]: included by severity but excluded by category; queries[2]: not included */
+			},
+		},
+		{
+			name: "IncludeQueries and ExcludeQueries by different criteria",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      IncludeQueries{ByCategories: []string{"Encryption", "Supply-Chain"}},
+				ExcludeQueries:      ExcludeQueries{BySeverities: []string{"TRACE"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], /* queries[1]: not included; queries[2]: included but excluded by severity */
 			},
 		},
 	} {

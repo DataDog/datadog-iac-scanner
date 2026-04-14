@@ -175,7 +175,7 @@ func (s *FilesystemSource) CheckCloudProvider(cloudProvider interface{}) bool {
 	return false
 }
 
-func checkQueryInclude(ctx context.Context, id interface{}, includedQueries []string) bool {
+func checkQueryExact(ctx context.Context, id interface{}, exactQueries []string) bool {
 	contextLogger := logger.FromContext(ctx)
 	queryMetadataKey, ok := id.(string)
 	if !ok {
@@ -183,7 +183,7 @@ func checkQueryInclude(ctx context.Context, id interface{}, includedQueries []st
 			Msgf("Can't cast query metadata key = %v", id)
 		return false
 	}
-	for _, includedQuery := range includedQueries {
+	for _, includedQuery := range exactQueries {
 		if queryMetadataKey == includedQuery {
 			return true
 		}
@@ -191,7 +191,7 @@ func checkQueryInclude(ctx context.Context, id interface{}, includedQueries []st
 	return false
 }
 
-func checkQueryExcludeField(ctx context.Context, id interface{}, excludeQueries []string) bool {
+func checkQueryFilterFieldExclude(ctx context.Context, id any, queries []string) bool {
 	contextLogger := logger.FromContext(ctx)
 	queryMetadataKey, ok := id.(string)
 	if !ok {
@@ -199,7 +199,7 @@ func checkQueryExcludeField(ctx context.Context, id interface{}, excludeQueries 
 			Msgf("Can't cast query metadata key = %v", id)
 		return false
 	}
-	for _, excludedQuery := range excludeQueries {
+	for _, excludedQuery := range queries {
 		if strings.EqualFold(queryMetadataKey, excludedQuery) {
 			return true
 		}
@@ -208,11 +208,20 @@ func checkQueryExcludeField(ctx context.Context, id interface{}, excludeQueries 
 }
 
 func checkQueryExclude(ctx context.Context, metadata map[string]interface{}, queryParameters *QueryInspectorParameters) bool {
-	return checkQueryExcludeField(ctx, metadata["id"], queryParameters.ExcludeQueries.ByIDs) ||
-		checkQueryExcludeField(ctx, metadata["category"], queryParameters.ExcludeQueries.ByCategories) ||
-		checkQueryExcludeField(ctx, metadata["severity"], queryParameters.ExcludeQueries.BySeverities) ||
+	return checkQueryFilterFieldExclude(ctx, metadata["id"], queryParameters.ExcludeQueries.ByIDs) ||
+		checkQueryFilterFieldExclude(ctx, metadata["category"], queryParameters.ExcludeQueries.ByCategories) ||
+		checkQueryFilterFieldExclude(ctx, metadata["severity"], queryParameters.ExcludeQueries.BySeverities) ||
 		(!queryParameters.BomQueries && metadata["severity"] == model.SeverityTrace) ||
 		checkQueryFeatureFlagDisabled(ctx, metadata, queryParameters)
+}
+
+func checkQueryFilterFieldInclude(ctx context.Context, id any, queries []string) bool {
+	return len(queries) == 0 || checkQueryFilterFieldExclude(ctx, id, queries)
+}
+
+func checkQueryInclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
+	return checkQueryFilterFieldInclude(ctx, metadata["category"], queryParameters.IncludeQueries.ByCategories) &&
+		checkQueryFilterFieldInclude(ctx, metadata["severity"], queryParameters.IncludeQueries.BySeverities)
 }
 
 func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]interface{}, queryParameters *QueryInspectorParameters) bool {
@@ -335,12 +344,13 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 			continue
 		}
 
-		if len(queryParameters.IncludeQueries.ByIDs) > 0 {
-			if checkQueryInclude(ctx, query.Metadata["id"], queryParameters.IncludeQueries.ByIDs) {
+		if len(queryParameters.ExactQueries.ByIDs) > 0 {
+			if checkQueryExact(ctx, query.Metadata["id"], queryParameters.ExactQueries.ByIDs) {
 				queries = append(queries, query)
 			}
 		} else {
-			if checkQueryExclude(ctx, query.Metadata, queryParameters) {
+			if !checkQueryInclude(ctx, query.Metadata, queryParameters) ||
+				checkQueryExclude(ctx, query.Metadata, queryParameters) {
 				continue
 			}
 

@@ -139,36 +139,25 @@ func Test_CreateQueryFilter(t *testing.T) {
 		{
 			name: "test empty filter",
 			scanParams: Parameters{
-				Config: config.IacConfig{
-					IgnoreRules:          []string{},
-					IgnoreCategories:     []string{},
-					IgnoreSeverities:     []string{},
-					LegacyIncludeQueries: []string{},
-				},
+				Config:          config.IacConfig{},
 				InputData:       "",
 				BillOfMaterials: false,
 			},
 			expectedOutput: source.QueryInspectorParameters{
-				ExcludeQueries: source.ExcludeQueries{
-					ByIDs:        []string{},
-					ByCategories: []string{},
-					BySeverities: []string{},
-				},
-				IncludeQueries: source.IncludeQueries{
-					ByIDs: []string{},
-				},
-				InputDataPath: "",
-				BomQueries:    false,
+				ExcludeQueries: source.ExcludeQueries{},
+				IncludeQueries: source.IncludeQueries{},
+				ExactQueries:   source.ExactQueries{},
+				InputDataPath:  "",
+				BomQueries:     false,
 			},
 		},
 		{
 			name: "test query filter with some fields and BoM",
 			scanParams: Parameters{
 				Config: config.IacConfig{
-					IgnoreRules:          []string{"c065b98e-1515-4991-9dca-b602bd6a2fbb"},
-					IgnoreCategories:     []string{},
-					IgnoreSeverities:     []string{"info"},
-					LegacyIncludeQueries: []string{},
+					IgnoreRules:      []string{"c065b98e-1515-4991-9dca-b602bd6a2fbb"},
+					IgnoreSeverities: []string{"info"},
+					OnlyCategories:   []string{"Accessibility"},
 				},
 				InputData:       "",
 				BillOfMaterials: true,
@@ -176,12 +165,12 @@ func Test_CreateQueryFilter(t *testing.T) {
 			expectedOutput: source.QueryInspectorParameters{
 				ExcludeQueries: source.ExcludeQueries{
 					ByIDs:        []string{"c065b98e-1515-4991-9dca-b602bd6a2fbb"},
-					ByCategories: []string{},
 					BySeverities: []string{"info"},
 				},
 				IncludeQueries: source.IncludeQueries{
-					ByIDs: []string{},
+					ByCategories: []string{"Accessibility"},
 				},
+				ExactQueries:  source.ExactQueries{},
 				InputDataPath: "",
 				BomQueries:    true,
 			},

@@ -214,14 +214,19 @@ func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
 		ByCategories: c.ScanParams.Config.IgnoreCategories,
 		BySeverities: c.ScanParams.Config.IgnoreSeverities,
 	}
-
 	includeQueries := source.IncludeQueries{
+		ByCategories: c.ScanParams.Config.OnlyCategories,
+		BySeverities: c.ScanParams.Config.OnlySeverities,
+	}
+
+	exactQueries := source.ExactQueries{
 		ByIDs: c.ScanParams.Config.LegacyIncludeQueries,
 	}
 
 	queryFilter := source.QueryInspectorParameters{
-		IncludeQueries:      includeQueries,
+		ExactQueries:        exactQueries,
 		ExcludeQueries:      excludeQueries,
+		IncludeQueries:      includeQueries,
 		ExperimentalQueries: c.ScanParams.ExperimentalQueries,
 		InputDataPath:       c.ScanParams.InputData,
 		BomQueries:          c.ScanParams.BillOfMaterials,
