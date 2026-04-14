@@ -89,9 +89,9 @@ func ParseTerraformModules(ctx context.Context, files model.FileMetadatas) (map[
 		}
 		baseDir := filepath.Dir(filePath)
 
-		file.Content = getFileContent(file)
+		content := getFileContent(file)
 
-		hclFile, diags := hclsyntax.ParseConfig([]byte(file.Content), filePath, hcl.Pos{Line: 1, Column: 1})
+		hclFile, diags := hclsyntax.ParseConfig([]byte(content), filePath, hcl.Pos{Line: 1, Column: 1})
 		if diags.HasErrors() {
 			contextLogger.Warn().Msgf("Skipping file %s due to HCL parse errors: %s", filePath, diags.Error())
 			continue
@@ -205,14 +205,8 @@ func validateModuleSource(ctx context.Context, absPath string) error {
 	return nil
 }
 
-// nolint:gocritic
-func getFileContent(file model.FileMetadata) string {
-	var builder strings.Builder
-	for _, line := range *file.LinesOriginalData {
-		builder.WriteString(line)
-		builder.WriteString("\n")
-	}
-	return builder.String()
+func getFileContent(file *model.FileMetadata) string {
+	return strings.ReplaceAll(file.OriginalData, "\r", "")
 }
 
 // resolveExpr evaluates HCL expressions using known locals and vars

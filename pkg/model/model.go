@@ -144,7 +144,6 @@ type FileMetadata struct {
 	OriginalData      string   `db:"orig_data"`
 	Kind              FileKind `db:"kind"`
 	FilePath          string   `db:"file_path"`
-	Content           string
 	HelmID            string
 	IDInfo            map[int]interface{}
 	Commands          CommentsCommands
