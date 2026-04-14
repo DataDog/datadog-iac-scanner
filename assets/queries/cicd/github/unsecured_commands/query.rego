@@ -59,7 +59,7 @@ CxPolicy[result] {
 is_true(env) {
 	env == true
 } else {
-	env == "true"
+	lower(env) == "true"
 }
 
 
