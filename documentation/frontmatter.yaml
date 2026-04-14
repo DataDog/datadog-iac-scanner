@@ -14,8 +14,8 @@ rules:
         description: API Gateway endpoint config is not private
         title: API Gateway endpoint config is not private
       api_gateway_with_cloudwatch_logging_disabled:
-        description: API Gateway with CloudWatch Logs disabled
-        title: API Gateway with CloudWatch Logs disabled
+        description: API gateway with CloudWatch Logs disabled
+        title: API gateway with CloudWatch Logs disabled
       api_gateway_without_configured_authorizer:
         description: API Gateway without configured authorizer
         title: API Gateway without configured authorizer

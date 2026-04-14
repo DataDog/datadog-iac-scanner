@@ -24,7 +24,7 @@
           },
           {
             "name": "api_gateway_with_cloudwatch_logging_disabled",
-            "short_description": "API Gateway with CloudWatch Logs disabled"
+            "short_description": "API gateway with CloudWatch Logs disabled"
           },
           {
             "name": "api_gateway_without_configured_authorizer",
