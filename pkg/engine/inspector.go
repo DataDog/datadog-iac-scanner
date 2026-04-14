@@ -32,7 +32,7 @@ import (
 	"github.com/open-policy-agent/opa/cover"         // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"          // nolint:staticcheck
 	"github.com/open-policy-agent/opa/storage/inmem" // nolint:staticcheck
-	"github.com/open-policy-agent/opa/topdown" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/topdown"       // nolint:staticcheck
 	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -101,7 +101,7 @@ type Inspector struct {
 type QueryContext struct {
 	Ctx           context.Context
 	scanID        string
-	Files         map[string]model.FileMetadata
+	Files         map[string]*model.FileMetadata
 	Query         *PreparedQuery
 	payload       *ast.Value
 	BaseScanPaths []string
@@ -583,7 +583,10 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 
 		return nil, false
 	}
-	file := qCtx.Files[vulnerability.FileID]
+	file, ok := qCtx.Files[vulnerability.FileID]
+	if !ok || file == nil {
+		return nil, false
+	}
 	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID) {
 		contextLogger.Debug().Msgf("Skipping vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)

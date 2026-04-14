@@ -44,7 +44,7 @@ func TestInclude(t *testing.T) {
 // TestFileMetadatas tests the functions [Combine(),ToMap()] and all the methods called by them
 func TestFileMetadatas(t *testing.T) {
 	m := FileMetadatas{
-		{
+		&FileMetadata{
 			ID:           "id",
 			ScanID:       "scan_id",
 			OriginalData: "orig_data",
@@ -56,7 +56,7 @@ func TestFileMetadatas(t *testing.T) {
 	}
 
 	mEmptyDocuments := FileMetadatas{
-		{
+		&FileMetadata{
 			ID:           "id",
 			ScanID:       "scan_id",
 			OriginalData: "orig_data",
@@ -66,7 +66,7 @@ func TestFileMetadatas(t *testing.T) {
 	}
 
 	mIgnoreCommand := FileMetadatas{
-		{
+		&FileMetadata{
 			ID:           "id",
 			ScanID:       "scan_id",
 			OriginalData: "orig_data",

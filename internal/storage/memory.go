@@ -28,7 +28,7 @@ type MemoryStorage struct {
 func (m *MemoryStorage) SaveFile(_ context.Context, metadata *model.FileMetadata) error {
 	memoryMu.Lock()
 	defer memoryMu.Unlock()
-	m.allFiles = append(m.allFiles, *metadata)
+	m.allFiles = append(m.allFiles, metadata)
 	return nil
 }
 

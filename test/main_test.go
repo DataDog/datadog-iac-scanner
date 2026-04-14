@@ -185,7 +185,7 @@ func getFilesMetadatasWithContent(t testing.TB, filePath, platform string, conte
 		}
 		for _, document := range docs.Docs {
 
-			files = append(files, model.FileMetadata{
+			files = append(files, &model.FileMetadata{
 				ID:                uuid.NewString(),
 				ScanID:            scanID,
 				Document:          kics.PrepareScanDocument(ctx, document, docs.Kind),

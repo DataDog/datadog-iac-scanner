@@ -274,12 +274,12 @@ func (e Extensions) MatchedFilesRegex() string {
 	return "(.*)(" + strings.Join(parts, "|") + ")$"
 }
 
-// FileMetadatas is a slice of FileMetadata
-type FileMetadatas []FileMetadata
+// FileMetadatas is a slice of FileMetadata pointers
+type FileMetadatas []*FileMetadata
 
-// ToMap creates a map of FileMetadatas, which the key is the FileMedata ID and the value is the FileMetadata
-func (m FileMetadatas) ToMap() map[string]FileMetadata {
-	c := make(map[string]FileMetadata, len(m))
+// ToMap creates a map of FileMetadatas, which the key is the FileMetadata ID and the value is a pointer to the FileMetadata
+func (m FileMetadatas) ToMap() map[string]*FileMetadata {
+	c := make(map[string]*FileMetadata, len(m))
 	for i := 0; i < len(m); i++ {
 		c[m[i].ID] = m[i]
 	}
@@ -298,23 +298,23 @@ type Document map[string]interface{}
 func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 	contextLogger := logger.FromContext(ctx)
 	documents := Documents{Documents: make([]Document, 0, len(m))}
-	for i := 0; i < len(m); i++ {
-		_, ignore := m[i].Commands["ignore"]
-		if len(m[i].Document) == 0 {
+	for _, f := range m {
+		_, ignore := f.Commands["ignore"]
+		if len(f.Document) == 0 {
 			continue
 		}
 		if ignore {
-			contextLogger.Debug().Msgf("Ignoring file %s", m[i].FilePath)
+			contextLogger.Debug().Msgf("Ignoring file %s", f.FilePath)
 			continue
 		}
 		if lineInfo {
-			m[i].LineInfoDocument["id"] = m[i].ID
-			m[i].LineInfoDocument["file"] = m[i].FilePath
-			documents.Documents = append(documents.Documents, m[i].LineInfoDocument)
+			f.LineInfoDocument["id"] = f.ID
+			f.LineInfoDocument["file"] = f.FilePath
+			documents.Documents = append(documents.Documents, f.LineInfoDocument)
 		} else {
-			m[i].Document["id"] = m[i].ID
-			m[i].Document["file"] = m[i].FilePath
-			documents.Documents = append(documents.Documents, m[i].Document)
+			f.Document["id"] = f.ID
+			f.Document["file"] = f.FilePath
+			documents.Documents = append(documents.Documents, f.Document)
 		}
 	}
 	return documents

@@ -332,8 +332,8 @@ func Test_GetScanMetadata(t *testing.T) {
 				FailedSimilarityID: 12312312,
 			},
 			results: &Results{
-				Files: []model.FileMetadata{
-					{
+				Files: model.FileMetadatas{
+					&model.FileMetadata{
 						ScanID:            "Test2",
 						ID:                "Test2",
 						Kind:              model.KindTerraform,
