@@ -102,9 +102,6 @@ const (
 	// DefaultLogFile - logfile name
 	DefaultLogFile = "info.log"
 
-	// DefaultConfigFilename - default configuration filename
-	DefaultConfigFilename = "dd-iac-scan.config"
-
 	// MinimumPreviewLines - default minimum preview lines number
 	MinimumPreviewLines = 1
 
