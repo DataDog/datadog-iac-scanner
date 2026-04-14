@@ -130,6 +130,8 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	cfg.IgnorePaths = excludePaths
+	cfg.IgnoreRules = append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...)
 	params := &scan.Parameters{
 		CloudProvider:              []string{""},
 		OutputPath:                 outputPath,
@@ -150,12 +152,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		PayloadPath:                payloadPath,
 		SCIInfo:                    model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:              getFeatureFlagEvaluator(c),
-		ExcludeCategories:          cfg.IgnoreCategories,
-		ExcludeQueries:             append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...),
-		ExcludeResults:             cfg.LegacyExcludeResults,
-		ExcludeSeverities:          cfg.IgnoreSeverities,
-		ExcludePaths:               excludePaths,
-		IncludeQueries:             cfg.LegacyIncludeQueries,
+		Config:                     *cfg,
 		DownloadQueriesFromDatadog: c.Bool("x-downloadqueriesfromdatadog"),
 	}
 

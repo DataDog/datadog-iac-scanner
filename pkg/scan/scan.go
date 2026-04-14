@@ -210,13 +210,13 @@ func getExcludeResultsMap(excludeResults []string) map[string]bool {
 
 func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
 	excludeQueries := source.ExcludeQueries{
-		ByIDs:        c.ScanParams.ExcludeQueries,
-		ByCategories: c.ScanParams.ExcludeCategories,
-		BySeverities: c.ScanParams.ExcludeSeverities,
+		ByIDs:        c.ScanParams.Config.IgnoreRules,
+		ByCategories: c.ScanParams.Config.IgnoreCategories,
+		BySeverities: c.ScanParams.Config.IgnoreSeverities,
 	}
 
 	includeQueries := source.IncludeQueries{
-		ByIDs: c.ScanParams.IncludeQueries,
+		ByIDs: c.ScanParams.Config.LegacyIncludeQueries,
 	}
 
 	queryFilter := source.QueryInspectorParameters{
@@ -296,8 +296,8 @@ func (c *Client) getFileSystemSourceProvider(ctx context.Context, paths []string
 		excludePaths = append(excludePaths, c.ScanParams.PayloadPath)
 	}
 
-	if len(c.ScanParams.ExcludePaths) > 0 {
-		excludePaths = append(excludePaths, c.ScanParams.ExcludePaths...)
+	if len(c.ScanParams.Config.IgnorePaths) > 0 {
+		excludePaths = append(excludePaths, c.ScanParams.Config.IgnorePaths...)
 	}
 
 	filesSource, err := provider.NewFileSystemSourceProvider(ctx, paths, excludePaths)

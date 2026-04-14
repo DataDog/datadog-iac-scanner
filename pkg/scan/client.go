@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -21,13 +22,7 @@ import (
 // Parameters represents all available scan parameters
 type Parameters struct {
 	CloudProvider               []string
-	ExcludeCategories           []string
-	ExcludePaths                []string
-	ExcludeQueries              []string
-	ExcludeResults              []string
-	ExcludeSeverities           []string
 	ExperimentalQueries         bool
-	IncludeQueries              []string
 	InputData                   string
 	OutputName                  string
 	OutputPath                  string
@@ -59,6 +54,7 @@ type Parameters struct {
 	PreAnalysisExcludePaths     []string
 	SCIInfo                     model.SCIInfo
 	FlagEvaluator               featureflags.FlagEvaluator
+	Config                      config.IacConfig
 	DownloadQueriesFromDatadog  bool
 }
 
@@ -83,14 +79,9 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 	}
 
 	return &Parameters{
+		Config:                      *configParams,
 		CloudProvider:               []string{""},
-		ExcludeCategories:           configParams.IgnoreCategories,
-		ExcludeQueries:              configParams.IgnoreRules,
-		ExcludeResults:              configParams.LegacyExcludeResults,
-		ExcludeSeverities:           configParams.IgnoreSeverities,
-		ExcludePaths:                configParams.IgnorePaths,
 		ExperimentalQueries:         false,
-		IncludeQueries:              configParams.LegacyIncludeQueries,
 		InputData:                   "",
 		OutputName:                  "kics-result.sarif",
 		PayloadPath:                 "",
@@ -129,7 +120,7 @@ func NewClient(ctx context.Context, params *Parameters, customPrint *consolePrin
 
 	store := storage.NewMemoryStorage()
 
-	excludeResultsMap := getExcludeResultsMap(params.ExcludeResults)
+	excludeResultsMap := getExcludeResultsMap(params.Config.LegacyExcludeResults)
 
 	return &Client{
 		ScanParams:        params,

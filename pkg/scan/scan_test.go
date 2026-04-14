@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -138,12 +139,14 @@ func Test_CreateQueryFilter(t *testing.T) {
 		{
 			name: "test empty filter",
 			scanParams: Parameters{
-				ExcludeQueries:    []string{},
-				ExcludeCategories: []string{},
-				ExcludeSeverities: []string{},
-				IncludeQueries:    []string{},
-				InputData:         "",
-				BillOfMaterials:   false,
+				Config: config.IacConfig{
+					IgnoreRules:          []string{},
+					IgnoreCategories:     []string{},
+					IgnoreSeverities:     []string{},
+					LegacyIncludeQueries: []string{},
+				},
+				InputData:       "",
+				BillOfMaterials: false,
 			},
 			expectedOutput: source.QueryInspectorParameters{
 				ExcludeQueries: source.ExcludeQueries{
@@ -161,12 +164,14 @@ func Test_CreateQueryFilter(t *testing.T) {
 		{
 			name: "test query filter with some fields and BoM",
 			scanParams: Parameters{
-				ExcludeQueries:    []string{"c065b98e-1515-4991-9dca-b602bd6a2fbb"},
-				ExcludeCategories: []string{},
-				ExcludeSeverities: []string{"info"},
-				IncludeQueries:    []string{},
-				InputData:         "",
-				BillOfMaterials:   true,
+				Config: config.IacConfig{
+					IgnoreRules:          []string{"c065b98e-1515-4991-9dca-b602bd6a2fbb"},
+					IgnoreCategories:     []string{},
+					IgnoreSeverities:     []string{"info"},
+					LegacyIncludeQueries: []string{},
+				},
+				InputData:       "",
+				BillOfMaterials: true,
 			},
 			expectedOutput: source.QueryInspectorParameters{
 				ExcludeQueries: source.ExcludeQueries{
