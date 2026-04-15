@@ -221,7 +221,7 @@ func (c *Inspector) createInspectionJobs(jobs chan<- InspectionJob, queries []mo
 }
 
 // This function performs an inspection job and sends the result to the results channel
-func (c *Inspector) performInspection(ctx context.Context, scanID string, files model.FileMetadatas,
+func (c *Inspector) performInspection(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	astPayload ast.Value, baseScanPaths []string,
 	jobs <-chan InspectionJob, results chan<- QueryResult, queries []model.QueryMetadata,
 	modules []tfmodules.ParsedModule) {
@@ -246,7 +246,7 @@ func (c *Inspector) performInspection(ctx context.Context, scanID string, files 
 		queryContext := &QueryContext{
 			Ctx:           ctx,
 			scanID:        scanID,
-			Files:         files.ToMap(),
+			Files:         filesMap,
 			Query:         query,
 			payload:       &astPayload,
 			BaseScanPaths: baseScanPaths,
@@ -303,6 +303,9 @@ func (c *Inspector) Inspect(
 
 	queries := c.getQueriesByPlat(platforms)
 
+	// Compute the file map once and share it (read-only) across all workers
+	filesMap := files.ToMap()
+
 	// Create a channel to collect the results
 	results := make(chan QueryResult, len(queries))
 
@@ -318,7 +321,7 @@ func (c *Inspector) Inspect(
 		go func() {
 			// Decrement the counter when the goroutine completes
 			defer wg.Done()
-			c.performInspection(ctx, scanID, files, astPayload, baseScanPaths, jobs, results, queries, enrichedModules)
+			c.performInspection(ctx, scanID, filesMap, astPayload, baseScanPaths, jobs, results, queries, enrichedModules)
 		}()
 	}
 	// Start a goroutine to create inspection jobs
