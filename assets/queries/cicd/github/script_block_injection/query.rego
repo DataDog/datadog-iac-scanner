@@ -25,6 +25,7 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(script, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": doc.id,
@@ -33,7 +34,6 @@ CxPolicy[result] {
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
@@ -56,6 +56,7 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(script, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": doc.id,
@@ -64,7 +65,6 @@ CxPolicy[result] {
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
@@ -88,6 +88,7 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(script, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": doc.id,
@@ -96,7 +97,6 @@ CxPolicy[result] {
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with","script"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
@@ -119,6 +119,7 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(script, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": doc.id,
@@ -127,7 +128,6 @@ CxPolicy[result] {
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
@@ -151,6 +151,7 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(script, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": doc.id,
@@ -159,7 +160,6 @@ CxPolicy[result] {
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
@@ -186,6 +186,7 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(script, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": doc.id,
@@ -194,7 +195,6 @@ CxPolicy[result] {
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
@@ -217,6 +217,7 @@ CxPolicy[result] {
 	]
 
 	matched = containsPatterns(script, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": doc.id,
@@ -225,7 +226,6 @@ CxPolicy[result] {
 		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Script block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
-		"searchValue": matched[m],
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
@@ -242,9 +242,9 @@ CxPolicy[result] {
 
 	patterns := [
 		"github\\.head_ref",
-		"github\\.event\\.pull_request\\.head.ref",
-		"github\\.event\\.pull_request\\.head.label",
-		"github\\.event\\.pull_request\\.head.repo\\..+",
+		"github\\.event\\.pull_request\\.head\\.ref",
+		"github\\.event\\.pull_request\\.head\\.label",
+		"github\\.event\\.pull_request\\.head\\.repo\\..+",
 		"github\\.event\\.pull_request\\.title",
 		"github\\.event\\.pull_request\\.body",
 	]
@@ -256,9 +256,9 @@ CxPolicy[result] {
 		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "script block does not contain dangerous input controlled by user.",
-		"keyActualValue": "script block contains dangerous input controlled by user.",
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "script"],[]),
+		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
+		"keyActualValue": "Script block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
@@ -284,9 +284,9 @@ CxPolicy[result] {
 		"documentId": doc.id,
 		"searchKey": sprintf("script={{%s}}", [script]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "script block does not contain dangerous input controlled by user.",
-		"keyActualValue": "script block contains dangerous input controlled by user.",
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "script"],[]),
+		"keyExpectedValue": "Script block does not contain dangerous input controlled by user.",
+		"keyActualValue": "Script block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "with", "script"],[]),
 		"resourceType": "github_action",
 		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}

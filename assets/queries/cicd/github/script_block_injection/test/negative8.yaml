@@ -1,0 +1,19 @@
+name: test-script-run
+
+on:
+  pull_request:
+
+jobs:
+  script-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run script
+        uses: actions/github-script@latest
+        with:
+          script: |
+            const head_ref = ${{ github.event.pull_request.user.id }};
+
+            return true;

@@ -6,7 +6,7 @@ CxPolicy[result] {
 	doc := input.document[i]
 	check_trigger(doc, "pull_request_target")
 
-	run := input.document[i].jobs[j].steps[k].run
+	run := doc.jobs[j].steps[k].run
 
 	patterns := [
     "github\\.head_ref",
