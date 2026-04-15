@@ -395,7 +395,7 @@ func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 		}
 		// -----------------------------------------------------------------
 
-		c, err := os.Open(filepath.Clean(path))
+		c, err := os.Open(filepath.Clean(path)) // nolint:gosec
 		if err != nil {
 			if ignoreDamagedFiles(ctx, filepath.Clean(path)) {
 				return nil
@@ -424,6 +424,7 @@ func openScanFile(ctx context.Context, scanPath string, extensions model.Extensi
 	return c, nil
 }
 
+// nolint:gocyclo
 func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.FileInfo, extensions model.Extensions,
 	path string, resolvedChartPaths []string) (bool, error) {
 	contextLogger := logger.FromContext(ctx)

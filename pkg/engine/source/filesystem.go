@@ -175,22 +175,6 @@ func (s *FilesystemSource) CheckCloudProvider(cloudProvider interface{}) bool {
 	return false
 }
 
-func checkQueryExact(ctx context.Context, id interface{}, exactQueries []string) bool {
-	contextLogger := logger.FromContext(ctx)
-	queryMetadataKey, ok := id.(string)
-	if !ok {
-		contextLogger.Warn().
-			Msgf("Can't cast query metadata key = %v", id)
-		return false
-	}
-	for _, includedQuery := range exactQueries {
-		if queryMetadataKey == includedQuery {
-			return true
-		}
-	}
-	return false
-}
-
 func checkQueryFilterFieldExclude(ctx context.Context, id any, queries []string) bool {
 	contextLogger := logger.FromContext(ctx)
 	queryMetadataKey, ok := id.(string)

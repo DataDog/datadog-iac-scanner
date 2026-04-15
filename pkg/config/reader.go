@@ -13,7 +13,7 @@ const (
 
 func ReadConfiguration(ctx context.Context, rootPath string) (*IacConfig, error) {
 	if path, found := fileExists(rootPath, ConfigFileNameBase, ".yaml", ".yml"); found {
-		b, err := os.ReadFile(path)
+		b, err := os.ReadFile(path) // nolint:gosec
 		if err != nil {
 			return nil, err
 		}
@@ -27,7 +27,7 @@ func ReadConfiguration(ctx context.Context, rootPath string) (*IacConfig, error)
 	return &IacConfig{}, nil
 }
 
-func fileExists(rootPath string, name string, exts ...string) (string, bool) {
+func fileExists(rootPath, name string, exts ...string) (string, bool) {
 	if len(exts) == 0 {
 		exts = []string{""}
 	}
