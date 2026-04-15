@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Unsound contains without controllable input",
+    "severity": "LOW",
+    "line": 8
+  }
+]

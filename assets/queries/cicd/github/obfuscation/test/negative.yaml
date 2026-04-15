@@ -1,0 +1,27 @@
+name: Valid Uses Paths
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Standard action reference
+      - uses: actions/checkout@v4
+
+      # With subpath
+      - uses: github/codeql-action/init@v2
+
+      # Local action (starts with ./)
+      - uses: ./path/to/action
+
+      # Local action with subpath
+      - uses: ./.github/actions/custom-action
+
+      # Docker action
+      - uses: docker://alpine:3.18
+
+      # Action with valid nested path
+      - uses: aws-actions/configure-aws-credentials/subaction@v4
+
+      # Action with commit SHA
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd

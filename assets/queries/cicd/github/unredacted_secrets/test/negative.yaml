@@ -1,0 +1,85 @@
+name: Safe Secret Usage
+on: push
+
+jobs:
+  # Case 1: Direct secret usage (safe - GitHub can redact this)
+  test_direct_secret:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use secret directly
+        run: |
+          echo "Using secret safely"
+          curl -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" https://api.example.com
+
+  # Case 2: fromJSON with non-secret context (safe - not a secret)
+  test_fromjson_env:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse environment variable
+        env:
+          CONFIG: ${{ fromJSON(env.CONFIG_JSON) }}
+        run: echo "Config parsed"
+
+  # Case 3: fromJSON with literal string (safe - no secret)
+  test_fromjson_literal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse literal JSON
+        run: echo '${{ fromJSON('{"key": "value"}') }}'
+
+  # Case 4: fromJSON with inputs (safe - workflow inputs)
+  test_fromjson_inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse workflow input
+        run: echo '${{ fromJSON(inputs.config) }}'
+
+  # Case 5: toJSON with secrets (different issue - not covered by this rule)
+  test_tojson_secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Convert to JSON
+        run: echo '${{ toJSON(secrets) }}'
+
+  # Case 6: Secret in env block directly (safe)
+  test_env_direct:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Environment variable
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+        run: echo "Key is set"
+
+  # Case 7: Multiple secrets used directly (safe)
+  test_multiple_direct:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Multiple direct secrets
+        env:
+          KEY1: ${{ secrets.KEY1 }}
+          KEY2: ${{ secrets.KEY2 }}
+        run: echo "Keys configured"
+
+  # Case 8: fromJSON with github context (safe - not secrets)
+  test_fromjson_github:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse GitHub context
+        run: echo '${{ fromJSON(github.event.client_payload.data) }}'
+
+  # Case 9: Secret used in conditional (safe)
+  test_conditional_direct:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conditional on secret existence
+        if: ${{ secrets.DEPLOY_KEY != '' }}
+        run: echo "Deploy key exists"
+
+  # Case 10: Other transformation functions (not fromJSON)
+  test_other_functions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use other functions
+        run: |
+          echo '${{ format('Bearer {0}', secrets.TOKEN) }}'
+          echo '${{ contains(secrets.ALLOWED_USERS, github.actor) }}'

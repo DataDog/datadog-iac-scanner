@@ -1,0 +1,13 @@
+{
+  "id": "b8c9d0e1-f2a3-44b5-c6d7-e8f9a0b1c2d3",
+  "queryName": "Self-hosted runner",
+  "severity": "MEDIUM",
+  "category": "Insecure Configurations",
+  "descriptionText": "Self-hosted runners in public repositories are risky because they can retain state, files, or credentials between workflow runs. They also allow untrusted contributors (for example via pull requests) to access secrets or modify the runner environment.\n\nInspect the GitHub Actions workflow job `runs-on` setting. Any job whose `runs-on` value begins with the literal `self-hosted`, references a runner group, or uses expressions/matrix expansions that may evaluate to `self-hosted` should be reviewed or avoided in public repos.\n\nPrefer explicit GitHub-hosted runner labels such as `ubuntu-latest` for public workflows. Expression-based or group-based runner selections are flagged because they may expand to self-hosted runners at runtime.\n\nSecure example using a GitHub-hosted runner:\n\n```yaml\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/self_hosted_runner",
+  "platform": "CICD",
+  "descriptionID": "b8c9d0e1",
+  "cloudProvider": "common",
+  "cwe": "665",
+  "providerUrl": "https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#self-hosted-runner-security"
+}

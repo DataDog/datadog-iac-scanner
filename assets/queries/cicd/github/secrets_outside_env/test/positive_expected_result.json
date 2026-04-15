@@ -1,0 +1,42 @@
+[
+  {
+    "queryName": "Secrets outside environment",
+    "severity": "MEDIUM",
+    "line": 9
+  },
+  {
+    "queryName": "Secrets outside environment",
+    "severity": "MEDIUM",
+    "line": 11
+  },
+  {
+    "queryName": "Secrets outside environment",
+    "severity": "MEDIUM",
+    "line": 15
+  },
+  {
+    "queryName": "Secrets outside environment",
+    "severity": "MEDIUM",
+    "line": 21
+  },
+  {
+    "queryName": "Secrets outside environment",
+    "severity": "MEDIUM",
+    "line": 27
+  },
+  {
+    "queryName": "Secrets outside environment",
+    "severity": "MEDIUM",
+    "line": 35
+  },
+  {
+    "queryName": "Secrets outside environment",
+    "severity": "MEDIUM",
+    "line": 41
+  },
+  {
+    "queryName": "Secrets outside environment",
+    "severity": "MEDIUM",
+    "line": 43
+  }
+]

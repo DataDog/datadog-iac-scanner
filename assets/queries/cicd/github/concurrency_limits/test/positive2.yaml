@@ -1,0 +1,12 @@
+# String-based concurrency (bare string, no cancel-in-progress)
+name: String Concurrency
+on: push
+
+concurrency: ci-${{ github.ref }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm build

@@ -1,0 +1,13 @@
+{
+  "id": "b2c3d4e5-f6a7-48b9-c0d1-e2f3a4b5c6d7",
+  "queryName": "Overprovisioned secrets",
+  "severity": "MEDIUM",
+  "category": "Access Control",
+  "descriptionText": "Referencing the entire GitHub Actions `secrets` context or using dynamic/non-literal secret indexing exposes all repository secrets to the workflow runner. If a workflow or runner is compromised, an attacker could read every secret instead of only the ones required by the job.\n\nThis rule flags expression patterns that serialize or expand the secrets object—specifically calls to `toJSON(secrets)` and context accesses like `secrets[<non-literal>]` where the index is not a literal string or number. Reference required secrets explicitly by literal property names, such as `secrets.MY_SECRET`. Expressions that call `toJSON(secrets)` or use non-literal secret indices will be flagged.\n\nSecure usage example:\n\n```yaml\nenv:\n  MY_TOKEN: ${{ secrets.MY_TOKEN }}\nsteps:\n  - name: Use token\n    run: echo \"${{ secrets.MY_TOKEN }}\"\n```",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/overprovisioned_secrets",
+  "platform": "CICD",
+  "descriptionID": "b2c3d4e5",
+  "cloudProvider": "common",
+  "cwe": "250",
+  "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-secrets"
+}

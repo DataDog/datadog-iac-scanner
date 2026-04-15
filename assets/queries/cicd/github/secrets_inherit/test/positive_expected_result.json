@@ -1,0 +1,7 @@
+[
+  {
+    "queryName": "Secrets inherit",
+    "severity": "MEDIUM",
+    "line": 7
+  }
+]
