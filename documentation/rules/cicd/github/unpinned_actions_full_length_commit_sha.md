@@ -58,39 +58,44 @@ jobs:
 ```
 
 ```yaml
-name: test-positive
+name: test-negative4
 on:
   pull_request:
     types: [opened, synchronize, edited, reopened]
     branches:
       - master
 jobs:
-  test-positive:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-      with:
-        persist-credentials: false
+  test-negative4:
+    uses: my-org/shared-github-actions/.github/workflows/pr-comment-thollander.yml@b07c7f86be67002023e6cb13f57df3f21cdd3411
 
 ```
 
 ```yaml
-name: test-negative3
+name: test-negative4
 on:
   pull_request:
     types: [opened, synchronize, edited, reopened]
     branches:
       - master
 jobs:
-  test-negative3:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Local action
-      uses: ./test.yml
+  test-negative4:
+    uses: ./.github/workflows/pr-comment-thollander.yml
 
 ```
 ## Non-Compliant Code Examples
+```yaml
+name: test-positive
+on:
+  pull_request:
+    types: [opened, synchronize, edited, reopened]
+    branches: 
+      - master
+jobs:
+  test-positive:
+    uses: my-org/shared-github-actions/.github/workflows/pr-comment-thollander.yml@v3
+
+```
+
 ```yaml
 name: test-positive
 on:
