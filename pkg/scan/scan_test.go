@@ -144,9 +144,8 @@ func Test_CreateQueryFilter(t *testing.T) {
 				BillOfMaterials: false,
 			},
 			expectedOutput: source.QueryInspectorParameters{
-				ExcludeQueries: source.ExcludeQueries{},
-				IncludeQueries: source.IncludeQueries{},
-				ExactQueries:   source.ExactQueries{},
+				ExcludeQueries: source.QueryFilter{},
+				IncludeQueries: source.QueryFilter{},
 				InputDataPath:  "",
 				BomQueries:     false,
 			},
@@ -163,14 +162,13 @@ func Test_CreateQueryFilter(t *testing.T) {
 				BillOfMaterials: true,
 			},
 			expectedOutput: source.QueryInspectorParameters{
-				ExcludeQueries: source.ExcludeQueries{
+				ExcludeQueries: source.QueryFilter{
 					ByIDs:        []string{"c065b98e-1515-4991-9dca-b602bd6a2fbb"},
 					BySeverities: []string{"info"},
 				},
-				IncludeQueries: source.IncludeQueries{
+				IncludeQueries: source.QueryFilter{
 					ByCategories: []string{"Accessibility"},
 				},
-				ExactQueries:  source.ExactQueries{},
 				InputDataPath: "",
 				BomQueries:    true,
 			},

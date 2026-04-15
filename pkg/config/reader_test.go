@@ -13,6 +13,7 @@ const cfgFile = `
 schema-version: v1.1
 iac:
   ignore-rules: [query1, query2]
+  use-rules: [query3, query4]
   global-config:
     ignore-paths: [path1, path2]
     only-paths: [path3, path4]
@@ -24,6 +25,7 @@ iac:
 
 var parsedCfgFile = IacConfig{
 	IgnoreRules:      []string{"query1", "query2"},
+	OnlyRules:        []string{"query3", "query4"},
 	IgnorePaths:      []string{"path1", "path2"},
 	OnlyPaths:        []string{"path3", "path4"},
 	IgnoreSeverities: []string{"sev1", "sev2"},
@@ -38,7 +40,6 @@ exclude-paths: [path1, path2]
 exclude-queries: [query1, query2]
 exclude-results: [res1, res2]
 exclude-severities: [sev1, sev2]
-include-queries: [query3, query4]
 `
 
 var parsedLegacyCfg = IacConfig{
@@ -47,7 +48,6 @@ var parsedLegacyCfg = IacConfig{
 	IgnoreSeverities:     []string{"sev1", "sev2"},
 	IgnoreCategories:     []string{"cat1", "cat2"},
 	LegacyExcludeResults: []string{"res1", "res2"},
-	LegacyIncludeQueries: []string{"query3", "query4"},
 }
 
 func TestNoConfig(t *testing.T) {
@@ -82,6 +82,18 @@ func TestReadLegacyOnly(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, parsedLegacyCfg, *cfg)
+}
+
+func TestReadLegacyWithIncludeRulesOnly(t *testing.T) {
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg+"include-queries: [query3, query4]\n"), 0644))
+
+	cfg, err := ReadConfiguration(t.Context(), tmp)
+	assert.NoError(t, err)
+
+	assert.Equal(t, IacConfig{
+		OnlyRules: []string{"query3", "query4"},
+	}, *cfg)
 }
 
 func TestConfigFilePrecedence(t *testing.T) {

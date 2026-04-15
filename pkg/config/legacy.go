@@ -30,6 +30,13 @@ func readLegacyConfiguration(ctx context.Context, rootPath string) (*IacConfig, 
 		return configParams, err
 	}
 
+	if v.Get("include-queries") != nil {
+		// In the legacy configuration, the `include-queries` field causes all other `exclude-*` fields to be ignored.
+		// So populate the field and return early to skip the rest.
+		configParams.OnlyRules = v.GetStringSlice("include-queries")
+		return configParams, nil
+	}
+
 	if v.Get("exclude-categories") != nil {
 		configParams.IgnoreCategories = v.GetStringSlice("exclude-categories")
 	}
@@ -44,9 +51,6 @@ func readLegacyConfiguration(ctx context.Context, rootPath string) (*IacConfig, 
 	}
 	if v.Get("exclude-severities") != nil {
 		configParams.IgnoreSeverities = v.GetStringSlice("exclude-severities")
-	}
-	if v.Get("include-queries") != nil {
-		configParams.LegacyIncludeQueries = v.GetStringSlice("include-queries")
 	}
 
 	return configParams, nil

@@ -220,7 +220,8 @@ func checkQueryFilterFieldInclude(ctx context.Context, id any, queries []string)
 }
 
 func checkQueryInclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
-	return checkQueryFilterFieldInclude(ctx, metadata["category"], queryParameters.IncludeQueries.ByCategories) &&
+	return checkQueryFilterFieldInclude(ctx, metadata["id"], queryParameters.IncludeQueries.ByIDs) &&
+		checkQueryFilterFieldInclude(ctx, metadata["category"], queryParameters.IncludeQueries.ByCategories) &&
 		checkQueryFilterFieldInclude(ctx, metadata["severity"], queryParameters.IncludeQueries.BySeverities)
 }
 
@@ -344,18 +345,12 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 			continue
 		}
 
-		if len(queryParameters.ExactQueries.ByIDs) > 0 {
-			if checkQueryExact(ctx, query.Metadata["id"], queryParameters.ExactQueries.ByIDs) {
-				queries = append(queries, query)
-			}
-		} else {
-			if !checkQueryInclude(ctx, query.Metadata, queryParameters) ||
-				checkQueryExclude(ctx, query.Metadata, queryParameters) {
-				continue
-			}
-
-			queries = append(queries, query)
+		if !checkQueryInclude(ctx, query.Metadata, queryParameters) ||
+			checkQueryExclude(ctx, query.Metadata, queryParameters) {
+			continue
 		}
+
+		queries = append(queries, query)
 	}
 	return queries
 }

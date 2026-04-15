@@ -46,22 +46,11 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
-			name: "ExactQueries",
-			params: QueryInspectorParameters{
-				ExperimentalQueries: true,
-				BomQueries:          true,
-				ExactQueries:        ExactQueries{ByIDs: []string{"rule-2", "rule-3"}},
-			},
-			expected: []model.QueryMetadata{
-				/* queries[0] is not included */ queries[1], queries[2],
-			},
-		},
-		{
 			name: "ExcludeQueries ByIDs",
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      ExcludeQueries{ByIDs: []string{"rule-1"}},
+				ExcludeQueries:      QueryFilter{ByIDs: []string{"rule-1"}},
 			},
 			expected: []model.QueryMetadata{
 				/* queries[0] is excluded */ queries[1], queries[2],
@@ -72,7 +61,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      ExcludeQueries{BySeverities: []string{"MEDIUM"}},
+				ExcludeQueries:      QueryFilter{BySeverities: []string{"MEDIUM"}},
 			},
 			expected: []model.QueryMetadata{
 				queries[0] /* queries[1] has severity=MEDIUM */, queries[2],
@@ -83,7 +72,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      ExcludeQueries{ByCategories: []string{"Supply-Chain"}},
+				ExcludeQueries:      QueryFilter{ByCategories: []string{"Supply-Chain"}},
 			},
 			expected: []model.QueryMetadata{
 				queries[0], queries[1], /* queries[2] has category=Supply-Chain */
@@ -94,7 +83,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      ExcludeQueries{ByCategories: []string{"Supply-Chain", "Encryption"}},
+				ExcludeQueries:      QueryFilter{ByCategories: []string{"Supply-Chain", "Encryption"}},
 			},
 			expected: []model.QueryMetadata{
 				/* queries[0] has category=Encryption */ queries[1], /* queries[2] has category=Supply-Chain */
@@ -105,7 +94,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries: ExcludeQueries{
+				ExcludeQueries: QueryFilter{
 					ByIDs:        []string{"rule-2"},
 					ByCategories: []string{"Supply-Chain"},
 				},
@@ -115,11 +104,22 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "IncludeQueries ByIDs",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{ByIDs: []string{"rule-2", "rule-3"}},
+			},
+			expected: []model.QueryMetadata{
+				/* queries[0] is not included */ queries[1], queries[2],
+			},
+		},
+		{
 			name: "IncludeQueries BySeverities",
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				IncludeQueries:      IncludeQueries{BySeverities: []string{"HIGH"}},
+				IncludeQueries:      QueryFilter{BySeverities: []string{"HIGH"}},
 			},
 			expected: []model.QueryMetadata{
 				queries[0], /* queries[1] has severity=MEDIUM, queries[2] has severity=TRACE */
@@ -130,7 +130,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				IncludeQueries:      IncludeQueries{ByCategories: []string{"Backup"}},
+				IncludeQueries:      QueryFilter{ByCategories: []string{"Backup"}},
 			},
 			expected: []model.QueryMetadata{
 				/* queries[0] has category=Encryption */ queries[1], /* queries[2] has category=Supply-Chain */
@@ -141,7 +141,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				IncludeQueries:      IncludeQueries{BySeverities: []string{"HIGH", "MEDIUM"}},
+				IncludeQueries:      QueryFilter{BySeverities: []string{"HIGH", "MEDIUM"}},
 			},
 			expected: []model.QueryMetadata{
 				queries[0], queries[1], /* queries[2] has severity=TRACE */
@@ -152,7 +152,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				IncludeQueries: IncludeQueries{
+				IncludeQueries: QueryFilter{
 					BySeverities: []string{"HIGH"},
 					ByCategories: []string{"Encryption", "Backup"},
 				},
@@ -166,8 +166,8 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				IncludeQueries:      IncludeQueries{BySeverities: []string{"HIGH", "MEDIUM"}},
-				ExcludeQueries:      ExcludeQueries{ByCategories: []string{"Backup"}},
+				IncludeQueries:      QueryFilter{BySeverities: []string{"HIGH", "MEDIUM"}},
+				ExcludeQueries:      QueryFilter{ByCategories: []string{"Backup"}},
 			},
 			expected: []model.QueryMetadata{
 				queries[0], /* queries[1]: included by severity but excluded by category; queries[2]: not included */
@@ -178,8 +178,8 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				IncludeQueries:      IncludeQueries{ByCategories: []string{"Encryption", "Supply-Chain"}},
-				ExcludeQueries:      ExcludeQueries{BySeverities: []string{"TRACE"}},
+				IncludeQueries:      QueryFilter{ByCategories: []string{"Encryption", "Supply-Chain"}},
+				ExcludeQueries:      QueryFilter{BySeverities: []string{"TRACE"}},
 			},
 			expected: []model.QueryMetadata{
 				queries[0], /* queries[1]: not included; queries[2]: included but excluded by severity */

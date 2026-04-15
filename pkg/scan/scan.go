@@ -209,22 +209,18 @@ func getExcludeResultsMap(excludeResults []string) map[string]bool {
 }
 
 func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
-	excludeQueries := source.ExcludeQueries{
+	excludeQueries := source.QueryFilter{
 		ByIDs:        c.ScanParams.Config.IgnoreRules,
 		ByCategories: c.ScanParams.Config.IgnoreCategories,
 		BySeverities: c.ScanParams.Config.IgnoreSeverities,
 	}
-	includeQueries := source.IncludeQueries{
+	includeQueries := source.QueryFilter{
+		ByIDs:        c.ScanParams.Config.OnlyRules,
 		ByCategories: c.ScanParams.Config.OnlyCategories,
 		BySeverities: c.ScanParams.Config.OnlySeverities,
 	}
 
-	exactQueries := source.ExactQueries{
-		ByIDs: c.ScanParams.Config.LegacyIncludeQueries,
-	}
-
 	queryFilter := source.QueryInspectorParameters{
-		ExactQueries:        exactQueries,
 		ExcludeQueries:      excludeQueries,
 		IncludeQueries:      includeQueries,
 		ExperimentalQueries: c.ScanParams.ExperimentalQueries,

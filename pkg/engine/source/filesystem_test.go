@@ -87,7 +87,7 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 		wantErr           bool
 	}{
 		{
-			name: "get_queries_with_exclude_result_1",
+			name: "specific query with excludes that don't affect it",
 			fields: fields{
 				Source: []string{""}, Types: []string{""},
 				CloudProviders: []string{""}, Library: "./assets/libraries",
@@ -95,8 +95,8 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 			},
 			includeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
 			excludeCategory:   []string{},
-			excludeSeverities: []string{},
-			excludeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd5"},
+			excludeSeverities: []string{"LOW"},
+			excludeIDs:        []string{},
 			want: []model.QueryMetadata{
 				{
 					Query:     "alb_deletion_protection_disabled",
@@ -125,7 +125,20 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 			wantErr: false,
 		},
 		{
-			name: "get_queries_with_exclude_severity_no_result",
+			name: "specific query with excludes that affect it",
+			fields: fields{
+				Source: []string{""}, Types: []string{""},
+				CloudProviders: []string{""}, Library: "./assets/libraries",
+				ExperimentalQueries: true,
+			},
+			includeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
+			excludeCategory:   []string{},
+			excludeSeverities: []string{"MEDIUM"},
+			want:              []model.QueryMetadata{},
+			wantErr:           false,
+		},
+		{
+			name: "excluding all yields zero results",
 			fields: fields{
 				Source: []string{""}, Types: []string{""},
 				CloudProviders: []string{""}, Library: "./assets/libraries",
@@ -143,8 +156,8 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewFilesystemSource(ctx, tt.fields.Source, []string{""}, []string{""}, tt.fields.Library, tt.fields.ExperimentalQueries)
 			filter := QueryInspectorParameters{
-				ExactQueries:   ExactQueries{ByIDs: tt.includeIDs},
-				ExcludeQueries: ExcludeQueries{ByIDs: tt.excludeIDs, ByCategories: tt.excludeCategory, BySeverities: tt.excludeSeverities},
+				IncludeQueries: QueryFilter{ByIDs: tt.includeIDs},
+				ExcludeQueries: QueryFilter{ByIDs: tt.excludeIDs, ByCategories: tt.excludeCategory, BySeverities: tt.excludeSeverities},
 				InputDataPath:  "",
 			}
 			got, err := s.GetQueries(ctx, &filter)
@@ -235,7 +248,7 @@ func TestFilesystemSource_GetQueriesWithInclude(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewFilesystemSource(ctx, tt.fields.Source, []string{""}, []string{""}, tt.fields.Library, tt.fields.ExperimentalQueries)
 			filter := QueryInspectorParameters{
-				ExactQueries: ExactQueries{
+				IncludeQueries: QueryFilter{
 					ByIDs: tt.includeIDs,
 				},
 			}
@@ -450,8 +463,7 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewFilesystemSource(ctx, tt.fields.Source, []string{""}, []string{""}, tt.fields.Library, tt.fields.ExperimentalQueries)
 			filter := QueryInspectorParameters{
-				ExactQueries: ExactQueries{
-					ByIDs: tt.fields.IncludeIDs},
+				IncludeQueries:      QueryFilter{ByIDs: tt.fields.IncludeIDs},
 				ExperimentalQueries: tt.fields.ExperimentalQueries,
 			}
 			got, err := s.GetQueries(ctx, &filter)
@@ -687,7 +699,7 @@ func TestFilesystemSource_GetQueriesWithIncludeFilter(t *testing.T) {
 
 	t.Run("get_queries_with_include_severity", func(t *testing.T) {
 		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
-			IncludeQueries: IncludeQueries{BySeverities: []string{"HIGH"}},
+			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH"}},
 		})
 		require.NoError(t, err)
 		assert.NotEmpty(t, got)
@@ -698,7 +710,7 @@ func TestFilesystemSource_GetQueriesWithIncludeFilter(t *testing.T) {
 
 	t.Run("get_queries_with_include_category", func(t *testing.T) {
 		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
-			IncludeQueries: IncludeQueries{ByCategories: []string{"Encryption"}},
+			IncludeQueries: QueryFilter{ByCategories: []string{"Encryption"}},
 		})
 		require.NoError(t, err)
 		assert.NotEmpty(t, got)
@@ -709,7 +721,7 @@ func TestFilesystemSource_GetQueriesWithIncludeFilter(t *testing.T) {
 
 	t.Run("get_queries_with_include_severity_and_category", func(t *testing.T) {
 		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
-			IncludeQueries: IncludeQueries{BySeverities: []string{"HIGH"}, ByCategories: []string{"Encryption"}},
+			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH"}, ByCategories: []string{"Encryption"}},
 		})
 		require.NoError(t, err)
 		assert.NotEmpty(t, got)
@@ -721,8 +733,8 @@ func TestFilesystemSource_GetQueriesWithIncludeFilter(t *testing.T) {
 
 	t.Run("get_queries_with_include_and_exclude", func(t *testing.T) {
 		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
-			IncludeQueries: IncludeQueries{BySeverities: []string{"HIGH", "MEDIUM"}},
-			ExcludeQueries: ExcludeQueries{ByCategories: []string{"Encryption"}},
+			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH", "MEDIUM"}},
+			ExcludeQueries: QueryFilter{ByCategories: []string{"Encryption"}},
 		})
 		require.NoError(t, err)
 		assert.NotEmpty(t, got)

@@ -2,6 +2,7 @@ package config
 
 type IacConfig struct {
 	IgnoreRules      []string
+	OnlyRules        []string
 	IgnorePaths      []string
 	OnlyPaths        []string
 	IgnoreSeverities []string
@@ -10,5 +11,4 @@ type IacConfig struct {
 	OnlyCategories   []string
 
 	LegacyExcludeResults []string
-	LegacyIncludeQueries []string
 }

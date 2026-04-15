@@ -196,15 +196,8 @@ func (s *DatadogSource) filterRules(ruleset *Ruleset, selection *QueryInspectorP
 		if !s.isWantedCloudProvider(rule.Provider) {
 			continue
 		}
-		if len(selection.ExactQueries.ByIDs) > 0 {
-			// For ExactQueries, we consider exactly the queries specified by the filter
-			if !isInCaseInsensitiveList(rule.ID, selection.ExactQueries.ByIDs) {
-				continue
-			}
-		} else {
-			if !checkIncluded(rule, selection) || checkExcluded(rule, selection) {
-				continue
-			}
+		if !checkIncluded(rule, selection) || checkExcluded(rule, selection) {
+			continue
 		}
 		converted := convertRule(rule)
 		out = append(out, converted)
@@ -245,7 +238,8 @@ func checkExcluded(rule *Rule, selection *QueryInspectorParameters) bool {
 }
 
 func checkIncluded(rule *Rule, selection *QueryInspectorParameters) bool {
-	return isInCaseInsensitiveNotEmptyList(rule.Category, selection.IncludeQueries.ByCategories) &&
+	return isInCaseInsensitiveNotEmptyList(rule.ID, selection.IncludeQueries.ByIDs) &&
+		isInCaseInsensitiveNotEmptyList(rule.Category, selection.IncludeQueries.ByCategories) &&
 		isInCaseInsensitiveNotEmptyList(rule.Severity, selection.IncludeQueries.BySeverities)
 }
 

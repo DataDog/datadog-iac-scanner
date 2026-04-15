@@ -21,6 +21,7 @@ type cfgFileYaml struct {
 
 type iacConfig struct {
 	IgnoreRules  []string        `yaml:"ignore-rules,omitempty"`
+	UseRules     []string        `yaml:"use-rules,omitempty"`
 	GlobalConfig iacGlobalConfig `yaml:"global-config,omitempty"`
 }
 
@@ -46,6 +47,7 @@ func ParseConfig(cfgBytes []byte) (*IacConfig, error) {
 	}
 	out := &IacConfig{
 		IgnoreRules:      cfg.Iac.IgnoreRules,
+		OnlyRules:        cfg.Iac.UseRules,
 		IgnorePaths:      cfg.Iac.GlobalConfig.IgnorePaths,
 		OnlyPaths:        cfg.Iac.GlobalConfig.OnlyPaths,
 		IgnoreSeverities: cfg.Iac.GlobalConfig.IgnoreSeverities,
