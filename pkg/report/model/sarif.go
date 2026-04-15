@@ -514,8 +514,12 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				resourceStartLocation.Col = 1
 			}
 
-			if vulnerability.Remediation != "" &&
-				remediationStartLocation.Line >= resourceStartLocation.Line &&
+			// Always narrow the SARIF region to the remediation location when it falls
+			// within the resource block. The remediation location holds the precise
+			// attribute-level line even when no remediation
+			// string is present. Do NOT gate change this,
+			// that would cause rules without a fix to fall back to the full block range.
+			if remediationStartLocation.Line >= resourceStartLocation.Line &&
 				remediationEndLocation.Line <= resourceEndLocation.Line {
 				resourceStartLocation = remediationStartLocation
 				resourceEndLocation = remediationEndLocation
