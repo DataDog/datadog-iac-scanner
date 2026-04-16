@@ -952,6 +952,82 @@
         "short_description": "GITHUB Rules",
         "rules": [
           {
+            "name": "anonymous_definition",
+            "short_description": "Anonymous definition"
+          },
+          {
+            "name": "archived_uses",
+            "short_description": "Archived uses"
+          },
+          {
+            "name": "artipacked",
+            "short_description": "Artipacked"
+          },
+          {
+            "name": "bot_conditions",
+            "short_description": "Bot conditions"
+          },
+          {
+            "name": "cache_poisoning",
+            "short_description": "Cache poisoning"
+          },
+          {
+            "name": "concurrency_limits",
+            "short_description": "Concurrency limits"
+          },
+          {
+            "name": "dangerous_triggers",
+            "short_description": "Dangerous triggers"
+          },
+          {
+            "name": "dependabot_cooldown",
+            "short_description": "Dependabot cooldown"
+          },
+          {
+            "name": "dependabot_execution",
+            "short_description": "Dependabot execution"
+          },
+          {
+            "name": "forbidden_uses",
+            "short_description": "Forbidden uses"
+          },
+          {
+            "name": "github_env",
+            "short_description": "GitHub environment file injection"
+          },
+          {
+            "name": "hardcoded_container_credentials",
+            "short_description": "Hardcoded container credentials"
+          },
+          {
+            "name": "impostor_commit",
+            "short_description": "Impostor commit"
+          },
+          {
+            "name": "known_vulnerable_actions",
+            "short_description": "Known vulnerable actions"
+          },
+          {
+            "name": "misfeature",
+            "short_description": "Misfeature"
+          },
+          {
+            "name": "obfuscation",
+            "short_description": "Obfuscation"
+          },
+          {
+            "name": "overprovisioned_secrets",
+            "short_description": "Overprovisioned secrets"
+          },
+          {
+            "name": "ref_confusion",
+            "short_description": "Ref confusion"
+          },
+          {
+            "name": "ref_version_mismatch",
+            "short_description": "Ref version mismatch"
+          },
+          {
             "name": "run_block_injection",
             "short_description": "Run block injection"
           },
@@ -960,16 +1036,56 @@
             "short_description": "Script block injection"
           },
           {
+            "name": "secrets_inherit",
+            "short_description": "Secrets inherit"
+          },
+          {
+            "name": "secrets_outside_env",
+            "short_description": "Secrets outside environment"
+          },
+          {
+            "name": "self_hosted_runner",
+            "short_description": "Self-hosted runner"
+          },
+          {
+            "name": "stale_action_refs",
+            "short_description": "Stale action refs"
+          },
+          {
+            "name": "superfluous_actions",
+            "short_description": "Superfluous actions"
+          },
+          {
             "name": "unpinned_actions_full_length_commit_sha",
             "short_description": "Unpinned actions full length commit SHA"
+          },
+          {
+            "name": "unpinned_images",
+            "short_description": "Unpinned images"
+          },
+          {
+            "name": "unredacted_secrets",
+            "short_description": "Unredacted secrets"
           },
           {
             "name": "unsecured_commands",
             "short_description": "Unsecured commands"
           },
           {
+            "name": "unsound_conditions",
+            "short_description": "Unsound condition"
+          },
+          {
+            "name": "unsound_contains",
+            "short_description": "Unsound contains"
+          },
+          {
             "name": "unspecified_workflows_permissions",
             "short_description": "Unspecified workflows level permissions"
+          },
+          {
+            "name": "use_trusted_publishing",
+            "short_description": "Use trusted publishing for authentication"
           }
         ]
       }
