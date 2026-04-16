@@ -9,7 +9,7 @@ CxPolicy[result] {
 
 	out := common_lib.json_unmarshal(policy)
 	st := common_lib.get_statement(out)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	check_passrole(statement)
@@ -18,11 +18,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_iam_role_policy",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_iam_role_policy[%s].policy", [name]),
+		"searchKey": sprintf("aws_iam_role_policy[%s].policy.Statement[%d].Action", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'aws_iam_role_policy.policy.Statement.Action' iam:passrole shouldn't have Resource '*'",
 		"keyActualValue": "'aws_iam_role_policy.policy.Statement.Action' iam:passrole has Resource '*'",
-		"searchLine": common_lib.build_search_line(["resource", "aws_iam_role_policy", name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_iam_role_policy", name, "policy", "Statement", idx, "Action"], []),
 	}
 }
 

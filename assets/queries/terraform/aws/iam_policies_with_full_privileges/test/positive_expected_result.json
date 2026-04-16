@@ -2,7 +2,7 @@
   {
     "queryName": "IAM policies with full privileges",
     "severity": "MEDIUM",
-    "line": 5,
+    "line": 11,
     "fileName": "positive.tf"
   },
   {

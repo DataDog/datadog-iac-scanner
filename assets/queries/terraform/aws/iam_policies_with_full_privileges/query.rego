@@ -10,7 +10,7 @@ CxPolicy[result] {
 	policy := common_lib.json_unmarshal(resource.policy)
 
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[stIdx]
 
 	common_lib.is_allow_effect(statement)
 	common_lib.equalsOrInArray(statement.Resource, "*")
@@ -20,11 +20,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": resourceType[idx],
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("%s[%s].policy", [resourceType[idx], name]),
+		"searchKey": sprintf("%s[%s].policy.Statement[%d].Action", [resourceType[idx], name, stIdx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy.Statement.Action' shouldn't contain '*'",
 		"keyActualValue": "'policy.Statement.Action' contains '*'",
-		"searchLine": common_lib.build_search_line(["resource", resourceType[idx], name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", resourceType[idx], name, "policy", "Statement", stIdx, "Action"], []),
 	}
 }
 
@@ -34,7 +34,7 @@ CxPolicy[result] {
     policy := {"Statement": resource.statement}
 
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[stIdx]
 
 	common_lib.is_allow_effect(statement)
 	common_lib.equalsOrInArray(statement.resources, "*")
@@ -44,10 +44,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_iam_policy_document",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_iam_policy_document[%s].policy", [name]),
+		"searchKey": sprintf("aws_iam_policy_document[%s].policy.Statement[%d].Action", [name, stIdx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy.Statement.Action' shouldn't contain '*'",
 		"keyActualValue": "'policy.Statement.Action' contains '*'",
-		"searchLine": common_lib.build_search_line(["resource", "aws_iam_policy_document", name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_iam_policy_document", name, "policy", "Statement", stIdx, "Action"], []),
 	}
 }
