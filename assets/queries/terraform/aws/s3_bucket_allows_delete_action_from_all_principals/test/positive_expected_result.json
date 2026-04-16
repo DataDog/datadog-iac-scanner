@@ -2,19 +2,19 @@
   {
     "queryName": "S3 bucket allows delete action from all principals",
     "severity": "CRITICAL",
-    "line": 4,
+    "line": 13,
     "fileName": "positive1.tf"
   },
   {
     "queryName": "S3 bucket allows delete action from all principals",
     "severity": "CRITICAL",
-    "line": 4,
+    "line": 15,
     "fileName": "positive2.tf"
   },
   {
     "queryName": "S3 bucket allows delete action from all principals",
     "severity": "CRITICAL",
-    "line": 12,
+    "line": 21,
     "fileName": "positive3.tf"
   }
 ]
