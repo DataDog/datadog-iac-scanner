@@ -2,7 +2,7 @@
   {
     "queryName": "Secrets Manager with vulnerable policy",
     "severity": "HIGH",
-    "line": 12,
+    "line": 16,
     "fileName": "positive.tf"
   }
 ]

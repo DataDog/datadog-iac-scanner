@@ -8,7 +8,7 @@
   {
     "queryName": "Glue with vulnerable policy",
     "severity": "MEDIUM",
-    "line": 22,
+    "line": 26,
     "fileName": "positive_module.tf"
   }
 ]
