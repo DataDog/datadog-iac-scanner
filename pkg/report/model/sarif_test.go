@@ -536,7 +536,7 @@ var sarifTests = []sarifTest{
 		},
 	},
 	{
-		name: "Should keep resource location when remediation is empty",
+		name: "Should narrow to remediation location even when remediation string is empty",
 		vq: []model.QueryResult{
 			{
 				QueryName:   "test",
@@ -605,73 +605,73 @@ var sarifTests = []sarifTest{
 							ResultLocations: []SarifLocation{
 								{
 									PhysicalLocation: sarifPhysicalLocation{
-										ArtifactLocation: sarifArtifactLocation{ArtifactURI: "test.json"},
-										Region:           model.SarifRegion{StartLine: 1, EndLine: 5, StartColumn: 1, EndColumn: 2},
-									},
+									ArtifactLocation: sarifArtifactLocation{ArtifactURI: "test.json"},
+									Region:           model.SarifRegion{StartLine: 2, EndLine: 3, StartColumn: 1, EndColumn: 2},
 								},
 							},
-							ResultLevel: "warning",
-							ResultProperties: sarifProperties{
-								"tags": []string{"DATADOG_CATEGORY:", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
-							},
-							PartialFingerprints: SarifPartialFingerprints{
-								DatadogFingerprint: GetDatadogFingerprintHash(
-									model.SCIInfo{
-										RepositoryCommitInfo: model.RepositoryCommitInfo{
-											RepositoryUrl: "",
-											Branch:        "",
-											CommitSHA:     "",
-										},
+						},
+						ResultLevel: "warning",
+						ResultProperties: sarifProperties{
+							"tags": []string{"DATADOG_CATEGORY:", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
+						},
+						PartialFingerprints: SarifPartialFingerprints{
+							DatadogFingerprint: GetDatadogFingerprintHash(
+								model.SCIInfo{
+									RepositoryCommitInfo: model.RepositoryCommitInfo{
+										RepositoryUrl: "",
+										Branch:        "",
+										CommitSHA:     "",
 									},
-									"test.json",
-									"Terraform",
-									"test_resource_type",
-									"test_resource_name",
-									"1",
-									"",
-								),
+								},
+								"test.json",
+								"Terraform",
+								"test_resource_type",
+								"test_resource_name",
+								"1",
+								"",
+							),
+						},
+					},
+				},
+				Taxonomies: []sarifTaxonomy{
+					{
+						TaxonomyGUID:             "58cdcc6f-fe41-4724-bfb3-131a93df4c3f",
+						TaxonomyName:             "Categories",
+						TaxonomyFullDescription:  sarifMessage{Text: "Category is not defined"},
+						TaxonomyShortDescription: sarifMessage{Text: "Category is not defined"},
+						TaxonomyDefinitions: []taxonomyDefinitions{
+							{
+								DefinitionGUID:             "",
+								DefinitionName:             "Undefined Category",
+								DefinitionID:               "CAT000",
+								DefinitionShortDescription: cweMessage{Text: "Category is not defined"},
+								DefinitionFullDescription:  cweMessage{Text: "Category is not defined"},
+								HelpURI:                    "",
 							},
 						},
 					},
-					Taxonomies: []sarifTaxonomy{
-						{
-							TaxonomyGUID:             "58cdcc6f-fe41-4724-bfb3-131a93df4c3f",
-							TaxonomyName:             "Categories",
-							TaxonomyFullDescription:  sarifMessage{Text: "Category is not defined"},
-							TaxonomyShortDescription: sarifMessage{Text: "Category is not defined"},
-							TaxonomyDefinitions: []taxonomyDefinitions{
-								{
-									DefinitionGUID:             "",
-									DefinitionName:             "Undefined Category",
-									DefinitionID:               "CAT000",
-									DefinitionShortDescription: cweMessage{Text: "Category is not defined"},
-									DefinitionFullDescription:  cweMessage{Text: "Category is not defined"},
-									HelpURI:                    "",
-								},
-							},
-						},
-						{
-							TaxonomyGUID:                              "1489b0c4-d7ce-4d31-af66-6382a01202e3",
-							TaxonomyName:                              "CWE",
-							TaxonomyFullDescription:                   sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
-							TaxonomyShortDescription:                  sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
-							TaxonomyDownloadURI:                       "https://cwe.mitre.org/data/published/cwe_v4.13.pdf",
-							TaxonomyIsComprehensive:                   true,
-							TaxonomyLanguage:                          "en",
-							TaxonomyMinRequiredLocDataSemanticVersion: "4.13",
-							TaxonomyOrganization:                      "MITRE",
-							TaxonomyRealeaseDateUtc:                   "2023-10-26",
-							TaxonomyDefinitions: []taxonomyDefinitions{
-								{},
-							},
+					{
+						TaxonomyGUID:                              "1489b0c4-d7ce-4d31-af66-6382a01202e3",
+						TaxonomyName:                              "CWE",
+						TaxonomyFullDescription:                   sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
+						TaxonomyShortDescription:                  sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
+						TaxonomyDownloadURI:                       "https://cwe.mitre.org/data/published/cwe_v4.13.pdf",
+						TaxonomyIsComprehensive:                   true,
+						TaxonomyLanguage:                          "en",
+						TaxonomyMinRequiredLocDataSemanticVersion: "4.13",
+						TaxonomyOrganization:                      "MITRE",
+						TaxonomyRealeaseDateUtc:                   "2023-10-26",
+						TaxonomyDefinitions: []taxonomyDefinitions{
+							{},
 						},
 					},
 				},
 			},
 		},
 	},
-	{
-		name: "Should use remediation location when remediation is non-empty",
+},
+{
+	name: "Should use remediation location when remediation is non-empty",
 		vq: []model.QueryResult{
 			{
 				QueryName:   "test",
