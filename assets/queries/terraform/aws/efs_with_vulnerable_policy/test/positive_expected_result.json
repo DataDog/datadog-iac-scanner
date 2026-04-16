@@ -2,7 +2,7 @@
   {
     "queryName": "EFS with vulnerable policy",
     "severity": "MEDIUM",
-    "line": 21,
+    "line": 27,
     "fileName": "positive.tf"
   }
 ]

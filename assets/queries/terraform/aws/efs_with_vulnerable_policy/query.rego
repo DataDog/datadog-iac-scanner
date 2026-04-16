@@ -18,10 +18,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_efs_file_system_policy",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_efs_file_system_policy[%s].policy.Statement[%d]", [name, idx]),
+		"searchKey": sprintf("aws_efs_file_system_policy[%s].policy.Statement[%d].Action", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("aws_efs_file_system_policy[%s].policy should not have wildcard in 'Action' and 'Principal'", [name]),
 		"keyActualValue": sprintf("aws_efs_file_system_policy[%s].policy has wildcard in 'Action' or 'Principal'", [name]),
-		"searchLine": common_lib.build_search_line(["resource", "aws_efs_file_system_policy", name, "policy", "Statement", idx], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_efs_file_system_policy", name, "policy", "Statement", idx, "Action"], []),
 	}
 }

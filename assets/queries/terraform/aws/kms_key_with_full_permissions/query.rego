@@ -18,11 +18,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_kms_key",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_kms_key[%s].policy.Statement[%d]", [name, idx]),
+		"searchKey": sprintf("aws_kms_key[%s].policy.Statement[%d].Action", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("aws_kms_key[%s].policy should not have wildcard in 'Action' and 'Principal'", [name]),
 		"keyActualValue": sprintf("aws_kms_key[%s].policy has wildcard in 'Action' or 'Principal'", [name]),
-		"searchLine": common_lib.build_search_line(["resource", "aws_kms_key", name, "policy", "Statement", idx], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_kms_key", name, "policy", "Statement", idx, "Action"], []),
 	}
 }
 
@@ -61,11 +61,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].%s.Statement[%d]", [name, keyToCheck, idx]),
+		"searchKey": sprintf("module[%s].%s.Statement[%d].Action", [name, keyToCheck, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("module[%s].%s should not have wildcard in 'Action' and 'Principal'", [name, keyToCheck]),
 		"keyActualValue": sprintf("module[%s].%s has wildcard in 'Action' or 'Principal'", [name, keyToCheck]),
-		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx], []),
+		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx, "Action"], []),
 	}
 }
 

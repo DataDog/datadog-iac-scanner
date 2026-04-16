@@ -18,11 +18,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_api_gateway_rest_api_policy",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_api_gateway_rest_api_policy[%s].policy.Statement[%d]", [name, idx]),
+		"searchKey": sprintf("aws_api_gateway_rest_api_policy[%s].policy.Statement[%d].Action", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("aws_api_gateway_rest_api_policy[%s].policy should not have wildcard in 'Action' and 'Principal'", [name]),
 		"keyActualValue": sprintf("aws_api_gateway_rest_api_policy[%s].policy has wildcard in 'Action' or 'Principal'", [name]),
-		"searchLine": common_lib.build_search_line(["resource", "aws_api_gateway_rest_api_policy", name, "policy", "Statement", idx], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_api_gateway_rest_api_policy", name, "policy", "Statement", idx, "Action"], []),
 	}
 }
 
@@ -44,10 +44,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].policy.Statement[%d]", [name, idx]),
+		"searchKey": sprintf("module[%s].policy.Statement[%d].Action", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("module[%s].%s should not have wildcard in 'Action' and 'Principal'", [name, keyToCheck]),
 		"keyActualValue": sprintf("module[%s].%s has wildcard in 'Action' or 'Principal'", [name, keyToCheck]),
-		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx], []),
+		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx, "Action"], []),
 	}
 }
