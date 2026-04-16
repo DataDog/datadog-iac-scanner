@@ -2,4 +2,4 @@
 * @Datadog/k9-iac
 
 # Owners of the documentation
-/documentation/rules/**/*.md @DataDog/documentation
+/documentation/rules/**/*.md @DataDog/documentation @Datadog/k9-iac
