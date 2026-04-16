@@ -199,8 +199,7 @@ func (s *DatadogSource) filterRules(ruleset *Ruleset, selection *QueryInspectorP
 		if !checkIncluded(rule, selection) || checkExcluded(rule, selection) {
 			continue
 		}
-		converted := convertRule(rule)
-		out = append(out, converted)
+		out = append(out, convertRule(rule))
 	}
 	return out, nil
 }
@@ -273,20 +272,17 @@ func convertRule(rule *Rule) model.QueryMetadata {
 			"severity":        rule.Severity,
 			"category":        rule.Category,
 		},
-		Platform:     rule.Platform,
+		Platform:     getPlatform(rule.Platform),
 		Aggregation:  1,
 		Experimental: rule.IsTesting,
 	}
-	if rule.DocumentationUrl != nil {
-		out.Metadata["descriptionUrl"] = *rule.DocumentationUrl
-	}
-	if rule.DescriptionId != nil {
-		out.Metadata["descriptionId"] = *rule.DescriptionId
-	}
-	if rule.Provider != nil {
-		out.Metadata["cloudProvider"] = *rule.Provider
-	}
-	if rule.Cwe != nil {
+	setStringPtr(out.Metadata, "descriptionUrl", rule.DocumentationUrl)
+	setStringPtr(out.Metadata, "providerUrl", rule.ProviderUrl)
+	setStringPtr(out.Metadata, "descriptionID", rule.DescriptionId)
+	setStringPtr(out.Metadata, "cloudProvider", rule.Provider)
+	if rule.Cwe == nil {
+		out.Metadata["cwe"] = ""
+	} else {
 		out.Metadata["cwe"] = *rule.Cwe
 		out.CWE = *rule.Cwe
 	}
@@ -295,45 +291,50 @@ func convertRule(rule *Rule) model.QueryMetadata {
 		out.Aggregation = *rule.Aggregation
 	}
 	if len(rule.Overrides) > 0 {
-		overrides := map[string]map[string]any{}
+		overrides := map[string]any{}
 		for _, ovr := range rule.Overrides {
-			key := ovr.Key
 			override := map[string]any{}
-			if ovr.ID != nil {
-				override["id"] = *ovr.ID
-			}
-			if ovr.ShortDescription != nil {
-				override["queryName"] = *ovr.ShortDescription
-			}
-			if ovr.Description != nil {
-				override["descriptionText"] = *ovr.Description
-			}
-			if ovr.DescriptionId != nil {
-				override["descriptionId"] = *ovr.DescriptionId
-			}
-			if ovr.DocumentationUrl != nil {
-				override["descriptionUrl"] = *ovr.DocumentationUrl
-			}
-			if ovr.Platform != nil {
-				override["platform"] = *ovr.Platform
-			}
-			if ovr.Severity != nil {
-				override["severity"] = *ovr.Severity
-			}
-			if ovr.Category != nil {
-				override["category"] = *ovr.Category
-			}
-			if ovr.Provider != nil {
-				override["cloudProvider"] = *ovr.Provider
-			}
-			if ovr.Cwe != nil {
-				override["cwe"] = *ovr.Cwe
-			}
-			overrides[key] = override
+			setStringPtr(override, "id", ovr.ID)
+			setStringPtr(override, "queryName", ovr.ShortDescription)
+			setStringPtr(override, "descriptionText", ovr.Description)
+			setStringPtr(override, "descriptionID", ovr.DescriptionId)
+			setStringPtr(override, "descriptionUrl", ovr.DocumentationUrl)
+			setStringPtr(override, "providerUrl", ovr.ProviderUrl)
+			setStringPtr(override, "platform", ovr.Platform)
+			setStringPtr(override, "severity", ovr.Severity)
+			setStringPtr(override, "category", ovr.Category)
+			setStringPtr(override, "cloudProvider", ovr.Provider)
+			setStringPtr(override, "cwe", ovr.Cwe)
+			overrides[ovr.Key] = override
 		}
-		out.Metadata["overrides"] = overrides
+		out.Metadata["override"] = overrides
+	}
+	if len(rule.DefaultFrameworks) > 0 {
+		out.Metadata["defaultFrameworks"] = frameworksToMeta(rule.DefaultFrameworks)
+	}
+	if len(rule.CustomFrameworks) > 0 {
+		out.Metadata["customFrameworks"] = frameworksToMeta(rule.CustomFrameworks)
 	}
 	return out
+}
+
+func setStringPtr[T ~string](m map[string]any, key string, v *T) {
+	if v != nil {
+		m[key] = string(*v)
+	}
+}
+
+func frameworksToMeta(fs []Framework) []any {
+	result := make([]any, len(fs))
+	for i, f := range fs {
+		result[i] = map[string]any{
+			"framework":         f.Framework,
+			"framework_version": f.Version,
+			"requirement":       f.Requirement,
+			"control":           f.Control,
+		}
+	}
+	return result
 }
 
 // sendRequest sends a Datadog API request
@@ -378,24 +379,27 @@ type Ruleset struct {
 
 // Rule defines the structure of a rule that's stored in Datadog.
 type Rule struct {
-	ID               string         `jsonapi:"primary,iac_rule" json:"id"`
-	Name             string         `jsonapi:"attribute" json:"name"`
-	LegacyId         *string        `jsonapi:"attribute" json:"legacy_id,omitempty"`
-	ShortDescription string         `jsonapi:"attribute" json:"short_description"`
-	Description      string         `jsonapi:"attribute" json:"description"`
-	DescriptionId    *string        `jsonapi:"attribute" json:"description_id,omitempty"`
-	Platform         string         `jsonapi:"attribute" json:"platform"`
-	Type             string         `jsonapi:"attribute" json:"type"`
-	RegoQuery        []byte         `jsonapi:"attribute" json:"rego_query"`
-	Severity         string         `jsonapi:"attribute" json:"severity"`
-	Category         string         `jsonapi:"attribute" json:"category"`
-	Provider         *string        `jsonapi:"attribute" json:"provider,omitempty"`
-	Cwe              *string        `jsonapi:"attribute" json:"cwe,omitempty"`
-	DocumentationUrl *string        `jsonapi:"attribute" json:"documentation_url,omitempty"`
-	Aggregation      *int           `jsonapi:"attribute" json:"aggregation,omitempty"`
-	Overrides        []RuleOverride `jsonapi:"attribute" json:"overrides,omitempty"`
-	IsTesting        bool           `jsonapi:"attribute" json:"is_testing"`
-	IsPublished      bool           `jsonapi:"attribute" json:"is_published"`
+	ID                string         `jsonapi:"primary,iac_rule" json:"id"`
+	Name              string         `jsonapi:"attribute" json:"name"`
+	LegacyId          *string        `jsonapi:"attribute" json:"legacy_id,omitempty"`
+	ShortDescription  string         `jsonapi:"attribute" json:"short_description"`
+	Description       string         `jsonapi:"attribute" json:"description"`
+	DescriptionId     *string        `jsonapi:"attribute" json:"description_id,omitempty"`
+	Platform          string         `jsonapi:"attribute" json:"platform"`
+	Type              string         `jsonapi:"attribute" json:"type"`
+	RegoQuery         []byte         `jsonapi:"attribute" json:"rego_query"`
+	Severity          string         `jsonapi:"attribute" json:"severity"`
+	Category          string         `jsonapi:"attribute" json:"category"`
+	Provider          *string        `jsonapi:"attribute" json:"provider,omitempty"`
+	Cwe               *string        `jsonapi:"attribute" json:"cwe,omitempty"`
+	DocumentationUrl  *string        `jsonapi:"attribute" json:"documentation_url,omitempty"`
+	ProviderUrl       *string        `jsonapi:"attribute" json:"provider_url,omitempty"`
+	Aggregation       *int           `jsonapi:"attribute" json:"aggregation,omitempty"`
+	Overrides         []RuleOverride `jsonapi:"attribute" json:"overrides,omitempty"`
+	DefaultFrameworks []Framework    `jsonapi:"attribute" json:"default_frameworks,omitempty"`
+	CustomFrameworks  []Framework    `jsonapi:"attribute" json:"custom_frameworks,omitempty"`
+	IsTesting         bool           `jsonapi:"attribute" json:"is_testing"`
+	IsPublished       bool           `jsonapi:"attribute" json:"is_published"`
 }
 
 type RuleOverride struct {
@@ -410,4 +414,12 @@ type RuleOverride struct {
 	Provider         *string `jsonapi:"attribute" json:"provider,omitempty"`
 	Cwe              *string `jsonapi:"attribute" json:"cwe,omitempty"`
 	DocumentationUrl *string `jsonapi:"attribute" json:"documentation_url,omitempty"`
+	ProviderUrl      *string `jsonapi:"attribute" json:"provider_url,omitempty"`
+}
+
+type Framework struct {
+	Framework   string `jsonapi:"attribute" json:"framework"`
+	Version     string `jsonapi:"attribute" json:"version"`
+	Requirement string `jsonapi:"attribute" json:"requirement"`
+	Control     string `jsonapi:"attribute" json:"control"`
 }
