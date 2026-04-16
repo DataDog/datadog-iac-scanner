@@ -202,9 +202,9 @@ CxPolicy[result] {
 
 	patterns := [
 		"github\\.head_ref",
-		"github\\.event\\.pull_request\\.head.ref",
-		"github\\.event\\.pull_request\\.head.label",
-		"github\\.event\\.pull_request\\.head.repo\\..+",
+		"github\\.event\\.pull_request\\.head\\.ref",
+		"github\\.event\\.pull_request\\.head\\.label",
+		"github\\.event\\.pull_request\\.head\\.repo\\..+",
 		"github\\.event\\.pull_request\\.title",
 		"github\\.event\\.pull_request\\.body",
 	]
