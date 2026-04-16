@@ -3,7 +3,7 @@ title: "Obfuscation"
 group_id: "CICD / GitHub"
 meta:
   name: "github/obfuscation"
-  id: "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6"
+  id: "af2c88c9-e360-4dc6-88ad-0f57085d54b8"
   display_name: "Obfuscation"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6`
+**Id:** `af2c88c9-e360-4dc6-88ad-0f57085d54b8`
 
 **Cloud Provider:** GitHub
 
