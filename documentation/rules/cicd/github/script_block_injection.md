@@ -28,7 +28,7 @@ meta:
 
 ### Description
 
-GitHub Actions steps that run arbitrary JavaScript via actions/github-script must not incorporate untrusted event fields into their script blocks because attackers can inject content that leads to code injection or unauthorized API calls and potentially exfiltrate secrets. Check workflow steps where `uses` starts with `actions/github-script` and ensure the `with.script` value does not reference user-controlled GitHub context properties such as `github.event.pull_request.*`, `github.event.issue.*`, `github.event.comment.*`, `github.event.discussion.*`, or `github.event.workflow_run.*`; steps whose script contains these patterns will be flagged. If processing event data is required, validate and sanitize inputs, restrict workflow permissions (avoid `pull_request_target` when running untrusted content), or perform parsing in a hardened action or external service with least privilege.
+GitHub Actions steps that run arbitrary JavaScript via actions/github-script must not incorporate untrusted event fields into their script blocks because attackers can inject content that leads to code injection or unauthorized API calls and potentially exfiltrate secrets. Check workflow steps where `uses` starts with `actions/github-script` and ensure the `with.script` value does not reference user-controlled GitHub context properties such as `github.event.pull_request.*`, `github.event.issue.*`, `github.event.comment.*`, `github.event.discussion.*`, or `github.event.workflow_run.*`; steps whose script contains these patterns will be flagged. If processing event data is required, validate and sanitize inputs, restrict workflow permissions (avoid `pull_request_target` when running untrusted content), or perform parsing in a hardened action or external service with least privilege. For the `pull_request` trigger, the vulnerable fields are much more significant when the change comes from a fork.
 
 Secure example that avoids using event fields:
 
@@ -196,8 +196,7 @@ jobs:
 name: test-script-run
 
 on:
-  discussion:
-    types: [opened]
+  pull_request:
 
 jobs:
   script-run:
@@ -210,15 +209,7 @@ jobs:
         uses: actions/github-script@latest
         with:
           script: |
-            const fs = require('fs');
-            const body = fs.readFileSync('/tmp/${{ github.event.discussion.title }}.txt', {encoding: 'utf8'});
-
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'Thanks for reporting!'
-            })
+            const head_ref = ${{ github.head_ref }};
 
             return true;
 
