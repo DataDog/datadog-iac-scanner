@@ -10,8 +10,7 @@ import (
 func Test_Client(t *testing.T) {
 	ctx := context.Background()
 	params := &Parameters{
-		PreviewLines:   3,
-		ExcludeResults: []string{},
+		PreviewLines: 3,
 	}
 
 	client, err := NewClient(ctx, params, nil)
@@ -23,8 +22,7 @@ func Test_Client(t *testing.T) {
 func Test_ClientError(t *testing.T) {
 	ctx := context.Background()
 	params := &Parameters{
-		PreviewLines:   0,
-		ExcludeResults: []string{},
+		PreviewLines: 0,
 	}
 
 	client, err := NewClient(ctx, params, nil)

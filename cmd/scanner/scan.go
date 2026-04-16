@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
@@ -121,14 +122,21 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("error retrieving repository commit information: %w", err)
 	}
 
-	config, err := scan.ReadConfiguration(ctx, repoDir)
+	cfg, err := config.ReadConfiguration(ctx, repoDir)
 	if err != nil {
 		return fmt.Errorf("error reading the configuration: %w", err)
 	}
-	excludePaths, err := getRepoRelativePaths(repoDir, config.ExcludePaths)
+	excludePaths, err := getRepoRelativePaths(repoDir, cfg.IgnorePaths)
 	if err != nil {
 		return err
 	}
+	cfg.IgnorePaths = excludePaths
+	onlyPaths, err := getRepoRelativePaths(repoDir, cfg.OnlyPaths)
+	if err != nil {
+		return err
+	}
+	cfg.OnlyPaths = onlyPaths
+	cfg.IgnoreRules = append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...)
 	params := &scan.Parameters{
 		CloudProvider:              []string{""},
 		OutputPath:                 outputPath,
@@ -149,12 +157,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		PayloadPath:                payloadPath,
 		SCIInfo:                    model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:              getFeatureFlagEvaluator(c),
-		ExcludeCategories:          config.ExcludeCategories,
-		ExcludeQueries:             append(c.StringSlice("exclude-queries"), config.ExcludeQueries...),
-		ExcludeResults:             config.ExcludeResults,
-		ExcludeSeverities:          config.ExcludeSeverities,
-		ExcludePaths:               excludePaths,
-		IncludeQueries:             config.IncludeQueries,
+		Config:                     *cfg,
 		DownloadQueriesFromDatadog: c.Bool("x-downloadqueriesfromdatadog"),
 	}
 

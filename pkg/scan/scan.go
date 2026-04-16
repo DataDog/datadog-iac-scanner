@@ -209,19 +209,20 @@ func getExcludeResultsMap(excludeResults []string) map[string]bool {
 }
 
 func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
-	excludeQueries := source.ExcludeQueries{
-		ByIDs:        c.ScanParams.ExcludeQueries,
-		ByCategories: c.ScanParams.ExcludeCategories,
-		BySeverities: c.ScanParams.ExcludeSeverities,
+	excludeQueries := source.QueryFilter{
+		ByIDs:        c.ScanParams.Config.IgnoreRules,
+		ByCategories: c.ScanParams.Config.IgnoreCategories,
+		BySeverities: c.ScanParams.Config.IgnoreSeverities,
 	}
-
-	includeQueries := source.IncludeQueries{
-		ByIDs: c.ScanParams.IncludeQueries,
+	includeQueries := source.QueryFilter{
+		ByIDs:        c.ScanParams.Config.OnlyRules,
+		ByCategories: c.ScanParams.Config.OnlyCategories,
+		BySeverities: c.ScanParams.Config.OnlySeverities,
 	}
 
 	queryFilter := source.QueryInspectorParameters{
-		IncludeQueries:      includeQueries,
 		ExcludeQueries:      excludeQueries,
+		IncludeQueries:      includeQueries,
 		ExperimentalQueries: c.ScanParams.ExperimentalQueries,
 		InputDataPath:       c.ScanParams.InputData,
 		BomQueries:          c.ScanParams.BillOfMaterials,
@@ -296,11 +297,11 @@ func (c *Client) getFileSystemSourceProvider(ctx context.Context, paths []string
 		excludePaths = append(excludePaths, c.ScanParams.PayloadPath)
 	}
 
-	if len(c.ScanParams.ExcludePaths) > 0 {
-		excludePaths = append(excludePaths, c.ScanParams.ExcludePaths...)
+	if len(c.ScanParams.Config.IgnorePaths) > 0 {
+		excludePaths = append(excludePaths, c.ScanParams.Config.IgnorePaths...)
 	}
 
-	filesSource, err := provider.NewFileSystemSourceProvider(ctx, paths, excludePaths)
+	filesSource, err := provider.NewFileSystemSourceProvider(ctx, paths, excludePaths, c.ScanParams.Config.OnlyPaths)
 	if err != nil {
 		return nil, err
 	}

@@ -318,9 +318,5 @@ func isValidURL(toTest string) bool {
 }
 
 func getQueryFilter() *source.QueryInspectorParameters {
-	return &source.QueryInspectorParameters{
-		IncludeQueries: source.IncludeQueries{ByIDs: []string{}},
-		ExcludeQueries: source.ExcludeQueries{ByIDs: []string{}, ByCategories: []string{}},
-		InputDataPath:  "",
-	}
+	return &source.QueryInspectorParameters{}
 }

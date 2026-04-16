@@ -202,19 +202,11 @@ func TestNewInspector(t *testing.T) { //nolint
 		{
 			name: "test_new_inspector",
 			args: args{
-				ctx:     context.Background(),
-				vb:      vbs,
-				tracker: track,
-				source:  sources,
-				queryFilter: source.QueryInspectorParameters{
-					IncludeQueries: source.IncludeQueries{
-						ByIDs: []string{},
-					},
-					ExcludeQueries: source.ExcludeQueries{
-						ByIDs:        []string{},
-						ByCategories: []string{},
-					},
-				},
+				ctx:                 context.Background(),
+				vb:                  vbs,
+				tracker:             track,
+				source:              sources,
+				queryFilter:         source.QueryInspectorParameters{},
 				excludeResults:      map[string]bool{},
 				queryExecTimeout:    60,
 				needsLog:            true,

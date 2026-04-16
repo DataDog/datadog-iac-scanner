@@ -26,9 +26,10 @@ import (
 // FileSystemSourceProvider provides a path to be scanned
 // and a list of files which will not be scanned
 type FileSystemSourceProvider struct {
-	paths    []string
-	excludes map[string][]os.FileInfo
-	mu       sync.RWMutex
+	paths     []string
+	excludes  map[string][]os.FileInfo
+	onlyPaths []string
+	mu        sync.RWMutex
 }
 
 const (
@@ -43,7 +44,7 @@ var (
 )
 
 // NewFileSystemSourceProvider initializes a FileSystemSourceProvider with path and files that will be ignored
-func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string) (*FileSystemSourceProvider, error) {
+func NewFileSystemSourceProvider(ctx context.Context, paths, excludes, onlyPaths []string) (*FileSystemSourceProvider, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msgf("provider.NewFileSystemSourceProvider()")
 	ex := make(map[string][]os.FileInfo, len(excludes))
@@ -63,6 +64,23 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes []string) 
 		}
 		if err := fs.addExcluded(ctx, excludePaths); err != nil {
 			return nil, err
+		}
+	}
+
+	// onlyPaths uses nil/non-nil to signal whether a restriction is in effect:
+	//   - nil: no restriction configured → all files pass
+	//   - non-nil (even empty): restriction in effect → only matching files pass
+	//
+	// We initialize onlyPaths as non-nil before appending so that even if all
+	// provided glob patterns expand to nothing, the non-nil sentinel is preserved.
+	if len(onlyPaths) > 0 {
+		fs.onlyPaths = make([]string, 0)
+		for _, only := range onlyPaths {
+			expanded, err := GetExcludePaths(ctx, only)
+			if err != nil {
+				return nil, err
+			}
+			fs.onlyPaths = append(fs.onlyPaths, expanded...)
 		}
 	}
 
@@ -377,7 +395,7 @@ func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 		}
 		// -----------------------------------------------------------------
 
-		c, err := os.Open(filepath.Clean(path))
+		c, err := os.Open(filepath.Clean(path)) // nolint:gosec
 		if err != nil {
 			if ignoreDamagedFiles(ctx, filepath.Clean(path)) {
 				return nil
@@ -406,6 +424,7 @@ func openScanFile(ctx context.Context, scanPath string, extensions model.Extensi
 	return c, nil
 }
 
+// nolint:gocyclo
 func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.FileInfo, extensions model.Extensions,
 	path string, resolvedChartPaths []string) (bool, error) {
 	contextLogger := logger.FromContext(ctx)
@@ -436,6 +455,18 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 
 	if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
 		return true, nil
+	}
+	if s.onlyPaths != nil {
+		underOnlyPath := false
+		for _, op := range s.onlyPaths {
+			if path == op || strings.HasPrefix(path, op+string(os.PathSeparator)) {
+				underOnlyPath = true
+				break
+			}
+		}
+		if !underOnlyPath {
+			return true, nil
+		}
 	}
 	ext, _ := utils.GetExtension(ctx, path)
 	if !extensions.Include(ext) {

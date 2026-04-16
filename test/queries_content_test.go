@@ -226,12 +226,7 @@ func testQueryHasGoodReturnParams(t *testing.T, entry queryEntry) { //nolint
 			return &model.Vulnerability{}, nil
 		},
 		trk,
-		&source.QueryInspectorParameters{
-			IncludeQueries: source.IncludeQueries{ByIDs: []string{}},
-			ExcludeQueries: source.ExcludeQueries{ByIDs: []string{}, ByCategories: []string{}},
-			InputDataPath:  "",
-			FlagEvaluator:  nil,
-		},
+		&source.QueryInspectorParameters{},
 		map[string]bool{},
 		".",
 		60,
