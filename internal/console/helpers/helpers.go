@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -43,11 +42,7 @@ var reportGenerators = map[string]func(ctx context.Context, path, filename strin
 
 // FileAnalyzer determines the type of extension in the passed config file by its content
 func FileAnalyzer(path string) (string, error) {
-	ostat, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return "", err
-	}
-	rc, err := io.ReadAll(ostat)
+	rc, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return "", err
 	}
