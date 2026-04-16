@@ -176,32 +176,23 @@ func extractBlockSource(lines []string, start, end int) string {
 
 // nolint:gocritic
 func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (int, int) {
-	name, nestedStart, nestedEnd, isAttr := findContainingStructure(block, line)
+	name, nestedStart, nestedEnd, _ := findContainingStructure(block, line)
 
 	var insertionLine int
 	var caseType string
 
 	if name != "" {
-		// Detect if this is a function call like merge(...) and avoid inserting inside it
-		lineText := strings.TrimSpace(lines[nestedStart.Line-1])
-		if isAttr && strings.Contains(lineText, "(") && strings.Contains(lineText, "{") {
-			// Likely a function call wrapping a block (e.g., merge(..., { ... }))
-			// We do not want to insert inside the nested structure
-			insertionLine = nestedEnd.Line + 1
-			caseType = strBlockBody
-		} else {
-			// nolint:staticcheck
-			switch {
-			case line == nestedEnd.Line:
-				insertionLine = nestedEnd.Line - 1
-				caseType = strNestedEnd
-			case line == nestedStart.Line:
-				insertionLine = nestedStart.Line + 1
-				caseType = strNestedStart
-			default:
-				insertionLine = line
-				caseType = strNestedBody
-			}
+		// nolint:staticcheck
+		switch {
+		case line == nestedEnd.Line:
+			insertionLine = nestedEnd.Line - 1
+			caseType = strNestedEnd
+		case line == nestedStart.Line:
+			insertionLine = nestedStart.Line + 1
+			caseType = strNestedStart
+		default:
+			insertionLine = line
+			caseType = strNestedBody
 		}
 	} else {
 		if line == block.TypeRange.Start.Line {

@@ -816,6 +816,40 @@ func TestDetectTerraformLineRemediations(t *testing.T) {
 				LinesOriginalData: utils.SplitLines("resource \"aws_instance\" \"example\" {\n  tags = {\n    Name = \"web-server\"\n  }\n}\n"),
 			},
 		},
+		{
+			expected: model.VulnerabilityLines{
+				Line: 5,
+				VulnLines: &[]model.CodeLine{
+					{Position: 4, Line: "  tags = merge(local.common_tags, {"},
+					{Position: 5, Line: "    Name = \"web-server\""},
+					{Position: 6, Line: "  })"},
+				},
+				VulnerablilityLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Col: 1, Line: 1},
+					End:   model.ResourceLine{Col: 2, Line: 7},
+				},
+				RemediationLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Col: 5, Line: 5},
+					End:   model.ResourceLine{Col: 5, Line: 5},
+				},
+				LineWithVulnerability: "    Name = \"web-server\"",
+				ResolvedFile:          "",
+				ResourceSource:        "resource \"aws_instance\" \"example\" {\n  ami = \"abc-123\"\n\n  tags = merge(local.common_tags, {\n    Name = \"web-server\"\n  })\n}\n",
+				FileSource:            strings.Split(OriginalDataMergeTags, "\n"),
+				BlockLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Col: 1, Line: 1},
+					End:   model.ResourceLine{Col: 2, Line: 7},
+				},
+			},
+			searchKey: "aws_instance[example].tags.Name",
+			file: &model.FileMetadata{
+				ScanID:            "merge",
+				ID:                "merge.tags",
+				Kind:              model.KindTerraform,
+				OriginalData:      OriginalDataMergeTags,
+				LinesOriginalData: utils.SplitLines(OriginalDataMergeTags),
+			},
+		},
 	}
 
 	ctx := context.Background()
@@ -827,6 +861,15 @@ func TestDetectTerraformLineRemediations(t *testing.T) {
 		})
 	}
 }
+
+const OriginalDataMergeTags = `resource "aws_instance" "example" {
+  ami = "abc-123"
+
+  tags = merge(local.common_tags, {
+    Name = "web-server"
+  })
+}
+`
 
 const OriginalDataPositive1 = `provider "aws" {
 	region = "us-east-1"
@@ -986,7 +1029,31 @@ func TestDetectLinePolicyStatementPrincipalJsonencode(t *testing.T) {
 		LinesOriginalData: utils.SplitLines(policyStatementPrincipalJSONEncode),
 	}
 	got := DetectKindLine{}.DetectLine(ctx, file, `aws_s3_bucket_policy[x].policy.Statement[0].Principal`, 3)
-	require.Equal(t, 8, got.Line)
+	expected := model.VulnerabilityLines{
+		Line: 8,
+		VulnLines: &[]model.CodeLine{
+			{Position: 7, Line: "      Effect    = \"Allow\""},
+			{Position: 8, Line: "      Principal = \"*\""},
+			{Position: 9, Line: "      Action    = \"s3:GetObject\""},
+		},
+		VulnerablilityLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 13, Col: 2},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 8, Col: 7},
+			End:   model.ResourceLine{Line: 8, Col: 7},
+		},
+		LineWithVulnerability: "      Principal = \"*\"",
+		ResolvedFile:          "",
+		ResourceSource:        "resource \"aws_s3_bucket_policy\" \"x\" {\n  bucket = \"b\"\n\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\n      Effect    = \"Allow\"\n      Principal = \"*\"\n      Action    = \"s3:GetObject\"\n      Resource  = \"*\"\n    }]\n  })\n}\n",
+		FileSource:            strings.Split(policyStatementPrincipalJSONEncode, "\n"),
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 13, Col: 2},
+		},
+	}
+	require.Equal(t, expected, got)
 }
 
 func TestDetectLinePolicyStatementPrincipalHeredocJSON(t *testing.T) {
