@@ -251,6 +251,7 @@ CxPolicy[result] {
 CxPolicy[result] {
 	doc := input.document[i]
 	parsed_run := doc.jobs[j].steps[k]._parsed_expressions_run[_]
+	run := doc.jobs[j].steps[k].run
 
 	walk(parsed_run, [_, node])
 
@@ -261,7 +262,7 @@ CxPolicy[result] {
 
 	result := {
 		"documentId": doc.id,
-		"searchKey": sprintf("run={{%s}}", [parsed_run]),
+		"searchKey": sprintf("run={{%s}}", [run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
 		"keyActualValue": "Run block contains dangerous input controlled by user.",
