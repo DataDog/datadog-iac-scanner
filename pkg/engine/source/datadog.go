@@ -284,7 +284,6 @@ func convertRule(rule *Rule) model.QueryMetadata {
 		out.Metadata["cwe"] = ""
 	} else {
 		out.Metadata["cwe"] = *rule.Cwe
-		out.CWE = *rule.Cwe
 	}
 	if rule.Aggregation != nil {
 		out.Metadata["aggregation"] = *rule.Aggregation
