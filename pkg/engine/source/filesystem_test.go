@@ -9,7 +9,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -481,45 +480,6 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 	}
 }
 
-// Test_ReadMetadata tests the functions [ReadMetadata()] and all the methods called by them
-func Test_ReadMetadata(t *testing.T) {
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
-	}
-	type args struct {
-		queryDir string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    map[string]interface{}
-		wantErr bool
-	}{
-		{
-			name: "read_metadata_error",
-			args: args{
-				queryDir: "error-path",
-			},
-			want:    nil,
-			wantErr: false,
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got, err := ReadEmbeddedMetadata(ctx, tt.args.queryDir); !reflect.DeepEqual(got, tt.want) {
-				require.Equal(t, tt.wantErr, (err != nil))
-				gotStr, err := test.StringifyStruct(got)
-				require.Nil(t, err)
-				wantStr, err := test.StringifyStruct(tt.want)
-				require.Nil(t, err)
-				t.Errorf("readMetadata()\ngot = %v\nwant = %v", gotStr, wantStr)
-			}
-		})
-	}
-}
-
 // Test_getPlatform tests the functions [getPlatform()] and all the methods called by them
 func Test_getPlatform(t *testing.T) {
 	type args struct {
@@ -744,4 +704,28 @@ func TestFilesystemSource_GetQueriesWithIncludeFilter(t *testing.T) {
 			assert.False(t, strings.EqualFold("Encryption", q.Metadata["category"].(string)), "expected category != Encryption, got %s", q.Metadata["category"])
 		}
 	})
+}
+
+func TestFilesystemSource_ReadLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	queryPath := filepath.Join(dir, "my_query")
+	require.NoError(t, os.Mkdir(queryPath, 0700))
+	metadata := `{
+  "id": "wonderful-query",
+  "queryName": "My Wonderful Query",
+  "severity": "HIGH",
+  "category": "AVAILABILITY",
+  "descriptionText": "This is my query",
+  "descriptionUrl": "https://example.com",
+  "descriptionId": "12345678",
+  "platform": "dockerfile",
+  "cwe": ""
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(queryPath, "metadata.json"), []byte(metadata), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(queryPath, "query.rego"), []byte("rule"), 0644))
+
+	query, err := ReadQueryFile(t.Context(), queryPath)
+	assert.NoError(t, err)
+	assert.Equal(t, query.Metadata["id"], "wonderful-query")
 }

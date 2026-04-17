@@ -113,15 +113,15 @@ func TestUniqueQueryIDs(t *testing.T) {
 	ctx := context.Background()
 	for _, entry := range queries {
 		queryPath := strings.TrimPrefix(entry.dir, filepath.FromSlash("../assets/"))
-		metadata, err := source.ReadEmbeddedMetadata(ctx, queryPath)
+		query, err := source.ReadEmbeddedQuery(ctx, queryPath)
 		require.NoError(t, err)
-		uuid := metadata["id"].(string)
+		uuid := query.Metadata["id"].(string)
 		duplicateDir, ok := queriesIdentifiers[uuid]
 		require.False(t, ok, "\nnon unique queryID found uuid: %s\nqueryDir: %s\nduplicateDir: %s",
 			uuid, entry.dir, duplicateDir)
 		queriesIdentifiers[uuid] = entry.dir
 
-		if override, ok := metadata["override"].(map[string]interface{}); ok {
+		if override, ok := query.Metadata["override"].(map[string]interface{}); ok {
 			for _, v := range override {
 				if convertedValue, converted := v.(map[string]interface{}); converted {
 					if id, ok := convertedValue["id"].(string); ok {

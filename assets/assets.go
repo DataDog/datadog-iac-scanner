@@ -59,3 +59,13 @@ func GetEmbeddedQueryDirs(ctx context.Context) ([]string, error) {
 	}
 	return out, nil
 }
+
+func GetEmbeddedQueryFile(ctx context.Context, path string) ([]byte, error) {
+	contextLogger := logger.FromContext(ctx)
+	content, err := embeddedQueries.ReadFile(filepath.ToSlash(path))
+	if err != nil {
+		contextLogger.Debug().Msgf("Failed to read file for path %s: %v", path, err)
+		return nil, err
+	}
+	return content, nil
+}
