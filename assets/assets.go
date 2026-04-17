@@ -32,6 +32,10 @@ func GetEmbeddedLibraryData(platform string) (string, error) {
 //go:embed queries/ansible queries/cicd queries/terraform queries/k8s queries/cloudFormation queries/dockerfile
 var embeddedQueries embed.FS
 
+func GetEmbeddedQueriesFs() embed.FS {
+	return embeddedQueries
+}
+
 func GetEmbeddedQueryDirs(ctx context.Context) ([]string, error) {
 	contextLogger := logger.FromContext(ctx)
 	var out []string
@@ -54,14 +58,4 @@ func GetEmbeddedQueryDirs(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return out, nil
-}
-
-func GetEmbeddedQueryFile(ctx context.Context, path string) (string, error) {
-	contextLogger := logger.FromContext(ctx)
-	content, err := embeddedQueries.ReadFile(filepath.ToSlash(path))
-	if err != nil {
-		contextLogger.Debug().Msgf("Failed to read file for path %s: %v", path, err)
-		return "", err
-	}
-	return string(content), nil
 }

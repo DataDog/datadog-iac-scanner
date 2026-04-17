@@ -508,7 +508,7 @@ func Test_ReadMetadata(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got, err := ReadMetadata(ctx, tt.args.queryDir); !reflect.DeepEqual(got, tt.want) {
+			if got, err := ReadEmbeddedMetadata(ctx, tt.args.queryDir); !reflect.DeepEqual(got, tt.want) {
 				require.Equal(t, tt.wantErr, (err != nil))
 				gotStr, err := test.StringifyStruct(got)
 				require.Nil(t, err)

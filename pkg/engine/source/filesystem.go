@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -312,7 +313,7 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 	queries := make([]model.QueryMetadata, 0, len(queryDirs))
 
 	for _, queryDir := range queryDirs {
-		query, errRQ := ReadQuery(ctx, queryDir)
+		query, errRQ := ReadEmbeddedQuery(ctx, queryDir)
 		if errRQ != nil {
 			continue
 		}
@@ -353,16 +354,21 @@ func validateMetadata(metadata map[string]interface{}) (exist bool, field string
 	return
 }
 
+// ReadQuery reads embedded query files for a given path and returns a QueryMetadata struct with its content
+func ReadEmbeddedQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error) {
+	return ReadQuery(ctx, assets.GetEmbeddedQueriesFs(), filepath.ToSlash(queryDir))
+}
+
 // ReadQuery reads query's files for a given path and returns a QueryMetadata struct with it's
 // content
-func ReadQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error) {
+func ReadQuery(ctx context.Context, queryFs fs.ReadFileFS, queryDir string) (model.QueryMetadata, error) {
 	contextLogger := logger.FromContext(ctx)
-	queryContent, err := assets.GetEmbeddedQueryFile(ctx, filepath.Join(queryDir, QueryFileName))
+	queryContent, err := queryFs.ReadFile(filepath.Join(queryDir, QueryFileName))
 	if err != nil {
 		return model.QueryMetadata{}, errors.Wrapf(err, "failed to read query %s", filepath.Base(queryDir))
 	}
 
-	metadata, err := ReadMetadata(ctx, queryDir)
+	metadata, err := ReadMetadata(ctx, queryFs, queryDir)
 	if err != nil {
 		return model.QueryMetadata{}, errors.Wrapf(err, "failed to read query %s", filepath.Base(queryDir))
 	}
@@ -384,7 +390,7 @@ func ReadQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error
 
 	return model.QueryMetadata{
 		Query:        filepath.Base(filepath.ToSlash(queryDir)),
-		Content:      queryContent,
+		Content:      string(queryContent),
 		Metadata:     metadata,
 		Platform:     platform,
 		InputData:    "{}",
@@ -393,17 +399,22 @@ func ReadQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error
 	}, nil
 }
 
+// ReadEmbeddedMetadata reads the query metadata file inside the embedded query directory
+func ReadEmbeddedMetadata(ctx context.Context, queryDir string) (map[string]any, error) {
+	return ReadMetadata(ctx, assets.GetEmbeddedQueriesFs(), filepath.ToSlash(queryDir))
+}
+
 // ReadMetadata read query's metadata file inside the query directory
-func ReadMetadata(ctx context.Context, queryDir string) (map[string]interface{}, error) {
+func ReadMetadata(ctx context.Context, queryFs fs.ReadFileFS, queryDir string) (map[string]interface{}, error) {
 	contextLogger := logger.FromContext(ctx)
-	f, err := assets.GetEmbeddedQueryFile(ctx, filepath.Clean(filepath.Join(queryDir, MetadataFileName)))
+	f, err := queryFs.ReadFile(filepath.Clean(filepath.Join(queryDir, MetadataFileName)))
 	if err != nil {
 		contextLogger.Error().Msgf("Queries provider can't read metadata, query=%s: %v", filepath.Base(queryDir), err)
 		return nil, err
 	}
 
 	var metadata map[string]interface{}
-	if err := json.Unmarshal([]byte(f), &metadata); err != nil {
+	if err := json.Unmarshal(f, &metadata); err != nil {
 		return nil, err
 	}
 

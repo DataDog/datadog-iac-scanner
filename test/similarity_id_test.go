@@ -189,7 +189,7 @@ func getTestQueryID(params *testCaseParamsType) string {
 	var testQueryID string
 	if params.queryID == "" {
 		queryPath := strings.TrimPrefix(params.queryDir, "../assets/")
-		metadata, err := source.ReadMetadata(ctx, queryPath)
+		metadata, err := source.ReadEmbeddedMetadata(ctx, queryPath)
 		if err != nil {
 			return ""
 		}
@@ -270,7 +270,7 @@ func createInspectorAndGetVulnerabilities(ctx context.Context, t testing.TB,
 	queriesSource.EXPECT().GetQueries(gomock.Any(), getQueryFilter()).
 		DoAndReturn(func(ctx context.Context, querySelection interface{}) ([]model.QueryMetadata, error) {
 			queryPath := strings.TrimPrefix(testParams.queryDir, "../assets/")
-			metadata, err := source.ReadMetadata(ctx, queryPath)
+			metadata, err := source.ReadEmbeddedMetadata(ctx, queryPath)
 			require.NoError(t, err)
 
 			// Override metadata ID with custom QueryID for testing
