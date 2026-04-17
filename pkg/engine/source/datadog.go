@@ -199,7 +199,7 @@ func (s *DatadogSource) filterRules(ruleset *Ruleset, selection *QueryInspectorP
 		if !checkIncluded(rule, selection) || checkExcluded(rule, selection) {
 			continue
 		}
-		out = append(out, convertRule(rule))
+		out = append(out, ConvertRule(rule))
 	}
 	return out, nil
 }
@@ -258,8 +258,8 @@ func isInCaseInsensitiveNotEmptyList(id string, list []string) bool {
 }
 
 // nolint:gocyclo
-// convertRule converts a Datadog api [Rule] to a [model.QueryMetadata]
-func convertRule(rule *Rule) model.QueryMetadata {
+// ConvertRule converts a Datadog api [Rule] to a [model.QueryMetadata]
+func ConvertRule(rule *Rule) model.QueryMetadata {
 	out := model.QueryMetadata{
 		InputData: "{}",
 		Query:     rule.Name,
@@ -284,7 +284,6 @@ func convertRule(rule *Rule) model.QueryMetadata {
 		out.Metadata["cwe"] = ""
 	} else {
 		out.Metadata["cwe"] = *rule.Cwe
-		out.CWE = *rule.Cwe
 	}
 	if rule.Aggregation != nil {
 		out.Metadata["aggregation"] = *rule.Aggregation

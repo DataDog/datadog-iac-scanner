@@ -379,7 +379,6 @@ var queries = []model.QueryMetadata{
 			"cwe":             "123",
 		},
 		Platform:    "dockerfile",
-		CWE:         "123",
 		Aggregation: 1,
 	},
 	{

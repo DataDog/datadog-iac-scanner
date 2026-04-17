@@ -164,7 +164,7 @@ func testQueryHasGoodReturnParams(t *testing.T, entry queryEntry) { //nolint
 	queriesSource.EXPECT().GetQueries(gomock.Any(), getQueryFilter()).
 		DoAndReturn(func(ctx context.Context, querySelection interface{}) ([]model.QueryMetadata, error) {
 			queryPath := strings.TrimPrefix(entry.dir, filepath.FromSlash("../assets/"))
-			q, err := source.ReadQuery(ctx, queryPath)
+			q, err := source.ReadEmbeddedQuery(ctx, queryPath)
 
 			return []model.QueryMetadata{q}, err
 		})
