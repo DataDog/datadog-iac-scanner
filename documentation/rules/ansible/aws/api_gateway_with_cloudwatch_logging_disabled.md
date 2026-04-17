@@ -1,5 +1,5 @@
 ---
-title: "API gateway with CloudWatch Logs disabled"
+title: "API Gateway with CloudWatch Logs disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_with_cloudwatch_logging_disabled"

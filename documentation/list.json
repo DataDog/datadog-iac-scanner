@@ -24,7 +24,7 @@
           },
           {
             "name": "api_gateway_with_cloudwatch_logging_disabled",
-            "short_description": "API gateway with CloudWatch Logs disabled"
+            "short_description": "API Gateway with CloudWatch Logs disabled"
           },
           {
             "name": "api_gateway_without_configured_authorizer",
@@ -2951,7 +2951,7 @@
           },
           {
             "name": "api_gateway_api_protocol_not_https",
-            "short_description": "API gateway API protocol not HTTPS"
+            "short_description": "API Gateway API protocol not HTTPS"
           },
           {
             "name": "cmk_is_unusable",
@@ -3213,7 +3213,7 @@
           },
           {
             "name": "api_gateway_deployment_without_api_gateway_usage_plan_associated",
-            "short_description": "API gateway deployment without API gateway usage plan associated"
+            "short_description": "API Gateway deployment without API Gateway usage plan associated"
           },
           {
             "name": "api_gateway_endpoint_config_is_not_private",

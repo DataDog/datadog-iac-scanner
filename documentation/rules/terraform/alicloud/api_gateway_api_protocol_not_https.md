@@ -1,10 +1,10 @@
 ---
-title: "API gateway API protocol not HTTPS"
+title: "API Gateway API protocol not HTTPS"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/api_gateway_api_protocol_not_https"
   id: "1bcdf9f0-b1aa-40a4-b8c6-cd7785836843"
-  display_name: "API gateway API protocol not HTTPS"
+  display_name: "API Gateway API protocol not HTTPS"
   cloud_provider: "Alicloud"
   platform: "Terraform"
   severity: "MEDIUM"
