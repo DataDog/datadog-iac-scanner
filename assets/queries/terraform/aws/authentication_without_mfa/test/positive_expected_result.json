@@ -2,13 +2,25 @@
   {
     "queryName": "Authentication without MFA",
     "severity": "LOW",
-    "line": 23,
+    "line": 27,
     "fileName": "positive1.tf"
   },
   {
     "queryName": "Authentication without MFA",
     "severity": "LOW",
-    "line": 19,
+    "line": 23,
     "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "Authentication without MFA",
+    "severity": "LOW",
+    "line": 23,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "Authentication without MFA",
+    "severity": "LOW",
+    "line": 12,
+    "fileName": "positive4.tf"
   }
 ]
