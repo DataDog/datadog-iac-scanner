@@ -9,7 +9,8 @@ CxPolicy[result] {
 	not is_iam_identity_based_policy(path[0])
 
 	policy := common_lib.json_unmarshal(value.policy)
-	statement := common_lib.get_statement(policy)[_]
+	st := common_lib.get_statement(policy)
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	not has_principal(statement)
@@ -18,11 +19,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": path[0],
 		"resourceName": path[1],
-		"searchKey": sprintf("%s[%s].policy", [path[0], path[1]]),
+		"searchKey": sprintf("%s[%s].policy.Statement[%d]", [path[0], path[1], idx]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "'Principal' should be defined",
 		"keyActualValue": "'Principal' is undefined",
-		"searchLine": common_lib.build_search_line(["resource", path[0], path[1], "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", path[0], path[1], "policy", "Statement", idx], []),
 	}
 }
 
