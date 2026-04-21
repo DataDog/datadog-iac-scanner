@@ -47,11 +47,13 @@ Secure example:
 - name: Create an empty bucket
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object
     mode: create
     permission: private
 - name: Create an empty bucket 02
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object-2
     mode: create
 
 ```
@@ -61,11 +63,13 @@ Secure example:
 - name: Create an empty bucket
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object
     mode: create
     permission: public-read
 - name: Create an empty bucket 01
   amazon.aws.s3_object:
     bucket: mybucket 01
+    object: my-object-2
     mode: create
     permission: public-read-write
 

@@ -1,14 +1,14 @@
 ---
-title: "Beta - Nifcloud LB use HTTP port"
+title: "Nifcloud LB using HTTP port"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/load_balancer_use_http"
   id: "94e47f3f-b90b-43a1-a36d-521580bae863"
-  display_name: "Beta - Nifcloud LB use HTTP port"
+  display_name: "Nifcloud LB using HTTP port"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
-  severity: "HIGH"
-  category: "Insecure Configurations"
+  severity: "MEDIUM"
+  category: "Networking and Firewall"
 ---
 ## Metadata
 
@@ -18,9 +18,9 @@ meta:
 
 **Platform:** Terraform
 
-**Severity:** High
+**Severity:** Medium
 
-**Category:** Insecure Configurations
+**Category:** Networking and Firewall
 
 #### Learn More
 

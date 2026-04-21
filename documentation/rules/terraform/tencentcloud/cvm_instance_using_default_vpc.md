@@ -1,10 +1,10 @@
 ---
-title: "Beta - CVM instance using default VPC"
+title: "CVM instance using default VPC"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cvm_instance_using_default_vpc"
   id: "b4e75c5c-83d5-4568-90e3-57ed5ec4051b"
-  display_name: "Beta - CVM instance using default VPC"
+  display_name: "CVM instance using default VPC"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "LOW"

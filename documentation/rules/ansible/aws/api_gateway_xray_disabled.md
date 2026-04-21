@@ -43,6 +43,7 @@ Secure Ansible task example:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
   community.aws.api_gateway:
+    name: my-api
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true
@@ -57,6 +58,7 @@ Secure Ansible task example:
 ---
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
   community.aws.api_gateway:
+    name: my-api
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true
@@ -66,6 +68,7 @@ Secure Ansible task example:
     state: present
 - name: Update API definition to deploy new version
   community.aws.api_gateway:
+    name: my-api-v2
     api_id: 'abc123321cba'
     swagger_file: my_api.yml
     deploy_desc: Make auth fix available.

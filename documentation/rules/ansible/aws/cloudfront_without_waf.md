@@ -49,6 +49,7 @@ Secure example (Ansible):
 - name: create a basic distribution with defaults and tags
   community.aws.cloudfront_distribution:
     state: present
+    caller_reference: my-distribution-waf-negative
     default_origin_domain_name: www.my-cloudfront-origin.com
     tags:
       Name: example distribution
@@ -62,6 +63,7 @@ Secure example (Ansible):
 - name: create a basic distribution with defaults and tags
   community.aws.cloudfront_distribution:
     state: present
+    caller_reference: my-distribution-waf
     default_origin_domain_name: www.my-cloudfront-origin.com
     tags:
       Name: example distribution

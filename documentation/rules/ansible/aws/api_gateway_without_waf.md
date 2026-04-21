@@ -4,7 +4,7 @@ group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_without_waf"
   id: "f5f38943-664b-4acc-ab11-f292fa10ed0b"
-  display_name: "API gateway without WAF"
+  display_name: "API Gateway without WAF"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"
@@ -52,6 +52,7 @@ WebACLAssociation:
     arn: "arn:aws:apigateway:region::/restapis/api-id/stages/produ"
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
   community.aws.api_gateway:
+    name: my-api
     swagger_file: my_api.yml
     stage: produ
     cache_enabled: true
@@ -71,6 +72,7 @@ WebACLAssociation:
     arn: "arn:aws:apigateway:region::/restapis/api-id/stages/prod"
 - name: Setup AWS API Gateway setup on AWS and deploy API definition2
   community.aws.api_gateway:
+    name: my-api
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true

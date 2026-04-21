@@ -1,10 +1,10 @@
 ---
-title: "Beta - CVM instance using user data"
+title: "CVM instance using user data"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cvm_instance_using_user_data"
   id: "5bb6fa08-5e84-4760-a54a-cdcd66626976"
-  display_name: "Beta - CVM instance using user data"
+  display_name: "CVM instance using user data"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "LOW"

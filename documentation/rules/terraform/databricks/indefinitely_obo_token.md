@@ -1,10 +1,10 @@
 ---
-title: "Beta - Databricks OBO token has indefinite lifetime"
+title: "Indefinitely Databricks OBO token lifetime"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/indefinitely_obo_token"
   id: "23e1f5f0-12b7-4d7e-9087-f60f42ccd514"
-  display_name: "Beta - Databricks OBO token has indefinite lifetime"
+  display_name: "Indefinitely Databricks OBO token lifetime"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "MEDIUM"

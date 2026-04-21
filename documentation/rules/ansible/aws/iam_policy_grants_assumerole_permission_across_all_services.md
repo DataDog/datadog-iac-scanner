@@ -36,6 +36,7 @@ In Ansible resources `amazon.aws.iam_managed_policy` and `iam_managed_policy`, c
 ```yaml
 - name: Create IAM Managed Policy
   amazon.aws.iam_managed_policy:
+    name: my-iam-policy
     policy_name: ManagedPolicy
     policy:
       Version: '2012-10-17'
@@ -51,6 +52,7 @@ In Ansible resources `amazon.aws.iam_managed_policy` and `iam_managed_policy`, c
 ```yaml
 - name: Create IAM Managed Policy
   amazon.aws.iam_managed_policy:
+    name: my-iam-policy
     policy_name: "ManagedPolicy"
     policy:
       Version: "2012-10-17"

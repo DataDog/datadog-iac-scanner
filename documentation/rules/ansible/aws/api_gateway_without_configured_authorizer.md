@@ -57,6 +57,7 @@ paths:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition3
   community.aws.api_gateway:
+    name: my-api
     swagger_file: swaggerFile.yaml
     stage: production
     cache_enabled: true
@@ -70,6 +71,7 @@ paths:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition22222
   community.aws.api_gateway:
+    name: my-api
     swagger_dict:
       {
         "openapi": "3.0.0",
@@ -113,6 +115,7 @@ paths:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API 222
   community.aws.api_gateway:
+    name: my-api
     swagger_text: |
       openapi: 3.0.0
       info:
@@ -144,6 +147,7 @@ paths:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition2
   community.aws.api_gateway:
+    name: my-api
     stage: production
     cache_enabled: true
     cache_size: "1.6"
@@ -156,6 +160,7 @@ paths:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API 222
   community.aws.api_gateway:
+    name: my-api
     swagger_file: swaggerFileWithoutAuthorizer.yaml
     stage: production
     cache_enabled: true
@@ -169,6 +174,7 @@ paths:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API 222
   community.aws.api_gateway:
+    name: my-api
     swagger_text: |
       openapi: 3.0.0
       info:

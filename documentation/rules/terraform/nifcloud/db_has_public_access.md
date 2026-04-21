@@ -1,14 +1,14 @@
 ---
-title: "Beta - Nifcloud RDB has public DB access"
+title: "Nifcloud RDB has public DB access"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/db_has_public_access"
   id: "fb387023-e4bb-42a8-9a70-6708aa7ff21b"
-  display_name: "Beta - Nifcloud RDB has public DB access"
+  display_name: "Nifcloud RDB has public DB access"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "HIGH"
-  category: "Networking and Firewall"
+  category: "Access Control"
 ---
 ## Metadata
 
@@ -20,7 +20,7 @@ meta:
 
 **Severity:** High
 
-**Category:** Networking and Firewall
+**Category:** Access Control
 
 #### Learn More
 

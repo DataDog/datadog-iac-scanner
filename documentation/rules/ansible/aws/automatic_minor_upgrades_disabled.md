@@ -56,6 +56,7 @@ Secure Ansible example:
     auto_minor_version_upgrade: true
 - name: negative - Create a DB instance using the default AWS KMS encryption key
   amazon.aws.rds_instance:
+    db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -67,6 +68,7 @@ Secure Ansible example:
     auto_minor_version_upgrade: yes
 - name: negative - Create a DB instance using the default AWS KMS encryption key
   amazon.aws.rds_instance:
+    db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -92,6 +94,7 @@ Secure Ansible example:
     auto_minor_version_upgrade: false
 - name: community - Create a DB instance using the default AWS KMS encryption key
   amazon.aws.rds_instance:
+    db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present
     engine: mariadb

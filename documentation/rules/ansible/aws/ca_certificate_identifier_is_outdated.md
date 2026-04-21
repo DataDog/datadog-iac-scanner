@@ -57,6 +57,7 @@ Secure Ansible task example:
     ca_certificate_identifier: rds-ca-2019
 - name: Create a DB instance using the default AWS KMS encryption key
   amazon.aws.rds_instance:
+    db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -82,6 +83,7 @@ Secure Ansible task example:
     ca_certificate_identifier: rds-ca-2015
 - name: create a DB instance using the default AWS KMS encryption key
   amazon.aws.rds_instance:
+    db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present
     engine: mariadb

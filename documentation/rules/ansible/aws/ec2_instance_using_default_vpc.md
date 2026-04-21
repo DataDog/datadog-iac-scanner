@@ -53,15 +53,7 @@ Secure example with a subnet in a non-default VPC:
 
 ## Compliant Code Examples
 ```yaml
-- name: Create subnet for database server2
-  amazon.aws.ec2_vpc_subnet:
-    state: present
-    vpc_id: "{{ myVPC.vpcs.0.id }}"
-    cidr: 10.0.1.16/28
-    tags:
-      Name: Database Subnet
-  register: my_subnet2
-- name: example2
+- name: Launch instance in subnet from custom VPC
   amazon.aws.ec2_instance:
     name: db-instance
     key_name: mykey
@@ -70,20 +62,20 @@ Secure example with a subnet in a non-default VPC:
     wait: yes
     vpc_subnet_id: "{{ my_subnet2.subnet.id }}"
     network:
-      assign_public_ip: true
+      assign_public_ip: false
+- name: Create subnet for database server2
+  amazon.aws.ec2_vpc_subnet:
+    state: present
+    vpc_id: "{{ myVPC.vpcs.0.id }}"
+    cidr: 10.0.1.16/28
+    tags:
+      Name: Database Subnet
+  register: my_subnet2
 
 ```
 ## Non-Compliant Code Examples
 ```yaml
-- name: Create subnet for database server
-  amazon.aws.ec2_vpc_subnet:
-    state: present
-    vpc_id: "{{ defaultVPC.vpcs.0.id }}"
-    cidr: 10.0.1.16/28
-    tags:
-      Name: Database Subnet
-  register: my_subnet
-- name: example
+- name: Launch instance in subnet from default VPC
   amazon.aws.ec2_instance:
     name: db-instance
     key_name: mykey
@@ -92,6 +84,14 @@ Secure example with a subnet in a non-default VPC:
     wait: yes
     vpc_subnet_id: "{{ my_subnet.subnet.id }}"
     network:
-      assign_public_ip: true
+      assign_public_ip: false
+- name: Create subnet for database server
+  amazon.aws.ec2_vpc_subnet:
+    state: present
+    vpc_id: "{{ defaultVPC.vpcs.0.id }}"
+    cidr: 10.0.1.16/28
+    tags:
+      Name: Database Subnet
+  register: my_subnet
 
 ```

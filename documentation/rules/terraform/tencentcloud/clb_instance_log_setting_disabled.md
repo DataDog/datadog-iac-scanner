@@ -1,10 +1,10 @@
 ---
-title: "Beta - CLB instance log setting disabled"
+title: "CLB instance log setting disabled"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/clb_instance_log_setting_disabled"
   id: "ada01ed1-b10c-4f2a-b110-b20fa4f9baa6"
-  display_name: "Beta - CLB instance log setting disabled"
+  display_name: "CLB instance log setting disabled"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "MEDIUM"

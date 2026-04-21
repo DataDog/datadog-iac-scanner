@@ -48,10 +48,12 @@ Secure example:
 - name: Create an empty bucket
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object
     mode: create
 - name: Create an empty bucket2
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object-2
     mode: create
     permission: private
 
@@ -62,6 +64,7 @@ Secure example:
 - name: Create an empty bucket2
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object
     mode: create
     permission: authenticated-read
 

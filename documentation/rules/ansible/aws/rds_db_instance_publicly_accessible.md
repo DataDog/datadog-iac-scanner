@@ -69,6 +69,7 @@ Secure example:
 ---
 - name: community - Create a DB instance using the default AWS KMS encryption key
   amazon.aws.rds_instance:
+    db_instance_identifier: my-db-1
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -78,14 +79,19 @@ Secure example:
     password: "{{ password }}"
     allocated_storage: "{{ allocated_storage }}"
     publicly_accessible: Yes
-- name: Create RDS instance publicly accessible
+- name: community - Basic mysql provisioning example
   amazon.aws.rds_instance:
-    db_instance_identifier: new-database
-    engine: mysql
-    db_instance_class: db.t3.medium
-    username: admin
-    password: "{{ password }}"
-    allocated_storage: 10
-    publicly_accessible: true
+    db_instance_identifier: my-db-2
+    command: create
+    instance_name: new-database
+    db_engine: MySQL
+    size: 10
+    instance_type: db.m1.small
+    username: mysql_admin
+    password: 1nsecure
+    publicly_accessible: "true"
+    tags:
+      Environment: testing
+      Application: cms
 
 ```

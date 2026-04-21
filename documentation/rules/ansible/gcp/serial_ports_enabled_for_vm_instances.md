@@ -47,12 +47,14 @@ Secure Ansible example:
 ```yaml
 - name: serial_disabled
   google.cloud.gcp_compute_instance:
+    name: serial-disabled-instance
     metadata:
       serial-port-enabled: no
     zone: us-central1-a
     auth_kind: serviceaccount
 - name: serial_undefined
   google.cloud.gcp_compute_instance:
+    name: serial-undefined-instance
     metadata:
       startup-script-url: gs:://graphite-playground/bootstrap.sh
       cost-center: '12345'
@@ -64,6 +66,7 @@ Secure Ansible example:
 ```yaml
 - name: serial_enabled
   google.cloud.gcp_compute_instance:
+    name: serial-enabled-instance
     metadata:
       serial-port-enable: yes
     zone: us-central1-a

@@ -49,7 +49,7 @@ Secure example using an explicit security group ID:
 
 ## Compliant Code Examples
 ```yaml
-- name: example2
+- name: Launch instance with custom SG
   amazon.aws.ec2_instance:
     name: web-server
     key_name: mykey
@@ -59,14 +59,14 @@ Secure example using an explicit security group ID:
     security_group: my_sg
     vpc_subnet_id: subnet-29e63245
     network:
-      assign_public_ip: true
+      assign_public_ip: false
 
 ```
 ## Non-Compliant Code Examples
 ```yaml
-- name: example2
+- name: Launch instance with default SG in list
   amazon.aws.ec2_instance:
-    name: web-server
+    name: web-server-2
     key_name: mykey
     instance_type: t2.micro
     image_id: ami-123456
@@ -75,12 +75,12 @@ Secure example using an explicit security group ID:
       - default
     vpc_subnet_id: subnet-29e63245
     network:
-      assign_public_ip: true
+      assign_public_ip: false
 
 ```
 
 ```yaml
-- name: example
+- name: Launch instance with default SG
   amazon.aws.ec2_instance:
     name: web-server
     key_name: mykey
@@ -90,6 +90,6 @@ Secure example using an explicit security group ID:
     security_group: default
     vpc_subnet_id: subnet-29e63245
     network:
-      assign_public_ip: true
+      assign_public_ip: false
 
 ```

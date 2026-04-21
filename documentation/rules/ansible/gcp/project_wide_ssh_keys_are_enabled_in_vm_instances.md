@@ -47,6 +47,7 @@ Secure configuration example for an Ansible task:
 ```yaml
 - name: ssh_keys_blocked
   google.cloud.gcp_compute_instance:
+    name: ssh-keys-blocked-instance
     metadata:
       block-project-ssh-keys: yes
     zone: us-central1-a
@@ -57,12 +58,14 @@ Secure configuration example for an Ansible task:
 ```yaml
 - name: ssh_keys_unblocked
   google.cloud.gcp_compute_instance:
+    name: ssh-keys-unblocked-instance
     metadata:
       block-project-ssh-keys: no
     zone: us-central1-a
     auth_kind: serviceaccount
 - name: ssh_keys_missing
   google.cloud.gcp_compute_instance:
+    name: ssh-keys-missing-instance
     metadata:
       startup-script-url: gs:://graphite-playground/bootstrap.sh
       cost-center: '12345'
@@ -70,6 +73,7 @@ Secure configuration example for an Ansible task:
     auth_kind: serviceaccount
 - name: no_metadata
   google.cloud.gcp_compute_instance:
+    name: no-metadata-instance
     zone: us-central1-a
     auth_kind: serviceaccount
 

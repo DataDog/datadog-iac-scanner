@@ -46,6 +46,7 @@ Secure Ansible task example:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
   community.aws.api_gateway:
+    name: my-private-api
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true
@@ -59,6 +60,7 @@ Secure Ansible task example:
 ```yaml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
   community.aws.api_gateway:
+    name: my-edge-api
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true

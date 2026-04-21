@@ -1,10 +1,10 @@
 ---
-title: "Beta - Databricks token has indefinite lifetime"
+title: "Indefinitely Databricks token lifetime"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/indefinitely_token"
   id: "7d05ca25-91b4-42ee-b6f6-b06611a87ce8"
-  display_name: "Beta - Databricks token has indefinite lifetime"
+  display_name: "Indefinitely Databricks token lifetime"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "MEDIUM"

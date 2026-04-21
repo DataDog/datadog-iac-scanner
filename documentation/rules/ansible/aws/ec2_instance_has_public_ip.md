@@ -56,14 +56,12 @@ Secure examples:
 
 ## Compliant Code Examples
 ```yaml
-- name: Launch instance without public IP
-  amazon.aws.ec2_instance:
-    name: my-instance
+- amazon.aws.ec2:
     key_name: mykey
     instance_type: t2.micro
+    count: 3
     vpc_subnet_id: subnet-29e63245
-    network:
-      assign_public_ip: false
+    assign_public_ip: false
 - name: Create an ec2 launch template
   amazon.aws.ec2_launch_template:
     name: my_template
@@ -88,14 +86,6 @@ Secure examples:
 ```
 ## Non-Compliant Code Examples
 ```yaml
-- name: example
-  amazon.aws.ec2_instance:
-    name: my-instance
-    key_name: mykey
-    instance_type: t2.micro
-    vpc_subnet_id: subnet-29e63245
-    network:
-      assign_public_ip: yes
 - name: Create an ec2 launch template
   amazon.aws.ec2_launch_template:
     name: "my_template"

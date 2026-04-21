@@ -1,10 +1,10 @@
 ---
-title: "Beta - CLB listener using insecure protocols"
+title: "CLB listener using insecure protocols"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/clb_listener_using_insecure_protocols"
   id: "fe08b81c-12e9-4b5e-9006-4218fca750fd"
-  display_name: "Beta - CLB listener using insecure protocols"
+  display_name: "CLB listener using insecure protocols"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "HIGH"

@@ -34,7 +34,7 @@ Resources with active access keys for non‑root users are flagged. Remediate by
 
 ## Compliant Code Examples
 ```yaml
-# Root user with active key (covered by a separate rule, not flagged here)
+# Root user with active key (covered by root_account_has_active_access_keys)
 - name: Create root access key
   amazon.aws.iam_access_key:
     user_name: root
@@ -59,7 +59,6 @@ Resources with active access keys for non‑root users are flagged. Remediate by
   amazon.aws.iam_access_key:
     user_name: jcleese
     state: present
-
 - name: Create another non-root user with active access key
   amazon.aws.iam_access_key:
     user_name: mpython

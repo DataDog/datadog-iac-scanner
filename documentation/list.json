@@ -8,31 +8,31 @@
         "rules": [
           {
             "name": "alb_listening_on_http",
-            "short_description": "ALB Listening on HTTP"
+            "short_description": "ALB listening on HTTP"
           },
           {
             "name": "ami_not_encrypted",
-            "short_description": "AMI Not Encrypted"
+            "short_description": "AMI not encrypted"
           },
           {
             "name": "ami_shared_with_multiple_accounts",
-            "short_description": "AMI Shared With Multiple Accounts"
+            "short_description": "AMI shared with multiple accounts"
           },
           {
             "name": "api_gateway_endpoint_config_is_not_private",
-            "short_description": "API Gateway Endpoint Config is Not Private"
+            "short_description": "API Gateway endpoint config is not private"
           },
           {
             "name": "api_gateway_with_cloudwatch_logging_disabled",
-            "short_description": "API Gateway With CloudWatch Logging Disabled"
+            "short_description": "API Gateway with CloudWatch Logs disabled"
           },
           {
             "name": "api_gateway_without_configured_authorizer",
-            "short_description": "API Gateway Without Configured Authorizer"
+            "short_description": "API Gateway without configured authorizer"
           },
           {
             "name": "api_gateway_without_ssl_certificate",
-            "short_description": "API Gateway Without SSL Certificate"
+            "short_description": "API Gateway without SSL certificate"
           },
           {
             "name": "api_gateway_without_waf",
@@ -40,191 +40,191 @@
           },
           {
             "name": "api_gateway_xray_disabled",
-            "short_description": "API Gateway X-Ray Disabled"
+            "short_description": "API Gateway X-Ray disabled"
           },
           {
             "name": "authentication_without_mfa",
-            "short_description": "Authentication Without MFA"
+            "short_description": "Authentication without MFA"
           },
           {
             "name": "auto_scaling_group_with_no_associated_elb",
-            "short_description": "Auto Scaling Group With No Associated ELB"
+            "short_description": "Auto Scaling Group with no associated ELB"
           },
           {
             "name": "automatic_minor_upgrades_disabled",
-            "short_description": "Automatic Minor Upgrades Disabled"
+            "short_description": "Automatic minor upgrades disabled"
           },
           {
             "name": "aws_password_policy_with_unchangeable_passwords",
-            "short_description": "AWS Password Policy With Unchangeable Passwords"
+            "short_description": "AWS password policy with unchangeable passwords"
           },
           {
             "name": "batch_job_definition_with_privileged_container_properties",
-            "short_description": "Batch Job Definition With Privileged Container Properties"
+            "short_description": "Batch job definition with privileged container properties"
           },
           {
             "name": "ca_certificate_identifier_is_outdated",
-            "short_description": "CA Certificate Identifier Is Outdated"
+            "short_description": "CA certificate identifier is outdated"
           },
           {
             "name": "cdn_configuration_is_missing",
-            "short_description": "CDN Configuration Is Missing"
+            "short_description": "CDN configuration is missing"
           },
           {
             "name": "certificate_has_expired",
-            "short_description": "Certificate Has Expired"
+            "short_description": "Certificate has expired"
           },
           {
             "name": "certificate_rsa_key_bytes_lower_than_256",
-            "short_description": "Certificate RSA Key Bytes Lower Than 256"
+            "short_description": "Certificate RSA key bytes lower than 256"
           },
           {
             "name": "cloudfront_logging_disabled",
-            "short_description": "CloudFront Logging Disabled"
+            "short_description": "CloudFront logging disabled"
           },
           {
             "name": "cloudfront_without_minimum_protocol_tls_1.2",
-            "short_description": "CloudFront Without Minimum Protocol TLS 1.2"
+            "short_description": "CloudFront without minimum protocol TLS 1.2"
           },
           {
             "name": "cloudfront_without_waf",
-            "short_description": "CloudFront Without WAF"
+            "short_description": "CloudFront without WAF"
           },
           {
             "name": "cloudtrail_log_file_validation_disabled",
-            "short_description": "CloudTrail Log File Validation Disabled"
+            "short_description": "CloudTrail log file validation disabled"
           },
           {
             "name": "cloudtrail_log_files_not_encrypted_with_kms",
-            "short_description": "CloudTrail Log Files Not Encrypted With KMS"
+            "short_description": "CloudTrail log files not encrypted with KMS"
           },
           {
             "name": "cloudtrail_logging_disabled",
-            "short_description": "CloudTrail Logging Disabled"
+            "short_description": "CloudTrail logging disabled"
           },
           {
             "name": "cloudtrail_multi_region_disabled",
-            "short_description": "CloudTrail Multi Region Disabled"
+            "short_description": "CloudTrail multi-region is disabled"
           },
           {
             "name": "cloudtrail_not_integrated_with_cloudwatch",
-            "short_description": "CloudTrail Not Integrated With CloudWatch"
+            "short_description": "CloudTrail not integrated with CloudWatch"
           },
           {
             "name": "cloudtrail_sns_topic_name_undefined",
-            "short_description": "CloudTrail SNS Topic Name Undefined"
+            "short_description": "CloudTrail SNS topic name undefined"
           },
           {
             "name": "cloudwatch_without_retention_period_specified",
-            "short_description": "CloudWatch Without Retention Period Specified"
+            "short_description": "CloudWatch without retention period specified"
           },
           {
             "name": "cmk_is_unusable",
-            "short_description": "CMK Is Unusable"
+            "short_description": "CMK is unusable"
           },
           {
             "name": "cmk_rotation_disabled",
-            "short_description": "CMK Rotation Disabled"
+            "short_description": "CMK rotation disabled"
           },
           {
             "name": "codebuild_not_encrypted",
-            "short_description": "CodeBuild Not Encrypted"
+            "short_description": "CodeBuild project is not encrypted"
           },
           {
             "name": "config_configuration_aggregator_to_all_regions_disabled",
-            "short_description": "Configuration Aggregator to All Regions Disabled"
+            "short_description": "Configuration aggregator to all regions disabled"
           },
           {
             "name": "config_rule_for_encrypted_volumes_is_disabled",
-            "short_description": "Config Rule For Encrypted Volumes Disabled"
+            "short_description": "Config rule for encrypted volumes disabled"
           },
           {
             "name": "cross_account_iam_assume_role_policy_without_external_id_or_mfa",
-            "short_description": "Cross-Account IAM Assume Role Policy Without ExternalId or MFA"
+            "short_description": "Cross-account IAM assume role policy without ExternalId or MFA"
           },
           {
             "name": "db_instance_storage_not_encrypted",
-            "short_description": "DB Instance Storage Not Encrypted"
+            "short_description": "DB instance storage not encrypted"
           },
           {
             "name": "db_security_group_open_to_large_scope",
-            "short_description": "DB Security Group Open To Large Scope"
+            "short_description": "DB security group open to large scope"
           },
           {
             "name": "db_security_group_with_public_scope",
-            "short_description": "DB Security Group With Public Scope"
+            "short_description": "DB security group with public scope"
           },
           {
             "name": "default_security_groups_with_unrestricted_traffic",
-            "short_description": "Default Security Groups With Unrestricted Traffic"
+            "short_description": "Default security groups with unrestricted traffic"
           },
           {
             "name": "ebs_volume_encryption_disabled",
-            "short_description": "EBS Volume Encryption Disabled"
+            "short_description": "EBS volume encryption disabled"
           },
           {
             "name": "ec2_group_has_public_interface",
-            "short_description": "EC2 Group Has Public Interface"
+            "short_description": "EC2 security group allows public access"
           },
           {
             "name": "ec2_instance_has_public_ip",
-            "short_description": "EC2 Instance Has Public IP"
+            "short_description": "EC2 instance has public IP"
           },
           {
             "name": "ec2_instance_using_default_security_group",
-            "short_description": "EC2 Instance Using Default Security Group"
+            "short_description": "EC2 instance using default security group"
           },
           {
             "name": "ec2_instance_using_default_vpc",
-            "short_description": "EC2 Instance Using Default VPC"
+            "short_description": "EC2 instance using default VPC"
           },
           {
             "name": "ec2_not_ebs_optimized",
-            "short_description": "EC2 Not EBS Optimized"
+            "short_description": "EC2 instance is not EBS optimized"
           },
           {
             "name": "ecr_image_tag_not_immutable",
-            "short_description": "ECR Image Tag Not Immutable"
+            "short_description": "ECR image tag not immutable"
           },
           {
             "name": "ecr_repository_is_publicly_accessible",
-            "short_description": "ECR Repository Is Publicly Accessible"
+            "short_description": "ECR repository is publicly accessible"
           },
           {
             "name": "ecs_service_admin_role_is_present",
-            "short_description": "ECS Service Admin Role Is Present"
+            "short_description": "ECS service admin role is present"
           },
           {
             "name": "ecs_service_without_running_tasks",
-            "short_description": "ECS Service Without Running Tasks"
+            "short_description": "ECS service without running tasks"
           },
           {
             "name": "ecs_services_assigned_with_public_ip_address",
-            "short_description": "ECS Services assigned with public IP address"
+            "short_description": "ECS services should not be assigned public IP addresses"
           },
           {
             "name": "ecs_task_definition_network_mode_not_recommended",
-            "short_description": "ECS Task Definition Network Mode Not Recommended"
+            "short_description": "ECS task definition network mode not recommended"
           },
           {
             "name": "efs_not_encrypted",
-            "short_description": "EFS Not Encrypted"
+            "short_description": "EFS not encrypted"
           },
           {
             "name": "efs_without_kms",
-            "short_description": "EFS Without KMS"
+            "short_description": "EFS without KMS"
           },
           {
             "name": "efs_without_tags",
-            "short_description": "EFS Without Tags"
+            "short_description": "EFS without tags"
           },
           {
             "name": "elasticache_using_default_port",
-            "short_description": "ElastiCache Using Default Port"
+            "short_description": "ElastiCache using default port"
           },
           {
             "name": "elasticache_without_vpc",
-            "short_description": "ElastiCache Without VPC"
+            "short_description": "ElastiCache without VPC"
           },
           {
             "name": "elasticsearch_with_https_disabled",
@@ -232,107 +232,107 @@
           },
           {
             "name": "elb_using_insecure_protocols",
-            "short_description": "ELB Using Insecure Protocols"
+            "short_description": "ELB using insecure protocols"
           },
           {
             "name": "elb_using_weak_ciphers",
-            "short_description": "ELB Using Weak Ciphers"
+            "short_description": "ELB using weak ciphers"
           },
           {
             "name": "hardcoded_aws_access_key",
-            "short_description": "Hardcoded AWS Access Key"
+            "short_description": "Hardcoded AWS access key"
           },
           {
             "name": "hardcoded_aws_access_key_in_lambda",
-            "short_description": "Hardcoded AWS Access Key In Lambda"
+            "short_description": "Hardcoded AWS access key in Lambda"
           },
           {
             "name": "http_port_open_to_internet",
-            "short_description": "HTTP Port Open To Internet"
+            "short_description": "HTTP port open to internet"
           },
           {
             "name": "iam_access_key_is_exposed",
-            "short_description": "IAM Access Key Is Exposed"
+            "short_description": "IAM access key is exposed"
           },
           {
             "name": "iam_database_auth_not_enabled",
-            "short_description": "IAM Database Auth Not Enabled"
+            "short_description": "IAM database authentication is not enabled"
           },
           {
             "name": "iam_group_without_users",
-            "short_description": "IAM Group Without Users"
+            "short_description": "IAM group without users"
           },
           {
             "name": "iam_password_without_minimum_length",
-            "short_description": "IAM Password Without Minimum Length"
+            "short_description": "IAM password without minimum length"
           },
           {
             "name": "iam_policies_attached_to_user",
-            "short_description": "IAM Policies Attached To User"
+            "short_description": "IAM policies attached to user"
           },
           {
             "name": "iam_policies_with_full_privileges",
-            "short_description": "IAM Policies With Full Privileges"
+            "short_description": "IAM policies with full privileges"
           },
           {
             "name": "iam_policy_grants_assumerole_permission_across_all_services",
-            "short_description": "IAM Policy Grants 'AssumeRole' Permission Across All Services"
+            "short_description": "IAM policy grants 'AssumeRole' permission across all services"
           },
           {
             "name": "iam_policy_grants_full_permissions",
-            "short_description": "IAM Policy Grants Full Permissions"
+            "short_description": "IAM policy grants full permissions"
           },
           {
             "name": "iam_role_allows_all_principals_to_assume",
-            "short_description": "IAM Role Allows All Principals To Assume"
+            "short_description": "IAM role allows all principals to assume"
           },
           {
             "name": "instance_uses_metadata_service_IMDSv1",
-            "short_description": "Instance Uses Metadata Service IMDSv1"
+            "short_description": "Instance uses metadata service IMDSv1"
           },
           {
             "name": "instance_with_no_vpc",
-            "short_description": "Instance With No VPC"
+            "short_description": "Instance with no VPC"
           },
           {
             "name": "kinesis_not_encrypted_with_kms",
-            "short_description": "Kinesis Not Encrypted With KMS"
+            "short_description": "Kinesis not encrypted with KMS"
           },
           {
             "name": "kms_key_with_full_permissions",
-            "short_description": "KMS Key With Vulnerable Policy"
+            "short_description": "KMS key with vulnerable policy"
           },
           {
             "name": "lambda_function_without_tags",
-            "short_description": "Lambda Function Without Tags"
+            "short_description": "Lambda function without tags"
           },
           {
             "name": "lambda_functions_without_x-ray_tracing",
-            "short_description": "Lambda Functions Without X-Ray Tracing"
+            "short_description": "Lambda functions without X-Ray tracing"
           },
           {
             "name": "lambda_permission_misconfigured",
-            "short_description": "Lambda Permission Misconfigured"
+            "short_description": "Lambda permission misconfigured"
           },
           {
             "name": "lambda_permission_principal_is_wildcard",
-            "short_description": "Lambda Permission Principal Is Wildcard"
+            "short_description": "Lambda permission principal is wildcard"
           },
           {
             "name": "launch_configuration_is_not_encrypted",
-            "short_description": "Launch Configuration Is Not Encrypted"
+            "short_description": "Launch configuration is not encrypted"
           },
           {
             "name": "misconfigured_password_policy_expiration",
-            "short_description": "Misconfigured Password Policy Expiration"
+            "short_description": "Misconfigured password policy expiration"
           },
           {
             "name": "no_stack_policy",
-            "short_description": "No Stack Policy"
+            "short_description": "No stack policy"
           },
           {
             "name": "password_without_reuse_prevention",
-            "short_description": "Password Without Reuse Prevention"
+            "short_description": "Password without reuse prevention"
           },
           {
             "name": "public_lambda_via_api_gateway",
@@ -340,175 +340,175 @@
           },
           {
             "name": "public_port_wide",
-            "short_description": "Public Port Wide"
+            "short_description": "Public port with wide port range"
           },
           {
             "name": "rds_associated_with_public_subnet",
-            "short_description": "RDS Associated with Public Subnet"
+            "short_description": "RDS instance associated with a public subnet"
           },
           {
             "name": "rds_db_instance_publicly_accessible",
-            "short_description": "RDS DB Instance Publicly Accessible"
+            "short_description": "RDS DB instance is not publicly accessible"
           },
           {
             "name": "rds_using_default_port",
-            "short_description": "RDS Using Default Port"
+            "short_description": "RDS instance uses a default port"
           },
           {
             "name": "rds_with_backup_disabled",
-            "short_description": "RDS With Backup Disabled"
+            "short_description": "RDS instance with backup disabled"
           },
           {
             "name": "redis_not_compliant",
-            "short_description": "Redis Not Compliant"
+            "short_description": "Redis not compliant"
           },
           {
             "name": "redshift_not_encrypted",
-            "short_description": "Redshift Not Encrypted"
+            "short_description": "Redshift cluster is not encrypted"
           },
           {
             "name": "redshift_publicly_accessible",
-            "short_description": "Redshift Publicly Accessible"
+            "short_description": "Redshift publicly accessible"
           },
           {
             "name": "redshift_using_default_port",
-            "short_description": "Redshift Using Default Port"
+            "short_description": "Redshift using default port"
           },
           {
             "name": "remote_desktop_port_open",
-            "short_description": "Remote Desktop Port Open To Internet"
+            "short_description": "Remote desktop port open to internet"
           },
           {
             "name": "root_account_has_active_access_keys",
-            "short_description": "Root Account Has Active Access Keys"
+            "short_description": "Root account has active access keys"
           },
           {
             "name": "route53_record_undefined",
-            "short_description": "Route53 Record Undefined"
+            "short_description": "Route 53 record undefined"
           },
           {
             "name": "s3_bucket_access_to_any_principal",
-            "short_description": "S3 Bucket Access to Any Principal"
+            "short_description": "S3 bucket access to any principal"
           },
           {
             "name": "s3_bucket_acl_allows_read_to_all_users",
-            "short_description": "S3 Bucket ACL Allows Read to All Users"
+            "short_description": "S3 bucket ACL allows read access to all users"
           },
           {
             "name": "s3_bucket_acl_allows_read_to_any_authenticated_user",
-            "short_description": "S3 Bucket ACL Allows Read to Any Authenticated User"
+            "short_description": "S3 bucket ACL allows read access to any authenticated user"
           },
           {
             "name": "s3_bucket_allows_delete_action_from_all_principals",
-            "short_description": "S3 Bucket Allows Delete Action From All Principals"
+            "short_description": "S3 bucket allows delete action from all principals"
           },
           {
             "name": "s3_bucket_allows_get_action_from_all_principals",
-            "short_description": "S3 Bucket Allows Get Action From All Principals"
+            "short_description": "S3 bucket allows GET action from all principals"
           },
           {
             "name": "s3_bucket_allows_list_action_from_all_principals",
-            "short_description": "S3 Bucket Allows List Action From All Principals"
+            "short_description": "S3 bucket allows list action from all principals"
           },
           {
             "name": "s3_bucket_allows_put_action_from_all_principals",
-            "short_description": "S3 Bucket Allows Put Action From All Principals"
+            "short_description": "S3 bucket allows put action from all principals"
           },
           {
             "name": "s3_bucket_logging_disabled",
-            "short_description": "S3 Bucket Logging Disabled"
+            "short_description": "S3 bucket logging disabled"
           },
           {
             "name": "s3_bucket_with_all_permissions",
-            "short_description": "S3 Bucket With All Permissions"
+            "short_description": "S3 bucket with all permissions"
           },
           {
             "name": "s3_bucket_with_public_access",
-            "short_description": "S3 Bucket With Public Access"
+            "short_description": "S3 bucket with public access"
           },
           {
             "name": "s3_bucket_with_unsecured_cors_rule",
-            "short_description": "S3 Bucket with Unsecured CORS Rule"
+            "short_description": "S3 bucket with unsecured CORS rule"
           },
           {
             "name": "s3_bucket_without_server-side_encryption",
-            "short_description": "S3 Bucket Without Server-side-encryption"
+            "short_description": "S3 bucket without server-side encryption"
           },
           {
             "name": "s3_bucket_without_versioning",
-            "short_description": "S3 Bucket Without Versioning"
+            "short_description": "S3 bucket without versioning"
           },
           {
             "name": "secure_ciphers_disabled",
-            "short_description": "Secure Ciphers Disabled"
+            "short_description": "Secure ciphers disabled"
           },
           {
             "name": "security_group_ingress_not_restricted",
-            "short_description": "Security Group Ingress Not Restricted"
+            "short_description": "Security group ingress not restricted"
           },
           {
             "name": "security_group_with_unrestricted_access_to_ssh",
-            "short_description": "Security Group With Unrestricted Access To SSH"
+            "short_description": "Security group with unrestricted access to SSH"
           },
           {
             "name": "ses_policy_with_allowed_iam_actions",
-            "short_description": "SES Policy With Allowed IAM Actions"
+            "short_description": "SES policy with allowed IAM actions"
           },
           {
             "name": "sns_topic_is_publicly_accessible",
-            "short_description": "SNS Topic is Publicly Accessible"
+            "short_description": "SNS topic is publicly accessible"
           },
           {
             "name": "sql_analysis_services_port_2383_is_publicly_accessible",
-            "short_description": "SQL Analysis Services Port 2383 (TCP) Is Publicly Accessible"
+            "short_description": "SQL Analysis Services port 2383 (TCP) is publicly accessible"
           },
           {
             "name": "sqs_policy_allows_all_actions",
-            "short_description": "SQS Policy Allows All Actions"
+            "short_description": "SQS policy allows all actions"
           },
           {
             "name": "sqs_policy_with_public_access",
-            "short_description": "SQS Policy With Public Access"
+            "short_description": "SQS policy with public access"
           },
           {
             "name": "sqs_queue_exposed",
-            "short_description": "SQS Queue Exposed"
+            "short_description": "SQS queue exposed"
           },
           {
             "name": "sqs_with_sse_disabled",
-            "short_description": "SQS With SSE Disabled"
+            "short_description": "SQS queue with SSE disabled"
           },
           {
             "name": "stack_notifications_disabled",
-            "short_description": "Stack Notifications Disabled"
+            "short_description": "Stack notifications disabled"
           },
           {
             "name": "stack_retention_disabled",
-            "short_description": "Stack Retention Disabled"
+            "short_description": "Stack retention disabled"
           },
           {
             "name": "stack_without_template",
-            "short_description": "Stack Without Template"
+            "short_description": "Stack without template"
           },
           {
             "name": "unknown_port_exposed_to_internet",
-            "short_description": "Unknown Port Exposed To Internet"
+            "short_description": "Unknown port exposed to internet"
           },
           {
             "name": "unrestricted_security_group_ingress",
-            "short_description": "Unrestricted Security Group Ingress"
+            "short_description": "Unrestricted security group ingress"
           },
           {
             "name": "user_data_contains_encoded_private_key",
-            "short_description": "User Data Contains Encoded Private Key"
+            "short_description": "User data contains encoded private key"
           },
           {
             "name": "viewer_protocol_policy_allows_http",
-            "short_description": "Cloudfront Viewer Protocol Policy Allows HTTP"
+            "short_description": "CloudFront viewer protocol policy allows HTTP"
           },
           {
             "name": "vulnerable_default_ssl_certificate",
-            "short_description": "Vulnerable Default SSL Certificate"
+            "short_description": "Vulnerable default SSL certificate"
           }
         ]
       },
@@ -518,163 +518,163 @@
         "rules": [
           {
             "name": "ad_admin_not_configured_for_sql_server",
-            "short_description": "AD Admin Not Configured For SQL Server"
+            "short_description": "AD admin not configured for SQL server"
           },
           {
             "name": "admin_user_enabled_for_container_registry",
-            "short_description": "Admin User Enabled For Container Registry"
+            "short_description": "Admin user enabled for container registry"
           },
           {
             "name": "aks_monitoring_logging_disabled",
-            "short_description": "AKS Monitoring Logging Disabled"
+            "short_description": "AKS monitoring logging disabled"
           },
           {
             "name": "aks_network_policy_misconfigured",
-            "short_description": "AKS Network Policy Misconfigured"
+            "short_description": "AKS network policy misconfigured"
           },
           {
             "name": "aks_rbac_disabled",
-            "short_description": "AKS RBAC Disabled"
+            "short_description": "AKS RBAC disabled"
           },
           {
             "name": "azure_container_registry_with_no_locks",
-            "short_description": "Azure Container Registry With No Locks"
+            "short_description": "Azure Container Registry with no locks"
           },
           {
             "name": "azure_instance_using_basic_authentication",
-            "short_description": "Azure Instance Using Basic Authentication"
+            "short_description": "Azure instance using basic authentication"
           },
           {
             "name": "cosmosdb_account_ip_range_filter_not_set",
-            "short_description": "CosmosDB Account IP Range Filter Not Set"
+            "short_description": "CosmosDB account IP range filter not set"
           },
           {
             "name": "cosmosdb_account_without_tags",
-            "short_description": "Cosmos DB Account Without Tags"
+            "short_description": "Cosmos DB account without tags"
           },
           {
             "name": "default_azure_storage_account_network_access_is_too_permissive",
-            "short_description": "Default Azure Storage Account Network Access Is Too Permissive"
+            "short_description": "Default Azure storage account network access is too permissive"
           },
           {
             "name": "firewall_rule_allows_too_many_hosts_to_access_redis_cache",
-            "short_description": "Firewall Rule Allows Too Many Hosts To Access Redis Cache"
+            "short_description": "Firewall rule allows too many hosts to access Redis Cache"
           },
           {
             "name": "key_vault_soft_delete_is_disabled",
-            "short_description": "Key Vault Soft Delete Is Disabled"
+            "short_description": "Key Vault soft delete is disabled"
           },
           {
             "name": "log_retention_is_not_set",
-            "short_description": "Log Retention Is Not Set"
+            "short_description": "Log retention is not set"
           },
           {
             "name": "monitoring_log_profile_without_all_activities",
-            "short_description": "Monitoring Log Profile Without All Activities"
+            "short_description": "Monitoring log profile without all activities"
           },
           {
             "name": "mysql_ssl_connection_disabled",
-            "short_description": "MySQL SSL Connection Disabled"
+            "short_description": "MySQL SSL connection disabled"
           },
           {
             "name": "postgresql_log_checkpoints_disabled",
-            "short_description": "PostgreSQL Log Checkpoints Disabled"
+            "short_description": "PostgreSQL log checkpoints disabled"
           },
           {
             "name": "postgresql_log_connections_not_set",
-            "short_description": "PostgreSQL Log Connections Not Set"
+            "short_description": "PostgreSQL log connections not set"
           },
           {
             "name": "postgresql_log_disconnections_not_set",
-            "short_description": "PostgreSQL Log Disconnections Not Set"
+            "short_description": "PostgreSQL log disconnections not set"
           },
           {
             "name": "postgresql_log_duration_not_set",
-            "short_description": "PostgreSQL Log Duration Not Set"
+            "short_description": "PostgreSQL log duration not set"
           },
           {
             "name": "postgresql_server_without_connection_throttling",
-            "short_description": "PostgreSQL Server Without Connection Throttling"
+            "short_description": "PostgreSQL server without connection throttling"
           },
           {
             "name": "public_storage_account",
-            "short_description": "Public Storage Account"
+            "short_description": "Public storage account"
           },
           {
             "name": "redis_cache_allows_non_ssl_connections",
-            "short_description": "Redis Cache Allows Non SSL Connections"
+            "short_description": "Redis cache allows non-SSL connections"
           },
           {
             "name": "redis_entirely_accessible",
-            "short_description": "Redis Entirely Accessible"
+            "short_description": "Redis entirely accessible"
           },
           {
             "name": "redis_publicly_accessible",
-            "short_description": "Redis Publicly Accessible"
+            "short_description": "Redis publicly accessible"
           },
           {
             "name": "role_definition_allows_custom_role_creation",
-            "short_description": "Role Definition Allows Custom Role Creation"
+            "short_description": "Role definition allows custom role creation"
           },
           {
             "name": "security_group_is_not_configured",
-            "short_description": "Security Group is Not Configured"
+            "short_description": "Security group is not configured"
           },
           {
             "name": "sensitive_port_is_exposed_to_entire_network",
-            "short_description": "Sensitive Port Is Exposed To Entire Network"
+            "short_description": "Sensitive port is exposed to entire network"
           },
           {
             "name": "small_activity_log_retention_period",
-            "short_description": "Small Activity Log Retention Period"
+            "short_description": "Small activity log retention period"
           },
           {
             "name": "sql_server_ingress_from_any_ip",
-            "short_description": "SQLServer Ingress From Any IP"
+            "short_description": "SQLServer ingress from any IP"
           },
           {
             "name": "sql_server_predictable_active_directory_admin_account_name",
-            "short_description": "SQL Server Predictable Active Directory Account Name"
+            "short_description": "SQL Server predictable Active Directory account name"
           },
           {
             "name": "sql_server_predictable_admin_account_name",
-            "short_description": "SQL Server Predictable Admin Account Name"
+            "short_description": "SQL Server predictable admin account name"
           },
           {
             "name": "ssl_enforce_is_disabled",
-            "short_description": "SSL Enforce Disabled"
+            "short_description": "SSL enforce disabled"
           },
           {
             "name": "storage_account_not_forcing_https",
-            "short_description": "Storage Account Not Forcing HTTPS"
+            "short_description": "Storage account not forcing HTTPS"
           },
           {
             "name": "storage_account_not_using_latest_tls_encryption_version",
-            "short_description": "Storage Account Not Using Latest TLS Encryption Version"
+            "short_description": "Storage account not using latest TLS encryption version"
           },
           {
             "name": "storage_container_is_publicly_accessible",
-            "short_description": "Storage Container Is Publicly Accessible"
+            "short_description": "Storage container is publicly accessible"
           },
           {
             "name": "trusted_microsoft_services_not_enabled",
-            "short_description": "Trusted Microsoft Services Not Enabled"
+            "short_description": "Trusted Microsoft services not enabled"
           },
           {
             "name": "unrestricted_sql_server_acess",
-            "short_description": "Unrestricted SQL Server Access"
+            "short_description": "Unrestricted SQL Server access"
           },
           {
             "name": "vm_not_attached_to_network",
-            "short_description": "VM Not Attached To Network"
+            "short_description": "VM not attached to network"
           },
           {
             "name": "waf_is_disabled_for_azure_application_gateway",
-            "short_description": "WAF Is Disabled For Azure Application Gateway"
+            "short_description": "WAF is disabled for Azure Application Gateway"
           },
           {
             "name": "web_app_accepting_traffic_other_than_https",
-            "short_description": "Web App Accepting Traffic Other Than HTTPS"
+            "short_description": "Web app accepting traffic other than HTTPS"
           }
         ]
       },
@@ -684,19 +684,19 @@
         "rules": [
           {
             "name": "allow_unsafe_lookups_enabled_in_defaults",
-            "short_description": "Allow Unsafe Lookups Enabled In Defaults"
+            "short_description": "Allow unsafe lookups enabled in defaults"
           },
           {
             "name": "communication_over_http_in_defaults",
-            "short_description": "Communication Over HTTP In Defaults"
+            "short_description": "Communication over HTTP in defaults"
           },
           {
             "name": "logging_of_sensitive_data_in_defaults",
-            "short_description": "Logging of Sensitive Data In Defaults"
+            "short_description": "Logging of sensitive data in defaults"
           },
           {
             "name": "privilege_escalation_using_become_plugin_in_defaults",
-            "short_description": "Privilege Escalation Using Become Plugin In Defaults"
+            "short_description": "Privilege escalation using become plugin in defaults"
           }
         ]
       },
@@ -706,199 +706,199 @@
         "rules": [
           {
             "name": "bigquery_dataset_is_public",
-            "short_description": "BigQuery Dataset Is Public"
+            "short_description": "BigQuery dataset is public"
           },
           {
             "name": "client_certificate_disabled",
-            "short_description": "Client Certificate Disabled"
+            "short_description": "Client certificate disabled"
           },
           {
             "name": "cloud_dns_without_dnnsec",
-            "short_description": "Cloud DNS Without DNSSEC"
+            "short_description": "Cloud DNS without DNSSEC"
           },
           {
             "name": "cloud_sql_instance_with_contained_database_authentication_on",
-            "short_description": "Cloud SQL Instance With Contained Database Authentication On"
+            "short_description": "Cloud SQL instance with contained database authentication on"
           },
           {
             "name": "cloud_sql_instance_with_cross_db_ownership_chaining_on",
-            "short_description": "Cloud SQL Instance With Cross DB Ownership Chaining On"
+            "short_description": "Cloud SQL instance with cross DB ownership chaining on"
           },
           {
             "name": "cloud_storage_anonymous_or_publicly_accessible",
-            "short_description": "Cloud Storage Anonymous or Publicly Accessible"
+            "short_description": "Cloud storage anonymous or publicly accessible"
           },
           {
             "name": "cloud_storage_bucket_logging_not_enabled",
-            "short_description": "Cloud Storage Bucket Logging Not Enabled"
+            "short_description": "Cloud storage bucket logging not enabled"
           },
           {
             "name": "cloud_storage_bucket_versioning_disabled",
-            "short_description": "Cloud Storage Bucket Versioning Disabled"
+            "short_description": "Cloud storage bucket versioning disabled"
           },
           {
             "name": "cluster_labels_disabled",
-            "short_description": "Cluster Labels Disabled"
+            "short_description": "Cluster labels disabled"
           },
           {
             "name": "cluster_master_authentication_disabled",
-            "short_description": "Cluster Master Authentication Disabled"
+            "short_description": "Cluster master authentication disabled"
           },
           {
             "name": "compute_instance_is_publicly_accessible",
-            "short_description": "Compute Instance Is Publicly Accessible"
+            "short_description": "Compute instance is publicly accessible"
           },
           {
             "name": "cos_node_image_not_used",
-            "short_description": "COS Node Image Not Used"
+            "short_description": "COS node image not used"
           },
           {
             "name": "disk_encryption_disabled",
-            "short_description": "Disk Encryption Disabled"
+            "short_description": "Disk encryption disabled"
           },
           {
             "name": "dnssec_using_rsasha1",
-            "short_description": "DNSSEC Using RSASHA1"
+            "short_description": "DNSSEC using RSASHA1"
           },
           {
             "name": "gke_basic_authentication_enabled",
-            "short_description": "GKE Basic Authentication Enabled"
+            "short_description": "GKE basic authentication enabled"
           },
           {
             "name": "gke_legacy_authorization_enabled",
-            "short_description": "GKE Legacy Authorization Enabled"
+            "short_description": "GKE legacy authorization enabled"
           },
           {
             "name": "gke_master_authorized_networks_disabled",
-            "short_description": "GKE Master Authorized Networks Disabled"
+            "short_description": "GKE master authorized networks disabled"
           },
           {
             "name": "gke_using_default_service_account",
-            "short_description": "GKE Using Default Service Account"
+            "short_description": "GKE using default service account"
           },
           {
             "name": "google_compute_network_using_default_firewall_rule",
-            "short_description": "Google Compute Network Using Default Firewall Rule"
+            "short_description": "Google Compute network using default firewall rule"
           },
           {
             "name": "google_compute_network_using_firewall_allows_port_range",
-            "short_description": "Google Compute Network Using Firewall Rule that Allows Port Range"
+            "short_description": "Google Compute network using firewall rule that allows port range"
           },
           {
             "name": "google_compute_network_using_firewall_rule_allows_all_ports",
-            "short_description": "Google Compute Network Using Firewall Rule that Allows All Ports"
+            "short_description": "Google Compute network using firewall rule that allows all ports"
           },
           {
             "name": "google_compute_ssl_policy_weak_cipher_in_use",
-            "short_description": "Google Compute SSL Policy Weak Cipher In Use"
+            "short_description": "Google Compute SSL policy weak cipher in use"
           },
           {
             "name": "google_compute_subnetwork_with_private_google_access_disabled",
-            "short_description": "Google Compute Subnetwork with Private Google Access Disabled"
+            "short_description": "Google Compute subnetwork with Private Google Access disabled"
           },
           {
             "name": "google_container_node_pool_auto_repair_disabled",
-            "short_description": "Google Container Node Pool Auto Repair Disabled"
+            "short_description": "Google container node pool auto repair disabled"
           },
           {
             "name": "high_google_kms_crypto_key_rotation_period",
-            "short_description": "High Google KMS Crypto Key Rotation Period"
+            "short_description": "High Google KMS crypto key rotation period"
           },
           {
             "name": "ip_aliasing_disabled",
-            "short_description": "IP Aliasing Disabled"
+            "short_description": "IP aliasing disabled"
           },
           {
             "name": "ip_forwarding_enabled",
-            "short_description": "IP Forwarding Enabled"
+            "short_description": "IP forwarding enabled"
           },
           {
             "name": "mysql_instance_with_local_infile_on",
-            "short_description": "MySQL Instance With Local Infile On"
+            "short_description": "MySQL instance with local infile on"
           },
           {
             "name": "network_policy_disabled",
-            "short_description": "Network Policy Disabled"
+            "short_description": "Network policy disabled"
           },
           {
             "name": "node_auto_upgrade_disabled",
-            "short_description": "Node Auto Upgrade Disabled"
+            "short_description": "Node auto-upgrade disabled"
           },
           {
             "name": "oslogin_is_disabled_for_vm_instance",
-            "short_description": "OSLogin Is Disabled In VM Instance"
+            "short_description": "OSLogin is disabled in VM instance"
           },
           {
             "name": "postgresql_log_checkpoints_flag_not_set_to_on",
-            "short_description": "PostgreSQL log_checkpoints Flag Not Set To ON"
+            "short_description": "PostgreSQL log_checkpoints flag not set to on"
           },
           {
             "name": "postgresql_log_connections_disabled",
-            "short_description": "PostgreSQL Log Connections Disabled"
+            "short_description": "PostgreSQL log connections disabled"
           },
           {
             "name": "postgresql_logging_of_temporary_files_disabled",
-            "short_description": "PostgreSQL Logging Of Temporary Files Disabled"
+            "short_description": "PostgreSQL logging of temporary files disabled"
           },
           {
             "name": "postgresql_misconfigured_log_messages_flag",
-            "short_description": "PostgreSQL Misconfigured Log Messages Flag"
+            "short_description": "PostgreSQL misconfigured log messages flag"
           },
           {
             "name": "postgresql_misconfigured_logging_duration_flag",
-            "short_description": "PostgreSQL Misconfigured Logging Duration Flag"
+            "short_description": "PostgreSQL misconfigured logging duration flag"
           },
           {
             "name": "private_cluster_disabled",
-            "short_description": "Private Cluster Disabled"
+            "short_description": "Private cluster disabled"
           },
           {
             "name": "project_wide_ssh_keys_are_enabled_in_vm_instances",
-            "short_description": "Project-wide SSH Keys Are Enabled In VM Instances"
+            "short_description": "Project-wide SSH keys are enabled in VM instances"
           },
           {
             "name": "rdp_access_is_not_restricted",
-            "short_description": "RDP Access Is Not Restricted"
+            "short_description": "RDP access is not restricted"
           },
           {
             "name": "serial_ports_enabled_for_vm_instances",
-            "short_description": "Serial Ports Are Enabled For VM Instances"
+            "short_description": "Serial ports are enabled for VM instances"
           },
           {
             "name": "shielded_vm_disabled",
-            "short_description": "Shielded VM Disabled"
+            "short_description": "Shielded VM disabled"
           },
           {
             "name": "sql_db_instance_backup_disabled",
-            "short_description": "SQL DB Instance Backup Disabled"
+            "short_description": "SQL DB instance backup disabled"
           },
           {
             "name": "sql_db_instance_is_publicly_accessible",
-            "short_description": "SQL DB Instance Publicly Accessible"
+            "short_description": "SQL DB instance publicly accessible"
           },
           {
             "name": "sql_db_instance_with_ssl_disabled",
-            "short_description": "SQL DB Instance With SSL Disabled"
+            "short_description": "SQL DB instance with SSL disabled"
           },
           {
             "name": "ssh_access_is_not_restricted",
-            "short_description": "SSH Access Is Not Restricted"
+            "short_description": "SSH access is not restricted"
           },
           {
             "name": "stackdriver_logging_disabled",
-            "short_description": "Stackdriver Logging Disabled"
+            "short_description": "Stackdriver logging disabled"
           },
           {
             "name": "stackdriver_monitoring_disabled",
-            "short_description": "Stackdriver Monitoring Disabled"
+            "short_description": "Stackdriver monitoring disabled"
           },
           {
             "name": "using_default_service_account",
-            "short_description": "Using Default Service Account"
+            "short_description": "Using default service account"
           },
           {
             "name": "vm_with_full_cloud_access",
-            "short_description": "VM With Full Cloud Access"
+            "short_description": "VM with full cloud access"
           }
         ]
       },
@@ -908,27 +908,27 @@
         "rules": [
           {
             "name": "communication_over_http",
-            "short_description": "Communication Over HTTP"
+            "short_description": "Communication over HTTP"
           },
           {
             "name": "insecure_relative_path_resolution",
-            "short_description": "Insecure Relative Path Resolution"
+            "short_description": "Insecure relative path resolution"
           },
           {
             "name": "logging_of_sensitive_data",
-            "short_description": "Logging of Sensitive Data"
+            "short_description": "Logging of sensitive data"
           },
           {
             "name": "privilege_escalation_using_become_plugin",
-            "short_description": "Privilege Escalation Using Become Plugin"
+            "short_description": "Privilege escalation using become plugin"
           },
           {
             "name": "risky_file_permissions",
-            "short_description": "Risky File Permissions"
+            "short_description": "Risky file permissions"
           },
           {
             "name": "unpinned_package_version",
-            "short_description": "Unpinned Package Version"
+            "short_description": "Unpinned package version"
           }
         ]
       },
@@ -938,7 +938,7 @@
         "rules": [
           {
             "name": "ansible_tower_exposed_to_internet",
-            "short_description": "Ansible Tower Exposed To Internet"
+            "short_description": "Ansible Tower exposed to the internet"
           }
         ]
       }
@@ -954,18 +954,6 @@
           {
             "name": "anonymous_definition",
             "short_description": "Anonymous definition"
-          },
-          {
-            "name": "archived_uses",
-            "short_description": "Archived uses"
-          },
-          {
-            "name": "artipacked",
-            "short_description": "Artipacked"
-          },
-          {
-            "name": "bot_conditions",
-            "short_description": "Bot conditions"
           },
           {
             "name": "cache_poisoning",
@@ -988,24 +976,12 @@
             "short_description": "Dependabot execution"
           },
           {
-            "name": "forbidden_uses",
-            "short_description": "Forbidden uses"
-          },
-          {
             "name": "github_env",
             "short_description": "GitHub environment file injection"
           },
           {
             "name": "hardcoded_container_credentials",
             "short_description": "Hardcoded container credentials"
-          },
-          {
-            "name": "impostor_commit",
-            "short_description": "Impostor commit"
-          },
-          {
-            "name": "known_vulnerable_actions",
-            "short_description": "Known vulnerable actions"
           },
           {
             "name": "misfeature",
@@ -1018,14 +994,6 @@
           {
             "name": "overprovisioned_secrets",
             "short_description": "Overprovisioned secrets"
-          },
-          {
-            "name": "ref_confusion",
-            "short_description": "Ref confusion"
-          },
-          {
-            "name": "ref_version_mismatch",
-            "short_description": "Ref version mismatch"
           },
           {
             "name": "run_block_injection",
@@ -1046,10 +1014,6 @@
           {
             "name": "self_hosted_runner",
             "short_description": "Self-hosted runner"
-          },
-          {
-            "name": "stale_action_refs",
-            "short_description": "Stale action refs"
           },
           {
             "name": "superfluous_actions",
@@ -1076,8 +1040,12 @@
             "short_description": "Unsound condition"
           },
           {
-            "name": "unsound_contains",
-            "short_description": "Unsound contains"
+            "name": "unsound_contains_no_controllable_input",
+            "short_description": "Unsound contains without controllable input"
+          },
+          {
+            "name": "unsound_contains_with_controllable_input",
+            "short_description": "Unsound contains with controllable input"
           },
           {
             "name": "unspecified_workflows_permissions",
@@ -4985,47 +4953,47 @@
         "rules": [
           {
             "name": "autoscale_badly_setup",
-            "short_description": "Beta - Databricks autoscale configuration incomplete"
+            "short_description": "Databricks autoscale badly setup"
           },
           {
             "name": "cluster_aws_attributes",
-            "short_description": "Beta - check Databricks cluster AWS attribute best practices"
+            "short_description": "Check Databricks cluster AWS attribute best practices"
           },
           {
             "name": "cluster_azure_attributes",
-            "short_description": "Beta - check Databricks cluster Azure attribute best practices"
+            "short_description": "Check Databricks cluster Azure attribute best practices"
           },
           {
             "name": "cluster_gcp_attributes",
-            "short_description": "Beta - check Databricks cluster GCP attribute best practices"
+            "short_description": "Check Databricks cluster GCP attribute best practices"
           },
           {
             "name": "databricks_permissions",
-            "short_description": "Beta - Databricks cluster or job with none or insecure permissions"
+            "short_description": "Databricks cluster or job with none or insecure permission(s)"
           },
           {
             "name": "group_without_user_or_instance_profile",
-            "short_description": "Beta - Databricks group without user or instance profile"
+            "short_description": "Databricks group without user or instance profile"
           },
           {
             "name": "indefinitely_obo_token",
-            "short_description": "Beta - Databricks OBO token has indefinite lifetime"
+            "short_description": "Indefinitely Databricks OBO token lifetime"
           },
           {
             "name": "indefinitely_token",
-            "short_description": "Beta - Databricks token has indefinite lifetime"
+            "short_description": "Indefinitely Databricks token lifetime"
           },
           {
             "name": "unrestricted_acl",
-            "short_description": "Beta - unrestricted Databricks ACL"
+            "short_description": "Unrestricted Databricks ACL"
           },
           {
             "name": "use_lts_spark_version",
-            "short_description": "Beta - Databricks cluster uses non-LTS Spark version"
+            "short_description": "Check use no LTS Spark version"
           },
           {
             "name": "use_spark_submit_task",
-            "short_description": "Beta - job's task is legacy (spark_submit_task)"
+            "short_description": "Job's task is legacy (spark_submit_task)"
           }
         ]
       },
@@ -5611,99 +5579,99 @@
         "rules": [
           {
             "name": "computing_instance_has_common_private",
-            "short_description": "Beta - Nifcloud computing has common private network"
+            "short_description": "Nifcloud computing has common private network"
           },
           {
             "name": "computing_instance_has_public_ingress_sgr",
-            "short_description": "Beta - Nifcloud computing has public ingress security group rule"
+            "short_description": "Nifcloud computing has public ingress security group rule"
           },
           {
             "name": "computing_instance_security_group_undefined",
-            "short_description": "Beta - Nifcloud computing undefined security group to instance"
+            "short_description": "Nifcloud computing undefined security group to instance"
           },
           {
             "name": "computing_security_group_description_undefined",
-            "short_description": "Beta - Nifcloud computing undefined description to security group"
+            "short_description": "Nifcloud computing undefined description to security group"
           },
           {
             "name": "computing_security_group_rule_description_undefined",
-            "short_description": "Beta - Nifcloud computing undefined description to security group rule"
+            "short_description": "Nifcloud computing undefined description to security group rule"
           },
           {
             "name": "db_does_not_have_long_backup_retention",
-            "short_description": "Beta - Nifcloud RDB has backup retention less than 2 days"
+            "short_description": "Nifcloud low RDB backup retention period"
           },
           {
             "name": "db_has_public_access",
-            "short_description": "Beta - Nifcloud RDB has public DB access"
+            "short_description": "Nifcloud RDB has public DB access"
           },
           {
             "name": "db_instance_has_common_private",
-            "short_description": "Beta - Nifcloud RDB has common private network"
+            "short_description": "Nifcloud RDB has common private network"
           },
           {
             "name": "db_security_group_description_undefined",
-            "short_description": "Beta - Nifcloud RDB undefined description to DB security group"
+            "short_description": "Nifcloud RDB undefined description to DB security group"
           },
           {
             "name": "db_security_group_has_public_ingress_sgr",
-            "short_description": "Beta - Nifcloud RDB has public DB ingress security group rule"
+            "short_description": "Nifcloud RDB has public DB ingress security group rule"
           },
           {
             "name": "dns_has_verified_record",
-            "short_description": "Beta - Nifcloud DNS has verified record"
+            "short_description": "Nifcloud DNS has verified record"
           },
           {
             "name": "elb_has_common_private",
-            "short_description": "Beta - Nifcloud ELB has common private network"
+            "short_description": "Nifcloud ELB has common private network"
           },
           {
             "name": "elb_listener_use_http",
-            "short_description": "Beta - Nifcloud ELB listener use HTTP protocol"
+            "short_description": "Nifcloud ELB listener using HTTP protocol"
           },
           {
             "name": "elb_use_http",
-            "short_description": "Beta - Nifcloud ELB use HTTP protocol"
+            "short_description": "Nifcloud ELB using HTTP protocol"
           },
           {
             "name": "load_balancer_listener_use_http",
-            "short_description": "Beta - Nifcloud LB listener use HTTP port"
+            "short_description": "Nifcloud LB listener using HTTP port"
           },
           {
             "name": "load_balancer_use_http",
-            "short_description": "Beta - Nifcloud LB use HTTP port"
+            "short_description": "Nifcloud LB using HTTP port"
           },
           {
             "name": "load_balancer_use_insecure_tls_policy_id",
-            "short_description": "Beta - Nifcloud LB use insecure TLS policy ID"
+            "short_description": "Nifcloud LB using insecure TLS policy ID"
           },
           {
             "name": "load_balancer_use_insecure_tls_policy_name",
-            "short_description": "Beta - Nifcloud LB use insecure TLS policy name"
+            "short_description": "Nifcloud LB using insecure TLS policy name"
           },
           {
             "name": "nas_instance_has_common_private",
-            "short_description": "Beta - Nifcloud NAS has common private network"
+            "short_description": "Nifcloud NAS has common private network"
           },
           {
             "name": "nas_security_group_description_undefined",
-            "short_description": "Beta - Nifcloud NAS undefined description to NAS security group"
+            "short_description": "Nifcloud NAS undefined description to NAS security group"
           },
           {
             "name": "nas_security_group_has_public_ingress_sgr",
-            "short_description": "Beta - Nifcloud NAS has public ingress NAS security group rule"
+            "short_description": "Nifcloud NAS has public ingress NAS security group rule"
           },
           {
             "name": "router_has_common_private",
-            "short_description": "Beta - Nifcloud router has common private network"
+            "short_description": "Nifcloud router has common private network"
           },
           {
             "name": "router_security_group_undefined",
-            "short_description": "Beta - Nifcloud router undefined security group to router"
+            "short_description": "Nifcloud router undefined security group"
           },
           {
             "name": "vpn_gateway_security_group_undefined",
-            "short_description": "Beta - Nifcloud VPN gateway undefined security group to VPN gateway"
+            "short_description": "Nifcloud VPN gateway undefined security group"
           }
         ]
       },
@@ -5713,67 +5681,67 @@
         "rules": [
           {
             "name": "cdb_instance_internet_service_enabled",
-            "short_description": "Beta - CDB instance internet service enabled"
+            "short_description": "CDB instance internet service enabled"
           },
           {
             "name": "cdb_instance_using_default_intranet_port",
-            "short_description": "Beta - CDB instance internet using default intranet port"
+            "short_description": "CDB instance internet using default intranet port"
           },
           {
             "name": "cdb_instance_without_backup_policy",
-            "short_description": "Beta - CDB instance without backup policy"
+            "short_description": "CDB instance without backup policy"
           },
           {
             "name": "clb_instance_log_setting_disabled",
-            "short_description": "Beta - CLB instance log setting disabled"
+            "short_description": "CLB instance log setting disabled"
           },
           {
             "name": "clb_listener_using_insecure_protocols",
-            "short_description": "Beta - CLB listener using insecure protocols"
+            "short_description": "CLB listener using insecure protocols"
           },
           {
             "name": "cvm_instance_disable_monitor_service",
-            "short_description": "Beta - CVM instance disable monitor service"
+            "short_description": "CVM instance disable monitor service"
           },
           {
             "name": "cvm_instance_has_public_ip",
-            "short_description": "Beta - CVM instance has public IP"
+            "short_description": "CVM instance has public IP"
           },
           {
             "name": "cvm_instance_using_default_security_group",
-            "short_description": "Beta - CVM instance using default security group"
+            "short_description": "CVM instance using default security group"
           },
           {
             "name": "cvm_instance_using_default_vpc",
-            "short_description": "Beta - CVM instance using default VPC"
+            "short_description": "CVM instance using default VPC"
           },
           {
             "name": "cvm_instance_using_user_data",
-            "short_description": "Beta - CVM instance using user data"
+            "short_description": "CVM instance using user data"
           },
           {
             "name": "disk_encryption_disabled",
-            "short_description": "Beta - disk encryption disabled"
+            "short_description": "Disk encryption disabled"
           },
           {
             "name": "security_group_rule_set_accepts_all_traffic",
-            "short_description": "Beta - security group rule set accepts all traffic"
+            "short_description": "Security group rule set accepts all traffic"
           },
           {
             "name": "tke_cluster_encryption_protection_disabled",
-            "short_description": "Beta - TKE cluster encryption protection disabled"
+            "short_description": "TKE cluster encryption protection disabled"
           },
           {
             "name": "tke_cluster_has_public_access",
-            "short_description": "Beta - TKE cluster has public access"
+            "short_description": "TKE cluster has public access"
           },
           {
             "name": "tke_cluster_log_disabled",
-            "short_description": "Beta - TKE cluster log agent is not enabled"
+            "short_description": "TKE cluster log agent is not enabled"
           },
           {
             "name": "vpc_flow_log_disabled",
-            "short_description": "Beta - VPC flow logs disabled"
+            "short_description": "VPC flow logs disabled"
           }
         ]
       }

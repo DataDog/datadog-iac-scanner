@@ -1,10 +1,10 @@
 ---
-title: "Beta - CVM instance using default security group"
+title: "CVM instance using default security group"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cvm_instance_using_default_security_group"
   id: "93bb2065-63ec-45a2-a466-f106b56f2e32"
-  display_name: "Beta - CVM instance using default security group"
+  display_name: "CVM instance using default security group"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "LOW"
