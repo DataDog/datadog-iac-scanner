@@ -17,7 +17,10 @@ func ReadConfiguration(ctx context.Context, rootPath string) (*IacConfig, error)
 		if err != nil {
 			return nil, err
 		}
-		return ParseConfig(b)
+		cfg, err := ParseConfig(b)
+		if cfg != nil || err != nil {
+			return cfg, err
+		}
 	}
 
 	if _, found := fileExists(rootPath, LegacyConfigFileName); found {
