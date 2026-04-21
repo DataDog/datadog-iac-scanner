@@ -987,6 +987,11 @@ func TestDetectLinePolicyStatementPrincipalJsonencode(t *testing.T) {
 	}
 	got := DetectKindLine{}.DetectLine(ctx, file, `aws_s3_bucket_policy[x].policy.Statement[0].Principal`, 3)
 	require.Equal(t, 8, got.Line)
+	// The remediation/region anchor must stay on the identifying line inside the
+	// jsonencode(...) body rather than being pushed past the wrapping `})`,
+	// otherwise SARIF would surface the wrong line for rules without an autofix.
+	require.Equal(t, 8, got.RemediationLocation.Start.Line)
+	require.Equal(t, 8, got.RemediationLocation.End.Line)
 }
 
 func TestDetectLinePolicyStatementPrincipalHeredocJSON(t *testing.T) {
