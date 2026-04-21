@@ -294,9 +294,13 @@ func ConvertRule(rule *Rule) model.QueryMetadata {
 	if rule.DocumentationUrl != nil {
 		out.Metadata["descriptionUrl"] = *rule.DocumentationUrl
 	} else if rule.Provider == nil {
-		out.Metadata["descriptionUrl"] = fmt.Sprintf("https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/%s/%s/", out.Platform, out.Query)
+		out.Metadata["descriptionUrl"] = fmt.Sprintf(
+			"https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/%s/%s/",
+			out.Platform, out.Query)
 	} else {
-		out.Metadata["descriptionUrl"] = fmt.Sprintf("https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/%s/%s/%s/", out.Platform, *rule.Provider, out.Query)
+		out.Metadata["descriptionUrl"] = fmt.Sprintf(
+			"https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/%s/%s/%s/",
+			out.Platform, *rule.Provider, out.Query)
 	}
 	if rule.Cwe != nil {
 		out.Metadata["cwe"] = *rule.Cwe
