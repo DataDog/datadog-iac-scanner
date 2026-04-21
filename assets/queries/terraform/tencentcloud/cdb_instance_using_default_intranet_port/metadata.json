@@ -1,6 +1,6 @@
 {
   "id": "18d6aa4b-7570-4d95-9c75-90363ef1abd9",
-  "queryName": "Beta - CDB instance internet using default intranet port",
+  "queryName": "CDB instance internet using default intranet port",
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "CDB instances should not use the default intranet port. The `tencentcloud_mysql_instance` resource must set the `intranet_port` attribute, and it must not be set to `3306`. This rule flags resources where `intranet_port` is either missing or explicitly set to `3306`.",

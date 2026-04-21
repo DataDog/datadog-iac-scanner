@@ -1,6 +1,6 @@
 {
   "id": "e7dada38-af20-4899-8955-dabea84ab1f0",
-  "queryName": "Beta - Nifcloud router undefined security group to router",
+  "queryName": "Nifcloud router undefined security group",
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "`nifcloud_router` resources must include a `security_group` attribute.\nRouters without a `security_group` lack explicit network access controls and may be insecure.\nThis rule flags any `nifcloud_router` missing `security_group` and reports attributes: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, `keyActualValue`.",

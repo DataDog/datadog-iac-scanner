@@ -1,6 +1,6 @@
 {
   "id": "966ed4f7-b8a5-4e8d-b2bf-098657c98960",
-  "queryName": "Beta - CVM instance disable monitor service",
+  "queryName": "CVM instance disable monitor service",
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "CVM instances should have detailed monitoring enabled. The `tencentcloud_instance` resource must not set `disable_monitor_service` to `true`. To ensure detailed monitoring is enabled, `disable_monitor_service` should be set to `false`.",

@@ -1,12 +1,12 @@
 [
 	{
-		"queryName": "Beta - job's task is legacy (spark_submit_task)",
+		"queryName": "Job's task is legacy (spark_submit_task)",
 		"severity": "MEDIUM",
 		"line": 36,
 		"fileName": "positive1.tf"
 	},
 	{
-		"queryName": "Beta - job's task is legacy (spark_submit_task)",
+		"queryName": "Job's task is legacy (spark_submit_task)",
 		"severity": "MEDIUM",
 		"line": 18,
 		"fileName": "positive2.tf"
