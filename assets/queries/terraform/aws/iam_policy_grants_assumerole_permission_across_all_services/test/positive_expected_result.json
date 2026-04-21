@@ -2,17 +2,23 @@
   {
     "queryName": "IAM policy grants 'AssumeRole' permission across all services",
     "severity": "MEDIUM",
-    "line": 13
+    "line": 15
   },
   {
     "queryName": "IAM policy grants 'AssumeRole' permission across all services",
     "severity": "MEDIUM",
-    "line": 76
+    "line": 78
   },
   {
     "queryName": "IAM policy grants 'AssumeRole' permission across all services",
     "severity": "MEDIUM",
-    "line": 18,
+    "line": 20,
     "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "IAM policy grants 'AssumeRole' permission across all services",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive3.tf"
   }
 ]
