@@ -83,11 +83,11 @@ func parseSchemaVersion(schema string) (version schemaVersion, err error) {
 	if !ok {
 		return schemaVersion{}, errors.New("schema must be in vX.Y format")
 	}
-	major64, err := strconv.ParseInt(majorStr, 10, 64)
+	major64, err := strconv.ParseInt(majorStr, 10, strconv.IntSize)
 	if err != nil {
 		return schemaVersion{}, errors.New("major version must be a number")
 	}
-	minor64, err := strconv.ParseInt(minorStr, 10, 64)
+	minor64, err := strconv.ParseInt(minorStr, 10, strconv.IntSize)
 	if err != nil {
 		return schemaVersion{}, errors.New("minor version must be a number")
 	}
