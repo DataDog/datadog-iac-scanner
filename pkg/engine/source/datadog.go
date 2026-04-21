@@ -2,6 +2,8 @@ package source
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -260,12 +262,16 @@ func isInCaseInsensitiveNotEmptyList(id string, list []string) bool {
 // nolint:gocyclo
 // ConvertRule converts a Datadog api [Rule] to a [model.QueryMetadata]
 func ConvertRule(rule *Rule) model.QueryMetadata {
+	id := rule.ID
+	if rule.LegacyId != nil {
+		id = *rule.LegacyId
+	}
 	out := model.QueryMetadata{
 		InputData: "{}",
 		Query:     rule.Name,
 		Content:   string(rule.RegoQuery),
 		Metadata: map[string]any{
-			"id":              rule.ID,
+			"id":              id,
 			"queryName":       rule.ShortDescription,
 			"descriptionText": rule.Description,
 			"platform":        rule.Platform,
@@ -276,14 +282,26 @@ func ConvertRule(rule *Rule) model.QueryMetadata {
 		Aggregation:  1,
 		Experimental: rule.IsTesting,
 	}
-	setStringPtr(out.Metadata, "descriptionUrl", rule.DocumentationUrl)
 	setStringPtr(out.Metadata, "providerUrl", rule.ProviderUrl)
 	setStringPtr(out.Metadata, "descriptionID", rule.DescriptionId)
 	setStringPtr(out.Metadata, "cloudProvider", rule.Provider)
-	if rule.Cwe == nil {
-		out.Metadata["cwe"] = ""
+	if rule.DescriptionId != nil {
+		out.Metadata["descriptionID"] = *rule.DescriptionId
 	} else {
+		sha := sha256.Sum256([]byte(rule.Name))
+		out.Metadata["descriptionID"] = hex.EncodeToString(sha[:4])
+	}
+	if rule.DocumentationUrl != nil {
+		out.Metadata["descriptionUrl"] = *rule.DocumentationUrl
+	} else if rule.Provider == nil {
+		out.Metadata["descriptionUrl"] = fmt.Sprintf("https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/%s/%s/", out.Platform, out.Query)
+	} else {
+		out.Metadata["descriptionUrl"] = fmt.Sprintf("https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/%s/%s/%s/", out.Platform, *rule.Provider, out.Query)
+	}
+	if rule.Cwe != nil {
 		out.Metadata["cwe"] = *rule.Cwe
+	} else {
+		out.Metadata["cwe"] = ""
 	}
 	if rule.Aggregation != nil {
 		out.Metadata["aggregation"] = *rule.Aggregation
