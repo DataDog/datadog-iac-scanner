@@ -8,7 +8,7 @@ CxPolicy[result] {
 
 	policy := common_lib.json_unmarshal(resource.policy)
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	statement.Action == "sts:AssumeRole"
 	common_lib.is_allow_effect(statement)
@@ -19,11 +19,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_iam_user_policy",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_iam_user_policy[%s].policy", [name]),
+		"searchKey": sprintf("aws_iam_user_policy[%s].policy.Statement[%d]", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy.Statement.Principal.AWS' should contain ':mfa/' or 'policy.Statement.Condition.BoolIfExists.aws:MultiFactorAuthPresent' should be set to true",
 		"keyActualValue": "'policy.Statement.Principal.AWS' doesn't contain ':mfa/' or 'policy.Statement.Condition.BoolIfExists.aws:MultiFactorAuthPresent' is set to false",
-		"searchLine": common_lib.build_search_line(["resource", "aws_iam_user_policy", name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_iam_user_policy", name, "policy", "Statement", idx], []),
 	}
 }
 

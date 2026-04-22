@@ -2,19 +2,19 @@
   {
     "queryName": "S3 bucket access to any principal",
     "severity": "CRITICAL",
-    "line": 12,
+    "line": 13,
     "fileName": "positive1.tf"
   },
   {
     "queryName": "S3 bucket access to any principal",
     "severity": "CRITICAL",
-    "line": 20,
+    "line": 21,
     "fileName": "positive2.tf"
   },
   {
     "queryName": "S3 bucket access to any principal",
     "severity": "CRITICAL",
-    "line": 45,
+    "line": 46,
     "fileName": "positive3.tf"
   }
 ]

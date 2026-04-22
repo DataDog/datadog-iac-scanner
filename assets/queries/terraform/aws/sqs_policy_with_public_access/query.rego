@@ -11,18 +11,22 @@ CxPolicy[result] {
 	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
-	check_principal(statement.Principal, "*")
-	tf_lib.anyPrincipal(statement)
+	sub_path := tf_lib.wildcard_principal_sub_path(statement)
+
+	principal_path := concat(".", array.concat(["Principal"], sub_path))
 
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_sqs_queue_policy",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_sqs_queue_policy[%s].policy.Statement[%d].Principal", [name, idx]),
+		"searchKey": sprintf("aws_sqs_queue_policy[%s].policy.Statement[%d].%s", [name, idx, principal_path]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "'policy.Statement.Principal.AWS' should not equal '*'",
-		"keyActualValue": "'policy.Statement.Principal.AWS' is equal '*'",
-		"searchLine": common_lib.build_search_line(["resource", "aws_sqs_queue_policy", name, "policy", "Statement", idx, "Principal"], []),
+		"keyExpectedValue": sprintf("'policy.Statement.%s' should not equal '*'", [principal_path]),
+		"keyActualValue": sprintf("'policy.Statement.%s' is equal '*'", [principal_path]),
+		"searchLine": common_lib.build_search_line(
+			array.concat(["resource", "aws_sqs_queue_policy", name, "policy", "Statement", idx, "Principal"], sub_path),
+			[],
+		),
 	}
 }
 
@@ -37,26 +41,21 @@ CxPolicy[result] {
 	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
-	check_principal(statement.Principal, "*")
-	tf_lib.anyPrincipal(statement)
+	sub_path := tf_lib.wildcard_principal_sub_path(statement)
+
+	principal_path := concat(".", array.concat(["Principal"], sub_path))
 
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].%s.Statement[%d].Principal", [name, keyToCheck, idx]),
+		"searchKey": sprintf("module[%s].%s.Statement[%d].%s", [name, keyToCheck, idx, principal_path]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("'module[%s].%s.Statement.Principal.AWS' should not equal '*'", [name, keyToCheck]),
-		"keyActualValue": sprintf("'module[%s].%s.Statement.Principal.AWS' is equal '*'", [name, keyToCheck]),
-		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx, "Principal"], []),
+		"keyExpectedValue": sprintf("'module[%s].%s.Statement.%s' should not equal '*'", [name, keyToCheck, principal_path]),
+		"keyActualValue": sprintf("'module[%s].%s.Statement.%s' is equal '*'", [name, keyToCheck, principal_path]),
+		"searchLine": common_lib.build_search_line(
+			array.concat(["module", name, keyToCheck, "Statement", idx, "Principal"], sub_path),
+			[],
+		),
 	}
-}
-
-check_principal(field, value) {
-	is_object(field)
-	some i
-	val := [x | x := field[i]; common_lib.containsOrInArrayContains(x, value)]
-	count(val) > 0
-} else {
-	common_lib.containsOrInArrayContains(field, "*")
 }
