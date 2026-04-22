@@ -1,10 +1,10 @@
 ---
-title: "Nifcloud NAS undefined description to NAS security group"
+title: "NIFCLOUD NAS undefined description to NAS security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/nas_security_group_description_undefined"
   id: "e840c54a-7a4c-405f-b8c1-c49a54b87d11"
-  display_name: "Nifcloud NAS undefined description to NAS security group"
+  display_name: "NIFCLOUD NAS undefined description to NAS security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "LOW"

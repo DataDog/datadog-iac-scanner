@@ -1,10 +1,10 @@
 ---
-title: "Nifcloud DNS has verified record"
+title: "NIFCLOUD DNS has verified record"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/dns_has_verified_record"
   id: "a1defcb6-55e8-4511-8c2a-30b615b0e057"
-  display_name: "Nifcloud DNS has verified record"
+  display_name: "NIFCLOUD DNS has verified record"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "LOW"

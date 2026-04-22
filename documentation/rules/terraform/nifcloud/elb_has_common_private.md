@@ -1,10 +1,10 @@
 ---
-title: "Nifcloud ELB has common private network"
+title: "NIFCLOUD ELB has common private network"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/elb_has_common_private"
   id: "5061f84c-ab66-4660-90b9-680c9df346c0"
-  display_name: "Nifcloud ELB has common private network"
+  display_name: "NIFCLOUD ELB has common private network"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "LOW"

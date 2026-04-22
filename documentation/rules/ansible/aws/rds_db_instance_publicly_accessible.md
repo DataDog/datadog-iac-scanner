@@ -79,7 +79,7 @@ Secure example:
     password: "{{ password }}"
     allocated_storage: "{{ allocated_storage }}"
     publicly_accessible: Yes
-- name: community - Basic mysql provisioning example
+- name: Community - Basic MySQL provisioning example
   amazon.aws.rds_instance:
     db_instance_identifier: my-db-2
     command: create

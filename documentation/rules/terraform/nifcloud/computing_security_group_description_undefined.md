@@ -1,10 +1,10 @@
 ---
-title: "Nifcloud computing undefined description to security group"
+title: "NIFCLOUD computing undefined description to security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/computing_security_group_description_undefined"
   id: "41c127a9-3a85-4bc3-a333-ed374eb9c3e4"
-  display_name: "Nifcloud computing undefined description to security group"
+  display_name: "NIFCLOUD computing undefined description to security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "LOW"

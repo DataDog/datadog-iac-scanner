@@ -1,10 +1,10 @@
 ---
-title: "Nifcloud LB using HTTP port"
+title: "NIFCLOUD LB using HTTP port"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/load_balancer_use_http"
   id: "94e47f3f-b90b-43a1-a36d-521580bae863"
-  display_name: "Nifcloud LB using HTTP port"
+  display_name: "NIFCLOUD LB using HTTP port"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "MEDIUM"

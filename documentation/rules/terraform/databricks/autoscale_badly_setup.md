@@ -1,10 +1,10 @@
 ---
-title: "Databricks autoscale badly setup"
+title: "Databricks autoscale configuration incomplete"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/autoscale_badly_setup"
   id: "953c0cc6-5f30-44cb-a803-bf4ef2571be8"
-  display_name: "Databricks autoscale badly setup"
+  display_name: "Databricks autoscale configuration incomplete"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "MEDIUM"
