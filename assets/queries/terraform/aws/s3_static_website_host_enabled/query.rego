@@ -12,7 +12,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket",
-		"resourceName": tf_lib.get_specific_resource_name(resource, "aws_s3_bucket", name),
+		"resourceName": tf_lib.resolve_bucket_name(resource, name),
 		"searchKey": sprintf("resource.aws_s3_bucket[%s].website", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("resource.aws_s3_bucket[%s].website to not have static websites inside", [name]),
@@ -48,7 +48,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket",
-		"resourceName": tf_lib.get_specific_resource_name(resource, "aws_s3_bucket", bucketName),
+		"resourceName": tf_lib.resolve_bucket_name(resource, bucketName),
 		"searchKey": sprintf("aws_s3_bucket[%s]", [bucketName]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "'aws_s3_bucket' to not have 'aws_s3_bucket_website_configuration' associated",

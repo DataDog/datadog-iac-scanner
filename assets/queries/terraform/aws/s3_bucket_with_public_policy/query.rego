@@ -11,7 +11,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_public_access_block",
-		"resourceName": tf_lib.get_resource_name(pubACL, name),
+		"resourceName": tf_lib.resolve_bucket_name(pubACL, name),
 		"searchKey": sprintf("aws_s3_bucket_public_access_block[%s].block_public_policy", [name]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "'block_public_policy' should equal 'true'",
@@ -27,7 +27,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_public_access_block",
-		"resourceName": tf_lib.get_resource_name(pubACL, name),
+		"resourceName": tf_lib.resolve_bucket_name(pubACL, name),
 		"searchKey": sprintf("aws_s3_bucket_public_access_block[%s].block_public_policy", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'block_public_policy' should equal 'true'",

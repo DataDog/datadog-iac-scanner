@@ -14,7 +14,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": res_type,
-		"resourceName": tf_lib.get_specific_resource_name(resource, res_type, name),
+		"resourceName": tf_lib.resolve_bucket_name(resource, name),
 		"searchKey": sprintf("%s[%s].policy.Statement[%d]", [res_type, name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy.Statement' should not allow all actions to all principal",
