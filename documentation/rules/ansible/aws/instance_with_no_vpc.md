@@ -65,12 +65,15 @@ Secure example Ansible task:
     tags:
       SomeThing: A value
 - name: Start an instance and have it begin a Tower callback on boot v4
-  amazon.aws.ec2_instance:
-    name: my-ec2-instance
+  amazon.aws.ec2:
     key_name: mykey
     instance_type: t2.micro
-    image_id: ami-123456
+    image: ami-123456
+    wait: yes
+    group: webserver
+    count: 3
     vpc_subnet_id: subnet-29e63245
+    assign_public_ip: yes
 
 ```
 ## Non-Compliant Code Examples
@@ -81,7 +84,6 @@ Secure example Ansible task:
     key_name: "prod-ssh-key"
     security_group: default
     tower_callback:
-      # IP or hostname of tower server
       tower_address: 1.2.3.4
       job_template_id: 876
       host_config_key: '[secret config key goes here]'
@@ -91,11 +93,5 @@ Secure example Ansible task:
     cpu_credit_specification: unlimited
     tags:
       SomeThing: "A value"
-- name: Start an instance and have it begin a Tower callback on boot v2
-  amazon.aws.ec2_instance:
-    name: my-ec2-instance
-    key_name: mykey
-    instance_type: t2.micro
-    image_id: ami-123456
 
 ```

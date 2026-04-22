@@ -1,6 +1,6 @@
 {
   "id": "a4edb7e1-c0e0-4f7f-9d7c-d1b603e81ad5",
-  "queryName": "Beta - Databricks cluster or job with none or insecure permissions",
+  "queryName": "Databricks cluster or job with none or insecure permission(s)",
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "This rule verifies that each `databricks_job` and `databricks_cluster` resource has an associated `databricks_permissions` resource referencing it via `job_id` or `cluster_id`.\n\nIt also flags any `databricks_permissions` resource with `permission_level == \"IS_OWNER\"` that lacks an associated `service_principal_name`. Reported findings include `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.",

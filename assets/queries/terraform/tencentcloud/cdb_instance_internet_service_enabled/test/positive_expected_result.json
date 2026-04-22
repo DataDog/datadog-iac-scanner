@@ -1,6 +1,6 @@
 [
 	{
-		"queryName": "Beta - CDB instance internet service enabled",
+		"queryName": "CDB instance internet service enabled",
 		"severity": "HIGH",
 		"line": 24,
 		"fileName": "positive1.tf"

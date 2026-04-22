@@ -45,11 +45,13 @@ For Ansible tasks using the `amazon.aws.s3_object` or `s3_object` modules, the `
 - name: Create an empty bucket
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object
     mode: create
     permission: private
 - name: Create an empty bucket2
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object-2
     mode: create
 
 ```
@@ -59,11 +61,13 @@ For Ansible tasks using the `amazon.aws.s3_object` or `s3_object` modules, the `
 - name: Create an empty bucket
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object
     mode: create
     permission: public-read
 - name: Create an empty bucket2
   amazon.aws.s3_object:
     bucket: mybucket
+    object: my-object-2
     mode: create
     permission: public-read-write
 

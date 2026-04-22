@@ -1,6 +1,6 @@
 [
 	{
-		"queryName": "Beta - Databricks token has indefinite lifetime",
+		"queryName": "Indefinitely Databricks token lifetime",
 		"severity": "MEDIUM",
 		"line": 1,
 		"fileName": "positive.tf"

@@ -1,10 +1,10 @@
 ---
-title: "Beta - unrestricted Databricks ACL"
+title: "Unrestricted Databricks ACL"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/unrestricted_acl"
   id: "2c4fe4a9-f44b-4c70-b09b-5b75cd251805"
-  display_name: "Beta - unrestricted Databricks ACL"
+  display_name: "Unrestricted Databricks ACL"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "HIGH"

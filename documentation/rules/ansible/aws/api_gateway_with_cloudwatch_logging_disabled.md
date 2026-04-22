@@ -4,7 +4,7 @@ group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_with_cloudwatch_logging_disabled"
   id: "72a931c2-12f5-40d1-93cc-47bff2f7aa2a"
-  display_name: "API gateway with CloudWatch Logs disabled"
+  display_name: "API Gateway with CloudWatch Logs disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
   severity: "MEDIUM"

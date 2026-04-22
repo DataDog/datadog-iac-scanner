@@ -1,10 +1,10 @@
 ---
-title: "Beta - check Databricks cluster Azure attribute best practices"
+title: "Check Databricks cluster Azure attribute best practices"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/cluster_azure_attributes"
   id: "38028698-e663-4ef7-aa92-773fef0ca86f"
-  display_name: "Beta - check Databricks cluster Azure attribute best practices"
+  display_name: "Check Databricks cluster Azure attribute best practices"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "LOW"

@@ -1,10 +1,10 @@
 ---
-title: "Beta - security group rule set accepts all traffic"
+title: "Security group rule set accepts all traffic"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/security_group_rule_set_accepts_all_traffic"
   id: "d135a36e-c474-452f-b891-76db1e6d1cd5"
-  display_name: "Beta - security group rule set accepts all traffic"
+  display_name: "Security group rule set accepts all traffic"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "HIGH"

@@ -1,6 +1,6 @@
 {
   "id": "953c0cc6-5f30-44cb-a803-bf4ef2571be8",
-  "queryName": "Beta - Databricks autoscale configuration incomplete",
+  "queryName": "Databricks autoscale badly setup",
   "severity": "MEDIUM",
   "category": "Resource Management",
   "descriptionText": "Databricks clusters must define both `autoscale.min_workers` and `autoscale.max_workers`. This rule flags `databricks_cluster` resources where either attribute is missing or unset.\nDefining both ensures predictable autoscaling and prevents resource overuse or unexpected costs.",

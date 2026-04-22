@@ -1,6 +1,6 @@
 [
 	{
-		"queryName": "Beta - Nifcloud NAS has common private network",
+		"queryName": "Nifcloud NAS has common private network",
 		"severity": "LOW",
 		"line": 1,
 		"fileName": "positive.tf"

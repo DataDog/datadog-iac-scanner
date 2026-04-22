@@ -1,6 +1,6 @@
 {
   "id": "23c3067a-8cc9-480c-b645-7c1e0ad4bf60",
-  "queryName": "Beta - Databricks group without user or instance profile",
+  "queryName": "Databricks group without user or instance profile",
   "severity": "LOW",
   "category": "Access Control",
   "descriptionText": "Each `databricks_group` must be associated with at least one user or one instance profile. This rule checks for:\n\n- A `databricks_group_member` with a non-empty member_id, or\n- A `databricks_group_instance_profile` with a non-empty `instance_profile_id`\n\nIf neither is found referencing the group's `group_id`, the `databricks_group` is flagged.",

@@ -48,6 +48,7 @@ For Ansible resources using the `amazon.aws.rds_instance` or `rds_instance` modu
 ```yaml
 - name: foo
   amazon.aws.rds_instance:
+    db_instance_identifier: my-db-1
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -58,6 +59,7 @@ For Ansible resources using the `amazon.aws.rds_instance` or `rds_instance` modu
     allocated_storage: '{{ allocated_storage }}'
 - name: foo2
   amazon.aws.rds_instance:
+    db_instance_identifier: my-db-2
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -68,6 +70,7 @@ For Ansible resources using the `amazon.aws.rds_instance` or `rds_instance` modu
     allocated_storage: '{{ allocated_storage }}'
 - name: foo3
   amazon.aws.rds_instance:
+    db_instance_identifier: my-db-3
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -83,6 +86,7 @@ For Ansible resources using the `amazon.aws.rds_instance` or `rds_instance` modu
 ---
 - name: foo
   amazon.aws.rds_instance:
+    db_instance_identifier: my-db-1
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -93,6 +97,7 @@ For Ansible resources using the `amazon.aws.rds_instance` or `rds_instance` modu
     allocated_storage: "{{ allocated_storage }}"
 - name: foo2
   amazon.aws.rds_instance:
+    db_instance_identifier: my-db-2
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -103,6 +108,7 @@ For Ansible resources using the `amazon.aws.rds_instance` or `rds_instance` modu
     allocated_storage: "{{ allocated_storage }}"
 - name: foo3
   amazon.aws.rds_instance:
+    db_instance_identifier: my-db-3
     id: test-encrypted-db
     state: present
     engine: mariadb

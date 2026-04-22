@@ -1,7 +1,7 @@
 [
 	{
-		"queryName": "Beta - Nifcloud LB use HTTP port",
-		"severity": "HIGH",
+		"queryName": "Nifcloud LB using HTTP port",
+		"severity": "MEDIUM",
 		"line": 1,
 		"fileName": "positive.tf"
 	}

@@ -48,6 +48,7 @@ Secure example with a single allowed account:
 ```yaml
 - name: Allow AMI to be launched by another account V2
   amazon.aws.ec2_ami:
+    name: my-ami
     image_id: '{{ instance.image_id }}'
     state: present
     launch_permissions:
@@ -58,12 +59,14 @@ Secure example with a single allowed account:
 ```yaml
 - name: Update AMI Launch Permissions, making it public
   amazon.aws.ec2_ami:
+    name: my-ami
     image_id: "{{ instance.image_id }}"
     state: present
     launch_permissions:
       group_names: ['all']
 - name: Allow AMI to be launched by another account
   amazon.aws.ec2_ami:
+    name: my-ami
     image_id: "{{ instance.image_id }}"
     state: present
     launch_permissions:

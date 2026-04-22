@@ -1,10 +1,10 @@
 ---
-title: "Beta - Nifcloud router undefined security group to router"
+title: "Nifcloud router undefined security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/router_security_group_undefined"
   id: "e7dada38-af20-4899-8955-dabea84ab1f0"
-  display_name: "Beta - Nifcloud router undefined security group to router"
+  display_name: "Nifcloud router undefined security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "HIGH"

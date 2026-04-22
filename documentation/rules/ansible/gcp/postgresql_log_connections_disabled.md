@@ -48,7 +48,7 @@ Secure Ansible example:
 ```yaml
 - name: create a instance
   google.cloud.gcp_sql_instance:
-    name: GCP instance
+    name: my-postgres-instance
     settings:
       databaseFlags:
       - name: log_connections
@@ -66,7 +66,7 @@ Secure Ansible example:
 ```yaml
 - name: create instance
   google.cloud.gcp_sql_instance:
-    name: GCP instance
+    name: my-postgres-instance
     settings:
       databaseFlags:
       - name: log_connections
@@ -80,7 +80,7 @@ Secure Ansible example:
     state: present
 - name: create another instance
   google.cloud.gcp_sql_instance:
-    name: GCP instance 2
+    name: my-postgres-instance-2
     settings:
       tier: db-n1-standard-1
     region: us-central1

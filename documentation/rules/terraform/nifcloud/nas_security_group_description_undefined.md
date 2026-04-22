@@ -1,14 +1,14 @@
 ---
-title: "Beta - Nifcloud NAS undefined description to NAS security group"
+title: "Nifcloud NAS undefined description to NAS security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/nas_security_group_description_undefined"
   id: "e840c54a-7a4c-405f-b8c1-c49a54b87d11"
-  display_name: "Beta - Nifcloud NAS undefined description to NAS security group"
+  display_name: "Nifcloud NAS undefined description to NAS security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "LOW"
-  category: "Networking and Firewall"
+  category: "Best Practices"
 ---
 ## Metadata
 
@@ -20,7 +20,7 @@ meta:
 
 **Severity:** Low
 
-**Category:** Networking and Firewall
+**Category:** Best Practices
 
 #### Learn More
 

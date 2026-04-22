@@ -1,10 +1,10 @@
 ---
-title: "Beta - CDB instance without backup policy"
+title: "CDB instance without backup policy"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cdb_instance_without_backup_policy"
   id: "ca94be07-7de3-4ae7-85ef-67e0462ec694"
-  display_name: "Beta - CDB instance without backup policy"
+  display_name: "CDB instance without backup policy"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "MEDIUM"

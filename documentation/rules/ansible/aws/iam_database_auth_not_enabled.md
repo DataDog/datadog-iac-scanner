@@ -59,6 +59,7 @@ Secure Ansible example:
 
 - name: Create a DB instance using the default AWS KMS encryption key
   amazon.aws.rds_instance:
+    db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present
     engine: mariadb
@@ -71,6 +72,7 @@ Secure Ansible example:
 
 - name: remove the DB instance without a final snapshot
   amazon.aws.rds_instance:
+    db_instance_identifier: test-db-remove-1
     id: '{{ instance_id }}'
     state: absent
     skip_final_snapshot: true
@@ -78,6 +80,7 @@ Secure Ansible example:
 
 - name: remove the DB instance with a final snapshot
   amazon.aws.rds_instance:
+    db_instance_identifier: test-db-remove-2
     id: '{{ instance_id }}'
     state: absent
     final_snapshot_identifier: '{{ snapshot_id }}'
@@ -119,6 +122,7 @@ Secure Ansible example:
 
 - name: Create a DB instance using the default AWS KMS encryption key
   amazon.aws.rds_instance:
+    db_instance_identifier: test-encrypted-db
     id: test-encrypted-db
     state: present
     engine: mariadb

@@ -1,14 +1,14 @@
 ---
-title: "Beta - Nifcloud LB use insecure TLS policy ID"
+title: "Nifcloud LB using insecure TLS policy ID"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/load_balancer_use_insecure_tls_policy_id"
   id: "944439c7-b4b8-476a-8f83-14641ea876ba"
-  display_name: "Beta - Nifcloud LB use insecure TLS policy ID"
+  display_name: "Nifcloud LB using insecure TLS policy ID"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
-  severity: "HIGH"
-  category: "Insecure Configurations"
+  severity: "MEDIUM"
+  category: "Encryption"
 ---
 ## Metadata
 
@@ -18,9 +18,9 @@ meta:
 
 **Platform:** Terraform
 
-**Severity:** High
+**Severity:** Medium
 
-**Category:** Insecure Configurations
+**Category:** Encryption
 
 #### Learn More
 

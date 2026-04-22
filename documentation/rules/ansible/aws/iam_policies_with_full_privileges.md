@@ -52,6 +52,7 @@ Secure example with explicit actions and narrowed resources:
 ```yaml
 - name: Create IAM Managed Policy
   amazon.aws.iam_managed_policy:
+    name: my-iam-policy
     policy_name: ManagedPolicy
     policy:
       Version: '2012-10-17'
@@ -67,6 +68,7 @@ Secure example with explicit actions and narrowed resources:
 ```yaml
 - name: Create IAM Managed Policy
   amazon.aws.iam_managed_policy:
+    name: my-iam-policy
     policy_name: "ManagedPolicy"
     policy:
       Version: "2012-10-17"

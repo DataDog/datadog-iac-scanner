@@ -1,6 +1,6 @@
 {
   "id": "23e1f5f0-12b7-4d7e-9087-f60f42ccd514",
-  "queryName": "Beta - Databricks OBO token has indefinite lifetime",
+  "queryName": "Indefinitely Databricks OBO token lifetime",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",
   "descriptionText": "`databricks_obo_token` has an indefinite lifetime.\nOBO tokens must include a `lifetime_seconds` attribute to enforce a finite validity period.\nThis rule flags any `databricks_obo_token` resource that does not set `lifetime_seconds`.",

@@ -1,6 +1,6 @@
 {
   "id": "fe405074-7e18-40f9-9aef-024aa1d0a889",
-  "queryName": "Beta - TKE cluster log agent is not enabled",
+  "queryName": "TKE cluster log agent is not enabled",
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "TKE cluster `log_agent` must be present and `log_agent.enabled` must be set to `true`.\nThe rule flags resources of type `tencentcloud_kubernetes_cluster` when the `log_agent` attribute is missing or null, or when `log_agent.enabled` is `false`.",

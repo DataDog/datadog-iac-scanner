@@ -44,6 +44,7 @@ Secure Ansible example:
 ```yaml
 - name: Creating EBS volume05
   amazon.aws.ec2_vol:
+    name: my-volume
     instance: XXXXXX
     encrypted: yes
     volume_size: 50
@@ -51,6 +52,7 @@ Secure Ansible example:
     device_name: /dev/xvdf
 - name: Creating EBS volume06
   amazon.aws.ec2_vol:
+    name: my-volume
     instance: XXXXXX
     encrypted: 'True'
     volume_size: 50
@@ -63,6 +65,7 @@ Secure Ansible example:
 ---
 - name: Creating EBS volume01
   amazon.aws.ec2_vol:
+    name: my-volume
     instance: XXXXXX
     encrypted: no
     volume_size: 50
@@ -70,6 +73,7 @@ Secure Ansible example:
     device_name: /dev/xvdf
 - name: Creating EBS volume02
   amazon.aws.ec2_vol:
+    name: my-volume
     instance: XXXXXX
     encrypted: false
     volume_size: 50
@@ -77,6 +81,7 @@ Secure Ansible example:
     device_name: /dev/xvdf
 - name: Creating EBS volume03
   amazon.aws.ec2_vol:
+    name: my-volume
     instance: XXXXXX
     encrypted: "false"
     volume_size: 50
@@ -84,6 +89,7 @@ Secure Ansible example:
     device_name: /dev/xvdf
 - name: Creating EBS volume04
   amazon.aws.ec2_vol:
+    name: my-volume
     instance: XXXXXX
     volume_size: 50
     volume_type: gp2
