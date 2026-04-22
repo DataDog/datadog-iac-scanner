@@ -8,7 +8,7 @@ CxPolicy[result] {
 
 	policy := common_lib.json_unmarshal(resource.policy)
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	not common_lib.valid_key(statement, "Condition")
@@ -18,11 +18,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_glue_resource_policy",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_glue_resource_policy[%s].policy", [name]),
+		"searchKey": sprintf("aws_glue_resource_policy[%s].policy.Statement[%d]", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("aws_glue_resource_policy[%s].policy should not have wildcard in 'principals' and 'actions'", [name]),
 		"keyActualValue": sprintf("aws_glue_resource_policy[%s].policy has wildcard in 'principals' or 'actions'", [name]),
-		"searchLine": common_lib.build_search_line(["resource", "aws_glue_resource_policy", name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_glue_resource_policy", name, "policy", "Statement", idx], []),
 	}
 }
 
@@ -34,7 +34,7 @@ CxPolicy[result] {
 
 	policy := common_lib.json_unmarshal(module[keyToCheck])
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	not common_lib.valid_key(statement, "Condition")
@@ -44,10 +44,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].%s", [name, keyToCheck]),
+		"searchKey": sprintf("module[%s].%s.Statement[%d]", [name, keyToCheck, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("module[%s].%s should not have wildcard in 'principals' and 'actions'", [name, keyToCheck]),
 		"keyActualValue": sprintf("module[%s].%s has wildcard in 'principals' or 'actions'", [name, keyToCheck]),
-		"searchLine": common_lib.build_search_line(["module", name, keyToCheck], []),
+		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx], []),
 	}
 }

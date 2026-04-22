@@ -8,7 +8,19 @@
   {
     "queryName": "Glue with vulnerable policy",
     "severity": "MEDIUM",
-    "line": 22,
+    "line": 12,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "Glue with vulnerable policy",
+    "severity": "MEDIUM",
+    "line": 5,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "Glue with vulnerable policy",
+    "severity": "MEDIUM",
+    "line": 26,
     "fileName": "positive_module.tf"
   }
 ]

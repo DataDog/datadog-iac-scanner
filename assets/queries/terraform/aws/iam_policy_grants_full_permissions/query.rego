@@ -10,7 +10,7 @@ CxPolicy[result] {
 	policy := common_lib.json_unmarshal(resource.policy)
 
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[s_idx]
 
 	common_lib.is_allow_effect(statement)
 	common_lib.equalsOrInArray(statement.Resource, "*")
@@ -20,10 +20,10 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": resourceType[idx],
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("%s[%s].policy", [resourceType[idx], name]),
+		"searchKey": sprintf("%s[%s].policy.Statement[%d]", [resourceType[idx], name, s_idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy.Statement.Resource' and 'policy.Statement.Action' should not equal '*'",
 		"keyActualValue": "'policy.Statement.Resource' and 'policy.Statement.Action' are equal to '*'",
-		"searchLine": common_lib.build_search_line(["resource", resourceType[idx], name, "access_policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", resourceType[idx], name, "policy", "Statement", s_idx], []),
 	}
 }

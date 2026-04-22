@@ -123,6 +123,36 @@ anyPrincipal(statement) {
   "*" == statement.Principal.Service[_]
 }
 
+# wildcard_principal_sub_path returns the path segments *under* `Principal` that
+# hold the wildcard `*`. It is meant to be used by rules that want to pinpoint
+# the narrowest offending key rather than the whole `Principal` block.
+#
+# Return values:
+#   ["AWS"]      when Principal.AWS is "*" or contains "*"
+#   ["Service"]  when Principal.Service is "*" or contains "*"
+#   []           when Principal itself is "*" or contains "*"
+#
+# Priority: explicit sub-keys (AWS, Service) take precedence over the flat form
+# so a statement with both still produces a single, deterministic finding.
+wildcard_principal_sub_path(statement) = ["AWS"] {
+  is_string(statement.Principal.AWS)
+  statement.Principal.AWS == "*"
+} else = ["AWS"] {
+  is_array(statement.Principal.AWS)
+  statement.Principal.AWS[_] == "*"
+} else = ["Service"] {
+  is_string(statement.Principal.Service)
+  statement.Principal.Service == "*"
+} else = ["Service"] {
+  is_array(statement.Principal.Service)
+  statement.Principal.Service[_] == "*"
+} else = [] {
+  statement.Principal == "*"
+} else = [] {
+  is_array(statement.Principal)
+  statement.Principal[_] == "*"
+}
+
 getSpecInfo(resource) = specInfo { # this one can be also used for the result
 	spec := resource.spec.job_template.spec.template.spec
 	specInfo := {"spec": spec, "path": "spec.job_template.spec.template.spec"}
