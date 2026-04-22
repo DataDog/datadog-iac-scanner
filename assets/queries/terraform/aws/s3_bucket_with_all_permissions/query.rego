@@ -9,13 +9,7 @@ CxPolicy[result] {
 	res_type := resource_type[_]
 	resource := input.document[i].resource[res_type][name]
 
-	policy := common_lib.json_unmarshal(resource.policy)
-	st := common_lib.get_statement(policy)
-	statement := st[idx]
-
-	common_lib.is_allow_effect(statement)
-	common_lib.containsOrInArrayContains(statement.Action, "*")
-	common_lib.containsOrInArrayContains(statement.Principal, "*")
+	idx := vulnerable_statement(resource.policy)
 
 	result := {
 		"documentId": input.document[i].id,
@@ -34,13 +28,7 @@ CxPolicy[result] {
 	res_type := resource_type[_]
 	keyToCheck := common_lib.get_module_equivalent_key("aws", module.source, res_type, "policy")
 
-	policy := common_lib.json_unmarshal(module[keyToCheck])
-	st := common_lib.get_statement(policy)
-	statement := st[idx]
-
-	common_lib.is_allow_effect(statement)
-	common_lib.containsOrInArrayContains(statement.Action, "*")
-	common_lib.containsOrInArrayContains(statement.Principal, "*")
+	idx := vulnerable_statement(module[keyToCheck])
 
 	result := {
 		"documentId": input.document[i].id,
@@ -52,4 +40,14 @@ CxPolicy[result] {
 		"keyActualValue": "'policy.Statement' allows all actions to all principal",
 		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx], []),
 	}
+}
+
+vulnerable_statement(policyValue) = idx {
+	policy := common_lib.json_unmarshal(policyValue)
+	st := common_lib.get_statement(policy)
+	statement := st[idx]
+
+	common_lib.is_allow_effect(statement)
+	common_lib.containsOrInArrayContains(statement.Action, "*")
+	common_lib.containsOrInArrayContains(statement.Principal, "*")
 }
