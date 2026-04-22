@@ -522,3 +522,148 @@ test_get_specific_resource_name_fallback {
     name := get_specific_resource_name(resource, "aws_instance", "my_instance")
     name == "my_instance"
 }
+
+test_get_specific_resource_name_rejects_interpolation {
+    resource := {"bucket": "${aws_s3_bucket.foo.id}"}
+    name := get_specific_resource_name(resource, "aws_s3_bucket", "my_bucket")
+    name == "my_bucket"
+}
+
+test_get_specific_resource_name_rejects_composite_interpolation {
+    resource := {"bucket": "prefix-${var.env}-suffix"}
+    name := get_specific_resource_name(resource, "aws_s3_bucket", "my_bucket")
+    name == "my_bucket"
+}
+
+# Test resolve_reference_name function
+test_resolve_reference_name_literal {
+    resource := {"bucket": "my-bucket"}
+    name := resolve_reference_name(resource, "bucket", "aws_s3_bucket", "fallback_logical")
+    name == "my-bucket"
+}
+
+test_resolve_reference_name_composite_interpolation_falls_back {
+    resource := {"bucket": "prefix-${var.env}-suffix"}
+    name := resolve_reference_name(resource, "bucket", "aws_s3_bucket", "fallback_logical")
+    name == "fallback_logical"
+}
+
+test_resolve_reference_name_unknown_reference_falls_back {
+    resource := {"bucket": "${module.x.bucket_id}"}
+    name := resolve_reference_name(resource, "bucket", "aws_s3_bucket", "fallback_logical")
+    name == "fallback_logical"
+}
+
+test_resolve_reference_name_missing_attribute_falls_back {
+    resource := {"other": "value"}
+    name := resolve_reference_name(resource, "bucket", "aws_s3_bucket", "fallback_logical")
+    name == "fallback_logical"
+}
+
+test_resolve_reference_name_var_without_default_falls_back {
+    resource := {"bucket": "${var.bucket_name}"}
+    name := resolve_reference_name(resource, "bucket", "aws_s3_bucket", "fallback_logical")
+    name == "fallback_logical"
+}
+
+# Test resolve_bucket_name function against mock input.document shape
+test_resolve_bucket_name_literal {
+    resource := {"bucket": "my-literal-bucket"}
+    name := resolve_bucket_name(resource, "policy_logical_name") with input as {}
+    name == "my-literal-bucket"
+}
+
+test_resolve_bucket_name_same_document_reference {
+    mock_input := {
+        "document": [{
+            "resource": {
+                "aws_s3_bucket": {
+                    "my_bucket": {"bucket": "shopist-prod"},
+                },
+                "aws_s3_bucket_policy": {
+                    "my_policy": {"bucket": "${aws_s3_bucket.my_bucket.id}"},
+                },
+            },
+        }],
+    }
+    policy := mock_input.document[0].resource.aws_s3_bucket_policy.my_policy
+    name := resolve_bucket_name(policy, "my_policy") with input as mock_input
+    name == "shopist-prod"
+}
+
+test_resolve_bucket_name_cross_document_reference {
+    mock_input := {
+        "document": [
+            {
+                "resource": {
+                    "aws_s3_bucket": {
+                        "my_bucket": {"bucket": "shopist-cross-file"},
+                    },
+                },
+            },
+            {
+                "resource": {
+                    "aws_s3_bucket_policy": {
+                        "my_policy": {"bucket": "${aws_s3_bucket.my_bucket.id}"},
+                    },
+                },
+            },
+        ],
+    }
+    policy := mock_input.document[1].resource.aws_s3_bucket_policy.my_policy
+    name := resolve_bucket_name(policy, "my_policy") with input as mock_input
+    name == "shopist-cross-file"
+}
+
+test_resolve_bucket_name_reference_to_missing_bucket_falls_back {
+    mock_input := {
+        "document": [{
+            "resource": {
+                "aws_s3_bucket_policy": {
+                    "orphan_policy": {"bucket": "${aws_s3_bucket.not_there.id}"},
+                },
+            },
+        }],
+    }
+    policy := mock_input.document[0].resource.aws_s3_bucket_policy.orphan_policy
+    name := resolve_bucket_name(policy, "orphan_policy") with input as mock_input
+    name == "orphan_policy"
+}
+
+test_resolve_bucket_name_reference_to_bucket_without_literal_name_returns_target_logical_name {
+    # When the referenced aws_s3_bucket exists in the scan but its `bucket`
+    # attribute is itself unresolvable (e.g. "${var.bucket_name}" with no
+    # default), prefer the target bucket's Terraform logical name over the
+    # companion resource's own logical name -- it is one step closer to the
+    # runtime asset and still jump-to-code-friendly.
+    mock_input := {
+        "document": [{
+            "resource": {
+                "aws_s3_bucket": {
+                    "dynamic": {"bucket": "${var.bucket_name}"},
+                },
+                "aws_s3_bucket_policy": {
+                    "its_policy": {"bucket": "${aws_s3_bucket.dynamic.id}"},
+                },
+            },
+        }],
+    }
+    policy := mock_input.document[0].resource.aws_s3_bucket_policy.its_policy
+    name := resolve_bucket_name(policy, "its_policy") with input as mock_input
+    name == "dynamic"
+}
+
+test_resolve_bucket_name_module_reference_falls_back {
+    mock_input := {
+        "document": [{
+            "resource": {
+                "aws_s3_bucket_policy": {
+                    "modular_policy": {"bucket": "${module.shopist.bucket_id}"},
+                },
+            },
+        }],
+    }
+    policy := mock_input.document[0].resource.aws_s3_bucket_policy.modular_policy
+    name := resolve_bucket_name(policy, "modular_policy") with input as mock_input
+    name == "modular_policy"
+}

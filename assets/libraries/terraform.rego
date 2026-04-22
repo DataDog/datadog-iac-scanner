@@ -642,11 +642,43 @@ get_resource_name(resource, resourceDefinitionName) = final_name {
     final_name := resourceDefinitionName
 }
 
+# String safe to use as resourceName: no "${" interpolation fragments.
+is_literal_string(s) {
+	is_string(s)
+	not contains(s, "${")
+}
+
 get_specific_resource_name(resource, resourceType, resourceDefinitionName) = name {
 	field := resourceFieldName[resourceType]
 	name := resource[field]
+	is_literal_string(name)
 } else = name {
 	name := get_resource_name(resource, resourceDefinitionName)
+}
+
+# Literal attr value, or `${parent_type}.<name>.*` resolved via input.document + resourceFieldName; else fallback (never `${...}`).
+resolve_reference_name(resource, attr, parent_type, fallback) = out {
+	val := resource[attr]
+	is_literal_string(val)
+	out := val
+} else = out {
+	ref := resource[attr]
+	is_string(ref)
+	startswith(ref, sprintf("${%s.", [parent_type]))
+	parts := split(trim_suffix(trim_prefix(ref, "${"), "}"), ".")
+	count(parts) >= 2
+	parts[0] == parent_type
+	target := input.document[_].resource[parent_type][parts[1]]
+	candidate := get_specific_resource_name(target, parent_type, parts[1])
+	is_literal_string(candidate)
+	out := candidate
+} else = out {
+	out := fallback
+}
+
+# S3 `bucket` -> resolved name (same-scan aws_s3_bucket refs); else fallback.
+resolve_bucket_name(resource, fallback) = name {
+	name := resolve_reference_name(resource, "bucket", "aws_s3_bucket", fallback)
 }
 
 check_key_empty(disk_encryption_key) = key {
