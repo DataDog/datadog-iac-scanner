@@ -11,12 +11,12 @@ import (
 )
 
 type cfgFileYaml struct {
-	SchemaVersion string    `yaml:"schema-version"`
-	Iac           iacConfig `yaml:"iac,omitempty"`
-	Sast          any       `yaml:"sast,omitempty"`
-	Secrets       any       `yaml:"secrets,omitempty"`
-	Sca           any       `yaml:"sca,omitempty"`
-	Iast          any       `yaml:"iast,omitempty"`
+	SchemaVersion string     `yaml:"schema-version"`
+	Iac           *iacConfig `yaml:"iac,omitempty"`
+	Sast          any        `yaml:"sast,omitempty"`
+	Secrets       any        `yaml:"secrets,omitempty"`
+	Sca           any        `yaml:"sca,omitempty"`
+	Iast          any        `yaml:"iast,omitempty"`
 }
 
 type iacConfig struct {
@@ -42,9 +42,23 @@ func ParseConfig(cfgBytes []byte) (*IacConfig, error) {
 		return nil, fmt.Errorf("could not decode configuration file: %w", err)
 	}
 
-	if err := verifySchema(cfg.SchemaVersion); err != nil {
+	version, err := parseSchemaVersion(cfg.SchemaVersion)
+	if err != nil {
 		return nil, err
 	}
+	// Versions older than v1.2 can't have an IaC configuration
+	if version.compare(schemaVersion{1, 2}) < 0 {
+		return nil, nil
+	}
+	// Versions v2.0 and higher are not supported
+	if version.compare(schemaVersion{2, 0}) >= 0 {
+		return nil, fmt.Errorf("configuration schema version %s is not supported", version)
+	}
+
+	if cfg.Iac == nil {
+		return nil, nil
+	}
+
 	out := &IacConfig{
 		IgnoreRules:      cfg.Iac.IgnoreRules,
 		OnlyRules:        cfg.Iac.UseRules,
@@ -58,18 +72,41 @@ func ParseConfig(cfgBytes []byte) (*IacConfig, error) {
 	return out, nil
 }
 
-func verifySchema(schema string) error {
+func parseSchemaVersion(schema string) (version schemaVersion, err error) {
 	if schema == "" {
-		return errors.New("schema-version must be specified")
+		return schemaVersion{}, errors.New("schema must not be empty")
 	}
-	if schema[0] == 'v' {
-		if majorStr, minorStr, ok := strings.Cut(schema[1:], "."); ok {
-			major, _ := strconv.Atoi(majorStr)
-			minor, _ := strconv.Atoi(minorStr)
-			if major == 1 && minor >= 1 {
-				return nil
-			}
-		}
+	if schema[0] != 'v' {
+		return schemaVersion{}, errors.New("schema must be in vX.Y format")
 	}
-	return errors.New("schema-version must be \"v1.1\" or above")
+	majorStr, minorStr, ok := strings.Cut(schema[1:], ".")
+	if !ok {
+		return schemaVersion{}, errors.New("schema must be in vX.Y format")
+	}
+	major64, err := strconv.ParseInt(majorStr, 10, strconv.IntSize)
+	if err != nil {
+		return schemaVersion{}, errors.New("major version must be a number")
+	}
+	minor64, err := strconv.ParseInt(minorStr, 10, strconv.IntSize)
+	if err != nil {
+		return schemaVersion{}, errors.New("minor version must be a number")
+	}
+	return schemaVersion{major: int(major64), minor: int(minor64)}, nil
+}
+
+type schemaVersion struct {
+	major, minor int
+}
+
+// compare returns a positive number if this schema version is higher than the other schema version,
+// a negative number if it's smaller, or zero if they are equal
+func (v schemaVersion) compare(other schemaVersion) int {
+	if dif := v.major - other.major; dif != 0 {
+		return dif
+	}
+	return v.minor - other.minor
+}
+
+func (v schemaVersion) String() string {
+	return fmt.Sprintf("v%d.%d", v.major, v.minor)
 }

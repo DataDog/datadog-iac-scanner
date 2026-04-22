@@ -392,6 +392,8 @@ var queries = []model.QueryMetadata{
 			"platform":        "Common",
 			"severity":        "MEDIUM",
 			"category":        "Backup",
+			"descriptionUrl":  "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/common/some-name/",
+			"descriptionID":   "59107c75",
 			"cwe":             "",
 		},
 		Platform:     "common",
@@ -411,6 +413,8 @@ var queries = []model.QueryMetadata{
 			"category":        "Supply-Chain",
 			"cloudProvider":   "common",
 			"aggregation":     2,
+			"descriptionUrl":  "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/grpc/common/rule-3/",
+			"descriptionID":   "868c4101",
 			"cwe":             "",
 			"override": map[string]any{
 				"1.0": map[string]any{

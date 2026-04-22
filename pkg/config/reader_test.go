@@ -10,7 +10,7 @@ import (
 )
 
 const cfgFile = `
-schema-version: v1.1
+schema-version: v1.2
 iac:
   ignore-rules: [query1, query2]
   use-rules: [query3, query4]
@@ -50,6 +50,18 @@ var parsedLegacyCfg = IacConfig{
 	LegacyExcludeResults: []string{"res1", "res2"},
 }
 
+const emptyCfgFile = `
+schema-version: v1.2
+sast:
+  use-rulesets: [foo]
+`
+
+const oldCfgFile = `
+schema-version: v1.1
+iac:
+  use-rules: [foo]
+`
+
 func TestNoConfig(t *testing.T) {
 	tmp := t.TempDir()
 
@@ -70,6 +82,32 @@ func TestReadConfig(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, parsedCfgFile, *cfg)
+		})
+	}
+}
+
+func TestIgnoredConfigFile(t *testing.T) {
+	for _, tc := range []struct {
+		name, cfg string
+	}{
+		{
+			name: "empty IaC config",
+			cfg:  emptyCfgFile,
+		},
+		{
+			name: "old schema version",
+			cfg:  oldCfgFile,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
+
+			cfg, err := ReadConfiguration(t.Context(), tmp)
+			assert.NoError(t, err)
+
+			expected := IacConfig{}
+			assert.Equal(t, expected, *cfg)
 		})
 	}
 }
@@ -105,4 +143,30 @@ func TestConfigFilePrecedence(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, parsedCfgFile, *cfg)
+}
+
+func TestConfigFilePrecedenceWithIgnoredConfigFile(t *testing.T) {
+	for _, tc := range []struct {
+		name, cfg string
+	}{
+		{
+			name: "empty IaC config",
+			cfg:  emptyCfgFile,
+		},
+		{
+			name: "old schema version",
+			cfg:  oldCfgFile,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
+			require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
+
+			cfg, err := ReadConfiguration(t.Context(), tmp)
+			assert.NoError(t, err)
+
+			assert.Equal(t, parsedLegacyCfg, *cfg)
+		})
+	}
 }
