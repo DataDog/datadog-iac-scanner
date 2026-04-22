@@ -1,6 +1,6 @@
 [
 	{
-		"queryName": "Nifcloud computing undefined security group to instance",
+		"queryName": "NIFCLOUD computing undefined security group to instance",
 		"severity": "HIGH",
 		"line": 1,
 		"fileName": "positive.tf"

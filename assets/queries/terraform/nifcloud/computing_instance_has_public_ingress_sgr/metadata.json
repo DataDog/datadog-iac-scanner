@@ -1,6 +1,6 @@
 {
   "id": "b2ea2367-8dc9-4231-a035-d0b28bfa3dde",
-  "queryName": "Nifcloud computing has public ingress security group rule",
+  "queryName": "NIFCLOUD computing has public ingress security group rule",
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "An ingress `nifcloud_security_group_rule` allows traffic from a `/0` CIDR. The policy detects `nifcloud_security_group_rule` resources whose `cidr_ip` is `/0` (allowing traffic from anywhere) and flags them as insecure. The rule reports the following attributes: `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`.",

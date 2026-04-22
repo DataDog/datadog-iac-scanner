@@ -1,6 +1,6 @@
 {
   "id": "b3535a48-910c-47f8-8b3b-14222f29ef80",
-  "queryName": "Nifcloud VPN gateway undefined security group",
+  "queryName": "NIFCLOUD VPN gateway undefined security group",
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "VPN gateway is missing `security_group`. `nifcloud_vpn_gateway` resources should include a `security_group` attribute for security purposes. This rule detects `nifcloud_vpn_gateway` resources that do not include a `security_group`, which can leave the VPN gateway exposed or indicate an incomplete configuration.",

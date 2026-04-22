@@ -1,12 +1,12 @@
 [
 	{
-		"queryName": "Nifcloud low RDB backup retention period",
+		"queryName": "NIFCLOUD RDB backup retention period below 7 days",
 		"severity": "LOW",
 		"line": 1,
 		"fileName": "positive1.tf"
 	},
 	{
-		"queryName": "Nifcloud low RDB backup retention period",
+		"queryName": "NIFCLOUD RDB backup retention period below 7 days",
 		"severity": "LOW",
 		"line": 1,
 		"fileName": "positive2.tf"
