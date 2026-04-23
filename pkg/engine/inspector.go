@@ -33,7 +33,6 @@ import (
 	"github.com/open-policy-agent/opa/rego"          // nolint:staticcheck
 	"github.com/open-policy-agent/opa/storage/inmem" // nolint:staticcheck
 	"github.com/open-policy-agent/opa/topdown"       // nolint:staticcheck
-	"github.com/open-policy-agent/opa/util"          // nolint:staticcheck
 	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -102,7 +101,7 @@ type Inspector struct {
 type QueryContext struct {
 	Ctx           context.Context
 	scanID        string
-	Files         map[string]model.FileMetadata
+	Files         map[string]*model.FileMetadata
 	Query         *PreparedQuery
 	payload       *ast.Value
 	BaseScanPaths []string
@@ -222,7 +221,7 @@ func (c *Inspector) createInspectionJobs(jobs chan<- InspectionJob, queries []mo
 }
 
 // This function performs an inspection job and sends the result to the results channel
-func (c *Inspector) performInspection(ctx context.Context, scanID string, files model.FileMetadatas,
+func (c *Inspector) performInspection(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	astPayload ast.Value, baseScanPaths []string,
 	jobs <-chan InspectionJob, results chan<- QueryResult, queries []model.QueryMetadata,
 	modules []tfmodules.ParsedModule) {
@@ -247,7 +246,7 @@ func (c *Inspector) performInspection(ctx context.Context, scanID string, files 
 		queryContext := &QueryContext{
 			Ctx:           ctx,
 			scanID:        scanID,
-			Files:         files.ToMap(),
+			Files:         filesMap,
 			Query:         query,
 			payload:       &astPayload,
 			BaseScanPaths: baseScanPaths,
@@ -285,19 +284,15 @@ func (c *Inspector) Inspect(
 	rootDir := c.repoPath
 	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, parsedModules, rootDir)
 
-	var p interface{}
-
-	payload, err := json.Marshal(combinedFiles)
-	if err != nil {
-		return vulnerabilities, err
+	// Convert combined documents directly to OPA AST, skipping the
+	// json.Marshal -> UnmarshalJSON round-trip to avoid intermediate copies.
+	docs := make([]interface{}, len(combinedFiles.Documents))
+	for i, d := range combinedFiles.Documents {
+		docs[i] = map[string]interface{}(d)
 	}
-
-	err = util.UnmarshalJSON(payload, &p)
-	if err != nil {
-		return vulnerabilities, err
-	}
-
-	astPayload, err := ast.InterfaceToValue(p)
+	astPayload, err := ast.InterfaceToValue(map[string]interface{}{
+		"document": docs,
+	})
 	if err != nil {
 		return vulnerabilities, err
 	}
@@ -307,6 +302,9 @@ func (c *Inspector) Inspect(
 	astPayload = c.TransformJsonencodeInPayload(ctx, astPayload)
 
 	queries := c.getQueriesByPlat(platforms)
+
+	// Compute the file map once and share it (read-only) across all workers
+	filesMap := files.ToMap()
 
 	// Create a channel to collect the results
 	results := make(chan QueryResult, len(queries))
@@ -323,7 +321,7 @@ func (c *Inspector) Inspect(
 		go func() {
 			// Decrement the counter when the goroutine completes
 			defer wg.Done()
-			c.performInspection(ctx, scanID, files, astPayload, baseScanPaths, jobs, results, queries, enrichedModules)
+			c.performInspection(ctx, scanID, filesMap, astPayload, baseScanPaths, jobs, results, queries, enrichedModules)
 		}()
 	}
 	// Start a goroutine to create inspection jobs
@@ -588,7 +586,10 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 
 		return nil, false
 	}
-	file := qCtx.Files[vulnerability.FileID]
+	file, ok := qCtx.Files[vulnerability.FileID]
+	if !ok || file == nil {
+		return nil, false
+	}
 	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID) {
 		contextLogger.Debug().Msgf("Skipping vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)

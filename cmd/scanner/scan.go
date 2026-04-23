@@ -74,12 +74,16 @@ var scanAction = &cli.Command{
 			Usage:   "a list of platform types to scan",
 			Value:   GetSupportedPlatforms(),
 		},
-		&cli.BoolFlag{
-			Name:   "x-parallelparsing",
-			Hidden: true,
-			Usage:  "(experimental, will be removed soon) parse files in parallel",
-			Value:  false,
-		},
+		// NOTE: --x-parallelparsing flag disabled due to pre-existing race conditions
+		// in concurrent query workers (SetupLogs shared state write, docker detector
+		// shallow slice copy) that cause non-deterministic violation counts.
+		// See K9VULN-13746 for the follow-up to fix and re-enable.
+		// &cli.BoolFlag{
+		// 	Name:   "x-parallelparsing",
+		// 	Hidden: true,
+		// 	Usage:  "(experimental, will be removed soon) parse files in parallel",
+		// 	Value:  false,
+		// },
 	},
 	Action: runScan,
 }
@@ -360,9 +364,11 @@ func selectPlatforms(platforms []string) []string {
 	return out
 }
 
-func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
+func getFeatureFlagEvaluator(_ *cli.Command) featureflags.FlagEvaluator {
 	overrides := map[string]bool{}
-	overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
+	// Parallel parsing disabled: triggers race conditions in concurrent
+	// query workers causing non-deterministic violation counts.
+	// overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }
 

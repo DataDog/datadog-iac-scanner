@@ -204,7 +204,7 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	err := s.Storage.SaveFile(ctx, file)
 	if err == nil {
 		s.filesMu.Lock()
-		s.files = append(s.files, *file)
+		s.files = append(s.files, file)
 		s.filesMu.Unlock()
 	}
 }

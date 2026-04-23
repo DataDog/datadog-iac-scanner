@@ -59,7 +59,7 @@ func TestMemoryStorage_SaveFile(t *testing.T) {
 			if err := m.SaveFile(tt.args.in0, tt.args.metadata); (err != nil) != tt.wantErr {
 				t.Errorf("MemoryStorage.SaveFile() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			require.Equal(t, *tt.args.metadata, m.allFiles[0])
+			require.Equal(t, tt.args.metadata, m.allFiles[0])
 		})
 	}
 }
@@ -105,7 +105,7 @@ func TestMemoryStorage(t *testing.T) { //nolint
 					},
 				},
 				allFiles: model.FileMetadatas{
-					{
+					&model.FileMetadata{
 						ID:           "id",
 						ScanID:       "scan_id",
 						OriginalData: "orig_data",
@@ -121,7 +121,7 @@ func TestMemoryStorage(t *testing.T) { //nolint
 			wantErr: false,
 			want: want{
 				metadata: model.FileMetadatas{
-					{
+					&model.FileMetadata{
 						ID:           "id",
 						ScanID:       "scan_id",
 						OriginalData: "orig_data",
