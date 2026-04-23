@@ -1,10 +1,10 @@
 ---
-title: "Nifcloud VPN gateway undefined security group"
+title: "NIFCLOUD VPN gateway undefined security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/vpn_gateway_security_group_undefined"
   id: "b3535a48-910c-47f8-8b3b-14222f29ef80"
-  display_name: "Nifcloud VPN gateway undefined security group"
+  display_name: "NIFCLOUD VPN gateway undefined security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "HIGH"

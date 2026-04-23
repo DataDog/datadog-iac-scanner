@@ -4953,7 +4953,7 @@
         "rules": [
           {
             "name": "autoscale_badly_setup",
-            "short_description": "Databricks autoscale badly setup"
+            "short_description": "Databricks autoscale configuration incomplete"
           },
           {
             "name": "cluster_aws_attributes",
@@ -4969,7 +4969,7 @@
           },
           {
             "name": "databricks_permissions",
-            "short_description": "Databricks cluster or job with none or insecure permission(s)"
+            "short_description": "Databricks cluster or job with no or insecure permissions"
           },
           {
             "name": "group_without_user_or_instance_profile",
@@ -4989,7 +4989,7 @@
           },
           {
             "name": "use_lts_spark_version",
-            "short_description": "Check use no LTS Spark version"
+            "short_description": "Databricks cluster uses non-LTS Spark version"
           },
           {
             "name": "use_spark_submit_task",
@@ -5579,99 +5579,99 @@
         "rules": [
           {
             "name": "computing_instance_has_common_private",
-            "short_description": "Nifcloud computing has common private network"
+            "short_description": "NIFCLOUD computing has common private network"
           },
           {
             "name": "computing_instance_has_public_ingress_sgr",
-            "short_description": "Nifcloud computing has public ingress security group rule"
+            "short_description": "NIFCLOUD computing has public ingress security group rule"
           },
           {
             "name": "computing_instance_security_group_undefined",
-            "short_description": "Nifcloud computing undefined security group to instance"
+            "short_description": "NIFCLOUD computing undefined security group to instance"
           },
           {
             "name": "computing_security_group_description_undefined",
-            "short_description": "Nifcloud computing undefined description to security group"
+            "short_description": "NIFCLOUD computing undefined description to security group"
           },
           {
             "name": "computing_security_group_rule_description_undefined",
-            "short_description": "Nifcloud computing undefined description to security group rule"
+            "short_description": "NIFCLOUD computing undefined description to security group rule"
           },
           {
             "name": "db_does_not_have_long_backup_retention",
-            "short_description": "Nifcloud low RDB backup retention period"
+            "short_description": "NIFCLOUD RDB backup retention period below 7 days"
           },
           {
             "name": "db_has_public_access",
-            "short_description": "Nifcloud RDB has public DB access"
+            "short_description": "NIFCLOUD RDB has public DB access"
           },
           {
             "name": "db_instance_has_common_private",
-            "short_description": "Nifcloud RDB has common private network"
+            "short_description": "NIFCLOUD RDB has common private network"
           },
           {
             "name": "db_security_group_description_undefined",
-            "short_description": "Nifcloud RDB undefined description to DB security group"
+            "short_description": "NIFCLOUD RDB undefined description to DB security group"
           },
           {
             "name": "db_security_group_has_public_ingress_sgr",
-            "short_description": "Nifcloud RDB has public DB ingress security group rule"
+            "short_description": "NIFCLOUD RDB has public DB ingress security group rule"
           },
           {
             "name": "dns_has_verified_record",
-            "short_description": "Nifcloud DNS has verified record"
+            "short_description": "NIFCLOUD DNS has verified record"
           },
           {
             "name": "elb_has_common_private",
-            "short_description": "Nifcloud ELB has common private network"
+            "short_description": "NIFCLOUD ELB has common private network"
           },
           {
             "name": "elb_listener_use_http",
-            "short_description": "Nifcloud ELB listener using HTTP protocol"
+            "short_description": "NIFCLOUD ELB listener using HTTP protocol"
           },
           {
             "name": "elb_use_http",
-            "short_description": "Nifcloud ELB using HTTP protocol"
+            "short_description": "NIFCLOUD ELB using HTTP protocol"
           },
           {
             "name": "load_balancer_listener_use_http",
-            "short_description": "Nifcloud LB listener using HTTP port"
+            "short_description": "NIFCLOUD LB listener using HTTP port"
           },
           {
             "name": "load_balancer_use_http",
-            "short_description": "Nifcloud LB using HTTP port"
+            "short_description": "NIFCLOUD LB using HTTP port"
           },
           {
             "name": "load_balancer_use_insecure_tls_policy_id",
-            "short_description": "Nifcloud LB using insecure TLS policy ID"
+            "short_description": "NIFCLOUD LB using insecure TLS policy ID"
           },
           {
             "name": "load_balancer_use_insecure_tls_policy_name",
-            "short_description": "Nifcloud LB using insecure TLS policy name"
+            "short_description": "NIFCLOUD LB using insecure TLS policy name"
           },
           {
             "name": "nas_instance_has_common_private",
-            "short_description": "Nifcloud NAS has common private network"
+            "short_description": "NIFCLOUD NAS has common private network"
           },
           {
             "name": "nas_security_group_description_undefined",
-            "short_description": "Nifcloud NAS undefined description to NAS security group"
+            "short_description": "NIFCLOUD NAS undefined description to NAS security group"
           },
           {
             "name": "nas_security_group_has_public_ingress_sgr",
-            "short_description": "Nifcloud NAS has public ingress NAS security group rule"
+            "short_description": "NIFCLOUD NAS has public ingress NAS security group rule"
           },
           {
             "name": "router_has_common_private",
-            "short_description": "Nifcloud router has common private network"
+            "short_description": "NIFCLOUD router has common private network"
           },
           {
             "name": "router_security_group_undefined",
-            "short_description": "Nifcloud router undefined security group"
+            "short_description": "NIFCLOUD router undefined security group"
           },
           {
             "name": "vpn_gateway_security_group_undefined",
-            "short_description": "Nifcloud VPN gateway undefined security group"
+            "short_description": "NIFCLOUD VPN gateway undefined security group"
           }
         ]
       },

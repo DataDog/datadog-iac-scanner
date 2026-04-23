@@ -1,6 +1,6 @@
 {
   "id": "a0b846e8-815f-4f15-b660-bc4ab9fa1e1a",
-  "queryName": "Nifcloud RDB has public DB ingress security group rule",
+  "queryName": "NIFCLOUD RDB has public DB ingress security group rule",
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "A `nifcloud_db_security_group` ingress security group rule allows traffic from `/0`. The rule parses `rule[].cidr_ip`, splitting on `/` and converting the suffix to a number; it flags when that numeric mask is less than 1, indicating a CIDR of `/0`. This represents an overly permissive `cidr` range that allows traffic from any IP address.",

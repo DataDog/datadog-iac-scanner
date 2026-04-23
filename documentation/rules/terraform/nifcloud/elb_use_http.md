@@ -1,10 +1,10 @@
 ---
-title: "Nifcloud ELB using HTTP protocol"
+title: "NIFCLOUD ELB using HTTP protocol"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/elb_use_http"
   id: "e2de2b80-2fc2-4502-a764-40930dfcc70a"
-  display_name: "Nifcloud ELB using HTTP protocol"
+  display_name: "NIFCLOUD ELB using HTTP protocol"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "MEDIUM"

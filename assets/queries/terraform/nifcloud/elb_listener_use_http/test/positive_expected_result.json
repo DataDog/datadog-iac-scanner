@@ -1,12 +1,12 @@
 [
 	{
-		"queryName": "Nifcloud ELB listener using HTTP protocol",
+		"queryName": "NIFCLOUD ELB listener using HTTP protocol",
 		"severity": "MEDIUM",
 		"line": 1,
 		"fileName": "positive1.tf"
 	},
 	{
-		"queryName": "Nifcloud ELB listener using HTTP protocol",
+		"queryName": "NIFCLOUD ELB listener using HTTP protocol",
 		"severity": "MEDIUM",
 		"line": 1,
 		"fileName": "positive2.tf"

@@ -3685,8 +3685,8 @@ rules:
         title: Web app accepting traffic other than HTTPS
     databricks:
       autoscale_badly_setup:
-        description: Databricks autoscale badly setup
-        title: Databricks autoscale badly setup
+        description: Databricks autoscale configuration incomplete
+        title: Databricks autoscale configuration incomplete
       cluster_aws_attributes:
         description: Check Databricks cluster AWS attribute best practices
         title: Check Databricks cluster AWS attribute best practices
@@ -3697,8 +3697,8 @@ rules:
         description: Check Databricks cluster GCP attribute best practices
         title: Check Databricks cluster GCP attribute best practices
       databricks_permissions:
-        description: Databricks cluster or job with none or insecure permission(s)
-        title: Databricks cluster or job with none or insecure permission(s)
+        description: Databricks cluster or job with no or insecure permissions
+        title: Databricks cluster or job with no or insecure permissions
       group_without_user_or_instance_profile:
         description: Databricks group without user or instance profile
         title: Databricks group without user or instance profile
@@ -3712,8 +3712,8 @@ rules:
         description: Unrestricted Databricks ACL
         title: Unrestricted Databricks ACL
       use_lts_spark_version:
-        description: Check use no LTS Spark version
-        title: Check use no LTS Spark version
+        description: Databricks cluster uses non-LTS Spark version
+        title: Databricks cluster uses non-LTS Spark version
       use_spark_submit_task:
         description: Job's task is legacy (spark_submit_task)
         title: Job's task is legacy (spark_submit_task)
@@ -4142,77 +4142,77 @@ rules:
         title: Workload mounting with sensitive OS directory
     nifcloud:
       computing_instance_has_common_private:
-        description: Nifcloud computing has common private network
-        title: Nifcloud computing has common private network
+        description: NIFCLOUD computing has common private network
+        title: NIFCLOUD computing has common private network
       computing_instance_has_public_ingress_sgr:
-        description: Nifcloud computing has public ingress security group rule
-        title: Nifcloud computing has public ingress security group rule
+        description: NIFCLOUD computing has public ingress security group rule
+        title: NIFCLOUD computing has public ingress security group rule
       computing_instance_security_group_undefined:
-        description: Nifcloud computing undefined security group to instance
-        title: Nifcloud computing undefined security group to instance
+        description: NIFCLOUD computing undefined security group to instance
+        title: NIFCLOUD computing undefined security group to instance
       computing_security_group_description_undefined:
-        description: Nifcloud computing undefined description to security group
-        title: Nifcloud computing undefined description to security group
+        description: NIFCLOUD computing undefined description to security group
+        title: NIFCLOUD computing undefined description to security group
       computing_security_group_rule_description_undefined:
-        description: Nifcloud computing undefined description to security group rule
-        title: Nifcloud computing undefined description to security group rule
+        description: NIFCLOUD computing undefined description to security group rule
+        title: NIFCLOUD computing undefined description to security group rule
       db_does_not_have_long_backup_retention:
-        description: Nifcloud low RDB backup retention period
-        title: Nifcloud low RDB backup retention period
+        description: NIFCLOUD RDB backup retention period below 7 days
+        title: NIFCLOUD RDB backup retention period below 7 days
       db_has_public_access:
-        description: Nifcloud RDB has public DB access
-        title: Nifcloud RDB has public DB access
+        description: NIFCLOUD RDB has public DB access
+        title: NIFCLOUD RDB has public DB access
       db_instance_has_common_private:
-        description: Nifcloud RDB has common private network
-        title: Nifcloud RDB has common private network
+        description: NIFCLOUD RDB has common private network
+        title: NIFCLOUD RDB has common private network
       db_security_group_description_undefined:
-        description: Nifcloud RDB undefined description to DB security group
-        title: Nifcloud RDB undefined description to DB security group
+        description: NIFCLOUD RDB undefined description to DB security group
+        title: NIFCLOUD RDB undefined description to DB security group
       db_security_group_has_public_ingress_sgr:
-        description: Nifcloud RDB has public DB ingress security group rule
-        title: Nifcloud RDB has public DB ingress security group rule
+        description: NIFCLOUD RDB has public DB ingress security group rule
+        title: NIFCLOUD RDB has public DB ingress security group rule
       dns_has_verified_record:
-        description: Nifcloud DNS has verified record
-        title: Nifcloud DNS has verified record
+        description: NIFCLOUD DNS has verified record
+        title: NIFCLOUD DNS has verified record
       elb_has_common_private:
-        description: Nifcloud ELB has common private network
-        title: Nifcloud ELB has common private network
+        description: NIFCLOUD ELB has common private network
+        title: NIFCLOUD ELB has common private network
       elb_listener_use_http:
-        description: Nifcloud ELB listener using HTTP protocol
-        title: Nifcloud ELB listener using HTTP protocol
+        description: NIFCLOUD ELB listener using HTTP protocol
+        title: NIFCLOUD ELB listener using HTTP protocol
       elb_use_http:
-        description: Nifcloud ELB using HTTP protocol
-        title: Nifcloud ELB using HTTP protocol
+        description: NIFCLOUD ELB using HTTP protocol
+        title: NIFCLOUD ELB using HTTP protocol
       load_balancer_listener_use_http:
-        description: Nifcloud LB listener using HTTP port
-        title: Nifcloud LB listener using HTTP port
+        description: NIFCLOUD LB listener using HTTP port
+        title: NIFCLOUD LB listener using HTTP port
       load_balancer_use_http:
-        description: Nifcloud LB using HTTP port
-        title: Nifcloud LB using HTTP port
+        description: NIFCLOUD LB using HTTP port
+        title: NIFCLOUD LB using HTTP port
       load_balancer_use_insecure_tls_policy_id:
-        description: Nifcloud LB using insecure TLS policy ID
-        title: Nifcloud LB using insecure TLS policy ID
+        description: NIFCLOUD LB using insecure TLS policy ID
+        title: NIFCLOUD LB using insecure TLS policy ID
       load_balancer_use_insecure_tls_policy_name:
-        description: Nifcloud LB using insecure TLS policy name
-        title: Nifcloud LB using insecure TLS policy name
+        description: NIFCLOUD LB using insecure TLS policy name
+        title: NIFCLOUD LB using insecure TLS policy name
       nas_instance_has_common_private:
-        description: Nifcloud NAS has common private network
-        title: Nifcloud NAS has common private network
+        description: NIFCLOUD NAS has common private network
+        title: NIFCLOUD NAS has common private network
       nas_security_group_description_undefined:
-        description: Nifcloud NAS undefined description to NAS security group
-        title: Nifcloud NAS undefined description to NAS security group
+        description: NIFCLOUD NAS undefined description to NAS security group
+        title: NIFCLOUD NAS undefined description to NAS security group
       nas_security_group_has_public_ingress_sgr:
-        description: Nifcloud NAS has public ingress NAS security group rule
-        title: Nifcloud NAS has public ingress NAS security group rule
+        description: NIFCLOUD NAS has public ingress NAS security group rule
+        title: NIFCLOUD NAS has public ingress NAS security group rule
       router_has_common_private:
-        description: Nifcloud router has common private network
-        title: Nifcloud router has common private network
+        description: NIFCLOUD router has common private network
+        title: NIFCLOUD router has common private network
       router_security_group_undefined:
-        description: Nifcloud router undefined security group
-        title: Nifcloud router undefined security group
+        description: NIFCLOUD router undefined security group
+        title: NIFCLOUD router undefined security group
       vpn_gateway_security_group_undefined:
-        description: Nifcloud VPN gateway undefined security group
-        title: Nifcloud VPN gateway undefined security group
+        description: NIFCLOUD VPN gateway undefined security group
+        title: NIFCLOUD VPN gateway undefined security group
     tencentcloud:
       cdb_instance_internet_service_enabled:
         description: CDB instance internet service enabled

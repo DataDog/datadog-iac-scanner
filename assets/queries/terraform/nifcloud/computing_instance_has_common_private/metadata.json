@@ -1,6 +1,6 @@
 {
   "id": "df58dd45-8009-43c2-90f7-c90eb9d53ed9",
-  "queryName": "Nifcloud computing has common private network",
+  "queryName": "NIFCLOUD computing has common private network",
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "The instance uses the common private network. The `nifcloud_instance` resource's `network_interface.network_id` is set to `net-COMMON_PRIVATE`. The instance should use a private LAN to isolate the private-side network from the shared network.",

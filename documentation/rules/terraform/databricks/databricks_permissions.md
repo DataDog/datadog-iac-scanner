@@ -1,10 +1,10 @@
 ---
-title: "Databricks cluster or job with none or insecure permission(s)"
+title: "Databricks cluster or job with no or insecure permissions"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/databricks_permissions"
   id: "a4edb7e1-c0e0-4f7f-9d7c-d1b603e81ad5"
-  display_name: "Databricks cluster or job with none or insecure permission(s)"
+  display_name: "Databricks cluster or job with no or insecure permissions"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "HIGH"

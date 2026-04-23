@@ -73,7 +73,7 @@ Secure configuration example:
 ```
 
 ```yaml
-- name: Launch EBS-optimized type with false
+- name: Launch with ebs_optimized false
   amazon.aws.ec2_instance:
     name: app-server
     key_name: mykey
