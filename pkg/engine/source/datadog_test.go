@@ -50,7 +50,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      QueryFilter{ByIDs: []string{"rule-1"}},
+				ExcludeQueries:      QueryFilter{ByIDs: []string{"dockerfile-gcp-rule-1"}},
 			},
 			expected: []model.QueryMetadata{
 				/* queries[0] is excluded */ queries[1], queries[2],
@@ -108,7 +108,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				IncludeQueries:      QueryFilter{ByIDs: []string{"rule-2", "rule-3"}},
+				IncludeQueries:      QueryFilter{ByIDs: []string{"rule-2", "grpc-common-rule-3"}},
 			},
 			expected: []model.QueryMetadata{
 				/* queries[0] is not included */ queries[1], queries[2],
@@ -183,6 +183,50 @@ func TestQuery(t *testing.T) {
 			},
 			expected: []model.QueryMetadata{
 				queries[0], /* queries[1]: not included; queries[2]: included but excluded by severity */
+			},
+		},
+		{
+			name: "IncludeQueriesById works with legacy id",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{ByIDs: []string{"rule-2"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[1],
+			},
+		},
+		{
+			name: "IncludeQueriesById works with regular id",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{ByIDs: []string{"common-rule-2"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[1],
+			},
+		},
+		{
+			name: "ExcludeQueriesById works with legacy id",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				ExcludeQueries:      QueryFilter{ByIDs: []string{"rule-2"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0] /* queries[1] excluded */, queries[2],
+			},
+		},
+		{
+			name: "ExcludeQueriesById works with regular id",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				ExcludeQueries:      QueryFilter{ByIDs: []string{"common-rule-2"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0] /* queries[1] excluded */, queries[2],
 			},
 		},
 	} {
@@ -299,7 +343,7 @@ func TestSourceWithWantedProviders(t *testing.T) {
 
 var rules = []*Rule{
 	{
-		ID:               "rule-1",
+		ID:               "dockerfile-gcp-rule-1",
 		Name:             "rule-1",
 		LegacyId:         nil,
 		ShortDescription: "short 1",
@@ -317,8 +361,8 @@ var rules = []*Rule{
 		IsPublished:      true,
 	},
 	{
-		ID:               "rule-2",
-		Name:             "some-name",
+		ID:               "common-rule-2",
+		Name:             "rule-2",
 		LegacyId:         ptr("rule-2"),
 		ShortDescription: "short 2",
 		Description:      "full 2",
@@ -331,7 +375,7 @@ var rules = []*Rule{
 		IsPublished:      true,
 	},
 	{
-		ID:               "rule-3",
+		ID:               "grpc-common-rule-3",
 		Name:             "rule-3",
 		ShortDescription: "short 3",
 		Description:      "full 3",
@@ -367,7 +411,7 @@ var queries = []model.QueryMetadata{
 		Query:     "rule-1",
 		Content:   "query text 1",
 		Metadata: map[string]any{
-			"id":              "rule-1",
+			"id":              "dockerfile-gcp-rule-1",
 			"queryName":       "short 1",
 			"descriptionText": "full 1",
 			"platform":        "Dockerfile",
@@ -383,7 +427,7 @@ var queries = []model.QueryMetadata{
 	},
 	{
 		InputData: "{}",
-		Query:     "some-name",
+		Query:     "rule-2",
 		Content:   "query text 2",
 		Metadata: map[string]any{
 			"id":              "rule-2",
@@ -392,8 +436,8 @@ var queries = []model.QueryMetadata{
 			"platform":        "Common",
 			"severity":        "MEDIUM",
 			"category":        "Backup",
-			"descriptionUrl":  "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/common/some-name/",
-			"descriptionID":   "59107c75",
+			"descriptionUrl":  "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/common/rule-2/",
+			"descriptionID":   "228a1c19",
 			"cwe":             "",
 		},
 		Platform:     "common",
@@ -405,7 +449,7 @@ var queries = []model.QueryMetadata{
 		Query:     "rule-3",
 		Content:   "query text 3",
 		Metadata: map[string]any{
-			"id":              "rule-3",
+			"id":              "grpc-common-rule-3",
 			"queryName":       "short 3",
 			"descriptionText": "full 3",
 			"platform":        "GRPC",
