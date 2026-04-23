@@ -8,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/legacy_networks_exist_for_project",
   "platform": "Terraform",
   "cloudProvider": "GCP",
-  "cwe": "CWE-400",
+  "cwe": "400",
   "oldDescriptionText": "Ensures that no legacy networks with auto_create_subnetworks enabled exist in a project.",
   "providerUrl": "https://cloud.google.com/vpc/docs/legacy"
 }
