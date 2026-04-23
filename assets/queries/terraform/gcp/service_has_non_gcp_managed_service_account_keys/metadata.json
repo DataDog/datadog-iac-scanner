@@ -8,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/service_has_non_gcp_managed_service_account_keys",
   "platform": "Terraform",
   "cloudProvider": "GCP",
-  "cwe": "CWE-522",
+  "cwe": "522",
   "oldDescriptionText": "Ensures that only GCP-managed service account keys are used, preventing manually created keys that pose security risks.",
   "providerUrl": "https://cloud.google.com/iam/docs/best-practices-for-managing-service-account-keys",
   "defaultFrameworks": [
