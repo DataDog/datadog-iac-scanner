@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/kustomize"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	cli "github.com/urfave/cli/v3"
@@ -22,6 +23,7 @@ const defaultFailCode = 126
 const gcPercent = 50
 
 func main() {
+	kustomize.MaybeRunAsKustomizeRenderHelper()
 	if _, ok := os.LookupEnv("GOGC"); !ok {
 		debug.SetGCPercent(gcPercent)
 	}
@@ -32,6 +34,7 @@ func main() {
 			scanAction,
 			listPlatformsAction,
 			listQueriesAction,
+			internalAction,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
