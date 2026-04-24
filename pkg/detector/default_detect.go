@@ -100,3 +100,16 @@ func (d defaultDetectLine) prepareResolvedFiles(resFiles map[string]model.Resolv
 	}
 	return resolvedFiles
 }
+
+// DefaultYAMLDetectLine is the shared YAML/JSON line detector for subpackages (e.g. kustomize).
+type DefaultYAMLDetectLine struct{}
+
+// DetectLine forwards to the default path-based YAML detector.
+func (DefaultYAMLDetectLine) DetectLine(
+	ctx context.Context,
+	file *model.FileMetadata,
+	searchKey string,
+	outputLines int,
+) model.VulnerabilityLines {
+	return defaultDetectLine{}.DetectLine(ctx, file, searchKey, outputLines)
+}
