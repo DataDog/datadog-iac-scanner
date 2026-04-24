@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: shared
+spec:
+  type: LoadBalancer
+  selector:
+    app: shared
+  ports:
+  - port: 80
+    targetPort: 8080

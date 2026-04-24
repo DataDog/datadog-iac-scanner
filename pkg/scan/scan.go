@@ -9,6 +9,9 @@ package scan
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -29,6 +32,7 @@ import (
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/kustomize"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scanner"
 )
 
@@ -171,6 +175,9 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 		contextLogger.Err(err).Msgf("failed to get files %v", err)
 		return nil, err
 	}
+	if scanIncludesKustomizeFiles(files) {
+		results = dedupeKustomizeOverlappingFindings(results, files)
+	}
 
 	return &Results{
 		Results:        results,
@@ -206,6 +213,15 @@ func getExcludeResultsMap(excludeResults []string) map[string]bool {
 		excludeResultsMap[er] = true
 	}
 	return excludeResultsMap
+}
+
+func scanIncludesKustomizeFiles(files model.FileMetadatas) bool {
+	for _, f := range files {
+		if f != nil && f.Kind == model.KindKUSTOMIZE {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
@@ -264,7 +280,18 @@ func (c *Client) createService(
 	// combinedResolver to be used to resolve files and templates
 	builder := resolver.NewBuilder()
 	if flagEvaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
-		builder = builder.Add(ctx, &helm.Resolver{})
+		builder = builder.Add(ctx, helm.NewResolverWithIncludeCRDs(c.ScanParams.HelmIncludeCRDs))
+	}
+	if flagEvaluator.EvaluateWithOrg(featureflags.IacEnableKustomizeResolver) && shouldEnableKustomizeResolver(types) {
+		repo := inferKustomizeRepoRoot(c.ScanParams.RepoPath, paths)
+		builder = builder.Add(ctx, kustomize.NewResolver(kustomize.Options{
+			RepoRoot:           repo,
+			AllowHelmInflation: c.ScanParams.KustomizeEnableHelmInflation,
+			RenderTimeout:      c.ScanParams.KustomizeRenderTimeout,
+			HelmIncludeCRDs:    c.ScanParams.HelmIncludeCRDs,
+			MaxFetchBytes:      c.ScanParams.KustomizeMaxFetchBytes,
+			StrictLoad:         c.ScanParams.KustomizeStrictLoad,
+		}))
 	}
 	combinedResolver, err := builder.
 		Build(ctx)
@@ -273,22 +300,152 @@ func (c *Client) createService(
 	}
 
 	services := make([]*kics.Service, 0, len(combinedParser))
+	resolverDiagnostics := kics.NewResolverDiagnosticsState()
 
 	for _, p := range combinedParser {
 		services = append(
 			services,
 			&kics.Service{
-				SourceProvider: filesSource,
-				Storage:        store,
-				Parser:         p,
-				Inspector:      inspector,
-				Tracker:        t,
-				Resolver:       combinedResolver,
-				MaxFileSize:    c.ScanParams.MaxFileSizeFlag,
+				SourceProvider:      filesSource,
+				Storage:             store,
+				Parser:              p,
+				Inspector:           inspector,
+				Tracker:             t,
+				Resolver:            combinedResolver,
+				ResolverDiagnostics: resolverDiagnostics,
+				MaxFileSize:         c.ScanParams.MaxFileSizeFlag,
 			},
 		)
 	}
 	return services, nil
+}
+
+func shouldEnableKustomizeResolver(platforms []string) bool {
+	for _, platform := range platforms {
+		switch strings.ToLower(strings.TrimSpace(platform)) {
+		case "", "kubernetes", "knative", "crossplane":
+			return true
+		}
+	}
+	return false
+}
+
+func commonAncestorPath(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	absDir := func(p string) string {
+		if p == "" {
+			return ""
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			abs = filepath.Clean(p)
+		}
+		if st, err := os.Stat(abs); err == nil && !st.IsDir() {
+			return filepath.Dir(abs)
+		}
+		return abs
+	}
+
+	common := filepath.Clean(absDir(paths[0]))
+	for _, p := range paths[1:] {
+		cur := filepath.Clean(absDir(p))
+		for common != cur && !strings.HasPrefix(cur, common+string(os.PathSeparator)) {
+			parent := filepath.Dir(common)
+			if parent == common {
+				return common
+			}
+			common = parent
+		}
+	}
+	return common
+}
+
+func inferKustomizeRepoRoot(configuredRepo string, paths []string) string {
+	if configuredRepo != "" {
+		return configuredRepo
+	}
+	if len(paths) == 1 {
+		root := nearestGitRoot(paths[0])
+		if root != "" {
+			return root
+		}
+		return broadenSinglePathRepoRoot(paths[0])
+	}
+	var sharedRoot string
+	for _, p := range paths {
+		root := nearestGitRoot(p)
+		if root == "" {
+			return commonAncestorPath(paths)
+		}
+		if sharedRoot == "" {
+			sharedRoot = root
+			continue
+		}
+		if filepath.Clean(sharedRoot) != filepath.Clean(root) {
+			return commonAncestorPath(paths)
+		}
+	}
+	if sharedRoot != "" {
+		return sharedRoot
+	}
+	return commonAncestorPath(paths)
+}
+
+func broadenSinglePathRepoRoot(path string) string {
+	if path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = filepath.Clean(path)
+	}
+	if st, err := os.Stat(abs); err == nil && !st.IsDir() {
+		abs = filepath.Dir(abs)
+	}
+	cur := filepath.Clean(abs)
+	root := cur
+	for {
+		rels, err := kustomize.TransitiveRelativeLocalPaths(cur)
+		if err != nil || len(rels) == 0 {
+			break
+		}
+		candidate := commonAncestorPath(rels)
+		if candidate == "" || filepath.Clean(candidate) == filepath.Clean(root) {
+			break
+		}
+		root = candidate
+		cur = candidate
+	}
+	if root != "" {
+		return root
+	}
+	return cur
+}
+
+func nearestGitRoot(path string) string {
+	if path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = filepath.Clean(path)
+	}
+	if st, err := os.Stat(abs); err == nil && !st.IsDir() {
+		abs = filepath.Dir(abs)
+	}
+	cur := filepath.Clean(abs)
+	for {
+		if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
+			return cur
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return ""
+		}
+		cur = parent
+	}
 }
 
 func (c *Client) getFileSystemSourceProvider(ctx context.Context, paths []string) (*provider.FileSystemSourceProvider, error) {

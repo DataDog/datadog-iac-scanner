@@ -8,6 +8,8 @@ package kics
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
@@ -22,6 +24,8 @@ import (
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
+	kustomizeResolver "github.com/DataDog/datadog-iac-scanner/pkg/resolver/kustomize"
+	"github.com/stretchr/testify/require"
 )
 
 // TestService tests the functions [GetVulnerabilities(), StartScan()] and all the methods called by them
@@ -77,6 +81,7 @@ func TestService(t *testing.T) { //nolint
 	}
 	for _, tt := range tests {
 		s := make([]*Service, 0, len(tt.fields.Parser))
+		resolverDiagnostics := NewResolverDiagnosticsState()
 		for _, parser := range tt.fields.Parser {
 			s = append(s, &Service{
 				SourceProvider: tt.fields.SourceProvider,
@@ -85,6 +90,7 @@ func TestService(t *testing.T) { //nolint
 				Inspector:      tt.fields.Inspector,
 				Tracker:        tt.fields.Tracker,
 				Resolver:       tt.fields.Resolver,
+				ResolverDiagnostics: resolverDiagnostics,
 			})
 		}
 		t.Run(fmt.Sprintf("%s", tt.name+"_get_vulnerabilities"), func(t *testing.T) {
@@ -138,4 +144,124 @@ func createParserSourceProvider(path string) ([]*parser.Parser,
 	mockResolver, _ := resolver.NewBuilder().Build(ctx)
 
 	return mockParser, mockFilesSource, mockResolver
+}
+
+func TestSaveResolverDiagnostics_DedupesAcrossServicesInSameScan(t *testing.T) {
+	store := storage.NewMemoryStorage()
+	state := NewResolverDiagnosticsState()
+	scanID := "scanID"
+	diag := model.ResolverDiagnostic{
+		FilePath: "/tmp/overlay/kustomization.yaml",
+		Message:  "render failed",
+		QueryID:  "kustomize-render-failed",
+		Line:     0,
+	}
+
+	serviceA := &Service{
+		Storage:             store,
+		ResolverDiagnostics: state,
+	}
+	serviceB := &Service{
+		Storage:             store,
+		ResolverDiagnostics: state,
+	}
+
+	require.NoError(t, serviceA.saveResolverDiagnostics(context.Background(), scanID, []model.ResolverDiagnostic{diag}))
+	require.NoError(t, serviceB.saveResolverDiagnostics(context.Background(), scanID, []model.ResolverDiagnostic{diag}))
+
+	vulns, err := store.GetVulnerabilities(context.Background(), scanID)
+	require.NoError(t, err)
+	require.Len(t, vulns, 1)
+	require.Equal(t, "", vulns[0].Platform)
+	require.Equal(t, 1, vulns[0].Line)
+}
+
+// Regression: a single unparseable rendered doc (e.g. Kustomize generator
+// output with a virtual filename) must not drop resFiles.Excluded; otherwise
+// the walker re-scans patches / base files as raw YAML and produces duplicate
+// or partial-document findings.
+func TestResolverSink_PropagatesExcludedOnParseFailure(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "kustomization.yaml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- pod.yaml
+configMapGenerator:
+- name: app-config
+  literals:
+    - KEY=value
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "pod.yaml"), []byte(`apiVersion: v1
+kind: Pod
+metadata:
+  name: demo
+  namespace: default
+spec:
+  containers:
+    - name: app
+      image: nginx:1.21
+      envFrom:
+        - configMapRef:
+            name: app-config
+`), 0o600))
+
+	resolverWithKustomize, err := resolver.NewBuilder().
+		Add(ctx, kustomizeResolver.NewResolver(kustomizeResolver.Options{RepoRoot: root})).
+		Build(ctx)
+	require.NoError(t, err)
+
+	kicsParser, err := parser.NewBuilder(ctx).
+		Add(&yamlParser.Parser{}).
+		Build([]string{"Kubernetes"}, []string{""})
+	require.NoError(t, err)
+
+	tr, err := tracker.NewTracker(1)
+	require.NoError(t, err)
+
+	service := &Service{
+		Storage:             storage.NewMemoryStorage(),
+		ResolverDiagnostics: NewResolverDiagnosticsState(),
+		Parser:              kicsParser[0],
+		Resolver:            resolverWithKustomize,
+		Tracker:             tr,
+	}
+
+	excluded, err := service.resolverSink(ctx, root, "scanID", false, 0)
+	require.NoError(t, err)
+
+	// Generator emits a virtual generated-ConfigMap-*.yaml (no file on disk)
+	// which fails Parser.Parse; excludes must still surface the real sources.
+	require.Contains(t, excluded, filepath.Join(root, "kustomization.yaml"))
+	require.Contains(t, excluded, filepath.Join(root, "pod.yaml"))
+}
+
+func TestSaveResolverDiagnostics_UsesServicePlatform(t *testing.T) {
+	store := storage.NewMemoryStorage()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "kustomization.yaml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []
+`), 0o600))
+	resolverWithKustomize, err := resolver.NewBuilder().
+		Add(context.Background(), kustomizeResolver.NewResolver(kustomizeResolver.Options{RepoRoot: root})).
+		Build(context.Background())
+	require.NoError(t, err)
+	service := &Service{
+		Storage:             store,
+		ResolverDiagnostics: NewResolverDiagnosticsState(),
+		Parser:              &parser.Parser{Platform: []string{"Knative", "Kubernetes"}},
+		Resolver:            resolverWithKustomize,
+	}
+
+	require.NoError(t, service.saveResolverDiagnostics(context.Background(), "scanID", []model.ResolverDiagnostic{{
+		FilePath: filepath.Join(root, "kustomization.yaml"),
+		Message:  "render failed",
+		QueryID:  "kustomize-render-failed",
+	}}))
+
+	vulns, err := store.GetVulnerabilities(context.Background(), "scanID")
+	require.NoError(t, err)
+	require.Len(t, vulns, 1)
+	require.Equal(t, "Kubernetes", vulns[0].Platform)
 }

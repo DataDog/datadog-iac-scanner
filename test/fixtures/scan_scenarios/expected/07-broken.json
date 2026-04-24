@@ -1,0 +1,34 @@
+{
+  "rules": [
+    {
+      "id": "Kustomize render failed",
+      "name": "Kustomize render failed",
+      "level": "none",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/",
+      "tags": [
+        "DATADOG_CATEGORY:Resolver",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:kustomize-render-failed"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "ruleId": "Kustomize render failed",
+      "level": "none",
+      "message": "Kustomize render failed",
+      "artifactUri": "test/fixtures/scan_scenarios/07-broken",
+      "startLine": 1,
+      "endLine": 1,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "DATADOG_CATEGORY:Resolver",
+        "IAC_RESOURCE_NAME:",
+        "IAC_RESOURCE_TYPE:"
+      ]
+    }
+  ]
+}
