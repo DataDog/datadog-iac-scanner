@@ -14,7 +14,7 @@ func initializeConfig(ctx context.Context, rootPath string) (*config.IacConfig, 
 
 	baseLogger.Debug().Msg("console.initializeConfig()")
 
-	configParams, err := config.ReadConfiguration(ctx, rootPath)
+	configParams, _, err := config.ReadConfiguration(ctx, rootPath)
 
 	return configParams, logCtx, err
 }

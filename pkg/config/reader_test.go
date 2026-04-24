@@ -1,26 +1,43 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const cfgFile = `
-schema-version: v1.2
+const cfgFile = `schema-version: v1.2
 iac:
-  ignore-rules: [query1, query2]
-  use-rules: [query3, query4]
+  ignore-rules:
+    - query1
+    - query2
+  use-rules:
+    - query3
+    - query4
   global-config:
-    ignore-paths: [path1, path2]
-    only-paths: [path3, path4]
-    ignore-severities: [sev1, sev2]
-    only-severities: [sev3, sev4]
-    ignore-categories: [cat1, cat2]
-    only-categories: [cat3, cat4]
+    ignore-paths:
+      - path1
+      - path2
+    only-paths:
+      - path3
+      - path4
+    ignore-severities:
+      - sev1
+      - sev2
+    only-severities:
+      - sev3
+      - sev4
+    ignore-categories:
+      - cat1
+      - cat2
+    only-categories:
+      - cat3
+      - cat4
 `
 
 var parsedCfgFile = IacConfig{
@@ -34,8 +51,7 @@ var parsedCfgFile = IacConfig{
 	OnlyCategories:   []string{"cat3", "cat4"},
 }
 
-const legacyCfg = `
-exclude-categories: [cat1, cat2]
+const legacyCfg = `exclude-categories: [cat1, cat2]
 exclude-paths: [path1, path2]
 exclude-queries: [query1, query2]
 exclude-results: [res1, res2]
@@ -49,6 +65,27 @@ var parsedLegacyCfg = IacConfig{
 	IgnoreCategories:     []string{"cat1", "cat2"},
 	LegacyExcludeResults: []string{"res1", "res2"},
 }
+
+const convertedLegacyCfg = `schema-version: v1.2
+iac:
+  ignore-rules:
+    - query1
+    - query2
+  global-config:
+    ignore-paths:
+      - path1
+      - path2
+    ignore-severities:
+      - sev1
+      - sev2
+    ignore-categories:
+      - cat1
+      - cat2
+`
+
+const excludeSuffix = `# These settings have been applied, but they cannot be expressed in the new configuration format:
+# exclude-results: [ "res1", "res2" ]
+`
 
 const emptyCfgFile = `
 schema-version: v1.2
@@ -65,11 +102,10 @@ iac:
 func TestNoConfig(t *testing.T) {
 	tmp := t.TempDir()
 
-	cfg, err := ReadConfiguration(t.Context(), tmp)
+	cfg, b, err := ReadConfiguration(t.Context(), tmp)
 	assert.NoError(t, err)
-
-	expected := IacConfig{}
-	assert.Equal(t, expected, *cfg)
+	assert.Empty(t, b)
+	assert.Equal(t, IacConfig{}, *cfg)
 }
 
 func TestReadConfig(t *testing.T) {
@@ -78,9 +114,9 @@ func TestReadConfig(t *testing.T) {
 			tmp := t.TempDir()
 			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+ext), []byte(cfgFile), 0644))
 
-			cfg, err := ReadConfiguration(t.Context(), tmp)
+			cfg, b, err := ReadConfiguration(t.Context(), tmp)
 			assert.NoError(t, err)
-
+			assert.Equal(t, cfgFile, string(b))
 			assert.Equal(t, parsedCfgFile, *cfg)
 		})
 	}
@@ -103,11 +139,10 @@ func TestIgnoredConfigFile(t *testing.T) {
 			tmp := t.TempDir()
 			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
 
-			cfg, err := ReadConfiguration(t.Context(), tmp)
+			cfg, b, err := ReadConfiguration(t.Context(), tmp)
 			assert.NoError(t, err)
-
-			expected := IacConfig{}
-			assert.Equal(t, expected, *cfg)
+			assert.Equal(t, tc.cfg, string(b))
+			assert.Equal(t, IacConfig{}, *cfg)
 		})
 	}
 }
@@ -116,19 +151,21 @@ func TestReadLegacyOnly(t *testing.T) {
 	tmp := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
 
-	cfg, err := ReadConfiguration(t.Context(), tmp)
+	cfg, b, err := ReadConfiguration(t.Context(), tmp)
 	assert.NoError(t, err)
-
+	assert.Equal(t, convertedLegacyCfg+excludeSuffix, string(b))
 	assert.Equal(t, parsedLegacyCfg, *cfg)
 }
 
 func TestReadLegacyWithIncludeRulesOnly(t *testing.T) {
 	tmp := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg+"include-queries: [query3, query4]\n"), 0644))
+	myCfgFile := legacyCfg + "include-queries: [query3, query4]\n"
+	includeOnly := "schema-version: v1.2\niac:\n  use-rules:\n    - query3\n    - query4\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(myCfgFile), 0644))
 
-	cfg, err := ReadConfiguration(t.Context(), tmp)
+	cfg, b, err := ReadConfiguration(t.Context(), tmp)
 	assert.NoError(t, err)
-
+	assert.Equal(t, includeOnly, string(b))
 	assert.Equal(t, IacConfig{
 		OnlyRules: []string{"query3", "query4"},
 	}, *cfg)
@@ -139,9 +176,9 @@ func TestConfigFilePrecedence(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(cfgFile), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
 
-	cfg, err := ReadConfiguration(t.Context(), tmp)
+	cfg, b, err := ReadConfiguration(t.Context(), tmp)
 	assert.NoError(t, err)
-
+	assert.Equal(t, cfgFile, string(b))
 	assert.Equal(t, parsedCfgFile, *cfg)
 }
 
@@ -163,10 +200,82 @@ func TestConfigFilePrecedenceWithIgnoredConfigFile(t *testing.T) {
 			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
 			require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
 
-			cfg, err := ReadConfiguration(t.Context(), tmp)
+			cfg, b, err := ReadConfiguration(t.Context(), tmp)
 			assert.NoError(t, err)
-
+			assert.Equal(t, convertedLegacyCfg+excludeSuffix, string(b))
 			assert.Equal(t, parsedLegacyCfg, *cfg)
 		})
 	}
+}
+
+func TestConfigFileFromDatadog(t *testing.T) {
+	const repoUrl = "https://example.com/repo.git"
+	const cfgWithExclude = cfgFile + excludeSuffix
+	parsedCfgWithExclude := parsedCfgFile
+	parsedCfgWithExclude.LegacyExcludeResults = []string{"res1", "res2"}
+	for _, tc := range []struct {
+		name           string
+		isLegacyConfig bool
+		localConfig    string
+		sentConfig     string
+		finalConfig    string
+		expectedConfig string
+		parsedConfig   *IacConfig
+	}{
+		{
+			name:           "regular config",
+			localConfig:    "local config file",
+			sentConfig:     "local config file",
+			finalConfig:    cfgFile,
+			expectedConfig: cfgFile,
+			parsedConfig:   &parsedCfgFile,
+		},
+		{
+			name:           "legacy config",
+			isLegacyConfig: true,
+			localConfig:    legacyCfg,
+			sentConfig:     convertedLegacyCfg,
+			finalConfig:    cfgFile,
+			expectedConfig: cfgWithExclude,
+			parsedConfig:   &parsedCfgWithExclude,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &fakeDatadogClient{
+				t:                  t,
+				expectedSentConfig: []byte(tc.sentConfig),
+				expectedRepoUrl:    repoUrl,
+				remoteConfig:       []byte(tc.finalConfig),
+			}
+
+			tmp := t.TempDir()
+			if tc.isLegacyConfig {
+				require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(tc.localConfig), 0644))
+			} else {
+				require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.localConfig), 0644))
+			}
+
+			cfg, b, err := ReadConfiguration(t.Context(), tmp, WithDatadog(client, repoUrl))
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expectedConfig, string(b))
+			assert.Equal(t, *tc.parsedConfig, *cfg)
+		})
+	}
+}
+
+type fakeDatadogClient struct {
+	t                  *testing.T
+	expectedRepoUrl    string
+	expectedSentConfig []byte
+	remoteConfig       []byte
+}
+
+func (f *fakeDatadogClient) GetDefaultRuleset(ctx context.Context) (*datadog.Ruleset, error) {
+	panic("unimplemented")
+}
+
+func (f *fakeDatadogClient) GetRemoteConfig(_ context.Context, repoUrl string, localConfig []byte) ([]byte, error) {
+	assert.Equal(f.t, f.expectedRepoUrl, repoUrl)
+	assert.Equal(f.t, string(f.expectedSentConfig), string(localConfig))
+	return f.remoteConfig, nil
 }

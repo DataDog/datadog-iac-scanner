@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -34,7 +35,12 @@ type iacGlobalConfig struct {
 	OnlyCategories   []string `yaml:"only-categories,omitempty"`
 }
 
+// ParseConfig turns a YAML configuration file into a parsed configuration
 func ParseConfig(cfgBytes []byte) (*IacConfig, error) {
+	if len(cfgBytes) == 0 {
+		return nil, nil
+	}
+
 	var cfg *cfgFileYaml
 	decoder := yaml.NewDecoder(bytes.NewReader(cfgBytes))
 	decoder.KnownFields(true)
@@ -70,6 +76,45 @@ func ParseConfig(cfgBytes []byte) (*IacConfig, error) {
 		OnlyCategories:   cfg.Iac.GlobalConfig.OnlyCategories,
 	}
 	return out, nil
+}
+
+// UnparseConfig turns a parsed configuration into a YAML file.
+// It ignores the LegacyExcludeResults field, since it's not representable in YAML.
+// You will need to handle it externally if you need to.
+func UnparseConfig(cfg *IacConfig) ([]byte, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
+	iac := iacConfig{
+		IgnoreRules: cfg.IgnoreRules,
+		UseRules:    cfg.OnlyRules,
+		GlobalConfig: iacGlobalConfig{
+			IgnorePaths:      cfg.IgnorePaths,
+			OnlyPaths:        cfg.OnlyPaths,
+			IgnoreSeverities: cfg.IgnoreSeverities,
+			OnlySeverities:   cfg.OnlySeverities,
+			IgnoreCategories: cfg.IgnoreCategories,
+			OnlyCategories:   cfg.OnlyCategories,
+		},
+	}
+
+	if reflect.DeepEqual(iac, iacConfig{}) {
+		return []byte{}, nil
+	}
+
+	outCfg := cfgFileYaml{
+		SchemaVersion: "v1.2",
+		Iac:           &iac,
+	}
+
+	out := bytes.Buffer{}
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(outCfg); err != nil {
+		return nil, fmt.Errorf("could not encode configuration: %w", err)
+	}
+	return out.Bytes(), nil
 }
 
 func parseSchemaVersion(schema string) (version schemaVersion, err error) {

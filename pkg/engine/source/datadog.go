@@ -5,34 +5,22 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
 	"slices"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/jsonapi"
 )
 
 // NewDatadogSource creates a DatadogSource with the given options.
-func NewDatadogSource(options ...DatadogSourceOption) (QueriesSource, error) {
+func NewDatadogSource(client datadog.Client, options ...DatadogSourceOption) (QueriesSource, error) {
 	out := &DatadogSource{
-		httpClient:           http.DefaultClient,
+		client:               client,
 		wantedPlatforms:      []string{""},
 		wantedCloudProviders: []string{""},
 	}
 	for _, option := range options {
 		option(out)
-	}
-	if out.hostname == "" {
-		WithSiteFromEnv()(out)
-	}
-	if out.apiKey == "" {
-		WithApiKeyFromEnv()(out)
-	}
-	if out.appKey == "" {
-		WithAppKeyFromEnv()(out)
 	}
 	if out.librarySource == nil {
 		librarySource := NewFilesystemSource(
@@ -72,82 +60,19 @@ func WithLibrarySource(source QueriesSource) DatadogSourceOption {
 	}
 }
 
-// WithSite lets you specify a Datadog site to use.
-// If unspecified, the Datadog site will be fetched from the environment using WithSiteFromEnv.
-func WithSite(site string) DatadogSourceOption {
-	return withHostname("api." + site)
-}
-
-// WithSiteFromEnv uses the Datadog site specified in the DD_SITE or DATADOG_SITE environment variable.
-// If neither variable exists, "datadoghq.com" will be used.
-func WithSiteFromEnv() DatadogSourceOption {
-	site := getDdEnvvar("SITE")
-	if site == "" {
-		site = "datadoghq.com"
-	}
-	return WithSite(site)
-}
-
-// WithApiKey lets you specify a Datadog API key.
-// If unspecified, the API key will be fetched from the environment using WithApiKeyFromEnv.
-func WithApiKey(apiKey string) DatadogSourceOption {
-	return func(ds *DatadogSource) {
-		ds.apiKey = apiKey
-	}
-}
-
-// WithAppKey lets you specify a Datadog application key.
-// If unspecified, the application key will be fetched from the environment using WithAppKeyFromEnv.
-func WithAppKey(appKey string) DatadogSourceOption {
-	return func(ds *DatadogSource) {
-		ds.appKey = appKey
-	}
-}
-
-// WithApiKeyFromEnv uses the API key specified in the DD_API_KEY or DATADOG_API_KEY environment variable.
-// If neither variable exists, an empty API key will be used.
-func WithApiKeyFromEnv() DatadogSourceOption {
-	return WithApiKey(getDdEnvvar("API_KEY"))
-}
-
-// WithAppKeyFromEnv uses the application key specified in the DD_APP_KEY or DATADOG_APP_KEY environment variable.
-// If neither variable exists, an empty application key will be used.
-func WithAppKeyFromEnv() DatadogSourceOption {
-	return WithAppKey(getDdEnvvar("APP_KEY"))
-}
-
-// WithHttpClient lets you specify an http.Client instance to use.
-// If unspecified, the [http.DefaultClient] will be used.
-func WithHttpClient(client *http.Client) DatadogSourceOption {
-	return func(ds *DatadogSource) {
-		ds.httpClient = client
-	}
-}
-
-// withHostname lets you specify the hostname to use for Datadog API requests.
-// Used in the implementation and unit tests.
-func withHostname(hostname string) DatadogSourceOption {
-	return func(ds *DatadogSource) {
-		ds.hostname = hostname
-	}
-}
-
 type DatadogSourceOption func(source *DatadogSource)
 
 // DatadogSource is a QueriesSource that reads queries from the Datadog API.
 // Libraries are fetched via another QueriesSource.
 type DatadogSource struct {
-	hostname             string
-	apiKey               string
-	appKey               string
-	httpClient           *http.Client
+	client               datadog.Client
 	librarySource        QueriesSource
 	wantedPlatforms      []string
 	wantedCloudProviders []string
 }
 
 func (s *DatadogSource) GetQueries(ctx context.Context, querySelection *QueryInspectorParameters) ([]model.QueryMetadata, error) {
-	defaultRuleset, err := s.getDefaultRuleset(ctx)
+	defaultRuleset, err := s.client.GetDefaultRuleset(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving rules from Datadog: %w", err)
 	}
@@ -158,32 +83,8 @@ func (s *DatadogSource) GetQueryLibrary(ctx context.Context, platform string) (R
 	return s.librarySource.GetQueryLibrary(ctx, platform)
 }
 
-// getDefaultRuleset returns the content of the default ruleset.
-func (s *DatadogSource) getDefaultRuleset(ctx context.Context) (*Ruleset, error) {
-	path := "rulesets/default-ruleset?include_tests=false&include_testing_rules=true"
-	response, err := s.sendRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close() // nolint:errcheck
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("the Datadog API returned status %d", response.StatusCode)
-	}
-
-	var ruleset *Ruleset
-	bytes, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-	if err := jsonapi.Unmarshal(bytes, &ruleset); err != nil {
-		return nil, err
-	}
-
-	return ruleset, nil
-}
-
 // filterRules selects the rules from the given ruleset according to the selection criteria.
-func (s *DatadogSource) filterRules(ruleset *Ruleset, selection *QueryInspectorParameters) ([]model.QueryMetadata, error) {
+func (s *DatadogSource) filterRules(ruleset *datadog.Ruleset, selection *QueryInspectorParameters) ([]model.QueryMetadata, error) {
 	var out []model.QueryMetadata
 	for _, rule := range ruleset.Rules {
 		if !rule.IsPublished {
@@ -231,7 +132,7 @@ func (s *DatadogSource) isWantedCloudProvider(provider *string) bool {
 	return isInCaseInsensitiveList(provider, s.wantedCloudProviders)
 }
 
-func checkExcluded(rule *Rule, selection *QueryInspectorParameters) bool {
+func checkExcluded(rule *datadog.Rule, selection *QueryInspectorParameters) bool {
 	return isInCaseInsensitiveList(rule.LegacyId, selection.ExcludeQueries.ByIDs) ||
 		isInCaseInsensitiveList(&rule.ID, selection.ExcludeQueries.ByIDs) ||
 		isInCaseInsensitiveList(&rule.Category, selection.ExcludeQueries.ByCategories) ||
@@ -239,7 +140,7 @@ func checkExcluded(rule *Rule, selection *QueryInspectorParameters) bool {
 		(!selection.BomQueries && strings.EqualFold(rule.Severity, model.SeverityTrace))
 }
 
-func checkIncluded(rule *Rule, selection *QueryInspectorParameters) bool {
+func checkIncluded(rule *datadog.Rule, selection *QueryInspectorParameters) bool {
 	return (isInCaseInsensitiveNotEmptyList(rule.LegacyId, selection.IncludeQueries.ByIDs) ||
 		isInCaseInsensitiveNotEmptyList(&rule.ID, selection.IncludeQueries.ByIDs)) &&
 		isInCaseInsensitiveNotEmptyList(&rule.Category, selection.IncludeQueries.ByCategories) &&
@@ -267,7 +168,7 @@ func isInCaseInsensitiveNotEmptyList(id *string, list []string) bool {
 
 // nolint:gocyclo
 // ConvertRule converts a Datadog api [Rule] to a [model.QueryMetadata]
-func ConvertRule(rule *Rule) model.QueryMetadata {
+func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 	id := rule.ID
 	if rule.LegacyId != nil {
 		id = *rule.LegacyId
@@ -351,7 +252,7 @@ func setStringPtr[T ~string](m map[string]any, key string, v *T) {
 	}
 }
 
-func frameworksToMeta(fs []Framework) []any {
+func frameworksToMeta(fs []datadog.Framework) []any {
 	result := make([]any, len(fs))
 	for i, f := range fs {
 		result[i] = map[string]any{
@@ -364,89 +265,4 @@ func frameworksToMeta(fs []Framework) []any {
 	return result
 }
 
-// sendRequest sends a Datadog API request
-func (s *DatadogSource) sendRequest(ctx context.Context, method, path string, requestBody io.Reader) (*http.Response, error) {
-	url := fmt.Sprintf("https://%s/api/v2/static-analysis/iac/%s", s.hostname, path)
-	req, err := http.NewRequestWithContext(ctx, method, url, requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("error building %s %s request: %w", method, url, err)
-	}
-	req.Header.Add("content-type", "application/json")
-	if s.apiKey != "" {
-		req.Header.Add("dd-api-key", s.apiKey)
-	}
-	if s.appKey != "" {
-		req.Header.Add("dd-application-key", s.appKey)
-	}
-	return s.httpClient.Do(req)
-}
-
 var _ QueriesSource = (*DatadogSource)(nil)
-
-// getDdEnvvar returns the value of the given Datadog environment variable.
-// The DD_ prefix is checked first, then the DATADOG_ prefix.
-// Returns an empty string if neither environment variable exists.
-func getDdEnvvar(name string) string {
-	if v, ok := os.LookupEnv("DD_" + name); ok {
-		return v
-	} else if v, ok = os.LookupEnv("DATADOG_" + name); ok {
-		return v
-	}
-	return ""
-}
-
-// Ruleset defines a collection of rules.
-type Ruleset struct {
-	ID               string  `jsonapi:"primary,iac_ruleset" json:"id"`
-	Name             string  `jsonapi:"attribute" json:"name"`
-	ShortDescription string  `jsonapi:"attribute" json:"short_description"`
-	Description      string  `jsonapi:"attribute" json:"description"`
-	Rules            []*Rule `jsonapi:"attribute" json:"rules"`
-}
-
-// Rule defines the structure of a rule that's stored in Datadog.
-type Rule struct {
-	ID                string         `jsonapi:"primary,iac_rule" json:"id"`
-	Name              string         `jsonapi:"attribute" json:"name"`
-	LegacyId          *string        `jsonapi:"attribute" json:"legacy_id,omitempty"`
-	ShortDescription  string         `jsonapi:"attribute" json:"short_description"`
-	Description       string         `jsonapi:"attribute" json:"description"`
-	DescriptionId     *string        `jsonapi:"attribute" json:"description_id,omitempty"`
-	Platform          string         `jsonapi:"attribute" json:"platform"`
-	Type              string         `jsonapi:"attribute" json:"type"`
-	RegoQuery         []byte         `jsonapi:"attribute" json:"rego_query"`
-	Severity          string         `jsonapi:"attribute" json:"severity"`
-	Category          string         `jsonapi:"attribute" json:"category"`
-	Provider          *string        `jsonapi:"attribute" json:"provider,omitempty"`
-	Cwe               *string        `jsonapi:"attribute" json:"cwe,omitempty"`
-	DocumentationUrl  *string        `jsonapi:"attribute" json:"documentation_url,omitempty"`
-	ProviderUrl       *string        `jsonapi:"attribute" json:"provider_url,omitempty"`
-	Aggregation       *int           `jsonapi:"attribute" json:"aggregation,omitempty"`
-	Overrides         []RuleOverride `jsonapi:"attribute" json:"overrides,omitempty"`
-	DefaultFrameworks []Framework    `jsonapi:"attribute" json:"default_frameworks,omitempty"`
-	CustomFrameworks  []Framework    `jsonapi:"attribute" json:"custom_frameworks,omitempty"`
-	IsTesting         bool           `jsonapi:"attribute" json:"is_testing"`
-	IsPublished       bool           `jsonapi:"attribute" json:"is_published"`
-}
-
-type RuleOverride struct {
-	Key              string  `jsonapi:"primary,iac_rule_override" json:"key"`
-	ID               *string `jsonapi:"attribute" json:"id,omitempty"`
-	ShortDescription *string `jsonapi:"attribute" json:"short_description,omitempty"`
-	Description      *string `jsonapi:"attribute" json:"description,omitempty"`
-	DescriptionId    *string `jsonapi:"attribute" json:"description_id,omitempty"`
-	Platform         *string `jsonapi:"attribute" json:"platform,omitempty"`
-	Severity         *string `jsonapi:"attribute" json:"severity,omitempty"`
-	Category         *string `jsonapi:"attribute" json:"category,omitempty"`
-	Provider         *string `jsonapi:"attribute" json:"provider,omitempty"`
-	Cwe              *string `jsonapi:"attribute" json:"cwe,omitempty"`
-	DocumentationUrl *string `jsonapi:"attribute" json:"documentation_url,omitempty"`
-	ProviderUrl      *string `jsonapi:"attribute" json:"provider_url,omitempty"`
-}
-
-type Framework struct {
-	Framework   string `jsonapi:"attribute" json:"framework"`
-	Version     string `jsonapi:"attribute" json:"version"`
-	Requirement string `jsonapi:"attribute" json:"requirement"`
-	Control     string `jsonapi:"attribute" json:"control"`
-}

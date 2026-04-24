@@ -32,6 +32,7 @@ func main() {
 			scanAction,
 			listPlatformsAction,
 			listQueriesAction,
+			showConfigAction,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
