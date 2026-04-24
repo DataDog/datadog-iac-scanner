@@ -240,7 +240,9 @@ func checkExcluded(rule *Rule, selection *QueryInspectorParameters) bool {
 }
 
 func checkIncluded(rule *Rule, selection *QueryInspectorParameters) bool {
-	return (isInCaseInsensitiveNotEmptyList(rule.LegacyId, selection.IncludeQueries.ByIDs) || isInCaseInsensitiveNotEmptyList(&rule.ID, selection.IncludeQueries.ByIDs)) &&
+	byID := isInCaseInsensitiveNotEmptyList(rule.LegacyId, selection.IncludeQueries.ByIDs) ||
+		isInCaseInsensitiveNotEmptyList(&rule.ID, selection.IncludeQueries.ByIDs)
+	return byID &&
 		isInCaseInsensitiveNotEmptyList(&rule.Category, selection.IncludeQueries.ByCategories) &&
 		isInCaseInsensitiveNotEmptyList(&rule.Severity, selection.IncludeQueries.BySeverities)
 }
