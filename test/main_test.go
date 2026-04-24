@@ -25,6 +25,7 @@ import (
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
+	resolverkustomize "github.com/DataDog/datadog-iac-scanner/pkg/resolver/kustomize"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -96,6 +97,7 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	resolverkustomize.MaybeRunAsKustomizeRenderHelper()
 	os.Exit(m.Run())
 }
 

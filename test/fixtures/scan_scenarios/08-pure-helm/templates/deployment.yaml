@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: standalone
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: standalone
+  template:
+    metadata:
+      labels:
+        app: standalone
+    spec:
+      hostPID: true
+      containers:
+      - name: standalone
+        image: {{ .Values.image }}
+        securityContext:
+          privileged: true
