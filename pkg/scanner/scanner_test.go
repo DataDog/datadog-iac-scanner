@@ -129,6 +129,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 	}
 
 	store := storage.NewMemoryStorage()
+	resolverDiagnostics := kics.NewResolverDiagnosticsState()
 
 	services := make([]*kics.Service, 0, len(combinedParser))
 
@@ -140,6 +141,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 			Inspector:      inspector,
 			Tracker:        t,
 			Resolver:       combinedResolver,
+			ResolverDiagnostics: resolverDiagnostics,
 			MaxFileSize:    100,
 		})
 	}
@@ -154,7 +156,7 @@ func createContext(ctx context.Context, timeout time.Duration) testContext {
 	}
 }
 
-// TODO: fix those tests see K9VULN-8520
+// TODO: re-enable concurrent scan tests once shared scan state is race-free.
 //func TestScanner_ConcurrentScans(t *testing.T) {
 //	ctx := context.Background()
 //

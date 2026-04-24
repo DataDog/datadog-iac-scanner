@@ -56,15 +56,16 @@ type Tracker interface {
 // a parser to parse and provide files in format that KICS understand, a inspector that runs the scanning and a tracker to
 // update scanning numbers
 type Service struct {
-	SourceProvider provider.SourceProvider
-	Storage        Storage
-	Parser         *parser.Parser
-	Inspector      *engine.Inspector
-	Tracker        Tracker
-	Resolver       *resolver.Resolver
-	files          model.FileMetadatas
-	filesMu        sync.Mutex
-	MaxFileSize    int
+	SourceProvider      provider.SourceProvider
+	Storage             Storage
+	Parser              *parser.Parser
+	Inspector           *engine.Inspector
+	Tracker             Tracker
+	Resolver            *resolver.Resolver
+	ResolverDiagnostics *ResolverDiagnosticsState
+	files               model.FileMetadatas
+	filesMu             sync.Mutex
+	MaxFileSize         int
 }
 
 // PrepareSources will prepare the sources to be scanned
@@ -248,7 +249,11 @@ func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKi
 				prepareScanDocumentRoot(indx, kind)
 			}
 		case string:
-			if field, ok := lines[kind]; ok && utils.Contains(key, field) {
+			lookupKind := kind
+			if kind == model.KindKUSTOMIZE {
+				lookupKind = model.KindYAML
+			}
+			if field, ok := lines[lookupKind]; ok && utils.Contains(key, field) {
 				bodyType[key] = resolveJSONFilter(value)
 			}
 		}
