@@ -23,12 +23,8 @@ import (
 
 // credit: https://github.com/helm/helm
 
-var (
-	settings = cli.New()
-)
-
 func runInstall(ctx context.Context, args []string, client *action.Install,
-	valueOpts *values.Options) (*release.Release, []string, error) {
+	valueOpts *values.Options, opts *RenderOptions) (*release.Release, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	log.SetOutput(io.Discard)
 	defer log.SetOutput(os.Stderr)
@@ -46,16 +42,28 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 		return nil, []string{}, err
 	}
 	contextLogger.Debug().Msgf("Parsed chart name: '%s', chart path: '%s'", name, charts)
-	client.ReleaseName = name
+	if strings.TrimSpace(client.ReleaseName) == "" || client.GenerateName {
+		client.ReleaseName = name
+	}
 
-	cp, err := client.LocateChart(charts, settings)
+	helmSettings := cli.New()
+	if strings.TrimSpace(opts.RepositoryConfig) != "" {
+		helmSettings.RepositoryConfig = opts.RepositoryConfig
+	}
+	if strings.TrimSpace(opts.RepositoryCache) != "" {
+		helmSettings.RepositoryCache = opts.RepositoryCache
+	}
+	if strings.TrimSpace(opts.RegistryConfig) != "" {
+		helmSettings.RegistryConfig = opts.RegistryConfig
+	}
+	cp, err := client.LocateChart(charts, helmSettings)
 	if err != nil {
 		contextLogger.Error().Msgf("failed to locate chart '%s': %s", charts, err)
 		return nil, []string{}, err
 	}
 	contextLogger.Debug().Msgf("Located chart at path: '%s'", cp)
 
-	p := getter.All(settings)
+	p := getter.All(helmSettings)
 	vals, err := valueOpts.MergeValues(p)
 	if err != nil {
 		contextLogger.Error().Msgf("failed to merge helm values: %s", err)
@@ -81,7 +89,6 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	}
 	contextLogger.Debug().Msg("Chart installability check passed")
 
-	client.Namespace = "kics-namespace"
 	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, client.ReleaseName)
 	helmRelease, err := client.Run(chartRequested, vals)
 	if err != nil {
@@ -105,8 +112,8 @@ func checkIfInstallable(ch *chart.Chart) error {
 	return errors.Errorf("%s charts are not installable (only 'application' type charts are supported)", ch.Metadata.Type)
 }
 
-// newClient will create a new instance on helm client used to render the chart
-func newClient(ctx context.Context) *action.Install {
+// newClient creates a Helm install client used to render the chart (dry-run).
+func newClient(ctx context.Context, opts *RenderOptions) *action.Install {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("Creating new helm client for chart rendering")
 
@@ -114,13 +121,33 @@ func newClient(ctx context.Context) *action.Install {
 	client := action.NewInstall(cfg)
 	client.DryRun = true
 	client.ReleaseName = "kics-helm"
+	if strings.TrimSpace(opts.ReleaseName) != "" {
+		client.ReleaseName = opts.ReleaseName
+	}
+	client.GenerateName = strings.TrimSpace(opts.ReleaseName) == ""
 	client.Replace = true // Skip the name check
 	client.ClientOnly = true
-	client.APIVersions = chartutil.VersionSet([]string{})
-	client.IncludeCRDs = false
+	client.APIVersions = chartutil.VersionSet(opts.APIVersions)
+	client.IncludeCRDs = opts.IncludeCRDs
+	client.DisableHooks = opts.SkipHooks
+	client.NameTemplate = strings.TrimSpace(opts.NameTemplate)
+	client.RepoURL = strings.TrimSpace(opts.ChartRepo)
+	client.Version = strings.TrimSpace(opts.Version)
+	client.Devel = opts.Devel
+	if strings.TrimSpace(opts.KubeVersion) != "" {
+		if kv, err := chartutil.ParseKubeVersion(strings.TrimSpace(opts.KubeVersion)); err == nil {
+			client.KubeVersion = kv
+		}
+	}
+	if strings.TrimSpace(opts.Namespace) != "" {
+		client.Namespace = opts.Namespace
+	} else {
+		client.Namespace = "kics-namespace"
+	}
 
-	contextLogger.Debug().Msgf("Configured helm client - DryRun: %t, ClientOnly: %t, IncludeCRDs: %t, ReleaseName: '%s'",
-		client.DryRun, client.ClientOnly, client.IncludeCRDs, client.ReleaseName)
+	contextLogger.Debug().
+		Msgf("Configured helm client - DryRun: %t, ClientOnly: %t, IncludeCRDs: %t, ReleaseName: '%s', Namespace: '%s', DisableHooks: %t",
+			client.DryRun, client.ClientOnly, client.IncludeCRDs, client.ReleaseName, client.Namespace, client.DisableHooks)
 
 	return client
 }

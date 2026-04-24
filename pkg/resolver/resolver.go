@@ -7,81 +7,81 @@ package resolver
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
-// kindResolver is a type of resolver interface (ex: helm resolver)
-// Resolve will render file/template
-// SupportedTypes will return the file kinds that the resolver supports
-type kindResolver interface {
-	Resolve(ctx context.Context, filePath string) (model.ResolvedFiles, error)
+// Preprocessor expands composed IaC (Helm, Kustomize, …) into files for parsing.
+type Preprocessor interface {
+	Resolve(ctx context.Context, rootDir string) (model.ResolvedFiles, error)
 	SupportedTypes() []model.FileKind
+	Name() string
+	Detect(path string) (model.FileKind, bool)
 }
 
-// Resolver is a struct containing the resolvers by file kind
+// Resolver dispatches to preprocessors by file kind.
 type Resolver struct {
-	resolvers map[model.FileKind]kindResolver
+	byKind  map[model.FileKind]Preprocessor
+	ordered []Preprocessor
 }
 
-// Builder is a struct used to create a new resolver
+// Builder constructs a Resolver from preprocessors.
 type Builder struct {
-	resolvers []kindResolver
+	preprocessors []Preprocessor
 }
 
-// NewBuilder creates a new Builder's reference
+// NewBuilder creates a new Builder.
 func NewBuilder() *Builder {
 	return &Builder{}
 }
 
-// Add will add kindResolvers for building the resolver
-func (b *Builder) Add(ctx context.Context, p kindResolver) *Builder {
+// Add registers a preprocessor (call order is preserved for GetType detection).
+func (b *Builder) Add(ctx context.Context, p Preprocessor) *Builder {
 	contextLogger := logger.FromContext(ctx)
-	contextLogger.Debug().Msgf("resolver.Add()")
-	b.resolvers = append(b.resolvers, p)
+	contextLogger.Debug().Msgf("resolver.Add(%s)", p.Name())
+	b.preprocessors = append(b.preprocessors, p)
 	return b
 }
 
-// Build will create a new instance of a resolver
+// Build creates the Resolver. Later preprocessors overwrite byKind for the same FileKind.
 func (b *Builder) Build(ctx context.Context) (*Resolver, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("resolver.Build()")
 
-	resolvers := make(map[model.FileKind]kindResolver, len(b.resolvers))
-	for _, resolver := range b.resolvers {
-		for _, typeRes := range resolver.SupportedTypes() {
-			resolvers[typeRes] = resolver
+	byKind := make(map[model.FileKind]Preprocessor)
+	for _, p := range b.preprocessors {
+		for _, t := range p.SupportedTypes() {
+			byKind[t] = p
 		}
 	}
 
 	return &Resolver{
-		resolvers: resolvers,
+		byKind:  byKind,
+		ordered: append([]Preprocessor(nil), b.preprocessors...),
 	}, nil
 }
 
-// Resolve will resolve the files according to its type
+// Resolve runs the preprocessor for the given kind.
 func (r *Resolver) Resolve(ctx context.Context, filePath string, kind model.FileKind) (model.ResolvedFiles, error) {
 	contextLogger := logger.FromContext(ctx)
-	if r, ok := r.resolvers[kind]; ok {
-		obj, err := r.Resolve(ctx, filePath)
+	if p, ok := r.byKind[kind]; ok {
+		obj, err := p.Resolve(ctx, filePath)
 		if err != nil {
 			return model.ResolvedFiles{}, err
 		}
 		contextLogger.Debug().Msgf("resolver.Resolve() rendered file: %s", filePath)
 		return obj, nil
 	}
-	// need to log here
 	return model.ResolvedFiles{}, nil
 }
 
-// GetType will analyze the filepath to determine which resolver to use
+// GetType picks a preprocessor for a directory; registration order matters (Helm before Kustomize for Chart.yaml dirs).
 func (r *Resolver) GetType(filePath string) model.FileKind {
-	_, err := os.Stat(filepath.Join(filePath, "Chart.yaml"))
-	if err == nil {
-		return model.KindHELM
+	for _, p := range r.ordered {
+		if k, ok := p.Detect(filePath); ok {
+			return k
+		}
 	}
 	return model.KindCOMMON
 }
