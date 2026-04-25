@@ -1,0 +1,9 @@
+name: Safe composite action without inputs
+description: A composite action whose run block does not interpolate untrusted data
+runs:
+  using: composite
+  steps:
+    - name: Show repository
+      shell: bash
+      run: |
+        echo "Build triggered for ${{ github.repository }}"

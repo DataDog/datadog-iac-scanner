@@ -1,0 +1,7 @@
+name: Composite action with pinned third-party action
+description: Composite action that pins a third-party action to a full SHA
+runs:
+  using: composite
+  steps:
+    - name: Set up pinned tool
+      uses: third-party/some-tool@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

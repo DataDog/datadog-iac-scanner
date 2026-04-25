@@ -2,31 +2,43 @@
   {
     "queryName": "Superfluous actions",
     "severity": "LOW",
-    "line": 12
+    "line": 12,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Superfluous actions",
     "severity": "LOW",
-    "line": 18
+    "line": 18,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Superfluous actions",
     "severity": "LOW",
-    "line": 25
+    "line": 25,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Superfluous actions",
     "severity": "LOW",
-    "line": 32
+    "line": 32,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Superfluous actions",
     "severity": "LOW",
-    "line": 38
+    "line": 38,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Superfluous actions",
     "severity": "LOW",
-    "line": 44
+    "line": 44,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Superfluous actions",
+    "severity": "LOW",
+    "line": 7,
+    "fileName": "positive2.yaml"
   }
 ]

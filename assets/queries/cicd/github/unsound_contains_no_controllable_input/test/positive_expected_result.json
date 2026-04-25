@@ -2,6 +2,13 @@
   {
     "queryName": "Unsound contains without controllable input",
     "severity": "LOW",
-    "line": 8
+    "line": 8,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Unsound contains without controllable input",
+    "severity": "LOW",
+    "line": 7,
+    "fileName": "positive2.yaml"
   }
 ]

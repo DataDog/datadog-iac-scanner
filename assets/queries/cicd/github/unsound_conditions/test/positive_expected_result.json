@@ -2,36 +2,49 @@
   {
     "queryName": "Unsound condition",
     "severity": "HIGH",
-    "line": 8
+    "line": 8,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Unsound condition",
     "severity": "HIGH",
-    "line": 18
+    "line": 18,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Unsound condition",
     "severity": "HIGH",
-    "line": 24
+    "line": 24,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Unsound condition",
     "severity": "HIGH",
-    "line": 30
+    "line": 30,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Unsound condition",
     "severity": "HIGH",
-    "line": 35
+    "line": 35,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Unsound condition",
     "severity": "HIGH",
-    "line": 40
+    "line": 40,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Unsound condition",
     "severity": "HIGH",
-    "line": 45
+    "line": 45,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Unsound condition",
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive2.yaml"
   }
 ]

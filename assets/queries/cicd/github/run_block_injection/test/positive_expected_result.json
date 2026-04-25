@@ -82,5 +82,17 @@
     "severity": "MEDIUM",
     "line": 24,
     "fileName": "positive11.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 12,
+    "fileName": "positive12.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 8,
+    "fileName": "positive13.yaml"
   }
 ]
