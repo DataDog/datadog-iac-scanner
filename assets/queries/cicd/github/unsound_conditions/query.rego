@@ -1,5 +1,6 @@
 package Cx
 
+import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
 
 # Detect potentially unsound job-level conditions
@@ -41,6 +42,29 @@ CxPolicy[result] {
 		"keyExpectedValue": "Condition with fenced expression should not have trailing whitespace",
 		"keyActualValue": sprintf("Step '%s' condition may always evaluate to true due to YAML block scalar style", [step_name]),
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", s, "if"], []),
+		"resourceType": "github_step",
+		"resourceName": step_name
+	}
+}
+
+# Composite GitHub Action: detect potentially unsound step-level conditions.
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.is_composite_action(doc)
+
+	step := doc.runs.steps[s]
+
+	check_unsound_condition(step)
+
+	step_name := object.get(step, "name", sprintf("step-%d", [s]))
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("runs.steps[%d].if", [s]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Condition with fenced expression should not have trailing whitespace",
+		"keyActualValue": sprintf("Step '%s' condition may always evaluate to true due to YAML block scalar style", [step_name]),
+		"searchLine": common_lib.build_search_line(["runs", "steps", s, "if"], []),
 		"resourceType": "github_step",
 		"resourceName": step_name
 	}

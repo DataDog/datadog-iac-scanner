@@ -1,5 +1,6 @@
 package Cx
 
+import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
 
 CxPolicy[result] {
@@ -272,7 +273,125 @@ CxPolicy[result] {
 	}
 }
 
+# === Composite GitHub Actions (action.yml) ===
+# Composite actions live under `runs.steps[*]` (not `jobs[*].steps[*]`) and have no
+# `doc.on` — the trigger comes from the caller — so we union all trigger-specific
+# patterns into a single check below.
 
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.is_composite_action(doc)
+
+	run := doc.runs.steps[k].run
+
+	patterns := [
+		"github\\.head_ref",
+		"github\\.event\\.pull_request\\.body",
+		"github\\.event\\.pull_request\\.head\\.label",
+		"github\\.event\\.pull_request\\.head\\.ref",
+		"github\\.event\\.pull_request\\.head\\.repo\\..+",
+		"github\\.event\\.pull_request\\.title",
+		"github\\.event\\.issue\\.body",
+		"github\\.event\\.issue\\.title",
+		"github\\.event\\.comment\\.body",
+		"github\\.event\\.discussion\\.body",
+		"github\\.event\\.discussion\\.title",
+		"github\\.event\\.workflow\\.path",
+		"github\\.event\\.workflow_run\\.head_branch",
+		"github\\.event\\.workflow_run\\.head_commit\\.author\\.email",
+		"github\\.event\\.workflow_run\\.head_commit\\.author\\.name",
+		"github\\.event\\.workflow_run\\.head_commit\\.message",
+		"github\\.event\\.workflow_run\\.head_repository\\.description",
+		"github\\..*\\.authors\\.name",
+		"github\\..*\\.authors\\.email",
+		"github\\.event\\.inputs\\..+",
+	]
+
+	matched := containsPatterns(run, patterns)
+	count(matched) > 0
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("run={{%s}}", [run]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
+		"keyActualValue": "Run block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["runs", "steps", k, "run"], []),
+		"resourceType": "github_action",
+		"resourceName": get_step_name(doc.runs.steps[k], k)
+	}
+}
+
+# Composite action: ${{ inputs.* }} interpolated directly into a run block.
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.is_composite_action(doc)
+
+	run := doc.runs.steps[k].run
+
+	matched := containsPatterns(run, ["inputs\\..+"])
+	count(matched) > 0
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("run={{%s}}", [run]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Run block does not directly interpolate composite action inputs into the shell.",
+		"keyActualValue": "Run block directly interpolates a composite action input into the shell, which can lead to command injection if the input is attacker-controlled.",
+		"searchLine": common_lib.build_search_line(["runs", "steps", k, "run"], []),
+		"resourceType": "github_action",
+		"resourceName": get_step_name(doc.runs.steps[k], k)
+	}
+}
+
+# Composite action: ${{ env.X }} dereference inside a run block. Skip the finding
+# when X is locally defined on the step as a literal (or only-safe interpolation);
+# treat unknown keys as unsafe since their value comes from the caller's workflow.
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.is_composite_action(doc)
+	step := doc.runs.steps[k]
+	parsed_run := step._parsed_expressions_run[_]
+
+	walk(parsed_run, [_, node])
+
+	node.type == "dereference_expression"
+
+	matched := containsPatterns(node.value, ["^env\\."])
+	count(matched) > 0
+
+	env_key := composite_env_key(node.value)
+	not composite_env_locally_safe(step, env_key)
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("run={{%s}}", [parsed_run]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
+		"keyActualValue": "Run block contains dangerous input controlled by user.",
+		"searchLine": common_lib.build_search_line(["runs", "steps", k, "run"], []),
+		"resourceType": "github_action",
+		"resourceName": get_step_name(doc.runs.steps[k], k)
+	}
+}
+
+composite_env_key(node_value) = key {
+	parts := split(node_value, ".")
+	count(parts) >= 2
+	key := parts[1]
+}
+
+composite_env_locally_safe(step, env_key) {
+	is_string(step.env[env_key])
+	not composite_env_has_untrusted_expr(step, env_key)
+}
+
+composite_env_has_untrusted_expr(step, env_key) {
+	parsed_key := concat("", ["_parsed_expressions_", env_key])
+	parsed := step.env[parsed_key][_]
+	parsed.parse_ok == true
+	cicd_lib.references_untrusted_context(parsed.raw)
+}
 
 containsPatterns(str, patterns) = matched {
     matched := {pattern |

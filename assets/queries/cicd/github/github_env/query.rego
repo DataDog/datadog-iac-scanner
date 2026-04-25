@@ -30,6 +30,97 @@ CxPolicy[result] {
 	}
 }
 
+# Composite action: write to GITHUB_ENV/GITHUB_PATH is flagged only when the
+# appended data traces back to attacker-influenced input — either a `${{ inputs.* }}` /
+# `${{ github.event.* }}` template embedded in the arg, or a bash variable whose
+# step-level `env` value is interpolated from such a context. Composite actions have
+# no doc.on, so we cannot use the workflow rule's dangerous-trigger gate.
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.is_composite_action(doc)
+
+	step := doc.runs.steps[s]
+
+	run_block := step.run
+	is_string(run_block)
+
+	writes_to_env_file(step, run_block)
+	composite_env_write_is_tainted(step)
+	step_name := object.get(step, "name", sprintf("step-%d", [s]))
+
+	result := {
+		"documentId": doc.id,
+		"resourceType": "github_action",
+		"resourceName": step_name,
+		"searchKey": sprintf("runs.steps[%d].run", [s]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Step should not write to GITHUB_ENV or GITHUB_PATH with potentially unsafe data",
+		"keyActualValue": "Step writes to GITHUB_ENV or GITHUB_PATH which may allow code execution",
+		"searchLine": common_lib.build_search_line(["runs", "steps", s, "run"], []),
+	}
+}
+
+# Yields each arg of any redirected statement (or pipeline source feeding `tee`)
+# whose final destination is GITHUB_ENV / GITHUB_PATH.
+composite_env_write_arg(step) = arg {
+	step._parsed_run.parse_ok == true
+	command := step._parsed_run.commands[_]
+	command.type == "redirected_statement"
+	command.redirect.operator == [">>", ">"][_]
+	command.redirect.target.var == ["GITHUB_ENV", "GITHUB_PATH"][_]
+	arg := command.args[_]
+}
+
+composite_env_write_arg(step) = arg {
+	step._parsed_run.parse_ok == true
+	command := step._parsed_run.commands[_]
+	command.type == "pipeline"
+	tee_cmd := command.pipeline[_]
+	tee_cmd.command == "tee"
+	tee_arg := tee_cmd.args[_]
+	tee_arg.var == ["GITHUB_ENV", "GITHUB_PATH"][_]
+	src_cmd := command.pipeline[_]
+	src_cmd.command != "tee"
+	arg := src_cmd.args[_]
+}
+
+# Bash AST: arg is a simple `$VAR` expansion of a bash var backed by tainted step.env.
+composite_env_write_is_tainted(step) {
+	arg := composite_env_write_arg(step)
+	arg.type == "simple_expansion"
+	composite_step_env_is_untrusted(step, arg.var)
+}
+
+# Bash AST: arg's text expands `$VAR` / `${VAR}` for a bash var backed by tainted step.env.
+composite_env_write_is_tainted(step) {
+	arg := composite_env_write_arg(step)
+	matches := regex.find_all_string_submatch_n("\\$\\{?([A-Za-z_][A-Za-z0-9_]*)\\}?", arg.value, -1)
+	var_name := matches[_][1]
+	composite_step_env_is_untrusted(step, var_name)
+}
+
+# Bash AST: arg embeds a `${{ inputs.* }}` / `${{ github.event.* }}` template directly.
+composite_env_write_is_tainted(step) {
+	arg := composite_env_write_arg(step)
+	cicd_lib.references_untrusted_context(arg.value)
+}
+
+# Regex fallback for shells with no AST (PowerShell / cmd): we cannot tie a template
+# to a specific redirect, so conservatively flag any untrusted reference in the run.
+composite_env_write_is_tainted(step) {
+	not step._parsed_run.parse_ok
+	parsed := step._parsed_expressions_run[_]
+	parsed.parse_ok == true
+	cicd_lib.references_untrusted_context(parsed.raw)
+}
+
+composite_step_env_is_untrusted(step, var_name) {
+	parsed_key := concat("", ["_parsed_expressions_", var_name])
+	parsed := step.env[parsed_key][_]
+	parsed.parse_ok == true
+	cicd_lib.references_untrusted_context(parsed.raw)
+}
+
 # Detect writes to GITHUB_ENV or GITHUB_PATH using tree-sitter parsed data (bash/sh/zsh)
 writes_to_env_file(step, run_block) {
 	parsed := step._parsed_run
