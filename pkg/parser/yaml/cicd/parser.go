@@ -161,20 +161,20 @@ func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Do
 				if !ok {
 					continue
 				}
-				parseRunBlocksInSteps(contextLogger, steps)
+				parseRunBlocksInSteps(&contextLogger, steps)
 			}
 		}
 
 		if runs, ok := doc["runs"].(map[string]interface{}); ok {
 			if steps, ok := runs["steps"].([]interface{}); ok {
-				parseRunBlocksInSteps(contextLogger, steps)
+				parseRunBlocksInSteps(&contextLogger, steps)
 			}
 		}
 	}
 }
 
 // parseRunBlocksInSteps annotates each step that has a run block with its parsed shell AST.
-func parseRunBlocksInSteps(contextLogger zerolog.Logger, steps []interface{}) {
+func parseRunBlocksInSteps(contextLogger *zerolog.Logger, steps []interface{}) {
 	for _, s := range steps {
 		step, ok := s.(map[string]interface{})
 		if !ok {
