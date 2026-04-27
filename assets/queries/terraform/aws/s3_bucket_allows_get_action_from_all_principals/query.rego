@@ -11,7 +11,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": pl[r],
-		"resourceName": tf_lib.resolve_bucket_name(resource, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 		"searchKey": sprintf("%s[%s].policy.Action", [pl[r], name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("%s[%s].policy.Action should not be a 'Get' action", [pl[r], name]),

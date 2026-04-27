@@ -10,7 +10,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_object",
-		"resourceName": tf_lib.resolve_bucket_name(resource, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 		"searchKey": sprintf("aws_s3_bucket_object[{{%s}}]", [name]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "aws_s3_bucket_object.server_side_encryption should be defined and not null",

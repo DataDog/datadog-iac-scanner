@@ -17,7 +17,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket",
-		"resourceName": tf_lib.resolve_bucket_name(bucket, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(bucket, name),
 		"searchKey": sprintf("aws_s3_bucket[%s].versioning", [name]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": sprintf("'%s' should be set to true", [checkedFields[j]]),
@@ -35,7 +35,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket",
-		"resourceName": tf_lib.resolve_bucket_name(bucket, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(bucket, name),
 		"searchKey": sprintf("aws_s3_bucket[%s].versioning.%s", [name, checkedFields[j]]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("'%s' should be set to true", [checkedFields[j]]),
@@ -95,7 +95,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_versioning",
-		"resourceName": tf_lib.resolve_bucket_name(bucket_versioning, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(bucket_versioning, name),
 		"searchKey": sprintf("aws_s3_bucket_versioning[%s].versioning_configuration.mfa_delete", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'versioning_configuration.mfa_delete' should be set to 'Enabled'",
@@ -117,7 +117,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_versioning",
-		"resourceName": tf_lib.resolve_bucket_name(bucket_versioning, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(bucket_versioning, name),
 		"searchKey": sprintf("aws_s3_bucket_versioning[%s].versioning_configuration.status", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'versioning_configuration.status' should be set to 'Enabled'",
@@ -139,7 +139,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_versioning",
-		"resourceName": tf_lib.resolve_bucket_name(bucket_versioning, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(bucket_versioning, name),
 		"searchKey": sprintf("aws_s3_bucket_versioning[%s].versioning_configuration", [name]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "'versioning_configuration.mfa_delete' should be defined and not null",

@@ -19,7 +19,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket",
-		"resourceName": tf_lib.resolve_bucket_name(resource, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "S3 Bucket public ACL to not be overridden by S3 bucket Public Access Block",
@@ -69,7 +69,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_acl",
-		"resourceName": tf_lib.resolve_bucket_name(acl, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(acl, name),
 		"searchKey": sprintf("aws_s3_bucket_acl[%s].acl", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "S3 Bucket public ACL to not be overridden by S3 bucket Public Access Block",

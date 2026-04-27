@@ -10,7 +10,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_public_access_block",
-		"resourceName": tf_lib.resolve_bucket_name(pubACL, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(pubACL, name),
 		"searchKey": sprintf("aws_s3_bucket_public_access_block[%s].restrict_public_buckets", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'restrict_public_buckets' should equal 'true'",
@@ -31,7 +31,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_public_access_block",
-		"resourceName": tf_lib.resolve_bucket_name(pubACL, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(pubACL, name),
 		"searchKey": sprintf("aws_s3_bucket_public_access_block[%s]", [name]),
 		"issueType": "MissingAttribute",
 		"keyExpectedValue": "'restrict_public_buckets' should equal 'true'",

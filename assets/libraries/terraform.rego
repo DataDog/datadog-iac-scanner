@@ -677,7 +677,7 @@ resolve_reference_name(resource, attr, parent_type, fallback) = out {
 }
 
 # S3 `bucket` -> resolved name (same-scan aws_s3_bucket refs); else fallback.
-resolve_bucket_name(resource, fallback) = name {
+resolve_s3_bucket_name(resource, fallback) = name {
 	name := resolve_reference_name(resource, "bucket", "aws_s3_bucket", fallback)
 }
 

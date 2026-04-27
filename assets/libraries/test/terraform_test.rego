@@ -566,14 +566,14 @@ test_resolve_reference_name_var_without_default_falls_back {
     name == "fallback_logical"
 }
 
-# Test resolve_bucket_name function against mock input.document shape
-test_resolve_bucket_name_literal {
+# Test resolve_s3_bucket_name function against mock input.document shape
+test_resolve_s3_bucket_name_literal {
     resource := {"bucket": "my-literal-bucket"}
-    name := resolve_bucket_name(resource, "policy_logical_name") with input as {}
+    name := resolve_s3_bucket_name(resource, "policy_logical_name") with input as {}
     name == "my-literal-bucket"
 }
 
-test_resolve_bucket_name_same_document_reference {
+test_resolve_s3_bucket_name_same_document_reference {
     mock_input := {
         "document": [{
             "resource": {
@@ -587,11 +587,11 @@ test_resolve_bucket_name_same_document_reference {
         }],
     }
     policy := mock_input.document[0].resource.aws_s3_bucket_policy.my_policy
-    name := resolve_bucket_name(policy, "my_policy") with input as mock_input
+    name := resolve_s3_bucket_name(policy, "my_policy") with input as mock_input
     name == "shopist-prod"
 }
 
-test_resolve_bucket_name_cross_document_reference {
+test_resolve_s3_bucket_name_cross_document_reference {
     mock_input := {
         "document": [
             {
@@ -611,11 +611,11 @@ test_resolve_bucket_name_cross_document_reference {
         ],
     }
     policy := mock_input.document[1].resource.aws_s3_bucket_policy.my_policy
-    name := resolve_bucket_name(policy, "my_policy") with input as mock_input
+    name := resolve_s3_bucket_name(policy, "my_policy") with input as mock_input
     name == "shopist-cross-file"
 }
 
-test_resolve_bucket_name_reference_to_missing_bucket_falls_back {
+test_resolve_s3_bucket_name_reference_to_missing_bucket_falls_back {
     mock_input := {
         "document": [{
             "resource": {
@@ -626,11 +626,11 @@ test_resolve_bucket_name_reference_to_missing_bucket_falls_back {
         }],
     }
     policy := mock_input.document[0].resource.aws_s3_bucket_policy.orphan_policy
-    name := resolve_bucket_name(policy, "orphan_policy") with input as mock_input
+    name := resolve_s3_bucket_name(policy, "orphan_policy") with input as mock_input
     name == "orphan_policy"
 }
 
-test_resolve_bucket_name_reference_to_bucket_without_literal_name_returns_target_logical_name {
+test_resolve_s3_bucket_name_reference_to_bucket_without_literal_name_returns_target_logical_name {
     # When the referenced aws_s3_bucket exists in the scan but its `bucket`
     # attribute is itself unresolvable (e.g. "${var.bucket_name}" with no
     # default), prefer the target bucket's Terraform logical name over the
@@ -649,11 +649,11 @@ test_resolve_bucket_name_reference_to_bucket_without_literal_name_returns_target
         }],
     }
     policy := mock_input.document[0].resource.aws_s3_bucket_policy.its_policy
-    name := resolve_bucket_name(policy, "its_policy") with input as mock_input
+    name := resolve_s3_bucket_name(policy, "its_policy") with input as mock_input
     name == "dynamic"
 }
 
-test_resolve_bucket_name_module_reference_falls_back {
+test_resolve_s3_bucket_name_module_reference_falls_back {
     mock_input := {
         "document": [{
             "resource": {
@@ -664,6 +664,6 @@ test_resolve_bucket_name_module_reference_falls_back {
         }],
     }
     policy := mock_input.document[0].resource.aws_s3_bucket_policy.modular_policy
-    name := resolve_bucket_name(policy, "modular_policy") with input as mock_input
+    name := resolve_s3_bucket_name(policy, "modular_policy") with input as mock_input
     name == "modular_policy"
 }
