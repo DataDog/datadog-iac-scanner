@@ -3,5 +3,5 @@ description: Composite action that calls a third-party action by tag instead of 
 runs:
   using: composite
   steps:
-    - name: Set up unpinned tool
-      uses: third-party/some-tool@v1
+    - name: PR comment
+      uses: thollander/actions-comment-pull-request@v2

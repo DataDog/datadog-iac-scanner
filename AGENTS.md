@@ -31,6 +31,7 @@ go test ./test -run "TestQueries.*/<rule_name>" -v -count=1
 # Build and scan a directory
 make build
 ./bin/datadog-iac-scanner scan -p <path> -o <output-dir> -t Terraform
+```
 
 ## Go lint (before commit or push)
 

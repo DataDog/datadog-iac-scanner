@@ -1,0 +1,13 @@
+name: Workflow with safe step env literal
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo a constant message
+        env:
+          MESSAGE: hello
+        run: echo "${{ env.MESSAGE }}"

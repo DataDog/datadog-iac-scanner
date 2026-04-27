@@ -71,8 +71,8 @@ var (
 	cicdOnRegex                                     = regexp.MustCompile(`\s*on:\s*`)
 	cicdJobsRegex                                   = regexp.MustCompile(`\s*jobs:\s*`)
 	cicdStepsRegex                                  = regexp.MustCompile(`\s*steps:\s*`)
-	githubActionRunsRegex                           = regexp.MustCompile(`(^|\n)runs:\s*`)
-	githubActionUsingRegex                          = regexp.MustCompile(`\s*using:\s*['"]?(composite|docker|node\d+)`)
+	githubActionManifestRunsRegex                   = regexp.MustCompile(`(^|\n)runs:\s*`)
+	githubActionManifestUsingRegex                  = regexp.MustCompile(`\s*using:\s*['"]?(composite|docker|node\d+)`)
 	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
 	dependabotUpdatesRegex                          = regexp.MustCompile(`\s*updates:\s*`)
 	dependabotPackageEcosystemRegex                 = regexp.MustCompile(`\s*package-ecosystem:\s*`)
@@ -289,8 +289,8 @@ var types = map[string]regexSlice{
 	},
 	"githubAction": {
 		[]*regexp.Regexp{
-			githubActionRunsRegex,
-			githubActionUsingRegex,
+			githubActionManifestRunsRegex,
+			githubActionManifestUsingRegex,
 		},
 	},
 }

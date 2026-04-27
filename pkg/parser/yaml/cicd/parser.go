@@ -12,7 +12,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
-	"github.com/rs/zerolog"
 )
 
 // Parser defines a parser type
@@ -149,7 +148,6 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 // Action files such as action.yml (runs.steps), so that step-level rules can analyze
 // both shapes uniformly.
 func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Document) {
-	contextLogger := logger.FromContext(ctx)
 	for _, doc := range documents {
 		if jobs, ok := doc["jobs"].(map[string]interface{}); ok {
 			for _, j := range jobs {
@@ -161,20 +159,21 @@ func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Do
 				if !ok {
 					continue
 				}
-				parseRunBlocksInSteps(&contextLogger, steps)
+				parseRunBlocksInSteps(ctx, steps)
 			}
 		}
 
 		if runs, ok := doc["runs"].(map[string]interface{}); ok {
 			if steps, ok := runs["steps"].([]interface{}); ok {
-				parseRunBlocksInSteps(&contextLogger, steps)
+				parseRunBlocksInSteps(ctx, steps)
 			}
 		}
 	}
 }
 
 // parseRunBlocksInSteps annotates each step that has a run block with its parsed shell AST.
-func parseRunBlocksInSteps(contextLogger *zerolog.Logger, steps []interface{}) {
+func parseRunBlocksInSteps(ctx context.Context, steps []interface{}) {
+	contextLogger := logger.FromContext(ctx)
 	for _, s := range steps {
 		step, ok := s.(map[string]interface{})
 		if !ok {

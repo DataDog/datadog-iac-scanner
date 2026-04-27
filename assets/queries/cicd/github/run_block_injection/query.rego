@@ -249,17 +249,25 @@ CxPolicy[result] {
 	}
 }
 
+# Workflow steps: `${{ env.X }}` dereference inside a run block. Skip the finding
+# when X is locally defined on the step as a literal (or only-safe interpolation);
+# treat unknown keys as unsafe since their value may come from job/workflow env or
+# from a previous step's `>> $GITHUB_ENV` write.
 CxPolicy[result] {
 	doc := input.document[i]
-	parsed_run := doc.jobs[j].steps[k]._parsed_expressions_run[_]
-	run := doc.jobs[j].steps[k].run
+	step := doc.jobs[j].steps[k]
+	parsed_run := step._parsed_expressions_run[_]
+	run := step.run
 
 	walk(parsed_run, [_, node])
 
 	node.type == "dereference_expression"
 
-	matched = containsPatterns(node.value, ["^env\\."])
+	matched := containsPatterns(node.value, ["^env\\."])
 	count(matched) > 0
+
+	env_key := step_env_key(node.value)
+	not step_env_locally_safe(step, env_key)
 
 	result := {
 		"documentId": doc.id,
@@ -364,8 +372,8 @@ CxPolicy[result] {
 	matched := containsPatterns(node.value, ["^env\\."])
 	count(matched) > 0
 
-	env_key := composite_env_key(node.value)
-	not composite_env_locally_safe(step, env_key)
+	env_key := step_env_key(node.value)
+	not step_env_locally_safe(step, env_key)
 
 	result := {
 		"documentId": doc.id,
@@ -379,18 +387,23 @@ CxPolicy[result] {
 	}
 }
 
-composite_env_key(node_value) = key {
+# Extracts `X` from the dereference text `env.X` (or `env.X.Y...`).
+step_env_key(node_value) = key {
 	parts := split(node_value, ".")
 	count(parts) >= 2
 	key := parts[1]
 }
 
-composite_env_locally_safe(step, env_key) {
+# True when the step locally defines `env.<env_key>` as a literal string with no
+# untrusted-context interpolation. Used by both the workflow-step rule above and
+# the composite-action rule below to suppress the env.* finding for clearly safe
+# locally-scoped values.
+step_env_locally_safe(step, env_key) {
 	is_string(step.env[env_key])
-	not composite_env_has_untrusted_expr(step, env_key)
+	not step_env_has_untrusted_expr(step, env_key)
 }
 
-composite_env_has_untrusted_expr(step, env_key) {
+step_env_has_untrusted_expr(step, env_key) {
 	parsed_key := concat("", ["_parsed_expressions_", env_key])
 	parsed := step.env[parsed_key][_]
 	parsed.parse_ok == true
