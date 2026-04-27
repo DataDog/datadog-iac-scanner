@@ -63,6 +63,7 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 			}
 
 			if len(doc) > 0 {
+				doc["_path"] = filePath
 				documents = append(documents, doc)
 			}
 		}

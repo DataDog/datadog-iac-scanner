@@ -53,3 +53,15 @@ is_bare_inputs_dereference(node) {
 	object.type == "identifier"
 	lower(object.value) == "inputs"
 }
+
+check_provider(doc) := "github" {
+	contains(doc._path, ".github")
+} else := "gitlab" {
+	contains(doc._path, ".gitlab-ci")
+} else := "circleci" {
+	contains(doc._path, ".circleci")
+} else := "azure" {
+	contains(doc._path, "azure-pipelines")
+} else := "other" {
+	true
+}
