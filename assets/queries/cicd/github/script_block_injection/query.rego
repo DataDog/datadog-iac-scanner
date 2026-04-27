@@ -346,6 +346,9 @@ CxPolicy[result] {
 }
 
 # Composite action: ${{ inputs.* }} interpolated into an actions/github-script body.
+# Driven by the parsed GitHub Actions expression AST so that nested contexts
+# such as ${{ github.event.inputs.* }} are handled by the broader rule above
+# and do not double-fire here through substring matching of `inputs.`.
 CxPolicy[result] {
 	doc := input.document[i]
 	cicd_lib.is_composite_action(doc)
@@ -355,8 +358,10 @@ CxPolicy[result] {
 	startswith(uses, "actions/github-script")
 	script := step["with"].script
 
-	matched := containsPatterns(script, ["inputs\\..+"])
-	count(matched) > 0
+	parsed_script := step["with"]._parsed_expressions_script[_]
+
+	walk(parsed_script, [_, node])
+	cicd_lib.is_bare_inputs_dereference(node)
 
 	result := {
 		"documentId": doc.id,

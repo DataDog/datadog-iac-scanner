@@ -64,5 +64,11 @@
     "severity": "HIGH",
     "line": 13,
     "fileName": "positive11.yaml"
+  },
+  {
+    "queryName": "Script block injection",
+    "severity": "HIGH",
+    "line": 9,
+    "fileName": "positive12.yaml"
   }
 ]

@@ -44,3 +44,12 @@ references_untrusted_context(raw) {
 references_untrusted_context(raw) {
 	contains(raw, "github.pull_request.")
 }
+
+# True for AST dereferences rooted at the `inputs` context (`inputs.<X>`),
+# but not for `github.event.inputs.<X>`, whose root is `github`.
+is_bare_inputs_dereference(node) {
+	node.type == "dereference_expression"
+	object := node.children[0]
+	object.type == "identifier"
+	lower(object.value) == "inputs"
+}

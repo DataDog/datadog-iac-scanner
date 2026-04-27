@@ -323,24 +323,28 @@ CxPolicy[result] {
 }
 
 # Composite action: ${{ inputs.* }} interpolated directly into a run block.
+# Driven by the parsed GitHub Actions expression AST so that nested contexts
+# such as ${{ github.event.inputs.* }} are handled by the broader rule above
+# and do not double-fire here through substring matching of `inputs.`.
 CxPolicy[result] {
 	doc := input.document[i]
 	cicd_lib.is_composite_action(doc)
 
-	run := doc.runs.steps[k].run
+	step := doc.runs.steps[k]
+	parsed_run := step._parsed_expressions_run[_]
 
-	matched := containsPatterns(run, ["inputs\\..+"])
-	count(matched) > 0
+	walk(parsed_run, [_, node])
+	cicd_lib.is_bare_inputs_dereference(node)
 
 	result := {
 		"documentId": doc.id,
-		"searchKey": sprintf("run={{%s}}", [run]),
+		"searchKey": sprintf("run={{%s}}", [step.run]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Run block does not directly interpolate composite action inputs into the shell.",
 		"keyActualValue": "Run block directly interpolates a composite action input into the shell, which can lead to command injection if the input is attacker-controlled.",
 		"searchLine": common_lib.build_search_line(["runs", "steps", k, "run"], []),
 		"resourceType": "github_action",
-		"resourceName": get_step_name(doc.runs.steps[k], k)
+		"resourceName": get_step_name(step, k)
 	}
 }
 

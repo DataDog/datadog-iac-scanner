@@ -94,5 +94,11 @@
     "severity": "MEDIUM",
     "line": 8,
     "fileName": "positive13.yaml"
+  },
+  {
+    "queryName": "Run block injection",
+    "severity": "MEDIUM",
+    "line": 8,
+    "fileName": "positive14.yaml"
   }
 ]
