@@ -2,61 +2,73 @@
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 9
+    "line": 9,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 11
+    "line": 11,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 15
+    "line": 15,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 19
+    "line": 19,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 25
+    "line": 25,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 30
+    "line": 30,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 36
+    "line": 36,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 42
+    "line": 42,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 49
+    "line": 49,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 55
+    "line": 55,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 61
+    "line": 61,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Overprovisioned secrets",
     "severity": "MEDIUM",
-    "line": 63
+    "line": 63,
+    "fileName": "positive.github.yaml"
   }
 ]

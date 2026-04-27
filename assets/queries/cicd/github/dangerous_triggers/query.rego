@@ -5,6 +5,7 @@ import data.generic.cicd as cicd_lib
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	cicd_lib.has_dangerous_trigger(doc)
 	doc_name := object.get(doc, "name", "document")

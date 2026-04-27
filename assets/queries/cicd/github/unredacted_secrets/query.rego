@@ -1,10 +1,12 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check for fromJSON(secrets.*) patterns in all parsed expressions within a step
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -37,6 +39,7 @@ CxPolicy[result] {
 # Check for fromJSON(secrets.*) patterns in job-level fields
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Get all parsed expressions in the job

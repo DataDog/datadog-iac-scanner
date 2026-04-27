@@ -2,10 +2,13 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check for actions/setup-python with pip-install input
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -35,6 +38,8 @@ CxPolicy[result] {
 # Check for shell: cmd usage
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -63,6 +68,8 @@ CxPolicy[result] {
 # Composite GitHub Action: actions/setup-python with pip-install input.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[s]
@@ -90,6 +97,8 @@ CxPolicy[result] {
 # Composite GitHub Action: shell: cmd usage in a step run block.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[s]

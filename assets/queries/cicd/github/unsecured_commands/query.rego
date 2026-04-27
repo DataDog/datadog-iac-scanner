@@ -2,64 +2,73 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
-	env := input.document[i].env["ACTIONS_ALLOW_UNSECURE_COMMANDS"]
+	env := doc.env["ACTIONS_ALLOW_UNSECURE_COMMANDS"]
 	is_true(env)
 
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("env.ACTIONS_ALLOW_UNSECURE_COMMANDS={{%s}}", [env]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "ACTIONS_ALLOW_UNSECURE_COMMANDS environment variable is not set as true.",
 		"keyActualValue": "ACTIONS_ALLOW_UNSECURE_COMMANDS environment variable is set as true.",
         "searchLine": common_lib.build_search_line(["env", "ACTIONS_ALLOW_UNSECURE_COMMANDS"],[]),
 		"resourceType": "github_action",
-		"resourceName": get_workflow_name(input.document[i])
+		"resourceName": get_workflow_name(doc)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
-	env := input.document[i].jobs[j].env["ACTIONS_ALLOW_UNSECURE_COMMANDS"]
+	env := doc.jobs[j].env["ACTIONS_ALLOW_UNSECURE_COMMANDS"]
 	is_true(env)
 
 
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("env.ACTIONS_ALLOW_UNSECURE_COMMANDS={{%s}}", [env]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "ACTIONS_ALLOW_UNSECURE_COMMANDS environment variable is not set as true.",
 		"keyActualValue": "ACTIONS_ALLOW_UNSECURE_COMMANDS environment variable is set as true.",
         "searchLine": common_lib.build_search_line(["jobs", j, "env", "ACTIONS_ALLOW_UNSECURE_COMMANDS"],[]),
 		"resourceType": "github_action",
-		"resourceName": get_job_name(input.document[i].jobs[j], j)
+		"resourceName": get_job_name(doc.jobs[j], j)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
-	env := input.document[i].jobs[j].steps[k].env["ACTIONS_ALLOW_UNSECURE_COMMANDS"]
+	env := doc.jobs[j].steps[k].env["ACTIONS_ALLOW_UNSECURE_COMMANDS"]
 	is_true(env)
 	
 	
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("env.ACTIONS_ALLOW_UNSECURE_COMMANDS={{%s}}", [env]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "ACTIONS_ALLOW_UNSECURE_COMMANDS environment variable is not set as true.",
 		"keyActualValue": "ACTIONS_ALLOW_UNSECURE_COMMANDS environment variable is set as true.",
         "searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "env", "ACTIONS_ALLOW_UNSECURE_COMMANDS"],[]),
 		"resourceType": "github_action",
-		"resourceName": get_step_name(input.document[i].jobs[j].steps[k], k)
+		"resourceName": get_step_name(doc.jobs[j].steps[k], k)
 	}
 }
 
 # Composite GitHub Action: ACTIONS_ALLOW_UNSECURE_COMMANDS in a step env block.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[k]

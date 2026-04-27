@@ -1,10 +1,12 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check for self-hosted runner in runs-on (string format)
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Check if runs-on is a string and equals self-hosted
@@ -26,6 +28,7 @@ CxPolicy[result] {
 # Check for self-hosted runner in runs-on (array format)
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Check if runs-on is an array and first element is self-hosted
@@ -48,6 +51,7 @@ CxPolicy[result] {
 # Check for potential expression-based self-hosted runner
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	check_self_hosted(job)
@@ -67,6 +71,7 @@ CxPolicy[result] {
 # Check for runner group (implies self-hosted runner)
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Check if runs-on is an object with 'group' key

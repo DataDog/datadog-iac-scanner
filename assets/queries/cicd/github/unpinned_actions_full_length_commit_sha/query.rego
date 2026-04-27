@@ -2,48 +2,55 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
-	uses := input.document[i].jobs[j].steps[k].uses
+	uses := doc.jobs[j].steps[k].uses
 	not isAllowed(uses)
 	not isPinned(uses)
 	not isRelative(uses)
-	
+
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("uses={{%s}}", [uses]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Action pinned to a full length commit SHA.",
 		"keyActualValue": "Action is not pinned to a full length commit SHA.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "uses"],[]),
 		"resourceType": "github_action",
-		"resourceName": get_object_name(input.document[i].jobs[j].steps[k], "step", k)
+		"resourceName": get_object_name(doc.jobs[j].steps[k], "step", k)
 	}
 }
 
 CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
-	uses := input.document[i].jobs[j].uses
+	uses := doc.jobs[j].uses
 	not isAllowed(uses)
 	not isPinned(uses)
 	not isRelative(uses)
 	
 	result := {
-		"documentId": input.document[i].id,
+		"documentId": doc.id,
 		"searchKey": sprintf("uses={{%s}}", [uses]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Action pinned to a full length commit SHA.",
 		"keyActualValue": "Action is not pinned to a full length commit SHA.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "uses"],[]),
 		"resourceType": "github_action",
-		"resourceName": get_object_name(input.document[i].jobs[j], "job", j)
+		"resourceName": get_object_name(doc.jobs[j], "job", j)
 	}
 }
 
 # Composite action: `uses` references under `runs.steps[*]` must also be SHA-pinned.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[k]

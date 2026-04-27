@@ -2,11 +2,13 @@
   {
     "queryName": "Hardcoded container credentials",
     "severity": "HIGH",
-    "line": 11
+    "line": 11,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Hardcoded container credentials",
     "severity": "HIGH",
-    "line": 20
+    "line": 20,
+    "fileName": "positive.github.yaml"
   }
 ]

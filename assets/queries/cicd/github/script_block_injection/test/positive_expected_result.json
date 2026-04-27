@@ -3,72 +3,72 @@
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 17,
-    "fileName": "positive1.yaml"
+    "fileName": "positive1.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 17,
-    "fileName": "positive2.yaml"
+    "fileName": "positive2.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 17,
-    "fileName": "positive3.yaml"
+    "fileName": "positive3.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 17,
-    "fileName": "positive4.yaml"
+    "fileName": "positive4.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 17,
-    "fileName": "positive5.yaml"
+    "fileName": "positive5.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 17,
-    "fileName": "positive6.yaml"
+    "fileName": "positive6.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 17,
-    "fileName": "positive7.yaml"
+    "fileName": "positive7.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 16,
-    "fileName": "positive8.yaml"
+    "fileName": "positive8.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 16,
-    "fileName": "positive9.yaml"
+    "fileName": "positive9.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 9,
-    "fileName": "positive10.yaml"
+    "fileName": "positive10.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 13,
-    "fileName": "positive11.yaml"
+    "fileName": "positive11.github.yaml"
   },
   {
     "queryName": "Script block injection",
     "severity": "HIGH",
     "line": 9,
-    "fileName": "positive12.yaml"
+    "fileName": "positive12.github.yaml"
   }
 ]

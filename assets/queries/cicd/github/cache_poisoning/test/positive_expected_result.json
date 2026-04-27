@@ -2,71 +2,85 @@
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 13
+    "line": 13,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 39
+    "line": 39,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 65
+    "line": 65,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 91
+    "line": 91,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 112
+    "line": 112,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 135
+    "line": 135,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 156
+    "line": 156,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 162
+    "line": 162,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 189
+    "line": 189,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 212
+    "line": 212,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 234
+    "line": 234,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 251
+    "line": 251,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 275
+    "line": 275,
+    "fileName": "positive.github.yaml"
   },
   {
     "queryName": "Cache poisoning",
     "severity": "HIGH",
-    "line": 298
+    "line": 298,
+    "fileName": "positive.github.yaml"
   }
 ]

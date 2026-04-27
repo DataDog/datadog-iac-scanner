@@ -2,9 +2,11 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	check_trigger(doc, "pull_request_target")
 
@@ -42,6 +44,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	check_trigger(doc, "issues")
 
@@ -73,6 +76,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	check_trigger(doc, "issue_comment")
 	
@@ -105,6 +109,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	check_trigger(doc, "discussion")
 	
@@ -136,6 +141,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	check_trigger(doc, "discussion_comment")
 	
@@ -168,6 +174,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	check_trigger(doc, "workflow_run")
 	
@@ -203,6 +210,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	check_trigger(doc, "author")
 	
@@ -234,6 +242,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "pull_request")
 	step := doc.jobs[j].steps[k]
 
@@ -267,6 +276,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "workflow_dispatch")
 	step := doc.jobs[j].steps[k]
 
@@ -300,6 +310,8 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[k]
@@ -351,6 +363,8 @@ CxPolicy[result] {
 # and do not double-fire here through substring matching of `inputs.`.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[k]

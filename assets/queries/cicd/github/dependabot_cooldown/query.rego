@@ -1,6 +1,7 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Default minimum cooldown days
 default_min_cooldown_days := 7
@@ -8,6 +9,7 @@ default_min_cooldown_days := 7
 # Check for missing cooldown configuration entirely
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	# Iterate through each update configuration
 	update := doc.updates[idx]
@@ -30,6 +32,7 @@ CxPolicy[result] {
 # Check for cooldown block present but missing default-days
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	# Iterate through each update configuration
 	update := doc.updates[idx]
@@ -53,6 +56,7 @@ CxPolicy[result] {
 # Check for insufficient default-days value
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	# Iterate through each update configuration
 	update := doc.updates[idx]

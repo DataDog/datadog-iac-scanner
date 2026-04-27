@@ -2,10 +2,13 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 import future.keywords.in
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -34,6 +37,8 @@ CxPolicy[result] {
 # Composite action: detect obfuscated path components in `runs.steps[*].uses`.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[s]

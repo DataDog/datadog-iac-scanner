@@ -1,9 +1,11 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	doc.jobs
 
 	# Check if permissions is missing at workflow level
@@ -26,6 +28,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	jobs := doc.jobs
 
 	# Workflow level does not have permissions
