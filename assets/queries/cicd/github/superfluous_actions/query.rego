@@ -1,5 +1,6 @@
 package Cx
 
+import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
 
 # List of superfluous actions that have better alternatives
@@ -44,6 +45,35 @@ CxPolicy[result] {
 		"keyExpectedValue": sprintf("Use built-in runner functionality instead of this action: %s", [recommendation]),
 		"keyActualValue": sprintf("Step '%s' uses superfluous action that duplicates runner functionality", [step_name]),
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", s, "uses"], []),
+		"resourceType": "github_step",
+		"resourceName": step_name
+	}
+}
+
+# Composite action: detect superfluous third-party `uses` in `runs.steps[*]`.
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.is_composite_action(doc)
+
+	step := doc.runs.steps[s]
+	step_uses := step.uses
+
+	recommendation := superfluous_actions[action_pattern]
+
+	uses_parts := split(step_uses, "@")
+	owner_repo := uses_parts[0]
+
+	owner_repo == action_pattern
+
+	step_name := object.get(step, "name", sprintf("step-%d", [s]))
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("runs.steps[%d].uses={{%s}}", [s, owner_repo]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": sprintf("Use built-in runner functionality instead of this action: %s", [recommendation]),
+		"keyActualValue": sprintf("Step '%s' uses superfluous action that duplicates runner functionality", [step_name]),
+		"searchLine": common_lib.build_search_line(["runs", "steps", s, "uses"], []),
 		"resourceType": "github_step",
 		"resourceName": step_name
 	}

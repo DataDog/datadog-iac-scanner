@@ -1,0 +1,9 @@
+name: Composite action with workflow input via github.event.inputs
+description: Composite action whose run block interpolates github.event.inputs.foo
+runs:
+  using: composite
+  steps:
+    - name: Echo workflow input
+      shell: bash
+      run: |
+        echo "${{ github.event.inputs.foo }}"

@@ -71,6 +71,8 @@ var (
 	cicdOnRegex                                     = regexp.MustCompile(`\s*on:\s*`)
 	cicdJobsRegex                                   = regexp.MustCompile(`\s*jobs:\s*`)
 	cicdStepsRegex                                  = regexp.MustCompile(`\s*steps:\s*`)
+	githubActionManifestRunsRegex                   = regexp.MustCompile(`(^|\n)runs:\s*`)
+	githubActionManifestUsingRegex                  = regexp.MustCompile(`\s*using:\s*['"]?(composite|docker|node\d+)`)
 	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
 	dependabotUpdatesRegex                          = regexp.MustCompile(`\s*updates:\s*`)
 	dependabotPackageEcosystemRegex                 = regexp.MustCompile(`\s*package-ecosystem:\s*`)
@@ -100,7 +102,7 @@ var (
 	supportedRegexes = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
 		"buildah":              {"buildah"},
-		"cicd":                 {"cicd", "dependabot"},
+		"cicd":                 {"cicd", "dependabot", "githubAction"},
 		"cloudformation":       {"cloudformation"},
 		"crossplane":           {"crossplane"},
 		"knative":              {"knative"},
@@ -119,23 +121,24 @@ var (
 )
 
 const (
-	yml        = ".yml"
-	yaml       = ".yaml"
-	json       = ".json"
-	sh         = ".sh"
-	arm        = "azureresourcemanager"
-	bicep      = "bicep"
-	kubernetes = "kubernetes"
-	terraform  = "terraform"
-	gdm        = "googledeploymentmanager"
-	ansible    = "ansible"
-	grpc       = "grpc"
-	dockerfile = "dockerfile"
-	crossplane = "crossplane"
-	knative    = "knative"
-	cicd       = "cicd"
-	dependabot = "dependabot"
-	sizeMb     = 1048576
+	yml          = ".yml"
+	yaml         = ".yaml"
+	json         = ".json"
+	sh           = ".sh"
+	arm          = "azureresourcemanager"
+	bicep        = "bicep"
+	kubernetes   = "kubernetes"
+	terraform    = "terraform"
+	gdm          = "googledeploymentmanager"
+	ansible      = "ansible"
+	grpc         = "grpc"
+	dockerfile   = "dockerfile"
+	crossplane   = "crossplane"
+	knative      = "knative"
+	cicd         = "cicd"
+	dependabot   = "dependabot"
+	githubAction = "githubAction"
+	sizeMb       = 1048576
 )
 
 type Parameters struct {
@@ -282,6 +285,12 @@ var types = map[string]regexSlice{
 			dependabotVersionRegex,
 			dependabotUpdatesRegex,
 			dependabotPackageEcosystemRegex,
+		},
+	},
+	"githubAction": {
+		[]*regexp.Regexp{
+			githubActionManifestRunsRegex,
+			githubActionManifestUsingRegex,
 		},
 	},
 }
@@ -569,6 +578,8 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 		case "cdkTf":
 			return terraform
 		case dependabot:
+			return cicd
+		case githubAction:
 			return cicd
 		}
 		if utils.Contains(returnType, armRegexTypes) {

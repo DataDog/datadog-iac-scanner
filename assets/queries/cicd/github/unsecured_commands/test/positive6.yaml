@@ -1,0 +1,10 @@
+name: Composite action with unsecured commands
+description: Composite step env enables ACTIONS_ALLOW_UNSECURE_COMMANDS
+runs:
+  using: composite
+  steps:
+    - name: Run with unsecure commands
+      shell: bash
+      env:
+        ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
+      run: echo "::set-env name=FOO::bar"

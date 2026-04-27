@@ -33,6 +33,16 @@ make build
 ./bin/datadog-iac-scanner scan -p <path> -o <output-dir> -t Terraform
 ```
 
+## Go lint (before commit or push)
+
+Any time you change Go code under `pkg/`, `cmd/`, or elsewhere in this module, **run golangci-lint locally before you commit or push**, using the same flags as the PR `lint` job (`.github/workflows/go-ci.yml`), so CI does not fail only after opening the PR.
+
+```bash
+golangci-lint run -c .golangci.yml --timeout 20m
+```
+
+CI pins **golangci-lint v2.4.0**; if your installed binary is a different major/minor and results disagree, align your version with CI or run the same release via the `golangci/golangci-lint:v2.4.0` image.
+
 ## Writing Rules
 
 - Each rule needs: `query.rego`, `metadata.json`, and test fixtures (`positive*.tf`, `negative*.tf`, `positive_expected_result.json`)

@@ -1,5 +1,6 @@
 package Cx
 
+import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
 import future.keywords.in
 
@@ -24,6 +25,31 @@ CxPolicy[result] {
 		"resourceName": sprintf("step %d in job '%s'", [s, j]),
 		"searchKey": sprintf("jobs.%s.steps", [j]),
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", s, "uses"], []),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": sprintf("'uses' should not contain obfuscated path components", []),
+		"keyActualValue": sprintf("'uses' contains obfuscated path components: %s", [issue_description]),
+	}
+}
+
+# Composite action: detect obfuscated path components in `runs.steps[*].uses`.
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.is_composite_action(doc)
+
+	step := doc.runs.steps[s]
+	uses := step.uses
+	is_string(uses)
+
+	obfuscation_issues := detect_obfuscation(uses)
+	count(obfuscation_issues) > 0
+
+	issue_description := concat(", ", obfuscation_issues)
+	result := {
+		"documentId": doc.id,
+		"resourceType": "step",
+		"resourceName": sprintf("step %d in composite action", [s]),
+		"searchKey": "runs.steps",
+		"searchLine": common_lib.build_search_line(["runs", "steps", s, "uses"], []),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("'uses' should not contain obfuscated path components", []),
 		"keyActualValue": sprintf("'uses' contains obfuscated path components: %s", [issue_description]),
