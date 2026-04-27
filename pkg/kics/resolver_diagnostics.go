@@ -65,6 +65,9 @@ func (s *Service) saveResolverDiagnostics(ctx context.Context, scanID string, di
 			SearchKey:   "resolver_diagnostic." + d.QueryID,
 			SearchLine:  line,
 			SearchValue: d.Message,
+			// MemoryStorage de-dupes on KeyActualValue but ignores SearchValue/Description,
+			// so distinct messages must reach the storage key through this field.
+			KeyActualValue: d.Message,
 		})
 	}
 	if len(vulns) == 0 {

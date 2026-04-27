@@ -78,14 +78,20 @@ func RenderChart(ctx context.Context, opts *RenderOptions) (*RenderedChart, erro
 	}
 	contextLogger := logger.FromContext(ctx)
 	client := newClient(ctx, opts)
+	// Confine values files to the chart tree before they reach Helm; Helm's MergeValues
+	// would otherwise resolve relative paths against the scanner CWD and accept any absolute path.
+	normalizedFiles, err := normalizeValuesFiles(opts.ChartPath, opts.ValuesFiles)
+	if err != nil {
+		return nil, err
+	}
 	valueOpts := &values.Options{
-		ValueFiles: opts.ValuesFiles,
+		ValueFiles: normalizedFiles,
 		Values:     opts.SetValues,
 	}
 	cleanup := func() {}
 	if len(opts.ValuesInline) > 0 {
 		var err error
-		cleanup, err = applyValuesInline(ctx, valueOpts, opts)
+		cleanup, err = applyValuesInline(ctx, valueOpts, opts, normalizedFiles)
 		if err != nil {
 			return nil, err
 		}
@@ -116,12 +122,12 @@ func RenderChart(ctx context.Context, opts *RenderOptions) (*RenderedChart, erro
 	return out, nil
 }
 
-func applyValuesInline(ctx context.Context, valueOpts *values.Options, opts *RenderOptions) (func(), error) {
+func applyValuesInline(ctx context.Context, valueOpts *values.Options, opts *RenderOptions, normalizedFiles []string) (func(), error) {
 	if opts == nil {
 		return func() {}, errors.New("helm RenderOptions is nil")
 	}
 	contextLogger := logger.FromContext(ctx)
-	inlineBytes, err := mergedValuesInlineBytes(opts)
+	inlineBytes, err := mergedValuesInlineBytes(opts, normalizedFiles)
 	if err != nil {
 		return func() {}, err
 	}
@@ -149,7 +155,7 @@ func applyValuesInline(ctx context.Context, valueOpts *values.Options, opts *Ren
 	}, nil
 }
 
-func mergedValuesInlineBytes(opts *RenderOptions) ([]byte, error) {
+func mergedValuesInlineBytes(opts *RenderOptions, normalizedFiles []string) ([]byte, error) {
 	if opts == nil {
 		return nil, errors.New("helm RenderOptions is nil")
 	}
@@ -164,24 +170,21 @@ func mergedValuesInlineBytes(opts *RenderOptions) ([]byte, error) {
 	default:
 		return nil, errors.Errorf("invalid helm valuesMerge %q", opts.ValuesMerge)
 	}
-	if len(opts.ValuesFiles) == 0 {
+	if len(normalizedFiles) == 0 {
 		return kyaml.Marshal(opts.ValuesInline)
 	}
-	baseNode, err := mergeHelmValueFilesToBaseNode(opts.ChartPath, opts.ValuesFiles)
+	baseNode, err := mergeHelmValueFilesToBaseNode(normalizedFiles)
 	if err != nil {
 		return nil, err
 	}
 	return mergeInlineYAMLWithBase(mergeMode, baseNode, opts.ValuesInline)
 }
 
-// mergeHelmValueFilesToBaseNode merges valueFiles in order (later wins), after constraining paths to the chart tree.
-func mergeHelmValueFilesToBaseNode(chartPath string, valueFiles []string) (*kyaml.RNode, error) {
+// mergeHelmValueFilesToBaseNode merges valueFiles in order (later wins).
+// Paths must already be confined to the chart tree by normalizeValuesFiles.
+func mergeHelmValueFilesToBaseNode(valueFiles []string) (*kyaml.RNode, error) {
 	var baseNode *kyaml.RNode
-	for i, valuesFile := range valueFiles {
-		safePath, err := valuesFilePathForRead(chartPath, valuesFile)
-		if err != nil {
-			return nil, err
-		}
+	for i, safePath := range valueFiles {
 		baseBytes, err := readChartContainedValuesFile(safePath)
 		if err != nil {
 			return nil, errors.Wrap(err, "read helm base values file")
@@ -225,6 +228,23 @@ func mergeInlineYAMLWithBase(mergeMode string, baseNode *kyaml.RNode, inline map
 func readChartContainedValuesFile(absPath string) ([]byte, error) {
 	//nolint:gosec // G304: absPath is only ever valuesFilePathForRead output (under chart directory).
 	return os.ReadFile(absPath)
+}
+
+// normalizeValuesFiles returns chart-tree-confined absolute paths for each entry, preserving order.
+// Returns nil for an empty input so callers can treat it as "no values files".
+func normalizeValuesFiles(chartPath string, files []string) ([]string, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		safe, err := valuesFilePathForRead(chartPath, f)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, safe)
+	}
+	return out, nil
 }
 
 // valuesFilePathForRead returns an absolute path to valuesFile only if it resolves under the chart directory.

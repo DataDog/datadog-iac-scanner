@@ -57,7 +57,7 @@ func TestMergedValuesInlineBytes_UsesAllValuesFilesBeforeInline(t *testing.T) {
 	require.NoError(t, os.WriteFile(base, []byte("service:\n  port: 80\n  type: ClusterIP\n"), 0o600))
 	require.NoError(t, os.WriteFile(override, []byte("service:\n  port: 8080\n"), 0o600))
 
-	out, err := mergedValuesInlineBytes(&RenderOptions{
+	opts := &RenderOptions{
 		ChartPath:   dir,
 		ValuesFiles: []string{base, override},
 		ValuesInline: map[string]interface{}{
@@ -66,7 +66,10 @@ func TestMergedValuesInlineBytes_UsesAllValuesFilesBeforeInline(t *testing.T) {
 			},
 		},
 		ValuesMerge: valuesMergeOverride,
-	})
+	}
+	normalizedFiles, err := normalizeValuesFiles(opts.ChartPath, opts.ValuesFiles)
+	require.NoError(t, err)
+	out, err := mergedValuesInlineBytes(opts, normalizedFiles)
 	require.NoError(t, err)
 	txt := string(out)
 	require.Contains(t, txt, "port: 8080")
@@ -82,7 +85,7 @@ func TestApplyValuesInline_ReplacesWholeValuesFileStack(t *testing.T) {
 	require.NoError(t, os.WriteFile(override, []byte("service:\n  port: 8080\n"), 0o600))
 
 	valueOpts := &values.Options{ValueFiles: []string{base, override}}
-	cleanup, err := applyValuesInline(ctx, valueOpts, &RenderOptions{
+	opts := &RenderOptions{
 		ChartPath:   dir,
 		ValuesFiles: []string{base, override},
 		ValuesInline: map[string]interface{}{
@@ -91,7 +94,10 @@ func TestApplyValuesInline_ReplacesWholeValuesFileStack(t *testing.T) {
 			},
 		},
 		ValuesMerge: valuesMergeOverride,
-	})
+	}
+	normalizedFiles, err := normalizeValuesFiles(opts.ChartPath, opts.ValuesFiles)
+	require.NoError(t, err)
+	cleanup, err := applyValuesInline(ctx, valueOpts, opts, normalizedFiles)
 	require.NoError(t, err)
 	defer cleanup()
 	require.Len(t, valueOpts.ValueFiles, 1)
@@ -106,7 +112,7 @@ func TestApplyValuesInline_CleanupRemovesTempFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(base, []byte("service:\n  port: 80\n"), 0o600))
 
 	valueOpts := &values.Options{ValueFiles: []string{base}}
-	cleanup, err := applyValuesInline(ctx, valueOpts, &RenderOptions{
+	opts := &RenderOptions{
 		ChartPath:   dir,
 		ValuesFiles: []string{base},
 		ValuesInline: map[string]interface{}{
@@ -115,7 +121,10 @@ func TestApplyValuesInline_CleanupRemovesTempFile(t *testing.T) {
 			},
 		},
 		ValuesMerge: valuesMergeOverride,
-	})
+	}
+	normalizedFiles, err := normalizeValuesFiles(opts.ChartPath, opts.ValuesFiles)
+	require.NoError(t, err)
+	cleanup, err := applyValuesInline(ctx, valueOpts, opts, normalizedFiles)
 	require.NoError(t, err)
 	require.Len(t, valueOpts.ValueFiles, 1)
 	tempPath := valueOpts.ValueFiles[0]
@@ -127,6 +136,36 @@ func TestApplyValuesInline_CleanupRemovesTempFile(t *testing.T) {
 	_, statErr = os.Stat(tempPath)
 	require.Error(t, statErr)
 	require.True(t, os.IsNotExist(statErr))
+}
+
+// Regression: a values file outside the chart tree must be rejected even when
+// no ValuesInline is provided (the inline-only normalization path is bypassed).
+func TestRenderChart_RejectsExternalValuesFileWithoutInline(t *testing.T) {
+	ctx := context.Background()
+	chartDir := testHelmFixtureChartDir(t)
+	outsideDir := t.TempDir()
+	external := filepath.Join(outsideDir, "external.yaml")
+	require.NoError(t, os.WriteFile(external, []byte("service:\n  port: 9090\n"), 0o600))
+
+	_, err := RenderChart(ctx, &RenderOptions{
+		ChartPath:   chartDir,
+		ValuesFiles: []string{external},
+		IncludeCRDs: true,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "outside chart directory")
+}
+
+// Regression: a relative values file must resolve against ChartPath, not the scanner CWD.
+func TestNormalizeValuesFiles_RelativeResolvesToChartPath(t *testing.T) {
+	chartDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(chartDir, "values.yaml"), []byte("a: 1\n"), 0o600))
+
+	out, err := normalizeValuesFiles(chartDir, []string{"values.yaml"})
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.True(t, filepath.IsAbs(out[0]))
+	require.Equal(t, "values.yaml", filepath.Base(out[0]))
 }
 
 func TestValuesFilePathForRead_RejectsSymlinkEscape(t *testing.T) {
