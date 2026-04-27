@@ -88,5 +88,11 @@
     "severity": "HIGH",
     "line": 14,
     "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "GitHub environment file injection",
+    "severity": "HIGH",
+    "line": 14,
+    "fileName": "positive3.yaml"
   }
 ]
