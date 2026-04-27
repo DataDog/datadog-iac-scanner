@@ -10,7 +10,7 @@ CxPolicy[result] {
 
 	bom_output = {
 		"resource_type": "aws_s3_bucket",
-		"resource_name": tf_lib.get_specific_resource_name(bucket_resource, "aws_s3_bucket", name),
+		"resource_name": tf_lib.resolve_s3_bucket_name(bucket_resource, name),
 		"resource_accessibility": info.accessibility,
 		"resource_encryption": get_encryption_if_exists(bucket_resource, name),
 		"resource_vendor": "AWS",

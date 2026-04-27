@@ -18,7 +18,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": resourceType,
-		"resourceName": tf_lib.get_specific_resource_name(resource, "aws_s3_bucket", name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 		"searchKey": sprintf("%s[%s].policy.Statement[%d].%s", [resourceType, name, idx, principal_path]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("%s[%s].policy.%s should not equal to, nor contain '*'", [resourceType, name, principal_path]),
