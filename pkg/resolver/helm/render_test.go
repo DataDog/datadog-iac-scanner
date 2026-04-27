@@ -129,6 +129,31 @@ func TestApplyValuesInline_CleanupRemovesTempFile(t *testing.T) {
 	require.True(t, os.IsNotExist(statErr))
 }
 
+func TestValuesFilePathForRead_RejectsSymlinkEscape(t *testing.T) {
+	chartDir := t.TempDir()
+	outsideDir := t.TempDir()
+	secret := filepath.Join(outsideDir, "secret.yaml")
+	require.NoError(t, os.WriteFile(secret, []byte("password: hunter2\n"), 0o600))
+
+	link := filepath.Join(chartDir, "values.yaml")
+	require.NoError(t, os.Symlink(secret, link))
+
+	_, err := valuesFilePathForRead(chartDir, "values.yaml")
+	require.Error(t, err, "symlinked values file pointing outside the chart must be rejected")
+}
+
+func TestValuesFilePathForRead_AcceptsSymlinkInsideChart(t *testing.T) {
+	chartDir := t.TempDir()
+	real := filepath.Join(chartDir, "real-values.yaml")
+	require.NoError(t, os.WriteFile(real, []byte("service:\n  port: 80\n"), 0o600))
+	link := filepath.Join(chartDir, "values.yaml")
+	require.NoError(t, os.Symlink(real, link))
+
+	p, err := valuesFilePathForRead(chartDir, "values.yaml")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Base(real), filepath.Base(p), "symlinked values file inside chart should be accepted and resolved")
+}
+
 func TestRenderChart_PreservesExplicitReleaseName(t *testing.T) {
 	ctx := context.Background()
 	chartDir := testHelmFixtureChartDir(t)

@@ -54,3 +54,42 @@ func TestBoundedFS_RejectsWriteThroughSymlinkedParent(t *testing.T) {
 	require.Error(t, statErr)
 	require.True(t, os.IsNotExist(statErr))
 }
+
+func TestBoundedFS_RejectsWriteThroughDanglingLeafSymlink(t *testing.T) {
+	root := t.TempDir()
+	outsideDir := t.TempDir()
+	outsideTarget := filepath.Join(outsideDir, "new.yaml")
+	link := filepath.Join(root, "link.yaml")
+	require.NoError(t, os.Symlink(outsideTarget, link))
+
+	fs, err := NewBoundedFS(root)
+	require.NoError(t, err)
+
+	require.Error(t, fs.WriteFile(link, []byte("secret")), "write through dangling leaf symlink must be rejected")
+	_, statErr := os.Stat(outsideTarget)
+	require.Error(t, statErr)
+	require.True(t, os.IsNotExist(statErr), "outside target must not have been created")
+
+	_, err = fs.Create(link)
+	require.Error(t, err, "create through dangling leaf symlink must be rejected")
+	_, statErr = os.Stat(outsideTarget)
+	require.Error(t, statErr)
+	require.True(t, os.IsNotExist(statErr))
+}
+
+func TestBoundedFS_RejectsWriteThroughExistingLeafSymlink(t *testing.T) {
+	root := t.TempDir()
+	outsideDir := t.TempDir()
+	outsideTarget := filepath.Join(outsideDir, "existing.yaml")
+	require.NoError(t, os.WriteFile(outsideTarget, []byte("original"), 0o600))
+	link := filepath.Join(root, "link.yaml")
+	require.NoError(t, os.Symlink(outsideTarget, link))
+
+	fs, err := NewBoundedFS(root)
+	require.NoError(t, err)
+
+	require.Error(t, fs.WriteFile(link, []byte("clobber")), "overwrite via leaf symlink must be rejected")
+	got, readErr := os.ReadFile(outsideTarget)
+	require.NoError(t, readErr)
+	require.Equal(t, "original", string(got), "outside target must not be overwritten")
+}

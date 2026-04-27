@@ -52,6 +52,12 @@ func (b *BoundedFS) checkCleaned(d filesys.ConfirmedDir, f string, resolveLeaf b
 				full = filepath.Join(filepath.Clean(ev), filepath.Base(full))
 			}
 		}
+		// Writes follow leaf symlinks at the OS layer, which would let a
+		// pre-existing or dangling symlink escape the sandbox. Reject any
+		// symlink leaf so the outside target is never created or overwritten.
+		if li, lerr := os.Lstat(full); lerr == nil && li.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlink leaf rejected for write: %s", full)
+		}
 	}
 	if !b.under(full) {
 		return fmt.Errorf("path outside scan root: %s", full)

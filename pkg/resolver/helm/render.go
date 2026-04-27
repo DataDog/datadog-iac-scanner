@@ -228,23 +228,33 @@ func readChartContainedValuesFile(absPath string) ([]byte, error) {
 }
 
 // valuesFilePathForRead returns an absolute path to valuesFile only if it resolves under the chart directory.
+// Both sides are evaluated through filepath.EvalSymlinks so a symlink inside the chart that points outside
+// the chart tree is rejected; a lexical Rel/IsLocal check alone is unsafe because os.ReadFile follows symlinks.
 func valuesFilePathForRead(chartPath, valuesFile string) (string, error) {
 	chartAbs, err := filepath.Abs(chartPath)
 	if err != nil {
 		return "", errors.Wrap(err, "resolve chart path")
 	}
 	chartAbs = filepath.Clean(chartAbs)
+	if ev, err := filepath.EvalSymlinks(chartAbs); err == nil {
+		chartAbs = filepath.Clean(ev)
+	}
 	var p string
 	if filepath.IsAbs(valuesFile) {
 		p = filepath.Clean(valuesFile)
 	} else {
 		p = filepath.Clean(filepath.Join(chartAbs, valuesFile))
 	}
-	rel, err := filepath.Rel(chartAbs, p)
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return "", errors.Wrapf(err, "resolve values file %q", valuesFile)
+	}
+	resolved = filepath.Clean(resolved)
+	rel, err := filepath.Rel(chartAbs, resolved)
 	if err != nil || !filepath.IsLocal(rel) {
 		return "", errors.Errorf("values file %q is outside chart directory", valuesFile)
 	}
-	return p, nil
+	return resolved, nil
 }
 
 func isHelmTestTemplate(path string) bool {
