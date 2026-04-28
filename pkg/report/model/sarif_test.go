@@ -144,7 +144,7 @@ var sarifTests = []sarifTest{
 							},
 							ResultLevel: "note",
 							ResultProperties: sarifProperties{
-								"tags": []string{"DATADOG_CATEGORY:", "IAC_RESOURCE_TYPE:aws_ami_launch_permission", "IAC_RESOURCE_NAME:test_resource"},
+								"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:MEDIUM", "IAC_RESOURCE_TYPE:aws_ami_launch_permission", "IAC_RESOURCE_NAME:test_resource"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
@@ -242,7 +242,7 @@ var sarifTests = []sarifTest{
 							},
 							ResultLevel: "warning",
 							ResultProperties: sarifProperties{
-								"tags": []string{"DATADOG_CATEGORY:", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
+								"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
@@ -434,7 +434,7 @@ var sarifTests = []sarifTest{
 								},
 							},
 							ResultProperties: sarifProperties{
-								"tags": []string{"DATADOG_CATEGORY:test", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
+								"tags": []string{"DATADOG_CATEGORY:test", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
@@ -471,7 +471,7 @@ var sarifTests = []sarifTest{
 								},
 							},
 							ResultProperties: sarifProperties{
-								"tags": []string{"DATADOG_CATEGORY:test", "CWE:22", "IAC_RESOURCE_TYPE:test_resource_type_2", "IAC_RESOURCE_NAME:test_resource_name_2"},
+								"tags": []string{"DATADOG_CATEGORY:test", "DATADOG_SEVERITY:INFO", "CWE:22", "IAC_RESOURCE_TYPE:test_resource_type_2", "IAC_RESOURCE_NAME:test_resource_name_2"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
@@ -612,7 +612,7 @@ var sarifTests = []sarifTest{
 						},
 						ResultLevel: "warning",
 						ResultProperties: sarifProperties{
-							"tags": []string{"DATADOG_CATEGORY:", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
+							"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
 						},
 						PartialFingerprints: SarifPartialFingerprints{
 							DatadogFingerprint: GetDatadogFingerprintHash(
@@ -749,7 +749,7 @@ var sarifTests = []sarifTest{
 							},
 							ResultLevel: "warning",
 							ResultProperties: sarifProperties{
-								"tags": []string{"DATADOG_CATEGORY:", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
+								"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: GetDatadogFingerprintHash(
@@ -884,7 +884,7 @@ var sarifTests = []sarifTest{
 							},
 							ResultLevel: "warning",
 							ResultProperties: sarifProperties{
-								"tags": []string{"DATADOG_CATEGORY:Security", "IAC_RESOURCE_TYPE:RUN", "IAC_RESOURCE_NAME:apt-get install"},
+								"tags": []string{"DATADOG_CATEGORY:Security", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:RUN", "IAC_RESOURCE_NAME:apt-get install"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
 								DatadogFingerprint: "07c54291ed30d1ec2fba3082e449aac7bda6922149abe20a90f1806c79c9b575",

@@ -48,6 +48,7 @@ var (
 
 	allowedResultTagPrefixes = []string{
 		"DATADOG_CATEGORY:",
+		"DATADOG_SEVERITY:",
 		"IAC_RESOURCE_TYPE:",
 		"IAC_RESOURCE_NAME:",
 		"CWE:",
@@ -55,6 +56,7 @@ var (
 
 	requiredResultTagPrefixes = []string{
 		"DATADOG_CATEGORY:",
+		"DATADOG_SEVERITY:",
 		"IAC_RESOURCE_TYPE:",
 		"IAC_RESOURCE_NAME:",
 	}
