@@ -56,3 +56,9 @@ func TestParseUnknownField(t *testing.T) {
 	_, err = ParseConfig([]byte("schema-version: v1.1\niac:\n  global-config:\n    xinvalid: abc"))
 	assert.Error(t, err, "The unknown field was expected to be rejected")
 }
+
+func TestUnparseConfig(t *testing.T) {
+	b, err := UnparseConfig(&parsedCfgFile)
+	assert.NoError(t, err)
+	assert.Equal(t, cfgFile, string(b))
+}

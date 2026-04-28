@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
@@ -93,6 +94,7 @@ const (
 	dirPerms  = 0755
 )
 
+// nolint:gocyclo
 func runScan(ctx context.Context, c *cli.Command) error {
 	if c.Args().Len() > 0 {
 		return fmt.Errorf("unexpected arguments: %v", c.Args().Slice())
@@ -126,7 +128,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("error retrieving repository commit information: %w", err)
 	}
 
-	cfg, err := config.ReadConfiguration(ctx, repoDir)
+	cfg, _, err := config.ReadConfiguration(ctx, repoDir, config.WithDatadog(datadog.NewDatadogClient(), repoInfo.RepositoryUrl))
 	if err != nil {
 		return fmt.Errorf("error reading the configuration: %w", err)
 	}

@@ -10,6 +10,7 @@ package scan
 import (
 	"context"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
@@ -125,6 +126,7 @@ func (c *Client) createQuerySource(ctx context.Context, paramsPlatforms []string
 		return fss, nil
 	}
 	return source.NewDatadogSource(
+		datadog.NewDatadogClient(),
 		source.WithWantedPlatforms(paramsPlatforms),
 		source.WithWantedCloudProviders(c.ScanParams.CloudProvider),
 		source.WithLibrarySource(fss),

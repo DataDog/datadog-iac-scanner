@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	cli "github.com/urfave/cli/v3"
@@ -66,6 +67,7 @@ func getQuerySource(ctx context.Context, c *cli.Command) (source.QueriesSource, 
 		return fss, nil
 	}
 	return source.NewDatadogSource(
+		datadog.NewDatadogClient(),
 		source.WithWantedPlatforms(GetSupportedPlatforms()),
 		source.WithLibrarySource(fss),
 	)

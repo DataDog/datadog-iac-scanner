@@ -1,12 +1,11 @@
 package source
 
 import (
-	"net/http"
-	"net/http/httptest"
+	"context"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/jsonapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -341,7 +340,7 @@ func TestSourceWithWantedProviders(t *testing.T) {
 	}
 }
 
-var rules = []*Rule{
+var rules = []*datadog.Rule{
 	{
 		ID:               "dockerfile-gcp-rule-1",
 		Name:             "rule-1",
@@ -386,7 +385,7 @@ var rules = []*Rule{
 		Category:         "Supply-Chain",
 		Provider:         ptr("common"),
 		Aggregation:      ptr(2),
-		Overrides: []RuleOverride{
+		Overrides: []datadog.RuleOverride{
 			{
 				Key:              "1.0",
 				ID:               ptr("ovr-rule-3"),
@@ -480,41 +479,28 @@ var queries = []model.QueryMetadata{
 	},
 }
 
-func getDatadogSource(t *testing.T, rules []*Rule, options ...DatadogSourceOption) QueriesSource {
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		expectedPath := "/api/v2/static-analysis/iac/rulesets/default-ruleset"
-		assert.Equal(t, expectedPath, r.URL.Path)
-		if r.URL.Path != expectedPath {
-			http.NotFoundHandler().ServeHTTP(w, r)
-			return
-		}
-		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "my-api-key", r.Header.Get("dd-api-key"))
-		assert.Equal(t, "my-app-key", r.Header.Get("dd-application-key"))
-		ruleset := Ruleset{
-			ID:    "default-ruleset",
-			Name:  "default-ruleset",
-			Rules: rules,
-		}
-		body, err := jsonapi.Marshal(ruleset)
-		require.NoError(t, err)
-		w.Header().Add("content-type", "application/json")
-		_, err = w.Write(body)
-		require.NoError(t, err)
-	}
-	server := httptest.NewTLSServer(http.HandlerFunc(handler))
-	t.Cleanup(server.Close)
-
-	source, err := NewDatadogSource(
-		append(options,
-			withHostname(server.Listener.Addr().String()),
-			WithHttpClient(server.Client()),
-			WithApiKey("my-api-key"),
-			WithAppKey("my-app-key"),
-		)...,
-	)
+func getDatadogSource(t *testing.T, rules []*datadog.Rule, options ...DatadogSourceOption) QueriesSource {
+	client := &fakeDatadogClient{rules: rules}
+	source, err := NewDatadogSource(client, options...)
 	require.NoError(t, err)
 	return source
+}
+
+type fakeDatadogClient struct {
+	rules []*datadog.Rule
+}
+
+func (f fakeDatadogClient) GetDefaultRuleset(ctx context.Context) (*datadog.Ruleset, error) {
+	out := &datadog.Ruleset{
+		ID:    "default-ruleset",
+		Name:  "default-ruleset",
+		Rules: f.rules,
+	}
+	return out, nil
+}
+
+func (f fakeDatadogClient) GetRemoteConfig(ctx context.Context, repoUrl string, localConfig []byte) ([]byte, error) {
+	panic("unimplemented")
 }
 
 func ptr[T any](t T) *T {
