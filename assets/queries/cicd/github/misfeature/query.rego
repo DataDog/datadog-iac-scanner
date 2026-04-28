@@ -2,7 +2,6 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
-import data.generic.cicd as cicd_lib
 
 # Check for actions/setup-python with pip-install input
 CxPolicy[result] {

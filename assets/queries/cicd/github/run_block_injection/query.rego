@@ -2,7 +2,6 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
-import data.generic.cicd as cicd_lib
 
 CxPolicy[result] {
 	doc := input.document[i]

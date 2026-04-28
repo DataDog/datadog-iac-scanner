@@ -2,7 +2,6 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
-import data.generic.cicd as cicd_lib
 
 # User-controllable contexts that make this HIGH severity
 user_controllable_contexts := {

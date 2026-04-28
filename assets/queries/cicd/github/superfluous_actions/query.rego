@@ -2,7 +2,6 @@ package Cx
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
-import data.generic.cicd as cicd_lib
 
 # List of superfluous actions that have better alternatives
 # These actions provide functionality already available in GitHub-hosted runners
