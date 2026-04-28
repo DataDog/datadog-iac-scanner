@@ -49,7 +49,7 @@ Secure example configuration in an Ansible task:
 ```yaml
 - name: create a instance
   google.cloud.gcp_sql_instance:
-    name: GCP instance
+    name: my-postgres-instance
     settings:
       databaseFlags:
       - name: log_checkpoints
@@ -67,7 +67,7 @@ Secure example configuration in an Ansible task:
 ```yaml
 - name: create instance
   google.cloud.gcp_sql_instance:
-    name: GCP instance
+    name: my-postgres-instance
     settings:
       databaseFlags:
       - name: log_checkpoints
@@ -81,7 +81,7 @@ Secure example configuration in an Ansible task:
     state: present
 - name: create another instance
   google.cloud.gcp_sql_instance:
-    name: GCP instance 2
+    name: my-postgres-instance-2
     settings:
       tier: db-n1-standard-1
     region: us-central1

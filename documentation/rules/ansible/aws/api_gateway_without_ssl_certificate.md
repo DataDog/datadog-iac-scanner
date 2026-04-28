@@ -48,12 +48,14 @@ Secure example Ansible task:
 ```yaml
 - name: update API v2
   community.aws.api_gateway:
+    name: my-api
     api_id: abc123321cba
     state: present
     swagger_file: my_api.yml
     validate_certs: yes
 - name: Setup AWS API Gateway setup on AWS and deploy API definition v2
   community.aws.api_gateway:
+    name: my-api-v2
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true
@@ -68,17 +70,20 @@ Secure example Ansible task:
 ```yaml
 - name: update API
   community.aws.api_gateway:
+    name: my-api
     api_id: 'abc123321cba'
     state: present
     swagger_file: my_api.yml
     validate_certs: no
 - name: update API v1
   community.aws.api_gateway:
+    name: my-api-v1
     api_id: 'abc123321cba'
     state: present
     swagger_file: my_api.yml
 - name: Setup AWS API Gateway setup on AWS and deploy API definition
   community.aws.api_gateway:
+    name: my-api-v2
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true
@@ -89,6 +94,7 @@ Secure example Ansible task:
     validate_certs: no
 - name: Setup AWS API Gateway setup on AWS and deploy API definition v1
   community.aws.api_gateway:
+    name: my-api-v3
     swagger_file: my_api.yml
     stage: production
     cache_enabled: true

@@ -1,0 +1,65 @@
+name: Overprovisioned Secrets
+on: push
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # toJSON(secrets) in job-level env block
+    env:
+      ALL_SECRETS: ${{ toJSON(secrets) }}
+    # toJSON(secrets) in job-level if condition
+    if: ${{ toJSON(secrets) != '{}' }}
+    steps:
+      # toJSON(secrets) in step run block
+      - name: Export all secrets
+        run: echo '${{ toJSON(secrets) }}'
+
+      # Dynamic secret indexing in step run block
+      - name: Dynamic secret access
+        run: |
+          SECRET_NAME="DEPLOY_TOKEN_${{ matrix.env }}"
+          echo ${{ secrets[format('DEPLOY_TOKEN_{0}', matrix.env)] }}
+
+      # toJSON(secrets) in step-level if condition
+      - name: Check secrets with toJSON
+        if: ${{ toJSON(secrets) != '{}' }}
+        run: echo "Has secrets"
+
+      # Dynamic secret indexing in step-level if condition
+      - name: Check dynamic secret
+        if: ${{ secrets[format('KEY_{0}', github.event.inputs.env)] != '' }}
+        run: echo "Secret exists"
+
+      # toJSON(secrets) in step env block
+      - name: Step with env secrets
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: echo "Processing secrets"
+
+      # Dynamic indexing in step env block
+      - name: Step with dynamic env
+        env:
+          DYNAMIC_SECRET: ${{ secrets[github.event.inputs.secret_name] }}
+        run: echo "Using dynamic secret"
+
+      # toJSON(secrets) in step with block
+      - name: Action with toJSON secrets
+        uses: some/action@v1
+        with:
+          config: ${{ toJSON(secrets) }}
+
+      # Dynamic indexing in step with block
+      - name: Action with dynamic secret
+        uses: another/action@v1
+        with:
+          token: ${{ secrets[matrix.secret_key] }}
+
+  another-job:
+    runs-on: ubuntu-latest
+    # Dynamic indexing in job-level env block
+    env:
+      TOKEN: ${{ secrets[format('TOKEN_{0}', github.ref_name)] }}
+    # Dynamic indexing in job-level if condition
+    if: ${{ secrets[github.event.inputs.key] != '' }}
+    steps:
+      - run: echo "Running"

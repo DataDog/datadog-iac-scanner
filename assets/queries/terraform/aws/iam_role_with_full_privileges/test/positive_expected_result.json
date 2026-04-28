@@ -2,11 +2,25 @@
   {
     "queryName": "IAM role with full privileges",
     "severity": "HIGH",
-    "line": 4
+    "line": 8,
+    "fileName": "positive.tf"
   },
   {
     "queryName": "IAM role with full privileges",
     "severity": "HIGH",
-    "line": 29
+    "line": 33,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "IAM role with full privileges",
+    "severity": "HIGH",
+    "line": 15,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "IAM role with full privileges",
+    "severity": "HIGH",
+    "line": 33,
+    "fileName": "positive2.tf"
   }
 ]

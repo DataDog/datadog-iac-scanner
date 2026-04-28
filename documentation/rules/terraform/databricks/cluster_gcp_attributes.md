@@ -1,10 +1,10 @@
 ---
-title: "Beta - check Databricks cluster GCP attribute best practices"
+title: "Check Databricks cluster GCP attribute best practices"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/cluster_gcp_attributes"
   id: "539e4557-d2b5-4d57-a001-cb01140a4e2d"
-  display_name: "Beta - check Databricks cluster GCP attribute best practices"
+  display_name: "Check Databricks cluster GCP attribute best practices"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "LOW"

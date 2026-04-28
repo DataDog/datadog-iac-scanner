@@ -13,7 +13,7 @@ CxPolicy[result] {
 
 	pol := common_lib.json_unmarshal(policy)
 	st := common_lib.get_statement(pol)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	statement.NotAction
@@ -22,11 +22,11 @@ CxPolicy[result] {
 		"documentId": document.id,
 		"resourceType": resources[r],
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("%s[%s].policy", [resources[r], name]),
+		"searchKey": sprintf("%s[%s].policy.Statement[%d].NotAction", [resources[r], name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("%s[%s].policy shouldn't have 'Effect: Allow' and 'NotAction' simultaneously", [resources[r], name]),
 		"keyActualValue": sprintf("%s[%s].policy has 'Effect: Allow' and 'NotAction' simultaneously", [resources[r], name]),
-		"searchLine": common_lib.build_search_line(["resource", resources[r], name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", resources[r], name, "policy", "Statement", idx, "NotAction"], []),
 	}
 }
 
@@ -40,7 +40,7 @@ CxPolicy[result] {
 
 	pol := common_lib.json_unmarshal(policy)
 	st := common_lib.get_statement(pol)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	statement.NotAction
@@ -49,11 +49,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].policy", [name]),
+		"searchKey": sprintf("module[%s].%s.Statement[%d].NotAction", [name, keyToCheck, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("module[%s].policy shouldn't have 'Effect: Allow' and 'NotAction' simultaneously", [name]),
 		"keyActualValue": sprintf("module[%s].policy has 'Effect: Allow' and 'NotAction' simultaneously", [name]),
-		"searchLine": common_lib.build_search_line(["module", name, keyToCheck], []),
+		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx, "NotAction"], []),
 	}
 }
 

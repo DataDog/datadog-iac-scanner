@@ -1,14 +1,14 @@
 ---
-title: "Beta - Nifcloud computing undefined description to security group rule"
+title: "NIFCLOUD computing undefined description to security group rule"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/computing_security_group_rule_description_undefined"
   id: "e4610872-0b1c-4fb7-ab57-d81c0afdb291"
-  display_name: "Beta - Nifcloud computing undefined description to security group rule"
+  display_name: "NIFCLOUD computing undefined description to security group rule"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "LOW"
-  category: "Networking and Firewall"
+  category: "Best Practices"
 ---
 ## Metadata
 
@@ -20,7 +20,7 @@ meta:
 
 **Severity:** Low
 
-**Category:** Networking and Firewall
+**Category:** Best Practices
 
 #### Learn More
 

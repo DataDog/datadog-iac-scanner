@@ -1,10 +1,10 @@
 ---
-title: "Beta - TKE cluster encryption protection disabled"
+title: "TKE cluster encryption protection disabled"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/tke_cluster_encryption_protection_disabled"
   id: "3ed47402-e322-465f-a0f0-8681135a17b0"
-  display_name: "Beta - TKE cluster encryption protection disabled"
+  display_name: "TKE cluster encryption protection disabled"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "HIGH"

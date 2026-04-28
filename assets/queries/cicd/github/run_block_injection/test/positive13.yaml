@@ -1,0 +1,9 @@
+name: Process issue body
+description: A composite action that processes the body of an issue
+runs:
+  using: composite
+  steps:
+    - name: Echo issue body
+      shell: bash
+      run: |
+        echo "${{ github.event.issue.body }}"

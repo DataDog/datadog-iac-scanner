@@ -1,0 +1,13 @@
+name: Build and send slack message
+description: Build a slack message and send it
+inputs:
+  slack-message:
+    description: The message to send
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Send message
+      shell: bash
+      run: |
+        echo "${{ inputs.slack-message }}"

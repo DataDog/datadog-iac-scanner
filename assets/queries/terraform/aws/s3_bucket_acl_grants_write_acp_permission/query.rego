@@ -13,7 +13,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_acl",
-		"resourceName": tf_lib.get_specific_resource_name(resource, "aws_s3_bucket_acl", name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 		"searchKey": sprintf("aws_s3_bucket_acl[%s].access_control_policy.grant[%d].permission", [name, grant_index ]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Should not be granted Write_ACP permission to the aws_s3_bucket_acl",
@@ -32,7 +32,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_acl",
-		"resourceName": tf_lib.get_specific_resource_name(resource, "aws_s3_bucket_acl", name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 		"searchKey": sprintf("aws_s3_bucket_acl[%s].access_control_policy.grant.permission", [name ]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "Should not be granted Write_ACP permission to the aws_s3_bucket_acl",

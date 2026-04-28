@@ -1,10 +1,10 @@
 ---
-title: "Beta - Databricks group without user or instance profile"
+title: "Databricks group without user or instance profile"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/group_without_user_or_instance_profile"
   id: "23c3067a-8cc9-480c-b645-7c1e0ad4bf60"
-  display_name: "Beta - Databricks group without user or instance profile"
+  display_name: "Databricks group without user or instance profile"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "LOW"

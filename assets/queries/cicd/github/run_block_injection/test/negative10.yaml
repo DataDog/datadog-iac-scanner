@@ -1,0 +1,15 @@
+name: Safe composite action
+description: A composite action that uses inputs through environment variables to avoid shell injection
+inputs:
+  slack-message:
+    description: The message to send
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Send message safely
+      shell: bash
+      env:
+        SLACK_MESSAGE: ${{ inputs.slack-message }}
+      run: |
+        echo "$SLACK_MESSAGE"

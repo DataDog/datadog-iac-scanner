@@ -1,13 +1,13 @@
 ---
-title: "Beta - Nifcloud RDB has backup retention less than 2 days"
+title: "NIFCLOUD RDB backup retention period below 7 days"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/db_does_not_have_long_backup_retention"
   id: "e5071f76-cbe7-468d-bb2b-d10f02d2b713"
-  display_name: "Beta - Nifcloud RDB has backup retention less than 2 days"
+  display_name: "NIFCLOUD RDB backup retention period below 7 days"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
-  severity: "MEDIUM"
+  severity: "LOW"
   category: "Backup"
 ---
 ## Metadata
@@ -18,7 +18,7 @@ meta:
 
 **Platform:** Terraform
 
-**Severity:** Medium
+**Severity:** Low
 
 **Category:** Backup
 
@@ -28,14 +28,14 @@ meta:
 
 ### Description
 
-The RDB backup retention period is less than 2 days. The `nifcloud_db_instance` resource must include the `backup_retention_period` attribute set to at least 2 (days). Resources missing this attribute or with a value less than 2 will be reported as `MissingAttribute` or `IncorrectValue`.
+The RDB backup retention period is below 7 days. The `nifcloud_db_instance` resource must include the `backup_retention_period` attribute set to at least 7 (days). Resources missing this attribute or with a value less than 7 will be reported as `MissingAttribute` or `IncorrectValue`.
 
 ## Compliant Code Examples
 ```terraform
 resource "nifcloud_db_instance" "negative" {
   identifier              = "example"
   instance_class          = "db.large8"
-  backup_retention_period = 5
+  backup_retention_period = 7
 }
 
 ```

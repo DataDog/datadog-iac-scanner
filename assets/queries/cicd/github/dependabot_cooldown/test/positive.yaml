@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Issue 1: Insufficient default-days (3 < 7)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 3
+
+  # Issue 2: Missing cooldown configuration entirely
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Issue 3: Cooldown exists but default-days is missing
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown: {}
+
+  # Issue 4: Another insufficient default-days (0)
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 0

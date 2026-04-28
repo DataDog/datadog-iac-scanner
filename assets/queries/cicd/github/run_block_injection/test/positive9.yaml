@@ -1,0 +1,20 @@
+name: Workflow Dispatch Injection Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: 'Username to process'
+        required: true
+      message:
+        description: 'Message to display'
+        required: false
+
+jobs:
+  process_inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process User Input
+        run: |
+          echo "Username: ${{ github.event.inputs.username }}"
+          echo "Message: ${{ github.event.inputs.message }}"

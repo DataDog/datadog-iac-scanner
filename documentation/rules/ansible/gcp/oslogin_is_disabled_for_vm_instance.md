@@ -45,12 +45,14 @@ Secure configuration example:
 ```yaml
 - name: oslogin-enabled
   google.cloud.gcp_compute_instance:
+    name: oslogin-enabled-instance
     metadata:
       enable-oslogin: yes
     zone: us-central1-a
     auth_kind: serviceaccount
 - name: oslogin-missing
   google.cloud.gcp_compute_instance:
+    name: oslogin-missing-instance
     metadata:
       startup-script-url: gs:://graphite-playground/bootstrap.sh
       cost-center: '12345'
@@ -62,6 +64,7 @@ Secure configuration example:
 ```yaml
 - name: oslogin-disabled
   google.cloud.gcp_compute_instance:
+    name: oslogin-disabled-instance
     metadata:
       enable-oslogin: no
     zone: us-central1-a

@@ -2,13 +2,25 @@
   {
     "queryName": "IAM policy grants full permissions",
     "severity": "HIGH",
-    "line": 20,
+    "line": 24,
     "fileName": "positive1.tf"
   },
   {
     "queryName": "IAM policy grants full permissions",
     "severity": "HIGH",
-    "line": 3,
+    "line": 7,
     "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "IAM policy grants full permissions",
+    "severity": "HIGH",
+    "line": 14,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "IAM policy grants full permissions",
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive4.tf"
   }
 ]

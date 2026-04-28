@@ -1,0 +1,10 @@
+name: Composite with constant step env
+description: env. dereference points to a hardcoded literal so it is not injectable
+runs:
+  using: composite
+  steps:
+    - name: Echo constant
+      shell: bash
+      env:
+        MESSAGE: hello
+      run: echo "${{ env.MESSAGE }}"

@@ -56,7 +56,8 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		Paths:             allPaths.Path,
 		Types:             c.ScanParams.Platform,
 		ExcludeTypes:      c.ScanParams.ExcludePlatform,
-		Exc:               c.ScanParams.ExcludePaths,
+		Exc:               c.ScanParams.Config.IgnorePaths,
+		Only:              c.ScanParams.Config.OnlyPaths,
 		GitIgnoreFileName: ".gitignore",
 		ExcludeGitIgnore:  c.ScanParams.ExcludeGitIgnore,
 		MaxFileSize:       c.ScanParams.MaxFileSizeFlag,
@@ -74,8 +75,8 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	}
 
 	c.ScanParams.Platform = pathTypes.Types
-	c.ScanParams.PreAnalysisExcludePaths = c.ScanParams.ExcludePaths
-	c.ScanParams.ExcludePaths = pathTypes.Exc
+	c.ScanParams.PreAnalysisExcludePaths = c.ScanParams.Config.IgnorePaths
+	c.ScanParams.Config.IgnorePaths = pathTypes.Exc
 
 	return allPaths, nil
 }

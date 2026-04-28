@@ -1,14 +1,14 @@
 ---
-title: "Beta - Nifcloud LB listener use HTTP port"
+title: "NIFCLOUD LB listener using HTTP port"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/load_balancer_listener_use_http"
   id: "9f751a80-31f0-43a3-926c-20772791a038"
-  display_name: "Beta - Nifcloud LB listener use HTTP port"
+  display_name: "NIFCLOUD LB listener using HTTP port"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
-  severity: "HIGH"
-  category: "Insecure Configurations"
+  severity: "MEDIUM"
+  category: "Networking and Firewall"
 ---
 ## Metadata
 
@@ -18,9 +18,9 @@ meta:
 
 **Platform:** Terraform
 
-**Severity:** High
+**Severity:** Medium
 
-**Category:** Insecure Configurations
+**Category:** Networking and Firewall
 
 #### Learn More
 

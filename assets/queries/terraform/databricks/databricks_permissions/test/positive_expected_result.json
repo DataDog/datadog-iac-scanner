@@ -1,24 +1,24 @@
 [
 	{
-		"queryName": "Beta - Databricks cluster or job with none or insecure permissions",
+		"queryName": "Databricks cluster or job with no or insecure permissions",
 		"severity": "HIGH",
 		"line": 16,
 		"fileName": "positive1.tf"
 	},
 	{
-		"queryName": "Beta - Databricks cluster or job with none or insecure permissions",
+		"queryName": "Databricks cluster or job with no or insecure permissions",
 		"severity": "HIGH",
 		"line": 12,
 		"fileName": "positive2.tf"
 	},
 	{
-		"queryName": "Beta - Databricks cluster or job with none or insecure permissions",
+		"queryName": "Databricks cluster or job with no or insecure permissions",
 		"severity": "HIGH",
 		"line": 16,
 		"fileName": "positive3.tf"
 	},
 	{
-		"queryName": "Beta - Databricks cluster or job with none or insecure permissions",
+		"queryName": "Databricks cluster or job with no or insecure permissions",
 		"severity": "HIGH",
 		"line": 16,
 		"fileName": "positive4.tf"

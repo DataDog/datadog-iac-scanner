@@ -9,10 +9,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -52,11 +52,7 @@ func BenchmarkFilesystemSource_GetQueries(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			s := NewFilesystemSource(ctx, tt.fields.Source, tt.fields.Types, tt.fields.CloudProviders, tt.fields.Library, tt.fields.ExperimentalQueries)
 			for n := 0; n < b.N; n++ {
-				filter := QueryInspectorParameters{
-					IncludeQueries: IncludeQueries{ByIDs: []string{}},
-					ExcludeQueries: ExcludeQueries{ByIDs: []string{}, ByCategories: []string{}},
-					InputDataPath:  "",
-				}
+				filter := QueryInspectorParameters{}
 				if _, err := s.GetQueries(ctx, &filter); err != nil {
 					b.Errorf("Error: %s", err)
 				}
@@ -90,7 +86,7 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 		wantErr           bool
 	}{
 		{
-			name: "get_queries_with_exclude_result_1",
+			name: "specific query with excludes that don't affect it",
 			fields: fields{
 				Source: []string{""}, Types: []string{""},
 				CloudProviders: []string{""}, Library: "./assets/libraries",
@@ -98,8 +94,8 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 			},
 			includeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
 			excludeCategory:   []string{},
-			excludeSeverities: []string{},
-			excludeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd5"},
+			excludeSeverities: []string{"LOW"},
+			excludeIDs:        []string{},
 			want: []model.QueryMetadata{
 				{
 					Query:     "alb_deletion_protection_disabled",
@@ -128,7 +124,20 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 			wantErr: false,
 		},
 		{
-			name: "get_queries_with_exclude_severity_no_result",
+			name: "specific query with excludes that affect it",
+			fields: fields{
+				Source: []string{""}, Types: []string{""},
+				CloudProviders: []string{""}, Library: "./assets/libraries",
+				ExperimentalQueries: true,
+			},
+			includeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
+			excludeCategory:   []string{},
+			excludeSeverities: []string{"MEDIUM"},
+			want:              []model.QueryMetadata{},
+			wantErr:           false,
+		},
+		{
+			name: "excluding all yields zero results",
 			fields: fields{
 				Source: []string{""}, Types: []string{""},
 				CloudProviders: []string{""}, Library: "./assets/libraries",
@@ -146,8 +155,8 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewFilesystemSource(ctx, tt.fields.Source, []string{""}, []string{""}, tt.fields.Library, tt.fields.ExperimentalQueries)
 			filter := QueryInspectorParameters{
-				IncludeQueries: IncludeQueries{ByIDs: tt.includeIDs},
-				ExcludeQueries: ExcludeQueries{ByIDs: tt.excludeIDs, ByCategories: tt.excludeCategory, BySeverities: tt.excludeSeverities},
+				IncludeQueries: QueryFilter{ByIDs: tt.includeIDs},
+				ExcludeQueries: QueryFilter{ByIDs: tt.excludeIDs, ByCategories: tt.excludeCategory, BySeverities: tt.excludeSeverities},
 				InputDataPath:  "",
 			}
 			got, err := s.GetQueries(ctx, &filter)
@@ -238,14 +247,9 @@ func TestFilesystemSource_GetQueriesWithInclude(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewFilesystemSource(ctx, tt.fields.Source, []string{""}, []string{""}, tt.fields.Library, tt.fields.ExperimentalQueries)
 			filter := QueryInspectorParameters{
-				IncludeQueries: IncludeQueries{
+				IncludeQueries: QueryFilter{
 					ByIDs: tt.includeIDs,
 				},
-				ExcludeQueries: ExcludeQueries{
-					ByIDs:        []string{},
-					ByCategories: []string{},
-				},
-				InputDataPath: "",
 			}
 
 			got, err := s.GetQueries(ctx, &filter)
@@ -458,14 +462,8 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewFilesystemSource(ctx, tt.fields.Source, []string{""}, []string{""}, tt.fields.Library, tt.fields.ExperimentalQueries)
 			filter := QueryInspectorParameters{
-				IncludeQueries: IncludeQueries{
-					ByIDs: tt.fields.IncludeIDs},
-				ExcludeQueries: ExcludeQueries{
-					ByIDs:        []string{},
-					ByCategories: []string{},
-				},
+				IncludeQueries:      QueryFilter{ByIDs: tt.fields.IncludeIDs},
 				ExperimentalQueries: tt.fields.ExperimentalQueries,
-				InputDataPath:       "",
 			}
 			got, err := s.GetQueries(ctx, &filter)
 			if (err != nil) != tt.wantErr {
@@ -478,45 +476,6 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 			require.Nil(t, err)
 
 			require.Equal(t, tt.want, got, "want = %s\ngot = %s", wantStr, gotStr)
-		})
-	}
-}
-
-// Test_ReadMetadata tests the functions [ReadMetadata()] and all the methods called by them
-func Test_ReadMetadata(t *testing.T) {
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
-	}
-	type args struct {
-		queryDir string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    map[string]interface{}
-		wantErr bool
-	}{
-		{
-			name: "read_metadata_error",
-			args: args{
-				queryDir: "error-path",
-			},
-			want:    nil,
-			wantErr: false,
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got, err := ReadMetadata(ctx, tt.args.queryDir); !reflect.DeepEqual(got, tt.want) {
-				require.Equal(t, tt.wantErr, (err != nil))
-				gotStr, err := test.StringifyStruct(got)
-				require.Nil(t, err)
-				wantStr, err := test.StringifyStruct(tt.want)
-				require.Nil(t, err)
-				t.Errorf("readMetadata()\ngot = %v\nwant = %v", gotStr, wantStr)
-			}
 		})
 	}
 }
@@ -687,4 +646,86 @@ func TestSource_getLibraryInDir(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestFilesystemSource_GetQueriesWithIncludeFilter(t *testing.T) {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	newSource := func() QueriesSource {
+		return NewFilesystemSource(ctx, []string{""}, []string{""}, []string{""}, "./assets/libraries", true)
+	}
+
+	t.Run("get_queries_with_include_severity", func(t *testing.T) {
+		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
+			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH"}},
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, got)
+		for _, q := range got {
+			assert.True(t, strings.EqualFold("HIGH", q.Metadata["severity"].(string)), "expected severity HIGH, got %s", q.Metadata["severity"])
+		}
+	})
+
+	t.Run("get_queries_with_include_category", func(t *testing.T) {
+		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
+			IncludeQueries: QueryFilter{ByCategories: []string{"Encryption"}},
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, got)
+		for _, q := range got {
+			assert.True(t, strings.EqualFold("Encryption", q.Metadata["category"].(string)), "expected category Encryption, got %s", q.Metadata["category"])
+		}
+	})
+
+	t.Run("get_queries_with_include_severity_and_category", func(t *testing.T) {
+		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
+			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH"}, ByCategories: []string{"Encryption"}},
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, got)
+		for _, q := range got {
+			assert.True(t, strings.EqualFold("HIGH", q.Metadata["severity"].(string)), "expected severity HIGH, got %s", q.Metadata["severity"])
+			assert.True(t, strings.EqualFold("Encryption", q.Metadata["category"].(string)), "expected category Encryption, got %s", q.Metadata["category"])
+		}
+	})
+
+	t.Run("get_queries_with_include_and_exclude", func(t *testing.T) {
+		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
+			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH", "MEDIUM"}},
+			ExcludeQueries: QueryFilter{ByCategories: []string{"Encryption"}},
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, got)
+		for _, q := range got {
+			severity := q.Metadata["severity"].(string)
+			assert.True(t, strings.EqualFold("HIGH", severity) || strings.EqualFold("MEDIUM", severity), "expected severity HIGH or MEDIUM, got %s", severity)
+			assert.False(t, strings.EqualFold("Encryption", q.Metadata["category"].(string)), "expected category != Encryption, got %s", q.Metadata["category"])
+		}
+	})
+}
+
+func TestFilesystemSource_ReadLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	queryPath := filepath.Join(dir, "my_query")
+	require.NoError(t, os.Mkdir(queryPath, 0700))
+	metadata := `{
+  "id": "wonderful-query",
+  "queryName": "My Wonderful Query",
+  "severity": "HIGH",
+  "category": "AVAILABILITY",
+  "descriptionText": "This is my query",
+  "descriptionUrl": "https://example.com",
+  "descriptionId": "12345678",
+  "platform": "dockerfile",
+  "cwe": ""
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(queryPath, "metadata.json"), []byte(metadata), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(queryPath, "query.rego"), []byte("rule"), 0644))
+
+	query, err := ReadQueryFile(t.Context(), queryPath)
+	assert.NoError(t, err)
+	assert.Equal(t, query.Metadata["id"], "wonderful-query")
 }

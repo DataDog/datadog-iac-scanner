@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -803,7 +802,6 @@ func TestConvert(t *testing.T) {
 			require.Equal(t, tt.wantIgnoreLines, ignore)
 			gotString, err := json.Marshal(got)
 			require.NoError(t, err)
-			fmt.Println(string(gotString))
 			require.JSONEq(t, tt.want, string(gotString))
 
 		})

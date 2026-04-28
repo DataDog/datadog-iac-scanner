@@ -1,0 +1,19 @@
+name: test-script-run
+
+on:
+  workflow_dispatch:
+
+jobs:
+  script-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run script
+        uses: actions/github-script@latest
+        with:
+          script: |
+            const malicious_user_input = ${{ github.event.inputs.malicious_user_input }};
+
+            return true;

@@ -9,17 +9,24 @@ CxPolicy[result] {
 	resourceType := pl[r]
 	resource := input.document[i].resource[resourceType][name]
 
-	idx := access_to_any_principal(resource.policy)[_]
+	entry := access_to_any_principal(resource.policy)[_]
+	idx := entry.idx
+	sub_path := entry.sub_path
+
+	principal_path := concat(".", array.concat(["Principal"], sub_path))
 
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": resourceType,
-		"resourceName": tf_lib.get_specific_resource_name(resource, "aws_s3_bucket", name),
-		"searchKey": sprintf("%s[%s].policy.Statement[%d].Principal", [resourceType, name, idx]),
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
+		"searchKey": sprintf("%s[%s].policy.Statement[%d].%s", [resourceType, name, idx, principal_path]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("%s[%s].policy.Principal should not equal to, nor contain '*'", [resourceType, name]),
-		"keyActualValue": sprintf("%s[%s].policy.Principal is equal to or contains '*'", [resourceType, name]),
-		"searchLine": common_lib.build_search_line(["resource", resourceType, name, "policy", "Statement", idx, "Principal"], []),
+		"keyExpectedValue": sprintf("%s[%s].policy.%s should not equal to, nor contain '*'", [resourceType, name, principal_path]),
+		"keyActualValue": sprintf("%s[%s].policy.%s is equal to or contains '*'", [resourceType, name, principal_path]),
+		"searchLine": common_lib.build_search_line(
+			array.concat(["resource", resourceType, name, "policy", "Statement", idx, "Principal"], sub_path),
+			[],
+		),
 	}
 }
 
@@ -28,27 +35,34 @@ CxPolicy[result] {
 	resourceType := pl[r]
 	keyToCheck := common_lib.get_module_equivalent_key("aws", module.source, resourceType, "policy")
 
-	idx := access_to_any_principal(module[keyToCheck])[_]
+	entry := access_to_any_principal(module[keyToCheck])[_]
+	idx := entry.idx
+	sub_path := entry.sub_path
+
+	principal_path := concat(".", array.concat(["Principal"], sub_path))
 
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].policy.Statement[%d].Principal", [name, idx]),
+		"searchKey": sprintf("module[%s].policy.Statement[%d].%s", [name, idx, principal_path]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "'policy.Principal' should not equal to, nor contain '*'",
-		"keyActualValue": "'policy.Principal' is equal to or contains '*'",
-		"searchLine": common_lib.build_search_line(["module", name, "policy", "Statement", idx, "Principal"], []),
+		"keyExpectedValue": sprintf("'policy.%s' should not equal to, nor contain '*'", [principal_path]),
+		"keyActualValue": sprintf("'policy.%s' is equal to or contains '*'", [principal_path]),
+		"searchLine": common_lib.build_search_line(
+			array.concat(["module", name, "policy", "Statement", idx, "Principal"], sub_path),
+			[],
+		),
 	}
 }
 
-access_to_any_principal(policyValue) = indices {
+access_to_any_principal(policyValue) = entries {
 	policy := common_lib.json_unmarshal(policyValue)
 	st := common_lib.get_statement(policy)
-	indices := [idx |
+	entries := [{"idx": idx, "sub_path": sub_path} |
 		statement := st[idx]
 		common_lib.is_allow_effect(statement)
-		tf_lib.anyPrincipal(statement)
+		sub_path := tf_lib.wildcard_principal_sub_path(statement)
 	]
-	count(indices) > 0
+	count(entries) > 0
 }

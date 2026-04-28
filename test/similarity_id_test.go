@@ -189,11 +189,11 @@ func getTestQueryID(params *testCaseParamsType) string {
 	var testQueryID string
 	if params.queryID == "" {
 		queryPath := strings.TrimPrefix(params.queryDir, "../assets/")
-		metadata, err := source.ReadMetadata(ctx, queryPath)
+		query, err := source.ReadEmbeddedQuery(ctx, queryPath)
 		if err != nil {
 			return ""
 		}
-		v := metadata["id"]
+		v := query.Metadata["id"]
 		testQueryID = v.(string)
 	} else {
 		testQueryID = params.queryID
@@ -270,19 +270,19 @@ func createInspectorAndGetVulnerabilities(ctx context.Context, t testing.TB,
 	queriesSource.EXPECT().GetQueries(gomock.Any(), getQueryFilter()).
 		DoAndReturn(func(ctx context.Context, querySelection interface{}) ([]model.QueryMetadata, error) {
 			queryPath := strings.TrimPrefix(testParams.queryDir, "../assets/")
-			metadata, err := source.ReadMetadata(ctx, queryPath)
+			query, err := source.ReadEmbeddedQuery(ctx, queryPath)
 			require.NoError(t, err)
 
 			// Override metadata ID with custom QueryID for testing
-			if testParams.queryID() != metadata["id"] {
-				metadata["id"] = testParams.queryID()
+			if testParams.queryID() != query.Metadata["id"] {
+				query.Metadata["id"] = testParams.queryID()
 			}
 
 			q := model.QueryMetadata{
 				Query:     testParams.queryID(),
 				Content:   testParams.queryContent(t),
 				InputData: "{}",
-				Metadata:  metadata,
+				Metadata:  query.Metadata,
 				Platform:  testParams.platform,
 			}
 			return []model.QueryMetadata{q}, nil
@@ -306,12 +306,7 @@ func createInspectorAndGetVulnerabilities(ctx context.Context, t testing.TB,
 		queriesSource,
 		engine.DefaultVulnerabilityBuilder,
 		&tracker.CITracker{},
-		&source.QueryInspectorParameters{
-			IncludeQueries: source.IncludeQueries{ByIDs: []string{}},
-			ExcludeQueries: source.ExcludeQueries{ByIDs: []string{}, ByCategories: []string{}},
-			InputDataPath:  "",
-			FlagEvaluator:  nil,
-		},
+		&source.QueryInspectorParameters{},
 		map[string]bool{}, ".", 60, true, true, 1, false,
 		featureflags.NewLocalEvaluator(),
 	)

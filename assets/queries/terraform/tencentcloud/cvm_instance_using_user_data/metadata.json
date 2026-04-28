@@ -1,6 +1,6 @@
 {
   "id": "5bb6fa08-5e84-4760-a54a-cdcd66626976",
-  "queryName": "Beta - CVM instance using user data",
+  "queryName": "CVM instance using user data",
   "severity": "LOW",
   "category": "Access Control",
   "descriptionText": "CVM instances must use roles to obtain required permissions rather than embedding API credentials in instance configuration. This rule detects API secret keys in the `user_data` or `user_data_raw` fields of `tencentcloud_instance` resources. Embedding secrets in user data is insecure. Instead, assign permissions using the `cam_role_name` attribute.",

@@ -1,7 +1,7 @@
 [
 	{
-		"queryName": "Beta - Nifcloud DNS has verified record",
-		"severity": "HIGH",
+		"queryName": "NIFCLOUD DNS has verified record",
+		"severity": "LOW",
 		"line": 1,
 		"fileName": "positive.tf"
 	}

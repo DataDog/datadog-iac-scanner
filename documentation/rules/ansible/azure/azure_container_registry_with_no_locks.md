@@ -4,7 +4,7 @@ group_id: "Ansible / Azure"
 meta:
   name: "azure/azure_container_registry_with_no_locks"
   id: "581dae78-307d-45d5-aae4-fe2b0db267a5"
-  display_name: "Azure container registry with no locks"
+  display_name: "Azure Container Registry with no locks"
   cloud_provider: "Azure"
   platform: "Ansible"
   severity: "HIGH"

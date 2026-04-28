@@ -53,6 +53,7 @@ Secure example with an explicit principal:
 ```yaml
 - name: Create IAM Managed Policy
   amazon.aws.iam_managed_policy:
+    name: my-iam-policy
     policy_name: ManagedPolicy
     policy:
       Version: '2012-10-17'
@@ -68,6 +69,7 @@ Secure example with an explicit principal:
 ```yaml
 - name: Create IAM Managed Policy
   amazon.aws.iam_managed_policy:
+    name: my-iam-policy
     policy_name: "ManagedPolicy"
     policy:
       Version: "2012-10-17"
@@ -81,6 +83,7 @@ Secure example with an explicit principal:
     state: present
 - name: Create2 IAM Managed Policy
   amazon.aws.iam_managed_policy:
+    name: my-iam-policy2
     policy_name: "ManagedPolicy2"
     policy: >
       {

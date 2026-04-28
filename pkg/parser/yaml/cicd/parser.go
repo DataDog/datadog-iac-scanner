@@ -143,66 +143,59 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
-// enhanceWithParsedRuns walks through documents and parses run blocks with tree-sitter
+// enhanceWithParsedRuns walks through documents and parses run blocks with tree-sitter.
+// It supports both reusable/regular workflow files (jobs[*].steps) and composite GitHub
+// Action files such as action.yml (runs.steps), so that step-level rules can analyze
+// both shapes uniformly.
 func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Document) {
-	contextLogger := logger.FromContext(ctx)
 	for _, doc := range documents {
-		// Look for jobs in the workflow
-		jobs, ok := doc["jobs"]
+		if jobs, ok := doc["jobs"].(map[string]interface{}); ok {
+			for _, j := range jobs {
+				job, ok := j.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				steps, ok := job["steps"].([]interface{})
+				if !ok {
+					continue
+				}
+				parseRunBlocksInSteps(ctx, steps)
+			}
+		}
+
+		if runs, ok := doc["runs"].(map[string]interface{}); ok {
+			if steps, ok := runs["steps"].([]interface{}); ok {
+				parseRunBlocksInSteps(ctx, steps)
+			}
+		}
+	}
+}
+
+// parseRunBlocksInSteps annotates each step that has a run block with its parsed shell AST.
+func parseRunBlocksInSteps(ctx context.Context, steps []interface{}) {
+	contextLogger := logger.FromContext(ctx)
+	for _, s := range steps {
+		step, ok := s.(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		jobsMap, ok := jobs.(map[string]interface{})
+		runScript, ok := step["run"].(string)
 		if !ok {
 			continue
 		}
 
-		for _, j := range jobsMap {
-			job, ok := j.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			// Look for steps in the job
-			steps, ok := job["steps"]
-			if !ok {
-				continue
-			}
-
-			stepsSlice, ok := steps.([]interface{})
-			if !ok {
-				continue
-			}
-
-			for _, s := range stepsSlice {
-				step, ok := s.(map[string]interface{})
-				if !ok {
-					continue
-				}
-
-				// Check if step has a run block
-				runScript, ok := step["run"].(string)
-				if !ok {
-					continue
-				}
-
-				// Determine shell (default to bash)
-				shell := "bash"
-				if shellVal, ok := step["shell"].(string); ok {
-					shell = shellVal
-				}
-
-				// Parse the run block
-				parsed := parseRunBlock(runScript, shell)
-				if parsed.Error != nil {
-					contextLogger.Err(parsed.Error).Msg("Failed to parse shell expressions in run block")
-				}
-
-				// Add parsed structure to step
-				step["_parsed_run"] = parsed
-			}
+		shell := "bash"
+		if shellVal, ok := step["shell"].(string); ok {
+			shell = shellVal
 		}
+
+		parsed := parseRunBlock(runScript, shell)
+		if parsed.Error != nil {
+			contextLogger.Err(parsed.Error).Msg("Failed to parse shell expressions in run block")
+		}
+
+		step["_parsed_run"] = parsed
 	}
 }
 

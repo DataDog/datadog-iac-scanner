@@ -64,7 +64,7 @@ func TestNewFileSystemSourceProvider(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewFileSystemSourceProvider(ctx, tt.args.paths, tt.args.excludes)
+			got, err := NewFileSystemSourceProvider(ctx, tt.args.paths, tt.args.excludes, []string{})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewFileSystemSourceProvider() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -572,7 +572,7 @@ func checkStatErr(t *testing.T, err error) {
 // initFs creates a new instance of File System Source Provider
 func initFs(paths, excluded []string) (*FileSystemSourceProvider, error) {
 	ctx := context.Background()
-	return NewFileSystemSourceProvider(ctx, paths, excluded)
+	return NewFileSystemSourceProvider(ctx, paths, excluded, []string{})
 }
 
 func getFSExcludes(fsystem *FileSystemSourceProvider) []string {
@@ -691,7 +691,7 @@ func TestGetSources_multipleHelmCharts(t *testing.T) {
 
 	ctx := context.Background()
 	fs, err := NewFileSystemSourceProvider(ctx,
-		[]string{filepath.FromSlash("test/fixtures/multi_helm")}, []string{})
+		[]string{filepath.FromSlash("test/fixtures/multi_helm")}, []string{}, []string{})
 	require.NoError(t, err)
 
 	resolvedDirs := make([]string, 0)

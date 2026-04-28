@@ -174,54 +174,51 @@ func extractBlockSource(lines []string, start, end int) string {
 	return strings.Join(lines[start-1:end], "\n") + "\n"
 }
 
-// nolint:gocritic
-func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (int, int) {
+func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (insertionLine, col int) {
 	name, nestedStart, nestedEnd, isAttr := findContainingStructure(block, line)
 
-	var insertionLine int
 	var caseType string
 
 	if name != "" {
-		// Detect if this is a function call like merge(...) and avoid inserting inside it
+		// When the containing attribute is a function-call wrapper (e.g. jsonencode(...),
+		// merge(..., { ... })), we only push the anchor past the wrapper on the degenerate
+		// boundary where the identifying line coincides with the wrapper's closing line —
+		// otherwise injected HCL could corrupt a single-line wrapped expression. For every
+		// other case the identifying line lies inside the wrapped body, which is where both
+		// SARIF regions and attribute-level remediations should anchor.
 		lineText := strings.TrimSpace(lines[nestedStart.Line-1])
-		if isAttr && strings.Contains(lineText, "(") && strings.Contains(lineText, "{") {
-			// Likely a function call wrapping a block (e.g., merge(..., { ... }))
-			// We do not want to insert inside the nested structure
+		isFunctionCallWrapper := isAttr && strings.Contains(lineText, "(") && strings.Contains(lineText, "{")
+		switch {
+		case line == nestedEnd.Line && isFunctionCallWrapper:
 			insertionLine = nestedEnd.Line + 1
 			caseType = strBlockBody
-		} else {
-			// nolint:staticcheck
-			switch {
-			case line == nestedEnd.Line:
-				insertionLine = nestedEnd.Line - 1
-				caseType = strNestedEnd
-			case line == nestedStart.Line:
-				insertionLine = nestedStart.Line + 1
-				caseType = strNestedStart
-			default:
-				insertionLine = line
-				caseType = strNestedBody
-			}
-		}
-	} else {
-		if line == block.TypeRange.Start.Line {
-			insertionLine = block.Body.SrcRange.End.Line - 1
-			for i := insertionLine; i >= block.TypeRange.Start.Line; i-- {
-				_, s, e, attr := findContainingStructure(block, i)
-				if attr && e.Line >= insertionLine {
-					insertionLine = s.Line - 1
-				} else {
-					break
-				}
-			}
-			caseType = strBlockStart
-		} else {
+		case line == nestedEnd.Line:
+			insertionLine = nestedEnd.Line - 1
+			caseType = strNestedEnd
+		case line == nestedStart.Line:
+			insertionLine = nestedStart.Line + 1
+			caseType = strNestedStart
+		default:
 			insertionLine = line
-			caseType = strBlockBody
+			caseType = strNestedBody
 		}
+	} else if line == block.TypeRange.Start.Line {
+		insertionLine = block.Body.SrcRange.End.Line - 1
+		for i := insertionLine; i >= block.TypeRange.Start.Line; i-- {
+			_, s, e, attr := findContainingStructure(block, i)
+			if attr && e.Line >= insertionLine {
+				insertionLine = s.Line - 1
+			} else {
+				break
+			}
+		}
+		caseType = strBlockStart
+	} else {
+		insertionLine = line
+		caseType = strBlockBody
 	}
 
-	col := determineInsertionIndent(lines, insertionLine, caseType, nestedStart.Line, nestedEnd.Line) + 1
+	col = determineInsertionIndent(lines, insertionLine, caseType, nestedStart.Line, nestedEnd.Line) + 1
 	trimmed := strings.TrimSpace(lines[insertionLine-1])
 	if caseType == "block-start" && (strings.Contains(trimmed, "}") || isHeredocTerminator(trimmed, lines, insertionLine-1)) {
 		col = len(lines[insertionLine-1]) + 1

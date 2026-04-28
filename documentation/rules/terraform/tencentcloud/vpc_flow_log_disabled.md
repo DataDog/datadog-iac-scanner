@@ -1,10 +1,10 @@
 ---
-title: "Beta - VPC flow logs disabled"
+title: "VPC flow logs disabled"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/vpc_flow_log_disabled"
   id: "a3240001-40db-47b7-abb9-2bcd6a04c430"
-  display_name: "Beta - VPC flow logs disabled"
+  display_name: "VPC flow logs disabled"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
   severity: "LOW"

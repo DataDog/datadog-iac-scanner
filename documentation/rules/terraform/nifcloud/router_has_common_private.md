@@ -1,10 +1,10 @@
 ---
-title: "Beta - Nifcloud router has common private network"
+title: "NIFCLOUD router has common private network"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/router_has_common_private"
   id: "30c2760c-740e-4672-9d7f-2c29e0cb385d"
-  display_name: "Beta - Nifcloud router has common private network"
+  display_name: "NIFCLOUD router has common private network"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "LOW"

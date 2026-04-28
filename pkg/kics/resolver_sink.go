@@ -82,7 +82,6 @@ func (s *Service) resolverSink(
 				LineInfoDocument:  document,
 				Kind:              kind,
 				FilePath:          rfile.FileName,
-				Content:           string(rfile.Content),
 				HelmID:            rfile.SplitID,
 				Commands:          fileCommands,
 				IDInfo:            rfile.IDInfo,

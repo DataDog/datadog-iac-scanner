@@ -2,13 +2,31 @@
   {
     "queryName": "IAM policies with full privileges",
     "severity": "MEDIUM",
-    "line": 5,
+    "line": 9,
     "fileName": "positive.tf"
   },
   {
     "queryName": "IAM policies with full privileges",
     "severity": "MEDIUM",
-    "line": 19,
+    "line": 20,
     "fileName": "positive.tf"
+  },
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 15,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 8,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "IAM policies with full privileges",
+    "severity": "MEDIUM",
+    "line": 24,
+    "fileName": "positive3.tf"
   }
 ]

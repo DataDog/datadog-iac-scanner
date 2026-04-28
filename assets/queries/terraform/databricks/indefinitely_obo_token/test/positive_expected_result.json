@@ -1,6 +1,6 @@
 [
 	{
-		"queryName": "Beta - Databricks OBO token has indefinite lifetime",
+		"queryName": "Indefinitely Databricks OBO token lifetime",
 		"severity": "MEDIUM",
 		"line": 1,
 		"fileName": "positive.tf"

@@ -49,6 +49,7 @@ Secure Ansible task example (do not include `special_group: allAuthenticatedUser
 ```yaml
 - name: create a dataset
   google.cloud.gcp_bigquery_dataset:
+    dataset_id: my_dataset
     name: my_example_dataset
     dataset_reference:
       dataset_id: my_example_dataset
@@ -63,6 +64,7 @@ Secure Ansible task example (do not include `special_group: allAuthenticatedUser
 ---
 - name: create a dataset
   google.cloud.gcp_bigquery_dataset:
+    dataset_id: my_dataset
     name: my_example_dataset
     access:
       - special_group: allAuthenticatedUsers

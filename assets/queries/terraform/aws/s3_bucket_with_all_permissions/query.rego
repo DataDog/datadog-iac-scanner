@@ -9,17 +9,17 @@ CxPolicy[result] {
 	res_type := resource_type[_]
 	resource := input.document[i].resource[res_type][name]
 
-	all_permissions(resource.policy)
+	idx := vulnerable_statement(resource.policy)
 
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": res_type,
-		"resourceName": tf_lib.get_specific_resource_name(resource, res_type, name),
-		"searchKey": sprintf("%s[%s].policy", [res_type,name]),
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
+		"searchKey": sprintf("%s[%s].policy.Statement[%d]", [res_type, name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy.Statement' should not allow all actions to all principal",
 		"keyActualValue": "'policy.Statement' allows all actions to all principal",
-		"searchLine": common_lib.build_search_line(["resource", res_type, name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", res_type, name, "policy", "Statement", idx], []),
 	}
 }
 
@@ -28,24 +28,24 @@ CxPolicy[result] {
 	res_type := resource_type[_]
 	keyToCheck := common_lib.get_module_equivalent_key("aws", module.source, res_type, "policy")
 
-	all_permissions(module[keyToCheck])
+	idx := vulnerable_statement(module[keyToCheck])
 
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].policy", [name]),
+		"searchKey": sprintf("module[%s].%s.Statement[%d]", [name, keyToCheck, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "'policy.Statement' should not allow all actions to all principal",
 		"keyActualValue": "'policy.Statement' allows all actions to all principal",
-		"searchLine": common_lib.build_search_line(["module", name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx], []),
 	}
 }
 
-all_permissions(policyValue) {
+vulnerable_statement(policyValue) = idx {
 	policy := common_lib.json_unmarshal(policyValue)
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	common_lib.containsOrInArrayContains(statement.Action, "*")

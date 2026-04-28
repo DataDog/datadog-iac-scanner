@@ -123,6 +123,36 @@ anyPrincipal(statement) {
   "*" == statement.Principal.Service[_]
 }
 
+# wildcard_principal_sub_path returns the path segments *under* `Principal` that
+# hold the wildcard `*`. It is meant to be used by rules that want to pinpoint
+# the narrowest offending key rather than the whole `Principal` block.
+#
+# Return values:
+#   ["AWS"]      when Principal.AWS is "*" or contains "*"
+#   ["Service"]  when Principal.Service is "*" or contains "*"
+#   []           when Principal itself is "*" or contains "*"
+#
+# Priority: explicit sub-keys (AWS, Service) take precedence over the flat form
+# so a statement with both still produces a single, deterministic finding.
+wildcard_principal_sub_path(statement) = ["AWS"] {
+  is_string(statement.Principal.AWS)
+  statement.Principal.AWS == "*"
+} else = ["AWS"] {
+  is_array(statement.Principal.AWS)
+  statement.Principal.AWS[_] == "*"
+} else = ["Service"] {
+  is_string(statement.Principal.Service)
+  statement.Principal.Service == "*"
+} else = ["Service"] {
+  is_array(statement.Principal.Service)
+  statement.Principal.Service[_] == "*"
+} else = [] {
+  statement.Principal == "*"
+} else = [] {
+  is_array(statement.Principal)
+  statement.Principal[_] == "*"
+}
+
 getSpecInfo(resource) = specInfo { # this one can be also used for the result
 	spec := resource.spec.job_template.spec.template.spec
 	specInfo := {"spec": spec, "path": "spec.job_template.spec.template.spec"}
@@ -612,11 +642,43 @@ get_resource_name(resource, resourceDefinitionName) = final_name {
     final_name := resourceDefinitionName
 }
 
+# String safe to use as resourceName: no "${" interpolation fragments.
+is_literal_string(s) {
+	is_string(s)
+	not contains(s, "${")
+}
+
 get_specific_resource_name(resource, resourceType, resourceDefinitionName) = name {
 	field := resourceFieldName[resourceType]
 	name := resource[field]
+	is_literal_string(name)
 } else = name {
 	name := get_resource_name(resource, resourceDefinitionName)
+}
+
+# Literal attr value, or `${parent_type}.<name>.*` resolved via input.document + resourceFieldName; else fallback (never `${...}`).
+resolve_reference_name(resource, attr, parent_type, fallback) = out {
+	val := resource[attr]
+	is_literal_string(val)
+	out := val
+} else = out {
+	ref := resource[attr]
+	is_string(ref)
+	startswith(ref, sprintf("${%s.", [parent_type]))
+	parts := split(trim_suffix(trim_prefix(ref, "${"), "}"), ".")
+	count(parts) >= 2
+	parts[0] == parent_type
+	target := input.document[_].resource[parent_type][parts[1]]
+	candidate := get_specific_resource_name(target, parent_type, parts[1])
+	is_literal_string(candidate)
+	out := candidate
+} else = out {
+	out := fallback
+}
+
+# S3 `bucket` -> resolved name (same-scan aws_s3_bucket refs); else fallback.
+resolve_s3_bucket_name(resource, fallback) = name {
+	name := resolve_reference_name(resource, "bucket", "aws_s3_bucket", fallback)
 }
 
 check_key_empty(disk_encryption_key) = key {

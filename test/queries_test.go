@@ -113,15 +113,15 @@ func TestUniqueQueryIDs(t *testing.T) {
 	ctx := context.Background()
 	for _, entry := range queries {
 		queryPath := strings.TrimPrefix(entry.dir, filepath.FromSlash("../assets/"))
-		metadata, err := source.ReadMetadata(ctx, queryPath)
+		query, err := source.ReadEmbeddedQuery(ctx, queryPath)
 		require.NoError(t, err)
-		uuid := metadata["id"].(string)
+		uuid := query.Metadata["id"].(string)
 		duplicateDir, ok := queriesIdentifiers[uuid]
 		require.False(t, ok, "\nnon unique queryID found uuid: %s\nqueryDir: %s\nduplicateDir: %s",
 			uuid, entry.dir, duplicateDir)
 		queriesIdentifiers[uuid] = entry.dir
 
-		if override, ok := metadata["override"].(map[string]interface{}); ok {
+		if override, ok := query.Metadata["override"].(map[string]interface{}); ok {
 			for _, v := range override {
 				if convertedValue, converted := v.(map[string]interface{}); converted {
 					if id, ok := convertedValue["id"].(string); ok {
@@ -177,7 +177,7 @@ func testQuery(tb testing.TB, entry queryEntry, filesPath []string, expectedVuln
 	queriesSource.EXPECT().GetQueries(gomock.Any(), getQueryFilter()).
 		DoAndReturn(func(ctx context.Context, querySelection interface{}) ([]model.QueryMetadata, error) {
 			queryPath := strings.TrimPrefix(entry.dir, filepath.FromSlash("../assets/"))
-			q, err := source.ReadQuery(ctx, queryPath)
+			q, err := source.ReadEmbeddedQuery(ctx, queryPath)
 			require.NoError(tb, err)
 
 			return []model.QueryMetadata{q}, nil
@@ -201,12 +201,7 @@ func testQuery(tb testing.TB, entry queryEntry, filesPath []string, expectedVuln
 		queriesSource,
 		engine.DefaultVulnerabilityBuilder,
 		&tracker.CITracker{},
-		&source.QueryInspectorParameters{
-			IncludeQueries: source.IncludeQueries{ByIDs: []string{}},
-			ExcludeQueries: source.ExcludeQueries{ByIDs: []string{}, ByCategories: []string{}},
-			InputDataPath:  "",
-			FlagEvaluator:  nil,
-		},
+		&source.QueryInspectorParameters{},
 		map[string]bool{}, ".", 60, false, true, 1, false,
 		featureflags.NewLocalEvaluator(),
 	)

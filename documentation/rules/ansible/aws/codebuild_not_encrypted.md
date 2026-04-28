@@ -46,6 +46,7 @@ Example secure task:
 ```yaml
 - name: My project v2
   community.aws.codebuild_project:
+    name: my-codebuild-project
     description: My nice little project
     service_role: arn:aws:iam::123123:role/service-role/code-build-service-role
     source:
@@ -70,6 +71,7 @@ Example secure task:
 ```yaml
 - name: My project
   community.aws.codebuild_project:
+    name: my-codebuild-project
     description: My nice little project v2
     service_role: "arn:aws:iam::123123:role/service-role/code-build-service-role"
     source:

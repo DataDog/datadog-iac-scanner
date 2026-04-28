@@ -2,19 +2,19 @@
   {
     "queryName": "Lambda IAM InvokeFunction misconfigured",
     "severity": "LOW",
-    "line": 8,
+    "line": 11,
     "filename": "positive1.tf"
   },
   {
     "queryName": "Lambda IAM InvokeFunction misconfigured",
     "severity": "LOW",
-    "line": 8,
+    "line": 11,
     "filename": "positive2.tf"
   },
   {
     "queryName": "Lambda IAM InvokeFunction misconfigured",
     "severity": "LOW",
-    "line": 8,
+    "line": 11,
     "filename": "positive3.tf"
   },
   {
@@ -26,13 +26,19 @@
   {
     "queryName": "Lambda IAM InvokeFunction misconfigured",
     "severity": "LOW",
-    "line": 8,
+    "line": 11,
     "filename": "positive5.tf"
   },
   {
     "queryName": "Lambda IAM InvokeFunction misconfigured",
     "severity": "LOW",
-    "line": 8,
+    "line": 11,
     "filename": "positive6.tf"
+  },
+  {
+    "queryName": "Lambda IAM InvokeFunction misconfigured",
+    "severity": "LOW",
+    "line": 16,
+    "filename": "positive7.tf"
   }
 ]

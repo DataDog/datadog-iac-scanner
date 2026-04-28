@@ -142,7 +142,7 @@ func (s *FilesystemSource) GetQueryLibrary(ctx context.Context, platform string)
 }
 
 // CheckType checks if the queries have the type passed as an argument in '--type' flag to be loaded
-func (s *FilesystemSource) CheckType(queryPlatform interface{}) bool {
+func (s *FilesystemSource) CheckType(queryPlatform any) bool {
 	if queryPlatform.(string) == common {
 		return true
 	}
@@ -158,7 +158,7 @@ func (s *FilesystemSource) CheckType(queryPlatform interface{}) bool {
 }
 
 // CheckCloudProvider checks if the queries have the cloud provider passed as an argument in '--cloud-provider' flag to be loaded
-func (s *FilesystemSource) CheckCloudProvider(cloudProvider interface{}) bool {
+func (s *FilesystemSource) CheckCloudProvider(cloudProvider any) bool {
 	if cloudProvider != nil {
 		if strings.EqualFold(cloudProvider.(string), common) {
 			return true
@@ -175,7 +175,7 @@ func (s *FilesystemSource) CheckCloudProvider(cloudProvider interface{}) bool {
 	return false
 }
 
-func checkQueryInclude(ctx context.Context, id interface{}, includedQueries []string) bool {
+func checkQueryFilterFieldExclude(ctx context.Context, id any, queries []string) bool {
 	contextLogger := logger.FromContext(ctx)
 	queryMetadataKey, ok := id.(string)
 	if !ok {
@@ -183,23 +183,7 @@ func checkQueryInclude(ctx context.Context, id interface{}, includedQueries []st
 			Msgf("Can't cast query metadata key = %v", id)
 		return false
 	}
-	for _, includedQuery := range includedQueries {
-		if queryMetadataKey == includedQuery {
-			return true
-		}
-	}
-	return false
-}
-
-func checkQueryExcludeField(ctx context.Context, id interface{}, excludeQueries []string) bool {
-	contextLogger := logger.FromContext(ctx)
-	queryMetadataKey, ok := id.(string)
-	if !ok {
-		contextLogger.Warn().
-			Msgf("Can't cast query metadata key = %v", id)
-		return false
-	}
-	for _, excludedQuery := range excludeQueries {
+	for _, excludedQuery := range queries {
 		if strings.EqualFold(queryMetadataKey, excludedQuery) {
 			return true
 		}
@@ -207,15 +191,25 @@ func checkQueryExcludeField(ctx context.Context, id interface{}, excludeQueries 
 	return false
 }
 
-func checkQueryExclude(ctx context.Context, metadata map[string]interface{}, queryParameters *QueryInspectorParameters) bool {
-	return checkQueryExcludeField(ctx, metadata["id"], queryParameters.ExcludeQueries.ByIDs) ||
-		checkQueryExcludeField(ctx, metadata["category"], queryParameters.ExcludeQueries.ByCategories) ||
-		checkQueryExcludeField(ctx, metadata["severity"], queryParameters.ExcludeQueries.BySeverities) ||
+func checkQueryExclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
+	return checkQueryFilterFieldExclude(ctx, metadata["id"], queryParameters.ExcludeQueries.ByIDs) ||
+		checkQueryFilterFieldExclude(ctx, metadata["category"], queryParameters.ExcludeQueries.ByCategories) ||
+		checkQueryFilterFieldExclude(ctx, metadata["severity"], queryParameters.ExcludeQueries.BySeverities) ||
 		(!queryParameters.BomQueries && metadata["severity"] == model.SeverityTrace) ||
 		checkQueryFeatureFlagDisabled(ctx, metadata, queryParameters)
 }
 
-func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]interface{}, queryParameters *QueryInspectorParameters) bool {
+func checkQueryFilterFieldInclude(ctx context.Context, id any, queries []string) bool {
+	return len(queries) == 0 || checkQueryFilterFieldExclude(ctx, id, queries)
+}
+
+func checkQueryInclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
+	return checkQueryFilterFieldInclude(ctx, metadata["id"], queryParameters.IncludeQueries.ByIDs) &&
+		checkQueryFilterFieldInclude(ctx, metadata["category"], queryParameters.IncludeQueries.ByCategories) &&
+		checkQueryFilterFieldInclude(ctx, metadata["severity"], queryParameters.IncludeQueries.BySeverities)
+}
+
+func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
 	if queryParameters.FlagEvaluator == nil {
 		return false
 	}
@@ -243,7 +237,7 @@ func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]inte
 	}
 
 	// Create custom variables with the KICS ID
-	customVariables := map[string]interface{}{
+	customVariables := map[string]any{
 		"KICS_RULE_ID":       kicsIDStr,
 		"KICS_RULE_PLATFORM": kicsPlatformStr,
 	}
@@ -318,7 +312,7 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 	queries := make([]model.QueryMetadata, 0, len(queryDirs))
 
 	for _, queryDir := range queryDirs {
-		query, errRQ := ReadQuery(ctx, queryDir)
+		query, errRQ := ReadEmbeddedQuery(ctx, queryDir)
 		if errRQ != nil {
 			continue
 		}
@@ -335,23 +329,18 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 			continue
 		}
 
-		if len(queryParameters.IncludeQueries.ByIDs) > 0 {
-			if checkQueryInclude(ctx, query.Metadata["id"], queryParameters.IncludeQueries.ByIDs) {
-				queries = append(queries, query)
-			}
-		} else {
-			if checkQueryExclude(ctx, query.Metadata, queryParameters) {
-				continue
-			}
-
-			queries = append(queries, query)
+		if !checkQueryInclude(ctx, query.Metadata, queryParameters) ||
+			checkQueryExclude(ctx, query.Metadata, queryParameters) {
+			continue
 		}
+
+		queries = append(queries, query)
 	}
 	return queries
 }
 
 // validateMetadata prevents panics when KICS queries metadata fields are missing
-func validateMetadata(metadata map[string]interface{}) (exist bool, field string) {
+func validateMetadata(metadata map[string]any) (exist bool, field string) {
 	fields := []string{
 		"id",
 		"platform",
@@ -364,22 +353,45 @@ func validateMetadata(metadata map[string]interface{}) (exist bool, field string
 	return
 }
 
-// ReadQuery reads query's files for a given path and returns a QueryMetadata struct with it's
-// content
-func ReadQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error) {
-	contextLogger := logger.FromContext(ctx)
-	queryContent, err := assets.GetEmbeddedQueryFile(ctx, filepath.Join(queryDir, QueryFileName))
+// ReadEmbeddedQuery reads embedded query files for a given path and returns a QueryMetadata struct with its content
+func ReadEmbeddedQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error) {
+	queryName := filepath.Base(queryDir)
+	queryFile, err := assets.GetEmbeddedQueryFile(ctx, filepath.Clean(filepath.Join(queryDir, QueryFileName)))
 	if err != nil {
-		return model.QueryMetadata{}, errors.Wrapf(err, "failed to read query %s", filepath.Base(queryDir))
+		return model.QueryMetadata{}, fmt.Errorf("failed to read query %s: %w", queryName, err)
 	}
-
-	metadata, err := ReadMetadata(ctx, queryDir)
+	metadataFile, err := assets.GetEmbeddedQueryFile(ctx, filepath.Clean(filepath.Join(queryDir, MetadataFileName)))
 	if err != nil {
-		return model.QueryMetadata{}, errors.Wrapf(err, "failed to read query %s", filepath.Base(queryDir))
+		return model.QueryMetadata{}, fmt.Errorf("failed to read query %s: %w", queryName, err)
+	}
+	return parseQuery(ctx, queryName, queryFile, metadataFile)
+}
+
+// ReadQueryFile reads query files in the local filesystem for a given path and returns a QueryMetadata struct with its
+// content
+func ReadQueryFile(ctx context.Context, queryDir string) (model.QueryMetadata, error) {
+	queryName := filepath.Base(queryDir)
+	queryFile, err := os.ReadFile(filepath.Clean(filepath.Join(queryDir, QueryFileName)))
+	if err != nil {
+		return model.QueryMetadata{}, fmt.Errorf("failed to read query %s: %w", queryName, err)
+	}
+	metadataFile, err := os.ReadFile(filepath.Clean(filepath.Join(queryDir, MetadataFileName)))
+	if err != nil {
+		return model.QueryMetadata{}, fmt.Errorf("failed to read query %s: %w", queryName, err)
+	}
+	return parseQuery(ctx, queryName, queryFile, metadataFile)
+}
+
+func parseQuery(ctx context.Context, queryName string, queryContent, metadataContent []byte) (model.QueryMetadata, error) {
+	contextLogger := logger.FromContext(ctx)
+
+	var metadata map[string]any
+	if err := json.Unmarshal(metadataContent, &metadata); err != nil {
+		return model.QueryMetadata{}, fmt.Errorf("failed to read query %s: %w", queryName, err)
 	}
 
 	if valid, missingField := validateMetadata(metadata); !valid {
-		err := fmt.Errorf("failed to read metadata field: %s", missingField)
+		err := fmt.Errorf("failed to read metadata field from query %s: %s", queryName, missingField)
 		contextLogger.Error().Msg(err.Error())
 		return model.QueryMetadata{}, err
 	}
@@ -394,8 +406,8 @@ func ReadQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error
 	experimental := getExperimental(metadata["experimental"])
 
 	return model.QueryMetadata{
-		Query:        filepath.Base(filepath.ToSlash(queryDir)),
-		Content:      queryContent,
+		Query:        queryName,
+		Content:      string(queryContent),
 		Metadata:     metadata,
 		Platform:     platform,
 		InputData:    "{}",
@@ -404,52 +416,7 @@ func ReadQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error
 	}, nil
 }
 
-// ReadMetadata read query's metadata file inside the query directory
-func ReadMetadata(ctx context.Context, queryDir string) (map[string]interface{}, error) {
-	contextLogger := logger.FromContext(ctx)
-	f, err := assets.GetEmbeddedQueryFile(ctx, filepath.Clean(filepath.Join(queryDir, MetadataFileName)))
-	if err != nil {
-		contextLogger.Error().Msgf("Queries provider can't read metadata, query=%s: %v", filepath.Base(queryDir), err)
-		return nil, err
-	}
-
-	var metadata map[string]interface{}
-	if err := json.Unmarshal([]byte(f), &metadata); err != nil {
-		return nil, err
-	}
-
-	return metadata, nil
-}
-
-type supportedPlatforms map[string]string
-
-var supPlatforms = &supportedPlatforms{
-	"Ansible":                 "ansible",
-	"CloudFormation":          "cloudFormation",
-	"Common":                  "common",
-	"Crossplane":              "crossplane",
-	"Dockerfile":              "dockerfile",
-	"Knative":                 "knative",
-	"Kubernetes":              "k8s",
-	"OpenAPI":                 "openAPI",
-	"Terraform":               "terraform",
-	"AzureResourceManager":    "azureResourceManager",
-	"GRPC":                    "grpc",
-	"GoogleDeploymentManager": "googleDeploymentManager",
-	"Buildah":                 "buildah",
-	"Pulumi":                  "pulumi",
-	"ServerlessFW":            "serverlessFW",
-	"CICD":                    "cicd",
-}
-
-func getPlatform(metadataPlatform string) string {
-	if p, ok := (*supPlatforms)[metadataPlatform]; ok {
-		return p
-	}
-	return "unknown"
-}
-
-func getExperimental(experimental interface{}) bool {
+func getExperimental(experimental any) bool {
 	readExperimental, _ := experimental.(string)
 	if readExperimental == "true" {
 		return true

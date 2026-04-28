@@ -2,705 +2,768 @@ rules:
   ansible:
     aws:
       alb_listening_on_http:
-        description: ALB Listening on HTTP
-        title: ALB Listening on HTTP
+        description: ALB listening on HTTP
+        title: ALB listening on HTTP
       ami_not_encrypted:
-        description: AMI Not Encrypted
-        title: AMI Not Encrypted
+        description: AMI not encrypted
+        title: AMI not encrypted
       ami_shared_with_multiple_accounts:
-        description: AMI Shared With Multiple Accounts
-        title: AMI Shared With Multiple Accounts
+        description: AMI shared with multiple accounts
+        title: AMI shared with multiple accounts
       api_gateway_endpoint_config_is_not_private:
-        description: API Gateway Endpoint Config is Not Private
-        title: API Gateway Endpoint Config is Not Private
+        description: API Gateway endpoint config is not private
+        title: API Gateway endpoint config is not private
       api_gateway_with_cloudwatch_logging_disabled:
-        description: API Gateway With CloudWatch Logging Disabled
-        title: API Gateway With CloudWatch Logging Disabled
+        description: API Gateway with CloudWatch Logs disabled
+        title: API Gateway with CloudWatch Logs disabled
       api_gateway_without_configured_authorizer:
-        description: API Gateway Without Configured Authorizer
-        title: API Gateway Without Configured Authorizer
+        description: API Gateway without configured authorizer
+        title: API Gateway without configured authorizer
       api_gateway_without_ssl_certificate:
-        description: API Gateway Without SSL Certificate
-        title: API Gateway Without SSL Certificate
+        description: API Gateway without SSL certificate
+        title: API Gateway without SSL certificate
       api_gateway_without_waf:
         description: API Gateway without WAF
         title: API Gateway without WAF
       api_gateway_xray_disabled:
-        description: API Gateway X-Ray Disabled
-        title: API Gateway X-Ray Disabled
+        description: API Gateway X-Ray disabled
+        title: API Gateway X-Ray disabled
       authentication_without_mfa:
-        description: Authentication Without MFA
-        title: Authentication Without MFA
+        description: Authentication without MFA
+        title: Authentication without MFA
       auto_scaling_group_with_no_associated_elb:
-        description: Auto Scaling Group With No Associated ELB
-        title: Auto Scaling Group With No Associated ELB
+        description: Auto Scaling Group with no associated ELB
+        title: Auto Scaling Group with no associated ELB
       automatic_minor_upgrades_disabled:
-        description: Automatic Minor Upgrades Disabled
-        title: Automatic Minor Upgrades Disabled
+        description: Automatic minor upgrades disabled
+        title: Automatic minor upgrades disabled
       aws_password_policy_with_unchangeable_passwords:
-        description: AWS Password Policy With Unchangeable Passwords
-        title: AWS Password Policy With Unchangeable Passwords
+        description: AWS password policy with unchangeable passwords
+        title: AWS password policy with unchangeable passwords
       batch_job_definition_with_privileged_container_properties:
-        description: Batch Job Definition With Privileged Container Properties
-        title: Batch Job Definition With Privileged Container Properties
+        description: Batch job definition with privileged container properties
+        title: Batch job definition with privileged container properties
       ca_certificate_identifier_is_outdated:
-        description: CA Certificate Identifier Is Outdated
-        title: CA Certificate Identifier Is Outdated
+        description: CA certificate identifier is outdated
+        title: CA certificate identifier is outdated
       cdn_configuration_is_missing:
-        description: CDN Configuration Is Missing
-        title: CDN Configuration Is Missing
+        description: CDN configuration is missing
+        title: CDN configuration is missing
       certificate_has_expired:
-        description: Certificate Has Expired
-        title: Certificate Has Expired
+        description: Certificate has expired
+        title: Certificate has expired
       certificate_rsa_key_bytes_lower_than_256:
-        description: Certificate RSA Key Bytes Lower Than 256
-        title: Certificate RSA Key Bytes Lower Than 256
+        description: Certificate RSA key bytes lower than 256
+        title: Certificate RSA key bytes lower than 256
       cloudfront_logging_disabled:
-        description: CloudFront Logging Disabled
-        title: CloudFront Logging Disabled
+        description: CloudFront logging disabled
+        title: CloudFront logging disabled
       cloudfront_without_minimum_protocol_tls_1.2:
-        description: CloudFront Without Minimum Protocol TLS 1.2
-        title: CloudFront Without Minimum Protocol TLS 1.2
+        description: CloudFront without minimum protocol TLS 1.2
+        title: CloudFront without minimum protocol TLS 1.2
       cloudfront_without_waf:
-        description: CloudFront Without WAF
-        title: CloudFront Without WAF
+        description: CloudFront without WAF
+        title: CloudFront without WAF
       cloudtrail_log_file_validation_disabled:
-        description: CloudTrail Log File Validation Disabled
-        title: CloudTrail Log File Validation Disabled
+        description: CloudTrail log file validation disabled
+        title: CloudTrail log file validation disabled
       cloudtrail_log_files_not_encrypted_with_kms:
-        description: CloudTrail Log Files Not Encrypted With KMS
-        title: CloudTrail Log Files Not Encrypted With KMS
+        description: CloudTrail log files not encrypted with KMS
+        title: CloudTrail log files not encrypted with KMS
       cloudtrail_logging_disabled:
-        description: CloudTrail Logging Disabled
-        title: CloudTrail Logging Disabled
+        description: CloudTrail logging disabled
+        title: CloudTrail logging disabled
       cloudtrail_multi_region_disabled:
-        description: CloudTrail Multi Region Disabled
-        title: CloudTrail Multi Region Disabled
+        description: CloudTrail multi-region is disabled
+        title: CloudTrail multi-region is disabled
       cloudtrail_not_integrated_with_cloudwatch:
-        description: CloudTrail Not Integrated With CloudWatch
-        title: CloudTrail Not Integrated With CloudWatch
+        description: CloudTrail not integrated with CloudWatch
+        title: CloudTrail not integrated with CloudWatch
       cloudtrail_sns_topic_name_undefined:
-        description: CloudTrail SNS Topic Name Undefined
-        title: CloudTrail SNS Topic Name Undefined
+        description: CloudTrail SNS topic name undefined
+        title: CloudTrail SNS topic name undefined
       cloudwatch_without_retention_period_specified:
-        description: CloudWatch Without Retention Period Specified
-        title: CloudWatch Without Retention Period Specified
+        description: CloudWatch without retention period specified
+        title: CloudWatch without retention period specified
       cmk_is_unusable:
-        description: CMK Is Unusable
-        title: CMK Is Unusable
+        description: CMK is unusable
+        title: CMK is unusable
       cmk_rotation_disabled:
-        description: CMK Rotation Disabled
-        title: CMK Rotation Disabled
+        description: CMK rotation disabled
+        title: CMK rotation disabled
       codebuild_not_encrypted:
-        description: CodeBuild Not Encrypted
-        title: CodeBuild Not Encrypted
+        description: CodeBuild project is not encrypted
+        title: CodeBuild project is not encrypted
       config_configuration_aggregator_to_all_regions_disabled:
-        description: Configuration Aggregator to All Regions Disabled
-        title: Configuration Aggregator to All Regions Disabled
+        description: Configuration aggregator to all regions disabled
+        title: Configuration aggregator to all regions disabled
       config_rule_for_encrypted_volumes_is_disabled:
-        description: Config Rule For Encrypted Volumes Disabled
-        title: Config Rule For Encrypted Volumes Disabled
+        description: Config rule for encrypted volumes disabled
+        title: Config rule for encrypted volumes disabled
       cross_account_iam_assume_role_policy_without_external_id_or_mfa:
-        description: Cross-Account IAM Assume Role Policy Without ExternalId or MFA
-        title: Cross-Account IAM Assume Role Policy Without ExternalId or MFA
+        description: Cross-account IAM assume role policy without ExternalId or MFA
+        title: Cross-account IAM assume role policy without ExternalId or MFA
       db_instance_storage_not_encrypted:
-        description: DB Instance Storage Not Encrypted
-        title: DB Instance Storage Not Encrypted
+        description: DB instance storage not encrypted
+        title: DB instance storage not encrypted
       db_security_group_open_to_large_scope:
-        description: DB Security Group Open To Large Scope
-        title: DB Security Group Open To Large Scope
+        description: DB security group open to large scope
+        title: DB security group open to large scope
       db_security_group_with_public_scope:
-        description: DB Security Group With Public Scope
-        title: DB Security Group With Public Scope
+        description: DB security group with public scope
+        title: DB security group with public scope
       default_security_groups_with_unrestricted_traffic:
-        description: Default Security Groups With Unrestricted Traffic
-        title: Default Security Groups With Unrestricted Traffic
+        description: Default security groups with unrestricted traffic
+        title: Default security groups with unrestricted traffic
       ebs_volume_encryption_disabled:
-        description: EBS Volume Encryption Disabled
-        title: EBS Volume Encryption Disabled
+        description: EBS volume encryption disabled
+        title: EBS volume encryption disabled
       ec2_group_has_public_interface:
-        description: EC2 Group Has Public Interface
-        title: EC2 Group Has Public Interface
+        description: EC2 security group allows public access
+        title: EC2 security group allows public access
       ec2_instance_has_public_ip:
-        description: EC2 Instance Has Public IP
-        title: EC2 Instance Has Public IP
+        description: EC2 instance has public IP
+        title: EC2 instance has public IP
       ec2_instance_using_default_security_group:
-        description: EC2 Instance Using Default Security Group
-        title: EC2 Instance Using Default Security Group
+        description: EC2 instance using default security group
+        title: EC2 instance using default security group
       ec2_instance_using_default_vpc:
-        description: EC2 Instance Using Default VPC
-        title: EC2 Instance Using Default VPC
+        description: EC2 instance using default VPC
+        title: EC2 instance using default VPC
       ec2_not_ebs_optimized:
-        description: EC2 Not EBS Optimized
-        title: EC2 Not EBS Optimized
+        description: EC2 instance is not EBS optimized
+        title: EC2 instance is not EBS optimized
       ecr_image_tag_not_immutable:
-        description: ECR Image Tag Not Immutable
-        title: ECR Image Tag Not Immutable
+        description: ECR image tag not immutable
+        title: ECR image tag not immutable
       ecr_repository_is_publicly_accessible:
-        description: ECR Repository Is Publicly Accessible
-        title: ECR Repository Is Publicly Accessible
+        description: ECR repository is publicly accessible
+        title: ECR repository is publicly accessible
       ecs_service_admin_role_is_present:
-        description: ECS Service Admin Role Is Present
-        title: ECS Service Admin Role Is Present
+        description: ECS service admin role is present
+        title: ECS service admin role is present
       ecs_service_without_running_tasks:
-        description: ECS Service Without Running Tasks
-        title: ECS Service Without Running Tasks
+        description: ECS service without running tasks
+        title: ECS service without running tasks
       ecs_services_assigned_with_public_ip_address:
-        description: ECS Services assigned with public IP address
-        title: ECS Services assigned with public IP address
+        description: ECS services should not be assigned public IP addresses
+        title: ECS services should not be assigned public IP addresses
       ecs_task_definition_network_mode_not_recommended:
-        description: ECS Task Definition Network Mode Not Recommended
-        title: ECS Task Definition Network Mode Not Recommended
+        description: ECS task definition network mode not recommended
+        title: ECS task definition network mode not recommended
       efs_not_encrypted:
-        description: EFS Not Encrypted
-        title: EFS Not Encrypted
+        description: EFS not encrypted
+        title: EFS not encrypted
       efs_without_kms:
-        description: EFS Without KMS
-        title: EFS Without KMS
+        description: EFS without KMS
+        title: EFS without KMS
       efs_without_tags:
-        description: EFS Without Tags
-        title: EFS Without Tags
+        description: EFS without tags
+        title: EFS without tags
       elasticache_using_default_port:
-        description: ElastiCache Using Default Port
-        title: ElastiCache Using Default Port
+        description: ElastiCache using default port
+        title: ElastiCache using default port
       elasticache_without_vpc:
-        description: ElastiCache Without VPC
-        title: ElastiCache Without VPC
+        description: ElastiCache without VPC
+        title: ElastiCache without VPC
       elasticsearch_with_https_disabled:
         description: Elasticsearch with HTTPS disabled
         title: Elasticsearch with HTTPS disabled
       elb_using_insecure_protocols:
-        description: ELB Using Insecure Protocols
-        title: ELB Using Insecure Protocols
+        description: ELB using insecure protocols
+        title: ELB using insecure protocols
       elb_using_weak_ciphers:
-        description: ELB Using Weak Ciphers
-        title: ELB Using Weak Ciphers
+        description: ELB using weak ciphers
+        title: ELB using weak ciphers
       hardcoded_aws_access_key:
-        description: Hardcoded AWS Access Key
-        title: Hardcoded AWS Access Key
+        description: Hardcoded AWS access key
+        title: Hardcoded AWS access key
       hardcoded_aws_access_key_in_lambda:
-        description: Hardcoded AWS Access Key In Lambda
-        title: Hardcoded AWS Access Key In Lambda
+        description: Hardcoded AWS access key in Lambda
+        title: Hardcoded AWS access key in Lambda
       http_port_open_to_internet:
-        description: HTTP Port Open To Internet
-        title: HTTP Port Open To Internet
+        description: HTTP port open to internet
+        title: HTTP port open to internet
       iam_access_key_is_exposed:
-        description: IAM Access Key Is Exposed
-        title: IAM Access Key Is Exposed
+        description: IAM access key is exposed
+        title: IAM access key is exposed
       iam_database_auth_not_enabled:
-        description: IAM Database Auth Not Enabled
-        title: IAM Database Auth Not Enabled
+        description: IAM database authentication is not enabled
+        title: IAM database authentication is not enabled
       iam_group_without_users:
-        description: IAM Group Without Users
-        title: IAM Group Without Users
+        description: IAM group without users
+        title: IAM group without users
       iam_password_without_minimum_length:
-        description: IAM Password Without Minimum Length
-        title: IAM Password Without Minimum Length
+        description: IAM password without minimum length
+        title: IAM password without minimum length
       iam_policies_attached_to_user:
-        description: IAM Policies Attached To User
-        title: IAM Policies Attached To User
+        description: IAM policies attached to user
+        title: IAM policies attached to user
       iam_policies_with_full_privileges:
-        description: IAM Policies With Full Privileges
-        title: IAM Policies With Full Privileges
+        description: IAM policies with full privileges
+        title: IAM policies with full privileges
       iam_policy_grants_assumerole_permission_across_all_services:
-        description: IAM Policy Grants 'AssumeRole' Permission Across All Services
-        title: IAM Policy Grants 'AssumeRole' Permission Across All Services
+        description: IAM policy grants 'AssumeRole' permission across all services
+        title: IAM policy grants 'AssumeRole' permission across all services
       iam_policy_grants_full_permissions:
-        description: IAM Policy Grants Full Permissions
-        title: IAM Policy Grants Full Permissions
+        description: IAM policy grants full permissions
+        title: IAM policy grants full permissions
       iam_role_allows_all_principals_to_assume:
-        description: IAM Role Allows All Principals To Assume
-        title: IAM Role Allows All Principals To Assume
+        description: IAM role allows all principals to assume
+        title: IAM role allows all principals to assume
       instance_uses_metadata_service_IMDSv1:
-        description: Instance Uses Metadata Service IMDSv1
-        title: Instance Uses Metadata Service IMDSv1
+        description: Instance uses metadata service IMDSv1
+        title: Instance uses metadata service IMDSv1
       instance_with_no_vpc:
-        description: Instance With No VPC
-        title: Instance With No VPC
+        description: Instance with no VPC
+        title: Instance with no VPC
       kinesis_not_encrypted_with_kms:
-        description: Kinesis Not Encrypted With KMS
-        title: Kinesis Not Encrypted With KMS
+        description: Kinesis not encrypted with KMS
+        title: Kinesis not encrypted with KMS
       kms_key_with_full_permissions:
-        description: KMS Key With Vulnerable Policy
-        title: KMS Key With Vulnerable Policy
+        description: KMS key with vulnerable policy
+        title: KMS key with vulnerable policy
       lambda_function_without_tags:
-        description: Lambda Function Without Tags
-        title: Lambda Function Without Tags
+        description: Lambda function without tags
+        title: Lambda function without tags
       lambda_functions_without_x-ray_tracing:
-        description: Lambda Functions Without X-Ray Tracing
-        title: Lambda Functions Without X-Ray Tracing
+        description: Lambda functions without X-Ray tracing
+        title: Lambda functions without X-Ray tracing
       lambda_permission_misconfigured:
-        description: Lambda Permission Misconfigured
-        title: Lambda Permission Misconfigured
+        description: Lambda permission misconfigured
+        title: Lambda permission misconfigured
       lambda_permission_principal_is_wildcard:
-        description: Lambda Permission Principal Is Wildcard
-        title: Lambda Permission Principal Is Wildcard
+        description: Lambda permission principal is wildcard
+        title: Lambda permission principal is wildcard
       launch_configuration_is_not_encrypted:
-        description: Launch Configuration Is Not Encrypted
-        title: Launch Configuration Is Not Encrypted
+        description: Launch configuration is not encrypted
+        title: Launch configuration is not encrypted
       misconfigured_password_policy_expiration:
-        description: Misconfigured Password Policy Expiration
-        title: Misconfigured Password Policy Expiration
+        description: Misconfigured password policy expiration
+        title: Misconfigured password policy expiration
       no_stack_policy:
-        description: No Stack Policy
-        title: No Stack Policy
+        description: No stack policy
+        title: No stack policy
       password_without_reuse_prevention:
-        description: Password Without Reuse Prevention
-        title: Password Without Reuse Prevention
+        description: Password without reuse prevention
+        title: Password without reuse prevention
       public_lambda_via_api_gateway:
         description: Public Lambda via API Gateway
         title: Public Lambda via API Gateway
       public_port_wide:
-        description: Public Port Wide
-        title: Public Port Wide
+        description: Public port with wide port range
+        title: Public port with wide port range
       rds_associated_with_public_subnet:
-        description: RDS Associated with Public Subnet
-        title: RDS Associated with Public Subnet
+        description: RDS instance associated with a public subnet
+        title: RDS instance associated with a public subnet
       rds_db_instance_publicly_accessible:
-        description: RDS DB Instance Publicly Accessible
-        title: RDS DB Instance Publicly Accessible
+        description: RDS DB instance is not publicly accessible
+        title: RDS DB instance is not publicly accessible
       rds_using_default_port:
-        description: RDS Using Default Port
-        title: RDS Using Default Port
+        description: RDS instance uses a default port
+        title: RDS instance uses a default port
       rds_with_backup_disabled:
-        description: RDS With Backup Disabled
-        title: RDS With Backup Disabled
+        description: RDS instance with backup disabled
+        title: RDS instance with backup disabled
       redis_not_compliant:
-        description: Redis Not Compliant
-        title: Redis Not Compliant
+        description: Redis not compliant
+        title: Redis not compliant
       redshift_not_encrypted:
-        description: Redshift Not Encrypted
-        title: Redshift Not Encrypted
+        description: Redshift cluster is not encrypted
+        title: Redshift cluster is not encrypted
       redshift_publicly_accessible:
-        description: Redshift Publicly Accessible
-        title: Redshift Publicly Accessible
+        description: Redshift publicly accessible
+        title: Redshift publicly accessible
       redshift_using_default_port:
-        description: Redshift Using Default Port
-        title: Redshift Using Default Port
+        description: Redshift using default port
+        title: Redshift using default port
       remote_desktop_port_open:
-        description: Remote Desktop Port Open To Internet
-        title: Remote Desktop Port Open To Internet
+        description: Remote desktop port open to internet
+        title: Remote desktop port open to internet
       root_account_has_active_access_keys:
-        description: Root Account Has Active Access Keys
-        title: Root Account Has Active Access Keys
+        description: Root account has active access keys
+        title: Root account has active access keys
       route53_record_undefined:
-        description: Route53 Record Undefined
-        title: Route53 Record Undefined
+        description: Route 53 record undefined
+        title: Route 53 record undefined
       s3_bucket_access_to_any_principal:
-        description: S3 Bucket Access to Any Principal
-        title: S3 Bucket Access to Any Principal
+        description: S3 bucket access to any principal
+        title: S3 bucket access to any principal
       s3_bucket_acl_allows_read_to_all_users:
-        description: S3 Bucket ACL Allows Read to All Users
-        title: S3 Bucket ACL Allows Read to All Users
+        description: S3 bucket ACL allows read access to all users
+        title: S3 bucket ACL allows read access to all users
       s3_bucket_acl_allows_read_to_any_authenticated_user:
-        description: S3 Bucket ACL Allows Read to Any Authenticated User
-        title: S3 Bucket ACL Allows Read to Any Authenticated User
+        description: S3 bucket ACL allows read access to any authenticated user
+        title: S3 bucket ACL allows read access to any authenticated user
       s3_bucket_allows_delete_action_from_all_principals:
-        description: S3 Bucket Allows Delete Action From All Principals
-        title: S3 Bucket Allows Delete Action From All Principals
+        description: S3 bucket allows delete action from all principals
+        title: S3 bucket allows delete action from all principals
       s3_bucket_allows_get_action_from_all_principals:
-        description: S3 Bucket Allows Get Action From All Principals
-        title: S3 Bucket Allows Get Action From All Principals
+        description: S3 bucket allows GET action from all principals
+        title: S3 bucket allows GET action from all principals
       s3_bucket_allows_list_action_from_all_principals:
-        description: S3 Bucket Allows List Action From All Principals
-        title: S3 Bucket Allows List Action From All Principals
+        description: S3 bucket allows list action from all principals
+        title: S3 bucket allows list action from all principals
       s3_bucket_allows_put_action_from_all_principals:
-        description: S3 Bucket Allows Put Action From All Principals
-        title: S3 Bucket Allows Put Action From All Principals
+        description: S3 bucket allows put action from all principals
+        title: S3 bucket allows put action from all principals
       s3_bucket_logging_disabled:
-        description: S3 Bucket Logging Disabled
-        title: S3 Bucket Logging Disabled
+        description: S3 bucket logging disabled
+        title: S3 bucket logging disabled
       s3_bucket_with_all_permissions:
-        description: S3 Bucket With All Permissions
-        title: S3 Bucket With All Permissions
+        description: S3 bucket with all permissions
+        title: S3 bucket with all permissions
       s3_bucket_with_public_access:
-        description: S3 Bucket With Public Access
-        title: S3 Bucket With Public Access
+        description: S3 bucket with public access
+        title: S3 bucket with public access
       s3_bucket_with_unsecured_cors_rule:
-        description: S3 Bucket with Unsecured CORS Rule
-        title: S3 Bucket with Unsecured CORS Rule
+        description: S3 bucket with unsecured CORS rule
+        title: S3 bucket with unsecured CORS rule
       s3_bucket_without_server-side_encryption:
-        description: S3 Bucket Without Server-side-encryption
-        title: S3 Bucket Without Server-side-encryption
+        description: S3 bucket without server-side encryption
+        title: S3 bucket without server-side encryption
       s3_bucket_without_versioning:
-        description: S3 Bucket Without Versioning
-        title: S3 Bucket Without Versioning
+        description: S3 bucket without versioning
+        title: S3 bucket without versioning
       secure_ciphers_disabled:
-        description: Secure Ciphers Disabled
-        title: Secure Ciphers Disabled
+        description: Secure ciphers disabled
+        title: Secure ciphers disabled
       security_group_ingress_not_restricted:
-        description: Security Group Ingress Not Restricted
-        title: Security Group Ingress Not Restricted
+        description: Security group ingress not restricted
+        title: Security group ingress not restricted
       security_group_with_unrestricted_access_to_ssh:
-        description: Security Group With Unrestricted Access To SSH
-        title: Security Group With Unrestricted Access To SSH
+        description: Security group with unrestricted access to SSH
+        title: Security group with unrestricted access to SSH
       ses_policy_with_allowed_iam_actions:
-        description: SES Policy With Allowed IAM Actions
-        title: SES Policy With Allowed IAM Actions
+        description: SES policy with allowed IAM actions
+        title: SES policy with allowed IAM actions
       sns_topic_is_publicly_accessible:
-        description: SNS Topic is Publicly Accessible
-        title: SNS Topic is Publicly Accessible
+        description: SNS topic is publicly accessible
+        title: SNS topic is publicly accessible
       sql_analysis_services_port_2383_is_publicly_accessible:
-        description: SQL Analysis Services Port 2383 (TCP) Is Publicly Accessible
-        title: SQL Analysis Services Port 2383 (TCP) Is Publicly Accessible
+        description: SQL Analysis Services port 2383 (TCP) is publicly accessible
+        title: SQL Analysis Services port 2383 (TCP) is publicly accessible
       sqs_policy_allows_all_actions:
-        description: SQS Policy Allows All Actions
-        title: SQS Policy Allows All Actions
+        description: SQS policy allows all actions
+        title: SQS policy allows all actions
       sqs_policy_with_public_access:
-        description: SQS Policy With Public Access
-        title: SQS Policy With Public Access
+        description: SQS policy with public access
+        title: SQS policy with public access
       sqs_queue_exposed:
-        description: SQS Queue Exposed
-        title: SQS Queue Exposed
+        description: SQS queue exposed
+        title: SQS queue exposed
       sqs_with_sse_disabled:
-        description: SQS With SSE Disabled
-        title: SQS With SSE Disabled
+        description: SQS queue with SSE disabled
+        title: SQS queue with SSE disabled
       stack_notifications_disabled:
-        description: Stack Notifications Disabled
-        title: Stack Notifications Disabled
+        description: Stack notifications disabled
+        title: Stack notifications disabled
       stack_retention_disabled:
-        description: Stack Retention Disabled
-        title: Stack Retention Disabled
+        description: Stack retention disabled
+        title: Stack retention disabled
       stack_without_template:
-        description: Stack Without Template
-        title: Stack Without Template
+        description: Stack without template
+        title: Stack without template
       unknown_port_exposed_to_internet:
-        description: Unknown Port Exposed To Internet
-        title: Unknown Port Exposed To Internet
+        description: Unknown port exposed to internet
+        title: Unknown port exposed to internet
       unrestricted_security_group_ingress:
-        description: Unrestricted Security Group Ingress
-        title: Unrestricted Security Group Ingress
+        description: Unrestricted security group ingress
+        title: Unrestricted security group ingress
       user_data_contains_encoded_private_key:
-        description: User Data Contains Encoded Private Key
-        title: User Data Contains Encoded Private Key
+        description: User data contains encoded private key
+        title: User data contains encoded private key
       viewer_protocol_policy_allows_http:
-        description: Cloudfront Viewer Protocol Policy Allows HTTP
-        title: Cloudfront Viewer Protocol Policy Allows HTTP
+        description: CloudFront viewer protocol policy allows HTTP
+        title: CloudFront viewer protocol policy allows HTTP
       vulnerable_default_ssl_certificate:
-        description: Vulnerable Default SSL Certificate
-        title: Vulnerable Default SSL Certificate
+        description: Vulnerable default SSL certificate
+        title: Vulnerable default SSL certificate
     azure:
       ad_admin_not_configured_for_sql_server:
-        description: AD Admin Not Configured For SQL Server
-        title: AD Admin Not Configured For SQL Server
+        description: AD admin not configured for SQL server
+        title: AD admin not configured for SQL server
       admin_user_enabled_for_container_registry:
-        description: Admin User Enabled For Container Registry
-        title: Admin User Enabled For Container Registry
+        description: Admin user enabled for container registry
+        title: Admin user enabled for container registry
       aks_monitoring_logging_disabled:
-        description: AKS Monitoring Logging Disabled
-        title: AKS Monitoring Logging Disabled
+        description: AKS monitoring logging disabled
+        title: AKS monitoring logging disabled
       aks_network_policy_misconfigured:
-        description: AKS Network Policy Misconfigured
-        title: AKS Network Policy Misconfigured
+        description: AKS network policy misconfigured
+        title: AKS network policy misconfigured
       aks_rbac_disabled:
-        description: AKS RBAC Disabled
-        title: AKS RBAC Disabled
+        description: AKS RBAC disabled
+        title: AKS RBAC disabled
       azure_container_registry_with_no_locks:
-        description: Azure Container Registry With No Locks
-        title: Azure Container Registry With No Locks
+        description: Azure Container Registry with no locks
+        title: Azure Container Registry with no locks
       azure_instance_using_basic_authentication:
-        description: Azure Instance Using Basic Authentication
-        title: Azure Instance Using Basic Authentication
+        description: Azure instance using basic authentication
+        title: Azure instance using basic authentication
       cosmosdb_account_ip_range_filter_not_set:
-        description: CosmosDB Account IP Range Filter Not Set
-        title: CosmosDB Account IP Range Filter Not Set
+        description: CosmosDB account IP range filter not set
+        title: CosmosDB account IP range filter not set
       cosmosdb_account_without_tags:
-        description: Cosmos DB Account Without Tags
-        title: Cosmos DB Account Without Tags
+        description: Cosmos DB account without tags
+        title: Cosmos DB account without tags
       default_azure_storage_account_network_access_is_too_permissive:
-        description: Default Azure Storage Account Network Access Is Too Permissive
-        title: Default Azure Storage Account Network Access Is Too Permissive
+        description: Default Azure storage account network access is too permissive
+        title: Default Azure storage account network access is too permissive
       firewall_rule_allows_too_many_hosts_to_access_redis_cache:
-        description: Firewall Rule Allows Too Many Hosts To Access Redis Cache
-        title: Firewall Rule Allows Too Many Hosts To Access Redis Cache
+        description: Firewall rule allows too many hosts to access Redis Cache
+        title: Firewall rule allows too many hosts to access Redis Cache
       key_vault_soft_delete_is_disabled:
-        description: Key Vault Soft Delete Is Disabled
-        title: Key Vault Soft Delete Is Disabled
+        description: Key Vault soft delete is disabled
+        title: Key Vault soft delete is disabled
       log_retention_is_not_set:
-        description: Log Retention Is Not Set
-        title: Log Retention Is Not Set
+        description: Log retention is not set
+        title: Log retention is not set
       monitoring_log_profile_without_all_activities:
-        description: Monitoring Log Profile Without All Activities
-        title: Monitoring Log Profile Without All Activities
+        description: Monitoring log profile without all activities
+        title: Monitoring log profile without all activities
       mysql_ssl_connection_disabled:
-        description: MySQL SSL Connection Disabled
-        title: MySQL SSL Connection Disabled
+        description: MySQL SSL connection disabled
+        title: MySQL SSL connection disabled
       postgresql_log_checkpoints_disabled:
-        description: PostgreSQL Log Checkpoints Disabled
-        title: PostgreSQL Log Checkpoints Disabled
+        description: PostgreSQL log checkpoints disabled
+        title: PostgreSQL log checkpoints disabled
       postgresql_log_connections_not_set:
-        description: PostgreSQL Log Connections Not Set
-        title: PostgreSQL Log Connections Not Set
+        description: PostgreSQL log connections not set
+        title: PostgreSQL log connections not set
       postgresql_log_disconnections_not_set:
-        description: PostgreSQL Log Disconnections Not Set
-        title: PostgreSQL Log Disconnections Not Set
+        description: PostgreSQL log disconnections not set
+        title: PostgreSQL log disconnections not set
       postgresql_log_duration_not_set:
-        description: PostgreSQL Log Duration Not Set
-        title: PostgreSQL Log Duration Not Set
+        description: PostgreSQL log duration not set
+        title: PostgreSQL log duration not set
       postgresql_server_without_connection_throttling:
-        description: PostgreSQL Server Without Connection Throttling
-        title: PostgreSQL Server Without Connection Throttling
+        description: PostgreSQL server without connection throttling
+        title: PostgreSQL server without connection throttling
       public_storage_account:
-        description: Public Storage Account
-        title: Public Storage Account
+        description: Public storage account
+        title: Public storage account
       redis_cache_allows_non_ssl_connections:
-        description: Redis Cache Allows Non SSL Connections
-        title: Redis Cache Allows Non SSL Connections
+        description: Redis cache allows non-SSL connections
+        title: Redis cache allows non-SSL connections
       redis_entirely_accessible:
-        description: Redis Entirely Accessible
-        title: Redis Entirely Accessible
+        description: Redis entirely accessible
+        title: Redis entirely accessible
       redis_publicly_accessible:
-        description: Redis Publicly Accessible
-        title: Redis Publicly Accessible
+        description: Redis publicly accessible
+        title: Redis publicly accessible
       role_definition_allows_custom_role_creation:
-        description: Role Definition Allows Custom Role Creation
-        title: Role Definition Allows Custom Role Creation
+        description: Role definition allows custom role creation
+        title: Role definition allows custom role creation
       security_group_is_not_configured:
-        description: Security Group is Not Configured
-        title: Security Group is Not Configured
+        description: Security group is not configured
+        title: Security group is not configured
       sensitive_port_is_exposed_to_entire_network:
-        description: Sensitive Port Is Exposed To Entire Network
-        title: Sensitive Port Is Exposed To Entire Network
+        description: Sensitive port is exposed to entire network
+        title: Sensitive port is exposed to entire network
       small_activity_log_retention_period:
-        description: Small Activity Log Retention Period
-        title: Small Activity Log Retention Period
+        description: Small activity log retention period
+        title: Small activity log retention period
       sql_server_ingress_from_any_ip:
-        description: SQLServer Ingress From Any IP
-        title: SQLServer Ingress From Any IP
+        description: SQLServer ingress from any IP
+        title: SQLServer ingress from any IP
       sql_server_predictable_active_directory_admin_account_name:
-        description: SQL Server Predictable Active Directory Account Name
-        title: SQL Server Predictable Active Directory Account Name
+        description: SQL Server predictable Active Directory account name
+        title: SQL Server predictable Active Directory account name
       sql_server_predictable_admin_account_name:
-        description: SQL Server Predictable Admin Account Name
-        title: SQL Server Predictable Admin Account Name
+        description: SQL Server predictable admin account name
+        title: SQL Server predictable admin account name
       ssl_enforce_is_disabled:
-        description: SSL Enforce Disabled
-        title: SSL Enforce Disabled
+        description: SSL enforce disabled
+        title: SSL enforce disabled
       storage_account_not_forcing_https:
-        description: Storage Account Not Forcing HTTPS
-        title: Storage Account Not Forcing HTTPS
+        description: Storage account not forcing HTTPS
+        title: Storage account not forcing HTTPS
       storage_account_not_using_latest_tls_encryption_version:
-        description: Storage Account Not Using Latest TLS Encryption Version
-        title: Storage Account Not Using Latest TLS Encryption Version
+        description: Storage account not using latest TLS encryption version
+        title: Storage account not using latest TLS encryption version
       storage_container_is_publicly_accessible:
-        description: Storage Container Is Publicly Accessible
-        title: Storage Container Is Publicly Accessible
+        description: Storage container is publicly accessible
+        title: Storage container is publicly accessible
       trusted_microsoft_services_not_enabled:
-        description: Trusted Microsoft Services Not Enabled
-        title: Trusted Microsoft Services Not Enabled
+        description: Trusted Microsoft services not enabled
+        title: Trusted Microsoft services not enabled
       unrestricted_sql_server_acess:
-        description: Unrestricted SQL Server Access
-        title: Unrestricted SQL Server Access
+        description: Unrestricted SQL Server access
+        title: Unrestricted SQL Server access
       vm_not_attached_to_network:
-        description: VM Not Attached To Network
-        title: VM Not Attached To Network
+        description: VM not attached to network
+        title: VM not attached to network
       waf_is_disabled_for_azure_application_gateway:
-        description: WAF Is Disabled For Azure Application Gateway
-        title: WAF Is Disabled For Azure Application Gateway
+        description: WAF is disabled for Azure Application Gateway
+        title: WAF is disabled for Azure Application Gateway
       web_app_accepting_traffic_other_than_https:
-        description: Web App Accepting Traffic Other Than HTTPS
-        title: Web App Accepting Traffic Other Than HTTPS
+        description: Web app accepting traffic other than HTTPS
+        title: Web app accepting traffic other than HTTPS
     config:
       allow_unsafe_lookups_enabled_in_defaults:
-        description: Allow Unsafe Lookups Enabled In Defaults
-        title: Allow Unsafe Lookups Enabled In Defaults
+        description: Allow unsafe lookups enabled in defaults
+        title: Allow unsafe lookups enabled in defaults
       communication_over_http_in_defaults:
-        description: Communication Over HTTP In Defaults
-        title: Communication Over HTTP In Defaults
+        description: Communication over HTTP in defaults
+        title: Communication over HTTP in defaults
       logging_of_sensitive_data_in_defaults:
-        description: Logging of Sensitive Data In Defaults
-        title: Logging of Sensitive Data In Defaults
+        description: Logging of sensitive data in defaults
+        title: Logging of sensitive data in defaults
       privilege_escalation_using_become_plugin_in_defaults:
-        description: Privilege Escalation Using Become Plugin In Defaults
-        title: Privilege Escalation Using Become Plugin In Defaults
+        description: Privilege escalation using become plugin in defaults
+        title: Privilege escalation using become plugin in defaults
     gcp:
       bigquery_dataset_is_public:
-        description: BigQuery Dataset Is Public
-        title: BigQuery Dataset Is Public
+        description: BigQuery dataset is public
+        title: BigQuery dataset is public
       client_certificate_disabled:
-        description: Client Certificate Disabled
-        title: Client Certificate Disabled
+        description: Client certificate disabled
+        title: Client certificate disabled
       cloud_dns_without_dnnsec:
-        description: Cloud DNS Without DNSSEC
-        title: Cloud DNS Without DNSSEC
+        description: Cloud DNS without DNSSEC
+        title: Cloud DNS without DNSSEC
       cloud_sql_instance_with_contained_database_authentication_on:
-        description: Cloud SQL Instance With Contained Database Authentication On
-        title: Cloud SQL Instance With Contained Database Authentication On
+        description: Cloud SQL instance with contained database authentication on
+        title: Cloud SQL instance with contained database authentication on
       cloud_sql_instance_with_cross_db_ownership_chaining_on:
-        description: Cloud SQL Instance With Cross DB Ownership Chaining On
-        title: Cloud SQL Instance With Cross DB Ownership Chaining On
+        description: Cloud SQL instance with cross DB ownership chaining on
+        title: Cloud SQL instance with cross DB ownership chaining on
       cloud_storage_anonymous_or_publicly_accessible:
-        description: Cloud Storage Anonymous or Publicly Accessible
-        title: Cloud Storage Anonymous or Publicly Accessible
+        description: Cloud storage anonymous or publicly accessible
+        title: Cloud storage anonymous or publicly accessible
       cloud_storage_bucket_logging_not_enabled:
-        description: Cloud Storage Bucket Logging Not Enabled
-        title: Cloud Storage Bucket Logging Not Enabled
+        description: Cloud storage bucket logging not enabled
+        title: Cloud storage bucket logging not enabled
       cloud_storage_bucket_versioning_disabled:
-        description: Cloud Storage Bucket Versioning Disabled
-        title: Cloud Storage Bucket Versioning Disabled
+        description: Cloud storage bucket versioning disabled
+        title: Cloud storage bucket versioning disabled
       cluster_labels_disabled:
-        description: Cluster Labels Disabled
-        title: Cluster Labels Disabled
+        description: Cluster labels disabled
+        title: Cluster labels disabled
       cluster_master_authentication_disabled:
-        description: Cluster Master Authentication Disabled
-        title: Cluster Master Authentication Disabled
+        description: Cluster master authentication disabled
+        title: Cluster master authentication disabled
       compute_instance_is_publicly_accessible:
-        description: Compute Instance Is Publicly Accessible
-        title: Compute Instance Is Publicly Accessible
+        description: Compute instance is publicly accessible
+        title: Compute instance is publicly accessible
       cos_node_image_not_used:
-        description: COS Node Image Not Used
-        title: COS Node Image Not Used
+        description: COS node image not used
+        title: COS node image not used
       disk_encryption_disabled:
-        description: Disk Encryption Disabled
-        title: Disk Encryption Disabled
+        description: Disk encryption disabled
+        title: Disk encryption disabled
       dnssec_using_rsasha1:
-        description: DNSSEC Using RSASHA1
-        title: DNSSEC Using RSASHA1
+        description: DNSSEC using RSASHA1
+        title: DNSSEC using RSASHA1
       gke_basic_authentication_enabled:
-        description: GKE Basic Authentication Enabled
-        title: GKE Basic Authentication Enabled
+        description: GKE basic authentication enabled
+        title: GKE basic authentication enabled
       gke_legacy_authorization_enabled:
-        description: GKE Legacy Authorization Enabled
-        title: GKE Legacy Authorization Enabled
+        description: GKE legacy authorization enabled
+        title: GKE legacy authorization enabled
       gke_master_authorized_networks_disabled:
-        description: GKE Master Authorized Networks Disabled
-        title: GKE Master Authorized Networks Disabled
+        description: GKE master authorized networks disabled
+        title: GKE master authorized networks disabled
       gke_using_default_service_account:
-        description: GKE Using Default Service Account
-        title: GKE Using Default Service Account
+        description: GKE using default service account
+        title: GKE using default service account
       google_compute_network_using_default_firewall_rule:
-        description: Google Compute Network Using Default Firewall Rule
-        title: Google Compute Network Using Default Firewall Rule
+        description: Google Compute network using default firewall rule
+        title: Google Compute network using default firewall rule
       google_compute_network_using_firewall_allows_port_range:
-        description: Google Compute Network Using Firewall Rule that Allows Port Range
-        title: Google Compute Network Using Firewall Rule that Allows Port Range
+        description: Google Compute network using firewall rule that allows port range
+        title: Google Compute network using firewall rule that allows port range
       google_compute_network_using_firewall_rule_allows_all_ports:
-        description: Google Compute Network Using Firewall Rule that Allows All Ports
-        title: Google Compute Network Using Firewall Rule that Allows All Ports
+        description: Google Compute network using firewall rule that allows all ports
+        title: Google Compute network using firewall rule that allows all ports
       google_compute_ssl_policy_weak_cipher_in_use:
-        description: Google Compute SSL Policy Weak Cipher In Use
-        title: Google Compute SSL Policy Weak Cipher In Use
+        description: Google Compute SSL policy weak cipher in use
+        title: Google Compute SSL policy weak cipher in use
       google_compute_subnetwork_with_private_google_access_disabled:
-        description: Google Compute Subnetwork with Private Google Access Disabled
-        title: Google Compute Subnetwork with Private Google Access Disabled
+        description: Google Compute subnetwork with Private Google Access disabled
+        title: Google Compute subnetwork with Private Google Access disabled
       google_container_node_pool_auto_repair_disabled:
-        description: Google Container Node Pool Auto Repair Disabled
-        title: Google Container Node Pool Auto Repair Disabled
+        description: Google container node pool auto repair disabled
+        title: Google container node pool auto repair disabled
       high_google_kms_crypto_key_rotation_period:
-        description: High Google KMS Crypto Key Rotation Period
-        title: High Google KMS Crypto Key Rotation Period
+        description: High Google KMS crypto key rotation period
+        title: High Google KMS crypto key rotation period
       ip_aliasing_disabled:
-        description: IP Aliasing Disabled
-        title: IP Aliasing Disabled
+        description: IP aliasing disabled
+        title: IP aliasing disabled
       ip_forwarding_enabled:
-        description: IP Forwarding Enabled
-        title: IP Forwarding Enabled
+        description: IP forwarding enabled
+        title: IP forwarding enabled
       mysql_instance_with_local_infile_on:
-        description: MySQL Instance With Local Infile On
-        title: MySQL Instance With Local Infile On
+        description: MySQL instance with local infile on
+        title: MySQL instance with local infile on
       network_policy_disabled:
-        description: Network Policy Disabled
-        title: Network Policy Disabled
+        description: Network policy disabled
+        title: Network policy disabled
       node_auto_upgrade_disabled:
-        description: Node Auto Upgrade Disabled
-        title: Node Auto Upgrade Disabled
+        description: Node auto-upgrade disabled
+        title: Node auto-upgrade disabled
       oslogin_is_disabled_for_vm_instance:
-        description: OSLogin Is Disabled In VM Instance
-        title: OSLogin Is Disabled In VM Instance
+        description: OSLogin is disabled in VM instance
+        title: OSLogin is disabled in VM instance
       postgresql_log_checkpoints_flag_not_set_to_on:
-        description: PostgreSQL log_checkpoints Flag Not Set To ON
-        title: PostgreSQL log_checkpoints Flag Not Set To ON
+        description: PostgreSQL log_checkpoints flag not set to on
+        title: PostgreSQL log_checkpoints flag not set to on
       postgresql_log_connections_disabled:
-        description: PostgreSQL Log Connections Disabled
-        title: PostgreSQL Log Connections Disabled
+        description: PostgreSQL log connections disabled
+        title: PostgreSQL log connections disabled
       postgresql_logging_of_temporary_files_disabled:
-        description: PostgreSQL Logging Of Temporary Files Disabled
-        title: PostgreSQL Logging Of Temporary Files Disabled
+        description: PostgreSQL logging of temporary files disabled
+        title: PostgreSQL logging of temporary files disabled
       postgresql_misconfigured_log_messages_flag:
-        description: PostgreSQL Misconfigured Log Messages Flag
-        title: PostgreSQL Misconfigured Log Messages Flag
+        description: PostgreSQL misconfigured log messages flag
+        title: PostgreSQL misconfigured log messages flag
       postgresql_misconfigured_logging_duration_flag:
-        description: PostgreSQL Misconfigured Logging Duration Flag
-        title: PostgreSQL Misconfigured Logging Duration Flag
+        description: PostgreSQL misconfigured logging duration flag
+        title: PostgreSQL misconfigured logging duration flag
       private_cluster_disabled:
-        description: Private Cluster Disabled
-        title: Private Cluster Disabled
+        description: Private cluster disabled
+        title: Private cluster disabled
       project_wide_ssh_keys_are_enabled_in_vm_instances:
-        description: Project-wide SSH Keys Are Enabled In VM Instances
-        title: Project-wide SSH Keys Are Enabled In VM Instances
+        description: Project-wide SSH keys are enabled in VM instances
+        title: Project-wide SSH keys are enabled in VM instances
       rdp_access_is_not_restricted:
-        description: RDP Access Is Not Restricted
-        title: RDP Access Is Not Restricted
+        description: RDP access is not restricted
+        title: RDP access is not restricted
       serial_ports_enabled_for_vm_instances:
-        description: Serial Ports Are Enabled For VM Instances
-        title: Serial Ports Are Enabled For VM Instances
+        description: Serial ports are enabled for VM instances
+        title: Serial ports are enabled for VM instances
       shielded_vm_disabled:
-        description: Shielded VM Disabled
-        title: Shielded VM Disabled
+        description: Shielded VM disabled
+        title: Shielded VM disabled
       sql_db_instance_backup_disabled:
-        description: SQL DB Instance Backup Disabled
-        title: SQL DB Instance Backup Disabled
+        description: SQL DB instance backup disabled
+        title: SQL DB instance backup disabled
       sql_db_instance_is_publicly_accessible:
-        description: SQL DB Instance Publicly Accessible
-        title: SQL DB Instance Publicly Accessible
+        description: SQL DB instance publicly accessible
+        title: SQL DB instance publicly accessible
       sql_db_instance_with_ssl_disabled:
-        description: SQL DB Instance With SSL Disabled
-        title: SQL DB Instance With SSL Disabled
+        description: SQL DB instance with SSL disabled
+        title: SQL DB instance with SSL disabled
       ssh_access_is_not_restricted:
-        description: SSH Access Is Not Restricted
-        title: SSH Access Is Not Restricted
+        description: SSH access is not restricted
+        title: SSH access is not restricted
       stackdriver_logging_disabled:
-        description: Stackdriver Logging Disabled
-        title: Stackdriver Logging Disabled
+        description: Stackdriver logging disabled
+        title: Stackdriver logging disabled
       stackdriver_monitoring_disabled:
-        description: Stackdriver Monitoring Disabled
-        title: Stackdriver Monitoring Disabled
+        description: Stackdriver monitoring disabled
+        title: Stackdriver monitoring disabled
       using_default_service_account:
-        description: Using Default Service Account
-        title: Using Default Service Account
+        description: Using default service account
+        title: Using default service account
       vm_with_full_cloud_access:
-        description: VM With Full Cloud Access
-        title: VM With Full Cloud Access
+        description: VM with full cloud access
+        title: VM with full cloud access
     general:
       communication_over_http:
-        description: Communication Over HTTP
-        title: Communication Over HTTP
+        description: Communication over HTTP
+        title: Communication over HTTP
       insecure_relative_path_resolution:
-        description: Insecure Relative Path Resolution
-        title: Insecure Relative Path Resolution
+        description: Insecure relative path resolution
+        title: Insecure relative path resolution
       logging_of_sensitive_data:
-        description: Logging of Sensitive Data
-        title: Logging of Sensitive Data
+        description: Logging of sensitive data
+        title: Logging of sensitive data
       privilege_escalation_using_become_plugin:
-        description: Privilege Escalation Using Become Plugin
-        title: Privilege Escalation Using Become Plugin
+        description: Privilege escalation using become plugin
+        title: Privilege escalation using become plugin
       risky_file_permissions:
-        description: Risky File Permissions
-        title: Risky File Permissions
+        description: Risky file permissions
+        title: Risky file permissions
       unpinned_package_version:
-        description: Unpinned Package Version
-        title: Unpinned Package Version
+        description: Unpinned package version
+        title: Unpinned package version
     hosts:
       ansible_tower_exposed_to_internet:
-        description: Ansible Tower Exposed To Internet
-        title: Ansible Tower Exposed To Internet
+        description: Ansible Tower exposed to the internet
+        title: Ansible Tower exposed to the internet
   cicd:
     github:
+      anonymous_definition:
+        description: Anonymous definition
+        title: Anonymous definition
+      cache_poisoning:
+        description: Cache poisoning
+        title: Cache poisoning
+      concurrency_limits:
+        description: Concurrency limits
+        title: Concurrency limits
+      dangerous_triggers:
+        description: Dangerous triggers
+        title: Dangerous triggers
+      dependabot_cooldown:
+        description: Dependabot cooldown
+        title: Dependabot cooldown
+      dependabot_execution:
+        description: Dependabot execution
+        title: Dependabot execution
+      github_env:
+        description: GitHub environment file injection
+        title: GitHub environment file injection
+      hardcoded_container_credentials:
+        description: Hardcoded container credentials
+        title: Hardcoded container credentials
+      misfeature:
+        description: Misfeature
+        title: Misfeature
+      obfuscation:
+        description: Obfuscation
+        title: Obfuscation
+      overprovisioned_secrets:
+        description: Overprovisioned secrets
+        title: Overprovisioned secrets
       run_block_injection:
         description: Run block injection
         title: Run block injection
       script_block_injection:
         description: Script block injection
         title: Script block injection
+      secrets_inherit:
+        description: Secrets inherit
+        title: Secrets inherit
+      secrets_outside_env:
+        description: Secrets outside environment
+        title: Secrets outside environment
+      self_hosted_runner:
+        description: Self-hosted runner
+        title: Self-hosted runner
+      superfluous_actions:
+        description: Superfluous actions
+        title: Superfluous actions
       unpinned_actions_full_length_commit_sha:
         description: Unpinned actions full length commit SHA
         title: Unpinned actions full length commit SHA
+      unpinned_images:
+        description: Unpinned images
+        title: Unpinned images
+      unredacted_secrets:
+        description: Unredacted secrets
+        title: Unredacted secrets
       unsecured_commands:
         description: Unsecured commands
         title: Unsecured commands
+      unsound_conditions:
+        description: Unsound condition
+        title: Unsound condition
+      unsound_contains_no_controllable_input:
+        description: Unsound contains without controllable input
+        title: Unsound contains without controllable input
+      unsound_contains_with_controllable_input:
+        description: Unsound contains with controllable input
+        title: Unsound contains with controllable input
       unspecified_workflows_permissions:
         description: Unspecified workflows level permissions
         title: Unspecified workflows level permissions
+      use_trusted_publishing:
+        description: Use trusted publishing for authentication
+        title: Use trusted publishing for authentication
   cloudFormation:
     aws:
       access_key_not_rotated_within_90_days:
@@ -3622,38 +3685,38 @@ rules:
         title: Web app accepting traffic other than HTTPS
     databricks:
       autoscale_badly_setup:
-        description: Beta - Databricks autoscale configuration incomplete
-        title: Beta - Databricks autoscale configuration incomplete
+        description: Databricks autoscale configuration incomplete
+        title: Databricks autoscale configuration incomplete
       cluster_aws_attributes:
-        description: Beta - check Databricks cluster AWS attribute best practices
-        title: Beta - check Databricks cluster AWS attribute best practices
+        description: Check Databricks cluster AWS attribute best practices
+        title: Check Databricks cluster AWS attribute best practices
       cluster_azure_attributes:
-        description: Beta - check Databricks cluster Azure attribute best practices
-        title: Beta - check Databricks cluster Azure attribute best practices
+        description: Check Databricks cluster Azure attribute best practices
+        title: Check Databricks cluster Azure attribute best practices
       cluster_gcp_attributes:
-        description: Beta - check Databricks cluster GCP attribute best practices
-        title: Beta - check Databricks cluster GCP attribute best practices
+        description: Check Databricks cluster GCP attribute best practices
+        title: Check Databricks cluster GCP attribute best practices
       databricks_permissions:
-        description: Beta - Databricks cluster or job with none or insecure permissions
-        title: Beta - Databricks cluster or job with none or insecure permissions
+        description: Databricks cluster or job with no or insecure permissions
+        title: Databricks cluster or job with no or insecure permissions
       group_without_user_or_instance_profile:
-        description: Beta - Databricks group without user or instance profile
-        title: Beta - Databricks group without user or instance profile
+        description: Databricks group without user or instance profile
+        title: Databricks group without user or instance profile
       indefinitely_obo_token:
-        description: Beta - Databricks OBO token has indefinite lifetime
-        title: Beta - Databricks OBO token has indefinite lifetime
+        description: Indefinitely Databricks OBO token lifetime
+        title: Indefinitely Databricks OBO token lifetime
       indefinitely_token:
-        description: Beta - Databricks token has indefinite lifetime
-        title: Beta - Databricks token has indefinite lifetime
+        description: Indefinitely Databricks token lifetime
+        title: Indefinitely Databricks token lifetime
       unrestricted_acl:
-        description: Beta - unrestricted Databricks ACL
-        title: Beta - unrestricted Databricks ACL
+        description: Unrestricted Databricks ACL
+        title: Unrestricted Databricks ACL
       use_lts_spark_version:
-        description: Beta - Databricks cluster uses non-LTS Spark version
-        title: Beta - Databricks cluster uses non-LTS Spark version
+        description: Databricks cluster uses non-LTS Spark version
+        title: Databricks cluster uses non-LTS Spark version
       use_spark_submit_task:
-        description: Beta - job's task is legacy (spark_submit_task)
-        title: Beta - job's task is legacy (spark_submit_task)
+        description: Job's task is legacy (spark_submit_task)
+        title: Job's task is legacy (spark_submit_task)
     gcp:
       artifact_registry_repository_is_public:
         description: Artifact Registry repo is public
@@ -4079,124 +4142,123 @@ rules:
         title: Workload mounting with sensitive OS directory
     nifcloud:
       computing_instance_has_common_private:
-        description: Beta - Nifcloud computing has common private network
-        title: Beta - Nifcloud computing has common private network
+        description: NIFCLOUD computing has common private network
+        title: NIFCLOUD computing has common private network
       computing_instance_has_public_ingress_sgr:
-        description: Beta - Nifcloud computing has public ingress security group rule
-        title: Beta - Nifcloud computing has public ingress security group rule
+        description: NIFCLOUD computing has public ingress security group rule
+        title: NIFCLOUD computing has public ingress security group rule
       computing_instance_security_group_undefined:
-        description: Beta - Nifcloud computing undefined security group to instance
-        title: Beta - Nifcloud computing undefined security group to instance
+        description: NIFCLOUD computing undefined security group to instance
+        title: NIFCLOUD computing undefined security group to instance
       computing_security_group_description_undefined:
-        description: Beta - Nifcloud computing undefined description to security group
-        title: Beta - Nifcloud computing undefined description to security group
+        description: NIFCLOUD computing undefined description to security group
+        title: NIFCLOUD computing undefined description to security group
       computing_security_group_rule_description_undefined:
-        description: Beta - Nifcloud computing undefined description to security group
-          rule
-        title: Beta - Nifcloud computing undefined description to security group rule
+        description: NIFCLOUD computing undefined description to security group rule
+        title: NIFCLOUD computing undefined description to security group rule
       db_does_not_have_long_backup_retention:
-        description: Beta - Nifcloud RDB has backup retention less than 2 days
-        title: Beta - Nifcloud RDB has backup retention less than 2 days
+        description: NIFCLOUD RDB backup retention period below 7 days
+        title: NIFCLOUD RDB backup retention period below 7 days
       db_has_public_access:
-        description: Beta - Nifcloud RDB has public DB access
-        title: Beta - Nifcloud RDB has public DB access
+        description: NIFCLOUD RDB has public DB access
+        title: NIFCLOUD RDB has public DB access
       db_instance_has_common_private:
-        description: Beta - Nifcloud RDB has common private network
-        title: Beta - Nifcloud RDB has common private network
+        description: NIFCLOUD RDB has common private network
+        title: NIFCLOUD RDB has common private network
       db_security_group_description_undefined:
-        description: Beta - Nifcloud RDB undefined description to DB security group
-        title: Beta - Nifcloud RDB undefined description to DB security group
+        description: NIFCLOUD RDB undefined description to DB security group
+        title: NIFCLOUD RDB undefined description to DB security group
       db_security_group_has_public_ingress_sgr:
-        description: Beta - Nifcloud RDB has public DB ingress security group rule
-        title: Beta - Nifcloud RDB has public DB ingress security group rule
+        description: NIFCLOUD RDB has public DB ingress security group rule
+        title: NIFCLOUD RDB has public DB ingress security group rule
       dns_has_verified_record:
-        description: Beta - Nifcloud DNS has verified record
-        title: Beta - Nifcloud DNS has verified record
+        description: NIFCLOUD DNS has verified record
+        title: NIFCLOUD DNS has verified record
       elb_has_common_private:
-        description: Beta - Nifcloud ELB has common private network
-        title: Beta - Nifcloud ELB has common private network
+        description: NIFCLOUD ELB has common private network
+        title: NIFCLOUD ELB has common private network
       elb_listener_use_http:
-        description: Beta - Nifcloud ELB listener use HTTP protocol
-        title: Beta - Nifcloud ELB listener use HTTP protocol
+        description: NIFCLOUD ELB listener using HTTP protocol
+        title: NIFCLOUD ELB listener using HTTP protocol
       elb_use_http:
-        description: Beta - Nifcloud ELB use HTTP protocol
-        title: Beta - Nifcloud ELB use HTTP protocol
+        description: NIFCLOUD ELB using HTTP protocol
+        title: NIFCLOUD ELB using HTTP protocol
       load_balancer_listener_use_http:
-        description: Beta - Nifcloud LB listener use HTTP port
-        title: Beta - Nifcloud LB listener use HTTP port
+        description: NIFCLOUD LB listener using HTTP port
+        title: NIFCLOUD LB listener using HTTP port
       load_balancer_use_http:
-        description: Beta - Nifcloud LB use HTTP port
-        title: Beta - Nifcloud LB use HTTP port
+        description: NIFCLOUD LB using HTTP port
+        title: NIFCLOUD LB using HTTP port
       load_balancer_use_insecure_tls_policy_id:
-        description: Beta - Nifcloud LB use insecure TLS policy ID
-        title: Beta - Nifcloud LB use insecure TLS policy ID
+        description: NIFCLOUD LB using insecure TLS policy ID
+        title: NIFCLOUD LB using insecure TLS policy ID
       load_balancer_use_insecure_tls_policy_name:
-        description: Beta - Nifcloud LB use insecure TLS policy name
-        title: Beta - Nifcloud LB use insecure TLS policy name
+        description: NIFCLOUD LB using insecure TLS policy name
+        title: NIFCLOUD LB using insecure TLS policy name
       nas_instance_has_common_private:
-        description: Beta - Nifcloud NAS has common private network
-        title: Beta - Nifcloud NAS has common private network
+        description: NIFCLOUD NAS has common private network
+        title: NIFCLOUD NAS has common private network
       nas_security_group_description_undefined:
-        description: Beta - Nifcloud NAS undefined description to NAS security group
-        title: Beta - Nifcloud NAS undefined description to NAS security group
+        description: NIFCLOUD NAS undefined description to NAS security group
+        title: NIFCLOUD NAS undefined description to NAS security group
       nas_security_group_has_public_ingress_sgr:
-        description: Beta - Nifcloud NAS has public ingress NAS security group rule
-        title: Beta - Nifcloud NAS has public ingress NAS security group rule
+        description: NIFCLOUD NAS has public ingress NAS security group rule
+        title: NIFCLOUD NAS has public ingress NAS security group rule
       router_has_common_private:
-        description: Beta - Nifcloud router has common private network
-        title: Beta - Nifcloud router has common private network
+        description: NIFCLOUD router has common private network
+        title: NIFCLOUD router has common private network
       router_security_group_undefined:
-        description: Beta - Nifcloud router undefined security group to router
-        title: Beta - Nifcloud router undefined security group to router
+        description: NIFCLOUD router undefined security group
+        title: NIFCLOUD router undefined security group
       vpn_gateway_security_group_undefined:
-        description: Beta - Nifcloud VPN gateway undefined security group to VPN gateway
-        title: Beta - Nifcloud VPN gateway undefined security group to VPN gateway
+        description: NIFCLOUD VPN gateway undefined security group
+        title: NIFCLOUD VPN gateway undefined security group
     tencentcloud:
       cdb_instance_internet_service_enabled:
-        description: Beta - CDB instance internet service enabled
-        title: Beta - CDB instance internet service enabled
+        description: CDB instance internet service enabled
+        title: CDB instance internet service enabled
       cdb_instance_using_default_intranet_port:
-        description: Beta - CDB instance internet using default intranet port
-        title: Beta - CDB instance internet using default intranet port
+        description: CDB instance internet using default intranet port
+        title: CDB instance internet using default intranet port
       cdb_instance_without_backup_policy:
-        description: Beta - CDB instance without backup policy
-        title: Beta - CDB instance without backup policy
+        description: CDB instance without backup policy
+        title: CDB instance without backup policy
       clb_instance_log_setting_disabled:
-        description: Beta - CLB instance log setting disabled
-        title: Beta - CLB instance log setting disabled
+        description: CLB instance log setting disabled
+        title: CLB instance log setting disabled
       clb_listener_using_insecure_protocols:
-        description: Beta - CLB listener using insecure protocols
-        title: Beta - CLB listener using insecure protocols
+        description: CLB listener using insecure protocols
+        title: CLB listener using insecure protocols
       cvm_instance_disable_monitor_service:
-        description: Beta - CVM instance disable monitor service
-        title: Beta - CVM instance disable monitor service
+        description: CVM instance disable monitor service
+        title: CVM instance disable monitor service
       cvm_instance_has_public_ip:
-        description: Beta - CVM instance has public IP
-        title: Beta - CVM instance has public IP
+        description: CVM instance has public IP
+        title: CVM instance has public IP
       cvm_instance_using_default_security_group:
-        description: Beta - CVM instance using default security group
-        title: Beta - CVM instance using default security group
+        description: CVM instance using default security group
+        title: CVM instance using default security group
       cvm_instance_using_default_vpc:
-        description: Beta - CVM instance using default VPC
-        title: Beta - CVM instance using default VPC
+        description: CVM instance using default VPC
+        title: CVM instance using default VPC
       cvm_instance_using_user_data:
-        description: Beta - CVM instance using user data
-        title: Beta - CVM instance using user data
+        description: CVM instance using user data
+        title: CVM instance using user data
       disk_encryption_disabled:
-        description: Beta - disk encryption disabled
-        title: Beta - disk encryption disabled
+        description: Disk encryption disabled
+        title: Disk encryption disabled
       security_group_rule_set_accepts_all_traffic:
-        description: Beta - security group rule set accepts all traffic
-        title: Beta - security group rule set accepts all traffic
+        description: Security group rule set accepts all traffic
+        title: Security group rule set accepts all traffic
       tke_cluster_encryption_protection_disabled:
-        description: Beta - TKE cluster encryption protection disabled
-        title: Beta - TKE cluster encryption protection disabled
+        description: TKE cluster encryption protection disabled
+        title: TKE cluster encryption protection disabled
       tke_cluster_has_public_access:
-        description: Beta - TKE cluster has public access
-        title: Beta - TKE cluster has public access
+        description: TKE cluster has public access
+        title: TKE cluster has public access
       tke_cluster_log_disabled:
-        description: Beta - TKE cluster log agent is not enabled
-        title: Beta - TKE cluster log agent is not enabled
+        description: TKE cluster log agent is not enabled
+        title: TKE cluster log agent is not enabled
       vpc_flow_log_disabled:
-        description: Beta - VPC flow logs disabled
-        title: Beta - VPC flow logs disabled
+        description: VPC flow logs disabled
+        title: VPC flow logs disabled

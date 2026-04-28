@@ -1,8 +1,8 @@
 {
   "id": "940ddce2-26bd-4e31-a9b4-382714f73231",
-  "queryName": "Beta - Nifcloud RDB undefined description to DB security group",
+  "queryName": "NIFCLOUD RDB undefined description to DB security group",
   "severity": "LOW",
-  "category": "Networking and Firewall",
+  "category": "Best Practices",
   "descriptionText": "Missing description for DB security group.\n\nResources of type `nifcloud_db_security_group` should include a `description` attribute for auditing and identification. This rule flags `nifcloud_db_security_group` resources that do not define a `description`.",
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/db_security_group_description_undefined",
   "platform": "Terraform",

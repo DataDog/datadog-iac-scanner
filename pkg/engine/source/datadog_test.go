@@ -46,22 +46,11 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
-			name: "IncludeQueries",
-			params: QueryInspectorParameters{
-				ExperimentalQueries: true,
-				BomQueries:          true,
-				IncludeQueries:      IncludeQueries{ByIDs: []string{"rule-2", "rule-3"}},
-			},
-			expected: []model.QueryMetadata{
-				/* queries[0] is not included */ queries[1], queries[2],
-			},
-		},
-		{
 			name: "ExcludeQueries ByIDs",
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      ExcludeQueries{ByIDs: []string{"rule-1"}},
+				ExcludeQueries:      QueryFilter{ByIDs: []string{"dockerfile-gcp-rule-1"}},
 			},
 			expected: []model.QueryMetadata{
 				/* queries[0] is excluded */ queries[1], queries[2],
@@ -72,7 +61,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      ExcludeQueries{BySeverities: []string{"MEDIUM"}},
+				ExcludeQueries:      QueryFilter{BySeverities: []string{"MEDIUM"}},
 			},
 			expected: []model.QueryMetadata{
 				queries[0] /* queries[1] has severity=MEDIUM */, queries[2],
@@ -83,7 +72,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      ExcludeQueries{ByCategories: []string{"Supply-Chain"}},
+				ExcludeQueries:      QueryFilter{ByCategories: []string{"Supply-Chain"}},
 			},
 			expected: []model.QueryMetadata{
 				queries[0], queries[1], /* queries[2] has category=Supply-Chain */
@@ -94,7 +83,7 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries:      ExcludeQueries{ByCategories: []string{"Supply-Chain", "Encryption"}},
+				ExcludeQueries:      QueryFilter{ByCategories: []string{"Supply-Chain", "Encryption"}},
 			},
 			expected: []model.QueryMetadata{
 				/* queries[0] has category=Encryption */ queries[1], /* queries[2] has category=Supply-Chain */
@@ -105,13 +94,139 @@ func TestQuery(t *testing.T) {
 			params: QueryInspectorParameters{
 				ExperimentalQueries: true,
 				BomQueries:          true,
-				ExcludeQueries: ExcludeQueries{
+				ExcludeQueries: QueryFilter{
 					ByIDs:        []string{"rule-2"},
 					ByCategories: []string{"Supply-Chain"},
 				},
 			},
 			expected: []model.QueryMetadata{
 				queries[0], /* queries[1] has excluded Id */ /* queries[2] has category=Supply-Chain */
+			},
+		},
+		{
+			name: "IncludeQueries ByIDs",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{ByIDs: []string{"rule-2", "grpc-common-rule-3"}},
+			},
+			expected: []model.QueryMetadata{
+				/* queries[0] is not included */ queries[1], queries[2],
+			},
+		},
+		{
+			name: "IncludeQueries BySeverities",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{BySeverities: []string{"HIGH"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], /* queries[1] has severity=MEDIUM, queries[2] has severity=TRACE */
+			},
+		},
+		{
+			name: "IncludeQueries ByCategories",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{ByCategories: []string{"Backup"}},
+			},
+			expected: []model.QueryMetadata{
+				/* queries[0] has category=Encryption */ queries[1], /* queries[2] has category=Supply-Chain */
+			},
+		},
+		{
+			name: "IncludeQueries BySeverities multiple",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{BySeverities: []string{"HIGH", "MEDIUM"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], queries[1], /* queries[2] has severity=TRACE */
+			},
+		},
+		{
+			name: "IncludeQueries BySeverities and ByCategories",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries: QueryFilter{
+					BySeverities: []string{"HIGH"},
+					ByCategories: []string{"Encryption", "Backup"},
+				},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], /* queries[1]: MEDIUM not in HIGH; queries[2]: TRACE not in HIGH */
+			},
+		},
+		{
+			name: "IncludeQueries and ExcludeQueries",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{BySeverities: []string{"HIGH", "MEDIUM"}},
+				ExcludeQueries:      QueryFilter{ByCategories: []string{"Backup"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], /* queries[1]: included by severity but excluded by category; queries[2]: not included */
+			},
+		},
+		{
+			name: "IncludeQueries and ExcludeQueries by different criteria",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{ByCategories: []string{"Encryption", "Supply-Chain"}},
+				ExcludeQueries:      QueryFilter{BySeverities: []string{"TRACE"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0], /* queries[1]: not included; queries[2]: included but excluded by severity */
+			},
+		},
+		{
+			name: "IncludeQueriesById works with legacy id",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{ByIDs: []string{"rule-2"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[1],
+			},
+		},
+		{
+			name: "IncludeQueriesById works with regular id",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				IncludeQueries:      QueryFilter{ByIDs: []string{"common-rule-2"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[1],
+			},
+		},
+		{
+			name: "ExcludeQueriesById works with legacy id",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				ExcludeQueries:      QueryFilter{ByIDs: []string{"rule-2"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0] /* queries[1] excluded */, queries[2],
+			},
+		},
+		{
+			name: "ExcludeQueriesById works with regular id",
+			params: QueryInspectorParameters{
+				ExperimentalQueries: true,
+				BomQueries:          true,
+				ExcludeQueries:      QueryFilter{ByIDs: []string{"common-rule-2"}},
+			},
+			expected: []model.QueryMetadata{
+				queries[0] /* queries[1] excluded */, queries[2],
 			},
 		},
 	} {
@@ -228,7 +343,7 @@ func TestSourceWithWantedProviders(t *testing.T) {
 
 var rules = []*Rule{
 	{
-		ID:               "rule-1",
+		ID:               "dockerfile-gcp-rule-1",
 		Name:             "rule-1",
 		LegacyId:         nil,
 		ShortDescription: "short 1",
@@ -246,8 +361,8 @@ var rules = []*Rule{
 		IsPublished:      true,
 	},
 	{
-		ID:               "rule-2",
-		Name:             "some-name",
+		ID:               "common-rule-2",
+		Name:             "rule-2",
 		LegacyId:         ptr("rule-2"),
 		ShortDescription: "short 2",
 		Description:      "full 2",
@@ -260,7 +375,7 @@ var rules = []*Rule{
 		IsPublished:      true,
 	},
 	{
-		ID:               "rule-3",
+		ID:               "grpc-common-rule-3",
 		Name:             "rule-3",
 		ShortDescription: "short 3",
 		Description:      "full 3",
@@ -296,24 +411,23 @@ var queries = []model.QueryMetadata{
 		Query:     "rule-1",
 		Content:   "query text 1",
 		Metadata: map[string]any{
-			"id":              "rule-1",
+			"id":              "dockerfile-gcp-rule-1",
 			"queryName":       "short 1",
 			"descriptionText": "full 1",
 			"platform":        "Dockerfile",
 			"severity":        "HIGH",
 			"category":        "Encryption",
 			"descriptionUrl":  "http://example.com/doc1",
-			"descriptionId":   "abcdef",
+			"descriptionID":   "abcdef",
 			"cloudProvider":   "gcp",
 			"cwe":             "123",
 		},
-		Platform:    "Dockerfile",
-		CWE:         "123",
+		Platform:    "dockerfile",
 		Aggregation: 1,
 	},
 	{
 		InputData: "{}",
-		Query:     "some-name",
+		Query:     "rule-2",
 		Content:   "query text 2",
 		Metadata: map[string]any{
 			"id":              "rule-2",
@@ -322,8 +436,11 @@ var queries = []model.QueryMetadata{
 			"platform":        "Common",
 			"severity":        "MEDIUM",
 			"category":        "Backup",
+			"descriptionUrl":  "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/common/rule-2/",
+			"descriptionID":   "228a1c19",
+			"cwe":             "",
 		},
-		Platform:     "Common",
+		Platform:     "common",
 		Aggregation:  1,
 		Experimental: true,
 	},
@@ -332,7 +449,7 @@ var queries = []model.QueryMetadata{
 		Query:     "rule-3",
 		Content:   "query text 3",
 		Metadata: map[string]any{
-			"id":              "rule-3",
+			"id":              "grpc-common-rule-3",
 			"queryName":       "short 3",
 			"descriptionText": "full 3",
 			"platform":        "GRPC",
@@ -340,8 +457,11 @@ var queries = []model.QueryMetadata{
 			"category":        "Supply-Chain",
 			"cloudProvider":   "common",
 			"aggregation":     2,
-			"overrides": map[string]map[string]any{
-				"1.0": {
+			"descriptionUrl":  "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/grpc/common/rule-3/",
+			"descriptionID":   "868c4101",
+			"cwe":             "",
+			"override": map[string]any{
+				"1.0": map[string]any{
 					"id":              "ovr-rule-3",
 					"queryName":       "ovr short 3",
 					"descriptionText": "ovr full 3",
@@ -349,13 +469,13 @@ var queries = []model.QueryMetadata{
 					"severity":        "INFO",
 					"category":        "Best Practices",
 					"descriptionUrl":  "http://example.com/doc3",
-					"descriptionId":   "ovr description id",
+					"descriptionID":   "ovr description id",
 					"cloudProvider":   "azure",
 					"cwe":             "456",
 				},
 			},
 		},
-		Platform:    "GRPC",
+		Platform:    "grpc",
 		Aggregation: 2,
 	},
 }

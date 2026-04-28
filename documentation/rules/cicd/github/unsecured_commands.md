@@ -140,7 +140,7 @@ on:
 
 env:
   # 1. Enable unsecure commands
-  ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+  ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
   ENVIRONMENT_NAME: prod
 
 jobs:
@@ -166,4 +166,5 @@ jobs:
                 production_environment: false,
             });
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
 ```

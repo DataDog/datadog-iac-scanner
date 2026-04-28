@@ -1,5 +1,6 @@
 package Cx
 
+import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
 
 # User-controllable contexts that make this HIGH severity
@@ -81,6 +82,39 @@ CxPolicy[result] {
 		"keyExpectedValue": "Use explicit equality checks or JSON array with contains() instead of space-separated string",
 		"keyActualValue": sprintf("Step '%s' contains() condition can be bypassed", [step_name]),
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", s, "if"], []),
+		"resourceType": "github_action",
+		"resourceName": step_name
+	}
+}
+
+# Composite GitHub Action: detect unsafe contains() patterns in step `if` conditions.
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.is_composite_action(doc)
+
+	step := doc.runs.steps[s]
+
+	parsed_exprs := step["_parsed_expressions_if"]
+	parsed_expr := parsed_exprs[_]
+
+	parsed_expr.parse_ok == true
+
+	vulnerable_call := find_vulnerable_contains(parsed_expr.ast)
+
+	is_user_controllable := check_user_controllable_in_ast(vulnerable_call.second_arg)
+	severity := get_severity(is_user_controllable)
+
+	severity == "HIGH"
+
+	step_name := object.get(step, "name", sprintf("step-%d", [s]))
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("runs.steps[%d].if", [s]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Use explicit equality checks or JSON array with contains() instead of space-separated string",
+		"keyActualValue": sprintf("Step '%s' contains() condition can be bypassed", [step_name]),
+		"searchLine": common_lib.build_search_line(["runs", "steps", s, "if"], []),
 		"resourceType": "github_action",
 		"resourceName": step_name
 	}

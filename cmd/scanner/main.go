@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -15,7 +16,15 @@ import (
 
 const defaultFailCode = 126
 
+// gcPercent sets the garbage collection target percentage. A lower value makes
+// the GC run more frequently, reclaiming transient allocations from OPA query
+// evaluation faster and reducing peak memory usage.
+const gcPercent = 50
+
 func main() {
+	if _, ok := os.LookupEnv("GOGC"); !ok {
+		debug.SetGCPercent(gcPercent)
+	}
 	cmd := &cli.Command{
 		Name:  "datadog-iac-scanner",
 		Usage: "Scans your Infrastructure as Code configurations",

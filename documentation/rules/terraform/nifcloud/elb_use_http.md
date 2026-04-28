@@ -1,14 +1,14 @@
 ---
-title: "Beta - Nifcloud ELB use HTTP protocol"
+title: "NIFCLOUD ELB using HTTP protocol"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/elb_use_http"
   id: "e2de2b80-2fc2-4502-a764-40930dfcc70a"
-  display_name: "Beta - Nifcloud ELB use HTTP protocol"
+  display_name: "NIFCLOUD ELB using HTTP protocol"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
-  severity: "HIGH"
-  category: "Insecure Configurations"
+  severity: "MEDIUM"
+  category: "Networking and Firewall"
 ---
 ## Metadata
 
@@ -18,9 +18,9 @@ meta:
 
 **Platform:** Terraform
 
-**Severity:** High
+**Severity:** Medium
 
-**Category:** Insecure Configurations
+**Category:** Networking and Firewall
 
 #### Learn More
 

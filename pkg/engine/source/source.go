@@ -18,24 +18,21 @@ import (
 
 // QueryInspectorParameters is a struct that represents the optionn to select queries to be executed
 type QueryInspectorParameters struct {
-	IncludeQueries      IncludeQueries
-	ExcludeQueries      ExcludeQueries
+	// IncludeQueries specifies the queries that will be used
+	IncludeQueries QueryFilter
+	// ExcludeQueries specifies the queries that will not be used
+	ExcludeQueries      QueryFilter
 	ExperimentalQueries bool
 	InputDataPath       string
 	BomQueries          bool
 	FlagEvaluator       featureflags.FlagEvaluator
 }
 
-// ExcludeQueries is a struct that represents the option to exclude queries by ids or by categories
-type ExcludeQueries struct {
+// QueryFilter is a struct that represents the option to exclude queries by ids or by categories
+type QueryFilter struct {
 	ByIDs        []string
 	ByCategories []string
 	BySeverities []string
-}
-
-// IncludeQueries is a struct that represents the option to include queries by ID taking precedence over exclusion
-type IncludeQueries struct {
-	ByIDs []string
 }
 
 // RegoLibraries is a struct that contains the library code and its input data

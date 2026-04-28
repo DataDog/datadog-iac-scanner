@@ -14,17 +14,22 @@ CxPolicy[result] {
 	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
-	tf_lib.anyPrincipal(statement)
+	sub_path := tf_lib.wildcard_principal_sub_path(statement)
+
+	principal_path := concat(".", array.concat(["Principal"], sub_path))
 
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": res_type,
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("%s[%s].policy.Statement[%d].Principal", [res_type, name, idx]),
+		"searchKey": sprintf("%s[%s].policy.Statement[%d].%s", [res_type, name, idx, principal_path]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "'Statement.Principal.AWS' shouldn't contain '*'",
-		"keyActualValue": "'Statement.Principal.AWS' contains '*'",
-		"searchLine": common_lib.build_search_line(["resource", res_type, name, "policy", "Statement", idx, "Principal"], []),
+		"keyExpectedValue": sprintf("'Statement.%s' shouldn't contain '*'", [principal_path]),
+		"keyActualValue": sprintf("'Statement.%s' contains '*'", [principal_path]),
+		"searchLine": common_lib.build_search_line(
+			array.concat(["resource", res_type, name, "policy", "Statement", idx, "Principal"], sub_path),
+			[],
+		),
 	}
 }
 
@@ -39,16 +44,21 @@ CxPolicy[result] {
 	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
-	tf_lib.anyPrincipal(statement)
+	sub_path := tf_lib.wildcard_principal_sub_path(statement)
+
+	principal_path := concat(".", array.concat(["Principal"], sub_path))
 
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].%s.Statement[%d].Principal", [name, keyToCheck, idx]),
+		"searchKey": sprintf("module[%s].%s.Statement[%d].%s", [name, keyToCheck, idx, principal_path]),
 		"issueType": "IncorrectValue",
-		"keyExpectedValue": "'Statement.Principal.AWS' shouldn't contain '*'",
-		"keyActualValue": "'Statement.Principal.AWS' contains '*'",
-		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx, "Principal"], []),
+		"keyExpectedValue": sprintf("'Statement.%s' shouldn't contain '*'", [principal_path]),
+		"keyActualValue": sprintf("'Statement.%s' contains '*'", [principal_path]),
+		"searchLine": common_lib.build_search_line(
+			array.concat(["module", name, keyToCheck, "Statement", idx, "Principal"], sub_path),
+			[],
+		),
 	}
 }

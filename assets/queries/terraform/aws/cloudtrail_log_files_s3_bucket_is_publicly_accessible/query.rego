@@ -16,7 +16,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket",
-		"resourceName": tf_lib.get_specific_resource_name(bucket, "aws_s3_bucket", s3BucketName),
+		"resourceName": tf_lib.resolve_s3_bucket_name(bucket, s3BucketName),
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [s3BucketName]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("aws_s3_bucket[%s] to not be publicly accessible", [s3BucketName]),
@@ -53,7 +53,7 @@ CxPolicy[result] {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket_acl",
-		"resourceName": tf_lib.get_resource_name(acl, name),
+		"resourceName": tf_lib.resolve_s3_bucket_name(acl, name),
 		"searchKey": sprintf("aws_s3_bucket_acl[%s].acl", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("aws_s3_bucket_acl[%s] to not be publicly accessible", [name]),

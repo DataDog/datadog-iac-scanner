@@ -1,14 +1,14 @@
 ---
-title: "Beta - Nifcloud RDB undefined description to DB security group"
+title: "NIFCLOUD RDB undefined description to DB security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/db_security_group_description_undefined"
   id: "940ddce2-26bd-4e31-a9b4-382714f73231"
-  display_name: "Beta - Nifcloud RDB undefined description to DB security group"
+  display_name: "NIFCLOUD RDB undefined description to DB security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "LOW"
-  category: "Networking and Firewall"
+  category: "Best Practices"
 ---
 ## Metadata
 
@@ -20,7 +20,7 @@ meta:
 
 **Severity:** Low
 
-**Category:** Networking and Firewall
+**Category:** Best Practices
 
 #### Learn More
 

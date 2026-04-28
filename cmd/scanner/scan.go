@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
@@ -73,12 +74,16 @@ var scanAction = &cli.Command{
 			Usage:   "a list of platform types to scan",
 			Value:   GetSupportedPlatforms(),
 		},
-		&cli.BoolFlag{
-			Name:   "x-parallelparsing",
-			Hidden: true,
-			Usage:  "(experimental, will be removed soon) parse files in parallel",
-			Value:  false,
-		},
+		// NOTE: --x-parallelparsing flag disabled due to pre-existing race conditions
+		// in concurrent query workers (SetupLogs shared state write, docker detector
+		// shallow slice copy) that cause non-deterministic violation counts.
+		// See K9VULN-13746 for the follow-up to fix and re-enable.
+		// &cli.BoolFlag{
+		// 	Name:   "x-parallelparsing",
+		// 	Hidden: true,
+		// 	Usage:  "(experimental, will be removed soon) parse files in parallel",
+		// 	Value:  false,
+		// },
 	},
 	Action: runScan,
 }
@@ -121,14 +126,21 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("error retrieving repository commit information: %w", err)
 	}
 
-	config, err := scan.ReadConfiguration(ctx, repoDir)
+	cfg, err := config.ReadConfiguration(ctx, repoDir)
 	if err != nil {
 		return fmt.Errorf("error reading the configuration: %w", err)
 	}
-	excludePaths, err := getRepoRelativePaths(repoDir, config.ExcludePaths)
+	excludePaths, err := getRepoRelativePaths(repoDir, cfg.IgnorePaths)
 	if err != nil {
 		return err
 	}
+	cfg.IgnorePaths = excludePaths
+	onlyPaths, err := getRepoRelativePaths(repoDir, cfg.OnlyPaths)
+	if err != nil {
+		return err
+	}
+	cfg.OnlyPaths = onlyPaths
+	cfg.IgnoreRules = append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...)
 	params := &scan.Parameters{
 		CloudProvider:              []string{""},
 		OutputPath:                 outputPath,
@@ -149,12 +161,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		PayloadPath:                payloadPath,
 		SCIInfo:                    model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:              getFeatureFlagEvaluator(c),
-		ExcludeCategories:          config.ExcludeCategories,
-		ExcludeQueries:             append(c.StringSlice("exclude-queries"), config.ExcludeQueries...),
-		ExcludeResults:             config.ExcludeResults,
-		ExcludeSeverities:          config.ExcludeSeverities,
-		ExcludePaths:               excludePaths,
-		IncludeQueries:             config.IncludeQueries,
+		Config:                     *cfg,
 		DownloadQueriesFromDatadog: c.Bool("x-downloadqueriesfromdatadog"),
 	}
 
@@ -357,9 +364,11 @@ func selectPlatforms(platforms []string) []string {
 	return out
 }
 
-func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
+func getFeatureFlagEvaluator(_ *cli.Command) featureflags.FlagEvaluator {
 	overrides := map[string]bool{}
-	overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
+	// Parallel parsing disabled: triggers race conditions in concurrent
+	// query workers causing non-deterministic violation counts.
+	// overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }
 

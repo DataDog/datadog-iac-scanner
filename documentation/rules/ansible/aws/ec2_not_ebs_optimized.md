@@ -46,14 +46,13 @@ Secure configuration example:
 
 ## Compliant Code Examples
 ```yaml
-- name: example4
+- name: Launch with ebs_optimized true
   amazon.aws.ec2_instance:
     name: app-server
     key_name: mykey
-    image_id: ami-123456
     instance_type: t2.micro
+    image_id: ami-123456
     vpc_subnet_id: subnet-29e63245
-    security_group: my_sg
     ebs_optimized: true
     network:
       assign_public_ip: false
@@ -61,28 +60,40 @@ Secure configuration example:
 ```
 
 ```yaml
-- name: example5
+- name: Launch instance type EBS-optimized by default
   amazon.aws.ec2_instance:
     name: app-server
     key_name: mykey
     instance_type: m5.large
     image_id: ami-123456
     vpc_subnet_id: subnet-29e63245
-    security_group: my_sg
+    network:
+      assign_public_ip: false
+
+```
+
+```yaml
+- name: Launch with ebs_optimized false
+  amazon.aws.ec2_instance:
+    name: app-server
+    key_name: mykey
+    instance_type: m5.large
+    image_id: ami-123456
+    vpc_subnet_id: subnet-29e63245
+    ebs_optimized: false
     network:
       assign_public_ip: false
 
 ```
 ## Non-Compliant Code Examples
 ```yaml
-- name: example2
+- name: Launch t2.micro with ebs_optimized false
   amazon.aws.ec2_instance:
-    name: app-server
+    name: app-server-2
     key_name: mykey
     instance_type: t2.micro
     image_id: ami-123456
     vpc_subnet_id: subnet-29e63245
-    security_group: default
     ebs_optimized: false
     network:
       assign_public_ip: false
@@ -90,42 +101,25 @@ Secure configuration example:
 ```
 
 ```yaml
-- name: example3
+- name: Launch instance default type without ebs_optimized
   amazon.aws.ec2_instance:
-    name: app-server
+    name: app-server-3
     key_name: mykey
     image_id: ami-123456
     vpc_subnet_id: subnet-29e63245
-    security_group: default
     network:
       assign_public_ip: false
 
 ```
 
 ```yaml
-- name: example
+- name: Launch t2.micro without ebs_optimized
   amazon.aws.ec2_instance:
     name: app-server
     key_name: mykey
     instance_type: t2.micro
     image_id: ami-123456
     vpc_subnet_id: subnet-29e63245
-    security_group: default
-    network:
-      assign_public_ip: false
-
-```
-
-```yaml
-- name: example t3 with ebs disabled
-  amazon.aws.ec2_instance:
-    name: app-server
-    key_name: mykey
-    instance_type: t3.nano
-    image_id: ami-123456
-    vpc_subnet_id: subnet-29e63245
-    security_group: my_sg
-    ebs_optimized: false
     network:
       assign_public_ip: false
 

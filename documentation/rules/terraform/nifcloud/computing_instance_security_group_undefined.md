@@ -1,10 +1,10 @@
 ---
-title: "Beta - Nifcloud computing undefined security group to instance"
+title: "NIFCLOUD computing undefined security group to instance"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/computing_instance_security_group_undefined"
   id: "89218b48-75c9-4cb3-aaba-5299e852e8bc"
-  display_name: "Beta - Nifcloud computing undefined security group to instance"
+  display_name: "NIFCLOUD computing undefined security group to instance"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
   severity: "HIGH"

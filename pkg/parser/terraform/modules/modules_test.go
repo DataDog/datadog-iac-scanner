@@ -44,9 +44,9 @@ module "local_bucket" {
 
 	ctx := context.Background()
 	files := model.FileMetadatas{
-		{
-			FilePath: filepath.Join(tmpDir, "main.tf"),
-			Content:  mainTF,
+		&model.FileMetadata{
+			FilePath:     filepath.Join(tmpDir, "main.tf"),
+			OriginalData: mainTF,
 			LinesOriginalData: &[]string{
 				mainTF,
 			},
@@ -314,9 +314,9 @@ module "three" {
 		t.Run(tt.name, func(t *testing.T) {
 			// Simulate a single file input using the test case content
 			files := model.FileMetadatas{
-				model.FileMetadata{
-					FilePath: "/test/path/main.tf", // Used for baseDir resolution
-					Content:  tt.content,
+				&model.FileMetadata{
+					FilePath:     "/test/path/main.tf", // Used for baseDir resolution
+					OriginalData: tt.content,
 					LinesOriginalData: &[]string{
 						tt.content,
 					}},

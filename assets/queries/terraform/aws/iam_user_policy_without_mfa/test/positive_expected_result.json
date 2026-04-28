@@ -2,6 +2,31 @@
   {
     "queryName": "IAM user policy without MFA",
     "severity": "LOW",
-    "line": 18
+    "line": 22,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "IAM user policy without MFA",
+    "severity": "LOW",
+    "line": 9,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "IAM user policy without MFA",
+    "severity": "LOW",
+    "line": 9,
+    "fileName": "positive3.tf"
+  },
+  {
+    "queryName": "IAM user policy without MFA",
+    "severity": "LOW",
+    "line": 16,
+    "fileName": "positive4.tf"
+  },
+  {
+    "queryName": "IAM user policy without MFA",
+    "severity": "LOW",
+    "line": 8,
+    "fileName": "positive5.tf"
   }
 ]

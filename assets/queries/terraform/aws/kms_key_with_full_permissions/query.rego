@@ -8,7 +8,7 @@ CxPolicy[result] {
 
 	policy := common_lib.json_unmarshal(resource.policy)
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	not common_lib.valid_key(statement, "Condition")
@@ -18,11 +18,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_kms_key",
 		"resourceName": tf_lib.get_resource_name(resource, name),
-		"searchKey": sprintf("aws_kms_key[%s].policy", [name]),
+		"searchKey": sprintf("aws_kms_key[%s].policy.Statement[%d]", [name, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("aws_kms_key[%s].policy should not have wildcard in 'Action' and 'Principal'", [name]),
 		"keyActualValue": sprintf("aws_kms_key[%s].policy has wildcard in 'Action' or 'Principal'", [name]),
-		"searchLine": common_lib.build_search_line(["resource", "aws_kms_key", name, "policy"], []),
+		"searchLine": common_lib.build_search_line(["resource", "aws_kms_key", name, "policy", "Statement", idx], []),
 	}
 }
 
@@ -51,7 +51,7 @@ CxPolicy[result] {
 
 	policy := common_lib.json_unmarshal(module[keyToCheck])
 	st := common_lib.get_statement(policy)
-	statement := st[_]
+	statement := st[idx]
 
 	common_lib.is_allow_effect(statement)
 	not common_lib.valid_key(statement, "Condition")
@@ -61,11 +61,11 @@ CxPolicy[result] {
 		"documentId": input.document[i].id,
 		"resourceType": "module",
 		"resourceName": sprintf("%s", [name]),
-		"searchKey": sprintf("module[%s].%s", [name, keyToCheck]),
+		"searchKey": sprintf("module[%s].%s.Statement[%d]", [name, keyToCheck, idx]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": sprintf("module[%s].%s should not have wildcard in 'Action' and 'Principal'", [name, keyToCheck]),
 		"keyActualValue": sprintf("module[%s].%s has wildcard in 'Action' or 'Principal'", [name, keyToCheck]),
-		"searchLine": common_lib.build_search_line(["module", name, keyToCheck], []),
+		"searchLine": common_lib.build_search_line(["module", name, keyToCheck, "Statement", idx], []),
 	}
 }
 

@@ -6,7 +6,6 @@
 package report
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -98,7 +97,6 @@ func getPlatforms(queries model.QueryResultSlice) string {
 
 // ExportJSONReport - encodes a given body to a JSON file in a given filepath
 func ExportJSONReport(ctx context.Context, path, filename string, body interface{}) error {
-	contextLogger := logger.FromContext(ctx)
 	if !strings.Contains(filename, ".") {
 		filename += jsonExtension
 	}
@@ -111,22 +109,7 @@ func ExportJSONReport(ctx context.Context, path, filename string, body interface
 
 	defer closeFile(ctx, fullPath, filename, f)
 
-	var minifiedJSON bytes.Buffer
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		contextLogger.Err(err).Msg("failed to marshal sarif report body: ")
-		return err
-	}
-
-	err = json.Compact(&minifiedJSON, bodyBytes)
-	if err != nil {
-		contextLogger.Err(err).Msg("Error minifying JSON:")
-		return err
-	}
-
-	_, err = f.Write(minifiedJSON.Bytes())
-
-	return err
+	return json.NewEncoder(f).Encode(body)
 }
 
 func getSummary(body interface{}) (sum model.Summary, err error) {

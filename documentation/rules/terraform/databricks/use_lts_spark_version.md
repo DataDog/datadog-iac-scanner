@@ -1,10 +1,10 @@
 ---
-title: "Beta - Databricks cluster uses non-LTS Spark version"
+title: "Databricks cluster uses non-LTS Spark version"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/use_lts_spark_version"
   id: "5a627dfa-a4dd-4020-a4c6-5f3caf4abcd6"
-  display_name: "Beta - Databricks cluster uses non-LTS Spark version"
+  display_name: "Databricks cluster uses non-LTS Spark version"
   cloud_provider: "Databricks"
   platform: "Terraform"
   severity: "LOW"

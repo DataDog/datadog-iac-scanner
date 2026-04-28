@@ -1,0 +1,21 @@
+name: Obfuscated Uses Paths
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Empty components (multiple slashes)
+      - uses: actions/checkout////@v4
+
+      # Dot reference (current directory)
+      - uses: github/codeql-action/./init@v2
+
+      # Parent directory traversal
+      - uses: actions/cache/save/../save@v4
+
+      # Complex combination
+      - uses: owner/repo/./path/../other//subdir@v1
+
+      # Trailing slash with empty component
+      - uses: actions/setup-node/@v4

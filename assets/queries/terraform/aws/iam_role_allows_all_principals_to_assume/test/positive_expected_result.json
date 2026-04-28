@@ -2,6 +2,19 @@
   {
     "queryName": "IAM role allows all principals to assume",
     "severity": "MEDIUM",
-    "line": 37
+    "line": 37,
+    "fileName": "positive.tf"
+  },
+  {
+    "queryName": "IAM role allows all principals to assume",
+    "severity": "MEDIUM",
+    "line": 18,
+    "fileName": "positive2.tf"
+  },
+  {
+    "queryName": "IAM role allows all principals to assume",
+    "severity": "MEDIUM",
+    "line": 10,
+    "fileName": "positive3.tf"
   }
 ]
