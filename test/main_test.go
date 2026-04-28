@@ -122,15 +122,28 @@ func (q queryEntry) getSampleFiles(tb testing.TB, filePattern string) []string {
 }
 
 func (q queryEntry) PositiveFiles(tb testing.TB) []string {
+	if checkCICDQuery(q.dir) {
+		return q.getSampleFiles(tb, ".github/positive*.%s")
+	}
 	return q.getSampleFiles(tb, "test/positive*.%s")
 }
 
 func (q queryEntry) NegativeFiles(tb testing.TB) []string {
+	if checkCICDQuery(q.dir) {
+		return q.getSampleFiles(tb, ".github/negative*.%s")
+	}
 	return q.getSampleFiles(tb, "test/negative*.%s")
 }
 
 func (q queryEntry) ExpectedPositiveResultFile() string {
+	if checkCICDQuery(q.dir) {
+		return filepath.FromSlash(path.Join(q.dir, ".github", ExpectedResultsFilename))
+	}
 	return filepath.FromSlash(path.Join(q.dir, "test", ExpectedResultsFilename))
+}
+
+func checkCICDQuery(dir string) bool {
+	return strings.Contains(dir, "cicd/github")
 }
 
 func appendQueries(queriesDir []queryEntry, dirName string, kind []model.FileKind, platform string) []queryEntry {

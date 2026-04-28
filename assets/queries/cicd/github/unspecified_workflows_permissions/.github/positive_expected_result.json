@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Unspecified workflows level permissions",
+    "severity": "MEDIUM",
+    "line": 1,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Unspecified workflows level permissions",
+    "severity": "MEDIUM",
+    "line": 17,
+    "fileName": "positive2.yaml"
+  }
+]

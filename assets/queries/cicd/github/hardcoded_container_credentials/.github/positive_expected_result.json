@@ -1,0 +1,14 @@
+[
+  {
+    "queryName": "Hardcoded container credentials",
+    "severity": "HIGH",
+    "line": 11,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Hardcoded container credentials",
+    "severity": "HIGH",
+    "line": 20,
+    "fileName": "positive.yaml"
+  }
+]

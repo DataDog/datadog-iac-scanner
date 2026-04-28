@@ -1,0 +1,44 @@
+[
+  {
+    "queryName": "Dangerous triggers",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Dangerous triggers",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive1.yaml"
+  },
+  {
+    "queryName": "Dangerous triggers",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Dangerous triggers",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive3.yaml"
+  },
+  {
+    "queryName": "Dangerous triggers",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive4.yaml"
+  },
+  {
+    "queryName": "Dangerous triggers",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive5.yaml"
+  },
+  {
+    "queryName": "Dangerous triggers",
+    "severity": "HIGH",
+    "line": 2,
+    "fileName": "positive6.yaml"
+  }
+]

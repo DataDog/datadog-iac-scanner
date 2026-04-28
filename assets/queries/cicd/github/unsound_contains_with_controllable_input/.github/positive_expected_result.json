@@ -1,0 +1,44 @@
+[
+  {
+    "queryName": "Unsound contains with controllable input",
+    "severity": "HIGH",
+    "line": 8,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Unsound contains with controllable input",
+    "severity": "HIGH",
+    "line": 16,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Unsound contains with controllable input",
+    "severity": "HIGH",
+    "line": 25,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Unsound contains with controllable input",
+    "severity": "HIGH",
+    "line": 33,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Unsound contains with controllable input",
+    "severity": "HIGH",
+    "line": 41,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Unsound contains with controllable input",
+    "severity": "HIGH",
+    "line": 47,
+    "fileName": "positive.yaml"
+  },
+  {
+    "queryName": "Unsound contains with controllable input",
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive2.yaml"
+  }
+]

@@ -55,13 +55,9 @@ is_bare_inputs_dereference(node) {
 }
 
 check_provider(doc) := "github" {
-	contains(doc._path, ".github")
-} else := "gitlab" {
-	contains(doc._path, ".gitlab-ci")
-} else := "circleci" {
-	contains(doc._path, ".circleci")
-} else := "azure" {
-	contains(doc._path, "azure-pipelines")
+	contains(doc._path, "/.github/")
+} else := "github" {
+	regex.match("/action.ya?ml", doc._path)
 } else := "other" {
 	true
 }

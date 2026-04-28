@@ -1,0 +1,8 @@
+[
+  {
+    "queryName": "Dependabot execution",
+    "severity": "HIGH",
+    "line": 7,
+    "fileName": "positive.yaml"
+  }
+]

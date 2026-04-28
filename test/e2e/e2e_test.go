@@ -112,7 +112,7 @@ func Test_E2EExclusions(t *testing.T) {
 		},
 		{
 			name:     "cicd no exclusions",
-			testFile: filepath.Join("fixtures", "cicd-no-exclusions.github.yaml"),
+			testFile: filepath.Join("fixtures", ".github/cicd-no-exclusions.yaml"),
 			expectedOutput: scan.ScanStats{
 				Violations: 4,
 				Files:      1,
@@ -131,7 +131,7 @@ func Test_E2EExclusions(t *testing.T) {
 		},
 		{
 			name:     "cicd disabled rule inline",
-			testFile: filepath.Join("fixtures", "cicd-inline-disabled-rule.github.yaml"),
+			testFile: filepath.Join("fixtures", ".github/cicd-inline-disabled-rule.yaml"),
 			expectedOutput: scan.ScanStats{
 				Violations: 3,
 				Files:      1,
