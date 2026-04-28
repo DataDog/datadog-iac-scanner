@@ -143,7 +143,7 @@ func (q queryEntry) ExpectedPositiveResultFile() string {
 }
 
 func checkCICDQuery(dir string) bool {
-	return strings.Contains(dir, "cicd/github")
+	return strings.Contains(dir, filepath.FromSlash(path.Join("cicd", "github")))
 }
 
 func appendQueries(queriesDir []queryEntry, dirName string, kind []model.FileKind, platform string) []queryEntry {

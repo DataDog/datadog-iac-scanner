@@ -61,9 +61,7 @@ check_provider(doc) := "github" {
 } else := "github" {
 	contains(doc._path, "\\.github\\")
 } else := "github" {
-	regex.match("/action.ya?ml", doc._path)
-} else := "github" {
-	regex.match("\\\\action.ya?ml", doc._path)
+	regex.match("\\action.ya?ml", doc._path)
 } else := "other" {
 	true
 }
