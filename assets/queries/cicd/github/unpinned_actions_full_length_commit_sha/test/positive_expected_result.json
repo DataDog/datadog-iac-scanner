@@ -10,5 +10,11 @@
     "severity": "LOW",
     "line": 7,
     "fileName": "positive2.yaml"
+  },
+  {
+    "queryName": "Unpinned actions full length commit SHA",
+    "severity": "LOW",
+    "line": 9,
+    "fileName": "positive3.yaml"
   }
 ]

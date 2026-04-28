@@ -70,7 +70,6 @@ var (
 	serverlessProviderRegex                         = regexp.MustCompile(`(^|\n)provider\s*:`)
 	cicdOnRegex                                     = regexp.MustCompile(`\s*on:\s*`)
 	cicdJobsRegex                                   = regexp.MustCompile(`\s*jobs:\s*`)
-	cicdStepsRegex                                  = regexp.MustCompile(`\s*steps:\s*`)
 	githubActionManifestRunsRegex                   = regexp.MustCompile(`(^|\n)runs:\s*`)
 	githubActionManifestUsingRegex                  = regexp.MustCompile(`\s*using:\s*['"]?(composite|docker|node\d+)`)
 	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
@@ -277,7 +276,6 @@ var types = map[string]regexSlice{
 		[]*regexp.Regexp{
 			cicdOnRegex,
 			cicdJobsRegex,
-			cicdStepsRegex,
 		},
 	},
 	"dependabot": {

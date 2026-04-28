@@ -18,7 +18,26 @@ CxPolicy[result] {
 		"keyActualValue": "Action is not pinned to a full length commit SHA.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "uses"],[]),
 		"resourceType": "github_action",
-		"resourceName": input.document[i].jobs[j].steps[k].name
+		"resourceName": get_object_name(input.document[i].jobs[j].steps[k], "step", k)
+	}
+}
+
+CxPolicy[result] {
+
+	uses := input.document[i].jobs[j].uses
+	not isAllowed(uses)
+	not isPinned(uses)
+	not isRelative(uses)
+	
+	result := {
+		"documentId": input.document[i].id,
+		"searchKey": sprintf("uses={{%s}}", [uses]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Action pinned to a full length commit SHA.",
+		"keyActualValue": "Action is not pinned to a full length commit SHA.",
+		"searchLine": common_lib.build_search_line(["jobs", j, "uses"],[]),
+		"resourceType": "github_action",
+		"resourceName": get_object_name(input.document[i].jobs[j], "job", j)
 	}
 }
 
@@ -60,3 +79,8 @@ isRelative(use){
     startswith(use,allowed[i])
 }
 
+get_object_name(object, object_title, index) := object_name {
+	object_name := object.name
+} else := object_name {
+	object_name := sprintf("%s-%v", [object_title, index])
+}
