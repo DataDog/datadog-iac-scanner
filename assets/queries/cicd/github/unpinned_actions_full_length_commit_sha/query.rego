@@ -82,5 +82,5 @@ isRelative(use){
 get_object_name(object, object_title, index) := object_name {
 	object_name := object.name
 } else := object_name {
-	object_name := sprintf("%s-%d", [object_title, index])
+	object_name := sprintf("%s-%v", [object_title, index])
 }
