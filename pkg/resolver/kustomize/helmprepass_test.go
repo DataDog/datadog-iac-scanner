@@ -218,7 +218,7 @@ func TestHelmValueFilesForEntry_RejectsEscape(t *testing.T) {
 	entry := map[string]interface{}{
 		"valuesFile": "../../secrets.yaml",
 	}
-	_, err := helmValueFilesForEntry(root, staging, entry)
+	_, err := helmValueFilesForEntry(root, staging, filepath.Join(staging, "charts", "mini"), entry)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "escapes the staged repo root")
 }

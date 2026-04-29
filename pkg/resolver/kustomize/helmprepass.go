@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
-	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/rootfile"
 	"gopkg.in/yaml.v3"
@@ -164,17 +163,6 @@ func renderHelmChartEntries(
 			continue
 		}
 
-		valuesFiles, err := helmValueFilesForEntry(stagedRepo, kustDir, entry)
-		if err != nil {
-			diags = append(diags, ResolverDiagnostic{
-				FilePath: kustPath,
-				Message:  err.Error(),
-				QueryID:  "kustomize-helm-values-invalid",
-				Line:     1,
-			})
-			continue
-		}
-
 		releaseName, _ := entry["releaseName"].(string)
 		nameTemplate, _ := entry["nameTemplate"].(string)
 		namespace, _ := entry["namespace"].(string)
@@ -195,6 +183,17 @@ func renderHelmChartEntries(
 		skipTests := false
 		if v, ok := entry["skipTests"].(bool); ok && v {
 			skipTests = true
+		}
+
+		valuesFiles, err := helmValueFilesForEntry(stagedRepo, kustDir, chartPath, entry)
+		if err != nil {
+			diags = append(diags, ResolverDiagnostic{
+				FilePath: kustPath,
+				Message:  err.Error(),
+				QueryID:  "kustomize-helm-values-invalid",
+				Line:     1,
+			})
+			continue
 		}
 
 		rc, err := helm.RenderChart(ctx, &helm.RenderOptions{
@@ -314,10 +313,10 @@ func rewriteHelmChartsInKustomization(
 	return diags, nil
 }
 
-func helmValueFilesForEntry(repoRoot, staging string, entry map[string]interface{}) ([]string, error) {
+func helmValueFilesForEntry(repoRoot, staging, chartPath string, entry map[string]interface{}) ([]string, error) {
 	var files []string
 	if vf, ok := entry["valuesFile"].(string); ok && vf != "" {
-		p, err := stagedHelmValuePath(repoRoot, staging, vf)
+		p, err := stagedHelmValuePath(repoRoot, staging, chartPath, vf)
 		if err != nil {
 			return nil, err
 		}
@@ -326,7 +325,7 @@ func helmValueFilesForEntry(repoRoot, staging string, entry map[string]interface
 	if av, ok := entry["additionalValuesFiles"].([]interface{}); ok {
 		for _, x := range av {
 			if s, ok := x.(string); ok && s != "" {
-				p, err := stagedHelmValuePath(repoRoot, staging, s)
+				p, err := stagedHelmValuePath(repoRoot, staging, chartPath, s)
 				if err != nil {
 					return nil, err
 				}
@@ -338,14 +337,39 @@ func helmValueFilesForEntry(repoRoot, staging string, entry map[string]interface
 	return files, validateValuesMerge(entry)
 }
 
-func stagedHelmValuePath(stagedRepoRoot, staging, rel string) (string, error) {
+func stagedHelmValuePath(stagedRepoRoot, staging, chartPath, rel string) (string, error) {
 	stagedRepoRoot = filepath.Clean(stagedRepoRoot)
 	staging = filepath.Clean(staging)
 	p := filepath.Clean(filepath.Join(staging, rel))
 	if !isUnderRoot(p, stagedRepoRoot) {
 		return "", fmt.Errorf("helm values file %q escapes the staged repo root", rel)
 	}
+	if strings.TrimSpace(chartPath) != "" && filepath.IsAbs(chartPath) {
+		return copyHelmValueIntoChart(chartPath, p, rel)
+	}
 	return p, nil
+}
+
+func copyHelmValueIntoChart(chartPath, valuePath, rel string) (string, error) {
+	chartPath = filepath.Clean(chartPath)
+	if !isUnderRoot(valuePath, chartPath) {
+		dest := filepath.Join(chartPath, ".iac-scanner-values", filepath.Clean(rel))
+		if !isUnderRoot(dest, chartPath) {
+			return "", fmt.Errorf("helm values file %q has invalid destination", rel)
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), dirPermCopyTree); err != nil {
+			return "", err
+		}
+		raw, err := rootfile.ReadFile(valuePath)
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(dest, raw, filePermCopyTree); err != nil {
+			return "", err
+		}
+		return dest, nil
+	}
+	return valuePath, nil
 }
 
 // stagedHelmChartPath resolves a local helmCharts entry to a path under
