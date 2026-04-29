@@ -1,10 +1,13 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check for hardcoded passwords in job container credentials
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+
 	job := doc.jobs[j]
 	container := job.container
 	credentials := container.credentials
@@ -30,6 +33,8 @@ CxPolicy[result] {
 # Check for hardcoded passwords in service container credentials
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+
 	job := doc.jobs[j]
 	services := job.services
 

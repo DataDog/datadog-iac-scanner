@@ -2,17 +2,20 @@
   {
     "queryName": "Concurrency limits",
     "severity": "LOW",
-    "line": 5
+    "line": 5,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Concurrency limits",
     "severity": "LOW",
-    "line": 22
+    "line": 22,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Concurrency limits",
     "severity": "LOW",
-    "line": 33
+    "line": 33,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Concurrency limits",

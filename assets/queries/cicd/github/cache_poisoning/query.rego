@@ -1,6 +1,7 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 import future.keywords.in
 
 # Known cache-aware actions that can be exploited in cache poisoning attacks
@@ -164,6 +165,7 @@ publishing_check(publishing_trigger, job) {
 # Main policy: Flag cache-aware actions in publishing workflows
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Check if this is a publishing workflow

@@ -53,3 +53,15 @@ is_bare_inputs_dereference(node) {
 	object.type == "identifier"
 	lower(object.value) == "inputs"
 }
+
+check_provider(doc) := "github" {
+	contains(doc._path, "/.github/")
+} else := "github" {
+	regex.match("/action\\.ya?ml", doc._path)
+} else := "github" {
+	contains(doc._path, "\\.github\\")
+} else := "github" {
+	regex.match("\\\\action\\.ya?ml", doc._path)
+} else := "other" {
+	true
+}

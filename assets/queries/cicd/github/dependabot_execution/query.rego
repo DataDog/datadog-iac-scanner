@@ -1,10 +1,12 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check for insecure-external-code-execution set to 'allow'
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	# Iterate through each update configuration
 	update := doc.updates[idx]

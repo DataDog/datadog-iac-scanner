@@ -2,10 +2,12 @@ package Cx
 
 import future.keywords.in
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check for known actions using manual credentials
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	is_object(job)
 
@@ -33,6 +35,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	is_object(job)
 
@@ -59,6 +62,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	is_object(job)
 
@@ -85,6 +89,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	is_object(job)
 
@@ -112,6 +117,7 @@ CxPolicy[result] {
 # Check for publishing commands in run blocks without id-token permission
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	is_object(job)
 

@@ -1,10 +1,12 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check for unpinned container images in job container key
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	container := job.container
 
@@ -31,6 +33,7 @@ CxPolicy[result] {
 # Check for unpinned container images in job container
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	container := job.container
 
@@ -58,6 +61,7 @@ CxPolicy[result] {
 # Check for unpinned service container images
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	services := job.services
 
@@ -86,6 +90,7 @@ CxPolicy[result] {
 # Check for expression-based container images
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	container := job.container
 
@@ -107,6 +112,7 @@ CxPolicy[result] {
 # Check for expression-based service container images
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	services := job.services
 

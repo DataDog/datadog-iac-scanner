@@ -1,6 +1,7 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check if workflow is reusable-only (only has workflow_call trigger)
 is_reusable_only(doc) {
@@ -40,6 +41,7 @@ is_bare_concurrency(concurrency) {
 # Workflow-level concurrency check
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	# Skip reusable-only workflows
 	not is_reusable_only(doc)
@@ -64,6 +66,7 @@ CxPolicy[result] {
 # Job-level concurrency check when workflow has no concurrency
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	# Skip reusable-only workflows
 	not is_reusable_only(doc)
@@ -91,6 +94,7 @@ CxPolicy[result] {
 # Job-level missing concurrency check when workflow has no concurrency
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 
 	# Skip reusable-only workflows
 	not is_reusable_only(doc)

@@ -1,10 +1,12 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Check for workflow without a name
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	doc.jobs
 	not object.get(doc, "name", false)
 
@@ -23,6 +25,7 @@ CxPolicy[result] {
 # Check for jobs without names
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	not object.get(job, "name", false)

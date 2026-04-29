@@ -1,10 +1,12 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 
 # Detect toJSON(secrets) in step run blocks
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -31,6 +33,7 @@ CxPolicy[result] {
 # Detect dynamic secret indexing: secrets[variable] in step run blocks
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -57,6 +60,7 @@ CxPolicy[result] {
 # Detect toJSON(secrets) in job-level if conditions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Check if job has parsed expressions for the if condition
@@ -81,6 +85,7 @@ CxPolicy[result] {
 # Detect dynamic secret indexing in job-level if conditions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Check if job has parsed expressions for the if condition
@@ -105,6 +110,7 @@ CxPolicy[result] {
 # Detect toJSON(secrets) in step-level if conditions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -131,6 +137,7 @@ CxPolicy[result] {
 # Detect dynamic secret indexing in step-level if conditions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -157,6 +164,7 @@ CxPolicy[result] {
 # Detect toJSON(secrets) or dynamic secret access in step with blocks (action inputs)
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -196,6 +204,7 @@ CxPolicy[result] {
 # Detect toJSON(secrets) or dynamic secret access in step env blocks
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -237,6 +246,7 @@ CxPolicy[result] {
 # Detect toJSON(secrets) or dynamic secret access in job-level env blocks
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Get the env block

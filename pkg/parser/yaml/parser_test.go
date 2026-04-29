@@ -96,7 +96,8 @@ resources:
 				  }
 				},
 				"name": "test"
-			  }
+			  }, 
+			  "_path":"test.yaml"
 			},
 			{
 			  "_kics_lines": {
@@ -117,7 +118,8 @@ resources:
 				  }
 				},
 				"name": "test2"
-			  }
+			  }, 
+			  "_path":"test.yaml"
 			}
 		  ]
 		  `,
@@ -168,7 +170,8 @@ resources:
 				  },
 				  "name": "Create an empty bucket2"
 				}
-			  ]
+			  ], 
+			"_path":"test.yaml"
 			}
 		  ]
 		  `,
@@ -253,7 +256,8 @@ resources:
 						}
 					}
 				]
-			  }
+			  }, 
+			  "_path":"test.yaml"
 			}
 		  ]
 		  `,
@@ -323,7 +327,8 @@ resources:
 							},
 							"type": "vm.jinja"
 						}
-					]
+					], 
+					"_path":"test.yaml"
 				}
 			]`,
 			wantErr:           false,

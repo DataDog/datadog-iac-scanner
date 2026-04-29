@@ -6,6 +6,7 @@ import data.generic.common as common_lib
 # Detect potentially unsound job-level conditions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Check if job has parsed expressions in the if condition
@@ -26,6 +27,7 @@ CxPolicy[result] {
 # Detect potentially unsound step-level conditions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -50,6 +52,8 @@ CxPolicy[result] {
 # Composite GitHub Action: detect potentially unsound step-level conditions.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[s]

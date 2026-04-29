@@ -19,6 +19,7 @@ superfluous_actions := {
 # Check for usage of superfluous actions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -53,6 +54,8 @@ CxPolicy[result] {
 # Composite action: detect superfluous third-party `uses` in `runs.steps[*]`.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[s]

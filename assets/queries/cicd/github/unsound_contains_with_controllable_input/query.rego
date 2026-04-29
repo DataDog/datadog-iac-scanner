@@ -19,6 +19,7 @@ user_controllable_contexts := {
 # Check for unsafe contains() patterns in job conditions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Get parsed expressions from the if condition
@@ -53,6 +54,7 @@ CxPolicy[result] {
 # Check for unsafe contains() patterns in step conditions
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 	step := job.steps[s]
 
@@ -90,6 +92,8 @@ CxPolicy[result] {
 # Composite GitHub Action: detect unsafe contains() patterns in step `if` conditions.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[s]

@@ -2,7 +2,8 @@
   {
     "queryName": "Dangerous triggers",
     "severity": "HIGH",
-    "line": 2
+    "line": 2,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Dangerous triggers",

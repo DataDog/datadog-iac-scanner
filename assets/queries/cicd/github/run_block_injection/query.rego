@@ -5,6 +5,7 @@ import data.generic.common as common_lib
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "pull_request_target")
 
 	run := doc.jobs[j].steps[k].run
@@ -37,6 +38,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "issues")
 
 	run := doc.jobs[j].steps[k].run
@@ -63,6 +65,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "issue_comment")
 
 	run := doc.jobs[j].steps[k].run
@@ -90,6 +93,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "discussion")
 
 	run := doc.jobs[j].steps[k].run
@@ -116,6 +120,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "discussion_comment")
 
 	run := doc.jobs[j].steps[k].run
@@ -143,6 +148,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "workflow_run")
 
 	run := doc.jobs[j].steps[k].run
@@ -173,6 +179,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "author")
 	run := doc.jobs[j].steps[k].run
 
@@ -198,6 +205,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "pull_request")
 	run := doc.jobs[j].steps[k].run
 
@@ -227,6 +235,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	check_trigger(doc, "workflow_dispatch")
 	run := doc.jobs[j].steps[k].run
 
@@ -255,6 +264,7 @@ CxPolicy[result] {
 # from a previous step's `>> $GITHUB_ENV` write.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	step := doc.jobs[j].steps[k]
 	parsed_run := step._parsed_expressions_run[_]
 	run := step.run
@@ -288,6 +298,7 @@ CxPolicy[result] {
 
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	cicd_lib.is_composite_action(doc)
 
 	run := doc.runs.steps[k].run
@@ -336,6 +347,7 @@ CxPolicy[result] {
 # and do not double-fire here through substring matching of `inputs.`.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[k]
@@ -361,6 +373,7 @@ CxPolicy[result] {
 # treat unknown keys as unsafe since their value comes from the caller's workflow.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	cicd_lib.is_composite_action(doc)
 	step := doc.runs.steps[k]
 	parsed_run := step._parsed_expressions_run[_]

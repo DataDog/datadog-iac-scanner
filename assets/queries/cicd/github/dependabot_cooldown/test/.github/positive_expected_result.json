@@ -2,21 +2,25 @@
   {
     "queryName": "Dependabot cooldown",
     "severity": "MEDIUM",
-    "line": 9
+    "line": 9,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Dependabot cooldown",
     "severity": "MEDIUM",
-    "line": 12
+    "line": 12,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Dependabot cooldown",
     "severity": "MEDIUM",
-    "line": 22
+    "line": 22,
+    "fileName": "positive.yaml"
   },
   {
     "queryName": "Dependabot cooldown",
     "severity": "MEDIUM",
-    "line": 30
+    "line": 30,
+    "fileName": "positive.yaml"
   }
 ]

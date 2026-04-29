@@ -1,11 +1,13 @@
 package Cx
 
 import data.generic.common as common_lib
+import data.generic.cicd as cicd_lib
 import future.keywords.in
 
 # Check for secrets usage in step run blocks outside dedicated environments
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Skip if job has an environment defined (secrets are scoped to environment)
@@ -39,6 +41,7 @@ CxPolicy[result] {
 # Check for secrets usage in step if conditions outside dedicated environments
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Skip if job has an environment defined
@@ -70,6 +73,7 @@ CxPolicy[result] {
 # Check for secrets usage in step env blocks outside dedicated environments
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Skip if job has an environment defined
@@ -108,6 +112,7 @@ CxPolicy[result] {
 # Check for secrets usage in step with blocks outside dedicated environments
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Skip if job has an environment defined
@@ -147,6 +152,7 @@ CxPolicy[result] {
 # Check for secrets usage in job-level if conditions outside dedicated environments
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Skip if job has an environment defined
@@ -177,6 +183,7 @@ CxPolicy[result] {
 # Check for secrets usage in job-level env blocks outside dedicated environments
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	job := doc.jobs[j]
 
 	# Skip if job has an environment defined

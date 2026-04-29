@@ -6,6 +6,8 @@ import data.generic.cicd as cicd_lib
 CxPolicy[result] {
 	# Only check workflows with dangerous triggers
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	
 	cicd_lib.has_dangerous_trigger(doc)
 
 	job := doc.jobs[j]
@@ -37,6 +39,7 @@ CxPolicy[result] {
 # no doc.on, so we cannot use the workflow rule's dangerous-trigger gate.
 CxPolicy[result] {
 	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
 	cicd_lib.is_composite_action(doc)
 
 	step := doc.runs.steps[s]
