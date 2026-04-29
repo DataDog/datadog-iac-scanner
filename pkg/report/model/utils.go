@@ -9,6 +9,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
@@ -85,4 +87,27 @@ func StringToHash(str string) string {
 	hash.Write([]byte(str))
 	hashed := hash.Sum(nil)
 	return hex.EncodeToString(hashed)
+}
+
+// toSlug turns a string to lowercase and replaces any space by "-"
+// This is the exact same function as in the default rules for consistency
+// Those functions must be kept up to date
+// https://github.com/DataDog/datadog-iac-scanner-default-rules/blob/main/cmd/rules/rules.go#L363
+func toSlug(name string) string {
+	parts := []string{}
+	part := strings.Builder{}
+	for _, c := range name {
+		if unicode.IsUpper(c) {
+			part.WriteRune(unicode.ToLower(c))
+		} else if unicode.IsDigit(c) || unicode.IsLower(c) {
+			part.WriteRune(c)
+		} else if part.Len() > 0 {
+			parts = append(parts, part.String())
+			part = strings.Builder{}
+		}
+	}
+	if part.Len() > 0 {
+		parts = append(parts, part.String())
+	}
+	return strings.Join(parts, "-")
 }

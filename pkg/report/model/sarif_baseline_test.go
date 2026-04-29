@@ -71,7 +71,7 @@ func TestSarifOutputValidation(t *testing.T) {
 	queryResults := []model.QueryResult{
 		{
 			QueryName:     "Test Security Rule",
-			QueryID:       "test-rule-id-123",
+			QueryID:       "test-security-rule",
 			Description:   "This is a test security rule description",
 			QueryURI:      "https://docs.datadoghq.com/test-rule",
 			Severity:      model.SeverityHigh,
@@ -102,14 +102,13 @@ func TestSarifOutputValidation(t *testing.T) {
 			},
 		},
 		{
-			QueryName:     "Test Best Practice Rule",
-			QueryID:       "test-rule-id-456",
-			Description:   "This is a test best practice rule",
-			QueryURI:      "https://docs.datadoghq.com/test-rule-2",
-			Severity:      model.SeverityMedium,
-			Category:      "Best Practices",
-			Platform:      "Dockerfile",
-			CloudProvider: "",
+			QueryName:   "Test Best Practice Rule",
+			QueryID:     "test-best-practice-rule",
+			Description: "This is a test best practice rule",
+			QueryURI:    "https://docs.datadoghq.com/test-rule-2",
+			Severity:    model.SeverityMedium,
+			Category:    "Best Practices",
+			Platform:    "Dockerfile",
 			Files: []model.VulnerableFile{
 				{
 					FileName:       "Dockerfile",
@@ -124,6 +123,11 @@ func TestSarifOutputValidation(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	ids := []string{
+		"terraform-aws-test-security-rule",
+		"dockerfile-test-best-practice-rule",
 	}
 
 	// Generate SARIF report
@@ -248,6 +252,11 @@ func TestSarifOutputValidation(t *testing.T) {
 					parts := strings.Split(tag, ":")
 					require.Len(t, parts, 2)
 					require.NotEmpty(t, parts[1])
+				}
+				if strings.HasPrefix(tag, "KICS_RuleID") {
+					parts := strings.Split(tag, ":")
+					require.Len(t, parts, 2)
+					require.Contains(t, ids, parts[1])
 				}
 				for idx, prefix := range requiredRuleTagPrefixes {
 					if strings.HasPrefix(tag, prefix) {

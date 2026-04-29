@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -367,7 +368,16 @@ func (sr *sarifReport) buildSarifRule(queryMetadata *ruleMetadata, cisMetadata r
 		}
 
 		categoryTag := GetCategoryTag(queryMetadata.queryCategory)
-		kicsRuleIDTag := GetKICSRuleIDTag(queryMetadata.queryID)
+
+		var ruleID string
+		if queryMetadata.queryProvider != "" {
+			ruleID = strings.ToLower(fmt.Sprintf("%s-%s-%s",
+				queryMetadata.queryPlatform, queryMetadata.queryProvider, toSlug(queryMetadata.queryName)))
+		} else {
+			ruleID = strings.ToLower(fmt.Sprintf("%s-%s", queryMetadata.queryPlatform, toSlug(queryMetadata.queryName)))
+		}
+		kicsRuleIDTag := GetKICSRuleIDTag(ruleID)
+
 		platformTag := GetPlatformTag(queryMetadata.queryPlatform)
 		providerTag := GetProviderTag(queryMetadata.queryProvider)
 		tags = append(tags, categoryTag, kicsRuleIDTag, platformTag, providerTag)
