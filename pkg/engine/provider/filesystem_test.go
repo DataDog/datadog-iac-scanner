@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/kustomize"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -628,47 +629,47 @@ func TestProvider_getExcludePaths(t *testing.T) {
 	}
 }
 
-func TestIsUnderResolvedChart(t *testing.T) {
+func TestIsUnderResolvedRoot(t *testing.T) {
 	tests := []struct {
-		name               string
-		path               string
-		resolvedChartPaths []string
-		want               bool
+		name         string
+		path         string
+		resolvedRoots []string
+		want         bool
 	}{
 		{
 			name:               "empty resolved list",
 			path:               filepath.FromSlash("k8s/chart-a/templates"),
-			resolvedChartPaths: nil,
+			resolvedRoots: nil,
 			want:               false,
 		},
 		{
 			name:               "subdirectory of resolved chart is skipped",
 			path:               filepath.FromSlash("k8s/chart-a/templates"),
-			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
+			resolvedRoots: []string{filepath.FromSlash("k8s/chart-a")},
 			want:               true,
 		},
 		{
 			name:               "sibling chart is not skipped",
 			path:               filepath.FromSlash("k8s/chart-b"),
-			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
+			resolvedRoots: []string{filepath.FromSlash("k8s/chart-a")},
 			want:               false,
 		},
 		{
 			name:               "chart root itself is not considered under itself",
 			path:               filepath.FromSlash("k8s/chart-a"),
-			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
+			resolvedRoots: []string{filepath.FromSlash("k8s/chart-a")},
 			want:               false,
 		},
 		{
 			name:               "path sharing a prefix but different directory is not skipped",
 			path:               filepath.FromSlash("k8s/chart"),
-			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
+			resolvedRoots: []string{filepath.FromSlash("k8s/chart-a")},
 			want:               false,
 		},
 		{
 			name: "subdirectory matched against multiple resolved charts",
 			path: filepath.FromSlash("k8s/chart-b/templates"),
-			resolvedChartPaths: []string{
+			resolvedRoots: []string{
 				filepath.FromSlash("k8s/chart-a"),
 				filepath.FromSlash("k8s/chart-b"),
 			},
@@ -678,7 +679,7 @@ func TestIsUnderResolvedChart(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isUnderResolvedChart(tt.path, tt.resolvedChartPaths)
+			got := isUnderResolvedRoot(tt.path, tt.resolvedRoots)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -711,4 +712,262 @@ func TestGetSources_multipleHelmCharts(t *testing.T) {
 
 	require.ElementsMatch(t, []string{"chart-a", "chart-b"}, resolvedDirs,
 		"both sibling Helm charts must be sent to the resolver, not just the first one")
+}
+
+func TestGetSources_parentHelmChartSkipsRecursiveSubchartResolverWalks(t *testing.T) {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
+		t.Fatalf("failed to change dir: %s", err)
+	}
+
+	ctx := context.Background()
+	root := filepath.FromSlash("test/fixtures/test_helm_subchart")
+	fs, err := NewFileSystemSourceProvider(ctx, []string{root}, []string{}, []string{})
+	require.NoError(t, err)
+
+	var resolvedDirs []string
+	countingResolverSink := func(_ context.Context, filename string) ([]string, error) {
+		info, statErr := os.Stat(filename)
+		if statErr == nil && info.IsDir() {
+			if _, chartErr := os.Stat(filepath.Join(filename, "Chart.yaml")); chartErr == nil {
+				resolvedDirs = append(resolvedDirs, filepath.Clean(filename))
+				if filepath.Clean(filename) == filepath.Clean(root) {
+					return []string{
+						filepath.FromSlash("test/fixtures/test_helm_subchart/templates/serviceaccount.yaml"),
+						filepath.FromSlash("test/fixtures/test_helm_subchart/charts/subchart/templates/service.yaml"),
+					}, nil
+				}
+			}
+		}
+		return []string{}, nil
+	}
+
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}}, mockSink, countingResolverSink)
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.Clean(root)}, resolvedDirs)
+}
+
+func TestGetSources_multipleKustomizationRoots(t *testing.T) {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
+		t.Fatalf("failed to change dir: %s", err)
+	}
+
+	ctx := context.Background()
+	fs, err := NewFileSystemSourceProvider(ctx,
+		[]string{filepath.FromSlash("test/fixtures/multi_kustomize")}, []string{}, []string{})
+	require.NoError(t, err)
+
+	resolvedDirs := make([]string, 0)
+	countingResolverSink := func(_ context.Context, filename string) ([]string, error) {
+		info, statErr := os.Stat(filename)
+		if statErr == nil && info.IsDir() {
+			if _, ok := kustomize.Detect(filename); ok {
+				resolvedDirs = append(resolvedDirs, filepath.Base(filename))
+			}
+		}
+		return []string{}, nil
+	}
+
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}},
+		mockSink, countingResolverSink)
+	require.NoError(t, err)
+
+	require.ElementsMatch(t, []string{"k8s-a", "k8s-b"}, resolvedDirs,
+		"both sibling kustomization roots must be sent to the resolver")
+}
+
+func TestGetSources_nestedIndependentKustomizationRoots(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	nested := filepath.Join(root, "nested")
+	require.NoError(t, os.MkdirAll(nested, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "kustomization.yaml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(nested, "kustomization.yaml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []
+`), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{root}, []string{}, []string{})
+	require.NoError(t, err)
+
+	var resolvedDirs []string
+	countingResolverSink := func(_ context.Context, filename string) ([]string, error) {
+		info, statErr := os.Stat(filename)
+		if statErr == nil && info.IsDir() {
+			if _, ok := kustomize.Detect(filename); ok {
+				resolvedDirs = append(resolvedDirs, filename)
+				if filename == root {
+					return []string{filepath.Join(root, "kustomization.yaml")}, nil
+				}
+			}
+		}
+		return []string{}, nil
+	}
+
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}}, mockSink, countingResolverSink)
+	require.NoError(t, err)
+	require.Contains(t, resolvedDirs, root)
+	require.Contains(t, resolvedDirs, nested)
+}
+
+func TestGetSources_kustomizeDirsNotSkippedWhenResolverReturnsNoExclusions(t *testing.T) {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
+		t.Fatalf("failed to change dir: %s", err)
+	}
+
+	ctx := context.Background()
+	fs, err := NewFileSystemSourceProvider(ctx,
+		[]string{filepath.FromSlash("test/fixtures/multi_kustomize")}, []string{}, []string{})
+	require.NoError(t, err)
+
+	var seenYAML []string
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}},
+		func(_ context.Context, filename string, _ io.ReadCloser) error {
+			seenYAML = append(seenYAML, filepath.Base(filename))
+			return nil
+		},
+		func(_ context.Context, _ string) ([]string, error) {
+			return []string{}, nil
+		})
+	require.NoError(t, err)
+	require.Contains(t, seenYAML, "kustomization.yaml")
+	require.Contains(t, seenYAML, "cm.yaml")
+}
+
+func TestGetSources_kustomizeDirsSkippedWhenResolverReturnsDiagnosticsAndExclusions(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "kustomization.yaml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- cm.yaml
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "cm.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n"), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{root}, []string{}, []string{})
+	require.NoError(t, err)
+
+	var seenYAML []string
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}},
+		func(_ context.Context, filename string, _ io.ReadCloser) error {
+			seenYAML = append(seenYAML, filepath.Base(filename))
+			return nil
+		},
+		func(_ context.Context, filename string) ([]string, error) {
+			if filepath.Clean(filename) == filepath.Clean(root) {
+				return []string{filepath.Join(root, "kustomization.yaml"), filepath.Join(root, "cm.yaml")}, nil
+			}
+			return []string{}, nil
+		})
+	require.NoError(t, err)
+	require.NotContains(t, seenYAML, "kustomization.yaml")
+	require.NotContains(t, seenYAML, "cm.yaml")
+}
+
+func TestGetSources_explicitKustomizationFileUsesResolverRoot(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	kust := filepath.Join(root, "kustomization.yaml")
+	require.NoError(t, os.WriteFile(kust, []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- cm.yaml
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "cm.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n"), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{kust}, []string{}, []string{})
+	require.NoError(t, err)
+
+	var resolverRoots []string
+	var seenYAML []string
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}},
+		func(_ context.Context, filename string, _ io.ReadCloser) error {
+			seenYAML = append(seenYAML, filepath.Base(filename))
+			return nil
+		},
+		func(_ context.Context, filename string) ([]string, error) {
+			resolverRoots = append(resolverRoots, filepath.Clean(filename))
+			return []string{kust, filepath.Join(root, "cm.yaml")}, nil
+		})
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.Clean(root)}, resolverRoots)
+	require.Empty(t, seenYAML)
+}
+
+func TestGetSources_explicitKustomizationFileWithDiagnosticsOnlyStillSkipsRawParse(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	kust := filepath.Join(root, "kustomization.yaml")
+	require.NoError(t, os.WriteFile(kust, []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- https://example.com/remote
+`), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{kust}, []string{}, []string{})
+	require.NoError(t, err)
+
+	var resolverRoots []string
+	var seenYAML []string
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}},
+		func(_ context.Context, filename string, _ io.ReadCloser) error {
+			seenYAML = append(seenYAML, filepath.Base(filename))
+			return nil
+		},
+		func(_ context.Context, filename string) ([]string, error) {
+			resolverRoots = append(resolverRoots, filepath.Clean(filename))
+			return []string{}, nil
+		})
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.Clean(root)}, resolverRoots)
+	require.Empty(t, seenYAML)
+}
+
+func TestGetSources_explicitKustomizationFilePropagatesResolverError(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	kust := filepath.Join(root, "kustomization.yaml")
+	require.NoError(t, os.WriteFile(kust, []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []
+`), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{kust}, []string{}, []string{})
+	require.NoError(t, err)
+
+	wantErr := errors.New("resolver failed")
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}}, mockSink, func(_ context.Context, _ string) ([]string, error) {
+		return nil, wantErr
+	})
+	require.ErrorIs(t, err, wantErr)
+
+	err = fs.GetParallelSources(ctx, model.Extensions{".yaml": {}}, mockSink, func(_ context.Context, _ string) ([]string, error) {
+		return nil, wantErr
+	})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestGetSources_directoryKustomizeRootPropagatesResolverError(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "kustomization.yaml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []
+`), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{root}, []string{}, []string{})
+	require.NoError(t, err)
+
+	wantErr := errors.New("resolver failed")
+	err = fs.GetSources(ctx, model.Extensions{".yaml": {}}, mockSink, func(_ context.Context, _ string) ([]string, error) {
+		return nil, wantErr
+	})
+	require.ErrorIs(t, err, wantErr)
+
+	err = fs.GetParallelSources(ctx, model.Extensions{".yaml": {}}, mockSink, func(_ context.Context, _ string) ([]string, error) {
+		return nil, wantErr
+	})
+	require.ErrorIs(t, err, wantErr)
 }

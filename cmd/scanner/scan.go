@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -74,10 +75,33 @@ var scanAction = &cli.Command{
 			Usage:   "a list of platform types to scan",
 			Value:   GetSupportedPlatforms(),
 		},
-		// NOTE: --x-parallelparsing flag disabled due to pre-existing race conditions
-		// in concurrent query workers (SetupLogs shared state write, docker detector
-		// shallow slice copy) that cause non-deterministic violation counts.
-		// See K9VULN-13746 for the follow-up to fix and re-enable.
+		&cli.BoolFlag{
+			Name:  "helm-include-crds",
+			Usage: "when rendering Helm charts, include CRDs in the manifest output",
+			Value: true,
+		},
+		&cli.BoolFlag{
+			Name:  "kustomize-enable-helm-inflation",
+			Usage: "when building kustomizations, pre-render helmCharts entries with the Helm SDK",
+			Value: true,
+		},
+		&cli.DurationFlag{
+			Name:  "kustomize-render-timeout",
+			Usage: "maximum time allowed for a single kustomize build",
+			Value: 60 * time.Second,
+		},
+		&cli.IntFlag{
+			Name:  "kustomize-max-fetch-mib",
+			Usage: "soft cap for scratch data during kustomize resolve (staging, Helm prepass; best-effort)",
+			Value: 128,
+		},
+		&cli.BoolFlag{
+			Name: "kustomize-strict-loads",
+			Usage: "use kustomize RootOnly load restrictions (safer; may reject some valid ../ references " +
+				"like secretGenerator.envs outside the kustomization root)",
+			Value: false,
+		},
+		// NOTE: --x-parallelparsing left out: parallel query workers still race → flaky counts.
 		// &cli.BoolFlag{
 		// 	Name:   "x-parallelparsing",
 		// 	Hidden: true,
@@ -92,6 +116,48 @@ const (
 	filePerms = 0644
 	dirPerms  = 0755
 )
+
+func scanParametersFromCLI(
+	c *cli.Command,
+	repoDir string,
+	repoInfo *model.RepositoryCommitInfo,
+	inputPaths []string,
+	outputPath, payloadPath string,
+	cfg *config.IacConfig,
+) *scan.Parameters {
+	maxFetchMib := c.Int("kustomize-max-fetch-mib")
+	if maxFetchMib <= 0 {
+		maxFetchMib = 128
+	}
+	return &scan.Parameters{
+		CloudProvider:                []string{""},
+		OutputPath:                   outputPath,
+		OutputName:                   c.String("output-name"),
+		PreviewLines:                 3,
+		RepoPath:                     repoDir,
+		Path:                         inputPaths,
+		QueriesPath:                  []string{"./assets/queries"},
+		LibrariesPath:                "./assets/libraries",
+		ReportFormats:                []string{"sarif"},
+		Platform:                     selectPlatforms(c.StringSlice("type")),
+		QueryExecTimeout:             c.Int("timeout"),
+		DisableSecrets:               true,
+		ScanID:                       "console",
+		MaxFileSizeFlag:              c.Int("max-file-size"),
+		MaxResolverDepth:             c.Int("max-resolver-depth"),
+		ExcludePlatform:              []string{""},
+		PayloadPath:                  payloadPath,
+		SCIInfo:                      model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
+		FlagEvaluator:                getFeatureFlagEvaluator(c),
+		Config:                       *cfg,
+		DownloadQueriesFromDatadog:   c.Bool("x-downloadqueriesfromdatadog"),
+		HelmIncludeCRDs:              c.Bool("helm-include-crds"),
+		KustomizeEnableHelmInflation: c.Bool("kustomize-enable-helm-inflation"),
+		KustomizeRenderTimeout:       c.Duration("kustomize-render-timeout"),
+		KustomizeMaxFetchBytes:       int64(maxFetchMib) * 1024 * 1024,
+		KustomizeStrictLoad:          c.Bool("kustomize-strict-loads"),
+	}
+}
 
 func runScan(ctx context.Context, c *cli.Command) error {
 	if c.Args().Len() > 0 {
@@ -141,29 +207,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	}
 	cfg.OnlyPaths = onlyPaths
 	cfg.IgnoreRules = append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...)
-	params := &scan.Parameters{
-		CloudProvider:              []string{""},
-		OutputPath:                 outputPath,
-		OutputName:                 c.String("output-name"),
-		PreviewLines:               3,
-		RepoPath:                   repoDir,
-		Path:                       inputPaths,
-		QueriesPath:                []string{"./assets/queries"},
-		LibrariesPath:              "./assets/libraries",
-		ReportFormats:              []string{"sarif"},
-		Platform:                   selectPlatforms(c.StringSlice("type")),
-		QueryExecTimeout:           c.Int("timeout"),
-		DisableSecrets:             true,
-		ScanID:                     "console",
-		MaxFileSizeFlag:            c.Int("max-file-size"),
-		MaxResolverDepth:           c.Int("max-resolver-depth"),
-		ExcludePlatform:            []string{""},
-		PayloadPath:                payloadPath,
-		SCIInfo:                    model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
-		FlagEvaluator:              getFeatureFlagEvaluator(c),
-		Config:                     *cfg,
-		DownloadQueriesFromDatadog: c.Bool("x-downloadqueriesfromdatadog"),
-	}
+	params := scanParametersFromCLI(c, repoDir, repoInfo, inputPaths, outputPath, payloadPath, cfg)
 
 	metadata, err := console.ExecuteScan(ctx, params)
 	if err != nil {
@@ -366,8 +410,7 @@ func selectPlatforms(platforms []string) []string {
 
 func getFeatureFlagEvaluator(_ *cli.Command) featureflags.FlagEvaluator {
 	overrides := map[string]bool{}
-	// Parallel parsing disabled: triggers race conditions in concurrent
-	// query workers causing non-deterministic violation counts.
+	// Parallel parsing off until worker races are fixed (non-deterministic counts).
 	// overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }

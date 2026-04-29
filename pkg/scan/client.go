@@ -56,6 +56,16 @@ type Parameters struct {
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
 	DownloadQueriesFromDatadog  bool
+	// HelmIncludeCRDs: include CRDs in Helm dry-run output.
+	HelmIncludeCRDs bool
+	// KustomizeEnableHelmInflation: Helm SDK pre-pass for kustomization helmCharts.
+	KustomizeEnableHelmInflation bool
+	// KustomizeRenderTimeout: max time for one kustomize build.
+	KustomizeRenderTimeout time.Duration
+	// KustomizeMaxFetchBytes: soft cap on scratch bytes during kustomize resolve (staging, Helm prepass).
+	KustomizeMaxFetchBytes int64
+	// KustomizeStrictLoad: kustomize RootOnly load restrictions.
+	KustomizeStrictLoad bool
 }
 
 // Client represents a scan client
@@ -79,33 +89,38 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 	}
 
 	return &Parameters{
-		Config:                      *configParams,
-		CloudProvider:               []string{""},
-		ExperimentalQueries:         false,
-		InputData:                   "",
-		OutputName:                  "kics-result.sarif",
-		PayloadPath:                 "",
-		PreviewLines:                3,
-		QueriesPath:                 []string{"./assets/queries"},
-		LibrariesPath:               "./assets/libraries",
-		ReportFormats:               []string{"sarif"},
-		Platform:                    []string{"CICD", "Terraform", "Kubernetes", "CloudFormation", "Dockerfile"},
-		TerraformVarsPath:           "",
-		QueryExecTimeout:            60,
-		LineInfoPayload:             false,
-		DisableSecrets:              true,
-		SecretsRegexesPath:          "",
-		ChangedDefaultQueryPath:     false,
-		ChangedDefaultLibrariesPath: false,
-		ScanID:                      "console",
-		BillOfMaterials:             false,
-		ExcludeGitIgnore:            false,
-		OpenAPIResolveReferences:    false,
-		ParallelScanFlag:            0,
-		MaxFileSizeFlag:             5,
-		UseOldSeverities:            false,
-		MaxResolverDepth:            15,
-		ExcludePlatform:             []string{""},
+		Config:                       *configParams,
+		CloudProvider:                []string{""},
+		ExperimentalQueries:          false,
+		InputData:                    "",
+		OutputName:                   "kics-result.sarif",
+		PayloadPath:                  "",
+		PreviewLines:                 3,
+		QueriesPath:                  []string{"./assets/queries"},
+		LibrariesPath:                "./assets/libraries",
+		ReportFormats:                []string{"sarif"},
+		Platform:                     []string{"CICD", "Terraform", "Kubernetes", "CloudFormation", "Dockerfile"},
+		TerraformVarsPath:            "",
+		QueryExecTimeout:             60,
+		LineInfoPayload:              false,
+		DisableSecrets:               true,
+		SecretsRegexesPath:           "",
+		ChangedDefaultQueryPath:      false,
+		ChangedDefaultLibrariesPath:  false,
+		ScanID:                       "console",
+		BillOfMaterials:              false,
+		ExcludeGitIgnore:             false,
+		OpenAPIResolveReferences:     false,
+		ParallelScanFlag:             0,
+		MaxFileSizeFlag:              5,
+		UseOldSeverities:             false,
+		MaxResolverDepth:             15,
+		ExcludePlatform:              []string{""},
+		HelmIncludeCRDs:              true,
+		KustomizeEnableHelmInflation: true,
+		KustomizeRenderTimeout:       60 * time.Second,
+		KustomizeMaxFetchBytes:       128 * 1024 * 1024,
+		KustomizeStrictLoad:          false,
 	}, logCtx
 }
 

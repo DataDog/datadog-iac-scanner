@@ -170,8 +170,8 @@ func (c *Client) generateStats(scanResults *Results, scanDuration time.Duration)
 		severitySet[sev] = true
 	}
 
-	// nolint:gocritic
-	for _, vuln := range scanResults.Results {
+	for i := range scanResults.Results {
+		vuln := scanResults.Results[i]
 		if !severitySet[vuln.Severity] {
 			continue
 		}
@@ -206,8 +206,8 @@ func (c *Client) generateRuleStats(scanResults *Results) RuleStats {
 func getLongestRunningQuery(vulns []model.Vulnerability) RuleTiming {
 	longestQuery := ""
 	longestQueryTime := time.Duration(0)
-	// nolint:gocritic
-	for _, vuln := range vulns {
+	for i := range vulns {
+		vuln := vulns[i]
 		if vuln.QueryDuration > longestQueryTime {
 			longestQueryTime = vuln.QueryDuration
 			longestQuery = vuln.QueryName

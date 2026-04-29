@@ -202,6 +202,107 @@ func Test_LogLoadingQueriesType(t *testing.T) {
 
 }
 
+func TestCommonAncestorPath(t *testing.T) {
+	root := t.TempDir()
+	aDir := filepath.Join(root, "a")
+	bDir := filepath.Join(root, "b")
+	require.NoError(t, os.MkdirAll(aDir, 0o700))
+	require.NoError(t, os.MkdirAll(bDir, 0o700))
+	aFile := filepath.Join(aDir, "one.yaml")
+	bFile := filepath.Join(bDir, "two.yaml")
+	require.NoError(t, os.WriteFile(aFile, []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(bFile, []byte("y"), 0o600))
+
+	require.Equal(t, root, commonAncestorPath([]string{aFile, bDir}))
+	require.Equal(t, aDir, commonAncestorPath([]string{aFile}))
+	require.Equal(t, "", commonAncestorPath(nil))
+}
+
+func TestInferKustomizeRepoRoot_PrefersNearestGitRoot(t *testing.T) {
+	repo := t.TempDir()
+	overlay := filepath.Join(repo, "overlays", "prod")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o700))
+	require.NoError(t, os.MkdirAll(overlay, 0o700))
+	require.Equal(t, repo, inferKustomizeRepoRoot("", []string{overlay}))
+}
+
+func TestInferKustomizeRepoRoot_FallsBackToCommonAncestor(t *testing.T) {
+	root := t.TempDir()
+	overlay := filepath.Join(root, "overlays", "prod")
+	require.NoError(t, os.MkdirAll(overlay, 0o700))
+	require.Equal(t, overlay, inferKustomizeRepoRoot("", []string{overlay}))
+}
+
+func TestInferKustomizeRepoRoot_MultipleDistinctGitRootsFallsBackToCommonAncestor(t *testing.T) {
+	root := t.TempDir()
+	repoA := filepath.Join(root, "repo-a")
+	repoB := filepath.Join(root, "repo-b")
+	overlayA := filepath.Join(repoA, "overlays", "prod")
+	overlayB := filepath.Join(repoB, "overlays", "prod")
+	require.NoError(t, os.MkdirAll(filepath.Join(repoA, ".git"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(repoB, ".git"), 0o700))
+	require.NoError(t, os.MkdirAll(overlayA, 0o700))
+	require.NoError(t, os.MkdirAll(overlayB, 0o700))
+
+	require.Equal(t, root, inferKustomizeRepoRoot("", []string{overlayA, overlayB}),
+		"scan-level inference is still coarse here; resolver-side effectiveRepoRoot hardens the per-root boundary")
+}
+
+func TestInferKustomizeRepoRoot_SingleNonGitPathUsesParentDirectory(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "base")
+	overlay := filepath.Join(root, "overlays", "prod")
+	require.NoError(t, os.MkdirAll(base, 0o700))
+	require.NoError(t, os.MkdirAll(overlay, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(overlay, "kustomization.yaml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../base
+`), 0o600))
+
+	require.Equal(t, root, inferKustomizeRepoRoot("", []string{overlay}))
+}
+
+func TestInferKustomizeRepoRoot_SingleNonGitPathUsesNestedDependencyTree(t *testing.T) {
+	root := t.TempDir()
+	common := filepath.Join(root, "common")
+	base := filepath.Join(root, "base")
+	overlay := filepath.Join(root, "overlay")
+	require.NoError(t, os.MkdirAll(common, 0o700))
+	require.NoError(t, os.MkdirAll(base, 0o700))
+	require.NoError(t, os.MkdirAll(overlay, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "Kustomization"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../common
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(overlay, "kustomization.yml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../base
+`), 0o600))
+
+	require.Equal(t, root, inferKustomizeRepoRoot("", []string{overlay}))
+}
+
+func TestInferKustomizeRepoRoot_SingleNonGitPathIgnoresAbsoluteRefsOutsideScanTree(t *testing.T) {
+	root := t.TempDir()
+	external := t.TempDir()
+	overlay := filepath.Join(root, "overlay")
+	require.NoError(t, os.MkdirAll(overlay, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(overlay, "kustomization.yaml"), []byte("apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n- "+filepath.Join(external, "base")+"\n"), 0o600))
+
+	require.Equal(t, overlay, inferKustomizeRepoRoot("", []string{overlay}))
+}
+
+func TestShouldEnableKustomizeResolver(t *testing.T) {
+	require.True(t, shouldEnableKustomizeResolver([]string{"Kubernetes"}))
+	require.True(t, shouldEnableKustomizeResolver([]string{"Terraform", "Knative"}))
+	require.True(t, shouldEnableKustomizeResolver([]string{"crossplane"}))
+	require.False(t, shouldEnableKustomizeResolver([]string{"Terraform"}))
+	require.False(t, shouldEnableKustomizeResolver([]string{"Dockerfile", "CloudFormation"}))
+}
+
 func Test_ExtractPathType(t *testing.T) {
 	tests := []struct {
 		name               string

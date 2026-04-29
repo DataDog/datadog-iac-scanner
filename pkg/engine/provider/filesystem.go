@@ -18,6 +18,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/kustomize"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
 	"github.com/yargevad/filepathx"
@@ -160,6 +161,21 @@ func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 		}
 
 		if !fileInfo.IsDir() {
+			if kustomize.IsKustomizationEntryFile(scanPath) {
+				excluded, errRes := resolverSink(ctx, strings.ReplaceAll(filepath.Dir(scanPath), "\\", "/"))
+				if errRes != nil {
+					return errRes
+				}
+				if len(excluded) > 0 {
+					s.mu.Lock()
+					if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
+						s.mu.Unlock()
+						return errAdd
+					}
+					s.mu.Unlock()
+				}
+				continue
+			}
 			c, openFileErr := openScanFile(ctx, scanPath, extensions)
 			if openFileErr != nil {
 				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
@@ -197,6 +213,21 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 		}
 
 		if !fileInfo.IsDir() {
+			if kustomize.IsKustomizationEntryFile(scanPath) {
+				excluded, errRes := resolverSink(ctx, strings.ReplaceAll(filepath.Dir(scanPath), "\\", "/"))
+				if errRes != nil {
+					return errRes
+				}
+				if len(excluded) > 0 {
+					s.mu.Lock()
+					if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
+						s.mu.Unlock()
+						return errAdd
+					}
+					s.mu.Unlock()
+				}
+				continue
+			}
 			// Single file - validate and add to queue
 			_, openFileErr := openScanFile(ctx, scanPath, extensions)
 			if openFileErr != nil {
@@ -227,34 +258,34 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
 	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
 	contextLogger := logger.FromContext(ctx)
-	var resolvedChartPaths []string
+	var resolvedExcludedRoots []string
 
 	err = filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedChartPaths); shouldSkip {
+		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedExcludedRoots); shouldSkip {
 			return skipFolder
 		}
 
-		// ------------------ Helm resolver --------------------------------
+		// Helm / Kustomize preprocessor
 		if info.IsDir() {
 			excluded, errRes := resolverSink(ctx, strings.ReplaceAll(path, "\\", "/"))
 			if errRes != nil {
-				return nil
+				return errRes
 			}
-			s.mu.Lock()
-			if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
-				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
+			if len(excluded) > 0 {
+				s.mu.Lock()
+				if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
+					contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered preprocessor files, dir=%s", info.Name())
+				}
+				s.mu.Unlock()
+				resolvedExcludedRoots = append(resolvedExcludedRoots, claimedExcludedRoots(path, excluded)...)
 			}
-			s.mu.Unlock()
-			resolvedChartPaths = append(resolvedChartPaths, path)
 			return nil
 		}
-		// -----------------------------------------------------------------
-
-		// Just collect the file path, don't open or process it yet
+		// Collect path only; processing happens later
 		files = append(files, strings.ReplaceAll(path, "\\", "/"))
 		return nil
 	})
@@ -369,32 +400,32 @@ func (s *FileSystemSourceProvider) feedFilesToWorkers(ctx context.Context, files
 func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 	sink Sink, resolverSink ResolverSink, extensions model.Extensions) error {
 	contextLogger := logger.FromContext(ctx)
-	var resolvedChartPaths []string
+	var resolvedExcludedRoots []string
 	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedChartPaths); shouldSkip {
+		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedExcludedRoots); shouldSkip {
 			return skipFolder
 		}
 
-		// ------------------ Helm resolver --------------------------------
+		// Helm / Kustomize preprocessor
 		if info.IsDir() {
 			excluded, errRes := resolverSink(ctx, strings.ReplaceAll(path, "\\", "/"))
 			if errRes != nil {
-				return nil
+				return errRes
 			}
-			s.mu.Lock()
-			if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
-				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
+			if len(excluded) > 0 {
+				s.mu.Lock()
+				if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
+					contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered preprocessor files, dir=%s", info.Name())
+				}
+				s.mu.Unlock()
+				resolvedExcludedRoots = append(resolvedExcludedRoots, claimedExcludedRoots(path, excluded)...)
 			}
-			s.mu.Unlock()
-			resolvedChartPaths = append(resolvedChartPaths, path)
 			return nil
 		}
-		// -----------------------------------------------------------------
-
 		c, err := os.Open(filepath.Clean(path)) // nolint:gosec
 		if err != nil {
 			if ignoreDamagedFiles(ctx, filepath.Clean(path)) {
@@ -426,7 +457,7 @@ func openScanFile(ctx context.Context, scanPath string, extensions model.Extensi
 
 // nolint:gocyclo
 func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.FileInfo, extensions model.Extensions,
-	path string, resolvedChartPaths []string) (bool, error) {
+	path string, resolvedExcludedRoots []string) (bool, error) {
 	contextLogger := logger.FromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -446,11 +477,15 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 			contextLogger.Info().Msgf("Directory ignored: %s", path)
 			return true, filepath.SkipDir
 		}
-		_, err := os.Stat(filepath.Join(path, "Chart.yaml"))
-		if err != nil || isUnderResolvedChart(path, resolvedChartPaths) {
-			return true, nil
+		// Preprocessor root: Chart.yaml or kustomization entry. Skip nested dirs only when under an excluded resolved root.
+		_, chartErr := os.Stat(filepath.Join(path, "Chart.yaml"))
+		_, kustomOK := kustomize.Detect(path)
+		under := isUnderResolvedRoot(path, resolvedExcludedRoots)
+		isPreprocessorRoot := chartErr == nil || kustomOK
+		if isPreprocessorRoot && !under {
+			return false, nil
 		}
-		return false, nil
+		return true, nil
 	}
 
 	if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
@@ -475,13 +510,43 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 	return false, nil
 }
 
-func isUnderResolvedChart(path string, resolvedChartPaths []string) bool {
-	for _, chartRoot := range resolvedChartPaths {
-		if strings.HasPrefix(path, chartRoot+string(os.PathSeparator)) {
+func isUnderResolvedRoot(path string, resolvedRoots []string) bool {
+	cp := filepath.Clean(path)
+	for _, root := range resolvedRoots {
+		r := filepath.Clean(root)
+		if cp == r {
+			continue
+		}
+		if strings.HasPrefix(cp, r+string(filepath.Separator)) {
 			return true
 		}
 	}
 	return false
+}
+
+func excludedDirectories(paths []string) []string {
+	var out []string
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		out = append(out, strings.ReplaceAll(filepath.Clean(p), "\\", "/"))
+	}
+	return out
+}
+
+func claimedExcludedRoots(path string, excluded []string) []string {
+	out := excludedDirectories(excluded)
+	if isHelmChartDir(path) {
+		out = append(out, strings.ReplaceAll(filepath.Clean(path), "\\", "/"))
+	}
+	return out
+}
+
+func isHelmChartDir(path string) bool {
+	_, err := os.Stat(filepath.Join(path, "Chart.yaml"))
+	return err == nil
 }
 
 func containsFile(fileList []os.FileInfo, target os.FileInfo) bool {
