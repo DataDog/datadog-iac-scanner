@@ -3,6 +3,10 @@ name: check-documentation-up-to-date
 on:
   workflow_dispatch:
   pull_request:
+    paths:
+      - "assets/queries/**"
+      - "documentation/**"
+      - ".github/workflows/check-documentation-up-to-date.yaml"
 
 jobs:
   check-documentation-up-to-date:
