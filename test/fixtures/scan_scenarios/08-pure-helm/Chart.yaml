@@ -1,0 +1,6 @@
+apiVersion: v2
+name: standalone
+description: Standalone Helm chart (no Kustomize wrapper)
+type: application
+version: 0.1.0
+appVersion: "1.0"

@@ -1,0 +1,66 @@
+{
+  "rules": [
+    {
+      "id": "Service with external load balancer",
+      "name": "Service with external load balancer",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_with_external_load_balancer",
+      "tags": [
+        "CWE:552",
+        "DATADOG_CATEGORY:Networking and Firewall",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:26763a1c-5dda-4772-b507-5fca7fb5f165"
+      ]
+    },
+    {
+      "id": "Using unrecommended namespace",
+      "name": "Using unrecommended namespace",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/using_unrecommended_namespace",
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Configurations",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:611ab018-c4aa-4ba2-b0f6-a448337509a6"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "ruleId": "Service with external load balancer",
+      "level": "note",
+      "message": "Service with external load balancer",
+      "artifactUri": "test/fixtures/scan_scenarios/04-nested/base/service.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:552",
+        "DATADOG_CATEGORY:Networking and Firewall",
+        "IAC_RESOURCE_NAME:shared",
+        "IAC_RESOURCE_TYPE:Service"
+      ]
+    },
+    {
+      "ruleId": "Using unrecommended namespace",
+      "level": "note",
+      "message": "Using unrecommended namespace",
+      "artifactUri": "test/fixtures/scan_scenarios/04-nested/base/service.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 2,
+      "endColumn": 14,
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Configurations",
+        "IAC_RESOURCE_NAME:shared",
+        "IAC_RESOURCE_TYPE:Service"
+      ]
+    }
+  ]
+}

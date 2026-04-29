@@ -1,0 +1,276 @@
+{
+  "rules": [
+    {
+      "id": "Container running as root",
+      "name": "Container running as root",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/containers_running_as_root",
+      "tags": [
+        "CWE:1188",
+        "DATADOG_CATEGORY:Best Practices",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:cf34805e-3872-4c08-bf92-6ff7bb0cfadb"
+      ]
+    },
+    {
+      "id": "Container with low UID",
+      "name": "Container with low UID",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/containers_run_with_low_uid",
+      "tags": [
+        "CWE:1188",
+        "DATADOG_CATEGORY:Best Practices",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:02323c00-cdc3-4fdc-a310-4f2b3e7a1660"
+      ]
+    },
+    {
+      "id": "Memory limits not defined",
+      "name": "Memory limits not defined",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/memory_limits_not_defined",
+      "tags": [
+        "CWE:400",
+        "DATADOG_CATEGORY:Resource Management",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:b14d1bc4-a208-45db-92f0-e21f8e2588e9"
+      ]
+    },
+    {
+      "id": "Memory requests not defined",
+      "name": "Memory requests not defined",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/memory_requests_not_defined",
+      "tags": [
+        "CWE:400",
+        "DATADOG_CATEGORY:Resource Management",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:229588ef-8fde-40c8-8756-f4f2b5825ded"
+      ]
+    },
+    {
+      "id": "Readiness probe is not configured",
+      "name": "Readiness probe is not configured",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/readiness_probe_is_not_configured",
+      "tags": [
+        "CWE:754",
+        "DATADOG_CATEGORY:Availability",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:a659f3b5-9bf0-438a-bd9a-7d3a6427f1e3"
+      ]
+    },
+    {
+      "id": "Seccomp profile is not configured",
+      "name": "Seccomp profile is not configured",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/seccomp_profile_is_not_configured",
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Configurations",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:f377b83e-bd07-4f48-a591-60c82b14a78b"
+      ]
+    },
+    {
+      "id": "Service account name undefined or empty",
+      "name": "Service account name undefined or empty",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_account_name_undefined_or_empty",
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Defaults",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:591ade62-d6b0-4580-b1ae-209f80ba1cd9"
+      ]
+    },
+    {
+      "id": "Service account token auto-mount not disabled",
+      "name": "Service account token auto-mount not disabled",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_account_token_automount_not_disabled",
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Defaults",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:48471392-d4d0-47c0-b135-cdec95eb3eef"
+      ]
+    },
+    {
+      "id": "Using unrecommended namespace",
+      "name": "Using unrecommended namespace",
+      "level": "note",
+      "helpUri": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/using_unrecommended_namespace",
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Configurations",
+        "DATADOG_PLATFORM:Kubernetes",
+        "DATADOG_PROVIDER:",
+        "DATADOG_RULE_TYPE:IAC_SCANNING",
+        "KICS_RuleID:611ab018-c4aa-4ba2-b0f6-a448337509a6"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "ruleId": "Container running as root",
+      "level": "note",
+      "message": "Container running as root",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:1188",
+        "DATADOG_CATEGORY:Best Practices",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    },
+    {
+      "ruleId": "Container with low UID",
+      "level": "note",
+      "message": "Container with low UID",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:1188",
+        "DATADOG_CATEGORY:Best Practices",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    },
+    {
+      "ruleId": "Memory limits not defined",
+      "level": "note",
+      "message": "Memory limits not defined",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:400",
+        "DATADOG_CATEGORY:Resource Management",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    },
+    {
+      "ruleId": "Memory requests not defined",
+      "level": "note",
+      "message": "Memory requests not defined",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:400",
+        "DATADOG_CATEGORY:Resource Management",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    },
+    {
+      "ruleId": "Readiness probe is not configured",
+      "level": "note",
+      "message": "Readiness probe is not configured",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:754",
+        "DATADOG_CATEGORY:Availability",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    },
+    {
+      "ruleId": "Seccomp profile is not configured",
+      "level": "note",
+      "message": "Seccomp profile is not configured",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Configurations",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    },
+    {
+      "ruleId": "Service account name undefined or empty",
+      "level": "note",
+      "message": "Service account name undefined or empty",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Defaults",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    },
+    {
+      "ruleId": "Service account token auto-mount not disabled",
+      "level": "note",
+      "message": "Service account token auto-mount not disabled",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 1,
+      "endColumn": 1,
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Defaults",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    },
+    {
+      "ruleId": "Using unrecommended namespace",
+      "level": "note",
+      "message": "Using unrecommended namespace",
+      "artifactUri": "test/fixtures/scan_scenarios/03-generator/pod.yaml",
+      "startLine": 4,
+      "endLine": 4,
+      "startColumn": 2,
+      "endColumn": 16,
+      "tags": [
+        "CWE:665",
+        "DATADOG_CATEGORY:Insecure Configurations",
+        "IAC_RESOURCE_NAME:consumer",
+        "IAC_RESOURCE_TYPE:Pod"
+      ]
+    }
+  ]
+}

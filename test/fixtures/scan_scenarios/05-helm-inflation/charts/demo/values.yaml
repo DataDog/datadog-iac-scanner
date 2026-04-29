@@ -1,0 +1,5 @@
+image:
+  repository: nginx
+  tag: latest
+replicas: 2
+privileged: false

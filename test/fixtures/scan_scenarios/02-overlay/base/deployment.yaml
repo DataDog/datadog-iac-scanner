@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      hostNetwork: true
+      containers:
+      - name: api
+        image: quay.io/example/api:1.0
+        securityContext:
+          runAsNonRoot: false
