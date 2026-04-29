@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector/kustomize"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
@@ -158,6 +159,7 @@ func NewInspector(
 
 	lineDetector := detector.NewDetectLine(tracker.GetOutputLines()).
 		Add(helm.DetectKindLine{}, model.KindHELM).
+		Add(kustomize.DetectKindLine{}, model.KindKUSTOMIZE).
 		Add(docker.DetectKindLine{}, model.KindDOCKER).
 		Add(terraform.DetectKindLine{}, model.KindTerraform)
 
