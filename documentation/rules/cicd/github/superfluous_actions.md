@@ -105,6 +105,17 @@ jobs:
 ```
 ## Non-Compliant Code Examples
 ```yaml
+name: Composite action using superfluous third-party action
+description: Composite action that uses a superfluous third-party release action
+runs:
+  using: composite
+  steps:
+    - name: Create release
+      uses: ncipollo/release-action@v1
+
+```
+
+```yaml
 name: Using Superfluous Actions
 on: push
 

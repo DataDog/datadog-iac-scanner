@@ -161,56 +161,40 @@ jobs:
 ```
 
 ```yaml
-name: test-script-run
-
-on:
-  issue_comment:
-    types: [opened]
-
-jobs:
-  script-run:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Run script
-        uses: actions/github-script@latest
-        with:
-          script: |
-            const fs = require('fs');
-            const body = fs.readFileSync('/tmp/${{ github.event.issue.title }}.txt', {encoding: 'utf8'});
-
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'Thanks for reporting!'
-            })
-
-            return true;
+name: Composite action with github-script using inputs
+description: Composite action that runs github-script with attacker-controlled composite inputs
+inputs:
+  message:
+    description: Message provided by the caller
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Run script
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const body = `${{ inputs.message }}`;
+          core.info(body);
 
 ```
 
 ```yaml
-name: test-script-run
-
-on:
-  pull_request:
-
-jobs:
-  script-run:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Run script
-        uses: actions/github-script@latest
-        with:
-          script: |
-            const head_ref = ${{ github.head_ref }};
-
-            return true;
+name: Composite action with github-script
+description: Composite action that runs github-script with untrusted issue body
+runs:
+  using: composite
+  steps:
+    - name: Run script
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const body = `${{ github.event.issue.body }}`;
+          await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: 'Thanks for reporting!'
+          })
 
 ```

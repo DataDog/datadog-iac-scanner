@@ -184,8 +184,8 @@ POLICY
 ```
 
 ```terraform
-resource "aws_sqs_queue" "positive1" {
-  name = "examplequeue"
+resource "aws_sqs_queue" "aws_wildcard" {
+  name = "aws-wildcard-queue"
 
   policy = <<POLICY
 {
@@ -193,16 +193,13 @@ resource "aws_sqs_queue" "positive1" {
   "Id": "sqspolicy",
   "Statement": [
     {
-      "Sid": "First",
+      "Sid": "AllowAnyAccount",
       "Effect": "Allow",
-      "Principal": "*",
+      "Principal": {
+        "AWS": "*"
+      },
       "Action": "sqs:SendMessage",
-      "Resource": "${aws_sqs_queue.q.arn}",
-      "Condition": {
-        "ArnEquals": {
-          "aws:SourceArn": "${aws_sns_topic.example.arn}"
-        }
-      }
+      "Resource": "arn:aws:sqs:us-east-1:123456789012:my-queue"
     }
   ]
 }

@@ -87,6 +87,23 @@ jobs:
 ```
 ## Non-Compliant Code Examples
 ```yaml
+name: Composite action with misfeatures
+description: Composite action that uses pip-install and CMD shell
+runs:
+  using: composite
+  steps:
+    - name: Setup Python with pip-install
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        pip-install: 'pytest requests'
+    - name: CMD shell usage
+      shell: cmd
+      run: echo "Using deprecated CMD shell"
+
+```
+
+```yaml
 name: Misfeature Usage
 on: push
 

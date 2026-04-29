@@ -97,6 +97,19 @@ jobs:
 ```
 ## Non-Compliant Code Examples
 ```yaml
+name: Composite action with unsafe contains
+description: Composite step if condition uses contains() against user-controllable input
+runs:
+  using: composite
+  steps:
+    - name: Check input
+      if: ${{ contains('dev test prod', inputs.environment) }}
+      shell: bash
+      run: echo "Valid environment"
+
+```
+
+```yaml
 name: Unsound Contains Usage
 on: pull_request
 

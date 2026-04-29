@@ -62,6 +62,48 @@ resource "aws_glue_resource_policy" "example2" {
 ```
 ## Non-Compliant Code Examples
 ```terraform
+resource "aws_glue_resource_policy" "multi_statement" {
+  policy = <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Safe",
+      "Effect": "Allow",
+      "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+      "Action": ["glue:GetTable"]
+    },
+    {
+      "Sid": "Vulnerable",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": ["glue:*"]
+    }
+  ]
+}
+POLICY
+}
+
+```
+
+```terraform
+resource "aws_glue_resource_policy" "jsonencoded" {
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "JsonEncodedVulnerable"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["glue:*"]
+      }
+    ]
+  })
+}
+
+```
+
+```terraform
 data "aws_iam_policy_document" "glue-example-policy" {
   statement {
     actions = [

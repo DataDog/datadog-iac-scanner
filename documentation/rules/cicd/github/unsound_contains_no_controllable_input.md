@@ -95,6 +95,19 @@ jobs:
 ```
 ## Non-Compliant Code Examples
 ```yaml
+name: Composite action with unsafe contains
+description: Composite step uses contains() against a non-user-controllable context
+runs:
+  using: composite
+  steps:
+    - name: Check trigger
+      if: ${{ contains('push pull_request', github.event_name) }}
+      shell: bash
+      run: echo "Trigger check"
+
+```
+
+```yaml
 name: Unsound Contains Usage
 on: pull_request
 

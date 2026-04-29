@@ -77,6 +77,68 @@ data "aws_iam_policy_document" "example" {
 ```
 ## Non-Compliant Code Examples
 ```terraform
+resource "aws_iam_role_policy" "multi_statement" {
+  name = "multi-statement"
+  role = aws_iam_role.example.id
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Safe",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::example-bucket/*"
+    },
+    {
+      "Sid": "Vulnerable",
+      "Effect": "Allow",
+      "Action": "*",
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+```
+
+```terraform
+resource "aws_iam_role_policy" "jsonencoded" {
+  name = "jsonencoded"
+  role = aws_iam_role.example.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "*"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+data "aws_iam_policy_document" "multi_statement" {
+  statement {
+    sid    = "Safe"
+    effect = "Allow"
+    actions = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::example-bucket/*"]
+  }
+  statement {
+    sid    = "Vulnerable"
+    effect = "Allow"
+    actions = ["*"]
+    resources = ["*"]
+  }
+}
+
+```
+
+```terraform
 resource "aws_iam_role_policy" "positive1" {
   name = "apigateway-cloudwatch-logging"
   role = aws_iam_role.apigateway_cloudwatch_logging.id

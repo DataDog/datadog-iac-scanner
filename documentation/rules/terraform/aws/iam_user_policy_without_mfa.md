@@ -100,6 +100,55 @@ EOF
 ```
 ## Non-Compliant Code Examples
 ```terraform
+resource "aws_iam_user_policy" "mfa_false" {
+  name = "test-mfa-false"
+  user = aws_iam_user.lb.name
+
+  policy = <<EOF
+{
+   "Version": "2012-10-17",
+   "Statement": [
+     {
+       "Effect": "Allow",
+       "Principal": {
+         "AWS": "arn:aws:iam::111122223333:root"
+       },
+       "Action": "sts:AssumeRole",
+       "Condition": {
+         "BoolIfExists": {
+           "aws:MultiFactorAuthPresent": "false"
+         }
+       }
+     }
+   ]
+}
+EOF
+}
+
+```
+
+```terraform
+resource "aws_iam_user_policy" "wildcard_principal" {
+  name = "test-wildcard"
+  user = aws_iam_user.lb.name
+
+  policy = <<EOF
+{
+   "Version": "2012-10-17",
+   "Statement": [
+     {
+       "Effect": "Allow",
+       "Principal": "*",
+       "Action": "sts:AssumeRole"
+     }
+   ]
+}
+EOF
+}
+
+```
+
+```terraform
 resource "aws_iam_user" "positive1" {
   name = "root"
   path = "/system/"

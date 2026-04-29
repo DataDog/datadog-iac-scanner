@@ -89,6 +89,20 @@ jobs:
 ```
 ## Non-Compliant Code Examples
 ```yaml
+name: Composite action with unsound conditions
+description: Composite action whose step conditions use YAML block scalars
+runs:
+  using: composite
+  steps:
+    - name: Unsound literal block
+      if: |
+        ${{ inputs.deploy == 'true' }}
+      shell: bash
+      run: echo "This will always run!"
+
+```
+
+```yaml
 name: Unsound Conditions
 on: push
 

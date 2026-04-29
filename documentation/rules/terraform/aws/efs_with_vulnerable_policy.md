@@ -81,6 +81,54 @@ POLICY
 ```
 ## Non-Compliant Code Examples
 ```terraform
+resource "aws_efs_file_system_policy" "multi_statement" {
+  file_system_id = aws_efs_file_system.example.id
+
+  policy = <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SafeStatement",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::123456789012:root"
+      },
+      "Action": ["elasticfilesystem:ClientRead"]
+    },
+    {
+      "Sid": "VulnerableStatement",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": ["elasticfilesystem:*"]
+    }
+  ]
+}
+POLICY
+}
+
+```
+
+```terraform
+resource "aws_efs_file_system_policy" "jsonencoded" {
+  file_system_id = aws_efs_file_system.example.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "JsonEncodedVulnerable"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["elasticfilesystem:*"]
+      }
+    ]
+  })
+}
+
+```
+
+```terraform
 provider "aws" {
   region = "us-east-1"
 }
