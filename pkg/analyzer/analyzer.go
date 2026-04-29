@@ -19,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/kustomize"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
 	ignore "github.com/sabhiram/go-gitignore"
@@ -507,12 +508,26 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 	return false
 }
 
+func (a *analyzerInfo) tryKustomizeEntry(results, unwanted chan<- string) bool {
+	if !kustomize.IsKustomizationEntryFile(a.filePath) {
+		return false
+	}
+	if a.isAvailableType(kubernetes) && checkKustomize(a.filePath) {
+		results <- kubernetes
+	}
+	unwanted <- a.filePath
+	return true
+}
+
 // checkContent will determine the file type by content when worker was unable to
 // determine by ext, if no type was determined checkContent adds it to unwanted channel
 func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<- string, locCount chan<- int, linesCount int, ext string) {
 	contextLogger := logger.FromContext(ctx)
 	typesFlag := a.typesFlag
 	excludeTypesFlag := a.excludeTypesFlag
+	if a.tryKustomizeEntry(results, unwanted) {
+		return
+	}
 	// get file content
 	content, err := os.ReadFile(a.filePath)
 	if err != nil {
@@ -564,6 +579,9 @@ func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<
 }
 
 func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte) string {
+	if kustomize.IsKustomizationEntryFile(path) {
+		return ""
+	}
 	if returnType != "" {
 		switch returnType {
 		case "cdkTf":
@@ -576,6 +594,9 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 		}
 	} else if ext == yaml || ext == yml {
 		if checkHelm(ctx, path) {
+			return kubernetes
+		}
+		if checkKustomize(path) {
 			return kubernetes
 		}
 		platform := checkYamlPlatform(ctx, content, path)
@@ -596,6 +617,14 @@ func checkHelm(ctx context.Context, path string) bool {
 	}
 
 	return true
+}
+
+func checkKustomize(path string) bool {
+	dir := filepath.Dir(path)
+	if _, ok := kustomize.Detect(dir); ok {
+		return true
+	}
+	return false
 }
 
 func checkYamlPlatform(ctx context.Context, content []byte, path string) string {
