@@ -9,6 +9,7 @@ var resolverDiagnosticTitles = map[string]string{
 	"kustomize-helm-inflation-disabled":   "Kustomize Helm inflation disabled",
 	"kustomize-helm-prepass-failed":       "Kustomize Helm prepass failed",
 	"kustomize-helm-chart-missing":        "Kustomize Helm chart missing",
+	"kustomize-helm-chart-escape":         "Kustomize Helm chart path escapes staged repo",
 	"kustomize-helm-remote-chart-invalid": "Kustomize Helm remote chart invalid",
 	"kustomize-helm-values-invalid":       "Kustomize Helm values invalid",
 	"kustomize-helm-render-failed":        "Kustomize Helm chart render failed",
