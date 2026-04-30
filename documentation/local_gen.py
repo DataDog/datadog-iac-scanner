@@ -10,7 +10,6 @@ import yaml
 from itertools import islice
 from pathlib import Path
 
-
 NO_DESC = "No description provided"
 POSITIVE = re.compile(r"^positive\d*\..+$")
 NEGATIVE = re.compile(r"^negative\d*\..+$")
@@ -113,13 +112,18 @@ def build_markdown(
 ):
     rule_name = rule_path.name
     title = metadata.get("queryName", "Untitled Rule")
-    rule_id = metadata.get("id", "unknown-id")
     display_name = metadata.get("queryName", "no-name")
     platform = metadata.get("platform", "unknown")
     severity = metadata.get("severity", "INFO").upper()
     category = metadata.get("category", "unknown")
     description = metadata.get("descriptionText", "No description provided.")
     provider_url = metadata.get("providerUrl", metadata.get("descriptionUrl", ""))
+    metadata_provider = metadata.get("cloudProvider", "unknown")
+    rule_id = (
+        f"{platform}-{to_slug(display_name)}"
+        if metadata_provider == "unknown"
+        else f"{platform}-{metadata_provider}-{to_slug(display_name)}"
+    ).lower()
     test_path = (
         rule_path / "test"
         if cloud_provider != "github" or platform != "CICD"
@@ -250,6 +254,22 @@ def process_provider(
     provider_entry["rules"].sort(key=lambda r: r["name"])
     list_json_data.append(provider_entry)
     return 1
+
+
+def to_slug(query_name: str):
+    parts = []
+    part = ""
+    for character in query_name:
+        if character.isupper():
+            part += character
+        elif character.isdigit() or character.islower():
+            part += character
+        elif len(part) > 0:
+            parts.append(part)
+            part = ""
+    if len(part) > 0:
+        parts.append(part)
+    return "-".join(parts)
 
 
 def main():
