@@ -26,6 +26,7 @@ const (
 	KindPROTO     FileKind = "PROTO"
 	KindCOMMON    FileKind = "*"
 	KindHELM      FileKind = "HELM"
+	KindKUSTOMIZE FileKind = "KUSTOMIZE"
 	KindBUILDAH   FileKind = "SH"
 	KindCFG       FileKind = "CFG"
 	KindINI       FileKind = "INI"
@@ -151,6 +152,7 @@ type FileMetadata struct {
 	ResolvedFiles     map[string]ResolvedFile
 	LinesOriginalData *[]string
 	IsMinified        bool
+	KustomizeOrigin   *KustomizeOrigin
 }
 
 // QueryMetadata is a representation of general information about a query
@@ -227,17 +229,70 @@ type QueryConfig struct {
 
 // ResolvedFiles keeps the information of all file/template resolved
 type ResolvedFiles struct {
-	File     []ResolvedHelm
+	File     []ResolvedVirtual
 	Excluded []string
 }
 
-// ResolvedHelm keeps the information of a file/template resolved
-type ResolvedHelm struct {
+// ResolvedVirtual is one rendered virtual file from a preprocessor (Helm, Kustomize, …).
+type ResolvedVirtual struct {
 	FileName     string
+	MetadataPath string
 	Content      []byte
 	OriginalData []byte
 	SplitID      string
 	IDInfo       map[int]interface{}
+	Origin       *KustomizeOrigin
+}
+
+// ResolvedHelm is a legacy alias for ResolvedVirtual.
+type ResolvedHelm = ResolvedVirtual
+
+// KustomizeTransformation records a transformer step for provenance.
+type KustomizeTransformation struct {
+	TransformerPath string
+	ConfiguredIn    string
+	FieldPath       string
+}
+
+// KustomizeOrigin is provenance for a Kustomize-built resource.
+type KustomizeOrigin struct {
+	OriginKind          KustomizeOriginKind
+	SourceFile          string
+	SourceRepo          string
+	SourceRef           string
+	OriginalSourceFile  string
+	OriginalSourceRepo  string
+	OriginalSourceRef   string
+	GeneratorKind       string
+	ConfiguredByKind    string
+	ConfiguredByName    string
+	GeneratorConfigFile string
+	Transformations     []KustomizeTransformation
+	ResourceGVK         string
+	ResourceName        string
+}
+
+// KustomizeOriginKind classifies provenance back to source.
+type KustomizeOriginKind string
+
+const (
+	KustomizeOriginDirect       KustomizeOriginKind = "direct"
+	KustomizeOriginGenerator    KustomizeOriginKind = "generator"
+	KustomizeOriginTransformer  KustomizeOriginKind = "transformer"
+	KustomizeOriginHelmInflated KustomizeOriginKind = "helm_inflated"
+)
+
+// RequiresDetailedLineMapping skips the searchLine fast path (detector maps lines).
+func (o *KustomizeOrigin) RequiresDetailedLineMapping() bool {
+	if o == nil {
+		return false
+	}
+	switch o.OriginKind {
+	case KustomizeOriginGenerator, KustomizeOriginTransformer:
+		return true
+	default:
+		return false
+	}
 }
 
 // Extensions represents a list of supported extensions

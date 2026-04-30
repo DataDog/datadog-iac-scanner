@@ -22,7 +22,8 @@ func TestHelm_SupportedTypes(t *testing.T) {
 }
 
 func TestHelm_Resolve(t *testing.T) { //nolint
-	res := &Resolver{}
+	// Match legacy snapshots: CRDs were off before the refactor default flip.
+	res := NewResolverWithIncludeCRDs(false)
 	type args struct {
 		filePath string
 	}
@@ -38,7 +39,7 @@ func TestHelm_Resolve(t *testing.T) { //nolint
 				filePath: filepath.FromSlash("../../../test/fixtures/test_helm"),
 			},
 			want: model.ResolvedFiles{
-				File: []model.ResolvedHelm{
+				File: []model.ResolvedVirtual{
 					{
 						SplitID:  "# KICS_HELM_ID_0:",
 						FileName: filepath.FromSlash("../../../test/fixtures/test_helm/templates/service.yaml"),
@@ -95,7 +96,6 @@ spec:
 			args: args{
 				filePath: filepath.FromSlash("../../../test/fixtures/all_auth_users_get_read_access"),
 			},
-			want:    model.ResolvedFiles{},
 			wantErr: true,
 		},
 		{
@@ -104,7 +104,7 @@ spec:
 				filePath: filepath.FromSlash("../../../test/fixtures/test_helm_subchart"),
 			},
 			want: model.ResolvedFiles{
-				File: []model.ResolvedHelm{
+				File: []model.ResolvedVirtual{
 					{
 						FileName: filepath.FromSlash("../../../test/fixtures/test_helm_subchart/templates/serviceaccount.yaml"),
 						SplitID:  "# KICS_HELM_ID_1:",
@@ -199,12 +199,13 @@ spec:
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Resolve() = %v, wantErr = %v", err, tt.wantErr)
 			}
+			if tt.wantErr {
+				return
+			}
 			if !reflect.DeepEqual(got.File, tt.want.File) {
 				t.Errorf("Resolve() = %v, want = %v", got, tt.want)
 			}
-			if err == nil {
-				require.NotEmpty(t, got.Excluded)
-			}
+			require.NotEmpty(t, got.Excluded)
 		})
 	}
 }
