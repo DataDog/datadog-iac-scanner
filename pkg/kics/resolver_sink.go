@@ -37,20 +37,25 @@ func (s *Service) resolverSink(
 
 	for _, rfile := range resFiles.File {
 		s.Tracker.TrackFileFound(rfile.FileName)
+		metadataPath := rfile.MetadataPath
+		if metadataPath == "" {
+			metadataPath = rfile.FileName
+		}
 
 		isMinified := minified.IsMinified(rfile.FileName, rfile.Content)
 		documents, err := s.Parser.Parse(ctx, rfile.FileName, rfile.Content, openAPIResolveReferences, isMinified, maxResolverDepth)
 		if err != nil {
-			if documents.Kind == "break" {
-				return []string{}, nil
+			// Skip this doc but keep iterating so resFiles.Excluded still propagates;
+			// otherwise the walker re-scans patches / generator inputs as raw YAML.
+			if documents.Kind != "break" {
+				contextLogger.Error().Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
 			}
-			contextLogger.Error().Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
-			return []string{}, nil
+			continue
 		}
 
 		if kind == model.KindHELM {
 			ignoreList, errorIL := s.getOriginalIgnoreLines(ctx,
-				rfile.FileName, rfile.OriginalData,
+				metadataPath, rfile.OriginalData,
 				openAPIResolveReferences, isMinified, maxResolverDepth)
 			if errorIL == nil {
 				documents.IgnoreLines = ignoreList
@@ -62,7 +67,7 @@ func (s *Service) resolverSink(
 			documents.CountLines = bytes.Count(rfile.OriginalData, []byte{'\n'}) + 1
 		}
 
-		fileCommands := s.Parser.CommentsCommands(ctx, rfile.FileName, rfile.OriginalData)
+		fileCommands := s.Parser.CommentsCommands(ctx, metadataPath, rfile.OriginalData)
 
 		for _, document := range documents.Docs {
 			_, err = json.Marshal(document)
@@ -89,6 +94,7 @@ func (s *Service) resolverSink(
 				ResolvedFiles:     documents.ResolvedFiles,
 				LinesOriginalData: utils.SplitLines(string(rfile.OriginalData)),
 				IsMinified:        documents.IsMinified,
+				KustomizeOrigin:   rfile.Origin,
 			}
 			s.saveToFile(ctx, &file)
 		}

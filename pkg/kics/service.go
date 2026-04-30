@@ -80,7 +80,7 @@ func (s *Service) PrepareSources(ctx context.Context,
 	contextLogger.Info().Msgf("Getting sources")
 	var err error
 	// TODO: Remove this if / else upon finishing dogfooding phase
-	if ok := flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing); ok {
+	if ok := flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IacEnableKicsParallelFileParsing); ok {
 		err = s.SourceProvider.GetParallelSources(
 			ctx,
 			s.Parser.SupportedExtensions(),
@@ -248,7 +248,11 @@ func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKi
 				prepareScanDocumentRoot(indx, kind)
 			}
 		case string:
-			if field, ok := lines[kind]; ok && utils.Contains(key, field) {
+			lookupKind := kind
+			if kind == model.KindKUSTOMIZE {
+				lookupKind = model.KindYAML
+			}
+			if field, ok := lines[lookupKind]; ok && utils.Contains(key, field) {
 				bodyType[key] = resolveJSONFilter(value)
 			}
 		}
