@@ -3,7 +3,7 @@ title: "OSS bucket lifecycle rule disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/oss_bucket_lifecycle_disabled"
-  id: "7db8bd7e-9772-478c-9ec5-4bc202c5686f"
+  id: "terraform-alicloud-oss-bucket-lifecycle-rule-disabled"
   display_name: "OSS bucket lifecycle rule disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7db8bd7e-9772-478c-9ec5-4bc202c5686f`
+**Id:** `terraform-alicloud-oss-bucket-lifecycle-rule-disabled`
 
 **Cloud Provider:** Alicloud
 

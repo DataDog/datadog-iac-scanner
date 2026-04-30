@@ -3,7 +3,7 @@ title: "S3 bucket ACL allows read to all users"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_acl_allows_read_to_all_users"
-  id: "219f4c95-aa50-44e0-97de-cf71f4641170"
+  id: "cloudformation-aws-s3-bucket-acl-allows-read-to-all-users"
   display_name: "S3 bucket ACL allows read to all users"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `219f4c95-aa50-44e0-97de-cf71f4641170`
+**Id:** `cloudformation-aws-s3-bucket-acl-allows-read-to-all-users`
 
 **Cloud Provider:** AWS
 

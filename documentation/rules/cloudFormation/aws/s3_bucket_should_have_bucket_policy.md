@@ -3,7 +3,7 @@ title: "S3 bucket should have bucket policy"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_should_have_bucket_policy"
-  id: "37fa8188-738b-42c8-bf82-6334ea567738"
+  id: "cloudformation-aws-s3-bucket-should-have-bucket-policy"
   display_name: "S3 bucket should have bucket policy"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `37fa8188-738b-42c8-bf82-6334ea567738`
+**Id:** `cloudformation-aws-s3-bucket-should-have-bucket-policy`
 
 **Cloud Provider:** AWS
 

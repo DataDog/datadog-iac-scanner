@@ -3,7 +3,7 @@ title: "ECS service without running tasks"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ecs_service_without_running_tasks"
-  id: "f5c45127-1d28-4b49-a692-0b97da1c3a84"
+  id: "ansible-aws-ecs-service-without-running-tasks"
   display_name: "ECS service without running tasks"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f5c45127-1d28-4b49-a692-0b97da1c3a84`
+**Id:** `ansible-aws-ecs-service-without-running-tasks`
 
 **Cloud Provider:** AWS
 

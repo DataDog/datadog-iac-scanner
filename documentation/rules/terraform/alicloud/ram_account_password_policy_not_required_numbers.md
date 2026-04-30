@@ -3,7 +3,7 @@ title: "RAM account password policy does not require numbers"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ram_account_password_policy_not_required_numbers"
-  id: "063234c0-91c0-4ab5-bbd0-47ddb5f23786"
+  id: "terraform-alicloud-ram-account-password-policy-does-not-require-numbers"
   display_name: "RAM account password policy does not require numbers"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `063234c0-91c0-4ab5-bbd0-47ddb5f23786`
+**Id:** `terraform-alicloud-ram-account-password-policy-does-not-require-numbers`
 
 **Cloud Provider:** Alicloud
 

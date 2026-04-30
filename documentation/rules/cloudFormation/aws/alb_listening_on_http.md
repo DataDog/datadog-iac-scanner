@@ -3,7 +3,7 @@ title: "ALB listening on HTTP"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/alb_listening_on_http"
-  id: "275a3217-ca37-40c1-a6cf-bb57d245ab32"
+  id: "cloudformation-aws-alb-listening-on-http"
   display_name: "ALB listening on HTTP"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `275a3217-ca37-40c1-a6cf-bb57d245ab32`
+**Id:** `cloudformation-aws-alb-listening-on-http`
 
 **Cloud Provider:** AWS
 

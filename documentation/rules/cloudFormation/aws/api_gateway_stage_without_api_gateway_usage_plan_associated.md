@@ -3,7 +3,7 @@ title: "API Gateway stage without usage plan associated"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/api_gateway_stage_without_api_gateway_usage_plan_associated"
-  id: "7f8f1b60-43df-4c28-aa21-fb836dbd8071"
+  id: "cloudformation-aws-api-gateway-stage-without-usage-plan-associated"
   display_name: "API Gateway stage without usage plan associated"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7f8f1b60-43df-4c28-aa21-fb836dbd8071`
+**Id:** `cloudformation-aws-api-gateway-stage-without-usage-plan-associated`
 
 **Cloud Provider:** AWS
 

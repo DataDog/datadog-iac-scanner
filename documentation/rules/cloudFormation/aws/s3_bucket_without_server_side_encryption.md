@@ -3,7 +3,7 @@ title: "S3 bucket without server-side encryption"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_without_server_side_encryption"
-  id: "b2e8752c-3497-4255-98d2-e4ae5b46bbf5"
+  id: "cloudformation-aws-s3-bucket-without-server-side-encryption"
   display_name: "S3 bucket without server-side encryption"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b2e8752c-3497-4255-98d2-e4ae5b46bbf5`
+**Id:** `cloudformation-aws-s3-bucket-without-server-side-encryption`
 
 **Cloud Provider:** AWS
 

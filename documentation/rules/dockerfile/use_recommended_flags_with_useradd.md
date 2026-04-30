@@ -3,7 +3,7 @@ title: "Use recommended flags with useradd"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/use_recommended_flags_with_useradd"
-  id: "44fbf45c-87a6-3b95-64ef-07e1fef7395b"
+  id: "dockerfile-use-recommended-flags-with-useradd"
   display_name: "Use recommended flags with useradd"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `44fbf45c-87a6-3b95-64ef-07e1fef7395b`
+**Id:** `dockerfile-use-recommended-flags-with-useradd`
 
 **Cloud Provider:** Dockerfile
 

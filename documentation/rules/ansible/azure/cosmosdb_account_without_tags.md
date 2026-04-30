@@ -3,7 +3,7 @@ title: "Cosmos DB account without tags"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/cosmosdb_account_without_tags"
-  id: "23a4dc83-4959-4d99-8056-8e051a82bc1e"
+  id: "ansible-azure-cosmos-db-account-without-tags"
   display_name: "Cosmos DB account without tags"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `23a4dc83-4959-4d99-8056-8e051a82bc1e`
+**Id:** `ansible-azure-cosmos-db-account-without-tags`
 
 **Cloud Provider:** Azure
 

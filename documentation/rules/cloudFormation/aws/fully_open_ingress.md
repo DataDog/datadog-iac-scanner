@@ -3,7 +3,7 @@ title: "Fully open ingress"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/fully_open_ingress"
-  id: "e415f8d3-fc2b-4f52-88ab-1129e8c8d3f5"
+  id: "cloudformation-aws-fully-open-ingress"
   display_name: "Fully open ingress"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e415f8d3-fc2b-4f52-88ab-1129e8c8d3f5`
+**Id:** `cloudformation-aws-fully-open-ingress`
 
 **Cloud Provider:** AWS
 

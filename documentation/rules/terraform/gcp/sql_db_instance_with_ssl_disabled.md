@@ -3,7 +3,7 @@ title: "SQL DB instance with SSL disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/sql_db_instance_with_ssl_disabled"
-  id: "02474449-71aa-40a1-87ae-e14497747b00"
+  id: "terraform-gcp-sql-db-instance-with-ssl-disabled"
   display_name: "SQL DB instance with SSL disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `02474449-71aa-40a1-87ae-e14497747b00`
+**Id:** `terraform-gcp-sql-db-instance-with-ssl-disabled`
 
 **Cloud Provider:** GCP
 

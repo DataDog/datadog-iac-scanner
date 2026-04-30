@@ -3,7 +3,7 @@ title: "CA certificate identifier is outdated"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ca_certificate_identifier_is_outdated"
-  id: "5eccd62d-8b4d-46d3-83ea-1879f3cbd3ce"
+  id: "ansible-aws-ca-certificate-identifier-is-outdated"
   display_name: "CA certificate identifier is outdated"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5eccd62d-8b4d-46d3-83ea-1879f3cbd3ce`
+**Id:** `ansible-aws-ca-certificate-identifier-is-outdated`
 
 **Cloud Provider:** AWS
 

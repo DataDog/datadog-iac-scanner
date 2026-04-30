@@ -3,7 +3,7 @@ title: "Cloud storage bucket logging not enabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cloud_storage_bucket_logging_not_enabled"
-  id: "507df964-ad97-4035-ab14-94a82eabdfdd"
+  id: "ansible-gcp-cloud-storage-bucket-logging-not-enabled"
   display_name: "Cloud storage bucket logging not enabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `507df964-ad97-4035-ab14-94a82eabdfdd`
+**Id:** `ansible-gcp-cloud-storage-bucket-logging-not-enabled`
 
 **Cloud Provider:** GCP
 

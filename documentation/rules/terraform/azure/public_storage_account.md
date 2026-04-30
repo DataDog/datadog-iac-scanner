@@ -3,7 +3,7 @@ title: "Public storage account"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/public_storage_account"
-  id: "17f75827-0684-48f4-8747-61129c7e4198"
+  id: "terraform-azure-public-storage-account"
   display_name: "Public storage account"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `17f75827-0684-48f4-8747-61129c7e4198`
+**Id:** `terraform-azure-public-storage-account`
 
 **Cloud Provider:** Azure
 

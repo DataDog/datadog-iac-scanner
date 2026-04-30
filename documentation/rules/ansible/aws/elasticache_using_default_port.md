@@ -3,7 +3,7 @@ title: "ElastiCache using default port"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/elasticache_using_default_port"
-  id: "7cc6c791-5f68-4816-a564-b9b699f9d26e"
+  id: "ansible-aws-elasticache-using-default-port"
   display_name: "ElastiCache using default port"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7cc6c791-5f68-4816-a564-b9b699f9d26e`
+**Id:** `ansible-aws-elasticache-using-default-port`
 
 **Cloud Provider:** AWS
 

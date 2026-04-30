@@ -3,7 +3,7 @@ title: "CloudFront logging disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudfront_logging_disabled"
-  id: "d31cb911-bf5b-4eb6-9fc3-16780c77c7bd"
+  id: "ansible-aws-cloudfront-logging-disabled"
   display_name: "CloudFront logging disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d31cb911-bf5b-4eb6-9fc3-16780c77c7bd`
+**Id:** `ansible-aws-cloudfront-logging-disabled`
 
 **Cloud Provider:** AWS
 

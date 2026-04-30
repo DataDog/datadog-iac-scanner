@@ -3,7 +3,7 @@ title: "CloudWatch without retention period specified"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudwatch_without_retention_period_specified"
-  id: "ef0b316a-211e-42f1-888e-64efe172b755"
+  id: "terraform-aws-cloudwatch-without-retention-period-specified"
   display_name: "CloudWatch without retention period specified"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ef0b316a-211e-42f1-888e-64efe172b755`
+**Id:** `terraform-aws-cloudwatch-without-retention-period-specified`
 
 **Cloud Provider:** AWS
 

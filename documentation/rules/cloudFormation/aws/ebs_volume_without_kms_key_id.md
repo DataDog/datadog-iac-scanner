@@ -3,7 +3,7 @@ title: "EBS volume without KmsKeyId"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ebs_volume_without_kms_key_id"
-  id: "b7063015-6c31-4658-a8e7-14f98f37fd42"
+  id: "cloudformation-aws-ebs-volume-without-kmskeyid"
   display_name: "EBS volume without KmsKeyId"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b7063015-6c31-4658-a8e7-14f98f37fd42`
+**Id:** `cloudformation-aws-ebs-volume-without-kmskeyid`
 
 **Cloud Provider:** AWS
 

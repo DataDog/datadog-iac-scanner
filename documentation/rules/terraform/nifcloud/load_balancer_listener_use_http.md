@@ -3,7 +3,7 @@ title: "NIFCLOUD LB listener using HTTP port"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/load_balancer_listener_use_http"
-  id: "9f751a80-31f0-43a3-926c-20772791a038"
+  id: "terraform-nifcloud-nifcloud-lb-listener-using-http-port"
   display_name: "NIFCLOUD LB listener using HTTP port"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9f751a80-31f0-43a3-926c-20772791a038`
+**Id:** `terraform-nifcloud-nifcloud-lb-listener-using-http-port`
 
 **Cloud Provider:** Nifcloud
 

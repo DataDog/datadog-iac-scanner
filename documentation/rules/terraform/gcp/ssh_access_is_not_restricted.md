@@ -3,7 +3,7 @@ title: "SSH access is not restricted"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/ssh_access_is_not_restricted"
-  id: "c4dcdcdf-10dd-4bf4-b4a0-8f6239e6aaa0"
+  id: "terraform-gcp-ssh-access-is-not-restricted"
   display_name: "SSH access is not restricted"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c4dcdcdf-10dd-4bf4-b4a0-8f6239e6aaa0`
+**Id:** `terraform-gcp-ssh-access-is-not-restricted`
 
 **Cloud Provider:** GCP
 

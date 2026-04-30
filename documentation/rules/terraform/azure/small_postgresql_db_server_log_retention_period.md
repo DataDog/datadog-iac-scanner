@@ -3,7 +3,7 @@ title: "Small PostgreSQL DB server log retention period"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/small_postgresql_db_server_log_retention_period"
-  id: "261a83f8-dd72-4e8c-b5e1-ebf06e8fe606"
+  id: "terraform-azure-small-postgresql-db-server-log-retention-period"
   display_name: "Small PostgreSQL DB server log retention period"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `261a83f8-dd72-4e8c-b5e1-ebf06e8fe606`
+**Id:** `terraform-azure-small-postgresql-db-server-log-retention-period`
 
 **Cloud Provider:** Azure
 

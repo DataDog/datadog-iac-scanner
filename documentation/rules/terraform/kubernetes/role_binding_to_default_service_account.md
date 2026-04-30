@@ -3,7 +3,7 @@ title: "Role binding to default service account"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/role_binding_to_default_service_account"
-  id: "3360c01e-c8c0-4812-96a2-a6329b9b7f9f"
+  id: "terraform-common-role-binding-to-default-service-account"
   display_name: "Role binding to default service account"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3360c01e-c8c0-4812-96a2-a6329b9b7f9f`
+**Id:** `terraform-common-role-binding-to-default-service-account`
 
 **Cloud Provider:** Kubernetes
 

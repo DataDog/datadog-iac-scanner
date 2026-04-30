@@ -3,7 +3,7 @@ title: "DocumentDB cluster without KMS"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/docdb_cluster_without_kms"
-  id: "4766d3ea-241c-4ee6-93ff-c380c996bd1a"
+  id: "terraform-aws-documentdb-cluster-without-kms"
   display_name: "DocumentDB cluster without KMS"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4766d3ea-241c-4ee6-93ff-c380c996bd1a`
+**Id:** `terraform-aws-documentdb-cluster-without-kms`
 
 **Cloud Provider:** AWS
 

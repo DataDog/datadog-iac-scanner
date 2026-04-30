@@ -3,7 +3,7 @@ title: "Default service account in use"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/default_service_account_in_use"
-  id: "737a0dd9-0aaa-4145-8118-f01778262b8a"
+  id: "terraform-common-default-service-account-in-use"
   display_name: "Default service account in use"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `737a0dd9-0aaa-4145-8118-f01778262b8a`
+**Id:** `terraform-common-default-service-account-in-use`
 
 **Cloud Provider:** Kubernetes
 

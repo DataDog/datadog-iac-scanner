@@ -3,7 +3,7 @@ title: "SageMaker endpoint config should specify KmsKeyId attribute"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/sagemaker_endpoint_config_should_specify_kms_key_id_attribute"
-  id: "44034eda-1c3f-486a-831d-e09a7dd94354"
+  id: "cloudformation-aws-sagemaker-endpoint-config-should-specify-kmskeyid-attribute"
   display_name: "SageMaker endpoint config should specify KmsKeyId attribute"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `44034eda-1c3f-486a-831d-e09a7dd94354`
+**Id:** `cloudformation-aws-sagemaker-endpoint-config-should-specify-kmskeyid-attribute`
 
 **Cloud Provider:** AWS
 

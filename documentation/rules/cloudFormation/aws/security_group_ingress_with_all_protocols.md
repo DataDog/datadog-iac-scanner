@@ -3,7 +3,7 @@ title: "Security group ingress with all protocols"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_group_ingress_with_all_protocols"
-  id: "1a427b25-2e9e-4298-9530-0499a55e736b"
+  id: "cloudformation-aws-security-group-ingress-with-all-protocols"
   display_name: "Security group ingress with all protocols"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1a427b25-2e9e-4298-9530-0499a55e736b`
+**Id:** `cloudformation-aws-security-group-ingress-with-all-protocols`
 
 **Cloud Provider:** AWS
 

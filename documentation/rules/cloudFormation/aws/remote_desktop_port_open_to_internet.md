@@ -3,7 +3,7 @@ title: "Remote Desktop port open to the internet"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/remote_desktop_port_open_to_internet"
-  id: "c9846969-d066-431f-9b34-8c4abafe422a"
+  id: "cloudformation-aws-remote-desktop-port-open-to-the-internet"
   display_name: "Remote Desktop port open to the internet"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c9846969-d066-431f-9b34-8c4abafe422a`
+**Id:** `cloudformation-aws-remote-desktop-port-open-to-the-internet`
 
 **Cloud Provider:** AWS
 

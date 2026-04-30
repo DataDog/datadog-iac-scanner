@@ -3,7 +3,7 @@ title: "Cloud SQL instance with cross DB ownership chaining on"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cloud_sql_instance_with_cross_db_ownership_chaining_on"
-  id: "9e0c33ed-97f3-4ed6-8be9-bcbf3f65439f"
+  id: "ansible-gcp-cloud-sql-instance-with-cross-db-ownership-chaining-on"
   display_name: "Cloud SQL instance with cross DB ownership chaining on"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9e0c33ed-97f3-4ed6-8be9-bcbf3f65439f`
+**Id:** `ansible-gcp-cloud-sql-instance-with-cross-db-ownership-chaining-on`
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "IAM policies attached to user"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_policies_attached_to_user"
-  id: "eafe4bc3-1042-4f88-b988-1939e64bf060"
+  id: "ansible-aws-iam-policies-attached-to-user"
   display_name: "IAM policies attached to user"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `eafe4bc3-1042-4f88-b988-1939e64bf060`
+**Id:** `ansible-aws-iam-policies-attached-to-user`
 
 **Cloud Provider:** AWS
 

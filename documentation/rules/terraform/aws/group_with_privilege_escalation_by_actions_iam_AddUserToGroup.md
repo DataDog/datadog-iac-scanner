@@ -3,7 +3,7 @@ title: "Group with privilege escalation by actions 'iam:AddUserToGroup'"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/group_with_privilege_escalation_by_actions_iam_AddUserToGroup"
-  id: "970ed7a2-0aca-4425-acf1-0453c9ecbca1"
+  id: "terraform-aws-group-with-privilege-escalation-by-actions-iam-addusertogroup"
   display_name: "Group with privilege escalation by actions 'iam:AddUserToGroup'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `970ed7a2-0aca-4425-acf1-0453c9ecbca1`
+**Id:** `terraform-aws-group-with-privilege-escalation-by-actions-iam-addusertogroup`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "CloudWatch changes to NACL alarm missing"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudwatch_changes_to_nacl_alarm_missing"
-  id: "0a8e8dc5-b6fc-44fc-b5a1-969ec950f9b0"
+  id: "terraform-aws-cloudwatch-changes-to-nacl-alarm-missing"
   display_name: "CloudWatch changes to NACL alarm missing"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0a8e8dc5-b6fc-44fc-b5a1-969ec950f9b0`
+**Id:** `terraform-aws-cloudwatch-changes-to-nacl-alarm-missing`
 
 **Cloud Provider:** AWS
 

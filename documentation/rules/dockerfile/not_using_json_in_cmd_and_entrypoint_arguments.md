@@ -3,7 +3,7 @@ title: "Not using JSON for CMD and ENTRYPOINT arguments"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/not_using_json_in_cmd_and_entrypoint_arguments"
-  id: "b86987e1-6397-4619-81d5-8807f2387c79"
+  id: "dockerfile-not-using-json-for-cmd-and-entrypoint-arguments"
   display_name: "Not using JSON for CMD and ENTRYPOINT arguments"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b86987e1-6397-4619-81d5-8807f2387c79`
+**Id:** `dockerfile-not-using-json-for-cmd-and-entrypoint-arguments`
 
 **Cloud Provider:** Dockerfile
 

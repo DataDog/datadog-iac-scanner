@@ -3,7 +3,7 @@ title: "Elasticsearch without slow logs"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_without_slow_logs"
-  id: "e979fcbc-df6c-422d-9458-c33d65e71c45"
+  id: "terraform-aws-elasticsearch-without-slow-logs"
   display_name: "Elasticsearch without slow logs"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e979fcbc-df6c-422d-9458-c33d65e71c45`
+**Id:** `terraform-aws-elasticsearch-without-slow-logs`
 
 **Cloud Provider:** AWS
 

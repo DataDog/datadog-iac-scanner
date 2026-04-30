@@ -3,7 +3,7 @@ title: "Anonymous definition"
 group_id: "CICD / GitHub"
 meta:
   name: "github/anonymous_definition"
-  id: "a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6"
+  id: "cicd-common-anonymous-definition"
   display_name: "Anonymous definition"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6`
+**Id:** `cicd-common-anonymous-definition`
 
 **Cloud Provider:** GitHub
 

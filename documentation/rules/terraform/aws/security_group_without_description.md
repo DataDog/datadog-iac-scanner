@@ -3,7 +3,7 @@ title: "Security group rule without description"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/security_group_without_description"
-  id: "cb3f5ed6-0d18-40de-a93d-b3538db31e8c"
+  id: "terraform-aws-security-group-rule-without-description"
   display_name: "Security group rule without description"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cb3f5ed6-0d18-40de-a93d-b3538db31e8c`
+**Id:** `terraform-aws-security-group-rule-without-description`
 
 **Cloud Provider:** AWS
 

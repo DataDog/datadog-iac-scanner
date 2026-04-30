@@ -3,7 +3,7 @@ title: "EBS volume not attached to instances"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ebs_volume_not_attached_to_instances"
-  id: "1819ac03-542b-4026-976b-f37addd59f3b"
+  id: "cloudformation-aws-ebs-volume-not-attached-to-instances"
   display_name: "EBS volume not attached to instances"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1819ac03-542b-4026-976b-f37addd59f3b`
+**Id:** `cloudformation-aws-ebs-volume-not-attached-to-instances`
 
 **Cloud Provider:** AWS
 

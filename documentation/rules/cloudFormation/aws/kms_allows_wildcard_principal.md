@@ -3,7 +3,7 @@ title: "KMS allows a wildcard principal"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/kms_allows_wildcard_principal"
-  id: "f6049677-ec4a-43af-8779-5190b6d03cba"
+  id: "cloudformation-aws-kms-allows-a-wildcard-principal"
   display_name: "KMS allows a wildcard principal"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f6049677-ec4a-43af-8779-5190b6d03cba`
+**Id:** `cloudformation-aws-kms-allows-a-wildcard-principal`
 
 **Cloud Provider:** AWS
 

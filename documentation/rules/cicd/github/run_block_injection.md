@@ -3,7 +3,7 @@ title: "Run block injection"
 group_id: "CICD / GitHub"
 meta:
   name: "github/run_block_injection"
-  id: "20f14e1a-a899-4e79-9f09-b6a84cd4649b"
+  id: "cicd-common-run-block-injection"
   display_name: "Run block injection"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `20f14e1a-a899-4e79-9f09-b6a84cd4649b`
+**Id:** `cicd-common-run-block-injection`
 
 **Cloud Provider:** GitHub
 

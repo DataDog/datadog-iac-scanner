@@ -3,7 +3,7 @@ title: "Workload host port not specified"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/workload_host_port_not_specified"
-  id: "2b1836f1-dcce-416e-8e16-da8c71920633"
+  id: "kubernetes-workload-host-port-not-specified"
   display_name: "Workload host port not specified"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2b1836f1-dcce-416e-8e16-da8c71920633`
+**Id:** `kubernetes-workload-host-port-not-specified`
 
 **Cloud Provider:** Kubernetes
 

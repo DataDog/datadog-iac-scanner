@@ -3,7 +3,7 @@ title: "Admin user enabled for container registry"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/admin_user_enabled_for_container_registry"
-  id: "29f35127-98e6-43af-8ec1-201b79f99604"
+  id: "ansible-azure-admin-user-enabled-for-container-registry"
   display_name: "Admin user enabled for container registry"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `29f35127-98e6-43af-8ec1-201b79f99604`
+**Id:** `ansible-azure-admin-user-enabled-for-container-registry`
 
 **Cloud Provider:** Azure
 

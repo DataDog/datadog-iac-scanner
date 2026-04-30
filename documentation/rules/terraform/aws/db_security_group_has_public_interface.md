@@ -3,7 +3,7 @@ title: "DB security group has public interface"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/db_security_group_has_public_interface"
-  id: "f0d8781f-99bf-4958-9917-d39283b168a0"
+  id: "terraform-aws-db-security-group-has-public-interface"
   display_name: "DB security group has public interface"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f0d8781f-99bf-4958-9917-d39283b168a0`
+**Id:** `terraform-aws-db-security-group-has-public-interface`
 
 **Cloud Provider:** AWS
 

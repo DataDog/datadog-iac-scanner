@@ -3,7 +3,7 @@ title: "Indefinitely Databricks token lifetime"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/indefinitely_token"
-  id: "7d05ca25-91b4-42ee-b6f6-b06611a87ce8"
+  id: "terraform-common-indefinitely-databricks-token-lifetime"
   display_name: "Indefinitely Databricks token lifetime"
   cloud_provider: "Databricks"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7d05ca25-91b4-42ee-b6f6-b06611a87ce8`
+**Id:** `terraform-common-indefinitely-databricks-token-lifetime`
 
 **Cloud Provider:** Databricks
 

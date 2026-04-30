@@ -3,7 +3,7 @@ title: "SQS queue with SSE disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sqs_with_sse_disabled"
-  id: "e1e7b278-2a8b-49bd-a26e-66a7f70b17eb"
+  id: "ansible-aws-sqs-queue-with-sse-disabled"
   display_name: "SQS queue with SSE disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e1e7b278-2a8b-49bd-a26e-66a7f70b17eb`
+**Id:** `ansible-aws-sqs-queue-with-sse-disabled`
 
 **Cloud Provider:** AWS
 

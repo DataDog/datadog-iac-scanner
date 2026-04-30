@@ -3,7 +3,7 @@ title: "OSS bucket public access enabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/oss_bucket_public_access_enabled"
-  id: "62232513-b16f-4010-83d7-51d0e1d45426"
+  id: "terraform-alicloud-oss-bucket-public-access-enabled"
   display_name: "OSS bucket public access enabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `62232513-b16f-4010-83d7-51d0e1d45426`
+**Id:** `terraform-alicloud-oss-bucket-public-access-enabled`
 
 **Cloud Provider:** Alicloud
 

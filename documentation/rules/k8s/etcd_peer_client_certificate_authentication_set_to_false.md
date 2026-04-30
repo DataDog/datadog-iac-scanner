@@ -3,7 +3,7 @@ title: "etcd peer client certificate authentication set to false"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/etcd_peer_client_certificate_authentication_set_to_false"
-  id: "b7d0181d-0a9b-4611-9d1c-1ad4f0b620ff"
+  id: "kubernetes-etcd-peer-client-certificate-authentication-set-to-false"
   display_name: "etcd peer client certificate authentication set to false"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b7d0181d-0a9b-4611-9d1c-1ad4f0b620ff`
+**Id:** `kubernetes-etcd-peer-client-certificate-authentication-set-to-false`
 
 **Cloud Provider:** Kubernetes
 

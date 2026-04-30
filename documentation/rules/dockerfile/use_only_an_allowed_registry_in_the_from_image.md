@@ -3,7 +3,7 @@ title: "Use only allowed registry in FROM"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/use_only_an_allowed_registry_in_the_from_image"
-  id: "d0b535a2-5e5f-d18f-52f8-cc59a3f236bd"
+  id: "dockerfile-use-only-allowed-registry-in-from"
   display_name: "Use only allowed registry in FROM"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d0b535a2-5e5f-d18f-52f8-cc59a3f236bd`
+**Id:** `dockerfile-use-only-allowed-registry-in-from`
 
 **Cloud Provider:** Dockerfile
 

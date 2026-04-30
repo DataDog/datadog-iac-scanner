@@ -3,7 +3,7 @@ title: "PostgreSQL log_checkpoints flag not set to on"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/postgresql_log_checkpoints_flag_not_set_to_on"
-  id: "89afe3f0-4681-4ce3-89ed-896cebd4277c"
+  id: "ansible-gcp-postgresql-log-checkpoints-flag-not-set-to-on"
   display_name: "PostgreSQL log_checkpoints flag not set to on"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `89afe3f0-4681-4ce3-89ed-896cebd4277c`
+**Id:** `ansible-gcp-postgresql-log-checkpoints-flag-not-set-to-on`
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "Incorrect volume claim access mode ReadWriteOnce"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/incorrect_volume_claim_access_mode_read_write_once"
-  id: "3878dc92-8e5d-47cf-9cdd-7590f71d21b9"
+  id: "kubernetes-incorrect-volume-claim-access-mode-readwriteonce"
   display_name: "Incorrect volume claim access mode ReadWriteOnce"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3878dc92-8e5d-47cf-9cdd-7590f71d21b9`
+**Id:** `kubernetes-incorrect-volume-claim-access-mode-readwriteonce`
 
 **Cloud Provider:** Kubernetes
 

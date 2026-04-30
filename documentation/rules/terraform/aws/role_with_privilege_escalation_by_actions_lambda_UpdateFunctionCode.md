@@ -3,7 +3,7 @@ title: "Role with privilege escalation by actions 'lambda:UpdateFunctionCode'"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/role_with_privilege_escalation_by_actions_lambda_UpdateFunctionCode"
-  id: "c583f0f9-7dfd-476b-a056-f47c62b47b46"
+  id: "terraform-aws-role-with-privilege-escalation-by-actions-lambda-updatefunctioncode"
   display_name: "Role with privilege escalation by actions 'lambda:UpdateFunctionCode'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c583f0f9-7dfd-476b-a056-f47c62b47b46`
+**Id:** `terraform-aws-role-with-privilege-escalation-by-actions-lambda-updatefunctioncode`
 
 **Cloud Provider:** AWS
 

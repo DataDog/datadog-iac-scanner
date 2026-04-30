@@ -3,7 +3,7 @@ title: "Vulnerable default SSL certificate"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/vulnerable_default_ssl_certificate"
-  id: "fb8f8929-afeb-4c46-99f0-a6cf410f7df4"
+  id: "ansible-aws-vulnerable-default-ssl-certificate"
   display_name: "Vulnerable default SSL certificate"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fb8f8929-afeb-4c46-99f0-a6cf410f7df4`
+**Id:** `ansible-aws-vulnerable-default-ssl-certificate`
 
 **Cloud Provider:** AWS
 

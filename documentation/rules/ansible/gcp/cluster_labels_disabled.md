@@ -3,7 +3,7 @@ title: "Cluster labels disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cluster_labels_disabled"
-  id: "fbe9b2d0-a2b7-47a1-a534-03775f3013f7"
+  id: "ansible-gcp-cluster-labels-disabled"
   display_name: "Cluster labels disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fbe9b2d0-a2b7-47a1-a534-03775f3013f7`
+**Id:** `ansible-gcp-cluster-labels-disabled`
 
 **Cloud Provider:** GCP
 

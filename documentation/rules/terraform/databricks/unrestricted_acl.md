@@ -3,7 +3,7 @@ title: "Unrestricted Databricks ACL"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/unrestricted_acl"
-  id: "2c4fe4a9-f44b-4c70-b09b-5b75cd251805"
+  id: "terraform-common-unrestricted-databricks-acl"
   display_name: "Unrestricted Databricks ACL"
   cloud_provider: "Databricks"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2c4fe4a9-f44b-4c70-b09b-5b75cd251805`
+**Id:** `terraform-common-unrestricted-databricks-acl`
 
 **Cloud Provider:** Databricks
 

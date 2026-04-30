@@ -3,7 +3,7 @@ title: "Containers with added capabilities"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/containers_with_added_capabilities"
-  id: "19ebaa28-fc86-4a58-bcfa-015c9e22fe40"
+  id: "kubernetes-containers-with-added-capabilities"
   display_name: "Containers with added capabilities"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `19ebaa28-fc86-4a58-bcfa-015c9e22fe40`
+**Id:** `kubernetes-containers-with-added-capabilities`
 
 **Cloud Provider:** Kubernetes
 

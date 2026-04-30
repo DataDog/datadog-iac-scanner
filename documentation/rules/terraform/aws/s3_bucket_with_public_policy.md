@@ -3,7 +3,7 @@ title: "S3 bucket allows public policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_with_public_policy"
-  id: "1a4bc881-9f69-4d44-8c9a-d37d08f54c50"
+  id: "terraform-aws-s3-bucket-allows-public-policy"
   display_name: "S3 bucket allows public policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1a4bc881-9f69-4d44-8c9a-d37d08f54c50`
+**Id:** `terraform-aws-s3-bucket-allows-public-policy`
 
 **Cloud Provider:** AWS
 

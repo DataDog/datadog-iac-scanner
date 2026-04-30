@@ -3,7 +3,7 @@ title: "chown flag exists"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/chown_flag_exists"
-  id: "aa93e17f-b6db-4162-9334-c70334e7ac28"
+  id: "dockerfile-chown-flag-exists"
   display_name: "chown flag exists"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `aa93e17f-b6db-4162-9334-c70334e7ac28`
+**Id:** `dockerfile-chown-flag-exists`
 
 **Cloud Provider:** Dockerfile
 

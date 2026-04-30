@@ -3,7 +3,7 @@ title: "Virtual network with DDoS protection plan disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/virtual_network_with_ddos_protection_plan_disabled"
-  id: "b4cc2c52-34a6-4b43-b57c-4bdeb4514a5a"
+  id: "terraform-azure-virtual-network-with-ddos-protection-plan-disabled"
   display_name: "Virtual network with DDoS protection plan disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b4cc2c52-34a6-4b43-b57c-4bdeb4514a5a`
+**Id:** `terraform-azure-virtual-network-with-ddos-protection-plan-disabled`
 
 **Cloud Provider:** Azure
 

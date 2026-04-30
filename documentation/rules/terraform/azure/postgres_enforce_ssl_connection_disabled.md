@@ -3,7 +3,7 @@ title: "ssl_enforcement_enabled is not set to ENABLED for PostgreSQL database se
 group_id: "Terraform / Azure"
 meta:
   name: "azure/postgres_enforce_ssl_connection_disabled"
-  id: "93f9tyjk-e5f6-7890-ab12-cd34ef567890"
+  id: "terraform-azure-ssl-enforcement-enabled-is-not-set-to-enabled-for-postgresql-database-server"
   display_name: "ssl_enforcement_enabled is not set to ENABLED for PostgreSQL database server"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `93f9tyjk-e5f6-7890-ab12-cd34ef567890`
+**Id:** `terraform-azure-ssl-enforcement-enabled-is-not-set-to-enabled-for-postgresql-database-server`
 
 **Cloud Provider:** Azure
 

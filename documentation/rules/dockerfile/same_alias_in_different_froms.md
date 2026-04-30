@@ -3,7 +3,7 @@ title: "Same alias in different FROM statements"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/same_alias_in_different_froms"
-  id: "f2daed12-c802-49cd-afed-fe41d0b82fed"
+  id: "dockerfile-same-alias-in-different-from-statements"
   display_name: "Same alias in different FROM statements"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f2daed12-c802-49cd-afed-fe41d0b82fed`
+**Id:** `dockerfile-same-alias-in-different-from-statements`
 
 **Cloud Provider:** Dockerfile
 

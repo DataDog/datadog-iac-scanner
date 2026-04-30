@@ -3,7 +3,7 @@ title: "HPA targeted deployments with configured replica count"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/hpa_targeted_deployments_with_configured_replica_count"
-  id: "5744cbb8-5946-4b75-a196-ade44449525b"
+  id: "kubernetes-hpa-targeted-deployments-with-configured-replica-count"
   display_name: "HPA targeted deployments with configured replica count"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5744cbb8-5946-4b75-a196-ade44449525b`
+**Id:** `kubernetes-hpa-targeted-deployments-with-configured-replica-count`
 
 **Cloud Provider:** Kubernetes
 

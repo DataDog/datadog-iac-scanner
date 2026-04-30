@@ -3,7 +3,7 @@ title: "Package update without install in same RUN"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/update_instruction_alone"
-  id: "9bae49be-0aa3-4de5-bab2-4c3a069e40cd"
+  id: "dockerfile-package-update-without-install-in-same-run"
   display_name: "Package update without install in same RUN"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9bae49be-0aa3-4de5-bab2-4c3a069e40cd`
+**Id:** `dockerfile-package-update-without-install-in-same-run`
 
 **Cloud Provider:** Dockerfile
 

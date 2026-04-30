@@ -3,7 +3,7 @@ title: "Lambda functions without X-Ray tracing"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/lambda_functions_without_x-ray_tracing"
-  id: "71397b34-1d50-4ee1-97cb-c96c34676f74"
+  id: "ansible-aws-lambda-functions-without-x-ray-tracing"
   display_name: "Lambda functions without X-Ray tracing"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `71397b34-1d50-4ee1-97cb-c96c34676f74`
+**Id:** `ansible-aws-lambda-functions-without-x-ray-tracing`
 
 **Cloud Provider:** AWS
 

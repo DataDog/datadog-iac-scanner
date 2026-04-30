@@ -3,7 +3,7 @@ title: "API Gateway cache cluster disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/api_gateway_cache_cluster_disabled"
-  id: "52790cad-d60d-41d5-8483-146f9f21208d"
+  id: "cloudformation-aws-api-gateway-cache-cluster-disabled"
   display_name: "API Gateway cache cluster disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `52790cad-d60d-41d5-8483-146f9f21208d`
+**Id:** `cloudformation-aws-api-gateway-cache-cluster-disabled`
 
 **Cloud Provider:** AWS
 

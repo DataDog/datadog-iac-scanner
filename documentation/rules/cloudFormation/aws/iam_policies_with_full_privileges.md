@@ -3,7 +3,7 @@ title: "IAM policies with full privileges"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_policies_with_full_privileges"
-  id: "953b3cdb-ce13-428a-aa12-318726506661"
+  id: "cloudformation-aws-iam-policies-with-full-privileges"
   display_name: "IAM policies with full privileges"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `953b3cdb-ce13-428a-aa12-318726506661`
+**Id:** `cloudformation-aws-iam-policies-with-full-privileges`
 
 **Cloud Provider:** AWS
 

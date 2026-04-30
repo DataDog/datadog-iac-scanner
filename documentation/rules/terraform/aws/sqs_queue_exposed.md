@@ -3,7 +3,7 @@ title: "SQS queue exposed"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sqs_queue_exposed"
-  id: "abb06e5f-ef9a-4a99-98c6-376d396bfcdf"
+  id: "terraform-aws-sqs-queue-exposed"
   display_name: "SQS queue exposed"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `abb06e5f-ef9a-4a99-98c6-376d396bfcdf`
+**Id:** `terraform-aws-sqs-queue-exposed`
 
 **Cloud Provider:** AWS
 

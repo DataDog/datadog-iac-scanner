@@ -3,7 +3,7 @@ title: "CloudWatch VPC changes alarm missing"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudwatch_vpc_changes_alarm_missing"
-  id: "9d0d4512-1959-43a2-a17f-72360ff06d1b"
+  id: "terraform-aws-cloudwatch-vpc-changes-alarm-missing"
   display_name: "CloudWatch VPC changes alarm missing"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9d0d4512-1959-43a2-a17f-72360ff06d1b`
+**Id:** `terraform-aws-cloudwatch-vpc-changes-alarm-missing`
 
 **Cloud Provider:** AWS
 

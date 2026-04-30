@@ -3,7 +3,7 @@ title: "Seccomp profile is not configured"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/seccomp_profile_is_not_configured"
-  id: "455f2e0c-686d-4fcb-8b5f-3f953f12c43c"
+  id: "terraform-common-seccomp-profile-is-not-configured"
   display_name: "Seccomp profile is not configured"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `455f2e0c-686d-4fcb-8b5f-3f953f12c43c`
+**Id:** `terraform-common-seccomp-profile-is-not-configured`
 
 **Cloud Provider:** Kubernetes
 

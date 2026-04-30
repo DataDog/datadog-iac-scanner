@@ -3,7 +3,7 @@ title: "OSS buckets secure transport disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/oss_buckets_securetransport_disabled"
-  id: "c01d10de-c468-4790-b3a0-fc887a56f289"
+  id: "terraform-alicloud-oss-buckets-secure-transport-disabled"
   display_name: "OSS buckets secure transport disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c01d10de-c468-4790-b3a0-fc887a56f289`
+**Id:** `terraform-alicloud-oss-buckets-secure-transport-disabled`
 
 **Cloud Provider:** Alicloud
 

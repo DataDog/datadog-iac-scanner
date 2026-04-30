@@ -3,7 +3,7 @@ title: "CloudFront without minimum protocol TLS 1.2"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cloudfront_without_minimum_protocol_tls_1.2"
-  id: "dc17ee4b-ddf2-4e23-96e8-7a36abad1303"
+  id: "cloudformation-aws-cloudfront-without-minimum-protocol-tls-1-2"
   display_name: "CloudFront without minimum protocol TLS 1.2"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dc17ee4b-ddf2-4e23-96e8-7a36abad1303`
+**Id:** `cloudformation-aws-cloudfront-without-minimum-protocol-tls-1-2`
 
 **Cloud Provider:** AWS
 

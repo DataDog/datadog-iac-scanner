@@ -3,7 +3,7 @@ title: "IAM user without password reset"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/user_iam_missing_password_reset_required"
-  id: "a964d6e3-8e1e-4d93-8120-61fa640dd55a"
+  id: "cloudformation-aws-iam-user-without-password-reset"
   display_name: "IAM user without password reset"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a964d6e3-8e1e-4d93-8120-61fa640dd55a`
+**Id:** `cloudformation-aws-iam-user-without-password-reset`
 
 **Cloud Provider:** AWS
 

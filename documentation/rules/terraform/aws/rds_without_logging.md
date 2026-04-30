@@ -3,7 +3,7 @@ title: "RDS without logging"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/rds_without_logging"
-  id: "8d7f7b8c-6c7c-40f8-baa6-62006c6c7b56"
+  id: "terraform-aws-rds-without-logging"
   display_name: "RDS without logging"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8d7f7b8c-6c7c-40f8-baa6-62006c6c7b56`
+**Id:** `terraform-aws-rds-without-logging`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "CloudWatch root account use missing"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudwatch_root_account_use_alarm_missing"
-  id: "8b1b1e67-6248-4dca-bbad-93486bb181c0"
+  id: "terraform-aws-cloudwatch-root-account-use-missing"
   display_name: "CloudWatch root account use missing"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8b1b1e67-6248-4dca-bbad-93486bb181c0`
+**Id:** `terraform-aws-cloudwatch-root-account-use-missing`
 
 **Cloud Provider:** AWS
 

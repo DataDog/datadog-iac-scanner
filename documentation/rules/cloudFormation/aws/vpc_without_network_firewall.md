@@ -3,7 +3,7 @@ title: "VPC without Network Firewall"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/vpc_without_network_firewall"
-  id: "3e293410-d5b8-411f-85fd-7d26294f20c9"
+  id: "cloudformation-aws-vpc-without-network-firewall"
   display_name: "VPC without Network Firewall"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3e293410-d5b8-411f-85fd-7d26294f20c9`
+**Id:** `cloudformation-aws-vpc-without-network-firewall`
 
 **Cloud Provider:** AWS
 

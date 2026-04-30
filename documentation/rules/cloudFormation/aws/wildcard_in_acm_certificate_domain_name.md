@@ -3,7 +3,7 @@ title: "Wildcard in ACM certificate domain name"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/wildcard_in_acm_certificate_domain_name"
-  id: "cc8b294f-006f-4f8f-b5bb-0a9140c33131"
+  id: "cloudformation-aws-wildcard-in-acm-certificate-domain-name"
   display_name: "Wildcard in ACM certificate domain name"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cc8b294f-006f-4f8f-b5bb-0a9140c33131`
+**Id:** `cloudformation-aws-wildcard-in-acm-certificate-domain-name`
 
 **Cloud Provider:** AWS
 

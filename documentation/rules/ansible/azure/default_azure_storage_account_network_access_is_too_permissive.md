@@ -3,7 +3,7 @@ title: "Default Azure storage account network access is too permissive"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/default_azure_storage_account_network_access_is_too_permissive"
-  id: "ca4df748-613a-4fbf-9c76-f02cbd580307"
+  id: "ansible-azure-default-azure-storage-account-network-access-is-too-permissive"
   display_name: "Default Azure storage account network access is too permissive"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ca4df748-613a-4fbf-9c76-f02cbd580307`
+**Id:** `ansible-azure-default-azure-storage-account-network-access-is-too-permissive`
 
 **Cloud Provider:** Azure
 

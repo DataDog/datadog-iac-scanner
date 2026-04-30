@@ -3,7 +3,7 @@ title: "Automatic minor upgrades disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/automatic_minor_upgrades_disabled"
-  id: "f0104061-8bfc-4b45-8a7d-630eb502f281"
+  id: "cloudformation-aws-automatic-minor-upgrades-disabled"
   display_name: "Automatic minor upgrades disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f0104061-8bfc-4b45-8a7d-630eb502f281`
+**Id:** `cloudformation-aws-automatic-minor-upgrades-disabled`
 
 **Cloud Provider:** AWS
 

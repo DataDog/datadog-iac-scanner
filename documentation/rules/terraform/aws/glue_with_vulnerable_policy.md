@@ -3,7 +3,7 @@ title: "Glue with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/glue_with_vulnerable_policy"
-  id: "d25edb51-07fb-4a73-97d4-41cecdc53a22"
+  id: "terraform-aws-glue-with-vulnerable-policy"
   display_name: "Glue with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d25edb51-07fb-4a73-97d4-41cecdc53a22`
+**Id:** `terraform-aws-glue-with-vulnerable-policy`
 
 **Cloud Provider:** AWS
 

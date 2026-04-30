@@ -3,7 +3,7 @@ title: "Redshift using default port"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/redshift_using_default_port"
-  id: "e01de151-a7bd-4db4-b49b-3c4775a5e881"
+  id: "ansible-aws-redshift-using-default-port"
   display_name: "Redshift using default port"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e01de151-a7bd-4db4-b49b-3c4775a5e881`
+**Id:** `ansible-aws-redshift-using-default-port`
 
 **Cloud Provider:** AWS
 

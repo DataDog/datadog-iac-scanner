@@ -3,7 +3,7 @@ title: "Service account token automount not disabled"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/service_account_token_automount_not_disabled"
-  id: "a9a13d4f-f17a-491b-b074-f54bffffcb4a"
+  id: "terraform-common-service-account-token-automount-not-disabled"
   display_name: "Service account token automount not disabled"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a9a13d4f-f17a-491b-b074-f54bffffcb4a`
+**Id:** `terraform-common-service-account-token-automount-not-disabled`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "API Gateway V2 stage access logging settings not defined"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/api_gateway_access_logging_disabled"
-  id: "80d45af4-4920-4236-a56e-b7ef419d1941"
+  id: "cloudformation-aws-api-gateway-v2-stage-access-logging-settings-not-defined"
   display_name: "API Gateway V2 stage access logging settings not defined"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `80d45af4-4920-4236-a56e-b7ef419d1941`
+**Id:** `cloudformation-aws-api-gateway-v2-stage-access-logging-settings-not-defined`
 
 **Cloud Provider:** AWS
 

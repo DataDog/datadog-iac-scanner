@@ -3,7 +3,7 @@ title: "Basic auth file is set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/basic_auth_file_is_set"
-  id: "5da47109-f8d6-4585-9e2b-96a8958a12f5"
+  id: "kubernetes-basic-auth-file-is-set"
   display_name: "Basic auth file is set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5da47109-f8d6-4585-9e2b-96a8958a12f5`
+**Id:** `kubernetes-basic-auth-file-is-set`
 
 **Cloud Provider:** Kubernetes
 

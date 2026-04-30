@@ -3,7 +3,7 @@ title: "Redshift publicly accessible"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/redshift_publicly_accessible"
-  id: "af173fde-95ea-4584-b904-bb3923ac4bda"
+  id: "terraform-aws-redshift-publicly-accessible"
   display_name: "Redshift publicly accessible"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `af173fde-95ea-4584-b904-bb3923ac4bda`
+**Id:** `terraform-aws-redshift-publicly-accessible`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Google Container node pool auto repair disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/google_container_node_pool_auto_repair_disabled"
-  id: "acfdbec6-4a17-471f-b412-169d77553332"
+  id: "terraform-gcp-google-container-node-pool-auto-repair-disabled"
   display_name: "Google Container node pool auto repair disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `acfdbec6-4a17-471f-b412-169d77553332`
+**Id:** `terraform-gcp-google-container-node-pool-auto-repair-disabled`
 
 **Cloud Provider:** GCP
 

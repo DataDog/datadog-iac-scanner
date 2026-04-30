@@ -3,7 +3,7 @@ title: "Elasticsearch with HTTPS disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elasticsearch_with_https_disabled"
-  id: "4cdc88e6-c0c8-4081-a639-bb3a557cbedf"
+  id: "cloudformation-aws-elasticsearch-with-https-disabled"
   display_name: "Elasticsearch with HTTPS disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4cdc88e6-c0c8-4081-a639-bb3a557cbedf`
+**Id:** `cloudformation-aws-elasticsearch-with-https-disabled`
 
 **Cloud Provider:** AWS
 

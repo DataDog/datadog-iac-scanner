@@ -3,7 +3,7 @@ title: "ECS service admin role is present"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ecs_service_admin_role_is_present"
-  id: "7db727c1-1720-468e-b80e-06697f71e09e"
+  id: "ansible-aws-ecs-service-admin-role-is-present"
   display_name: "ECS service admin role is present"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7db727c1-1720-468e-b80e-06697f71e09e`
+**Id:** `ansible-aws-ecs-service-admin-role-is-present`
 
 **Cloud Provider:** AWS
 

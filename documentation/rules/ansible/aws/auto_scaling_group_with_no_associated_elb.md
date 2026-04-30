@@ -3,7 +3,7 @@ title: "Auto Scaling Group with no associated ELB"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/auto_scaling_group_with_no_associated_elb"
-  id: "050f085f-a8db-4072-9010-2cca235cc02f"
+  id: "ansible-aws-auto-scaling-group-with-no-associated-elb"
   display_name: "Auto Scaling Group with no associated ELB"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `050f085f-a8db-4072-9010-2cca235cc02f`
+**Id:** `ansible-aws-auto-scaling-group-with-no-associated-elb`
 
 **Cloud Provider:** AWS
 

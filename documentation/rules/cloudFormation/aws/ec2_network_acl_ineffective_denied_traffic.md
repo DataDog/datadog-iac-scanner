@@ -3,7 +3,7 @@ title: "EC2 Network ACL Deny rule not blocking all traffic"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_network_acl_ineffective_denied_traffic"
-  id: "2623d682-dccb-44cd-99d0-54d9fd62f8f2"
+  id: "cloudformation-aws-ec2-network-acl-deny-rule-not-blocking-all-traffic"
   display_name: "EC2 Network ACL Deny rule not blocking all traffic"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2623d682-dccb-44cd-99d0-54d9fd62f8f2`
+**Id:** `cloudformation-aws-ec2-network-acl-deny-rule-not-blocking-all-traffic`
 
 **Cloud Provider:** AWS
 

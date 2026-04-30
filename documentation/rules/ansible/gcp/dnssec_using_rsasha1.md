@@ -3,7 +3,7 @@ title: "DNSSEC using RSASHA1"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/dnssec_using_rsasha1"
-  id: "6cf4c3a7-ceb0-4475-8892-3745b84be24a"
+  id: "ansible-gcp-dnssec-using-rsasha1"
   display_name: "DNSSEC using RSASHA1"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6cf4c3a7-ceb0-4475-8892-3745b84be24a`
+**Id:** `ansible-gcp-dnssec-using-rsasha1`
 
 **Cloud Provider:** GCP
 

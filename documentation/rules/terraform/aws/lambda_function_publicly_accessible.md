@@ -3,7 +3,7 @@ title: "Lambda function publicly accessible"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/lambda_function_publicly_accessible"
-  id: "1btsf2f9-af8c-4dfc-a0f1-a03adb70deb2"
+  id: "terraform-aws-lambda-function-publicly-accessible"
   display_name: "Lambda function publicly accessible"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1btsf2f9-af8c-4dfc-a0f1-a03adb70deb2`
+**Id:** `terraform-aws-lambda-function-publicly-accessible`
 
 **Cloud Provider:** AWS
 

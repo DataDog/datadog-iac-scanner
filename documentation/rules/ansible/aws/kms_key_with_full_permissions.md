@@ -3,7 +3,7 @@ title: "KMS key with vulnerable policy"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/kms_key_with_full_permissions"
-  id: "5b9d237a-57d5-4177-be0e-71434b0fef47"
+  id: "ansible-aws-kms-key-with-vulnerable-policy"
   display_name: "KMS key with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5b9d237a-57d5-4177-be0e-71434b0fef47`
+**Id:** `ansible-aws-kms-key-with-vulnerable-policy`
 
 **Cloud Provider:** AWS
 

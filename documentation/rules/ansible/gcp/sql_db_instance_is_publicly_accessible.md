@@ -3,7 +3,7 @@ title: "SQL DB instance publicly accessible"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/sql_db_instance_is_publicly_accessible"
-  id: "7d7054c0-3a52-4e9b-b9ff-cbfe16a2378b"
+  id: "ansible-gcp-sql-db-instance-publicly-accessible"
   display_name: "SQL DB instance publicly accessible"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7d7054c0-3a52-4e9b-b9ff-cbfe16a2378b`
+**Id:** `ansible-gcp-sql-db-instance-publicly-accessible`
 
 **Cloud Provider:** GCP
 

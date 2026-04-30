@@ -3,7 +3,7 @@ title: "Group with privilege escalation by actions 'iam:CreatePolicyVersion'"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/group_with_privilege_escalation_by_actions_iam_CreatePolicyVersion"
-  id: "ec49cbfd-fae4-45f3-81b1-860526d66e3f"
+  id: "terraform-aws-group-with-privilege-escalation-by-actions-iam-createpolicyversion"
   display_name: "Group with privilege escalation by actions 'iam:CreatePolicyVersion'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ec49cbfd-fae4-45f3-81b1-860526d66e3f`
+**Id:** `terraform-aws-group-with-privilege-escalation-by-actions-iam-createpolicyversion`
 
 **Cloud Provider:** AWS
 

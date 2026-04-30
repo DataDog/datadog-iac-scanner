@@ -3,7 +3,7 @@ title: "ONBUILD cannot trigger FROM or MAINTAINER"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/from_or_maintainer_cannot_be_triggered_within_onbuild"
-  id: "408460f2-2a0f-21ab-ab37-4fb86ac3b5ce"
+  id: "dockerfile-onbuild-cannot-trigger-from-or-maintainer"
   display_name: "ONBUILD cannot trigger FROM or MAINTAINER"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `408460f2-2a0f-21ab-ab37-4fb86ac3b5ce`
+**Id:** `dockerfile-onbuild-cannot-trigger-from-or-maintainer`
 
 **Cloud Provider:** Dockerfile
 

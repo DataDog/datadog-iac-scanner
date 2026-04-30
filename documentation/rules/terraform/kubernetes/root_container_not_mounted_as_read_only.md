@@ -3,7 +3,7 @@ title: "Root container not mounted as read-only"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/root_container_not_mounted_as_read_only"
-  id: "d532566b-8d9d-4f3b-80bd-361fe802f9c2"
+  id: "terraform-common-root-container-not-mounted-as-read-only"
   display_name: "Root container not mounted as read-only"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d532566b-8d9d-4f3b-80bd-361fe802f9c2`
+**Id:** `terraform-common-root-container-not-mounted-as-read-only`
 
 **Cloud Provider:** Kubernetes
 

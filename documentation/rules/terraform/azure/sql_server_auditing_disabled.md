@@ -3,7 +3,7 @@ title: "SQL server auditing disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/sql_server_auditing_disabled"
-  id: "f7e296b0-6660-4bc5-8f87-22ac4a815edf"
+  id: "terraform-azure-sql-server-auditing-disabled"
   display_name: "SQL server auditing disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f7e296b0-6660-4bc5-8f87-22ac4a815edf`
+**Id:** `terraform-azure-sql-server-auditing-disabled`
 
 **Cloud Provider:** Azure
 

@@ -3,7 +3,7 @@ title: "Instance with no VPC"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/instance_with_no_vpc"
-  id: "8a6d36cd-0bc6-42b7-92c4-67acc8576861"
+  id: "cloudformation-aws-instance-with-no-vpc"
   display_name: "Instance with no VPC"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8a6d36cd-0bc6-42b7-92c4-67acc8576861`
+**Id:** `cloudformation-aws-instance-with-no-vpc`
 
 **Cloud Provider:** AWS
 

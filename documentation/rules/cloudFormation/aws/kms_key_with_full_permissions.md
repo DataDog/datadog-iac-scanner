@@ -3,7 +3,7 @@ title: "KMS key with a vulnerable policy"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/kms_key_with_full_permissions"
-  id: "da905474-7454-43c0-b8d2-5756ab951aba"
+  id: "cloudformation-aws-kms-key-with-a-vulnerable-policy"
   display_name: "KMS key with a vulnerable policy"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `da905474-7454-43c0-b8d2-5756ab951aba`
+**Id:** `cloudformation-aws-kms-key-with-a-vulnerable-policy`
 
 **Cloud Provider:** AWS
 

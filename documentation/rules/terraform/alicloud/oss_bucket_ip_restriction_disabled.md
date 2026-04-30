@@ -3,7 +3,7 @@ title: "OSS bucket IP restriction disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/oss_bucket_ip_restriction_disabled"
-  id: "6107c530-7178-464a-88bc-df9cdd364ac8"
+  id: "terraform-alicloud-oss-bucket-ip-restriction-disabled"
   display_name: "OSS bucket IP restriction disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6107c530-7178-464a-88bc-df9cdd364ac8`
+**Id:** `terraform-alicloud-oss-bucket-ip-restriction-disabled`
 
 **Cloud Provider:** Alicloud
 

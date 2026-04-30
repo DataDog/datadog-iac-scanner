@@ -3,7 +3,7 @@ title: "HTTP port open to internet"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/http_port_open_to_internet"
-  id: "a14ad534-acbe-4a8e-9404-2f7e1045646e"
+  id: "ansible-aws-http-port-open-to-internet"
   display_name: "HTTP port open to internet"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a14ad534-acbe-4a8e-9404-2f7e1045646e`
+**Id:** `ansible-aws-http-port-open-to-internet`
 
 **Cloud Provider:** AWS
 

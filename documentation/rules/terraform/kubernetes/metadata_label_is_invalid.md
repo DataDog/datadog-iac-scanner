@@ -3,7 +3,7 @@ title: "Metadata label is invalid"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/metadata_label_is_invalid"
-  id: "bc3dabb6-fd50-40f8-b9ba-7429c9f1fb0e"
+  id: "terraform-common-metadata-label-is-invalid"
   display_name: "Metadata label is invalid"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bc3dabb6-fd50-40f8-b9ba-7429c9f1fb0e`
+**Id:** `terraform-common-metadata-label-is-invalid`
 
 **Cloud Provider:** Kubernetes
 

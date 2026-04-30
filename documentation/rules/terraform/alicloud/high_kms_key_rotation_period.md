@@ -3,7 +3,7 @@ title: "High KMS key rotation period"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/high_kms_key_rotation_period"
-  id: "cb319d87-b90f-485e-a7e7-f2408380f309"
+  id: "terraform-alicloud-high-kms-key-rotation-period"
   display_name: "High KMS key rotation period"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cb319d87-b90f-485e-a7e7-f2408380f309`
+**Id:** `terraform-alicloud-high-kms-key-rotation-period`
 
 **Cloud Provider:** Alicloud
 

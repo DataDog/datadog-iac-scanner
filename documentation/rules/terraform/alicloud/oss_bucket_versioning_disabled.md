@@ -3,7 +3,7 @@ title: "OSS bucket versioning disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/oss_bucket_versioning_disabled"
-  id: "70919c0b-2548-4e6b-8d7a-3d84ab6dabba"
+  id: "terraform-alicloud-oss-bucket-versioning-disabled"
   display_name: "OSS bucket versioning disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `70919c0b-2548-4e6b-8d7a-3d84ab6dabba`
+**Id:** `terraform-alicloud-oss-bucket-versioning-disabled`
 
 **Cloud Provider:** Alicloud
 

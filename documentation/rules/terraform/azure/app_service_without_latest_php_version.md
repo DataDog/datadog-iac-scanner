@@ -3,7 +3,7 @@ title: "App Service without latest PHP version"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/app_service_without_latest_php_version"
-  id: "96fe318e-d631-4156-99fa-9080d57280ae"
+  id: "terraform-azure-app-service-without-latest-php-version"
   display_name: "App Service without latest PHP version"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `96fe318e-d631-4156-99fa-9080d57280ae`
+**Id:** `terraform-azure-app-service-without-latest-php-version`
 
 **Cloud Provider:** Azure
 

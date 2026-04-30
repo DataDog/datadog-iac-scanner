@@ -3,7 +3,7 @@ title: "Non kube system pod with host mount"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/non_kube_system_pod_with_host_mount"
-  id: "86a947ea-f577-4efb-a8b0-5fc00257d521"
+  id: "terraform-common-non-kube-system-pod-with-host-mount"
   display_name: "Non kube system pod with host mount"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `86a947ea-f577-4efb-a8b0-5fc00257d521`
+**Id:** `terraform-common-non-kube-system-pod-with-host-mount`
 
 **Cloud Provider:** Kubernetes
 

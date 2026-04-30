@@ -3,7 +3,7 @@ title: "Stackdriver logging disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/stackdriver_logging_disabled"
-  id: "19c9e2a0-fc33-4264-bba1-e3682661e8f7"
+  id: "ansible-gcp-stackdriver-logging-disabled"
   display_name: "Stackdriver logging disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `19c9e2a0-fc33-4264-bba1-e3682661e8f7`
+**Id:** `ansible-gcp-stackdriver-logging-disabled`
 
 **Cloud Provider:** GCP
 

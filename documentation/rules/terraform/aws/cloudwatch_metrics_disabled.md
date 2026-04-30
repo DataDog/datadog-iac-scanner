@@ -3,7 +3,7 @@ title: "CloudWatch metrics disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudwatch_metrics_disabled"
-  id: "081069cb-588b-4ce1-884c-2a1ce3029fe5"
+  id: "terraform-aws-cloudwatch-metrics-disabled"
   display_name: "CloudWatch metrics disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `081069cb-588b-4ce1-884c-2a1ce3029fe5`
+**Id:** `terraform-aws-cloudwatch-metrics-disabled`
 
 **Cloud Provider:** AWS
 

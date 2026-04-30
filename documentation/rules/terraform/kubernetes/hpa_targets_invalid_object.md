@@ -3,7 +3,7 @@ title: "HPA targets invalid object"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/hpa_targets_invalid_object"
-  id: "17e52ca3-ddd0-4610-9d56-ce107442e110"
+  id: "terraform-common-hpa-targets-invalid-object"
   display_name: "HPA targets invalid object"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `17e52ca3-ddd0-4610-9d56-ce107442e110`
+**Id:** `terraform-common-hpa-targets-invalid-object`
 
 **Cloud Provider:** Kubernetes
 

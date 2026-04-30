@@ -3,7 +3,7 @@ title: "StatefulSet without PodDisruptionBudget"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/statefulset_without_pod_disruption_budget"
-  id: "1db3a5a5-bf75-44e5-9e44-c56cfc8b1ac5"
+  id: "kubernetes-statefulset-without-poddisruptionbudget"
   display_name: "StatefulSet without PodDisruptionBudget"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1db3a5a5-bf75-44e5-9e44-c56cfc8b1ac5`
+**Id:** `kubernetes-statefulset-without-poddisruptionbudget`
 
 **Cloud Provider:** Kubernetes
 

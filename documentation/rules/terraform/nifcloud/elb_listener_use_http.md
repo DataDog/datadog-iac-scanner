@@ -3,7 +3,7 @@ title: "NIFCLOUD ELB listener using HTTP protocol"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/elb_listener_use_http"
-  id: "afcb0771-4f94-44ed-ad4a-9f73f11ce6e0"
+  id: "terraform-nifcloud-nifcloud-elb-listener-using-http-protocol"
   display_name: "NIFCLOUD ELB listener using HTTP protocol"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `afcb0771-4f94-44ed-ad4a-9f73f11ce6e0`
+**Id:** `terraform-nifcloud-nifcloud-elb-listener-using-http-protocol`
 
 **Cloud Provider:** Nifcloud
 

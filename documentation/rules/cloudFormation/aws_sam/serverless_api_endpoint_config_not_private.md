@@ -3,7 +3,7 @@ title: "Serverless API endpoint config not private"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws_sam/serverless_api_endpoint_config_not_private"
-  id: "6b5b0313-771b-4319-ad7a-122ee78700ef"
+  id: "cloudformation-aws-serverless-api-endpoint-config-not-private"
   display_name: "Serverless API endpoint config not private"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6b5b0313-771b-4319-ad7a-122ee78700ef`
+**Id:** `cloudformation-aws-serverless-api-endpoint-config-not-private`
 
 **Cloud Provider:** AWS
 

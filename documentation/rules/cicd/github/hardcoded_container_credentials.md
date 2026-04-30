@@ -3,7 +3,7 @@ title: "Hardcoded container credentials"
 group_id: "CICD / GitHub"
 meta:
   name: "github/hardcoded_container_credentials"
-  id: "d0e1f2a3-b4c5-46d7-e8f9-a0b1c2d3e4f5"
+  id: "cicd-common-hardcoded-container-credentials"
   display_name: "Hardcoded container credentials"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d0e1f2a3-b4c5-46d7-e8f9-a0b1c2d3e4f5`
+**Id:** `cicd-common-hardcoded-container-credentials`
 
 **Cloud Provider:** GitHub
 

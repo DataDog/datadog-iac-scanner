@@ -3,7 +3,7 @@ title: "DocumentDB cluster not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/docdb_cluster_not_encrypted"
-  id: "bc1f9009-84a0-490f-ae09-3e0ea6d74ad6"
+  id: "terraform-aws-documentdb-cluster-not-encrypted"
   display_name: "DocumentDB cluster not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bc1f9009-84a0-490f-ae09-3e0ea6d74ad6`
+**Id:** `terraform-aws-documentdb-cluster-not-encrypted`
 
 **Cloud Provider:** AWS
 

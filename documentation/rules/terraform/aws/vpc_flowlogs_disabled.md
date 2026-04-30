@@ -3,7 +3,7 @@ title: "VPC Flow Logs disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/vpc_flowlogs_disabled"
-  id: "f83121ea-03da-434f-9277-9cd247ab3047"
+  id: "terraform-aws-vpc-flow-logs-disabled"
   display_name: "VPC Flow Logs disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f83121ea-03da-434f-9277-9cd247ab3047`
+**Id:** `terraform-aws-vpc-flow-logs-disabled`
 
 **Cloud Provider:** AWS
 

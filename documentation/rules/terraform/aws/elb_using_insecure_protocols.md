@@ -3,7 +3,7 @@ title: "ELB using insecure protocols"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elb_using_insecure_protocols"
-  id: "126c1788-23c2-4a10-906c-ef179f4f96ec"
+  id: "terraform-aws-elb-using-insecure-protocols"
   display_name: "ELB using insecure protocols"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `126c1788-23c2-4a10-906c-ef179f4f96ec`
+**Id:** `terraform-aws-elb-using-insecure-protocols`
 
 **Cloud Provider:** AWS
 

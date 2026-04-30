@@ -3,7 +3,7 @@ title: "Storage account not forcing HTTPS"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/storage_account_not_forcing_https"
-  id: "2c99a474-2a3c-4c17-8294-53ffa5ed0522"
+  id: "ansible-azure-storage-account-not-forcing-https"
   display_name: "Storage account not forcing HTTPS"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2c99a474-2a3c-4c17-8294-53ffa5ed0522`
+**Id:** `ansible-azure-storage-account-not-forcing-https`
 
 **Cloud Provider:** Azure
 

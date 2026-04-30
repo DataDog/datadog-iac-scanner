@@ -3,7 +3,7 @@ title: "Log retention is not set"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/log_retention_is_not_set"
-  id: "0461b4fd-21ef-4687-929e-484ee4796785"
+  id: "ansible-azure-log-retention-is-not-set"
   display_name: "Log retention is not set"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0461b4fd-21ef-4687-929e-484ee4796785`
+**Id:** `ansible-azure-log-retention-is-not-set`
 
 **Cloud Provider:** Azure
 

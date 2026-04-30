@@ -3,7 +3,7 @@ title: "Shared host network namespace"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/shared_host_network_namespace"
-  id: "6b6bdfb3-c3ae-44cb-88e4-7405c1ba2c8a"
+  id: "kubernetes-shared-host-network-namespace"
   display_name: "Shared host network namespace"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6b6bdfb3-c3ae-44cb-88e4-7405c1ba2c8a`
+**Id:** `kubernetes-shared-host-network-namespace`
 
 **Cloud Provider:** Kubernetes
 

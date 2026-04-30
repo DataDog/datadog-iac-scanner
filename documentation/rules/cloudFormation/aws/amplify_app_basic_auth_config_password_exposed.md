@@ -3,7 +3,7 @@ title: "Amplify app basic auth config password exposed"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/amplify_app_basic_auth_config_password_exposed"
-  id: "71493c8b-3014-404c-9802-078b74496fb7"
+  id: "cloudformation-aws-amplify-app-basic-auth-config-password-exposed"
   display_name: "Amplify app basic auth config password exposed"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `71493c8b-3014-404c-9802-078b74496fb7`
+**Id:** `cloudformation-aws-amplify-app-basic-auth-config-password-exposed`
 
 **Cloud Provider:** AWS
 

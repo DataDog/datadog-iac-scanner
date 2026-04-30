@@ -3,7 +3,7 @@ title: "AKS RBAC disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/aks_rbac_disabled"
-  id: "86f92117-eed8-4614-9c6c-b26da20ff37f"
+  id: "terraform-azure-aks-rbac-disabled"
   display_name: "AKS RBAC disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `86f92117-eed8-4614-9c6c-b26da20ff37f`
+**Id:** `terraform-azure-aks-rbac-disabled`
 
 **Cloud Provider:** Azure
 

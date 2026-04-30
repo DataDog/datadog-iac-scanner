@@ -3,7 +3,7 @@ title: "S3 bucket without versioning"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_without_versioning"
-  id: "a227ec01-f97a-4084-91a4-47b350c1db54"
+  id: "cloudformation-aws-s3-bucket-without-versioning"
   display_name: "S3 bucket without versioning"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a227ec01-f97a-4084-91a4-47b350c1db54`
+**Id:** `cloudformation-aws-s3-bucket-without-versioning`
 
 **Cloud Provider:** AWS
 

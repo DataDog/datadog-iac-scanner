@@ -3,7 +3,7 @@ title: "MySQL instance with local infile on"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/mysql_instance_with_local_infile_on"
-  id: "a7b520bb-2509-4fb0-be05-bc38f54c7a4c"
+  id: "ansible-gcp-mysql-instance-with-local-infile-on"
   display_name: "MySQL instance with local infile on"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a7b520bb-2509-4fb0-be05-bc38f54c7a4c`
+**Id:** `ansible-gcp-mysql-instance-with-local-infile-on`
 
 **Cloud Provider:** GCP
 

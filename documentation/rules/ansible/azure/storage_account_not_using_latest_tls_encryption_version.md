@@ -3,7 +3,7 @@ title: "Storage account not using latest TLS encryption version"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/storage_account_not_using_latest_tls_encryption_version"
-  id: "c62746cf-92d5-4649-9acf-7d48d086f2ee"
+  id: "ansible-azure-storage-account-not-using-latest-tls-encryption-version"
   display_name: "Storage account not using latest TLS encryption version"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c62746cf-92d5-4649-9acf-7d48d086f2ee`
+**Id:** `ansible-azure-storage-account-not-using-latest-tls-encryption-version`
 
 **Cloud Provider:** Azure
 

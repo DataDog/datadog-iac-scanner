@@ -3,7 +3,7 @@ title: "CLB listener using insecure protocols"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/clb_listener_using_insecure_protocols"
-  id: "fe08b81c-12e9-4b5e-9006-4218fca750fd"
+  id: "terraform-tencentcloud-clb-listener-using-insecure-protocols"
   display_name: "CLB listener using insecure protocols"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fe08b81c-12e9-4b5e-9006-4218fca750fd`
+**Id:** `terraform-tencentcloud-clb-listener-using-insecure-protocols`
 
 **Cloud Provider:** TencentCloud
 

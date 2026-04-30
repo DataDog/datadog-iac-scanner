@@ -3,7 +3,7 @@ title: "Azure Cognitive Search public network access enabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/azure_cognitive_search_public_network_access_enabled"
-  id: "4a9e0f00-0765-4f72-a0d4-d31110b78279"
+  id: "terraform-azure-azure-cognitive-search-public-network-access-enabled"
   display_name: "Azure Cognitive Search public network access enabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4a9e0f00-0765-4f72-a0d4-d31110b78279`
+**Id:** `terraform-azure-azure-cognitive-search-public-network-access-enabled`
 
 **Cloud Provider:** Azure
 

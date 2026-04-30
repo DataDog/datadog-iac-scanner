@@ -3,7 +3,7 @@ title: "StatefulSet requests storage"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/statefulset_requests_storage"
-  id: "8cf4671a-cf3d-46fc-8389-21e7405063a2"
+  id: "kubernetes-statefulset-requests-storage"
   display_name: "StatefulSet requests storage"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8cf4671a-cf3d-46fc-8389-21e7405063a2`
+**Id:** `kubernetes-statefulset-requests-storage`
 
 **Cloud Provider:** Kubernetes
 

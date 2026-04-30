@@ -3,7 +3,7 @@ title: "EC2 network ACL duplicate rule"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_network_acl_duplicate_rule"
-  id: "045ddb54-cfc5-4abb-9e05-e427b2bc96fe"
+  id: "cloudformation-aws-ec2-network-acl-duplicate-rule"
   display_name: "EC2 network ACL duplicate rule"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `045ddb54-cfc5-4abb-9e05-e427b2bc96fe`
+**Id:** `cloudformation-aws-ec2-network-acl-duplicate-rule`
 
 **Cloud Provider:** AWS
 

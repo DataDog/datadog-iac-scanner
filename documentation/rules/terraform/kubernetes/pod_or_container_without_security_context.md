@@ -3,7 +3,7 @@ title: "Pod or container without security context"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/pod_or_container_without_security_context"
-  id: "ad69e38a-d92e-4357-a8da-f2f29d545883"
+  id: "terraform-common-pod-or-container-without-security-context"
   display_name: "Pod or container without security context"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ad69e38a-d92e-4357-a8da-f2f29d545883`
+**Id:** `terraform-common-pod-or-container-without-security-context`
 
 **Cloud Provider:** Kubernetes
 

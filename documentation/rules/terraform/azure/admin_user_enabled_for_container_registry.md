@@ -3,7 +3,7 @@ title: "Admin user enabled for container registry"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/admin_user_enabled_for_container_registry"
-  id: "b897dfbf-322c-45a8-b67c-1e698beeaa51"
+  id: "terraform-azure-admin-user-enabled-for-container-registry"
   display_name: "Admin user enabled for container registry"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b897dfbf-322c-45a8-b67c-1e698beeaa51`
+**Id:** `terraform-azure-admin-user-enabled-for-container-registry`
 
 **Cloud Provider:** Azure
 

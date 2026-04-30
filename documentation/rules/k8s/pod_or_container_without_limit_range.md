@@ -3,7 +3,7 @@ title: "Pod or container without LimitRange"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/pod_or_container_without_limit_range"
-  id: "4a20ebac-1060-4c81-95d1-1f7f620e983b"
+  id: "kubernetes-pod-or-container-without-limitrange"
   display_name: "Pod or container without LimitRange"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4a20ebac-1060-4c81-95d1-1f7f620e983b`
+**Id:** `kubernetes-pod-or-container-without-limitrange`
 
 **Cloud Provider:** Kubernetes
 

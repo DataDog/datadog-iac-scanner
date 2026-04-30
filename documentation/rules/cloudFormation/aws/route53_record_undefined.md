@@ -3,7 +3,7 @@ title: "Route53 record undefined"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/route53_record_undefined"
-  id: "24d932e1-91f0-46ea-836f-fdbd81694151"
+  id: "cloudformation-aws-route53-record-undefined"
   display_name: "Route53 record undefined"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `24d932e1-91f0-46ea-836f-fdbd81694151`
+**Id:** `cloudformation-aws-route53-record-undefined`
 
 **Cloud Provider:** AWS
 

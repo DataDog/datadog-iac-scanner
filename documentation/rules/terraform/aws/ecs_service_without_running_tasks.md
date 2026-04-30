@@ -3,7 +3,7 @@ title: "ECS service without running tasks"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ecs_service_without_running_tasks"
-  id: "91f16d09-689e-4926-aca7-155157f634ed"
+  id: "terraform-aws-ecs-service-without-running-tasks"
   display_name: "ECS service without running tasks"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `91f16d09-689e-4926-aca7-155157f634ed`
+**Id:** `terraform-aws-ecs-service-without-running-tasks`
 
 **Cloud Provider:** AWS
 

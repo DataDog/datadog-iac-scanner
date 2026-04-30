@@ -3,7 +3,7 @@ title: "Misfeature"
 group_id: "CICD / GitHub"
 meta:
   name: "github/misfeature"
-  id: "a4b5c6d7-e8f9-40a1-b2c3-d4e5f6a7b8c9"
+  id: "cicd-common-misfeature"
   display_name: "Misfeature"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a4b5c6d7-e8f9-40a1-b2c3-d4e5f6a7b8c9`
+**Id:** `cicd-common-misfeature`
 
 **Cloud Provider:** GitHub
 

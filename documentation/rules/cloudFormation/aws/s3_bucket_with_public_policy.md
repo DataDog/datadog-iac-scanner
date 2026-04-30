@@ -3,7 +3,7 @@ title: "S3 bucket allows public policy"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_with_public_policy"
-  id: "860ba89b-b8de-4e72-af54-d6aee4138a69"
+  id: "cloudformation-aws-s3-bucket-allows-public-policy"
   display_name: "S3 bucket allows public policy"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `860ba89b-b8de-4e72-af54-d6aee4138a69`
+**Id:** `cloudformation-aws-s3-bucket-allows-public-policy`
 
 **Cloud Provider:** AWS
 

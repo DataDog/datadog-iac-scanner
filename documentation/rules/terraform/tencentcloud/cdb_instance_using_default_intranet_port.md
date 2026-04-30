@@ -3,7 +3,7 @@ title: "CDB instance internet using default intranet port"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cdb_instance_using_default_intranet_port"
-  id: "18d6aa4b-7570-4d95-9c75-90363ef1abd9"
+  id: "terraform-tencentcloud-cdb-instance-internet-using-default-intranet-port"
   display_name: "CDB instance internet using default intranet port"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `18d6aa4b-7570-4d95-9c75-90363ef1abd9`
+**Id:** `terraform-tencentcloud-cdb-instance-internet-using-default-intranet-port`
 
 **Cloud Provider:** TencentCloud
 

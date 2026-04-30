@@ -3,7 +3,7 @@ title: "EC2 instance monitoring disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_instance_monitoring_disabled"
-  id: "0264093f-6791-4475-af34-4b8102dcbcd0"
+  id: "cloudformation-aws-ec2-instance-monitoring-disabled"
   display_name: "EC2 instance monitoring disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0264093f-6791-4475-af34-4b8102dcbcd0`
+**Id:** `cloudformation-aws-ec2-instance-monitoring-disabled`
 
 **Cloud Provider:** AWS
 

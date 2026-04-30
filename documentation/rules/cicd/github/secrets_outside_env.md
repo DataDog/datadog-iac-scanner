@@ -3,7 +3,7 @@ title: "Secrets outside environment"
 group_id: "CICD / GitHub"
 meta:
   name: "github/secrets_outside_env"
-  id: "176395cd-3c17-4e6b-b521-8eb73705c1d1"
+  id: "cicd-common-secrets-outside-environment"
   display_name: "Secrets outside environment"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `176395cd-3c17-4e6b-b521-8eb73705c1d1`
+**Id:** `cicd-common-secrets-outside-environment`
 
 **Cloud Provider:** GitHub
 

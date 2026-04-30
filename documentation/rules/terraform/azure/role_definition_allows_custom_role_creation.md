@@ -3,7 +3,7 @@ title: "Role definition allows custom role creation"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/role_definition_allows_custom_role_creation"
-  id: "3fa5900f-9aac-4982-96b2-a6143d9c99fb"
+  id: "terraform-azure-role-definition-allows-custom-role-creation"
   display_name: "Role definition allows custom role creation"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3fa5900f-9aac-4982-96b2-a6143d9c99fb`
+**Id:** `terraform-azure-role-definition-allows-custom-role-creation`
 
 **Cloud Provider:** Azure
 

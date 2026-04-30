@@ -3,7 +3,7 @@ title: "DocDB cluster master password in plaintext"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/docdb_cluster_master_password_in_plaintext"
-  id: "39423ce4-9011-46cd-b6b1-009edcd9385d"
+  id: "cloudformation-aws-docdb-cluster-master-password-in-plaintext"
   display_name: "DocDB cluster master password in plaintext"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `39423ce4-9011-46cd-b6b1-009edcd9385d`
+**Id:** `cloudformation-aws-docdb-cluster-master-password-in-plaintext`
 
 **Cloud Provider:** AWS
 

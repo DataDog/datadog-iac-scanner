@@ -3,7 +3,7 @@ title: "IAM policy grants AssumeRole permission across all services"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_policy_grants_assumerole_permission_across_all_services"
-  id: "e835bd0d-65da-49f7-b6d1-b646da8727e6"
+  id: "cloudformation-aws-iam-policy-grants-assumerole-permission-across-all-services"
   display_name: "IAM policy grants AssumeRole permission across all services"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e835bd0d-65da-49f7-b6d1-b646da8727e6`
+**Id:** `cloudformation-aws-iam-policy-grants-assumerole-permission-across-all-services`
 
 **Cloud Provider:** AWS
 

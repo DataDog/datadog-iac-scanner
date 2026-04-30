@@ -3,7 +3,7 @@ title: "Stack retention disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/stack_retention_disabled"
-  id: "6e0e2f68-3fd9-4cd8-a5e4-e2213ef0df97"
+  id: "terraform-aws-stack-retention-disabled"
   display_name: "Stack retention disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6e0e2f68-3fd9-4cd8-a5e4-e2213ef0df97`
+**Id:** `terraform-aws-stack-retention-disabled`
 
 **Cloud Provider:** AWS
 
