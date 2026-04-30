@@ -82,6 +82,17 @@ jobs:
 ```
 ## Non-Compliant Code Examples
 ```yaml
+name: Composite action with obfuscated uses
+description: Composite action that calls another action through an obfuscated path
+runs:
+  using: composite
+  steps:
+    - name: Use obfuscated action
+      uses: actions/checkout/./@v4
+
+```
+
+```yaml
 name: Obfuscated Uses Paths
 on: push
 

@@ -168,29 +168,47 @@ EOF
 ```
 
 ```terraform
-resource "aws_iam_role" "positive1" {
-  name = "test_role"
+resource "aws_iam_role" "multi_statement" {
+  name = "multi_statement"
 
   assume_role_policy = <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Action": "sts:AssumeRole",
-      "Principal": {
-        "AWS": "arn:aws:iam::987654321145:root"
-      },
+      "Sid": "SafeWithMFA",
       "Effect": "Allow",
-      "Resource": "*",
-      "Sid": ""
+      "Principal": {"AWS": "arn:aws:iam::111111111111:root"},
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "Bool": {"aws:MultiFactorAuthPresent": "true"}
+      }
+    },
+    {
+      "Sid": "VulnerableCrossAccountWithoutMFA",
+      "Effect": "Allow",
+      "Principal": {"AWS": "arn:aws:iam::222222222222:root"},
+      "Action": "sts:AssumeRole"
     }
   ]
 }
 EOF
+}
 
-  tags = {
-    tag-key = "tag-value"
-  }
+resource "aws_iam_role" "jsonencoded" {
+  name = "jsonencoded"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "JsonEncodedVulnerable"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::333333333333:root" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
 }
 
 ```

@@ -120,9 +120,12 @@ def build_markdown(
     category = metadata.get("category", "unknown")
     description = metadata.get("descriptionText", "No description provided.")
     provider_url = metadata.get("providerUrl", metadata.get("descriptionUrl", ""))
-    compliant, non_compliant = get_code_snippets(
-        rule_path / "test", resource_type, max_examples
+    test_path = (
+        rule_path / "test"
+        if cloud_provider != "github" or platform != "CICD"
+        else rule_path / "test" / ".github"
     )
+    compliant, non_compliant = get_code_snippets(test_path, resource_type, max_examples)
     meta_name = f"{cloud_provider}/{rule_name}"
     clean_provider = CLOUD_PROVIDER[cloud_provider]
 

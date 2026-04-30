@@ -2159,8 +2159,8 @@ rules:
         description: ALB listening on HTTP
         title: ALB listening on HTTP
       api_gateway_api_protocol_not_https:
-        description: API gateway API protocol not HTTPS
-        title: API gateway API protocol not HTTPS
+        description: API Gateway API protocol not HTTPS
+        title: API Gateway API protocol not HTTPS
       cmk_is_unusable:
         description: CMK is unusable
         title: CMK is unusable
@@ -2355,8 +2355,8 @@ rules:
         description: API Gateway deployment without access log setting
         title: API Gateway deployment without access log setting
       api_gateway_deployment_without_api_gateway_usage_plan_associated:
-        description: API gateway deployment without API gateway usage plan associated
-        title: API gateway deployment without API gateway usage plan associated
+        description: API Gateway deployment without API Gateway usage plan associated
+        title: API Gateway deployment without API Gateway usage plan associated
       api_gateway_endpoint_config_is_not_private:
         description: API Gateway endpoint config is not private
         title: API Gateway endpoint config is not private

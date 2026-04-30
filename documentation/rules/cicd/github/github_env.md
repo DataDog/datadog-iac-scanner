@@ -106,8 +106,58 @@ jobs:
         with:
           node-version: 18
 
+---
+# Composite action: write to GITHUB_PATH with only local bash variables. Even
+# though `$HOME` is variable expansion, no attacker-influenced GitHub Actions
+# context flows in, so the composite branch must not flag this.
+name: Benign composite action
+description: Composite action whose write to GITHUB_PATH only uses local bash vars
+runs:
+  using: composite
+  steps:
+    - name: Add local bin to PATH
+      shell: bash
+      run: echo "$HOME/bin" >> $GITHUB_PATH
+
+---
+# Composite action: step.env carries an unused untrusted input but the actual
+# GITHUB_ENV write only appends a constant. The taint never flows into the
+# env-file write, so the composite branch must not flag this.
+name: Composite with unused taint
+description: Untrusted env entry is unused; the GITHUB_ENV write is constant
+inputs:
+  message:
+    description: Untrusted but unused
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Constant write with unused taint
+      shell: bash
+      env:
+        MSG: ${{ inputs.message }}
+      run: echo "$HOME/bin" >> $GITHUB_PATH
+
 ```
 ## Non-Compliant Code Examples
+```yaml
+name: Composite action writing to GITHUB_ENV
+description: Composite action that writes attacker-influenced content to GITHUB_ENV
+inputs:
+  message:
+    description: Untrusted input
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Unsafe redirect
+      shell: bash
+      env:
+        MSG: ${{ inputs.message }}
+      run: echo $MSG >> $GITHUB_ENV
+
+```
+
 ```yaml
 name: GitHub Env Test - Positive Cases
 on:
@@ -182,5 +232,23 @@ jobs:
       - name: CMD redirect pattern
         shell: cmd
         run: echo LIBRARY=%LIBRARY% >> %GITHUB_ENV%
+
+```
+
+```yaml
+name: Composite multi-arg redirect to GITHUB_ENV
+description: Composite step writes more than one arg to GITHUB_ENV in a single redirect
+inputs:
+  message:
+    description: Untrusted input
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Multi-arg unsafe redirect
+      shell: bash
+      env:
+        MSG: ${{ inputs.message }}
+      run: echo "FOO=$MSG" "BAR=baz" >> $GITHUB_ENV
 
 ```

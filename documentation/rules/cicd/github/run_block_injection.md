@@ -43,6 +43,19 @@ jobs:
 
 ## Compliant Code Examples
 ```yaml
+name: Safe composite action without inputs
+description: A composite action whose run block does not interpolate untrusted data
+runs:
+  using: composite
+  steps:
+    - name: Show repository
+      shell: bash
+      run: |
+        echo "Build triggered for ${{ github.repository }}"
+
+```
+
+```yaml
 name: check-go-coverage
 
 on:
@@ -76,38 +89,21 @@ jobs:
 ```
 
 ```yaml
-name: Author Workflow
-
-on:
-  author:
-    types:
-      - created
-
-jobs:
-  process_author:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Greet the New Author
-        run: |
-          echo "Hello, a new author has been created!"
-
-```
-
-```yaml
-name: Workflow Run Workflow
-
-on:
-  workflow_run:
-    workflows:
-      - "Your Workflow Name" # Replace with the name of your specific workflow
-
-jobs:
-  process_workflow_run:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Greet the New Workflow Run
-        run: |
-          echo "Hello, a new workflow run has started for 'Your Workflow Name'!"
+name: Safe composite action
+description: A composite action that uses inputs through environment variables to avoid shell injection
+inputs:
+  slack-message:
+    description: The message to send
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Send message safely
+      shell: bash
+      env:
+        SLACK_MESSAGE: ${{ inputs.slack-message }}
+      run: |
+        echo "$SLACK_MESSAGE"
 
 ```
 ## Non-Compliant Code Examples

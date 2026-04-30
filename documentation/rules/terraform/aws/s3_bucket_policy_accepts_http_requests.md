@@ -166,6 +166,33 @@ EOF
 ```
 ## Non-Compliant Code Examples
 ```terraform
+resource "aws_s3_bucket_policy" "allow_http" {
+  bucket = aws_s3_bucket.example.id
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ExplicitlyAllowHTTP",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-bucket/*",
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      }
+    }
+  ]
+}
+EOF
+}
+
+```
+
+```terraform
 resource "aws_s3_bucket" "b2" {
   bucket = "my-tf-test-bucket"
 
@@ -229,43 +256,6 @@ module "s3_bucket" {
     ]
 }
 EOF
-}
-
-```
-
-```terraform
-
-data "aws_iam_policy_document" "pos4" {
-
-  statement {
-    effect = "Deny"
-
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-
-    actions = [
-      "s3:*",
-    ]
-
-
-    resources = [
-      "arn:aws:s3:::a/*",
-      "arn:aws:s3:::a",
-    ]
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["true"]
-    }
-  }
-}
-
-
-resource "aws_s3_bucket" "pos4" {
-  bucket = "a"
-  policy = data.aws_iam_policy_document.pos4.json
 }
 
 ```

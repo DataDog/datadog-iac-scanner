@@ -58,7 +58,7 @@ jobs:
 ```
 
 ```yaml
-name: test-negative4
+name: test-negative6
 on:
   pull_request:
     types: [opened, synchronize, edited, reopened]
@@ -71,18 +71,27 @@ jobs:
 ```
 
 ```yaml
-name: test-negative4
-on:
-  pull_request:
-    types: [opened, synchronize, edited, reopened]
-    branches:
-      - master
-jobs:
-  test-negative4:
-    uses: ./.github/workflows/pr-comment-thollander.yml
+name: Composite action with pinned third-party action
+description: Composite action that pins a third-party action to a full SHA
+runs:
+  using: composite
+  steps:
+    - name: PR comment
+      uses: thollander/actions-comment-pull-request@b07c7f86be67002023e6cb13f57df3f21cdd3411
 
 ```
 ## Non-Compliant Code Examples
+```yaml
+name: Composite action with unpinned third-party action
+description: Composite action that calls a third-party action by tag instead of SHA
+runs:
+  using: composite
+  steps:
+    - name: PR comment
+      uses: thollander/actions-comment-pull-request@v2
+
+```
+
 ```yaml
 name: test-positive
 on:
