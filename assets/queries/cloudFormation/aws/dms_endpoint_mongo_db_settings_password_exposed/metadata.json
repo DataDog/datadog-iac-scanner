@@ -1,5 +1,6 @@
 {
-  "id": "f988a17f-1139-46a3-8928-f27eafd8b024",
+  "id": "cloudformation-aws-dms-endpoint-mongo-db-settings-password-exposed",
+  "legacyId": "f988a17f-1139-46a3-8928-f27eafd8b024",
   "queryName": "DMS endpoint MongoDB settings password exposed",
   "severity": "HIGH",
   "category": "Secret Management",

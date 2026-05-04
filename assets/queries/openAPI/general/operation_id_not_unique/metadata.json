@@ -1,5 +1,6 @@
 {
-  "id": "c254adc4-ef25-46e1-8270-b7944adb4198",
+  "id": "openapi-operation-id-not-unique",
+  "legacyId": "c254adc4-ef25-46e1-8270-b7944adb4198",
   "queryName": "OperationId Not Unique (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

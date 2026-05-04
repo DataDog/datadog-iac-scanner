@@ -1,5 +1,6 @@
 {
-  "id": "d740d048-8ed3-49d3-b77b-6f072f3b669e",
+  "id": "kubernetes-statefulset-has-no-pod-anti-affinity",
+  "legacyId": "d740d048-8ed3-49d3-b77b-6f072f3b669e",
   "queryName": "StatefulSet without podAntiAffinity",
   "severity": "LOW",
   "category": "Resource Management",

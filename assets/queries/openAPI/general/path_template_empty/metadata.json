@@ -1,5 +1,6 @@
 {
-  "id": "ae13a37d-943b-47a7-a970-83c8598bcca3",
+  "id": "openapi-path-template-empty",
+  "legacyId": "ae13a37d-943b-47a7-a970-83c8598bcca3",
   "queryName": "Path Template is Empty (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

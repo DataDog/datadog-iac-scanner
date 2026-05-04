@@ -1,5 +1,6 @@
 {
-  "id": "6e19193a-8753-436d-8a09-76dcff91bb03",
+  "id": "dockerfile-yum-install-allows-manual-input",
+  "legacyId": "6e19193a-8753-436d-8a09-76dcff91bb03",
   "queryName": "yum install allows manual input",
   "severity": "LOW",
   "category": "Supply-Chain",

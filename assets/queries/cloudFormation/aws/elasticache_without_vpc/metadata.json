@@ -1,5 +1,6 @@
 {
-  "id": "ba766c53-fe71-4bbb-be35-b6803f2ef13e",
+  "id": "cloudformation-aws-elasticache-without-vpc",
+  "legacyId": "ba766c53-fe71-4bbb-be35-b6803f2ef13e",
   "queryName": "ElastiCache without VPC",
   "severity": "LOW",
   "category": "Networking and Firewall",

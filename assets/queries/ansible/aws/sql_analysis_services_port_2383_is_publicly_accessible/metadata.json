@@ -1,5 +1,6 @@
 {
-  "id": "7af1c447-c014-4f05-bd8b-ebe3a15734ac",
+  "id": "ansible-aws-sql-analysis-services-port-2383-is-publicly-accessible",
+  "legacyId": "7af1c447-c014-4f05-bd8b-ebe3a15734ac",
   "queryName": "SQL Analysis Services port 2383 (TCP) is publicly accessible",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

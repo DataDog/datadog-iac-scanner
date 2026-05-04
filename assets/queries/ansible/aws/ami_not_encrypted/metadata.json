@@ -1,5 +1,6 @@
 {
-  "id": "97707503-a22c-4cd7-b7c0-f088fa7cf830",
+  "id": "ansible-aws-ami-not-encrypted",
+  "legacyId": "97707503-a22c-4cd7-b7c0-f088fa7cf830",
   "queryName": "AMI not encrypted",
   "severity": "MEDIUM",
   "category": "Encryption",

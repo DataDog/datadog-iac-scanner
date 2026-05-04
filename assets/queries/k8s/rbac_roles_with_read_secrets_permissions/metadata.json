@@ -1,5 +1,6 @@
 {
-  "id": "b7bca5c4-1dab-4c2c-8cbe-3050b9d59b14",
+  "id": "kubernetes-rbac-roles-with-read-secrets-permissions",
+  "legacyId": "b7bca5c4-1dab-4c2c-8cbe-3050b9d59b14",
   "queryName": "RBAC roles with read secrets permissions",
   "severity": "MEDIUM",
   "category": "Access Control",

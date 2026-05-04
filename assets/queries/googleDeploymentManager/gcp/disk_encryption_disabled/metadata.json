@@ -1,5 +1,6 @@
 {
-  "id": "fc040fb6-4c23-4c0d-b12a-39edac35debb",
+  "id": "googledeploymentmanager-gcp-disk-encryption-disabled",
+  "legacyId": "fc040fb6-4c23-4c0d-b12a-39edac35debb",
   "queryName": "Disk Encryption Disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "081069cb-588b-4ce1-884c-2a1ce3029fe5",
+  "id": "terraform-aws-cloudwatch-metrics-disabled",
+  "legacyId": "081069cb-588b-4ce1-884c-2a1ce3029fe5",
   "queryName": "CloudWatch metrics disabled",
   "severity": "MEDIUM",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "b17d8bb8-4c08-4785-867e-cb9e62a622aa",
+  "id": "terraform-azure-aks-disk-encryption-set-id-undefined",
+  "legacyId": "b17d8bb8-4c08-4785-867e-cb9e62a622aa",
   "queryName": "AKS disk encryption set ID undefined",
   "severity": "LOW",
   "category": "Encryption",

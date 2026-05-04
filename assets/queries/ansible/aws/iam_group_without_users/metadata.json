@@ -1,5 +1,6 @@
 {
-  "id": "f509931b-bbb0-443c-bd9b-10e92ecf2193",
+  "id": "ansible-aws-iam-group-without-users",
+  "legacyId": "f509931b-bbb0-443c-bd9b-10e92ecf2193",
   "queryName": "IAM group without users",
   "severity": "MEDIUM",
   "category": "Access Control",

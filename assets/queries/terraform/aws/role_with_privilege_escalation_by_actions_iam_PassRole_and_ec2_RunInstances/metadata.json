@@ -1,5 +1,6 @@
 {
-  "id": "30b88745-eebe-4ecb-a3a9-5cf886e96204",
+  "id": "terraform-aws-role-with-privilege-escalation-by-actions-iam-passrole-and-ec2-runinstances",
+  "legacyId": "30b88745-eebe-4ecb-a3a9-5cf886e96204",
   "queryName": "Role with privilege escalation by actions 'ec2:RunInstances' and 'iam:PassRole'",
   "severity": "MEDIUM",
   "category": "Access Control",

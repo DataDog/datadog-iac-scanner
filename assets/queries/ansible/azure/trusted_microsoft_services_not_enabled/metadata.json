@@ -1,5 +1,6 @@
 {
-  "id": "1bc398a8-d274-47de-a4c8-6ac867b353de",
+  "id": "ansible-azure-trusted-microsoft-services-not-enabled",
+  "legacyId": "1bc398a8-d274-47de-a4c8-6ac867b353de",
   "queryName": "Trusted Microsoft services not enabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

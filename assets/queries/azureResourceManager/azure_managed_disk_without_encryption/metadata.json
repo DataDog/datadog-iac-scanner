@@ -1,5 +1,6 @@
 {
-  "id": "350f3955-b5be-436f-afaa-3d2be2fa6cdd",
+  "id": "azureresourcemanager-azure-azure-managed-disk-without-encryption",
+  "legacyId": "350f3955-b5be-436f-afaa-3d2be2fa6cdd",
   "queryName": "Azure Managed Disk Without Encryption",
   "severity": "HIGH",
   "category": "Encryption",

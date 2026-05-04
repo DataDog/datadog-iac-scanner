@@ -1,5 +1,6 @@
 {
-  "id": "dd5230f8-a577-4bbb-b7ac-f2c2fe7d5299",
+  "id": "terraform-azure-storage-container-is-publicly-accessible",
+  "legacyId": "dd5230f8-a577-4bbb-b7ac-f2c2fe7d5299",
   "queryName": "Storage container is publicly accessible",
   "severity": "HIGH",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "6b2739db-9c49-4db7-b980-7816e0c248c1",
+  "id": "terraform-aws-api-gateway-endpoint-config-is-not-private",
+  "legacyId": "6b2739db-9c49-4db7-b980-7816e0c248c1",
   "queryName": "API Gateway endpoint config is not private",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

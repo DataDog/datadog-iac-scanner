@@ -1,5 +1,6 @@
 {
-  "id": "c4dcdcdf-10dd-4bf4-b4a0-8f6239e6aaa0",
+  "id": "terraform-gcp-ssh-access-is-not-restricted",
+  "legacyId": "c4dcdcdf-10dd-4bf4-b4a0-8f6239e6aaa0",
   "queryName": "SSH access is not restricted",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "a0f1bfe0-741e-473f-b3b2-13e66f856fab",
+  "id": "ansible-aws-s3-bucket-allows-put-action-from-all-principals",
+  "legacyId": "a0f1bfe0-741e-473f-b3b2-13e66f856fab",
   "queryName": "S3 bucket allows put action from all principals",
   "severity": "CRITICAL",
   "category": "Access Control",

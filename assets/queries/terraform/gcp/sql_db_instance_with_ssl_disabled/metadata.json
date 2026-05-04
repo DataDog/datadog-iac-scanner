@@ -1,5 +1,6 @@
 {
-  "id": "02474449-71aa-40a1-87ae-e14497747b00",
+  "id": "terraform-gcp-sql-db-instance-with-ssl-disabled",
+  "legacyId": "02474449-71aa-40a1-87ae-e14497747b00",
   "queryName": "SQL DB instance with SSL disabled",
   "severity": "HIGH",
   "category": "Encryption",

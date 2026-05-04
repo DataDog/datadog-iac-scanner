@@ -1,5 +1,6 @@
 {
-  "id": "0104165b-02d5-426f-abc9-91fb48189899",
+  "id": "cloudformation-aws-db-security-group-open-to-large-scope",
+  "legacyId": "0104165b-02d5-426f-abc9-91fb48189899",
   "queryName": "DB security group open to large scope",
   "severity": "HIGH",
   "category": "Networking and Firewall",

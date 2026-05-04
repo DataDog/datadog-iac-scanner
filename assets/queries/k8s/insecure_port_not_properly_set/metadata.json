@@ -1,5 +1,6 @@
 {
-  "id": "fa4def8c-1898-4a35-a139-7b76b1acdef0",
+  "id": "kubernetes-insecure-port-not-properly-set",
+  "legacyId": "fa4def8c-1898-4a35-a139-7b76b1acdef0",
   "queryName": "Insecure port not properly set",
   "severity": "HIGH",
   "category": "Networking and Firewall",

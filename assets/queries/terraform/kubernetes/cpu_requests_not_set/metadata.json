@@ -1,5 +1,6 @@
 {
-  "id": "577ac19c-6a77-46d7-9f14-e049cdd15ec2",
+  "id": "terraform-common-cpu-requests-not-set",
+  "legacyId": "577ac19c-6a77-46d7-9f14-e049cdd15ec2",
   "queryName": "CPU requests not set",
   "severity": "LOW",
   "category": "Resource Management",

@@ -1,5 +1,6 @@
 {
-  "id": "2a3560fe-52ca-4443-b34f-bf0ed5eb74c8",
+  "id": "cloudformation-aws-cloudtrail-log-file-validation-disabled",
+  "legacyId": "2a3560fe-52ca-4443-b34f-bf0ed5eb74c8",
   "queryName": "CloudTrail log file validation disabled",
   "severity": "LOW",
   "category": "Observability",

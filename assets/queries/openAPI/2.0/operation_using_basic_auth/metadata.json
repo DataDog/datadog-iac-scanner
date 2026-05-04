@@ -1,5 +1,6 @@
 {
-  "id": "ceefb058-8065-418f-9c4c-584a78c7e104",
+  "id": "openapi-operation-using-basic-auth",
+  "legacyId": "ceefb058-8065-418f-9c4c-584a78c7e104",
   "queryName": "Operation Using Basic Auth",
   "severity": "MEDIUM",
   "category": "Access Control",

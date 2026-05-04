@@ -1,5 +1,6 @@
 {
-  "id": "6b610c50-99fb-4ef0-a5f3-e312fd945bc3",
+  "id": "dockercompose-cpus-not-limited",
+  "legacyId": "6b610c50-99fb-4ef0-a5f3-e312fd945bc3",
   "queryName": "Cpus Not Limited",
   "severity": "LOW",
   "category": "Resource Management",

@@ -1,5 +1,6 @@
 {
-  "id": "96fe318e-d631-4156-99fa-9080d57280ae",
+  "id": "terraform-azure-app-service-without-latest-php-version",
+  "legacyId": "96fe318e-d631-4156-99fa-9080d57280ae",
   "queryName": "App Service without latest PHP version",
   "severity": "LOW",
   "category": "Best Practices",

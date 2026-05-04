@@ -1,5 +1,6 @@
 {
-  "id": "d5d1fe08-89db-440c-8725-b93223387309",
+  "id": "serverlessfw-serverless-api-without-content-encoding",
+  "legacyId": "d5d1fe08-89db-440c-8725-b93223387309",
   "queryName": "Serverless API Without Content Encoding",
   "severity": "LOW",
   "category": "Encryption",

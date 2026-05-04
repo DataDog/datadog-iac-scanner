@@ -1,5 +1,6 @@
 {
-  "id": "b1d51728-7270-4991-ac2f-fc26e2695b38",
+  "id": "terraform-gcp-disk-encryption-disabled",
+  "legacyId": "b1d51728-7270-4991-ac2f-fc26e2695b38",
   "queryName": "Disk encryption disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "5d89db57-8b51-4b38-bb76-b9bd42bd40f0",
+  "id": "terraform-aws-elasticache-using-default-port",
+  "legacyId": "5d89db57-8b51-4b38-bb76-b9bd42bd40f0",
   "queryName": "ElastiCache using default port",
   "severity": "LOW",
   "category": "Networking and Firewall",

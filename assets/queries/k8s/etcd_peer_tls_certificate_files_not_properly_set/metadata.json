@@ -1,5 +1,6 @@
 {
-  "id": "09bb9e96-8da3-4736-b89a-b36814acca60",
+  "id": "kubernetes-etcd-peer-tls-certificate-files-not-properly-set",
+  "legacyId": "09bb9e96-8da3-4736-b89a-b36814acca60",
   "queryName": "etcd peer TLS certificate files not properly set",
   "severity": "HIGH",
   "category": "Networking and Firewall",

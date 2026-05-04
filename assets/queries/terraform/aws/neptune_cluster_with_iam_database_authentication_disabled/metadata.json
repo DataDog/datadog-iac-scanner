@@ -1,5 +1,6 @@
 {
-  "id": "c91d7ea0-d4d1-403b-8fe1-c9961ac082c5",
+  "id": "terraform-aws-neptune-cluster-with-iam-database-authentication-disabled",
+  "legacyId": "c91d7ea0-d4d1-403b-8fe1-c9961ac082c5",
   "queryName": "Neptune cluster with IAM database authentication disabled",
   "severity": "HIGH",
   "category": "Access Control",

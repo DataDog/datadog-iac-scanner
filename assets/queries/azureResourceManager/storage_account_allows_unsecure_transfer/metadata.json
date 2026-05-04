@@ -1,5 +1,6 @@
 {
-  "id": "1367dd13-2c90-4020-80b7-e4339a3dc2c4",
+  "id": "azureresourcemanager-azure-storage-account-allows-unsecure-transfer",
+  "legacyId": "1367dd13-2c90-4020-80b7-e4339a3dc2c4",
   "queryName": "Storage Account Allows Unsecure Transfer",
   "severity": "MEDIUM",
   "category": "Encryption",

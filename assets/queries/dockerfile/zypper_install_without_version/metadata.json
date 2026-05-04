@@ -1,5 +1,6 @@
 {
-  "id": "562952e4-0348-4dea-9826-44f3a2c6117b",
+  "id": "dockerfile-zypper-install-without-version",
+  "legacyId": "562952e4-0348-4dea-9826-44f3a2c6117b",
   "queryName": "Zypper install without explicit package version",
   "severity": "LOW",
   "category": "Supply-Chain",

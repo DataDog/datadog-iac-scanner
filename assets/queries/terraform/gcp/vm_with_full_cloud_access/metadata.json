@@ -1,5 +1,6 @@
 {
-  "id": "bc280331-27b9-4acb-a010-018e8098aa5d",
+  "id": "terraform-gcp-vm-with-full-cloud-access",
+  "legacyId": "bc280331-27b9-4acb-a010-018e8098aa5d",
   "queryName": "VM with full cloud access",
   "severity": "MEDIUM",
   "category": "Access Control",

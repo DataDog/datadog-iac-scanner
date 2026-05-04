@@ -1,5 +1,6 @@
 {
-  "id": "6e856af2-62d7-4ba2-adc1-73b62cef9cc1",
+  "id": "cloudformation-aws-security-groups-with-unrestricted-access-to-ssh",
+  "legacyId": "6e856af2-62d7-4ba2-adc1-73b62cef9cc1",
   "queryName": "Security group with unrestricted access to SSH",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

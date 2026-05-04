@@ -1,5 +1,6 @@
 {
-  "id": "fbf699b5-ef74-4542-9cf1-f6eeac379373",
+  "id": "openapi-numeric-schema-without-format",
+  "legacyId": "fbf699b5-ef74-4542-9cf1-f6eeac379373",
   "queryName": "Numeric Schema Without Format (v3)",
   "severity": "LOW",
   "category": "Insecure Configurations",

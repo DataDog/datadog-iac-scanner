@@ -1,5 +1,6 @@
 {
-  "id": "caa3479d-885d-4882-9aac-95e5e78ef5c2",
+  "id": "kubernetes-image-pull-policy-of-container-is-not-always",
+  "legacyId": "caa3479d-885d-4882-9aac-95e5e78ef5c2",
   "queryName": "Image pull policy of the container is not set to always",
   "severity": "LOW",
   "category": "Insecure Configurations",

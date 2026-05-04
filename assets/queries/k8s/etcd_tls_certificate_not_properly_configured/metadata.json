@@ -1,5 +1,6 @@
 {
-  "id": "895a5a95-3756-4b04-9924-2f3bc93181bd",
+  "id": "kubernetes-etcd-tls-certificate-not-properly-configured",
+  "legacyId": "895a5a95-3756-4b04-9924-2f3bc93181bd",
   "queryName": "etcd TLS certificate not properly configured",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

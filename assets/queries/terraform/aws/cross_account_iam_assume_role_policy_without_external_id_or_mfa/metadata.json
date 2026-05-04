@@ -1,5 +1,6 @@
 {
-  "id": "09c35abf-5852-4622-ac7a-b987b331232e",
+  "id": "terraform-aws-cross-account-iam-assume-role-policy-without-external-id-or-mfa",
+  "legacyId": "09c35abf-5852-4622-ac7a-b987b331232e",
   "queryName": "Cross-account IAM assume role policy without external id or MFA",
   "severity": "HIGH",
   "category": "Access Control",

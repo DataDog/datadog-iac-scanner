@@ -1,5 +1,6 @@
 {
-  "id": "a9228976-10cf-4b5f-b902-9e962aad037a",
+  "id": "openapi-type-has-invalid-keyword",
+  "legacyId": "a9228976-10cf-4b5f-b902-9e962aad037a",
   "queryName": "Type Has Invalid Keyword (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

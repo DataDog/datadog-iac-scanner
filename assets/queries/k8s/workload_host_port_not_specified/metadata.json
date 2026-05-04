@@ -1,5 +1,6 @@
 {
-  "id": "2b1836f1-dcce-416e-8e16-da8c71920633",
+  "id": "kubernetes-workload-host-port-not-specified",
+  "legacyId": "2b1836f1-dcce-416e-8e16-da8c71920633",
   "queryName": "Workload host port not specified",
   "severity": "LOW",
   "category": "Networking and Firewall",

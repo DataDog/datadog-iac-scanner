@@ -1,5 +1,6 @@
 {
-  "id": "46facedc-f243-4108-ab33-583b807d50b0",
+  "id": "openapi-parameter-object-undefined-type",
+  "legacyId": "46facedc-f243-4108-ab33-583b807d50b0",
   "queryName": "Parameter Object With Undefined Type",
   "severity": "INFO",
   "category": "Structure and Semantics",

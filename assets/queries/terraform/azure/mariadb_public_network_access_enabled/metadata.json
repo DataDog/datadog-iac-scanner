@@ -1,5 +1,6 @@
 {
-  "id": "7f0a8696-7159-4337-ad0d-8a3ab4a78195",
+  "id": "terraform-azure-mariadb-public-network-access-enabled",
+  "legacyId": "7f0a8696-7159-4337-ad0d-8a3ab4a78195",
   "queryName": "MariaDB server public network access enabled",
   "severity": "HIGH",
   "category": "Networking and Firewall",

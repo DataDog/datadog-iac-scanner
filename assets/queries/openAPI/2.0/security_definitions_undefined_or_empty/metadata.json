@@ -1,5 +1,6 @@
 {
-  "id": "e3f026e8-fdb4-4d5a-bcfd-bd94452073fe",
+  "id": "openapi-security-definitions-undefined-or-empty",
+  "legacyId": "e3f026e8-fdb4-4d5a-bcfd-bd94452073fe",
   "queryName": "Security Definitions Undefined or Empty",
   "severity": "HIGH",
   "category": "Access Control",

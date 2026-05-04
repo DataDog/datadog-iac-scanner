@@ -1,5 +1,6 @@
 {
-  "id": "fb8f8929-afeb-4c46-99f0-a6cf410f7df4",
+  "id": "ansible-aws-vulnerable-default-ssl-certificate",
+  "legacyId": "fb8f8929-afeb-4c46-99f0-a6cf410f7df4",
   "queryName": "Vulnerable default SSL certificate",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

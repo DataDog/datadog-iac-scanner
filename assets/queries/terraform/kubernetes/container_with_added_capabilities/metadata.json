@@ -1,5 +1,6 @@
 {
-  "id": "fe771ff7-ba15-4f8f-ad7a-8aa232b49a28",
+  "id": "terraform-common-container-with-added-capabilities",
+  "legacyId": "fe771ff7-ba15-4f8f-ad7a-8aa232b49a28",
   "queryName": "Containers with added capabilities",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

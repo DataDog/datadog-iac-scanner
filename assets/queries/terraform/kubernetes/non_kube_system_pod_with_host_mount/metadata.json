@@ -1,5 +1,6 @@
 {
-  "id": "86a947ea-f577-4efb-a8b0-5fc00257d521",
+  "id": "terraform-common-non-kube-system-pod-with-host-mount",
+  "legacyId": "86a947ea-f577-4efb-a8b0-5fc00257d521",
   "queryName": "Non kube system pod with host mount",
   "severity": "HIGH",
   "category": "Access Control",

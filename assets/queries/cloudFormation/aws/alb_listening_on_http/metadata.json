@@ -1,5 +1,6 @@
 {
-  "id": "275a3217-ca37-40c1-a6cf-bb57d245ab32",
+  "id": "cloudformation-aws-alb-listening-on-http",
+  "legacyId": "275a3217-ca37-40c1-a6cf-bb57d245ab32",
   "queryName": "ALB listening on HTTP",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "1b6799eb-4a7a-4b04-9001-8cceb9999326",
+  "id": "terraform-aws-api-gateway-access-logging-disabled",
+  "legacyId": "1b6799eb-4a7a-4b04-9001-8cceb9999326",
   "queryName": "API Gateway access logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

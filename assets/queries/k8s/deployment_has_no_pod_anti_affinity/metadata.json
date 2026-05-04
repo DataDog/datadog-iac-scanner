@@ -1,5 +1,6 @@
 {
-  "id": "a31b7b82-d994-48c4-bd21-3bab6c31827a",
+  "id": "kubernetes-deployment-has-no-pod-anti-affinity",
+  "legacyId": "a31b7b82-d994-48c4-bd21-3bab6c31827a",
   "queryName": "Deployment without podAntiAffinity",
   "severity": "LOW",
   "category": "Resource Management",

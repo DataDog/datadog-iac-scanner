@@ -1,5 +1,6 @@
 {
-  "id": "2cf35b40-ded3-43d6-9633-c8dcc8bcc822",
+  "id": "openapi-operation-example-mismatch-produces-mediatype",
+  "legacyId": "2cf35b40-ded3-43d6-9633-c8dcc8bcc822",
   "queryName": "Operation Example Mismatch Produces MimeType",
   "severity": "INFO",
   "category": "Structure and Semantics",

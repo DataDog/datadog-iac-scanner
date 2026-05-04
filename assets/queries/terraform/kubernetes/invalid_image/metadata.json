@@ -1,5 +1,6 @@
 {
-  "id": "e76cca7c-c3f9-4fc9-884c-b2831168ebd8",
+  "id": "terraform-common-invalid-image",
+  "legacyId": "e76cca7c-c3f9-4fc9-884c-b2831168ebd8",
   "queryName": "Invalid image",
   "severity": "LOW",
   "category": "Supply-Chain",

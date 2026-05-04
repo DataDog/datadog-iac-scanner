@@ -1,5 +1,6 @@
 {
-  "id": "41c127a9-3a85-4bc3-a333-ed374eb9c3e4",
+  "id": "terraform-nifcloud-computing-security-group-description-undefined",
+  "legacyId": "41c127a9-3a85-4bc3-a333-ed374eb9c3e4",
   "queryName": "NIFCLOUD computing undefined description to security group",
   "severity": "LOW",
   "category": "Best Practices",

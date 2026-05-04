@@ -1,5 +1,6 @@
 {
-  "id": "eafe4bc3-1042-4f88-b988-1939e64bf060",
+  "id": "ansible-aws-iam-policies-attached-to-user",
+  "legacyId": "eafe4bc3-1042-4f88-b988-1939e64bf060",
   "queryName": "IAM policies attached to user",
   "severity": "MEDIUM",
   "category": "Access Control",

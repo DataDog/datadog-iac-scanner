@@ -1,5 +1,6 @@
 {
-  "id": "ccc98ff7-68a7-436e-9218-185cb0b0b780",
+  "id": "kubernetes-service-account-private-key-file-not-defined",
+  "legacyId": "ccc98ff7-68a7-436e-9218-185cb0b0b780",
   "queryName": "Service account private key file not defined",
   "severity": "MEDIUM",
   "category": "Encryption",

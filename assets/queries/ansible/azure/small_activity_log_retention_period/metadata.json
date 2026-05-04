@@ -1,5 +1,6 @@
 {
-  "id": "37fafbea-dedb-4e0d-852e-d16ee0589326",
+  "id": "ansible-azure-small-activity-log-retention-period",
+  "legacyId": "37fafbea-dedb-4e0d-852e-d16ee0589326",
   "queryName": "Small activity log retention period",
   "severity": "LOW",
   "category": "Observability",

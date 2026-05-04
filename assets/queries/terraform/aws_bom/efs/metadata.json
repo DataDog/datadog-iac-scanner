@@ -1,5 +1,6 @@
 {
-  "id": "f53f16d6-46a9-4277-9fbe-617b1e24cdca",
+  "id": "terraform-aws-efs",
+  "legacyId": "f53f16d6-46a9-4277-9fbe-617b1e24cdca",
   "queryName": "BOM - AWS EFS",
   "severity": "TRACE",
   "category": "Bill Of Materials",

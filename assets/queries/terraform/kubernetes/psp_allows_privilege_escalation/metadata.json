@@ -1,5 +1,6 @@
 {
-  "id": "2bff9906-4e9b-4f71-9346-8ebedfdf43ef",
+  "id": "terraform-common-psp-allows-privilege-escalation",
+  "legacyId": "2bff9906-4e9b-4f71-9346-8ebedfdf43ef",
   "queryName": "PSP allows privilege escalation",
   "severity": "HIGH",
   "category": "Insecure Configurations",

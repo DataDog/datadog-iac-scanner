@@ -1,5 +1,6 @@
 {
-  "id": "b23e9b98-0cb6-4fc9-b257-1f3270442678",
+  "id": "kubernetes-deployment-without-pod-disruption-budget",
+  "legacyId": "b23e9b98-0cb6-4fc9-b257-1f3270442678",
   "queryName": "Deployment without PodDisruptionBudget",
   "severity": "LOW",
   "category": "Availability",

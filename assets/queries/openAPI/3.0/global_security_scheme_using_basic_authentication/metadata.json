@@ -1,5 +1,6 @@
 {
-  "id": "77276d82-4f45-4cf1-8e2b-4d345b936228",
+  "id": "openapi-global-security-scheme-using-basic-authentication",
+  "legacyId": "77276d82-4f45-4cf1-8e2b-4d345b936228",
   "queryName": "Global Security Scheme Using Basic Authentication",
   "severity": "MEDIUM",
   "category": "Access Control",

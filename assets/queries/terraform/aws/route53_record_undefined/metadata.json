@@ -1,5 +1,6 @@
 {
-  "id": "25db74bf-fa3b-44da-934e-8c3e005c0453",
+  "id": "terraform-aws-route53-record-undefined",
+  "legacyId": "25db74bf-fa3b-44da-934e-8c3e005c0453",
   "queryName": "Route53 record undefined",
   "severity": "HIGH",
   "category": "Networking and Firewall",

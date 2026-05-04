@@ -1,5 +1,6 @@
 {
-  "id": "a4b5c6d7-e8f9-40a1-b2c3-d4e5f6a7b8c9",
+  "id": "cicd-common-misfeature",
+  "legacyId": "a4b5c6d7-e8f9-40a1-b2c3-d4e5f6a7b8c9",
   "queryName": "Misfeature",
   "severity": "LOW",
   "category": "Best Practices",

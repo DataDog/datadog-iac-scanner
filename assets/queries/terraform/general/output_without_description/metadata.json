@@ -1,5 +1,6 @@
 {
-  "id": "59312e8a-a64e-41e7-a252-618533dd1ea8",
+  "id": "terraform-common-output-without-description",
+  "legacyId": "59312e8a-a64e-41e7-a252-618533dd1ea8",
   "queryName": "Output without description",
   "severity": "LOW",
   "category": "Best Practices",

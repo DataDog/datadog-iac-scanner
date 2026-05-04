@@ -1,5 +1,6 @@
 {
-  "id": "555ab8f9-2001-455e-a077-f2d0f41e2fb9",
+  "id": "cicd-common-unpinned-actions-full-length-commit-sha",
+  "legacyId": "555ab8f9-2001-455e-a077-f2d0f41e2fb9",
   "queryName": "Unpinned actions full length commit SHA",
   "severity": "LOW",
   "category": "Supply-Chain",

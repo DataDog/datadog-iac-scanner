@@ -1,5 +1,6 @@
 {
-  "id": "57ced4b9-6ba4-487b-8843-b65562b90c77",
+  "id": "ansible-aws-security-group-with-unrestricted-access-to-ssh",
+  "legacyId": "57ced4b9-6ba4-487b-8843-b65562b90c77",
   "queryName": "Security group with unrestricted access to SSH",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

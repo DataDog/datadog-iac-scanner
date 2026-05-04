@@ -1,5 +1,6 @@
 {
-  "id": "5915c20f-dffa-4cee-b5d4-f457ddc0151a",
+  "id": "openapi-empty-array",
+  "legacyId": "5915c20f-dffa-4cee-b5d4-f457ddc0151a",
   "queryName": "Empty Array",
   "severity": "INFO",
   "category": "Structure and Semantics",

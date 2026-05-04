@@ -1,5 +1,6 @@
 {
-  "id": "b1a72f66-2236-4f3b-87ba-0da1b366956f",
+  "id": "terraform-aws-sns-topic-encrypted-with-aws-managed-key",
+  "legacyId": "b1a72f66-2236-4f3b-87ba-0da1b366956f",
   "queryName": "SNS topic encrypted with AWS managed key",
   "severity": "MEDIUM",
   "category": "Encryption",

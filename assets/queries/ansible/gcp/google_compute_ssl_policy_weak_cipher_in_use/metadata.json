@@ -1,5 +1,6 @@
 {
-  "id": "b28bcd2f-c309-490e-ab7c-35fc4023eb26",
+  "id": "ansible-gcp-google-compute-ssl-policy-weak-cipher-in-use",
+  "legacyId": "b28bcd2f-c309-490e-ab7c-35fc4023eb26",
   "queryName": "Google Compute SSL policy weak cipher in use",
   "severity": "MEDIUM",
   "category": "Encryption",

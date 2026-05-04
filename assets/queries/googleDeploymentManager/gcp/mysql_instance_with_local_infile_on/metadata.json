@@ -1,5 +1,6 @@
 {
-  "id": "c759d6f2-4dd3-4160-82d3-89202ef10d87",
+  "id": "googledeploymentmanager-gcp-mysql-instance-with-local-infile-on",
+  "legacyId": "c759d6f2-4dd3-4160-82d3-89202ef10d87",
   "queryName": "MySQL Instance With Local Infile On",
   "severity": "HIGH",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "f985a7d2-d404-4a7f-9814-f645f791e46e",
+  "id": "openapi-invalid-media-type-value",
+  "legacyId": "f985a7d2-d404-4a7f-9814-f645f791e46e",
   "queryName": "Invalid Media Type Value (v2)",
   "severity": "INFO",
   "category": "Best Practices",

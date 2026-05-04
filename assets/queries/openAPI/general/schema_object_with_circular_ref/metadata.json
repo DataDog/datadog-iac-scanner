@@ -1,5 +1,6 @@
 {
-  "id": "1a1aea94-745b-40a7-b860-0702ea6ee636",
+  "id": "openapi-schema-object-with-circular-ref",
+  "legacyId": "1a1aea94-745b-40a7-b860-0702ea6ee636",
   "queryName": "Schema Object With Circular Ref (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

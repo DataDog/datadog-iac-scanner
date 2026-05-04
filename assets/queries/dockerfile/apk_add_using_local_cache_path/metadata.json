@@ -1,5 +1,6 @@
 {
-  "id": "ae9c56a6-3ed1-4ac0-9b54-31267f51151d",
+  "id": "dockerfile-apk-add-using-local-cache-path",
+  "legacyId": "ae9c56a6-3ed1-4ac0-9b54-31267f51151d",
   "queryName": "apk add using local cache path",
   "severity": "LOW",
   "category": "Supply-Chain",

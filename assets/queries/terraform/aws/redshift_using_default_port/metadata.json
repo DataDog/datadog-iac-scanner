@@ -1,5 +1,6 @@
 {
-  "id": "41abc6cc-dde1-4217-83d3-fb5f0cc09d8f",
+  "id": "terraform-aws-redshift-using-default-port",
+  "legacyId": "41abc6cc-dde1-4217-83d3-fb5f0cc09d8f",
   "queryName": "Redshift using default port",
   "severity": "LOW",
   "category": "Networking and Firewall",

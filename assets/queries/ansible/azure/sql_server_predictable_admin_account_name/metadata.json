@@ -1,5 +1,6 @@
 {
-  "id": "663062e9-473d-4e87-99bc-6f3684b3df40",
+  "id": "ansible-azure-sql-server-predictable-admin-account-name",
+  "legacyId": "663062e9-473d-4e87-99bc-6f3684b3df40",
   "queryName": "SQL Server predictable admin account name",
   "severity": "LOW",
   "category": "Best Practices",

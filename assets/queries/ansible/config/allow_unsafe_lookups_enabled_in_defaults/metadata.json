@@ -1,5 +1,6 @@
 {
-  "id": "86b97bb4-85c9-462d-8635-cbc057c5c8c5",
+  "id": "ansible-common-allow-unsafe-lookups-enabled-in-defaults",
+  "legacyId": "86b97bb4-85c9-462d-8635-cbc057c5c8c5",
   "queryName": "Allow unsafe lookups enabled in defaults",
   "severity": "HIGH",
   "category": "Insecure Configurations",

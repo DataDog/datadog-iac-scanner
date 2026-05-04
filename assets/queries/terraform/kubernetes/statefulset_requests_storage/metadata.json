@@ -1,5 +1,6 @@
 {
-  "id": "fcc2612a-1dfe-46e4-8ce6-0320959f0040",
+  "id": "terraform-common-statefulset-requests-storage",
+  "legacyId": "fcc2612a-1dfe-46e4-8ce6-0320959f0040",
   "queryName": "StatefulSet requests storage",
   "severity": "LOW",
   "category": "Build Process",

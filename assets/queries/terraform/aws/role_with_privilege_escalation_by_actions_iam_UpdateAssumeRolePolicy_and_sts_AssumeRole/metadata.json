@@ -1,5 +1,6 @@
 {
-  "id": "f1173d8c-3264-4148-9fdb-61181e031b51",
+  "id": "terraform-aws-role-with-privilege-escalation-by-actions-iam-updateassumerolepolicy-and-sts-assumerole",
+  "legacyId": "f1173d8c-3264-4148-9fdb-61181e031b51",
   "queryName": "Role with privilege escalation by actions 'iam:UpdateAssumeRolePolicy' and 'sts:AssumeRole'",
   "severity": "MEDIUM",
   "category": "Access Control",

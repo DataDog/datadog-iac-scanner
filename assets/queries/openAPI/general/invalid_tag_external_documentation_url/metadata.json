@@ -1,5 +1,6 @@
 {
-  "id": "5aea1d7e-b834-4749-b143-2c7ec3bd5922",
+  "id": "openapi-invalid-tag-external-documentation-url",
+  "legacyId": "5aea1d7e-b834-4749-b143-2c7ec3bd5922",
   "queryName": "Invalid Tag External Documentation URL (v3)",
   "severity": "INFO",
   "category": "Best Practices",

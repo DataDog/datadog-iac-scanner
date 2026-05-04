@@ -1,5 +1,6 @@
 {
-  "id": "966ed4f7-b8a5-4e8d-b2bf-098657c98960",
+  "id": "terraform-tencentcloud-cvm-instance-disable-monitor-service",
+  "legacyId": "966ed4f7-b8a5-4e8d-b2bf-098657c98960",
   "queryName": "CVM instance disable monitor service",
   "severity": "LOW",
   "category": "Observability",

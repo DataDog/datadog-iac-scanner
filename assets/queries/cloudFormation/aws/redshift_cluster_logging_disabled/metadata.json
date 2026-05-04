@@ -1,5 +1,6 @@
 {
-  "id": "3de2d4ff-fe53-4fc9-95d3-2f8a69bf90d6",
+  "id": "cloudformation-aws-redshift-cluster-logging-disabled",
+  "legacyId": "3de2d4ff-fe53-4fc9-95d3-2f8a69bf90d6",
   "queryName": "Redshift cluster logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

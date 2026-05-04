@@ -1,5 +1,6 @@
 {
-  "id": "71bf8cf8-f0a1-42fa-b9d2-d10525e0a38e",
+  "id": "dockerfile-common-unix-ports-out-of-range",
+  "legacyId": "71bf8cf8-f0a1-42fa-b9d2-d10525e0a38e",
   "queryName": "UNIX ports out of range",
   "severity": "LOW",
   "category": "Networking and Firewall",

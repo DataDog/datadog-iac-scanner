@@ -1,5 +1,6 @@
 {
-  "id": "89afe3f0-4681-4ce3-89ed-896cebd4277c",
+  "id": "ansible-gcp-postgresql-log-checkpoints-flag-not-set-to-on",
+  "legacyId": "89afe3f0-4681-4ce3-89ed-896cebd4277c",
   "queryName": "PostgreSQL log_checkpoints flag not set to on",
   "severity": "MEDIUM",
   "category": "Observability",

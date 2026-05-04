@@ -1,5 +1,6 @@
 {
-  "id": "d2731f3d-a992-44ed-812e-f4f1c2747d71",
+  "id": "terraform-alicloud-vpc-flow-logs-disabled",
+  "legacyId": "d2731f3d-a992-44ed-812e-f4f1c2747d71",
   "queryName": "VPC flow logs disabled",
   "severity": "MEDIUM",
   "category": "Observability",

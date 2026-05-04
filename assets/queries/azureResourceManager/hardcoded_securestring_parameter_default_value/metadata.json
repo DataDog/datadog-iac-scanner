@@ -1,5 +1,6 @@
 {
-  "id": "4d2cf896-c053-4be5-9c95-8b4771112f29",
+  "id": "azureresourcemanager-azure-hardcoded-securestring-parameter-default-value",
+  "legacyId": "4d2cf896-c053-4be5-9c95-8b4771112f29",
   "queryName": "Hardcoded SecureString Parameter Default Value",
   "severity": "HIGH",
   "category": "Secret Management",

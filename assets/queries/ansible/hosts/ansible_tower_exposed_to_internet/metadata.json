@@ -1,5 +1,6 @@
 {
-  "id": "1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc",
+  "id": "ansible-common-ansible-tower-exposed-to-internet",
+  "legacyId": "1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc",
   "queryName": "Ansible Tower exposed to the internet",
   "severity": "MEDIUM",
   "category": "Best Practices",

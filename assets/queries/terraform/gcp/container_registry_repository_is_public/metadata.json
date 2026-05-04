@@ -1,5 +1,6 @@
 {
-  "id": "f6a7b8c9-d0e1-2345-f678-90abcdef1234",
+  "id": "terraform-gcp-container-registry-repository-is-public",
+  "legacyId": "f6a7b8c9-d0e1-2345-f678-90abcdef1234",
   "queryName": "Container Registry repo is public",
   "severity": "HIGH",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "21cef75f-289f-470e-8038-c7cee0664164",
+  "id": "terraform-common-no-drop-capabilities-for-containers",
+  "legacyId": "21cef75f-289f-470e-8038-c7cee0664164",
   "queryName": "No drop capabilities for containers",
   "severity": "LOW",
   "category": "Best Practices",

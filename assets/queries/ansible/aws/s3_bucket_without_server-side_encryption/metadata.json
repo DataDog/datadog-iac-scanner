@@ -1,5 +1,6 @@
 {
-  "id": "594f54e7-f744-45ab-93e4-c6dbaf6cd571",
+  "id": "ansible-aws-s3-bucket-without-server-side-encryption",
+  "legacyId": "594f54e7-f744-45ab-93e4-c6dbaf6cd571",
   "queryName": "S3 bucket without server-side encryption",
   "severity": "HIGH",
   "category": "Encryption",

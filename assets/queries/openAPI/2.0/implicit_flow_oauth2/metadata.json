@@ -1,5 +1,6 @@
 {
-  "id": "e9817ad8-a8c9-4038-8a2f-db0e6e7b284b",
+  "id": "openapi-implicit-flow-oauth2",
+  "legacyId": "e9817ad8-a8c9-4038-8a2f-db0e6e7b284b",
   "queryName": "Implicit Flow in OAuth2 (v2)",
   "severity": "MEDIUM",
   "category": "Access Control",

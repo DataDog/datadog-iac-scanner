@@ -1,5 +1,6 @@
 {
-  "id": "4cd8de87-b595-48b6-ab3c-1904567135ab",
+  "id": "openapi-encoding-header-content-type-improperly-defined",
+  "legacyId": "4cd8de87-b595-48b6-ab3c-1904567135ab",
   "queryName": "Encoding Header 'Content-Type' Improperly Defined",
   "severity": "INFO",
   "category": "Best Practices",

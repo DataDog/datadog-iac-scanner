@@ -1,5 +1,6 @@
 {
-  "id": "51bed0ac-a8ae-407a-895e-90c6cb0610ce",
+  "id": "terraform-common-psp-allows-sharing-host-ipc",
+  "legacyId": "51bed0ac-a8ae-407a-895e-90c6cb0610ce",
   "queryName": "PSP allows sharing host IPC",
   "severity": "HIGH",
   "category": "Insecure Configurations",

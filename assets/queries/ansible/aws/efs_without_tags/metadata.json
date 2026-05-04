@@ -1,5 +1,6 @@
 {
-  "id": "b8a9852c-9943-4973-b8d5-77dae9352851",
+  "id": "ansible-aws-efs-without-tags",
+  "legacyId": "b8a9852c-9943-4973-b8d5-77dae9352851",
   "queryName": "EFS without tags",
   "severity": "LOW",
   "category": "Build Process",

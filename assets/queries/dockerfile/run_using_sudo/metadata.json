@@ -1,5 +1,6 @@
 {
-  "id": "8ada6e80-0ade-439e-b176-0b28f6bce35a",
+  "id": "dockerfile-run-using-sudo",
+  "legacyId": "8ada6e80-0ade-439e-b176-0b28f6bce35a",
   "queryName": "Run using sudo",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

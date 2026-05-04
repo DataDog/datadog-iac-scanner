@@ -1,5 +1,6 @@
 {
-  "id": "c878abb4-cca5-4724-92b9-289be68bd47c",
+  "id": "terraform-common-privilege-escalation-allowed",
+  "legacyId": "c878abb4-cca5-4724-92b9-289be68bd47c",
   "queryName": "Privilege escalation allowed",
   "severity": "HIGH",
   "category": "Insecure Configurations",

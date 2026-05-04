@@ -1,5 +1,6 @@
 {
-  "id": "b0d3ef3f-845d-4b1b-83d6-63a5a380375f",
+  "id": "terraform-aws-secretsmanager-secret-encrypted-with-aws-managed-key",
+  "legacyId": "b0d3ef3f-845d-4b1b-83d6-63a5a380375f",
   "queryName": "Secrets Manager secret encrypted with AWS-managed key",
   "severity": "MEDIUM",
   "category": "Encryption",

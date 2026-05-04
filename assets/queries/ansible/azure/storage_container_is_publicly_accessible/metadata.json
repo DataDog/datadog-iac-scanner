@@ -1,5 +1,6 @@
 {
-  "id": "4d3817db-dd35-4de4-a80d-3867157e7f7f",
+  "id": "ansible-azure-storage-container-is-publicly-accessible",
+  "legacyId": "4d3817db-dd35-4de4-a80d-3867157e7f7f",
   "queryName": "Storage container is publicly accessible",
   "severity": "HIGH",
   "category": "Access Control",

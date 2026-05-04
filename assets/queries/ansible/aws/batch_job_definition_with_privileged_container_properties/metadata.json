@@ -1,5 +1,6 @@
 {
-  "id": "defe5b18-978d-4722-9325-4d1975d3699f",
+  "id": "ansible-aws-batch-job-definition-with-privileged-container-properties",
+  "legacyId": "defe5b18-978d-4722-9325-4d1975d3699f",
   "queryName": "Batch job definition with privileged container properties",
   "severity": "HIGH",
   "category": "Insecure Configurations",

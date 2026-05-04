@@ -1,5 +1,6 @@
 {
-  "id": "6deb34e2-5d9c-499a-801b-ea6d9eda894f",
+  "id": "terraform-aws-user-with-privilege-escalation-by-actions-iam-updateloginprofile",
+  "legacyId": "6deb34e2-5d9c-499a-801b-ea6d9eda894f",
   "queryName": "User with privilege escalation by actions 'iam:UpdateLoginProfile'",
   "severity": "MEDIUM",
   "category": "Access Control",

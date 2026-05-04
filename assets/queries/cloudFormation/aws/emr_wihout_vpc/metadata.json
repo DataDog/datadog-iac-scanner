@@ -1,5 +1,6 @@
 {
-  "id": "bf89373a-be40-4c04-99f5-746742dfd7f3",
+  "id": "cloudformation-aws-emr-wihout-vpc",
+  "legacyId": "bf89373a-be40-4c04-99f5-746742dfd7f3",
   "queryName": "EMR without VPC",
   "severity": "LOW",
   "category": "Networking and Firewall",

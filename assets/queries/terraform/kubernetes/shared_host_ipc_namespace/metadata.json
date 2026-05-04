@@ -1,5 +1,6 @@
 {
-  "id": "e94d3121-c2d1-4e34-a295-139bfeb73ea3",
+  "id": "terraform-common-shared-host-ipc-namespace",
+  "legacyId": "e94d3121-c2d1-4e34-a295-139bfeb73ea3",
   "queryName": "Shared host IPC namespace",
   "severity": "MEDIUM",
   "category": "Resource Management",

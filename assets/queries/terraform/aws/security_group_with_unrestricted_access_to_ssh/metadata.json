@@ -1,5 +1,6 @@
 {
-  "id": "65905cec-d691-4320-b320-2000436cb696",
+  "id": "terraform-aws-security-group-with-unrestricted-access-to-ssh",
+  "legacyId": "65905cec-d691-4320-b320-2000436cb696",
   "queryName": "Security group with unrestricted access to SSH",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "9e13082c-2e00-278b-8ee9-34f43fffc791",
+  "id": "dockerfile-run-yarn-clean-after-yarn-install",
+  "legacyId": "9e13082c-2e00-278b-8ee9-34f43fffc791",
   "queryName": "Run yarn clean after yarn install",
   "severity": "MEDIUM",
   "category": "Best Practices",

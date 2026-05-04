@@ -1,5 +1,6 @@
 {
-  "id": "237402e2-c2f0-46c9-9cf5-286160cf7bfc",
+  "id": "openapi-path-ambiguous",
+  "legacyId": "237402e2-c2f0-46c9-9cf5-286160cf7bfc",
   "queryName": "Path Is Ambiguous (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

@@ -1,5 +1,6 @@
 {
-  "id": "ad69e38a-d92e-4357-a8da-f2f29d545883",
+  "id": "terraform-common-pod-or-container-without-security-context",
+  "legacyId": "ad69e38a-d92e-4357-a8da-f2f29d545883",
   "queryName": "Pod or container without security context",
   "severity": "LOW",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "4d32780f-43a4-424a-a06d-943c543576a5",
+  "id": "cloudformation-aws-iot-policy-allows-action-as-wildcard",
+  "legacyId": "4d32780f-43a4-424a-a06d-943c543576a5",
   "queryName": "IoT policy allows action as a wildcard",
   "severity": "MEDIUM",
   "category": "Access Control",

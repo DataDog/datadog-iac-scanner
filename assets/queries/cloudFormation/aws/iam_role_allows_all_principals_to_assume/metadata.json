@@ -1,5 +1,6 @@
 {
-  "id": "f80e3aa7-7b34-4185-954e-440a6894dde6",
+  "id": "cloudformation-aws-iam-role-allows-all-principals-to-assume",
+  "legacyId": "f80e3aa7-7b34-4185-954e-440a6894dde6",
   "queryName": "IAM role allows all principals to assume",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "7814ddda-e758-4a56-8be3-289a81ded929",
+  "id": "ansible-gcp-cloud-storage-bucket-versioning-disabled",
+  "legacyId": "7814ddda-e758-4a56-8be3-289a81ded929",
   "queryName": "Cloud storage bucket versioning disabled",
   "severity": "MEDIUM",
   "category": "Observability",

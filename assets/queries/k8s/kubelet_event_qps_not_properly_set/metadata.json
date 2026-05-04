@@ -1,5 +1,6 @@
 {
-  "id": "1a07a446-8e61-4e4d-bc16-b0781fcb8211",
+  "id": "kubernetes-kubelet-event-qps-not-properly-set",
+  "legacyId": "1a07a446-8e61-4e4d-bc16-b0781fcb8211",
   "queryName": "Kubelet event QPS not properly set",
   "severity": "LOW",
   "category": "Observability",

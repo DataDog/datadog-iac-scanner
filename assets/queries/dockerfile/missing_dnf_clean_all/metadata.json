@@ -1,5 +1,6 @@
 {
-  "id": "295acb63-9246-4b21-b441-7c1f1fb62dc0",
+  "id": "dockerfile-missing-dnf-clean-all",
+  "legacyId": "295acb63-9246-4b21-b441-7c1f1fb62dc0",
   "queryName": "Missing dnf clean all",
   "severity": "LOW",
   "category": "Best Practices",

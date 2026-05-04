@@ -1,5 +1,6 @@
 {
-  "id": "3878dc92-8e5d-47cf-9cdd-7590f71d21b9",
+  "id": "kubernetes-incorrect-volume-claim-access-mode-read-write-once",
+  "legacyId": "3878dc92-8e5d-47cf-9cdd-7590f71d21b9",
   "queryName": "Incorrect volume claim access mode ReadWriteOnce",
   "severity": "MEDIUM",
   "category": "Build Process",

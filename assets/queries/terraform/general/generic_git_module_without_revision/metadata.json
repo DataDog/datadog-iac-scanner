@@ -1,5 +1,6 @@
 {
-  "id": "3a81fc06-566f-492a-91dd-7448e409e2cd",
+  "id": "terraform-common-generic-git-module-without-revision",
+  "legacyId": "3a81fc06-566f-492a-91dd-7448e409e2cd",
   "queryName": "Generic Git module without revision",
   "severity": "LOW",
   "category": "Best Practices",

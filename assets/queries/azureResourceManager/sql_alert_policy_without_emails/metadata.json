@@ -1,5 +1,6 @@
 {
-  "id": "89b79fe5-49bd-4d39-84ce-55f5fc6f7764",
+  "id": "azureresourcemanager-azure-sql-alert-policy-without-emails",
+  "legacyId": "89b79fe5-49bd-4d39-84ce-55f5fc6f7764",
   "queryName": "SQL Alert Policy Without Emails",
   "severity": "INFO",
   "category": "Best Practices",

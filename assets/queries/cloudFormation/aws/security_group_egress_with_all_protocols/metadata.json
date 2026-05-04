@@ -1,5 +1,6 @@
 {
-  "id": "ee464fc2-54a6-4e22-b10a-c6dcd2474d0c",
+  "id": "cloudformation-aws-security-group-egress-with-all-protocols",
+  "legacyId": "ee464fc2-54a6-4e22-b10a-c6dcd2474d0c",
   "queryName": "Security group egress with all protocols",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

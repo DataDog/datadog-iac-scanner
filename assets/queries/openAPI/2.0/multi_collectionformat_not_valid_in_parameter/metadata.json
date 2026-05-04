@@ -1,5 +1,6 @@
 {
-  "id": "750f6448-27c0-49f8-a153-b81735c1e19c",
+  "id": "openapi-multi-collectionformat-not-valid-in-parameter",
+  "legacyId": "750f6448-27c0-49f8-a153-b81735c1e19c",
   "queryName": "Multi 'collectionformat' Not Valid For 'in' Parameter",
   "severity": "INFO",
   "category": "Structure and Semantics",

@@ -1,5 +1,6 @@
 {
-  "id": "17172bc2-56fb-4f17-916f-a014147706cd",
+  "id": "terraform-common-cluster-admin-role-binding-with-super-user-permissions",
+  "legacyId": "17172bc2-56fb-4f17-916f-a014147706cd",
   "queryName": "Cluster admin rolebinding with superuser permissions",
   "severity": "LOW",
   "category": "Access Control",

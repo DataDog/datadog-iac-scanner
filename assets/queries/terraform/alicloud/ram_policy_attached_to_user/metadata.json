@@ -1,5 +1,6 @@
 {
-  "id": "66505003-7aba-45a1-8d83-5162d5706ef5",
+  "id": "terraform-alicloud-ram-policy-attached-to-user",
+  "legacyId": "66505003-7aba-45a1-8d83-5162d5706ef5",
   "queryName": "RAM policy attached to user",
   "severity": "MEDIUM",
   "category": "Access Control",

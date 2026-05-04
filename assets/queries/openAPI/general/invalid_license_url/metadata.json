@@ -1,5 +1,6 @@
 {
-  "id": "9239c289-9e4c-4d92-8be1-9d506057c971",
+  "id": "openapi-invalid-license-url",
+  "legacyId": "9239c289-9e4c-4d92-8be1-9d506057c971",
   "queryName": "Invalid License URL (v3)",
   "severity": "INFO",
   "category": "Best Practices",

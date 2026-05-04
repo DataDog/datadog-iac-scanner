@@ -1,5 +1,6 @@
 {
-  "id": "d135a36e-c474-452f-b891-76db1e6d1cd5",
+  "id": "terraform-tencentcloud-security-group-rule-set-accepts-all-traffic",
+  "legacyId": "d135a36e-c474-452f-b891-76db1e6d1cd5",
   "queryName": "Security group rule set accepts all traffic",
   "severity": "HIGH",
   "category": "Networking and Firewall",

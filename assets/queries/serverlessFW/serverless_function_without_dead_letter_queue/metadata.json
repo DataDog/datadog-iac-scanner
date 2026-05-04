@@ -1,5 +1,6 @@
 {
-  "id": "dec7bc85-d156-4f64-9a33-96ed3d9f3fed",
+  "id": "serverlessfw-serverless-function-without-dead-letter-queue",
+  "legacyId": "dec7bc85-d156-4f64-9a33-96ed3d9f3fed",
   "queryName": "Serverless Function Without Dead Letter Queue",
   "severity": "LOW",
   "category": "Insecure Configurations",

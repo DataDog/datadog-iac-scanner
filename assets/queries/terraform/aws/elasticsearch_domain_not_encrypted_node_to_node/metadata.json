@@ -1,5 +1,6 @@
 {
-  "id": "967eb3e6-26fc-497d-8895-6428beb6e8e2",
+  "id": "terraform-aws-elasticsearch-domain-not-encrypted-node-to-node",
+  "legacyId": "967eb3e6-26fc-497d-8895-6428beb6e8e2",
   "queryName": "Elasticsearch domain not encrypted node to node",
   "severity": "MEDIUM",
   "category": "Encryption",

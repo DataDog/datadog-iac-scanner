@@ -1,5 +1,6 @@
 {
-  "id": "65c1bc7a-4835-4ac4-a2b6-13d310b0648d",
+  "id": "terraform-gcp-cluster-labels-disabled",
+  "legacyId": "65c1bc7a-4835-4ac4-a2b6-13d310b0648d",
   "queryName": "Cluster labels disabled",
   "severity": "LOW",
   "category": "Insecure Configurations",

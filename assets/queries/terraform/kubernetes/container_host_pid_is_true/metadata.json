@@ -1,5 +1,6 @@
 {
-  "id": "587d5d82-70cf-449b-9817-f60f9bccb88c",
+  "id": "terraform-common-container-host-pid-is-true",
+  "legacyId": "587d5d82-70cf-449b-9817-f60f9bccb88c",
   "queryName": "Container host PID is true",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

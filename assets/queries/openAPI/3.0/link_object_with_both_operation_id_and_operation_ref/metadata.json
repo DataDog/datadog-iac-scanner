@@ -1,5 +1,6 @@
 {
-  "id": "60fb6621-9f02-473b-9424-ba9a825747d3",
+  "id": "openapi-link-object-with-both-operation-id-and-operation-ref",
+  "legacyId": "60fb6621-9f02-473b-9424-ba9a825747d3",
   "queryName": "Link Object With Both 'operationId' And 'operationRef'",
   "severity": "INFO",
   "category": "Structure and Semantics",

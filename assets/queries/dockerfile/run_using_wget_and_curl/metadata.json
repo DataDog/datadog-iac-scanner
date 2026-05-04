@@ -1,5 +1,6 @@
 {
-  "id": "fc775e75-fcfb-4c98-b2f2-910c5858b359",
+  "id": "dockerfile-run-using-wget-and-curl",
+  "legacyId": "fc775e75-fcfb-4c98-b2f2-910c5858b359",
   "queryName": "Run using wget and curl",
   "severity": "LOW",
   "category": "Supply-Chain",

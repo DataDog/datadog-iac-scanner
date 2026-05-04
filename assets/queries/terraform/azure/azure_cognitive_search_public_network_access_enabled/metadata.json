@@ -1,5 +1,6 @@
 {
-  "id": "4a9e0f00-0765-4f72-a0d4-d31110b78279",
+  "id": "terraform-azure-azure-cognitive-search-public-network-access-enabled",
+  "legacyId": "4a9e0f00-0765-4f72-a0d4-d31110b78279",
   "queryName": "Azure Cognitive Search public network access enabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

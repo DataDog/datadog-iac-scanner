@@ -1,5 +1,6 @@
 {
-  "id": "2564172f-c92b-4261-9acd-464aed511696",
+  "id": "cloudformation-aws-hardcoded-aws-access-key-in-lambda",
+  "legacyId": "2564172f-c92b-4261-9acd-464aed511696",
   "queryName": "Hardcoded AWS access key in Lambda",
   "severity": "HIGH",
   "category": "Secret Management",

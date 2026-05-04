@@ -1,5 +1,6 @@
 {
-  "id": "31dd6fc0-f274-493b-9614-e063086c19fc",
+  "id": "openapi-parameter-object-schema-content",
+  "legacyId": "31dd6fc0-f274-493b-9614-e063086c19fc",
   "queryName": "Parameter Object With Schema And Content",
   "severity": "INFO",
   "category": "Structure and Semantics",

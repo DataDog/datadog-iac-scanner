@@ -1,5 +1,6 @@
 {
-  "id": "4190dda7-af03-4cf0-a128-70ac1661ca09",
+  "id": "openapi-property-allow-reserved-encoding-object-ignored",
+  "legacyId": "4190dda7-af03-4cf0-a128-70ac1661ca09",
   "queryName": "Property 'allowReserved' of Encoding Object Ignored",
   "severity": "INFO",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "42bb6b7f-6d54-4428-b707-666f669d94fb",
+  "id": "terraform-aws-s3-static-website-host-enabled",
+  "legacyId": "42bb6b7f-6d54-4428-b707-666f669d94fb",
   "queryName": "S3 static website host enabled",
   "severity": "HIGH",
   "category": "Insecure Configurations",

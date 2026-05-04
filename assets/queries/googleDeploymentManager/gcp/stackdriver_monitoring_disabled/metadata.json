@@ -1,5 +1,6 @@
 {
-  "id": "bbfc97ab-e92a-4a7b-954c-e88cec815011",
+  "id": "googledeploymentmanager-gcp-stackdriver-monitoring-disabled",
+  "legacyId": "bbfc97ab-e92a-4a7b-954c-e88cec815011",
   "queryName": "Stackdriver Monitoring Disabled",
   "severity": "MEDIUM",
   "category": "Observability",

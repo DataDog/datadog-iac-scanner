@@ -1,5 +1,6 @@
 {
-  "id": "2270987f-bb51-479f-b8be-3ca73e5ad648",
+  "id": "kubernetes-net-raw-capabilities-disabled-for-psp",
+  "legacyId": "2270987f-bb51-479f-b8be-3ca73e5ad648",
   "queryName": "NET_RAW capabilities disabled for PSP",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

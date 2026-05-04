@@ -1,5 +1,6 @@
 {
-  "id": "2775e169-e708-42a9-9305-b58aadd2c4dd",
+  "id": "ansible-gcp-using-default-service-account",
+  "legacyId": "2775e169-e708-42a9-9305-b58aadd2c4dd",
   "queryName": "Using default service account",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

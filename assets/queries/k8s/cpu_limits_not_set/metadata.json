@@ -1,5 +1,6 @@
 {
-  "id": "4ac0e2b7-d2d2-4af7-8799-e8de6721ccda",
+  "id": "kubernetes-cpu-limits-not-set",
+  "legacyId": "4ac0e2b7-d2d2-4af7-8799-e8de6721ccda",
   "queryName": "CPU limits not set",
   "severity": "LOW",
   "category": "Resource Management",

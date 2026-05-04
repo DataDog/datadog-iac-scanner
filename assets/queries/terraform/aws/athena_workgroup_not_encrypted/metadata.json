@@ -1,5 +1,6 @@
 {
-  "id": "d364984a-a222-4b5f-a8b0-e23ab19ebff3",
+  "id": "terraform-aws-athena-workgroup-not-encrypted",
+  "legacyId": "d364984a-a222-4b5f-a8b0-e23ab19ebff3",
   "queryName": "Athena workgroup not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

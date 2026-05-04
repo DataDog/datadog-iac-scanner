@@ -1,5 +1,6 @@
 {
-  "id": "2034fb37-bc23-4ca0-8d95-2b9f15829ab5",
+  "id": "ansible-aws-elb-using-weak-ciphers",
+  "legacyId": "2034fb37-bc23-4ca0-8d95-2b9f15829ab5",
   "queryName": "ELB using weak ciphers",
   "severity": "HIGH",
   "category": "Encryption",

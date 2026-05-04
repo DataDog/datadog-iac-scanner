@@ -1,5 +1,6 @@
 {
-  "id": "1c2d47bd-eec6-6485-7ed7-3d0650e960a4",
+  "id": "dockerfile-do-not-use-multiple-healthcheck",
+  "legacyId": "1c2d47bd-eec6-6485-7ed7-3d0650e960a4",
   "queryName": "Multiple HEALTHCHECK instructions",
   "severity": "LOW",
   "category": "Best Practices",

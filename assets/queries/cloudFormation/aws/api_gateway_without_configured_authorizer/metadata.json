@@ -1,5 +1,6 @@
 {
-  "id": "7fd0d461-5b8c-4815-898c-f2b4b117eb28",
+  "id": "cloudformation-aws-api-gateway-without-configured-authorizer",
+  "legacyId": "7fd0d461-5b8c-4815-898c-f2b4b117eb28",
   "queryName": "API Gateway without configured authorizer",
   "severity": "MEDIUM",
   "category": "Access Control",

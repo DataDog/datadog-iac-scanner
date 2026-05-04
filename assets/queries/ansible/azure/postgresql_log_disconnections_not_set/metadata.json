@@ -1,5 +1,6 @@
 {
-  "id": "054d07b5-941b-4c28-8eef-18989dc62323",
+  "id": "ansible-azure-postgresql-log-disconnections-not-set",
+  "legacyId": "054d07b5-941b-4c28-8eef-18989dc62323",
   "queryName": "PostgreSQL log disconnections not set",
   "severity": "MEDIUM",
   "category": "Observability",

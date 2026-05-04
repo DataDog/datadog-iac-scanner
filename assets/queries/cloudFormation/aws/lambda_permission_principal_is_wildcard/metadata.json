@@ -1,5 +1,6 @@
 {
-  "id": "1d6e16f1-5d8a-4379-bfb3-2dadd38ed5a7",
+  "id": "cloudformation-aws-lambda-permission-principal-is-wildcard",
+  "legacyId": "1d6e16f1-5d8a-4379-bfb3-2dadd38ed5a7",
   "queryName": "Lambda permission principal is a wildcard",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "c9d0e1f2-a3b4-45c6-d7e8-f9a0b1c2d3e4",
+  "id": "cicd-common-unpinned-images",
+  "legacyId": "c9d0e1f2-a3b4-45c6-d7e8-f9a0b1c2d3e4",
   "queryName": "Unpinned images",
   "severity": "HIGH",
   "category": "Supply-Chain",

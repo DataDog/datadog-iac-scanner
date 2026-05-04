@@ -1,5 +1,6 @@
 {
-  "id": "7db8bd7e-9772-478c-9ec5-4bc202c5686f",
+  "id": "terraform-alicloud-oss-bucket-lifecycle-disabled",
+  "legacyId": "7db8bd7e-9772-478c-9ec5-4bc202c5686f",
   "queryName": "OSS bucket lifecycle rule disabled",
   "severity": "LOW",
   "category": "Backup",

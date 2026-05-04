@@ -1,5 +1,6 @@
 {
-  "id": "ce9dfce0-5fc8-433b-944a-3b16153111a8",
+  "id": "terraform-aws-sso-permission-with-inadequate-user-session-duration",
+  "legacyId": "ce9dfce0-5fc8-433b-944a-3b16153111a8",
   "queryName": "SSO permission with inadequate user session duration",
   "severity": "LOW",
   "category": "Access Control",

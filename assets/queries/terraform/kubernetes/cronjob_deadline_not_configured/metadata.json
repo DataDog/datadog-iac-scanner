@@ -1,5 +1,6 @@
 {
-  "id": "58876b44-a690-4e9f-9214-7735fa0dd15d",
+  "id": "terraform-common-cronjob-deadline-not-configured",
+  "legacyId": "58876b44-a690-4e9f-9214-7735fa0dd15d",
   "queryName": "CronJob deadline not configured",
   "severity": "LOW",
   "category": "Resource Management",

@@ -1,5 +1,6 @@
 {
-  "id": "14abda69-8e91-4acb-9931-76e2bee90284",
+  "id": "kubernetes-image-policy-webhook-admission-control-plugin-not-set",
+  "legacyId": "14abda69-8e91-4acb-9931-76e2bee90284",
   "queryName": "Image policy webhook admission control plugin not set",
   "severity": "LOW",
   "category": "Build Process",

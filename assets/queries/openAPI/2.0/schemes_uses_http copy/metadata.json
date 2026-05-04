@@ -1,5 +1,6 @@
 {
-  "id": "a46928f1-43d7-4671-94e0-2dd99746f389",
+  "id": "openapi-schemes-uses-http-copy",
+  "legacyId": "a46928f1-43d7-4671-94e0-2dd99746f389",
   "queryName": "Schemes Uses HTTP",
   "severity": "MEDIUM",
   "category": "Encryption",

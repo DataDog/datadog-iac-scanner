@@ -1,5 +1,6 @@
 {
-  "id": "768aab52-2504-4a2f-a3e3-329d5a679848",
+  "id": "kubernetes-audit-log-maxbackup-not-properly-set",
+  "legacyId": "768aab52-2504-4a2f-a3e3-329d5a679848",
   "queryName": "Audit log maxbackup not properly set",
   "severity": "LOW",
   "category": "Observability",

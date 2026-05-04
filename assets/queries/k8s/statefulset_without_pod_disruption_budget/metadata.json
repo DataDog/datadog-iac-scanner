@@ -1,5 +1,6 @@
 {
-  "id": "1db3a5a5-bf75-44e5-9e44-c56cfc8b1ac5",
+  "id": "kubernetes-statefulset-without-pod-disruption-budget",
+  "legacyId": "1db3a5a5-bf75-44e5-9e44-c56cfc8b1ac5",
   "queryName": "StatefulSet without PodDisruptionBudget",
   "severity": "LOW",
   "category": "Availability",

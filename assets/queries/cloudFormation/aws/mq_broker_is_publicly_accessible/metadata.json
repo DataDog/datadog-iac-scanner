@@ -1,5 +1,6 @@
 {
-  "id": "68b6a789-82f8-4cfd-85de-e95332fe6a61",
+  "id": "cloudformation-aws-mq-broker-is-publicly-accessible",
+  "legacyId": "68b6a789-82f8-4cfd-85de-e95332fe6a61",
   "queryName": "Amazon MQ broker is publicly accessible",
   "severity": "HIGH",
   "category": "Insecure Configurations",

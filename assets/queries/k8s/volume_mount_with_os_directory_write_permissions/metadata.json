@@ -1,5 +1,6 @@
 {
-  "id": "b7652612-de4e-4466-a0bf-1cd81f0c6063",
+  "id": "kubernetes-volume-mount-with-os-directory-write-permissions",
+  "legacyId": "b7652612-de4e-4466-a0bf-1cd81f0c6063",
   "queryName": "Volume mount with OS directory write permissions",
   "severity": "HIGH",
   "category": "Resource Management",

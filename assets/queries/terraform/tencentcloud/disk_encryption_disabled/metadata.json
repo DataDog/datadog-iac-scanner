@@ -1,5 +1,6 @@
 {
-  "id": "1ee0f202-31da-49ba-bbce-04a989912e4b",
+  "id": "terraform-tencentcloud-disk-encryption-disabled",
+  "legacyId": "1ee0f202-31da-49ba-bbce-04a989912e4b",
   "queryName": "Disk encryption disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "c999cf62-0920-40f8-8dda-0caccd66ed7e",
+  "id": "terraform-aws-api-gateway-stage-without-api-gateway-usage-plan-associated",
+  "legacyId": "c999cf62-0920-40f8-8dda-0caccd66ed7e",
   "queryName": "API Gateway stage without API Gateway usage plan associated",
   "severity": "LOW",
   "category": "Resource Management",

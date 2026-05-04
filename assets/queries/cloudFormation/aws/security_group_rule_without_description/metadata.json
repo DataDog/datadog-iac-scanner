@@ -1,5 +1,6 @@
 {
-  "id": "5e6c9c68-8a82-408e-8749-ddad78cbb9c5",
+  "id": "cloudformation-aws-security-group-rule-without-description",
+  "legacyId": "5e6c9c68-8a82-408e-8749-ddad78cbb9c5",
   "queryName": "Security group rule without description",
   "severity": "LOW",
   "category": "Best Practices",

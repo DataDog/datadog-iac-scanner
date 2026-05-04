@@ -1,5 +1,6 @@
 {
-  "id": "3a01790c-ebee-4da6-8fd3-e78657383b75",
+  "id": "openapi-schema-with-additional-properties-set-as-boolean",
+  "legacyId": "3a01790c-ebee-4da6-8fd3-e78657383b75",
   "queryName": "Schema with 'additionalProperties' set as Boolean",
   "severity": "INFO",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "b9ef8c0e-1392-4df4-aa84-2e0f95681c75",
+  "id": "ansible-aws-instance-uses-metadata-service-imdsv1",
+  "legacyId": "b9ef8c0e-1392-4df4-aa84-2e0f95681c75",
   "queryName": "Instance uses metadata service IMDSv1",
   "severity": "LOW",
   "category": "Insecure Configurations",

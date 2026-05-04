@@ -1,5 +1,6 @@
 {
-  "id": "38300d1a-feb2-4a48-936a-d1ef1cd24313",
+  "id": "dockerfile-missing-zypper-clean",
+  "legacyId": "38300d1a-feb2-4a48-936a-d1ef1cd24313",
   "queryName": "Missing zypper clean",
   "severity": "LOW",
   "category": "Best Practices",

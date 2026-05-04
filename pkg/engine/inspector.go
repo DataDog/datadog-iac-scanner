@@ -590,7 +590,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if !ok || file == nil {
 		return nil, false
 	}
-	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID) {
+	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
 		contextLogger.Debug().Msgf("Skipping vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)
 		return nil, false
@@ -640,9 +640,9 @@ func contains(s []string, e string) bool {
 	return false
 }
 
-func isDisabled(queries, queryID string, output bool) bool {
+func isDisabled(queries, queryID, legacyQueryID string, output bool) bool {
 	for _, query := range strings.Split(queries, ",") {
-		if strings.EqualFold(query, queryID) {
+		if strings.EqualFold(query, queryID) || strings.EqualFold(query, legacyQueryID) {
 			return output
 		}
 	}
@@ -651,12 +651,12 @@ func isDisabled(queries, queryID string, output bool) bool {
 }
 
 // ShouldSkipVulnerability verifies if the vulnerability in question should be ignored through comment commands
-func ShouldSkipVulnerability(command model.CommentsCommands, queryID string) bool {
+func ShouldSkipVulnerability(command model.CommentsCommands, queryID, legacyQueryId string) bool {
 	if queries, ok := command["enable"]; ok {
-		return isDisabled(queries, queryID, false)
+		return isDisabled(queries, queryID, legacyQueryId, false)
 	}
 	if queries, ok := command["disable"]; ok {
-		return isDisabled(queries, queryID, true)
+		return isDisabled(queries, queryID, legacyQueryId, true)
 	}
 	return false
 }

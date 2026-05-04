@@ -1,5 +1,6 @@
 {
-  "id": "6a4080ae-79bd-42f6-a924-8f534c1c018b",
+  "id": "ansible-gcp-google-compute-subnetwork-with-private-google-access-disabled",
+  "legacyId": "6a4080ae-79bd-42f6-a924-8f534c1c018b",
   "queryName": "Google Compute subnetwork with Private Google Access disabled",
   "severity": "LOW",
   "category": "Networking and Firewall",

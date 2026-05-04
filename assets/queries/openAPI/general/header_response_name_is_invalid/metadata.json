@@ -1,5 +1,6 @@
 {
-  "id": "d4e43db5-54d8-4dda-b3c2-0dc6f31a46bd",
+  "id": "openapi-header-response-name-is-invalid",
+  "legacyId": "d4e43db5-54d8-4dda-b3c2-0dc6f31a46bd",
   "queryName": "Header Response Name Is Invalid (v3)",
   "severity": "INFO",
   "category": "Best Practices",

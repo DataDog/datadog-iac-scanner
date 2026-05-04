@@ -1,5 +1,6 @@
 {
-  "id": "3f55386d-75cd-4e9a-ac47-167b26c04724",
+  "id": "terraform-common-containers-with-sys-admin-capabilities",
+  "legacyId": "3f55386d-75cd-4e9a-ac47-167b26c04724",
   "queryName": "Containers with sys admin capabilities",
   "severity": "HIGH",
   "category": "Insecure Configurations",

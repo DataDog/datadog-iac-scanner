@@ -1,5 +1,6 @@
 {
-  "id": "60fd272d-15f4-4d8f-afe4-77d9c6cc0453",
+  "id": "cicd-common-unsecured-commands",
+  "legacyId": "60fd272d-15f4-4d8f-afe4-77d9c6cc0453",
   "queryName": "Unsecured commands",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

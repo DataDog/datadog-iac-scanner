@@ -1,5 +1,6 @@
 {
-  "id": "9ed08714-b2f3-4c6d-8fb0-ac0b74ad71d8",
+  "id": "googledeploymentmanager-gcp-pst",
+  "legacyId": "9ed08714-b2f3-4c6d-8fb0-ac0b74ad71d8",
   "queryName": "BOM - GCP PST",
   "severity": "TRACE",
   "category": "Bill Of Materials",

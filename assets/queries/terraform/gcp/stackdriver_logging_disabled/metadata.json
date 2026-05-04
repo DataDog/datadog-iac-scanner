@@ -1,5 +1,6 @@
 {
-  "id": "4c7ebcb2-eae2-461e-bc83-456ee2d4f694",
+  "id": "terraform-gcp-stackdriver-logging-disabled",
+  "legacyId": "4c7ebcb2-eae2-461e-bc83-456ee2d4f694",
   "queryName": "Stackdriver Logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

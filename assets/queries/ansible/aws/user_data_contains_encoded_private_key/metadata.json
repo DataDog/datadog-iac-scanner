@@ -1,5 +1,6 @@
 {
-  "id": "c09f4d3e-27d2-4d46-9453-abbe9687a64e",
+  "id": "ansible-aws-user-data-contains-encoded-private-key",
+  "legacyId": "c09f4d3e-27d2-4d46-9453-abbe9687a64e",
   "queryName": "User data contains encoded private key",
   "severity": "HIGH",
   "category": "Encryption",

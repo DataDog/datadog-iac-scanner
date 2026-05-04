@@ -1,5 +1,6 @@
 {
-  "id": "3b497874-ae59-46dd-8d72-1868a3b8f150",
+  "id": "openapi-success-response-code-undefined-delete-operation",
+  "legacyId": "3b497874-ae59-46dd-8d72-1868a3b8f150",
   "queryName": "Success Response Code Undefined for Delete Operation (v3)",
   "severity": "LOW",
   "category": "Networking and Firewall",

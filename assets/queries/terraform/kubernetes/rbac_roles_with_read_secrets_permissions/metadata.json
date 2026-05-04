@@ -1,5 +1,6 @@
 {
-  "id": "826abb30-3cd5-4e0b-a93b-67729b4f7e63",
+  "id": "terraform-common-rbac-roles-with-read-secrets-permissions",
+  "legacyId": "826abb30-3cd5-4e0b-a93b-67729b4f7e63",
   "queryName": "RBAC roles with read secrets permissions",
   "severity": "MEDIUM",
   "category": "Access Control",

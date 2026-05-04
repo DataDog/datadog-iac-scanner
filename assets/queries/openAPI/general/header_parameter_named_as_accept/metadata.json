@@ -1,5 +1,6 @@
 {
-  "id": "f2702af5-6016-46cb-bbc8-84c766032095",
+  "id": "openapi-header-parameter-named-as-accept",
+  "legacyId": "f2702af5-6016-46cb-bbc8-84c766032095",
   "queryName": "Header Parameter Named as 'Accept' (v3)",
   "severity": "INFO",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "0de50145-e845-47f4-9a15-23bcf2125710",
+  "id": "openapi-path-parameter-not-required",
+  "legacyId": "0de50145-e845-47f4-9a15-23bcf2125710",
   "queryName": "Path Parameter Not Required (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

@@ -1,5 +1,6 @@
 {
-  "id": "869e7fb4-30f0-4bdb-b360-ad548f337f2f",
+  "id": "ansible-azure-redis-cache-allows-non-ssl-connections",
+  "legacyId": "869e7fb4-30f0-4bdb-b360-ad548f337f2f",
   "queryName": "Redis cache allows non-SSL connections",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

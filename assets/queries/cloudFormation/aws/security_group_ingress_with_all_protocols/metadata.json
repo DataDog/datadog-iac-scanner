@@ -1,5 +1,6 @@
 {
-  "id": "1a427b25-2e9e-4298-9530-0499a55e736b",
+  "id": "cloudformation-aws-security-group-ingress-with-all-protocols",
+  "legacyId": "1a427b25-2e9e-4298-9530-0499a55e736b",
   "queryName": "Security group ingress with all protocols",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

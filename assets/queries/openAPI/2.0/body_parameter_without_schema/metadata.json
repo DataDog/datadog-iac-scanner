@@ -1,5 +1,6 @@
 {
-  "id": "ed48229d-d43e-4da7-b453-5f98d964a57a",
+  "id": "openapi-body-parameter-without-schema",
+  "legacyId": "ed48229d-d43e-4da7-b453-5f98d964a57a",
   "queryName": "Body Parameter Without Schema",
   "severity": "INFO",
   "category": "Structure and Semantics",

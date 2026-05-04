@@ -1,5 +1,6 @@
 {
-  "id": "bc20bbc6-0697-4568-9a73-85af1dd97bdd",
+  "id": "ansible-gcp-vm-with-full-cloud-access",
+  "legacyId": "bc20bbc6-0697-4568-9a73-85af1dd97bdd",
   "queryName": "VM with full cloud access",
   "severity": "MEDIUM",
   "category": "Access Control",

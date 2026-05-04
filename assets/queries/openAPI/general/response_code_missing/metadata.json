@@ -1,5 +1,6 @@
 {
-  "id": "6c35d2c6-09f2-4e5c-a094-e0e91327071d",
+  "id": "openapi-response-code-missing",
+  "legacyId": "6c35d2c6-09f2-4e5c-a094-e0e91327071d",
   "queryName": "Response Code Missing (v3)",
   "severity": "LOW",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "26b047a9-0329-48fd-8fb7-05bbe5ba80ee",
+  "id": "terraform-common-incorrect-volume-claim-access-mode-read-write-once",
+  "legacyId": "26b047a9-0329-48fd-8fb7-05bbe5ba80ee",
   "queryName": "Incorrect volume claim access mode ReadWriteOnce",
   "severity": "MEDIUM",
   "category": "Build Process",

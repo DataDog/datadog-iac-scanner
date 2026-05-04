@@ -1,5 +1,6 @@
 {
-  "id": "9e0c33ed-97f3-4ed6-8be9-bcbf3f65439f",
+  "id": "ansible-gcp-cloud-sql-instance-with-cross-db-ownership-chaining-on",
+  "legacyId": "9e0c33ed-97f3-4ed6-8be9-bcbf3f65439f",
   "queryName": "Cloud SQL instance with cross DB ownership chaining on",
   "severity": "HIGH",
   "category": "Insecure Configurations",

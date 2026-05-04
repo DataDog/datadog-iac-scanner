@@ -1,5 +1,6 @@
 {
-  "id": "d7ba74da-2da0-4d4b-83c8-2fd72a3f6c28",
+  "id": "terraform-azure-unrestricted-sql-server-access",
+  "legacyId": "d7ba74da-2da0-4d4b-83c8-2fd72a3f6c28",
   "queryName": "Unrestricted SQL server access",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "2bd608ae-8a1f-457f-b710-c237883cb313",
+  "id": "openapi-schema-required-property-undefined",
+  "legacyId": "2bd608ae-8a1f-457f-b710-c237883cb313",
   "queryName": "Schema Has A Required Property Undefined (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

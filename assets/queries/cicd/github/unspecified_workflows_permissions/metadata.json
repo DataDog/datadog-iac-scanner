@@ -1,5 +1,6 @@
 {
-  "id": "d946b13a-0b2b-49c5-b560-45b9666373e1",
+  "id": "cicd-common-unspecified-workflows-permissions",
+  "legacyId": "d946b13a-0b2b-49c5-b560-45b9666373e1",
   "queryName": "Unspecified workflows level permissions",
   "severity": "MEDIUM",
   "category": "Access Control",

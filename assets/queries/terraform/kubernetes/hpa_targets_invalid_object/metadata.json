@@ -1,5 +1,6 @@
 {
-  "id": "17e52ca3-ddd0-4610-9d56-ce107442e110",
+  "id": "terraform-common-hpa-targets-invalid-object",
+  "legacyId": "17e52ca3-ddd0-4610-9d56-ce107442e110",
   "queryName": "HPA targets invalid object",
   "severity": "LOW",
   "category": "Availability",

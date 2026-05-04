@@ -1,5 +1,6 @@
 {
-  "id": "72d259ca-9741-48dd-9f62-eb11f2936b37",
+  "id": "openapi-header-parameter-named-as-content-type",
+  "legacyId": "72d259ca-9741-48dd-9f62-eb11f2936b37",
   "queryName": "Header Parameter Named as 'Content-Type' (v3)",
   "severity": "INFO",
   "category": "Best Practices",

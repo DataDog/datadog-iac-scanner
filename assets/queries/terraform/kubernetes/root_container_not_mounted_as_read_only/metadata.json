@@ -1,5 +1,6 @@
 {
-  "id": "d532566b-8d9d-4f3b-80bd-361fe802f9c2",
+  "id": "terraform-common-root-container-not-mounted-as-read-only",
+  "legacyId": "d532566b-8d9d-4f3b-80bd-361fe802f9c2",
   "queryName": "Root container not mounted as read-only",
   "severity": "LOW",
   "category": "Build Process",

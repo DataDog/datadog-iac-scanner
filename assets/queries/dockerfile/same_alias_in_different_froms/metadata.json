@@ -1,5 +1,6 @@
 {
-  "id": "f2daed12-c802-49cd-afed-fe41d0b82fed",
+  "id": "dockerfile-same-alias-in-different-froms",
+  "legacyId": "f2daed12-c802-49cd-afed-fe41d0b82fed",
   "queryName": "Same alias in different FROM statements",
   "severity": "LOW",
   "category": "Build Process",

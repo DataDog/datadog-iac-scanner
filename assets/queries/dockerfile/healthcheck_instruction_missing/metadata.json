@@ -1,5 +1,6 @@
 {
-  "id": "b03a748a-542d-44f4-bb86-9199ab4fd2d5",
+  "id": "dockerfile-healthcheck-instruction-missing",
+  "legacyId": "b03a748a-542d-44f4-bb86-9199ab4fd2d5",
   "queryName": "Healthcheck instruction missing",
   "severity": "LOW",
   "category": "Insecure Configurations",

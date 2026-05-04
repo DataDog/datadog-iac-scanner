@@ -1,5 +1,6 @@
 {
-  "id": "f0104061-8bfc-4b45-8a7d-630eb502f281",
+  "id": "cloudformation-aws-automatic-minor-upgrades-disabled",
+  "legacyId": "f0104061-8bfc-4b45-8a7d-630eb502f281",
   "queryName": "Automatic minor upgrades disabled",
   "severity": "LOW",
   "category": "Best Practices",

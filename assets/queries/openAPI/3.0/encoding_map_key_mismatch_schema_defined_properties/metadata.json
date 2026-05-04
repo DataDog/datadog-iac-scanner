@@ -1,5 +1,6 @@
 {
-  "id": "cd7a52cf-8d7f-4cfe-bbeb-6306d23f576b",
+  "id": "openapi-encoding-map-key-mismatch-schema-defined-properties",
+  "legacyId": "cd7a52cf-8d7f-4cfe-bbeb-6306d23f576b",
   "queryName": "Encoding Map Key Mismatch Schema Defined Properties",
   "severity": "INFO",
   "category": "Structure and Semantics",

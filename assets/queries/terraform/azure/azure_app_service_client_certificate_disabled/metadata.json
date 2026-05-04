@@ -1,5 +1,6 @@
 {
-  "id": "a81573f9-3691-4d83-88a0-7d4af63e17a3",
+  "id": "terraform-azure-azure-app-service-client-certificate-disabled",
+  "legacyId": "a81573f9-3691-4d83-88a0-7d4af63e17a3",
   "queryName": "Azure App Service client certificate disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

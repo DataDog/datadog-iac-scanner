@@ -1,5 +1,6 @@
 {
-  "id": "16e0879a-c4ae-4ff8-a67d-a2eed5d67b8f",
+  "id": "terraform-azure-postgresql-log-duration-not-set",
+  "legacyId": "16e0879a-c4ae-4ff8-a67d-a2eed5d67b8f",
   "queryName": "PostgreSQL log duration not set",
   "severity": "MEDIUM",
   "category": "Observability",

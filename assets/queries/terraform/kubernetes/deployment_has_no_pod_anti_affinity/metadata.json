@@ -1,5 +1,6 @@
 {
-  "id": "461ed7e4-f8d5-4bc1-b3c6-64ddb4fd00a3",
+  "id": "terraform-common-deployment-has-no-pod-anti-affinity",
+  "legacyId": "461ed7e4-f8d5-4bc1-b3c6-64ddb4fd00a3",
   "queryName": "Deployment has no podAntiAffinity",
   "severity": "LOW",
   "category": "Resource Management",

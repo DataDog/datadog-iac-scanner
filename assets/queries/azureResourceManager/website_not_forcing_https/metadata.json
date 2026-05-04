@@ -1,5 +1,6 @@
 {
-  "id": "488847ff-6031-487c-bf42-98fd6ac5c9a0",
+  "id": "azureresourcemanager-azure-website-not-forcing-https",
+  "legacyId": "488847ff-6031-487c-bf42-98fd6ac5c9a0",
   "queryName": "Website Not Forcing HTTPS",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

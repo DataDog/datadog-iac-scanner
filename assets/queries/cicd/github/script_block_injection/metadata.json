@@ -1,5 +1,6 @@
 {
-  "id": "62ff6823-927a-427f-acf9-f1ea2932d616",
+  "id": "cicd-common-script-block-injection",
+  "legacyId": "62ff6823-927a-427f-acf9-f1ea2932d616",
   "queryName": "Script block injection",
   "severity": "HIGH",
   "category": "Insecure Configurations",

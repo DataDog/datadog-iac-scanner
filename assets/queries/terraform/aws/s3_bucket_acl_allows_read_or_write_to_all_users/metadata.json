@@ -1,5 +1,6 @@
 {
-  "id": "38c5ee0d-7f22-4260-ab72-5073048df100",
+  "id": "terraform-aws-s3-bucket-acl-allows-read-or-write-to-all-users",
+  "legacyId": "38c5ee0d-7f22-4260-ab72-5073048df100",
   "queryName": "S3 bucket ACL allows read or write to all users",
   "severity": "CRITICAL",
   "category": "Access Control",

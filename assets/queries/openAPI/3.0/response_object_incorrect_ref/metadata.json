@@ -1,5 +1,6 @@
 {
-  "id": "b3871dd8-9333-4d6c-bd52-67eb898b71ab",
+  "id": "openapi-response-object-incorrect-ref",
+  "legacyId": "b3871dd8-9333-4d6c-bd52-67eb898b71ab",
   "queryName": "Response Object With Incorrect Ref (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

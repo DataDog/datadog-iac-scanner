@@ -1,5 +1,6 @@
 {
-  "id": "45e1fca5-f90e-465d-825f-c2cb63fa3944",
+  "id": "dockerfile-missing-zypper-non-interactive-switch",
+  "legacyId": "45e1fca5-f90e-465d-825f-c2cb63fa3944",
   "queryName": "Missing Zypper non-interactive switch",
   "severity": "MEDIUM",
   "category": "Supply-Chain",

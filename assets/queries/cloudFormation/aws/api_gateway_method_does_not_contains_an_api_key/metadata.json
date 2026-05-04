@@ -1,5 +1,6 @@
 {
-  "id": "3641d5b4-d339-4bc2-bfb9-208fe8d3477f",
+  "id": "cloudformation-aws-api-gateway-method-does-not-contains-an-api-key",
+  "legacyId": "3641d5b4-d339-4bc2-bfb9-208fe8d3477f",
   "queryName": "API Gateway method does not contain an API key",
   "severity": "MEDIUM",
   "category": "Access Control",

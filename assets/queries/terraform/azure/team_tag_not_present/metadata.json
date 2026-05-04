@@ -1,5 +1,6 @@
 {
-  "id": "e8f4d3c2-b1a0-4e5f-8d7c-9a0b1c2d3e4f",
+  "id": "terraform-azure-team-tag-not-present",
+  "legacyId": "e8f4d3c2-b1a0-4e5f-8d7c-9a0b1c2d3e4f",
   "queryName": "Ensure that Azure cloud resource has a team tag",
   "severity": "LOW",
   "category": "Best Practices",

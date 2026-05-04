@@ -1,5 +1,6 @@
 {
-  "id": "24b132df-5cc7-4823-8029-f898e1c50b72",
+  "id": "terraform-common-service-account-name-undefined-or-empty",
+  "legacyId": "24b132df-5cc7-4823-8029-f898e1c50b72",
   "queryName": "Service account name undefined or empty",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

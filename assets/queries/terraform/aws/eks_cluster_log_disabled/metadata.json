@@ -1,5 +1,6 @@
 {
-  "id": "37304d3f-f852-40b8-ae3f-725e87a7cedf",
+  "id": "terraform-aws-eks-cluster-log-disabled",
+  "legacyId": "37304d3f-f852-40b8-ae3f-725e87a7cedf",
   "queryName": "EKS cluster logging is not enabled",
   "severity": "MEDIUM",
   "category": "Observability",

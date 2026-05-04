@@ -1,5 +1,6 @@
 {
-  "id": "3979b0a4-532c-4ea7-86e4-34c090eaa4f2",
+  "id": "openapi-oauth2-with-password-flow",
+  "legacyId": "3979b0a4-532c-4ea7-86e4-34c090eaa4f2",
   "queryName": "OAuth2 With Password Flow",
   "severity": "MEDIUM",
   "category": "Access Control",

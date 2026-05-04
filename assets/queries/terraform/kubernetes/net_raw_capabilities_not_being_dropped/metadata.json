@@ -1,5 +1,6 @@
 {
-  "id": "e5587d53-a673-4a6b-b3f2-ba07ec274def",
+  "id": "terraform-common-net-raw-capabilities-not-being-dropped",
+  "legacyId": "e5587d53-a673-4a6b-b3f2-ba07ec274def",
   "queryName": "NET_RAW capabilities not being dropped",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

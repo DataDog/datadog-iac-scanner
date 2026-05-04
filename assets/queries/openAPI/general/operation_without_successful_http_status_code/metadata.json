@@ -1,5 +1,6 @@
 {
-  "id": "48e9e1fe-cf79-45b5-93e6-8b55ae5dadfd",
+  "id": "openapi-operation-without-successful-http-status-code",
+  "legacyId": "48e9e1fe-cf79-45b5-93e6-8b55ae5dadfd",
   "queryName": "Operation Without Successful HTTP Status Code (v3)",
   "severity": "INFO",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "f9112910-c7bb-4864-9f5e-2059ba413bb7",
+  "id": "azureresourcemanager-azure-postgres-sql-server-log-checkpoint-disabled",
+  "legacyId": "f9112910-c7bb-4864-9f5e-2059ba413bb7",
   "queryName": "PostgreSQL Database Server Log Checkpoints Disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

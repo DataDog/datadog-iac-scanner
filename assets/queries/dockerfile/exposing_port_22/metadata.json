@@ -1,5 +1,6 @@
 {
-  "id": "5907595b-5b6d-4142-b173-dbb0e73fbff8",
+  "id": "dockerfile-exposing-port-22",
+  "legacyId": "5907595b-5b6d-4142-b173-dbb0e73fbff8",
   "queryName": "Exposing port 22 (SSH)",
   "severity": "LOW",
   "category": "Best Practices",

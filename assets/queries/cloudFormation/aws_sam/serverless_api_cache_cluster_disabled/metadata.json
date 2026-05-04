@@ -1,5 +1,6 @@
 {
-  "id": "60a05ede-0a68-4d0d-a58f-f538cf55ff79",
+  "id": "cloudformation-aws-serverless-api-cache-cluster-disabled",
+  "legacyId": "60a05ede-0a68-4d0d-a58f-f538cf55ff79",
   "queryName": "Serverless API cache cluster disabled",
   "severity": "LOW",
   "category": "Insecure Configurations",

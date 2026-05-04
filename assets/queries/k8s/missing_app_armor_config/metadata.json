@@ -1,5 +1,6 @@
 {
-  "id": "8b36775e-183d-4d46-b0f7-96a6f34a723f",
+  "id": "kubernetes-missing-app-armor-config",
+  "legacyId": "8b36775e-183d-4d46-b0f7-96a6f34a723f",
   "queryName": "Missing AppArmor profile",
   "severity": "LOW",
   "category": "Access Control",

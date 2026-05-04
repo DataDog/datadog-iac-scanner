@@ -1,5 +1,6 @@
 {
-  "id": "e8e62026-da63-4904-b402-65adfe3ca975",
+  "id": "terraform-alicloud-ram-policy-admin-access-not-attached-to-users-groups-roles",
+  "legacyId": "e8e62026-da63-4904-b402-65adfe3ca975",
   "queryName": "RAM policy admin access not attached to users groups roles",
   "severity": "MEDIUM",
   "category": "Access Control",

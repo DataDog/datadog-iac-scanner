@@ -1,5 +1,6 @@
 {
-  "id": "350cd468-0e2c-44ef-9d22-cfb73a62523c",
+  "id": "cloudformation-aws-s3-bucket-without-restriction-of-public-bucket",
+  "legacyId": "350cd468-0e2c-44ef-9d22-cfb73a62523c",
   "queryName": "S3 bucket without restriction of public bucket",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

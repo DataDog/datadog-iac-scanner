@@ -1,5 +1,6 @@
 {
-  "id": "522d4a64-4dc9-44bd-9240-7d8a0d5cb5ba",
+  "id": "terraform-common-permissive-access-to-create-pods",
+  "legacyId": "522d4a64-4dc9-44bd-9240-7d8a0d5cb5ba",
   "queryName": "Permissive access to create pods",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "e93bbe63-a631-4c0f-b6ef-700d48441ff2",
+  "id": "pulumi-aws-elasticache-redis-cluster-without-backup",
+  "legacyId": "e93bbe63-a631-4c0f-b6ef-700d48441ff2",
   "queryName": "ElastiCache Redis Cluster Without Backup",
   "severity": "MEDIUM",
   "category": "Backup",

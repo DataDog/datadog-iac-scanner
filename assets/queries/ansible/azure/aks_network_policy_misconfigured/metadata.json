@@ -1,5 +1,6 @@
 {
-  "id": "8c3bedf1-c570-4c3b-b414-d068cd39a00c",
+  "id": "ansible-azure-aks-network-policy-misconfigured",
+  "legacyId": "8c3bedf1-c570-4c3b-b414-d068cd39a00c",
   "queryName": "AKS network policy misconfigured",
   "severity": "LOW",
   "category": "Insecure Configurations",

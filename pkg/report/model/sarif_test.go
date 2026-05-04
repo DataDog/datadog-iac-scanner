@@ -40,13 +40,14 @@ var sarifTests = []sarifTest{
 		name: "Should not create any rule",
 		vq: []model.QueryResult{
 			{
-				QueryName:   "test",
-				QueryID:     "1",
-				Description: "test description",
-				QueryURI:    "https://www.test.com",
-				Severity:    model.SeverityHigh,
-				Files:       []model.VulnerableFile{},
-				CWE:         "",
+				QueryName:     "test",
+				QueryID:       "1",
+				LegacyQueryID: "Undefined",
+				Description:   "test description",
+				QueryURI:      "https://www.test.com",
+				Severity:      model.SeverityHigh,
+				Files:         []model.VulnerableFile{},
+				CWE:           "",
 			},
 		},
 		want: sarifReport{
@@ -57,11 +58,12 @@ var sarifTests = []sarifTest{
 		name: "Should create rule with frameworks in properties",
 		vq: []model.QueryResult{
 			{
-				QueryName:   "test",
-				QueryID:     "1",
-				Description: "test description",
-				QueryURI:    "https://www.test.com",
-				Severity:    model.SeverityMedium,
+				QueryName:     "test",
+				QueryID:       "1",
+				LegacyQueryID: "Undefined",
+				Description:   "test description",
+				QueryURI:      "https://www.test.com",
+				Severity:      model.SeverityMedium,
 				Frameworks: []model.Framework{
 					{
 						Framework:        "dcsb-m-v2",
@@ -173,11 +175,12 @@ var sarifTests = []sarifTest{
 		name: "Should create one occurrence with valid startLine",
 		vq: []model.QueryResult{
 			{
-				QueryName:   "test",
-				QueryID:     "1",
-				Description: "test description",
-				QueryURI:    "https://www.test.com",
-				Severity:    model.SeverityHigh,
+				QueryName:     "test",
+				QueryID:       "1",
+				LegacyQueryID: "Undefined",
+				Description:   "test description",
+				QueryURI:      "https://www.test.com",
+				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
 						KeyActualValue: "test",
@@ -304,12 +307,13 @@ var sarifTests = []sarifTest{
 		name: "Should create multiple occurrence",
 		vq: []model.QueryResult{
 			{
-				QueryName:   "test",
-				QueryID:     "test",
-				Description: "test description",
-				QueryURI:    "https://www.test.com",
-				Category:    "test",
-				Severity:    model.SeverityHigh,
+				QueryName:     "test",
+				QueryID:       "test",
+				LegacyQueryID: "Undefined",
+				Description:   "test description",
+				QueryURI:      "https://www.test.com",
+				Category:      "test",
+				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
 						KeyActualValue: "test",
@@ -326,12 +330,13 @@ var sarifTests = []sarifTest{
 				CWE: "",
 			},
 			{
-				QueryName:   "test info",
-				QueryID:     "test info",
-				Description: "test description",
-				QueryURI:    "https://www.test.com",
-				Category:    "test",
-				Severity:    model.SeverityInfo,
+				QueryName:     "test info",
+				QueryID:       "test info",
+				LegacyQueryID: "Undefined",
+				Description:   "test description",
+				QueryURI:      "https://www.test.com",
+				Category:      "test",
+				Severity:      model.SeverityInfo,
 				Files: []model.VulnerableFile{
 					{
 						KeyActualValue: "test",
@@ -539,11 +544,12 @@ var sarifTests = []sarifTest{
 		name: "Should narrow to remediation location even when remediation string is empty",
 		vq: []model.QueryResult{
 			{
-				QueryName:   "test",
-				QueryID:     "1",
-				Description: "test description",
-				QueryURI:    "https://www.test.com",
-				Severity:    model.SeverityHigh,
+				QueryName:     "test",
+				QueryID:       "1",
+				LegacyQueryID: "Undefined",
+				Description:   "test description",
+				QueryURI:      "https://www.test.com",
+				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
 						KeyActualValue: "test",
@@ -605,80 +611,81 @@ var sarifTests = []sarifTest{
 							ResultLocations: []SarifLocation{
 								{
 									PhysicalLocation: sarifPhysicalLocation{
-									ArtifactLocation: sarifArtifactLocation{ArtifactURI: "test.json"},
-									Region:           model.SarifRegion{StartLine: 2, EndLine: 3, StartColumn: 1, EndColumn: 2},
-								},
-							},
-						},
-						ResultLevel: "warning",
-						ResultProperties: sarifProperties{
-							"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
-						},
-						PartialFingerprints: SarifPartialFingerprints{
-							DatadogFingerprint: GetDatadogFingerprintHash(
-								model.SCIInfo{
-									RepositoryCommitInfo: model.RepositoryCommitInfo{
-										RepositoryUrl: "",
-										Branch:        "",
-										CommitSHA:     "",
+										ArtifactLocation: sarifArtifactLocation{ArtifactURI: "test.json"},
+										Region:           model.SarifRegion{StartLine: 2, EndLine: 3, StartColumn: 1, EndColumn: 2},
 									},
 								},
-								"test.json",
-								"Terraform",
-								"test_resource_type",
-								"test_resource_name",
-								"1",
-								"",
-							),
-						},
-					},
-				},
-				Taxonomies: []sarifTaxonomy{
-					{
-						TaxonomyGUID:             "58cdcc6f-fe41-4724-bfb3-131a93df4c3f",
-						TaxonomyName:             "Categories",
-						TaxonomyFullDescription:  sarifMessage{Text: "Category is not defined"},
-						TaxonomyShortDescription: sarifMessage{Text: "Category is not defined"},
-						TaxonomyDefinitions: []taxonomyDefinitions{
-							{
-								DefinitionGUID:             "",
-								DefinitionName:             "Undefined Category",
-								DefinitionID:               "CAT000",
-								DefinitionShortDescription: cweMessage{Text: "Category is not defined"},
-								DefinitionFullDescription:  cweMessage{Text: "Category is not defined"},
-								HelpURI:                    "",
+							},
+							ResultLevel: "warning",
+							ResultProperties: sarifProperties{
+								"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
+							},
+							PartialFingerprints: SarifPartialFingerprints{
+								DatadogFingerprint: GetDatadogFingerprintHash(
+									model.SCIInfo{
+										RepositoryCommitInfo: model.RepositoryCommitInfo{
+											RepositoryUrl: "",
+											Branch:        "",
+											CommitSHA:     "",
+										},
+									},
+									"test.json",
+									"Terraform",
+									"test_resource_type",
+									"test_resource_name",
+									"1",
+									"",
+								),
 							},
 						},
 					},
-					{
-						TaxonomyGUID:                              "1489b0c4-d7ce-4d31-af66-6382a01202e3",
-						TaxonomyName:                              "CWE",
-						TaxonomyFullDescription:                   sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
-						TaxonomyShortDescription:                  sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
-						TaxonomyDownloadURI:                       "https://cwe.mitre.org/data/published/cwe_v4.13.pdf",
-						TaxonomyIsComprehensive:                   true,
-						TaxonomyLanguage:                          "en",
-						TaxonomyMinRequiredLocDataSemanticVersion: "4.13",
-						TaxonomyOrganization:                      "MITRE",
-						TaxonomyRealeaseDateUtc:                   "2023-10-26",
-						TaxonomyDefinitions: []taxonomyDefinitions{
-							{},
+					Taxonomies: []sarifTaxonomy{
+						{
+							TaxonomyGUID:             "58cdcc6f-fe41-4724-bfb3-131a93df4c3f",
+							TaxonomyName:             "Categories",
+							TaxonomyFullDescription:  sarifMessage{Text: "Category is not defined"},
+							TaxonomyShortDescription: sarifMessage{Text: "Category is not defined"},
+							TaxonomyDefinitions: []taxonomyDefinitions{
+								{
+									DefinitionGUID:             "",
+									DefinitionName:             "Undefined Category",
+									DefinitionID:               "CAT000",
+									DefinitionShortDescription: cweMessage{Text: "Category is not defined"},
+									DefinitionFullDescription:  cweMessage{Text: "Category is not defined"},
+									HelpURI:                    "",
+								},
+							},
+						},
+						{
+							TaxonomyGUID:                              "1489b0c4-d7ce-4d31-af66-6382a01202e3",
+							TaxonomyName:                              "CWE",
+							TaxonomyFullDescription:                   sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
+							TaxonomyShortDescription:                  sarifMessage{Text: "The MITRE Common Weakness Enumeration"},
+							TaxonomyDownloadURI:                       "https://cwe.mitre.org/data/published/cwe_v4.13.pdf",
+							TaxonomyIsComprehensive:                   true,
+							TaxonomyLanguage:                          "en",
+							TaxonomyMinRequiredLocDataSemanticVersion: "4.13",
+							TaxonomyOrganization:                      "MITRE",
+							TaxonomyRealeaseDateUtc:                   "2023-10-26",
+							TaxonomyDefinitions: []taxonomyDefinitions{
+								{},
+							},
 						},
 					},
 				},
 			},
 		},
 	},
-},
-{
-	name: "Should use remediation location when remediation is non-empty",
+	{
+		name: "Should use remediation location when remediation is non-empty",
 		vq: []model.QueryResult{
 			{
-				QueryName:   "test",
-				QueryID:     "1",
-				Description: "test description",
-				QueryURI:    "https://www.test.com",
-				Severity:    model.SeverityHigh,
+				QueryName:     "test",
+				QueryID:       "1",
+				LegacyQueryID: "Undefined",
+				Description:   "test description",
+				QueryURI:      "https://www.test.com",
+				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
 						KeyActualValue: "test",
@@ -694,7 +701,7 @@ var sarifTests = []sarifTest{
 							Start: model.ResourceLine{Line: 2, Col: 1},
 							End:   model.ResourceLine{Line: 3, Col: 2},
 						},
-						Remediation:       "not-json",
+						Remediation:     "not-json",
 						RemediationType: "replacement",
 					},
 				},
@@ -813,6 +820,96 @@ var sarifTests = []sarifTest{
 			{
 				QueryName:     "test dockerfile",
 				QueryID:       "dockerfile-test-1",
+				LegacyQueryID: "Undefined",
+				Description:   "test dockerfile description",
+				QueryURI:      "https://www.test.com",
+				Severity:      model.SeverityHigh,
+				Platform:      "Dockerfile",
+				CloudProvider: "common",
+				Category:      "Security",
+				Files: []model.VulnerableFile{
+					{
+						KeyActualValue:        "test dockerfile issue",
+						FileName:              "Dockerfile",
+						Line:                  5,
+						LineWithVulnerability: "RUN apt-get install -y python",
+						ResourceType:          "RUN",
+						ResourceName:          "apt-get install",
+						ResourceLocation: model.ResourceLocation{
+							Start: model.ResourceLine{Line: 5, Col: 1},
+							End:   model.ResourceLine{Line: 5, Col: 30},
+						},
+					},
+				},
+				CWE: "",
+			},
+		},
+		want: sarifReport{
+			Runs: []SarifRun{
+				{
+					Tool: sarifTool{
+						Driver: sarifDriver{
+							Rules: []sarifRule{
+								{
+									RuleID:               "test dockerfile",
+									RuleName:             "test dockerfile",
+									RuleShortDescription: sarifMessage{Text: "test dockerfile"},
+									RuleFullDescription:  sarifMessage{Text: "test dockerfile description"},
+									DefaultConfiguration: sarifConfiguration{
+										Level: "error",
+									},
+									HelpURI: "https://www.test.com",
+									Relationships: []sarifRelationship{
+										{
+											Relationship: sarifDescriptorReference{
+												ReferenceID:    "CAT000",
+												ReferenceIndex: 0,
+												ToolComponent: sarifComponentReference{
+													ComponentReferenceGUID:  "58cdcc6f-fe41-4724-bfb3-131a93df4c3f",
+													ComponentReferenceName:  "Categories",
+													ComponentReferenceIndex: targetTemplate.ToolComponent.ComponentReferenceIndex,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Results: []sarifResult{
+						{
+							ResultRuleID:    "test dockerfile",
+							ResultRuleIndex: 0,
+							ResultKind:      "",
+							ResultMessage:   sarifMessage{Text: "test dockerfile", MessageProperties: nil},
+							ResultLocations: []SarifLocation{
+								{
+									PhysicalLocation: sarifPhysicalLocation{
+										ArtifactLocation: sarifArtifactLocation{ArtifactURI: "Dockerfile"},
+										Region:           model.SarifRegion{StartLine: 5, EndLine: 5, StartColumn: 1, EndColumn: 30},
+									},
+								},
+							},
+							ResultLevel: "warning",
+							ResultProperties: sarifProperties{
+								"tags": []string{"DATADOG_CATEGORY:Security", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:RUN", "IAC_RESOURCE_NAME:apt-get install"},
+							},
+							PartialFingerprints: SarifPartialFingerprints{
+								DatadogFingerprint: "07c54291ed30d1ec2fba3082e449aac7bda6922149abe20a90f1806c79c9b575",
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		name: "Check that legacy Query is used when missing",
+		vq: []model.QueryResult{
+			{
+				QueryName:     "test dockerfile",
+				QueryID:       "dockerfile-test-legcayId",
+				LegacyQueryID: "dockerfile-test-1",
 				Description:   "test dockerfile description",
 				QueryURI:      "https://www.test.com",
 				Severity:      model.SeverityHigh,

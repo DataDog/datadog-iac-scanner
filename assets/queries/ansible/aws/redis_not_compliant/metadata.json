@@ -1,5 +1,6 @@
 {
-  "id": "9f34885e-c08f-4d13-a7d1-cf190c5bd268",
+  "id": "ansible-aws-redis-not-compliant",
+  "legacyId": "9f34885e-c08f-4d13-a7d1-cf190c5bd268",
   "queryName": "Redis not compliant",
   "severity": "HIGH",
   "category": "Encryption",

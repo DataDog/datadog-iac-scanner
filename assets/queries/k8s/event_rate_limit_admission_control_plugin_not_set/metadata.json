@@ -1,5 +1,6 @@
 {
-  "id": "e0099af2-fe17-411f-9991-0de28fe15f3c",
+  "id": "kubernetes-event-rate-limit-admission-control-plugin-not-set",
+  "legacyId": "e0099af2-fe17-411f-9991-0de28fe15f3c",
   "queryName": "Event rate limit admission control plugin not set",
   "severity": "LOW",
   "category": "Availability",

@@ -1,5 +1,6 @@
 {
-  "id": "68a51e22-ae5a-4d48-8e87-b01a323605c9",
+  "id": "dockerfile-common-using-unnamed-build-stages",
+  "legacyId": "68a51e22-ae5a-4d48-8e87-b01a323605c9",
   "queryName": "Using unnamed build stages",
   "severity": "LOW",
   "category": "Build Process",

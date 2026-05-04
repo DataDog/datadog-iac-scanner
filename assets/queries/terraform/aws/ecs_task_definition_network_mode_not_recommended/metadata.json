@@ -1,5 +1,6 @@
 {
-  "id": "9f4a9409-9c60-4671-be96-9716dbf63db1",
+  "id": "terraform-aws-ecs-task-definition-network-mode-not-recommended",
+  "legacyId": "9f4a9409-9c60-4671-be96-9716dbf63db1",
   "queryName": "ECS task definition network mode not recommended",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

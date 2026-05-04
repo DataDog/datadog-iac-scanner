@@ -1,5 +1,6 @@
 {
-  "id": "6a647814-def5-4b85-88f5-897c19f509cd",
+  "id": "ansible-aws-redshift-not-encrypted",
+  "legacyId": "6a647814-def5-4b85-88f5-897c19f509cd",
   "queryName": "Redshift cluster is not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

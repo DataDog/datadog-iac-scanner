@@ -1,5 +1,6 @@
 {
-  "id": "b2f275be-7d64-4064-b418-be6b431363a7",
+  "id": "openapi-success-response-code-undefined-get-operation",
+  "legacyId": "b2f275be-7d64-4064-b418-be6b431363a7",
   "queryName": "Success Response Code Undefined for Get Operation (v3)",
   "severity": "LOW",
   "category": "Networking and Firewall",

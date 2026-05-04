@@ -1,5 +1,6 @@
 {
-  "id": "4c415497-7410-4559-90e8-f2c8ac64ee38",
+  "id": "terraform-common-root-containers-admitted",
+  "legacyId": "4c415497-7410-4559-90e8-f2c8ac64ee38",
   "queryName": "Root containers admitted",
   "severity": "MEDIUM",
   "category": "Best Practices",

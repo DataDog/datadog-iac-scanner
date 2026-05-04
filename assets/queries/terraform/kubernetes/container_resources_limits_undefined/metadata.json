@@ -1,5 +1,6 @@
 {
-  "id": "60af03ff-a421-45c8-b214-6741035476fa",
+  "id": "terraform-common-container-resources-limits-undefined",
+  "legacyId": "60af03ff-a421-45c8-b214-6741035476fa",
   "queryName": "Container resources limits undefined",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

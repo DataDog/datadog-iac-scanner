@@ -1,5 +1,6 @@
 {
-  "id": "23c3067a-8cc9-480c-b645-7c1e0ad4bf60",
+  "id": "terraform-common-group-without-user-or-instance-profile",
+  "legacyId": "23c3067a-8cc9-480c-b645-7c1e0ad4bf60",
   "queryName": "Databricks group without user or instance profile",
   "severity": "LOW",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "3ac3e75c-6374-4a32-8ba0-6ed69bda404e",
+  "id": "terraform-azure-storage-table-allows-all-acl-permissions",
+  "legacyId": "3ac3e75c-6374-4a32-8ba0-6ed69bda404e",
   "queryName": "Storage table allows all ACL permissions",
   "severity": "MEDIUM",
   "category": "Access Control",

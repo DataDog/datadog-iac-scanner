@@ -1,5 +1,6 @@
 {
-  "id": "96729c6b-7400-4d9e-9807-17f00cdde4d2",
+  "id": "openapi-no-global-and-operation-security-defined",
+  "legacyId": "96729c6b-7400-4d9e-9807-17f00cdde4d2",
   "queryName": "No Global And Operation Security Defined (v3)",
   "severity": "HIGH",
   "category": "Access Control",

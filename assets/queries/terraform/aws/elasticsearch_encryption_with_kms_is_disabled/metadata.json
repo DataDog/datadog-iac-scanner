@@ -1,5 +1,6 @@
 {
-  "id": "7af2f4a3-00d9-47f3-8d15-ca0888f4e5b2",
+  "id": "terraform-aws-elasticsearch-encryption-with-kms-is-disabled",
+  "legacyId": "7af2f4a3-00d9-47f3-8d15-ca0888f4e5b2",
   "queryName": "Elasticsearch encryption with KMS disabled",
   "severity": "HIGH",
   "category": "Encryption",

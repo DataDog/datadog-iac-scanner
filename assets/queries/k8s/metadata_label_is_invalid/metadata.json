@@ -1,5 +1,6 @@
 {
-  "id": "1123031a-f921-4c5b-bd86-ef354ecfd37a",
+  "id": "kubernetes-metadata-label-is-invalid",
+  "legacyId": "1123031a-f921-4c5b-bd86-ef354ecfd37a",
   "queryName": "Invalid metadata label",
   "severity": "LOW",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "32d31f1f-0f83-4721-b7ec-1e6948c60145",
+  "id": "ansible-aws-stack-without-template",
+  "legacyId": "32d31f1f-0f83-4721-b7ec-1e6948c60145",
   "queryName": "Stack without template",
   "severity": "LOW",
   "category": "Build Process",

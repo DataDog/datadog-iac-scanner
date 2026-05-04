@@ -1,5 +1,6 @@
 {
-  "id": "105e20dd-8449-4d71-95c6-d5dac96639af",
+  "id": "openapi-success-response-code-undefined-trace-operation",
+  "legacyId": "105e20dd-8449-4d71-95c6-d5dac96639af",
   "queryName": "Success Response Code Undefined for Trace Operation",
   "severity": "LOW",
   "category": "Networking and Firewall",

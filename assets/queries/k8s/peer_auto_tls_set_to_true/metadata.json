@@ -1,5 +1,6 @@
 {
-  "id": "ae8827e2-4af9-4baa-9998-87539ae0d6f0",
+  "id": "kubernetes-peer-auto-tls-set-to-true",
+  "legacyId": "ae8827e2-4af9-4baa-9998-87539ae0d6f0",
   "queryName": "Peer auto TLS set to true",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

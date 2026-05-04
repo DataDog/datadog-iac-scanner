@@ -1,5 +1,6 @@
 {
-  "id": "1afbb3fa-cf6c-4a3d-b730-95e9f4df343e",
+  "id": "terraform-aws-elasticache-replication-group-not-encrypted-at-transit",
+  "legacyId": "1afbb3fa-cf6c-4a3d-b730-95e9f4df343e",
   "queryName": "ElastiCache replication group not encrypted at transit",
   "severity": "MEDIUM",
   "category": "Encryption",

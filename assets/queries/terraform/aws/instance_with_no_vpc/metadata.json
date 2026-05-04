@@ -1,5 +1,6 @@
 {
-  "id": "a31a5a29-718a-4ff4-8001-a69e5e4d029e",
+  "id": "terraform-aws-instance-with-no-vpc",
+  "legacyId": "a31a5a29-718a-4ff4-8001-a69e5e4d029e",
   "queryName": "Instance with no VPC",
   "severity": "LOW",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "8657197e-3f87-4694-892b-8144701d83c1",
+  "id": "terraform-common-readiness-probe-is-not-configured",
+  "legacyId": "8657197e-3f87-4694-892b-8144701d83c1",
   "queryName": "Readiness probe is not configured",
   "severity": "MEDIUM",
   "category": "Availability",

@@ -1,5 +1,6 @@
 {
-  "id": "c407c3cf-c409-4b29-b590-db5f4138d332",
+  "id": "terraform-azure-postgresql-server-threat-detection-policy-disabled",
+  "legacyId": "c407c3cf-c409-4b29-b590-db5f4138d332",
   "queryName": "PostgreSQL Server threat detection policy disabled",
   "severity": "MEDIUM",
   "category": "Resource Management",

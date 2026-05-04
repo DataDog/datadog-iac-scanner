@@ -1,5 +1,6 @@
 {
-  "id": "e2c83c1f-84d7-4467-966c-ed41fd015bb9",
+  "id": "terraform-common-ingress-controller-exposes-workload",
+  "legacyId": "e2c83c1f-84d7-4467-966c-ed41fd015bb9",
   "queryName": "Ingress controller exposes workload",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "6c7cfec3-c686-4ed2-bf58-a1ec054b63fc",
+  "id": "crossplane-azure-redis-cache-allows-non-ssl-connections",
+  "legacyId": "6c7cfec3-c686-4ed2-bf58-a1ec054b63fc",
   "queryName": "Redis Cache Allows Non SSL Connections",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

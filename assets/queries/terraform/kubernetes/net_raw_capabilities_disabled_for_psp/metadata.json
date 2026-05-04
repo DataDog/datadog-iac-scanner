@@ -1,5 +1,6 @@
 {
-  "id": "9aa32890-ac1a-45ee-81ca-5164e2098556",
+  "id": "terraform-common-net-raw-capabilities-disabled-for-psp",
+  "legacyId": "9aa32890-ac1a-45ee-81ca-5164e2098556",
   "queryName": "NET_RAW capabilities disabled for PSP",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "ee305555-6b1d-4055-94cf-e22131143c34",
+  "id": "pulumi-common-psp-set-to-privileged",
+  "legacyId": "ee305555-6b1d-4055-94cf-e22131143c34",
   "queryName": "PSP Set To Privileged",
   "severity": "HIGH",
   "category": "Insecure Configurations",

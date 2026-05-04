@@ -1,5 +1,6 @@
 {
-  "id": "b05bb927-2df5-43cc-8d7b-6825c0e71625",
+  "id": "openapi-components-example-definition-unused",
+  "legacyId": "b05bb927-2df5-43cc-8d7b-6825c0e71625",
   "queryName": "Components Example Definition Is Unused",
   "severity": "INFO",
   "category": "Best Practices",

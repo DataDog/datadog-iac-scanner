@@ -1,5 +1,6 @@
 {
-  "id": "a92be1d5-d762-484a-86d6-8cd0907ba100",
+  "id": "openapi-response-operations-body-schema-undefined",
+  "legacyId": "a92be1d5-d762-484a-86d6-8cd0907ba100",
   "queryName": "Response on operations that should have a body has undefined schema (v3)",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

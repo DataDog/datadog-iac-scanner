@@ -1,5 +1,6 @@
 {
-  "id": "5f4735ce-b9ba-4d95-a089-a37a767b716f",
+  "id": "terraform-common-cpu-limits-not-set",
+  "legacyId": "5f4735ce-b9ba-4d95-a089-a37a767b716f",
   "queryName": "CPU limits not set",
   "severity": "LOW",
   "category": "Resource Management",

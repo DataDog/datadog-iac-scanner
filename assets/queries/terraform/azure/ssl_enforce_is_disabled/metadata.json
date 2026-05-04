@@ -1,5 +1,6 @@
 {
-  "id": "0437633b-daa6-4bbc-8526-c0d2443b946e",
+  "id": "terraform-azure-ssl-enforce-is-disabled",
+  "legacyId": "0437633b-daa6-4bbc-8526-c0d2443b946e",
   "queryName": "SSL enforce disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

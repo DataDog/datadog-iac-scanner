@@ -1,5 +1,6 @@
 {
-  "id": "59571246-3f62-4965-a96f-c7d97e269351",
+  "id": "terraform-gcp-google-project-auto-create-network-disabled",
+  "legacyId": "59571246-3f62-4965-a96f-c7d97e269351",
   "queryName": "Google project auto create network disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

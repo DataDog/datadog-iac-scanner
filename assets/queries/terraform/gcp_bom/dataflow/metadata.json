@@ -1,5 +1,6 @@
 {
-  "id": "895ed0d9-6fec-4567-8614-d7a74b599a53",
+  "id": "terraform-gcp-dataflow",
+  "legacyId": "895ed0d9-6fec-4567-8614-d7a74b599a53",
   "queryName": "BOM - GCP Dataflow",
   "severity": "TRACE",
   "category": "Bill Of Materials",

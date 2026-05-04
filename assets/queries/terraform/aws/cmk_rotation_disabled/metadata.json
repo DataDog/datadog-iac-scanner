@@ -1,5 +1,6 @@
 {
-  "id": "22fbfeac-7b5a-421a-8a27-7a2178bb910b",
+  "id": "terraform-aws-cmk-rotation-disabled",
+  "legacyId": "22fbfeac-7b5a-421a-8a27-7a2178bb910b",
   "queryName": "CMK rotation disabled",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "7249e3b0-9231-4af3-bc5f-5daf4988ecbf",
+  "id": "terraform-common-statefulset-without-pod-disruption-budget",
+  "legacyId": "7249e3b0-9231-4af3-bc5f-5daf4988ecbf",
   "queryName": "StatefulSet without PodDisruptionBudget",
   "severity": "LOW",
   "category": "Availability",

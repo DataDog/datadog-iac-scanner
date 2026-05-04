@@ -1,5 +1,6 @@
 {
-  "id": "4a20ebac-1060-4c81-95d1-1f7f620e983b",
+  "id": "kubernetes-pod-or-container-without-limit-range",
+  "legacyId": "4a20ebac-1060-4c81-95d1-1f7f620e983b",
   "queryName": "Pod or container without LimitRange",
   "severity": "LOW",
   "category": "Insecure Configurations",

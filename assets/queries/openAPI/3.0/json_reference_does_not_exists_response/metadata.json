@@ -1,5 +1,6 @@
 {
-  "id": "7a01dfbd-da62-4165-aed7-71349ad42ab4",
+  "id": "openapi-json-reference-does-not-exists-response",
+  "legacyId": "7a01dfbd-da62-4165-aed7-71349ad42ab4",
   "queryName": "Response JSON Reference Does Not Exists (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

@@ -1,5 +1,6 @@
 {
-  "id": "bcd3fc01-5902-4f2a-b05a-227f9bbf5450",
+  "id": "terraform-azure-sql-server-predictable-active-directory-admin-account-name",
+  "legacyId": "bcd3fc01-5902-4f2a-b05a-227f9bbf5450",
   "queryName": "SQL server predictable Active Directory admin account name",
   "severity": "LOW",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "5c281bf8-d9bb-47f2-b909-3f6bb11874ad",
+  "id": "terraform-common-service-type-is-nodeport",
+  "legacyId": "5c281bf8-d9bb-47f2-b909-3f6bb11874ad",
   "queryName": "Service type is NodePort",
   "severity": "LOW",
   "category": "Networking and Firewall",

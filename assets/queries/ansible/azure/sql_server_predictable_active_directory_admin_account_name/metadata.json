@@ -1,5 +1,6 @@
 {
-  "id": "530e8291-2f22-4bab-b7ea-306f1bc2a308",
+  "id": "ansible-azure-sql-server-predictable-active-directory-admin-account-name",
+  "legacyId": "530e8291-2f22-4bab-b7ea-306f1bc2a308",
   "queryName": "SQL Server predictable Active Directory account name",
   "severity": "LOW",
   "category": "Best Practices",

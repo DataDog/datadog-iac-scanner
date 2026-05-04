@@ -1,5 +1,6 @@
 {
-  "id": "f29904c8-6041-4bca-b043-dfa0546b8079",
+  "id": "openapi-json-reference-does-not-exists-callback",
+  "legacyId": "f29904c8-6041-4bca-b043-dfa0546b8079",
   "queryName": "Callback JSON Reference Does Not Exists",
   "severity": "INFO",
   "category": "Structure and Semantics",

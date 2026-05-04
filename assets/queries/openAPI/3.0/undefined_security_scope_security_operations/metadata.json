@@ -1,5 +1,6 @@
 {
-  "id": "462d6a1d-fed9-4d75-bb9e-3de902f35e6e",
+  "id": "openapi-undefined-security-scope-security-operations",
+  "legacyId": "462d6a1d-fed9-4d75-bb9e-3de902f35e6e",
   "queryName": "Undefined Scope 'securityScheme' On 'security' Field On Operations",
   "severity": "LOW",
   "category": "Access Control",

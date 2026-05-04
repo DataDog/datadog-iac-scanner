@@ -1,5 +1,6 @@
 {
-  "id": "98ce8b81-7707-4734-aa39-627c6db3d84b",
+  "id": "kubernetes-auto-tls-set-to-true",
+  "legacyId": "98ce8b81-7707-4734-aa39-627c6db3d84b",
   "queryName": "Auto TLS set to true",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

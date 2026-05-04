@@ -1,5 +1,6 @@
 {
-  "id": "500ce696-d501-41dd-86eb-eceb011a386f",
+  "id": "openapi-schema-object-empty",
+  "legacyId": "500ce696-d501-41dd-86eb-eceb011a386f",
   "queryName": "Schema Object is Empty (v3)",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

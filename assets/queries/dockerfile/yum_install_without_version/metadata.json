@@ -1,5 +1,6 @@
 {
-  "id": "6452c424-1d92-4deb-bb18-a03e95d579c4",
+  "id": "dockerfile-yum-install-without-version",
+  "legacyId": "6452c424-1d92-4deb-bb18-a03e95d579c4",
   "queryName": "yum install without version",
   "severity": "MEDIUM",
   "category": "Supply-Chain",

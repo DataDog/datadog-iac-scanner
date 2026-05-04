@@ -1,5 +1,6 @@
 {
-  "id": "9ef7d25d-9764-4224-9968-fa321c56ef76",
+  "id": "terraform-aws-aws-password-policy-with-unchangeable-passwords",
+  "legacyId": "9ef7d25d-9764-4224-9968-fa321c56ef76",
   "queryName": "AWS password policy with unchangeable passwords",
   "severity": "LOW",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "ad21e616-5026-4b9d-990d-5b007bfe679c",
+  "id": "cloudformation-aws-auto-scaling-group-with-no-associated-elb",
+  "legacyId": "ad21e616-5026-4b9d-990d-5b007bfe679c",
   "queryName": "Auto Scaling group with no associated ELB",
   "severity": "MEDIUM",
   "category": "Availability",

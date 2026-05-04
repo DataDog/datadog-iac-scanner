@@ -1,5 +1,6 @@
 {
-  "id": "ffac8a12-322e-42c1-b9b9-81ff85c39ef7",
+  "id": "terraform-aws-http-port-open",
+  "legacyId": "ffac8a12-322e-42c1-b9b9-81ff85c39ef7",
   "queryName": "HTTP port open to internet",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "b80b14c6-aaa2-4876-b651-8a48b6c32fbf",
+  "id": "terraform-common-network-policy-is-not-targeting-any-pod",
+  "legacyId": "b80b14c6-aaa2-4876-b651-8a48b6c32fbf",
   "queryName": "Network policy is not targeting any pod",
   "severity": "LOW",
   "category": "Networking and Firewall",

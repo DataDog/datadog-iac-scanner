@@ -1,5 +1,6 @@
 {
-  "id": "9630336b-3fed-4096-8173-b9afdfe346a7",
+  "id": "terraform-aws-unscanned-ecr-image",
+  "legacyId": "9630336b-3fed-4096-8173-b9afdfe346a7",
   "queryName": "Unscanned ECR image",
   "severity": "LOW",
   "category": "Observability",

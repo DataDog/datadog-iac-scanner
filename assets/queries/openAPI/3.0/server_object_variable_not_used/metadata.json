@@ -1,5 +1,6 @@
 {
-  "id": "8aee4754-970d-4c5f-8142-a49dfe388b1a",
+  "id": "openapi-server-object-variable-not-used",
+  "legacyId": "8aee4754-970d-4c5f-8142-a49dfe388b1a",
   "queryName": "Server Object Variable Not Used",
   "severity": "INFO",
   "category": "Structure and Semantics",

@@ -1,5 +1,6 @@
 {
-  "id": "1aa4a1ae-5dbb-48a1-9aa2-630ea4be208e",
+  "id": "kubernetes-authorization-mode-rbac-not-set",
+  "legacyId": "1aa4a1ae-5dbb-48a1-9aa2-630ea4be208e",
   "queryName": "Authorization mode RBAC not set",
   "severity": "MEDIUM",
   "category": "Access Control",

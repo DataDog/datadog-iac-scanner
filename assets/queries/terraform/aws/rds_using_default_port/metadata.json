@@ -1,5 +1,6 @@
 {
-  "id": "bca7cc4d-b3a4-4345-9461-eb69c68fcd26",
+  "id": "terraform-aws-rds-using-default-port",
+  "legacyId": "bca7cc4d-b3a4-4345-9461-eb69c68fcd26",
   "queryName": "RDS using default port",
   "severity": "LOW",
   "category": "Networking and Firewall",

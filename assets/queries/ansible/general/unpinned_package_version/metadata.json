@@ -1,5 +1,6 @@
 {
-  "id": "c05e2c20-0a2c-4686-b1f8-5f0a5612d4e8",
+  "id": "ansible-common-unpinned-package-version",
+  "legacyId": "c05e2c20-0a2c-4686-b1f8-5f0a5612d4e8",
   "queryName": "Unpinned package version",
   "severity": "LOW",
   "category": "Supply-Chain",

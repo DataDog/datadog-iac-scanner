@@ -1,5 +1,6 @@
 {
-  "id": "3d658f8b-d988-41a0-a841-40043121de1e",
+  "id": "kubernetes-secrets-as-environment-variables",
+  "legacyId": "3d658f8b-d988-41a0-a841-40043121de1e",
   "queryName": "Secrets used as environment variables",
   "severity": "LOW",
   "category": "Secret Management",

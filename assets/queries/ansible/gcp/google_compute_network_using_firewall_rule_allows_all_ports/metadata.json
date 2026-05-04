@@ -1,5 +1,6 @@
 {
-  "id": "3602d273-3290-47b2-80fa-720162b1a8af",
+  "id": "ansible-gcp-google-compute-network-using-firewall-rule-allows-all-ports",
+  "legacyId": "3602d273-3290-47b2-80fa-720162b1a8af",
   "queryName": "Google Compute network using firewall rule that allows all ports",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

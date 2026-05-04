@@ -1,5 +1,6 @@
 {
-  "id": "9f88c88d-824d-4d9a-b985-e22977046042",
+  "id": "openapi-additional-properties-too-permissive",
+  "legacyId": "9f88c88d-824d-4d9a-b985-e22977046042",
   "queryName": "Additional Properties Too Permissive",
   "severity": "LOW",
   "category": "Insecure Configurations",

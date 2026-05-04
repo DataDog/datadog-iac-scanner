@@ -1,5 +1,6 @@
 {
-  "id": "b9c524a4-fe76-4021-a6a2-cb978fb4fde1",
+  "id": "terraform-alicloud-rds-instance-events-not-logged",
+  "legacyId": "b9c524a4-fe76-4021-a6a2-cb978fb4fde1",
   "queryName": "RDS instance events not logged",
   "severity": "MEDIUM",
   "category": "Observability",

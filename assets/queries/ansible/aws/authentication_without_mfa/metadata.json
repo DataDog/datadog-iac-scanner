@@ -1,5 +1,6 @@
 {
-  "id": "eee107f9-b3d8-45d3-b9c6-43b5a7263ce1",
+  "id": "ansible-aws-authentication-without-mfa",
+  "legacyId": "eee107f9-b3d8-45d3-b9c6-43b5a7263ce1",
   "queryName": "Authentication without MFA",
   "severity": "LOW",
   "category": "Access Control",

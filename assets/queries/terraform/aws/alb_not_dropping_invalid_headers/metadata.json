@@ -1,5 +1,6 @@
 {
-  "id": "6e3fd2ed-5c83-4c68-9679-7700d224d379",
+  "id": "terraform-aws-alb-not-dropping-invalid-headers",
+  "legacyId": "6e3fd2ed-5c83-4c68-9679-7700d224d379",
   "queryName": "ALB not dropping invalid headers",
   "severity": "MEDIUM",
   "category": "Best Practices",

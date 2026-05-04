@@ -1,5 +1,6 @@
 {
-  "id": "2b3c671f-1b76-4741-8789-ed1fe0785dc4",
+  "id": "terraform-azure-postgresql-server-without-connection-throttling",
+  "legacyId": "2b3c671f-1b76-4741-8789-ed1fe0785dc4",
   "queryName": "PostgreSQL server without connection throttling",
   "severity": "MEDIUM",
   "category": "Observability",

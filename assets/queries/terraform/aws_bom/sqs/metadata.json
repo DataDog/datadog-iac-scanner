@@ -1,5 +1,6 @@
 {
-  "id": "baecd2da-492a-4d59-b9dc-29540a1398e0",
+  "id": "terraform-aws-sqs",
+  "legacyId": "baecd2da-492a-4d59-b9dc-29540a1398e0",
   "queryName": "BOM - AWS SQS",
   "severity": "TRACE",
   "category": "Bill Of Materials",

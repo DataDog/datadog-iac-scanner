@@ -1,5 +1,6 @@
 {
-  "id": "0008c003-79aa-42d8-95b8-1c2fe37dbfe6",
+  "id": "dockerfile-multiple-run-add-copy-instructions-listed",
+  "legacyId": "0008c003-79aa-42d8-95b8-1c2fe37dbfe6",
   "queryName": "Multiple RUN, ADD, COPY instructions listed",
   "severity": "LOW",
   "category": "Best Practices",

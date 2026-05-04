@@ -1,5 +1,6 @@
 {
-  "id": "2f652c42-619d-4361-b361-9f599688f8ca",
+  "id": "kubernetes-hpa-targets-invalid-object",
+  "legacyId": "2f652c42-619d-4361-b361-9f599688f8ca",
   "queryName": "HPA targets invalid object",
   "severity": "LOW",
   "category": "Availability",

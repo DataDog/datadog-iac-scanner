@@ -1,5 +1,6 @@
 {
-  "id": "1ffe7bf7-563b-4b3d-a71d-ba6bd8d49b37",
+  "id": "kubernetes-namespace-lifecycle-admission-control-plugin-disabled",
+  "legacyId": "1ffe7bf7-563b-4b3d-a71d-ba6bd8d49b37",
   "queryName": "Namespace lifecycle admission control plugin disabled",
   "severity": "LOW",
   "category": "Build Process",

@@ -1,5 +1,6 @@
 {
-  "id": "c589f42c-7924-4871-aee2-1cede9bc7cbc",
+  "id": "kubernetes-rbac-roles-with-exec-permission",
+  "legacyId": "c589f42c-7924-4871-aee2-1cede9bc7cbc",
   "queryName": "RBAC roles with exec permission",
   "severity": "MEDIUM",
   "category": "Access Control",

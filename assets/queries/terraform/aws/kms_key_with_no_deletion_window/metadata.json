@@ -1,5 +1,6 @@
 {
-  "id": "0b530315-0ea4-497f-b34c-4ff86268f59d",
+  "id": "terraform-aws-kms-key-with-no-deletion-window",
+  "legacyId": "0b530315-0ea4-497f-b34c-4ff86268f59d",
   "queryName": "KMS key with no deletion window",
   "severity": "LOW",
   "category": "Observability",

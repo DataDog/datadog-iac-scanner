@@ -1,5 +1,6 @@
 {
-  "id": "a5375be3-521c-43bb-9eab-e2432e368ee4",
+  "id": "openapi-unknown-prefix",
+  "legacyId": "a5375be3-521c-43bb-9eab-e2432e368ee4",
   "queryName": "Unknown Prefix (v3)",
   "severity": "INFO",
   "category": "Best Practices",

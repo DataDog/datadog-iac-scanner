@@ -1,5 +1,6 @@
 {
-  "id": "2a52567c-abb8-4651-a038-52fa27c77aed",
+  "id": "terraform-common-service-with-external-load-balancer",
+  "legacyId": "2a52567c-abb8-4651-a038-52fa27c77aed",
   "queryName": "Service with external load balancer",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

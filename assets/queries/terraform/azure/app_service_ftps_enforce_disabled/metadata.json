@@ -1,5 +1,6 @@
 {
-  "id": "85da374f-b00f-4832-9d44-84a1ca1e89f8",
+  "id": "terraform-azure-app-service-ftps-enforce-disabled",
+  "legacyId": "85da374f-b00f-4832-9d44-84a1ca1e89f8",
   "queryName": "App Service FTPS enforce disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

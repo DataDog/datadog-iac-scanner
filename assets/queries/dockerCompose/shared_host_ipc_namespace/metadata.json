@@ -1,5 +1,6 @@
 {
-  "id": "baa3890f-bed7-46f5-ab8f-1da8fc91c729",
+  "id": "dockercompose-shared-host-ipc-namespace",
+  "legacyId": "baa3890f-bed7-46f5-ab8f-1da8fc91c729",
   "queryName": "Shared Host IPC Namespace",
   "severity": "MEDIUM",
   "category": "Resource Management",

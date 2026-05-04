@@ -1,5 +1,6 @@
 {
-  "id": "c87749b3-ff10-41f5-9df2-c421e8151759",
+  "id": "terraform-azure-function-app-managed-identity-disabled",
+  "legacyId": "c87749b3-ff10-41f5-9df2-c421e8151759",
   "queryName": "Function App managed identity disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

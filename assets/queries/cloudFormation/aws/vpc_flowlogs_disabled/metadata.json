@@ -1,5 +1,6 @@
 {
-  "id": "f6d299d2-21eb-41cc-b1e1-fe12d857500b",
+  "id": "cloudformation-aws-vpc-flowlogs-disabled",
+  "legacyId": "f6d299d2-21eb-41cc-b1e1-fe12d857500b",
   "queryName": "VPC Flow Logs disabled",
   "severity": "MEDIUM",
   "category": "Observability",

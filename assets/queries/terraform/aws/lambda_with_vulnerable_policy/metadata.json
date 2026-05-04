@@ -1,5 +1,6 @@
 {
-  "id": "ad9dabc7-7839-4bae-a957-aa9120013f39",
+  "id": "terraform-aws-lambda-with-vulnerable-policy",
+  "legacyId": "ad9dabc7-7839-4bae-a957-aa9120013f39",
   "queryName": "Lambda with vulnerable policy",
   "severity": "HIGH",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "6ad087d7-a509-4b20-b853-9ef6f5ebaa98",
+  "id": "ansible-aws-cloudtrail-multi-region-disabled",
+  "legacyId": "6ad087d7-a509-4b20-b853-9ef6f5ebaa98",
   "queryName": "CloudTrail multi-region is disabled",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "a4edb7e1-c0e0-4f7f-9d7c-d1b603e81ad5",
+  "id": "terraform-common-databricks-permissions",
+  "legacyId": "a4edb7e1-c0e0-4f7f-9d7c-d1b603e81ad5",
   "queryName": "Databricks cluster or job with no or insecure permissions",
   "severity": "HIGH",
   "category": "Insecure Configurations",

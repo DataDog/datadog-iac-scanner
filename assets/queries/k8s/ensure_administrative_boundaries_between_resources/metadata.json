@@ -1,5 +1,6 @@
 {
-  "id": "e84eaf4d-2f45-47b2-abe8-e581b06deb66",
+  "id": "kubernetes-ensure-administrative-boundaries-between-resources",
+  "legacyId": "e84eaf4d-2f45-47b2-abe8-e581b06deb66",
   "queryName": "Ensure administrative boundaries between resources",
   "severity": "LOW",
   "category": "Access Control",

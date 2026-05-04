@@ -1,5 +1,6 @@
 {
-  "id": "59ebb4f3-2a6c-46dc-b4f0-cc5418dcddcd",
+  "id": "serverlessfw-serverless-role-with-full-privileges",
+  "legacyId": "59ebb4f3-2a6c-46dc-b4f0-cc5418dcddcd",
   "queryName": "Serverless Role With Full Privileges",
   "severity": "HIGH",
   "category": "Access Control",

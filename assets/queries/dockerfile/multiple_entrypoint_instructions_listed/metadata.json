@@ -1,5 +1,6 @@
 {
-  "id": "6938958b-3f1a-451c-909b-baeee14bdc97",
+  "id": "dockerfile-multiple-entrypoint-instructions-listed",
+  "legacyId": "6938958b-3f1a-451c-909b-baeee14bdc97",
   "queryName": "Multiple ENTRYPOINT instructions listed",
   "severity": "LOW",
   "category": "Build Process",

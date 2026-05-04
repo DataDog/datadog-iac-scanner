@@ -1,5 +1,6 @@
 {
-  "id": "539e4557-d2b5-4d57-a001-cb01140a4e2d",
+  "id": "terraform-common-cluster-gcp-attributes",
+  "legacyId": "539e4557-d2b5-4d57-a001-cb01140a4e2d",
   "queryName": "Check Databricks cluster GCP attribute best practices",
   "severity": "LOW",
   "category": "Best Practices",

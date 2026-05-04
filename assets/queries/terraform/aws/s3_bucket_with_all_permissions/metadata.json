@@ -1,5 +1,6 @@
 {
-  "id": "a4966c4f-9141-48b8-a564-ffe9959945bc",
+  "id": "terraform-aws-s3-bucket-with-all-permissions",
+  "legacyId": "a4966c4f-9141-48b8-a564-ffe9959945bc",
   "queryName": "S3 bucket with all permissions",
   "severity": "CRITICAL",
   "category": "Access Control",

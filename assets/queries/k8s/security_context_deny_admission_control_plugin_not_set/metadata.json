@@ -1,5 +1,6 @@
 {
-  "id": "6a68bebe-c021-492e-8ddb-55b0567fb768",
+  "id": "kubernetes-security-context-deny-admission-control-plugin-not-set",
+  "legacyId": "6a68bebe-c021-492e-8ddb-55b0567fb768",
   "queryName": "Security context deny admission control plugin not set",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

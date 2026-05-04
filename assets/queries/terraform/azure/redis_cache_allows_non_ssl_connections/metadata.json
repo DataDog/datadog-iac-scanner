@@ -1,5 +1,6 @@
 {
-  "id": "e29a75e6-aba3-4896-b42d-b87818c16b58",
+  "id": "terraform-azure-redis-cache-allows-non-ssl-connections",
+  "legacyId": "e29a75e6-aba3-4896-b42d-b87818c16b58",
   "queryName": "Redis cache allows non SSL connections",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "95588189-1abd-4df1-9588-b0a5034f9e87",
+  "id": "pulumi-common-missing-app-armor-config",
+  "legacyId": "95588189-1abd-4df1-9588-b0a5034f9e87",
   "queryName": "Missing App Armor Config",
   "severity": "MEDIUM",
   "category": "Access Control",

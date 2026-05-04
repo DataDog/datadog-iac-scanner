@@ -1,5 +1,6 @@
 {
-  "id": "9c3ea128-7e9a-4b4c-8a32-75ad17a2d3ae",
+  "id": "openapi-components-response-definition-unused",
+  "legacyId": "9c3ea128-7e9a-4b4c-8a32-75ad17a2d3ae",
   "queryName": "Components Response Definition Is Unused",
   "severity": "INFO",
   "category": "Best Practices",

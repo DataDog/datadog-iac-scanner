@@ -1,5 +1,6 @@
 {
-  "id": "4216ebac-d74c-4423-b437-35025cb88af5",
+  "id": "terraform-azure-network-interfaces-ip-forwarding-enabled",
+  "legacyId": "4216ebac-d74c-4423-b437-35025cb88af5",
   "queryName": "Network interfaces IP forwarding enabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

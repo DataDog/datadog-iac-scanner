@@ -1,5 +1,6 @@
 {
-  "id": "9b6b0f38-92a2-41f9-b881-3a1083d99f1b",
+  "id": "dockerfile-run-utilities-and-posix-commands",
+  "legacyId": "9b6b0f38-92a2-41f9-b881-3a1083d99f1b",
   "queryName": "Run utilities and POSIX commands",
   "severity": "LOW",
   "category": "Supply-Chain",

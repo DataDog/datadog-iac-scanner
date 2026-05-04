@@ -1,5 +1,6 @@
 {
-  "id": "02d9c71f-3ee8-4986-9c27-1a20d0d19bfc",
+  "id": "dockerfile-unpinned-package-version-in-pip-install",
+  "legacyId": "02d9c71f-3ee8-4986-9c27-1a20d0d19bfc",
   "queryName": "Unpinned package version in pip install",
   "severity": "MEDIUM",
   "category": "Supply-Chain",

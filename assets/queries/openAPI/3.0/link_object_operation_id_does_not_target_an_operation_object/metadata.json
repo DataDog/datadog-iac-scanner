@@ -1,5 +1,6 @@
 {
-  "id": "c5bb7461-aa57-470b-a714-3bc3d74f4669",
+  "id": "openapi-link-object-operation-id-does-not-target-an-operation-object",
+  "legacyId": "c5bb7461-aa57-470b-a714-3bc3d74f4669",
   "queryName": "Link Object OperationId Does Not Target Operation Object",
   "severity": "INFO",
   "category": "Structure and Semantics",

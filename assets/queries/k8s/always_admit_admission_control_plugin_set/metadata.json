@@ -1,5 +1,6 @@
 {
-  "id": "ce30e584-b33f-4c7d-b418-a3d7027f8f60",
+  "id": "kubernetes-always-admit-admission-control-plugin-set",
+  "legacyId": "ce30e584-b33f-4c7d-b418-a3d7027f8f60",
   "queryName": "Always admit admission control plugin set",
   "severity": "MEDIUM",
   "category": "Access Control",

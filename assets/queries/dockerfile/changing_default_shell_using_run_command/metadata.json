@@ -1,5 +1,6 @@
 {
-  "id": "8a301064-c291-4b20-adcb-403fe7fd95fd",
+  "id": "dockerfile-changing-default-shell-using-run-command",
+  "legacyId": "8a301064-c291-4b20-adcb-403fe7fd95fd",
   "queryName": "Changing default shell using RUN command",
   "severity": "MEDIUM",
   "category": "Best Practices",

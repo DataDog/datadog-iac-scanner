@@ -1,5 +1,6 @@
 {
-  "id": "dd29336b-fe57-445b-a26e-e6aa867ae609",
+  "id": "kubernetes-container-is-privileged",
+  "legacyId": "dd29336b-fe57-445b-a26e-e6aa867ae609",
   "queryName": "Container is privileged",
   "severity": "HIGH",
   "category": "Insecure Configurations",

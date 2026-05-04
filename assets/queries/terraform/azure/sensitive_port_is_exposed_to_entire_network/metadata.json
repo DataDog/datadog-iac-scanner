@@ -1,5 +1,6 @@
 {
-  "id": "594c198b-4d79-41b8-9b36-fde13348b619",
+  "id": "terraform-azure-sensitive-port-is-exposed-to-entire-network",
+  "legacyId": "594c198b-4d79-41b8-9b36-fde13348b619",
   "queryName": "Sensitive port is exposed to entire network",
   "severity": "HIGH",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "50cb6c3b-c878-4b88-b50e-d1421bada9e8",
+  "id": "googledeploymentmanager-gcp-rdp-access-is-not-restricted",
+  "legacyId": "50cb6c3b-c878-4b88-b50e-d1421bada9e8",
   "queryName": "RDP Access Is Not Restricted",
   "severity": "HIGH",
   "category": "Networking and Firewall",

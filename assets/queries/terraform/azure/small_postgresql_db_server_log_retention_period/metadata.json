@@ -1,5 +1,6 @@
 {
-  "id": "261a83f8-dd72-4e8c-b5e1-ebf06e8fe606",
+  "id": "terraform-azure-small-postgresql-db-server-log-retention-period",
+  "legacyId": "261a83f8-dd72-4e8c-b5e1-ebf06e8fe606",
   "queryName": "Small PostgreSQL DB server log retention period",
   "severity": "LOW",
   "category": "Observability",

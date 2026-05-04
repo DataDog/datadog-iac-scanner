@@ -1,5 +1,6 @@
 {
-  "id": "c2f15af3-66a0-4176-a56e-e4711e502e5c",
+  "id": "ansible-aws-hardcoded-aws-access-key",
+  "legacyId": "c2f15af3-66a0-4176-a56e-e4711e502e5c",
   "queryName": "Hardcoded AWS access key",
   "severity": "HIGH",
   "category": "Secret Management",

@@ -1,5 +1,6 @@
 {
-  "id": "abcb818b-5af7-4d72-aba9-6dd84956b451",
+  "id": "terraform-common-using-default-namespace",
+  "legacyId": "abcb818b-5af7-4d72-aba9-6dd84956b451",
   "queryName": "Using default namespace",
   "severity": "LOW",
   "category": "Insecure Configurations",

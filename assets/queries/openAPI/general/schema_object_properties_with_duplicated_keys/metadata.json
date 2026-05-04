@@ -1,5 +1,6 @@
 {
-  "id": "10c61e4b-eed5-49cf-9c7d-d4bf02e9edfa",
+  "id": "openapi-schema-object-properties-with-duplicated-keys",
+  "legacyId": "10c61e4b-eed5-49cf-9c7d-d4bf02e9edfa",
   "queryName": "Schema Object Properties With Duplicated Keys (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

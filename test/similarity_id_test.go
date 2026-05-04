@@ -276,6 +276,7 @@ func createInspectorAndGetVulnerabilities(ctx context.Context, t testing.TB,
 			// Override metadata ID with custom QueryID for testing
 			if testParams.queryID() != query.Metadata["id"] {
 				query.Metadata["id"] = testParams.queryID()
+				query.Metadata["legacyId"] = testParams.queryID()
 			}
 
 			q := model.QueryMetadata{

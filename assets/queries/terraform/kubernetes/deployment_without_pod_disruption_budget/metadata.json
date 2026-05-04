@@ -1,5 +1,6 @@
 {
-  "id": "a05331ee-1653-45cb-91e6-13637a76e4f0",
+  "id": "terraform-common-deployment-without-pod-disruption-budget",
+  "legacyId": "a05331ee-1653-45cb-91e6-13637a76e4f0",
   "queryName": "Deployment without PodDisruptionBudget",
   "severity": "LOW",
   "category": "Availability",

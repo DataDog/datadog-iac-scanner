@@ -1,5 +1,6 @@
 {
-  "id": "8263f146-5e03-43e0-9cfe-db960d56d1e7",
+  "id": "terraform-azure-storage-account-not-using-latest-tls-encryption-version",
+  "legacyId": "8263f146-5e03-43e0-9cfe-db960d56d1e7",
   "queryName": "Storage account not using latest TLS encryption version",
   "severity": "MEDIUM",
   "category": "Encryption",

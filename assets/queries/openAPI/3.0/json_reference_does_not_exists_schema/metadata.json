@@ -1,5 +1,6 @@
 {
-  "id": "015eac96-6313-43c0-84e5-81b1374fa637",
+  "id": "openapi-json-reference-does-not-exists-schema",
+  "legacyId": "015eac96-6313-43c0-84e5-81b1374fa637",
   "queryName": "Schema JSON Reference Does Not Exists (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

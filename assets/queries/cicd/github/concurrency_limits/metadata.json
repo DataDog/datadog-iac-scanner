@@ -1,5 +1,6 @@
 {
-  "id": "f6a7b8c9-d0e1-42f3-a4b5-c6d7e8f9a0b1",
+  "id": "cicd-common-concurrency-limits",
+  "legacyId": "f6a7b8c9-d0e1-42f3-a4b5-c6d7e8f9a0b1",
   "queryName": "Concurrency limits",
   "severity": "LOW",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "940ddce2-26bd-4e31-a9b4-382714f73231",
+  "id": "terraform-nifcloud-db-security-group-description-undefined",
+  "legacyId": "940ddce2-26bd-4e31-a9b4-382714f73231",
   "queryName": "NIFCLOUD RDB undefined description to DB security group",
   "severity": "LOW",
   "category": "Best Practices",

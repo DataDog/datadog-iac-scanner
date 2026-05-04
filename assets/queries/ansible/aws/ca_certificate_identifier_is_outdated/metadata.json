@@ -1,5 +1,6 @@
 {
-  "id": "5eccd62d-8b4d-46d3-83ea-1879f3cbd3ce",
+  "id": "ansible-aws-ca-certificate-identifier-is-outdated",
+  "legacyId": "5eccd62d-8b4d-46d3-83ea-1879f3cbd3ce",
   "queryName": "CA certificate identifier is outdated",
   "severity": "MEDIUM",
   "category": "Encryption",

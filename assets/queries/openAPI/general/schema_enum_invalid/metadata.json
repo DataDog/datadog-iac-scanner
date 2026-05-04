@@ -1,5 +1,6 @@
 {
-  "id": "03856cb2-e46c-4daf-bfbf-214ec93c882b",
+  "id": "openapi-schema-enum-invalid",
+  "legacyId": "03856cb2-e46c-4daf-bfbf-214ec93c882b",
   "queryName": "Schema Enum Invalid (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

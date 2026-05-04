@@ -1,5 +1,6 @@
 {
-  "id": "c38d630d-a415-4e3e-bac2-65475979ba88",
+  "id": "openapi-body-parameter-with-wrong-property",
+  "legacyId": "c38d630d-a415-4e3e-bac2-65475979ba88",
   "queryName": "Body Parameter With Wrong Property",
   "severity": "INFO",
   "category": "Structure and Semantics",

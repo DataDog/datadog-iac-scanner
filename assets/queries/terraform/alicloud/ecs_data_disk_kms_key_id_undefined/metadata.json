@@ -1,5 +1,6 @@
 {
-  "id": "f262118c-1ac6-4bb3-8495-cc48f1775b85",
+  "id": "terraform-alicloud-ecs-data-disk-kms-key-id-undefined",
+  "legacyId": "f262118c-1ac6-4bb3-8495-cc48f1775b85",
   "queryName": "ECS data disk KMS key ID undefined",
   "severity": "HIGH",
   "category": "Encryption",

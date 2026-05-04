@@ -1,5 +1,6 @@
 {
-  "id": "6cf42c97-facd-4fda-b8af-ea4529123355",
+  "id": "kubernetes-kubelet-protect-kernel-defaults-set-to-false",
+  "legacyId": "6cf42c97-facd-4fda-b8af-ea4529123355",
   "queryName": "Kubelet protect-kernel-defaults set to false",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

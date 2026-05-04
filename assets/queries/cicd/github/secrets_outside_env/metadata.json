@@ -1,5 +1,6 @@
 {
-  "id": "176395cd-3c17-4e6b-b521-8eb73705c1d1",
+  "id": "cicd-common-secrets-outside-env",
+  "legacyId": "176395cd-3c17-4e6b-b521-8eb73705c1d1",
   "queryName": "Secrets outside environment",
   "severity": "MEDIUM",
   "category": "Access Control",

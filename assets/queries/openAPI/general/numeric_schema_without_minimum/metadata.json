@@ -1,5 +1,6 @@
 {
-  "id": "181bd815-767e-4e95-a24d-bb3c87328e19",
+  "id": "openapi-numeric-schema-without-minimum",
+  "legacyId": "181bd815-767e-4e95-a24d-bb3c87328e19",
   "queryName": "Numeric Schema Without Minimum (v3)",
   "severity": "LOW",
   "category": "Insecure Configurations",

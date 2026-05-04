@@ -1,5 +1,6 @@
 {
-  "id": "acb6b4e2-a086-4f35-aefd-4db6ea51ada2",
+  "id": "terraform-aws-elasticsearch-logs-disabled",
+  "legacyId": "acb6b4e2-a086-4f35-aefd-4db6ea51ada2",
   "queryName": "Elasticsearch log disabled",
   "severity": "MEDIUM",
   "category": "Observability",

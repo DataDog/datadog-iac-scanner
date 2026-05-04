@@ -1,5 +1,6 @@
 {
-  "id": "2da46be4-4317-4650-9285-56d7103c4f93",
+  "id": "openapi-global-security-using-password-flow",
+  "legacyId": "2da46be4-4317-4650-9285-56d7103c4f93",
   "queryName": "Global Security Using Password Flow",
   "severity": "MEDIUM",
   "category": "Access Control",

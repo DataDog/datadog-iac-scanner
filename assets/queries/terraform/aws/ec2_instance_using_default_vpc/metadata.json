@@ -1,5 +1,6 @@
 {
-  "id": "7e4a6e76-568d-43ef-8c4e-36dea481bff1",
+  "id": "terraform-aws-ec2-instance-using-default-vpc",
+  "legacyId": "7e4a6e76-568d-43ef-8c4e-36dea481bff1",
   "queryName": "EC2 instance using default VPC",
   "severity": "LOW",
   "category": "Networking and Firewall",

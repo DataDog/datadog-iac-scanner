@@ -1,5 +1,6 @@
 {
-  "id": "f922827f-aab6-447c-832a-e1ff63312bd3",
+  "id": "kubernetes-common-container-runs-unmasked",
+  "legacyId": "f922827f-aab6-447c-832a-e1ff63312bd3",
   "queryName": "Container with unmasked /proc access",
   "severity": "HIGH",
   "category": "Insecure Configurations",

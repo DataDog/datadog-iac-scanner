@@ -1,5 +1,6 @@
 {
-  "id": "cb2f612b-ed42-4ff5-9fb9-255c73d39a18",
+  "id": "cloudformation-aws-serverless-function-without-dead-letter-queue",
+  "legacyId": "cb2f612b-ed42-4ff5-9fb9-255c73d39a18",
   "queryName": "Serverless function without dead-letter queue",
   "severity": "LOW",
   "category": "Insecure Configurations",

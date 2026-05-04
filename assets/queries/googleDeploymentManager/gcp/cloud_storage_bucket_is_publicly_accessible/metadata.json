@@ -1,5 +1,6 @@
 {
-  "id": "77c1fa3f-83dc-4c9d-bfed-e1d0cc8fd9dc",
+  "id": "googledeploymentmanager-gcp-cloud-storage-bucket-is-publicly-accessible",
+  "legacyId": "77c1fa3f-83dc-4c9d-bfed-e1d0cc8fd9dc",
   "queryName": "Cloud Storage Bucket Is Publicly Accessible",
   "severity": "MEDIUM",
   "category": "Access Control",

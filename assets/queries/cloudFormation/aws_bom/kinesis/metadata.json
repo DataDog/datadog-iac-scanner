@@ -1,5 +1,6 @@
 {
-  "id": "d53323be-dde6-4457-9a43-42df737e71d2",
+  "id": "cloudformation-aws-kinesis",
+  "legacyId": "d53323be-dde6-4457-9a43-42df737e71d2",
   "queryName": "BOM - AWS Kinesis",
   "severity": "TRACE",
   "category": "Bill Of Materials",

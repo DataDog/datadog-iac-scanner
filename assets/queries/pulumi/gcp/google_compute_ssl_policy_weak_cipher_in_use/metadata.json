@@ -1,5 +1,6 @@
 {
-  "id": "965e8830-2bec-4b9b-a7f0-24dbc200a68f",
+  "id": "pulumi-gcp-google-compute-ssl-policy-weak-cipher-in-use",
+  "legacyId": "965e8830-2bec-4b9b-a7f0-24dbc200a68f",
   "queryName": "Google Compute SSL Policy Weak Cipher In Use",
   "severity": "MEDIUM",
   "category": "Encryption",

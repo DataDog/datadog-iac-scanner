@@ -1,5 +1,6 @@
 {
-  "id": "26f06397-36d8-4ce7-b993-17711261d777",
+  "id": "openapi-invalid-content-type-for-multiple-files-upload",
+  "legacyId": "26f06397-36d8-4ce7-b993-17711261d777",
   "queryName": "Invalid Content Type For Multiple Files Upload",
   "severity": "INFO",
   "category": "Structure and Semantics",

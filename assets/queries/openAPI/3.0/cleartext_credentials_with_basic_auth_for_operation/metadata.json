@@ -1,5 +1,6 @@
 {
-  "id": "86b1fa30-9790-4980-994d-a27e0f6f27c1",
+  "id": "openapi-cleartext-credentials-with-basic-auth-for-operation",
+  "legacyId": "86b1fa30-9790-4980-994d-a27e0f6f27c1",
   "queryName": "Cleartext Credentials With Basic Authentication For Operation",
   "severity": "MEDIUM",
   "category": "Access Control",

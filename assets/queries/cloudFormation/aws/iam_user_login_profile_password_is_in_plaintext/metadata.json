@@ -1,5 +1,6 @@
 {
-  "id": "06adef8c-c284-4de7-aad2-af43b07a8ca1",
+  "id": "cloudformation-aws-iam-user-login-profile-password-is-in-plaintext",
+  "legacyId": "06adef8c-c284-4de7-aad2-af43b07a8ca1",
   "queryName": "IAM user LoginProfile password is in plaintext",
   "severity": "HIGH",
   "category": "Secret Management",

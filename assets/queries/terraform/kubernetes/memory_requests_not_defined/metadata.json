@@ -1,5 +1,6 @@
 {
-  "id": "21719347-d02b-497d-bda4-04a03c8e5b61",
+  "id": "terraform-common-memory-requests-not-defined",
+  "legacyId": "21719347-d02b-497d-bda4-04a03c8e5b61",
   "queryName": "Memory requests not defined",
   "severity": "MEDIUM",
   "category": "Resource Management",

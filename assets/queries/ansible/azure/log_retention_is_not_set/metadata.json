@@ -1,5 +1,6 @@
 {
-  "id": "0461b4fd-21ef-4687-929e-484ee4796785",
+  "id": "ansible-azure-log-retention-is-not-set",
+  "legacyId": "0461b4fd-21ef-4687-929e-484ee4796785",
   "queryName": "Log retention is not set",
   "severity": "MEDIUM",
   "category": "Observability",

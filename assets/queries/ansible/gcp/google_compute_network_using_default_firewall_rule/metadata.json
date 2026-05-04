@@ -1,5 +1,6 @@
 {
-  "id": "29b8224a-60e9-4011-8ac2-7916a659841f",
+  "id": "ansible-gcp-google-compute-network-using-default-firewall-rule",
+  "legacyId": "29b8224a-60e9-4011-8ac2-7916a659841f",
   "queryName": "Google Compute network using default firewall rule",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

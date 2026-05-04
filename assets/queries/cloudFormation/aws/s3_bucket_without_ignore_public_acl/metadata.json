@@ -1,5 +1,6 @@
 {
-  "id": "6c8d51af-218d-4bfb-94a9-94eabaa0703a",
+  "id": "cloudformation-aws-s3-bucket-without-ignore-public-acl",
+  "legacyId": "6c8d51af-218d-4bfb-94a9-94eabaa0703a",
   "queryName": "S3 bucket without ignore public ACL",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

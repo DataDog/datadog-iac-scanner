@@ -1,5 +1,6 @@
 {
-  "id": "ba239cb9-f342-4c20-812d-7b5a2aa6969e",
+  "id": "openapi-non-oauth2-security-requirement-defining-oauth2-scopes",
+  "legacyId": "ba239cb9-f342-4c20-812d-7b5a2aa6969e",
   "queryName": "Non OAuth2 Security Requirement Defining OAuth2 Scopes",
   "severity": "MEDIUM",
   "category": "Structure and Semantics",

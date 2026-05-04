@@ -1,5 +1,6 @@
 {
-  "id": "4bc4dd4c-7d8d-405e-a0fb-57fa4c31b4d9",
+  "id": "terraform-aws-s3-bucket-policy-accepts-http-requests",
+  "legacyId": "4bc4dd4c-7d8d-405e-a0fb-57fa4c31b4d9",
   "queryName": "S3 bucket policy accepts HTTP requests",
   "severity": "MEDIUM",
   "category": "Encryption",

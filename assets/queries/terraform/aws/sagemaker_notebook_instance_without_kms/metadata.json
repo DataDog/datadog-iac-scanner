@@ -1,5 +1,6 @@
 {
-  "id": "f3674e0c-f6be-43fa-b71c-bf346d1aed99",
+  "id": "terraform-aws-sagemaker-notebook-instance-without-kms",
+  "legacyId": "f3674e0c-f6be-43fa-b71c-bf346d1aed99",
   "queryName": "SageMaker notebook instance without KMS",
   "severity": "HIGH",
   "category": "Encryption",

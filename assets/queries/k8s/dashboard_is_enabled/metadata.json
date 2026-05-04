@@ -1,5 +1,6 @@
 {
-  "id": "d2ad057f-0928-41ef-a83c-f59203bb855b",
+  "id": "kubernetes-dashboard-is-enabled",
+  "legacyId": "d2ad057f-0928-41ef-a83c-f59203bb855b",
   "queryName": "Dashboard is enabled",
   "severity": "LOW",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "0ad60203-c050-4115-83b6-b94bde92541d",
+  "id": "terraform-common-container-runs-unmasked",
+  "legacyId": "0ad60203-c050-4115-83b6-b94bde92541d",
   "queryName": "Container runs unmasked",
   "severity": "HIGH",
   "category": "Insecure Configurations",

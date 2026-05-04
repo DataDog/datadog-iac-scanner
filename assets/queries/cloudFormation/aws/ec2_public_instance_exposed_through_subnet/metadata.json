@@ -1,5 +1,6 @@
 {
-  "id": "c44c95fc-ae92-4bb8-bdf8-bb9bc412004a",
+  "id": "cloudformation-aws-ec2-public-instance-exposed-through-subnet",
+  "legacyId": "c44c95fc-ae92-4bb8-bdf8-bb9bc412004a",
   "queryName": "EC2 public instance exposed through subnet",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

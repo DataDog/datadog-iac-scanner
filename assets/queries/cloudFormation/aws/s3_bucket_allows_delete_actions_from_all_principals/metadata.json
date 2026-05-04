@@ -1,5 +1,6 @@
 {
-  "id": "acc78859-765e-4011-a229-a65ea57db252",
+  "id": "cloudformation-aws-s3-bucket-allows-delete-actions-from-all-principals",
+  "legacyId": "acc78859-765e-4011-a229-a65ea57db252",
   "queryName": "S3 bucket allows delete action from all principals",
   "severity": "CRITICAL",
   "category": "Access Control",

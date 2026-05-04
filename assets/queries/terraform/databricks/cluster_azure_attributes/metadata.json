@@ -1,5 +1,6 @@
 {
-  "id": "38028698-e663-4ef7-aa92-773fef0ca86f",
+  "id": "terraform-common-cluster-azure-attributes",
+  "legacyId": "38028698-e663-4ef7-aa92-773fef0ca86f",
   "queryName": "Check Databricks cluster Azure attribute best practices",
   "severity": "LOW",
   "category": "Best Practices",

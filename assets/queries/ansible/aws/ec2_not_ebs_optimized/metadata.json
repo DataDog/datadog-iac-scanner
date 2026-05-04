@@ -1,5 +1,6 @@
 {
-  "id": "338b6cab-961d-4998-bb49-e5b6a11c9a5c",
+  "id": "ansible-aws-ec2-not-ebs-optimized",
+  "legacyId": "338b6cab-961d-4998-bb49-e5b6a11c9a5c",
   "queryName": "EC2 instance is not EBS optimized",
   "severity": "LOW",
   "category": "Best Practices",

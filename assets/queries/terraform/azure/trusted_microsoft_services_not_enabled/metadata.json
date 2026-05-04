@@ -1,5 +1,6 @@
 {
-  "id": "5400f379-a347-4bdd-a032-446465fdcc6f",
+  "id": "terraform-azure-trusted-microsoft-services-not-enabled",
+  "legacyId": "5400f379-a347-4bdd-a032-446465fdcc6f",
   "queryName": "Trusted Microsoft services not enabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

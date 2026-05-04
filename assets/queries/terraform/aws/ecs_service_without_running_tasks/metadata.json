@@ -1,5 +1,6 @@
 {
-  "id": "91f16d09-689e-4926-aca7-155157f634ed",
+  "id": "terraform-aws-ecs-service-without-running-tasks",
+  "legacyId": "91f16d09-689e-4926-aca7-155157f634ed",
   "queryName": "ECS service without running tasks",
   "severity": "LOW",
   "category": "Availability",

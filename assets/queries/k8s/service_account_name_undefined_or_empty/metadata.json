@@ -1,5 +1,6 @@
 {
-  "id": "591ade62-d6b0-4580-b1ae-209f80ba1cd9",
+  "id": "kubernetes-service-account-name-undefined-or-empty",
+  "legacyId": "591ade62-d6b0-4580-b1ae-209f80ba1cd9",
   "queryName": "Service account name undefined or empty",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

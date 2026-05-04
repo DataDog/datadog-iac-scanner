@@ -1,5 +1,6 @@
 {
-  "id": "221e0658-cb2a-44e3-b08a-db96a341d6fa",
+  "id": "dockercompose-pids-limit-not-set",
+  "legacyId": "221e0658-cb2a-44e3-b08a-db96a341d6fa",
   "queryName": "Pids Limit Not Set",
   "severity": "MEDIUM",
   "category": "Resource Management",

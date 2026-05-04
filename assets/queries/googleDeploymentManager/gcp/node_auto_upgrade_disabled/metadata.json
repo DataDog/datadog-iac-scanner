@@ -1,5 +1,6 @@
 {
-  "id": "dc5c5fee-6c53-43b0-ab11-4c660e064aaf",
+  "id": "googledeploymentmanager-gcp-node-auto-upgrade-disabled",
+  "legacyId": "dc5c5fee-6c53-43b0-ab11-4c660e064aaf",
   "queryName": "Node Auto Upgrade Disabled",
   "severity": "MEDIUM",
   "category": "Resource Management",

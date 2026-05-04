@@ -1,5 +1,6 @@
 {
-  "id": "48388bd2-7201-4dcc-b56d-e8a9efa58fad",
+  "id": "terraform-common-psp-with-added-capabilities",
+  "legacyId": "48388bd2-7201-4dcc-b56d-e8a9efa58fad",
   "queryName": "PSP with added capabilities",
   "severity": "HIGH",
   "category": "Insecure Configurations",

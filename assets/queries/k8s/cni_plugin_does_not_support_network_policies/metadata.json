@@ -1,5 +1,6 @@
 {
-  "id": "03aabc8c-35d6-481e-9c85-20139cf72d23",
+  "id": "kubernetes-cni-plugin-does-not-support-network-policies",
+  "legacyId": "03aabc8c-35d6-481e-9c85-20139cf72d23",
   "queryName": "CNI plugin does not support network policies",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

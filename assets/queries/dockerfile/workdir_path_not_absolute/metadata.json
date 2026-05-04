@@ -1,5 +1,6 @@
 {
-  "id": "6b376af8-cfe8-49ab-a08d-f32de23661a4",
+  "id": "dockerfile-workdir-path-not-absolute",
+  "legacyId": "6b376af8-cfe8-49ab-a08d-f32de23661a4",
   "queryName": "WORKDIR path not absolute",
   "severity": "LOW",
   "category": "Build Process",

@@ -1,5 +1,6 @@
 {
-  "id": "56dad03e-e94f-4dd6-93a4-c253a03ff7a0",
+  "id": "terraform-azure-cosmos-db-account-without-tags",
+  "legacyId": "56dad03e-e94f-4dd6-93a4-c253a03ff7a0",
   "queryName": "Cosmos DB account without tags",
   "severity": "LOW",
   "category": "Build Process",

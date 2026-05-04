@@ -1,5 +1,6 @@
 {
-  "id": "9587c890-0524-40c2-9ce2-663af7c2f063",
+  "id": "kubernetes-service-account-admission-control-plugin-disabled",
+  "legacyId": "9587c890-0524-40c2-9ce2-663af7c2f063",
   "queryName": "Service account admission control plugin disabled",
   "severity": "MEDIUM",
   "category": "Access Control",

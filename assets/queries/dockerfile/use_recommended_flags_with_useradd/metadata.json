@@ -1,5 +1,6 @@
 {
-  "id": "44fbf45c-87a6-3b95-64ef-07e1fef7395b",
+  "id": "dockerfile-use-recommended-flags-with-useradd",
+  "legacyId": "44fbf45c-87a6-3b95-64ef-07e1fef7395b",
   "queryName": "Use recommended flags with useradd",
   "severity": "MEDIUM",
   "category": "Best Practices",

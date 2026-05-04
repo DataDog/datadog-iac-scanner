@@ -1,5 +1,6 @@
 {
-  "id": "c19779a9-5774-4d2f-a3a1-a99831730375",
+  "id": "openapi-components-link-definition-unused",
+  "legacyId": "c19779a9-5774-4d2f-a3a1-a99831730375",
   "queryName": "Components Link Definition Is Unused",
   "severity": "INFO",
   "category": "Best Practices",

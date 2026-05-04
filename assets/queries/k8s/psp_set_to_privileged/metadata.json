@@ -1,5 +1,6 @@
 {
-  "id": "c48e57d3-d642-4e0b-90db-37f807b41b91",
+  "id": "kubernetes-psp-set-to-privileged",
+  "legacyId": "c48e57d3-d642-4e0b-90db-37f807b41b91",
   "queryName": "PSP set to privileged",
   "severity": "HIGH",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "6db03a91-f933-4f13-ab38-a8b87a7de54d",
+  "id": "terraform-aws-elasticache-nodes-not-created-across-multi-az",
+  "legacyId": "6db03a91-f933-4f13-ab38-a8b87a7de54d",
   "queryName": "ElastiCache nodes not created across multi AZ",
   "severity": "MEDIUM",
   "category": "Availability",

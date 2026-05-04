@@ -1,5 +1,6 @@
 {
-  "id": "87554eef-154d-411d-bdce-9dbd91e56851",
+  "id": "kubernetes-psp-allows-privilege-escalation",
+  "legacyId": "87554eef-154d-411d-bdce-9dbd91e56851",
   "queryName": "PSP allows privilege escalation",
   "severity": "HIGH",
   "category": "Insecure Configurations",

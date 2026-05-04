@@ -1,5 +1,6 @@
 {
-  "id": "ed4c48b8-eccc-4881-95c1-09fdae23db25",
+  "id": "cloudformation-aws-api-gateway-without-ssl-certificate",
+  "legacyId": "ed4c48b8-eccc-4881-95c1-09fdae23db25",
   "queryName": "API Gateway without SSL certificate",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

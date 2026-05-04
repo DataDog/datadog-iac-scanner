@@ -1,5 +1,6 @@
 {
-  "id": "c6473dae-8477-4119-88b7-b909b435ce7b",
+  "id": "ansible-common-logging-of-sensitive-data-in-defaults",
+  "legacyId": "c6473dae-8477-4119-88b7-b909b435ce7b",
   "queryName": "Logging of sensitive data in defaults",
   "severity": "LOW",
   "category": "Best Practices",

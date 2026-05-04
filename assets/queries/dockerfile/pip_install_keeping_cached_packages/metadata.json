@@ -1,5 +1,6 @@
 {
-  "id": "f2f903fb-b977-461e-98d7-b3e2185c6118",
+  "id": "dockerfile-pip-install-keeping-cached-packages",
+  "legacyId": "f2f903fb-b977-461e-98d7-b3e2185c6118",
   "queryName": "pip install keeping cached packages",
   "severity": "LOW",
   "category": "Best Practices",

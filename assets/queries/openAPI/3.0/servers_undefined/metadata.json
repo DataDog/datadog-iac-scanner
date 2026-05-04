@@ -1,5 +1,6 @@
 {
-  "id": "c66ebeaa-676c-40dc-a3ff-3e49395dcd5e",
+  "id": "openapi-servers-undefined",
+  "legacyId": "c66ebeaa-676c-40dc-a3ff-3e49395dcd5e",
   "queryName": "Servers Array Undefined",
   "severity": "INFO",
   "category": "Structure and Semantics",

@@ -1,5 +1,6 @@
 {
-  "id": "4a800e14-c94a-442d-9067-5a2e9f6c0a4c",
+  "id": "terraform-aws-elb-using-weak-ciphers",
+  "legacyId": "4a800e14-c94a-442d-9067-5a2e9f6c0a4c",
   "queryName": "ELB using weak ciphers",
   "severity": "HIGH",
   "category": "Encryption",

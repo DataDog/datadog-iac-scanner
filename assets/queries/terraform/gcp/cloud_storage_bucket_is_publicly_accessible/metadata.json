@@ -1,5 +1,6 @@
 {
-  "id": "c010082c-76e0-4b91-91d9-6e8439e455dd",
+  "id": "terraform-gcp-cloud-storage-bucket-is-publicly-accessible",
+  "legacyId": "c010082c-76e0-4b91-91d9-6e8439e455dd",
   "queryName": "Cloud Storage bucket is publicly accessible",
   "severity": "MEDIUM",
   "category": "Access Control",

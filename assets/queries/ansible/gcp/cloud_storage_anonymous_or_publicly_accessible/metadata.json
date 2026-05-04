@@ -1,5 +1,6 @@
 {
-  "id": "086031e1-9d4a-4249-acb3-5bfe4c363db2",
+  "id": "ansible-gcp-cloud-storage-anonymous-or-publicly-accessible",
+  "legacyId": "086031e1-9d4a-4249-acb3-5bfe4c363db2",
   "queryName": "Cloud storage anonymous or publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",

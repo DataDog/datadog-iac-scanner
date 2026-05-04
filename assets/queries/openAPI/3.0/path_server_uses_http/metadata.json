@@ -1,5 +1,6 @@
 {
-  "id": "9670f240-7b4d-4955-bd93-edaa9fa38b58",
+  "id": "openapi-path-server-uses-http",
+  "legacyId": "9670f240-7b4d-4955-bd93-edaa9fa38b58",
   "queryName": "Path Server Object Uses HTTP (v3)",
   "severity": "MEDIUM",
   "category": "Encryption",

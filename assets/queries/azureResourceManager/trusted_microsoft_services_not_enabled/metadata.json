@@ -1,5 +1,6 @@
 {
-  "id": "e25b56cd-a4d6-498f-ab92-e6296a082097",
+  "id": "azureresourcemanager-azure-trusted-microsoft-services-not-enabled",
+  "legacyId": "e25b56cd-a4d6-498f-ab92-e6296a082097",
   "queryName": "Trusted Microsoft Services Not Enabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

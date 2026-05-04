@@ -1,5 +1,6 @@
 {
-  "id": "b5c6d7e8-f9a0-41b2-c3d4-e5f6a7b8c9d0",
+  "id": "cicd-common-superfluous-actions",
+  "legacyId": "b5c6d7e8-f9a0-41b2-c3d4-e5f6a7b8c9d0",
   "queryName": "Superfluous actions",
   "severity": "LOW",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "84d36481-fd63-48cb-838e-635c44806ec2",
+  "id": "terraform-gcp-google-project-iam-member-service-account-has-admin-role",
+  "legacyId": "84d36481-fd63-48cb-838e-635c44806ec2",
   "queryName": "Google project IAM member service account has admin role",
   "severity": "HIGH",
   "category": "Access Control",

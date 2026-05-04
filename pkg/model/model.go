@@ -176,6 +176,7 @@ type Vulnerability struct {
 	OldSimilarityID       string           `db:"old_similarity_id" json:"oldSimilarityID"`
 	FileID                string           `db:"file_id" json:"-"`
 	FileName              string           `db:"file_name" json:"fileName"`
+	LegacyQueryID         string           `db:"legacy_query_id" json:"legacy_queryID"`
 	QueryID               string           `db:"query_id" json:"queryID"`
 	QueryName             string           `db:"query_name" json:"queryName"`
 	QueryURI              string           `json:"-"`

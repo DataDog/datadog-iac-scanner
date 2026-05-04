@@ -1,5 +1,6 @@
 {
-  "id": "b481d46c-9c61-480f-86d9-af07146dc4a4",
+  "id": "openapi-schema-discriminator-not-required",
+  "legacyId": "b481d46c-9c61-480f-86d9-af07146dc4a4",
   "queryName": "Schema Discriminator Not Required (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

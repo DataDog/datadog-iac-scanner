@@ -1,5 +1,6 @@
 {
-  "id": "0220e1c5-65d1-49dd-b7c2-cef6d6cb5283",
+  "id": "openapi-schema-object-incorrect-ref",
+  "legacyId": "0220e1c5-65d1-49dd-b7c2-cef6d6cb5283",
   "queryName": "Schema Object Incorrect Ref (v2)",
   "severity": "INFO",
   "category": "Structure and Semantics",

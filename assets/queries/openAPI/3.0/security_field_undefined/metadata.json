@@ -1,5 +1,6 @@
 {
-  "id": "ab1263c2-81df-46f0-9f2c-0b62fdb68419",
+  "id": "openapi-security-field-undefined",
+  "legacyId": "ab1263c2-81df-46f0-9f2c-0b62fdb68419",
   "queryName": "Security Field Undefined",
   "severity": "INFO",
   "category": "Structure and Semantics",

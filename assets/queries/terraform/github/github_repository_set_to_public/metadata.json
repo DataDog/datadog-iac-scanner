@@ -1,5 +1,6 @@
 {
-  "id": "15d8a7fd-465a-4d15-a868-add86552f17b",
+  "id": "terraform-common-github-repository-set-to-public",
+  "legacyId": "15d8a7fd-465a-4d15-a868-add86552f17b",
   "queryName": "GitHub repository set to public",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

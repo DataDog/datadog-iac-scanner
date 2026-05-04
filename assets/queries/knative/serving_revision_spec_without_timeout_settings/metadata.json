@@ -1,5 +1,6 @@
 {
-  "id": "e8bb41e4-2f24-4e84-8bea-8c7c070cf93d",
+  "id": "knative-serving-revision-spec-without-timeout-settings",
+  "legacyId": "e8bb41e4-2f24-4e84-8bea-8c7c070cf93d",
   "queryName": "Serving Revision Spec Without Timeout Seconds",
   "severity": "INFO",
   "category": "Insecure Configurations",

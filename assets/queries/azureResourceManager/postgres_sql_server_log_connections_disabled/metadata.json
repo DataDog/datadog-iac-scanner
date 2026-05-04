@@ -1,5 +1,6 @@
 {
-  "id": "e69bda39-e1e2-47ca-b9ee-b6531b23aedd",
+  "id": "azureresourcemanager-azure-postgres-sql-server-log-connections-disabled",
+  "legacyId": "e69bda39-e1e2-47ca-b9ee-b6531b23aedd",
   "queryName": "PostgreSQL Database Server Log Connections Disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

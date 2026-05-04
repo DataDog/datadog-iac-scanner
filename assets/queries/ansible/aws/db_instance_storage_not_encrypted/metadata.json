@@ -1,5 +1,6 @@
 {
-  "id": "7dfb316c-a6c2-454d-b8a2-97f147b0c0ff",
+  "id": "ansible-aws-db-instance-storage-not-encrypted",
+  "legacyId": "7dfb316c-a6c2-454d-b8a2-97f147b0c0ff",
   "queryName": "DB instance storage not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "e5f6a7b8-c9d0-41e2-f3a4-a2c6d7e8f9a0",
+  "id": "cicd-common-cache-poisoning",
+  "legacyId": "e5f6a7b8-c9d0-41e2-f3a4-a2c6d7e8f9a0",
   "queryName": "Cache poisoning",
   "severity": "HIGH",
   "category": "Supply-Chain",

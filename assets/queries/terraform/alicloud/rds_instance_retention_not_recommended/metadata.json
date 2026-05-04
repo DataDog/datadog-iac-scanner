@@ -1,5 +1,6 @@
 {
-  "id": "dc158941-28ce-481d-a7fa-dc80761edf46",
+  "id": "terraform-alicloud-rds-instance-retention-not-recommended",
+  "legacyId": "dc158941-28ce-481d-a7fa-dc80761edf46",
   "queryName": "RDS instance retention period not recommended",
   "severity": "LOW",
   "category": "Observability",

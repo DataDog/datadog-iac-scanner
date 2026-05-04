@@ -1,5 +1,6 @@
 {
-  "id": "c1282e03-b285-4637-aee7-eefe3a7bb658",
+  "id": "cloudformation-aws-efs-volume-with-disabled-transit-encryption",
+  "legacyId": "c1282e03-b285-4637-aee7-eefe3a7bb658",
   "queryName": "EFS volume with disabled transit encryption",
   "severity": "MEDIUM",
   "category": "Encryption",

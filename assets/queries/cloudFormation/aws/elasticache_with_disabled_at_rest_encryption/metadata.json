@@ -1,5 +1,6 @@
 {
-  "id": "e4ee3903-9225-4b6a-bdfb-e62dbadef821",
+  "id": "cloudformation-aws-elasticache-with-disabled-at-rest-encryption",
+  "legacyId": "e4ee3903-9225-4b6a-bdfb-e62dbadef821",
   "queryName": "ElastiCache with disabled at-rest encryption",
   "severity": "HIGH",
   "category": "Encryption",

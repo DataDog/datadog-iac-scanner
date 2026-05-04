@@ -1,5 +1,6 @@
 {
-  "id": "bc2908f3-f73c-40a9-8793-c1b7d5544f79",
+  "id": "dockercompose-privileged-ports-mapped-in-container",
+  "legacyId": "bc2908f3-f73c-40a9-8793-c1b7d5544f79",
   "queryName": "Privileged Ports Mapped In Container",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

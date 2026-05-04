@@ -1,5 +1,6 @@
 {
-  "id": "8bfed1c6-2d59-4924-bc7f-9b9d793ed0df",
+  "id": "openapi-parameter-object-content-with-multiple-entries",
+  "legacyId": "8bfed1c6-2d59-4924-bc7f-9b9d793ed0df",
   "queryName": "Parameter Object Content With Multiple Entries",
   "severity": "INFO",
   "category": "Structure and Semantics",

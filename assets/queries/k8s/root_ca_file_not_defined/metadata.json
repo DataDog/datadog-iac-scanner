@@ -1,5 +1,6 @@
 {
-  "id": "05fb986f-ac73-4ebb-a5b2-7faafa93d882",
+  "id": "kubernetes-root-ca-file-not-defined",
+  "legacyId": "05fb986f-ac73-4ebb-a5b2-7faafa93d882",
   "queryName": "Root CA file not defined",
   "severity": "MEDIUM",
   "category": "Encryption",

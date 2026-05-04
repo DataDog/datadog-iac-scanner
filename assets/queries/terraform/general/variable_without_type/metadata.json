@@ -1,5 +1,6 @@
 {
-  "id": "fc5109bf-01fd-49fb-8bde-4492b543c34a",
+  "id": "terraform-common-variable-without-type",
+  "legacyId": "fc5109bf-01fd-49fb-8bde-4492b543c34a",
   "queryName": "Variable without type",
   "severity": "LOW",
   "category": "Best Practices",

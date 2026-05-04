@@ -1,5 +1,6 @@
 {
-  "id": "f4c9b5f5-68b8-491f-9e48-4f96644a1d51",
+  "id": "cloudformation-aws-ecs-task-definition-invalid-cpu-or-memory",
+  "legacyId": "f4c9b5f5-68b8-491f-9e48-4f96644a1d51",
   "queryName": "ECS task definition invalid CPU or memory",
   "severity": "LOW",
   "category": "Resource Management",

@@ -1,5 +1,6 @@
 {
-  "id": "85138beb-ce7c-4ca3-a09f-e8fbcc57ddd7",
+  "id": "cloudformation-aws-cross-account-iam-assume-role-policy-without-external-id-or-mfa",
+  "legacyId": "85138beb-ce7c-4ca3-a09f-e8fbcc57ddd7",
   "queryName": "Cross-account IAM assume role policy without external ID or MFA",
   "severity": "HIGH",
   "category": "Access Control",

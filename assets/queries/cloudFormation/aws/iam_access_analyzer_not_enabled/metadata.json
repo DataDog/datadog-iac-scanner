@@ -1,5 +1,6 @@
 {
-  "id": "8d29754a-2a18-460d-a1ba-9509f8d359da",
+  "id": "cloudformation-aws-iam-access-analyzer-not-enabled",
+  "legacyId": "8d29754a-2a18-460d-a1ba-9509f8d359da",
   "queryName": "IAM Access Analyzer not enabled",
   "severity": "LOW",
   "category": "Best Practices",

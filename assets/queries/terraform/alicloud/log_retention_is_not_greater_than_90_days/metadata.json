@@ -1,5 +1,6 @@
 {
-  "id": "ed6cf6ff-9a1f-491c-9f88-e03c0807f390",
+  "id": "terraform-alicloud-log-retention-is-not-greater-than-90-days",
+  "legacyId": "ed6cf6ff-9a1f-491c-9f88-e03c0807f390",
   "queryName": "Log retention is not greater than 90 days",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "6d087495-2a42-4735-abf7-02ef5660a7e6",
+  "id": "cloudformation-aws-efs-without-kms",
+  "legacyId": "6d087495-2a42-4735-abf7-02ef5660a7e6",
   "queryName": "EFS without KMS",
   "severity": "LOW",
   "category": "Encryption",

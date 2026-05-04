@@ -1,5 +1,6 @@
 {
-  "id": "20a482d5-c5d9-4a7a-b7a4-60d0805047b4",
+  "id": "openapi-security-operation-field-undefined",
+  "legacyId": "20a482d5-c5d9-4a7a-b7a4-60d0805047b4",
   "queryName": "Security Operation Field Undefined",
   "severity": "INFO",
   "category": "Structure and Semantics",

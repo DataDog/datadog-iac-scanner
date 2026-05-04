@@ -1,5 +1,6 @@
 {
-  "id": "27fcc7d6-c49b-46e0-98f1-6c082a6a2750",
+  "id": "dockercompose-no-new-privileges-not-set",
+  "legacyId": "27fcc7d6-c49b-46e0-98f1-6c082a6a2750",
   "queryName": "No New Privileges Not Set",
   "severity": "HIGH",
   "category": "Resource Management",

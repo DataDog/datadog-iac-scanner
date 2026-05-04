@@ -1,5 +1,6 @@
 {
-  "id": "d2361d58-361c-49f0-9e50-b957fd608b29",
+  "id": "openapi-schema-with-both-read-only-and-write-only",
+  "legacyId": "d2361d58-361c-49f0-9e50-b957fd608b29",
   "queryName": "Schema With Both ReadOnly And WriteOnly",
   "severity": "INFO",
   "category": "Structure and Semantics",

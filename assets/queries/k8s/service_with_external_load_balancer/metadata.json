@@ -1,5 +1,6 @@
 {
-  "id": "26763a1c-5dda-4772-b507-5fca7fb5f165",
+  "id": "kubernetes-service-with-external-load-balancer",
+  "legacyId": "26763a1c-5dda-4772-b507-5fca7fb5f165",
   "queryName": "Service with external load balancer",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "a9174d31-d526-4ad9-ace4-ce7ddbf52e03",
+  "id": "terraform-common-cluster-allows-unsafe-sysctls",
+  "legacyId": "a9174d31-d526-4ad9-ace4-ce7ddbf52e03",
   "queryName": "Cluster allows unsafe sysctls",
   "severity": "HIGH",
   "category": "Insecure Configurations",

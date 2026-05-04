@@ -1,5 +1,6 @@
 {
-  "id": "4552b71f-0a2a-4bc4-92dd-ed7ec1b4674c",
+  "id": "cloudformation-aws-s3-bucket-logging-disabled",
+  "legacyId": "4552b71f-0a2a-4bc4-92dd-ed7ec1b4674c",
   "queryName": "S3 bucket logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

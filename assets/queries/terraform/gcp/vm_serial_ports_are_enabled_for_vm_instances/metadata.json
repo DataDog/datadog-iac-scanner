@@ -1,5 +1,6 @@
 {
-  "id": "97fa667a-d05b-4f16-9071-58b939f34751",
+  "id": "terraform-gcp-vm-serial-ports-are-enabled-for-vm-instances",
+  "legacyId": "97fa667a-d05b-4f16-9071-58b939f34751",
   "queryName": "Serial ports are enabled for VM instances",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

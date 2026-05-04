@@ -1,5 +1,6 @@
 {
-  "id": "815021c8-a50c-46d9-b192-24f71072c400",
+  "id": "openapi-paths-object-empty",
+  "legacyId": "815021c8-a50c-46d9-b192-24f71072c400",
   "queryName": "Paths Object is Empty (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

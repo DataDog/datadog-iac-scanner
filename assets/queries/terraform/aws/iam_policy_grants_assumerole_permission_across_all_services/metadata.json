@@ -1,5 +1,6 @@
 {
-  "id": "bcdcbdc6-a350-4855-ae7c-d1e6436f7c97",
+  "id": "terraform-aws-iam-policy-grants-assumerole-permission-across-all-services",
+  "legacyId": "bcdcbdc6-a350-4855-ae7c-d1e6436f7c97",
   "queryName": "IAM policy grants 'AssumeRole' permission across all services",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "bc75ce52-a60a-4660-b533-bce837a5019b",
+  "id": "terraform-gcp-redis",
+  "legacyId": "bc75ce52-a60a-4660-b533-bce837a5019b",
   "queryName": "BOM - GCP Redis",
   "severity": "TRACE",
   "category": "Bill Of Materials",

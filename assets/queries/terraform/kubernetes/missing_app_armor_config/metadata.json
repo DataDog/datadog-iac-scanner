@@ -1,5 +1,6 @@
 {
-  "id": "bd6bd46c-57db-4887-956d-d372f21291b6",
+  "id": "terraform-common-missing-app-armor-config",
+  "legacyId": "bd6bd46c-57db-4887-956d-d372f21291b6",
   "queryName": "Missing AppArmor config",
   "severity": "MEDIUM",
   "category": "Access Control",

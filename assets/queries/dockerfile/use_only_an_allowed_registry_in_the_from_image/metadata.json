@@ -1,5 +1,6 @@
 {
-  "id": "d0b535a2-5e5f-d18f-52f8-cc59a3f236bd",
+  "id": "dockerfile-use-only-an-allowed-registry-in-the-from-image",
+  "legacyId": "d0b535a2-5e5f-d18f-52f8-cc59a3f236bd",
   "queryName": "Use only allowed registry in FROM",
   "severity": "HIGH",
   "category": "Supply-Chain",

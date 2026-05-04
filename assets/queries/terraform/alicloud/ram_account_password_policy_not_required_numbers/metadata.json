@@ -1,5 +1,6 @@
 {
-  "id": "063234c0-91c0-4ab5-bbd0-47ddb5f23786",
+  "id": "terraform-alicloud-ram-account-password-policy-not-required-numbers",
+  "legacyId": "063234c0-91c0-4ab5-bbd0-47ddb5f23786",
   "queryName": "RAM account password policy does not require numbers",
   "severity": "LOW",
   "category": "Secret Management",

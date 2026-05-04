@@ -1,5 +1,6 @@
 {
-  "id": "d89a15bb-8dba-4c71-9529-bef6729b9c09",
+  "id": "kubernetes-request-timeout-not-properly-set",
+  "legacyId": "d89a15bb-8dba-4c71-9529-bef6729b9c09",
   "queryName": "Request timeout not properly set",
   "severity": "MEDIUM",
   "category": "Availability",

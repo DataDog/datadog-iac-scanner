@@ -1,5 +1,6 @@
 {
-  "id": "0d0c12b9-edce-4510-9065-13f6a758750c",
+  "id": "ansible-azure-redis-entirely-accessible",
+  "legacyId": "0d0c12b9-edce-4510-9065-13f6a758750c",
   "queryName": "Redis entirely accessible",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

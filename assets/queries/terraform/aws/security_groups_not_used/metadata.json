@@ -1,5 +1,6 @@
 {
-  "id": "4849211b-ac39-479e-ae78-5694d506cb24",
+  "id": "terraform-aws-security-groups-not-used",
+  "legacyId": "4849211b-ac39-479e-ae78-5694d506cb24",
   "queryName": "Security group not used",
   "severity": "LOW",
   "category": "Access Control",

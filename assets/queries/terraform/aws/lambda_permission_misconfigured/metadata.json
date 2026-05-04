@@ -1,5 +1,6 @@
 {
-  "id": "75ec6890-83af-4bf1-9f16-e83726df0bd0",
+  "id": "terraform-aws-lambda-permission-misconfigured",
+  "legacyId": "75ec6890-83af-4bf1-9f16-e83726df0bd0",
   "queryName": "Lambda permission misconfigured",
   "severity": "LOW",
   "category": "Best Practices",

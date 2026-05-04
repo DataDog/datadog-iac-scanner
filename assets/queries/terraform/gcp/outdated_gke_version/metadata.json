@@ -1,5 +1,6 @@
 {
-  "id": "128df7ec-f185-48bc-8913-ce756a3ccb85",
+  "id": "terraform-gcp-outdated-gke-version",
+  "legacyId": "128df7ec-f185-48bc-8913-ce756a3ccb85",
   "queryName": "Outdated GKE version",
   "severity": "LOW",
   "category": "Best Practices",

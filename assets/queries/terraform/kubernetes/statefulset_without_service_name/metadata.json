@@ -1,5 +1,6 @@
 {
-  "id": "420e6360-47bb-46f6-9072-b20ed22c842d",
+  "id": "terraform-common-statefulset-without-service-name",
+  "legacyId": "420e6360-47bb-46f6-9072-b20ed22c842d",
   "queryName": "StatefulSet without service name",
   "severity": "LOW",
   "category": "Availability",

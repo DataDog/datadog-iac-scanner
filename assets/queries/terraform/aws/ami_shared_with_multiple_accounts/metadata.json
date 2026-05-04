@@ -1,5 +1,6 @@
 {
-  "id": "ba4e0031-3e9d-4d7d-b0d6-bd8f003f8698",
+  "id": "terraform-aws-ami-shared-with-multiple-accounts",
+  "legacyId": "ba4e0031-3e9d-4d7d-b0d6-bd8f003f8698",
   "queryName": "AMI shared with multiple accounts",
   "severity": "MEDIUM",
   "category": "Access Control",

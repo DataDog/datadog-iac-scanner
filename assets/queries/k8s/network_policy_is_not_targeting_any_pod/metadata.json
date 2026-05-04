@@ -1,5 +1,6 @@
 {
-  "id": "85ab1c5b-014e-4352-b5f8-d7dea3bb4fd3",
+  "id": "kubernetes-network-policy-is-not-targeting-any-pod",
+  "legacyId": "85ab1c5b-014e-4352-b5f8-d7dea3bb4fd3",
   "queryName": "Network policy without Pod target",
   "severity": "LOW",
   "category": "Networking and Firewall",

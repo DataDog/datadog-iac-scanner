@@ -1,5 +1,6 @@
 {
-  "id": "48f7e44d-d1d1-44c2-b336-9f11b65c4fb0",
+  "id": "pulumi-gcp-cloud-storage-bucket-logging-not-enabled",
+  "legacyId": "48f7e44d-d1d1-44c2-b336-9f11b65c4fb0",
   "queryName": "Cloud Storage Bucket Logging Not Enabled",
   "severity": "MEDIUM",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "404908b6-4954-4611-98f0-e8ceacdabcb1",
+  "id": "ansible-common-privilege-escalation-using-become-plugin-in-defaults",
+  "legacyId": "404908b6-4954-4611-98f0-e8ceacdabcb1",
   "queryName": "Privilege escalation using become plugin in defaults",
   "severity": "MEDIUM",
   "category": "Access Control",

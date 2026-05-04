@@ -1,5 +1,6 @@
 {
-  "id": "67bfdff1-31ce-4525-b564-e94368735360",
+  "id": "terraform-alicloud-nas-file-system-not-encrypted",
+  "legacyId": "67bfdff1-31ce-4525-b564-e94368735360",
   "queryName": "NAS file system not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

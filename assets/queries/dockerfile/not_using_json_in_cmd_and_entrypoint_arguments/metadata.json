@@ -1,5 +1,6 @@
 {
-  "id": "b86987e1-6397-4619-81d5-8807f2387c79",
+  "id": "dockerfile-not-using-json-in-cmd-and-entrypoint-arguments",
+  "legacyId": "b86987e1-6397-4619-81d5-8807f2387c79",
   "queryName": "Not using JSON for CMD and ENTRYPOINT arguments",
   "severity": "MEDIUM",
   "category": "Build Process",

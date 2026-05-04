@@ -1,5 +1,6 @@
 {
-  "id": "06764426-3c56-407e-981f-caa25db1c149",
+  "id": "openapi-security-schemes-http-unknown-scheme",
+  "legacyId": "06764426-3c56-407e-981f-caa25db1c149",
   "queryName": "Security Scheme HTTP Unknown Scheme",
   "severity": "MEDIUM",
   "category": "Access Control",

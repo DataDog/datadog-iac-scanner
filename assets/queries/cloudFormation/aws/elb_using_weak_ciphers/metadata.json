@@ -1,5 +1,6 @@
 {
-  "id": "809f77f8-d10e-4842-a84f-3be7b6ff1190",
+  "id": "cloudformation-aws-elb-using-weak-ciphers",
+  "legacyId": "809f77f8-d10e-4842-a84f-3be7b6ff1190",
   "queryName": "ELB using weak ciphers",
   "severity": "HIGH",
   "category": "Encryption",

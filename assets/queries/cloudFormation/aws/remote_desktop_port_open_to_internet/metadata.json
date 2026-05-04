@@ -1,5 +1,6 @@
 {
-  "id": "c9846969-d066-431f-9b34-8c4abafe422a",
+  "id": "cloudformation-aws-remote-desktop-port-open-to-internet",
+  "legacyId": "c9846969-d066-431f-9b34-8c4abafe422a",
   "queryName": "Remote Desktop port open to the internet",
   "severity": "HIGH",
   "category": "Networking and Firewall",

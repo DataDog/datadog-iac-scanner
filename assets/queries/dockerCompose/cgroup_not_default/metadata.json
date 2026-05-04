@@ -1,5 +1,6 @@
 {
-  "id": "4d9f44c6-2f4a-4317-9bb5-267adbea0232",
+  "id": "dockercompose-cgroup-not-default",
+  "legacyId": "4d9f44c6-2f4a-4317-9bb5-267adbea0232",
   "queryName": "Cgroup Not Default",
   "severity": "MEDIUM",
   "category": "Build Process",

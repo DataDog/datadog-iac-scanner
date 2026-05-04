@@ -1,5 +1,6 @@
 {
-  "id": "23a9e2d9-8738-4556-a71c-2802b6ffa022",
+  "id": "openapi-undefined-security-scope-global-security",
+  "legacyId": "23a9e2d9-8738-4556-a71c-2802b6ffa022",
   "queryName": "Undefined Scope 'securityScheme' On Global 'security' Field",
   "severity": "LOW",
   "category": "Access Control",

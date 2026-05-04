@@ -1,5 +1,6 @@
 {
-  "id": "b8c9d0e1-f2a3-44b5-c6d7-e8f9a0b1c2d3",
+  "id": "cicd-common-self-hosted-runner",
+  "legacyId": "b8c9d0e1-f2a3-44b5-c6d7-e8f9a0b1c2d3",
   "queryName": "Self-hosted runner",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

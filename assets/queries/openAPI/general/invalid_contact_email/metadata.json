@@ -1,5 +1,6 @@
 {
-  "id": "b1a7fcb0-2afe-4d5c-a6a1-4e6311fc29e7",
+  "id": "openapi-invalid-contact-email",
+  "legacyId": "b1a7fcb0-2afe-4d5c-a6a1-4e6311fc29e7",
   "queryName": "Invalid Contact Email (v3)",
   "severity": "INFO",
   "category": "Best Practices",

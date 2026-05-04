@@ -1,5 +1,6 @@
 {
-  "id": "49113af4-29ca-458e-b8d4-724c01a4a24f",
+  "id": "kubernetes-terminated-pod-garbage-collector-threshold-not-properly-set",
+  "legacyId": "49113af4-29ca-458e-b8d4-724c01a4a24f",
   "queryName": "Terminated pod garbage collector threshold not properly set",
   "severity": "MEDIUM",
   "category": "Availability",

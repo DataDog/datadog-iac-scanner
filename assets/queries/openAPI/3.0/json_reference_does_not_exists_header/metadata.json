@@ -1,5 +1,6 @@
 {
-  "id": "376c9390-7e9e-4cb8-a067-fd31c05451fd",
+  "id": "openapi-json-reference-does-not-exists-header",
+  "legacyId": "376c9390-7e9e-4cb8-a067-fd31c05451fd",
   "queryName": "Header JSON Reference Does Not Exists",
   "severity": "INFO",
   "category": "Structure and Semantics",

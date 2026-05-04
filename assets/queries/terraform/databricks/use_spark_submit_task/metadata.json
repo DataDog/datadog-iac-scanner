@@ -1,5 +1,6 @@
 {
-  "id": "375cdab9-3f94-4ae0-b1e3-8fbdf9cdf4d7",
+  "id": "terraform-common-use-spark-submit-task",
+  "legacyId": "375cdab9-3f94-4ae0-b1e3-8fbdf9cdf4d7",
   "queryName": "Job's task is legacy (spark_submit_task)",
   "severity": "MEDIUM",
   "category": "Best Practices",

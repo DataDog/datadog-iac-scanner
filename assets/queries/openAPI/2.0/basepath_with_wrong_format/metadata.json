@@ -1,5 +1,6 @@
 {
-  "id": "b4803607-ed72-4d60-99e2-3fa6edf471c6",
+  "id": "openapi-basepath-with-wrong-format",
+  "legacyId": "b4803607-ed72-4d60-99e2-3fa6edf471c6",
   "queryName": "BasePath With Wrong Format",
   "severity": "INFO",
   "category": "Structure and Semantics",

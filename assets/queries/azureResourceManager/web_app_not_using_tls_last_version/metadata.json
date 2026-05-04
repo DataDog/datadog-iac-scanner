@@ -1,5 +1,6 @@
 {
-  "id": "b5c851d5-00f1-43dc-a8de-3218fd6f71be",
+  "id": "azureresourcemanager-azure-web-app-not-using-tls-last-version",
+  "legacyId": "b5c851d5-00f1-43dc-a8de-3218fd6f71be",
   "queryName": "Web App Not Using TLS Last Version",
   "severity": "MEDIUM",
   "category": "Encryption",

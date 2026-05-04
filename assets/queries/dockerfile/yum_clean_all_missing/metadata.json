@@ -1,5 +1,6 @@
 {
-  "id": "00481784-25aa-4a55-8633-3136dfcf4f37",
+  "id": "dockerfile-yum-clean-all-missing",
+  "legacyId": "00481784-25aa-4a55-8633-3136dfcf4f37",
   "queryName": "yum clean all missing",
   "severity": "LOW",
   "category": "Best Practices",

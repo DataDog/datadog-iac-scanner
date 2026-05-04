@@ -1,5 +1,6 @@
 {
-  "id": "baade968-7467-41e4-bf22-83ca222f5800",
+  "id": "openapi-security-operations-empty-object-definition",
+  "legacyId": "baade968-7467-41e4-bf22-83ca222f5800",
   "queryName": "Security Field On Operations Has An Empty Object Definition (v3)",
   "severity": "HIGH",
   "category": "Access Control",

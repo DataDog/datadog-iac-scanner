@@ -1,5 +1,6 @@
 {
-  "id": "2285e608-ddbc-47f3-ba54-ce7121e31216",
+  "id": "terraform-aws-cloudwatch-route-table-changes-alarm-missing",
+  "legacyId": "2285e608-ddbc-47f3-ba54-ce7121e31216",
   "queryName": "CloudWatch route table changes alarm missing",
   "severity": "LOW",
   "category": "Observability",

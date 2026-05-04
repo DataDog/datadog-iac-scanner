@@ -1,5 +1,6 @@
 {
-  "id": "1455cb21-1d48-46d6-8ae3-cef911b71fd5",
+  "id": "terraform-alicloud-launch-template-is-not-encrypted",
+  "legacyId": "1455cb21-1d48-46d6-8ae3-cef911b71fd5",
   "queryName": "Launch template is not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

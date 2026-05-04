@@ -1,5 +1,6 @@
 {
-  "id": "5c0003fb-9aa0-42c1-9da3-eb0e332bef21",
+  "id": "terraform-aws-secure-ciphers-disabled",
+  "legacyId": "5c0003fb-9aa0-42c1-9da3-eb0e332bef21",
   "queryName": "Secure ciphers disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

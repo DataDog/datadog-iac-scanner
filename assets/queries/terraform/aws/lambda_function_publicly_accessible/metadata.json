@@ -1,5 +1,6 @@
 {
-  "id": "1btsf2f9-af8c-4dfc-a0f1-a03adb70deb2",
+  "id": "terraform-aws-lambda-function-publicly-accessible",
+  "legacyId": "1btsf2f9-af8c-4dfc-a0f1-a03adb70deb2",
   "queryName": "Lambda function publicly accessible",
   "severity": "HIGH",
   "category": "Access Control",

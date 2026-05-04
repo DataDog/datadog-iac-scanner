@@ -1,5 +1,6 @@
 {
-  "id": "ea6bc7a6-d696-4dcf-a788-17fa03c17c81",
+  "id": "ansible-aws-security-group-ingress-not-restricted",
+  "legacyId": "ea6bc7a6-d696-4dcf-a788-17fa03c17c81",
   "queryName": "Security group ingress not restricted",
   "severity": "HIGH",
   "category": "Networking and Firewall",

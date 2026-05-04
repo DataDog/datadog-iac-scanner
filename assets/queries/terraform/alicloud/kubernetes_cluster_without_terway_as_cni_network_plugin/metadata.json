@@ -1,5 +1,6 @@
 {
-  "id": "b9b7ada8-3868-4a35-854e-6100a2bb863d",
+  "id": "terraform-alicloud-kubernetes-cluster-without-terway-as-cni-network-plugin",
+  "legacyId": "b9b7ada8-3868-4a35-854e-6100a2bb863d",
   "queryName": "Kubernetes cluster without Terway as CNI network plugin",
   "severity": "LOW",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "d7dc9350-74bc-485b-8c85-fed22d276c43",
+  "id": "ansible-common-communication-over-http-in-defaults",
+  "legacyId": "d7dc9350-74bc-485b-8c85-fed22d276c43",
   "queryName": "Communication over HTTP in defaults",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

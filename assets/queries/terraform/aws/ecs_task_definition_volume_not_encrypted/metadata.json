@@ -1,5 +1,6 @@
 {
-  "id": "4d46ff3b-7160-41d1-a310-71d6d370b08f",
+  "id": "terraform-aws-ecs-task-definition-volume-not-encrypted",
+  "legacyId": "4d46ff3b-7160-41d1-a310-71d6d370b08f",
   "queryName": "ECS task definition volume not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

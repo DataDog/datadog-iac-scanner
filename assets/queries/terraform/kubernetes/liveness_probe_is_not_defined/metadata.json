@@ -1,5 +1,6 @@
 {
-  "id": "5b6d53dd-3ba3-4269-b4d7-f82e880e43c3",
+  "id": "terraform-common-liveness-probe-is-not-defined",
+  "legacyId": "5b6d53dd-3ba3-4269-b4d7-f82e880e43c3",
   "queryName": "Liveness probe is not defined",
   "severity": "LOW",
   "category": "Availability",

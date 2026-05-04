@@ -1,5 +1,6 @@
 {
-  "id": "31733ee2-fef0-4e87-9778-65da22a8ecf1",
+  "id": "cloudformation-aws-cloudfront-viewer-protocol-policy-allows-http",
+  "legacyId": "31733ee2-fef0-4e87-9778-65da22a8ecf1",
   "queryName": "CloudFront viewer protocol policy allows HTTP",
   "severity": "MEDIUM",
   "category": "Encryption",

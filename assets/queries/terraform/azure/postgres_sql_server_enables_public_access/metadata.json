@@ -1,5 +1,6 @@
 {
-  "id": "c7f8e9a1-b2c3-d4e5-f6a7-8901b2c3d4e5",
+  "id": "terraform-azure-postgres-sql-server-enables-public-access",
+  "legacyId": "c7f8e9a1-b2c3-d4e5-f6a7-8901b2c3d4e5",
   "queryName": "Ensure that PostgreSQL server disables public network access",
   "severity": "HIGH",
   "category": "Networking and Firewall",

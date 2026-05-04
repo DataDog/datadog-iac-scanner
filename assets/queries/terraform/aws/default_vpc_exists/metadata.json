@@ -1,5 +1,6 @@
 {
-  "id": "96ed3526-0179-4c73-b1b2-372fde2e0d13",
+  "id": "terraform-aws-default-vpc-exists",
+  "legacyId": "96ed3526-0179-4c73-b1b2-372fde2e0d13",
   "queryName": "Default VPC exists",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

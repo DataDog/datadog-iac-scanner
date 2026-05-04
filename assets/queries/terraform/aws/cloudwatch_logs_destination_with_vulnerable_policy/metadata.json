@@ -1,5 +1,6 @@
 {
-  "id": "db0ec4c4-852c-46a2-b4f3-7ec13cdb12a8",
+  "id": "terraform-aws-cloudwatch-logs-destination-with-vulnerable-policy",
+  "legacyId": "db0ec4c4-852c-46a2-b4f3-7ec13cdb12a8",
   "queryName": "CloudWatch logs destination with vulnerable policy",
   "severity": "LOW",
   "category": "Access Control",

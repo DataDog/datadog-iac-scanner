@@ -1,5 +1,6 @@
 {
-  "id": "b84a0b47-2e99-4c9f-8933-98bcabe2b94d",
+  "id": "dockerfile-run-using-apt",
+  "legacyId": "b84a0b47-2e99-4c9f-8933-98bcabe2b94d",
   "queryName": "Run using apt",
   "severity": "LOW",
   "category": "Supply-Chain",

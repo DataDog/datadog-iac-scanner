@@ -1,5 +1,6 @@
 {
-  "id": "a19c3bbd-c056-40d7-9e1c-eeb0634e320d",
+  "id": "openapi-additional-properties-too-restrective",
+  "legacyId": "a19c3bbd-c056-40d7-9e1c-eeb0634e320d",
   "queryName": "Additional Properties Too Restrictive",
   "severity": "LOW",
   "category": "Insecure Configurations",

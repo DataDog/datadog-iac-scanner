@@ -1,5 +1,6 @@
 {
-  "id": "d40f27e6-15fb-4b56-90f8-fc0ff0291c51",
+  "id": "openapi-parameter-object-incorrect-ref",
+  "legacyId": "d40f27e6-15fb-4b56-90f8-fc0ff0291c51",
   "queryName": "Parameter Object With Incorrect Ref (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",

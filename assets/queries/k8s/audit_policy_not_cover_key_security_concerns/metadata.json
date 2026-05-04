@@ -1,5 +1,6 @@
 {
-  "id": "1828a670-5957-4bc5-9974-47da228f75e2",
+  "id": "kubernetes-audit-policy-not-cover-key-security-concerns",
+  "legacyId": "1828a670-5957-4bc5-9974-47da228f75e2",
   "queryName": "Audit policy does not cover key security concerns",
   "severity": "LOW",
   "category": "Observability",

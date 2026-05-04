@@ -1,5 +1,6 @@
 {
-  "id": "cb8e4bf0-903d-45c6-a278-9a947d82a27b",
+  "id": "pulumi-azure-storage-account-not-forcing-https",
+  "legacyId": "cb8e4bf0-903d-45c6-a278-9a947d82a27b",
   "queryName": "Storage Account Not Forcing HTTPS",
   "severity": "MEDIUM",
   "category": "Encryption",

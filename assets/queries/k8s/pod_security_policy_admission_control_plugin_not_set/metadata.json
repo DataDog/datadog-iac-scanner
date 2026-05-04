@@ -1,5 +1,6 @@
 {
-  "id": "afa36afb-39fe-4d94-b9b6-afb236f7a03d",
+  "id": "kubernetes-pod-security-policy-admission-control-plugin-not-set",
+  "legacyId": "afa36afb-39fe-4d94-b9b6-afb236f7a03d",
   "queryName": "Pod security policy admission control plugin not set",
   "severity": "HIGH",
   "category": "Build Process",

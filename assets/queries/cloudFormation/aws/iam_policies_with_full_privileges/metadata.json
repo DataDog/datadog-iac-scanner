@@ -1,5 +1,6 @@
 {
-  "id": "953b3cdb-ce13-428a-aa12-318726506661",
+  "id": "cloudformation-aws-iam-policies-with-full-privileges",
+  "legacyId": "953b3cdb-ce13-428a-aa12-318726506661",
   "queryName": "IAM policies with full privileges",
   "severity": "MEDIUM",
   "category": "Access Control",

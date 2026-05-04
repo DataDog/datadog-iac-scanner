@@ -1,5 +1,6 @@
 {
-  "id": "c333e906-8d8b-4275-b999-78b6318f8dc6",
+  "id": "cloudformation-aws-dynamodb-with-table-billing-mode-not-recommended",
+  "legacyId": "c333e906-8d8b-4275-b999-78b6318f8dc6",
   "queryName": "DynamoDB with non-recommended table billing mode",
   "severity": "LOW",
   "category": "Build Process",

@@ -1,5 +1,6 @@
 {
-  "id": "f42dfe7e-787d-4478-a75e-a5f3d8a2269e",
+  "id": "openapi-operation-using-implicit-flow",
+  "legacyId": "f42dfe7e-787d-4478-a75e-a5f3d8a2269e",
   "queryName": "Operation Using Implicit Flow",
   "severity": "MEDIUM",
   "category": "Access Control",

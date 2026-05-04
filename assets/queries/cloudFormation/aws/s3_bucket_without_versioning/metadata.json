@@ -1,5 +1,6 @@
 {
-  "id": "a227ec01-f97a-4084-91a4-47b350c1db54",
+  "id": "cloudformation-aws-s3-bucket-without-versioning",
+  "legacyId": "a227ec01-f97a-4084-91a4-47b350c1db54",
   "queryName": "S3 bucket without versioning",
   "severity": "MEDIUM",
   "category": "Backup",

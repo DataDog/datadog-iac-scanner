@@ -1,5 +1,6 @@
 {
-  "id": "37140f7f-724a-4c87-a536-e9cee1d61533",
+  "id": "openapi-security-requirement-object-with-wrong-scopes",
+  "legacyId": "37140f7f-724a-4c87-a536-e9cee1d61533",
   "queryName": "Security Requirement Object With Wrong Scopes",
   "severity": "INFO",
   "category": "Structure and Semantics",

@@ -1,5 +1,6 @@
 {
-  "id": "cff9c3f7-e8f0-455f-9fb4-5f72326da96e",
+  "id": "azureresourcemanager-azure-secret-without-expiration-date",
+  "legacyId": "cff9c3f7-e8f0-455f-9fb4-5f72326da96e",
   "queryName": "Secret Without Expiration Date",
   "severity": "MEDIUM",
   "category": "Best Practices",

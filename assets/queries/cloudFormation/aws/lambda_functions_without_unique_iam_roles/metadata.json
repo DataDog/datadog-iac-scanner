@@ -1,5 +1,6 @@
 {
-  "id": "ae03f542-1423-402f-9cef-c834e7ee9583",
+  "id": "cloudformation-aws-lambda-functions-without-unique-iam-roles",
+  "legacyId": "ae03f542-1423-402f-9cef-c834e7ee9583",
   "queryName": "Lambda functions without unique IAM roles",
   "severity": "HIGH",
   "category": "Insecure Configurations",

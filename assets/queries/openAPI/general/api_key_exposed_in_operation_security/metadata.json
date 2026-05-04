@@ -1,5 +1,6 @@
 {
-  "id": "281b8071-6226-4a43-911d-fec246d422c2",
+  "id": "openapi-common-api-key-exposed-in-operation-security",
+  "legacyId": "281b8071-6226-4a43-911d-fec246d422c2",
   "queryName": "API Key Exposed In Operation Security (v3)",
   "severity": "LOW",
   "category": "Access Control",

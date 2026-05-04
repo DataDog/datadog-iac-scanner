@@ -1,5 +1,6 @@
 {
-  "id": "228c4c19-feeb-4c18-848c-800ac70fdfb7",
+  "id": "terraform-common-image-without-digest",
+  "legacyId": "228c4c19-feeb-4c18-848c-800ac70fdfb7",
   "queryName": "Image without digest",
   "severity": "LOW",
   "category": "Insecure Configurations",

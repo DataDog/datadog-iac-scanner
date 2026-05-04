@@ -1,5 +1,6 @@
 {
-  "id": "92302b47-b0cc-46cb-a28f-5610ecda140b",
+  "id": "azureresourcemanager-azure-website-with-client-certificate-auth-disabled",
+  "legacyId": "92302b47-b0cc-46cb-a28f-5610ecda140b",
   "queryName": "Website with Client Certificate Auth Disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

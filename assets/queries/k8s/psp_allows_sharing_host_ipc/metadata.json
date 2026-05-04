@@ -1,5 +1,6 @@
 {
-  "id": "80f93444-b240-4ebb-a4c6-5c40b76c04ea",
+  "id": "kubernetes-psp-allows-sharing-host-ipc",
+  "legacyId": "80f93444-b240-4ebb-a4c6-5c40b76c04ea",
   "queryName": "PSP allows sharing host IPC",
   "severity": "HIGH",
   "category": "Insecure Configurations",

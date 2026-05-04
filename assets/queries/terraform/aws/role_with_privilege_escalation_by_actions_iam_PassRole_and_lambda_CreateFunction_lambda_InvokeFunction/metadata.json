@@ -1,5 +1,6 @@
 {
-  "id": "fa62ac4f-f5b9-45b9-97c1-625c8b6253ca",
+  "id": "terraform-aws-role-with-privilege-escalation-by-actions-iam-passrole-and-lambda-createfunction-lambda-invokefunction",
+  "legacyId": "fa62ac4f-f5b9-45b9-97c1-625c8b6253ca",
   "queryName": "Role with privilege escalation by actions 'lambda:CreateFunction' and 'iam:PassRole' and 'lambda:InvokeFunction'",
   "severity": "MEDIUM",
   "category": "Access Control",

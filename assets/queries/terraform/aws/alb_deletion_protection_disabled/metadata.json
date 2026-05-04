@@ -1,5 +1,6 @@
 {
-  "id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+  "id": "terraform-aws-alb-deletion-protection-disabled",
+  "legacyId": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
   "queryName": "ALB deletion protection disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

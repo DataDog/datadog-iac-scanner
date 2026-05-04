@@ -1,5 +1,6 @@
 {
-  "id": "6b6874fe-4c2f-4eea-8b90-7cceaa4a125e",
+  "id": "terraform-aws-cloudwatch-network-gateways-changes-alarm-missing",
+  "legacyId": "6b6874fe-4c2f-4eea-8b90-7cceaa4a125e",
   "queryName": "CloudWatch network gateways changes alarm missing",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "eb8c2560-8bee-4248-9d0d-e80c8641dd91",
+  "id": "ansible-azure-web-app-accepting-traffic-other-than-https",
+  "legacyId": "eb8c2560-8bee-4248-9d0d-e80c8641dd91",
   "queryName": "Web app accepting traffic other than HTTPS",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

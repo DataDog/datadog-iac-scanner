@@ -1,5 +1,6 @@
 {
-  "id": "bdf8dcb4-75df-4370-92c4-606e4ae6c4d3",
+  "id": "cloudformation-aws-redshift-publicly-accessible",
+  "legacyId": "bdf8dcb4-75df-4370-92c4-606e4ae6c4d3",
   "queryName": "Redshift publicly accessible",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

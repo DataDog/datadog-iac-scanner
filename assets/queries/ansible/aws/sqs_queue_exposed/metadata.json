@@ -1,5 +1,6 @@
 {
-  "id": "86b0efa7-4901-4edd-a37a-c034bec6645a",
+  "id": "ansible-aws-sqs-queue-exposed",
+  "legacyId": "86b0efa7-4901-4edd-a37a-c034bec6645a",
   "queryName": "SQS queue exposed",
   "severity": "HIGH",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "f377b83e-bd07-4f48-a591-60c82b14a78b",
+  "id": "kubernetes-seccomp-profile-is-not-configured",
+  "legacyId": "f377b83e-bd07-4f48-a591-60c82b14a78b",
   "queryName": "Seccomp profile is not configured",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "9127f0d9-2310-42e7-866f-5fd9d20dcbad",
+  "id": "kubernetes-cluster-allows-unsafe-sysctls",
+  "legacyId": "9127f0d9-2310-42e7-866f-5fd9d20dcbad",
   "queryName": "Cluster allows unsafe sysctls",
   "severity": "HIGH",
   "category": "Insecure Configurations",

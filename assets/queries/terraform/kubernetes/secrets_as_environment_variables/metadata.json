@@ -1,5 +1,6 @@
 {
-  "id": "6d8f1a10-b6cd-48f0-b960-f7c535d5cdb8",
+  "id": "terraform-common-secrets-as-environment-variables",
+  "legacyId": "6d8f1a10-b6cd-48f0-b960-f7c535d5cdb8",
   "queryName": "Secrets as environment variables",
   "severity": "LOW",
   "category": "Secret Management",

@@ -1,5 +1,6 @@
 {
-  "id": "9e8c89b3-7997-4d15-93e4-7911b9db99fd",
+  "id": "cloudformation-aws-inline-policies-are-attached-to-ecs-service",
+  "legacyId": "9e8c89b3-7997-4d15-93e4-7911b9db99fd",
   "queryName": "Inline policies are attached to an ECS service",
   "severity": "LOW",
   "category": "Insecure Configurations",

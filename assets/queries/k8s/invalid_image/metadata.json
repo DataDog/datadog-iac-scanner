@@ -1,5 +1,6 @@
 {
-  "id": "583053b7-e632-46f0-b989-f81ff8045385",
+  "id": "kubernetes-invalid-image",
+  "legacyId": "583053b7-e632-46f0-b989-f81ff8045385",
   "queryName": "Invalid image tag",
   "severity": "LOW",
   "category": "Supply-Chain",

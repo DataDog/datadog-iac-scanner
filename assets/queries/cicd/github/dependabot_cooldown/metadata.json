@@ -1,5 +1,6 @@
 {
-  "id": "f2a3b4c5-d6e7-48f9-a0b1-c2d3e4f5a6b7",
+  "id": "cicd-common-dependabot-cooldown",
+  "legacyId": "f2a3b4c5-d6e7-48f9-a0b1-c2d3e4f5a6b7",
   "queryName": "Dependabot cooldown",
   "severity": "MEDIUM",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "44ceb4fa-0897-4fd2-b676-30e7a58f2933",
+  "id": "terraform-aws-cloudwatch-management-console-sign-in-without-mfa-alarm-missing",
+  "legacyId": "44ceb4fa-0897-4fd2-b676-30e7a58f2933",
   "queryName": "CloudWatch console sign-in without MFA alarm missing",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "617ef6ff-711e-4bd7-94ae-e965911b1b40",
+  "id": "terraform-gcp-google-project-iam-binding-service-account-has-token-creator-or-account-user-role",
+  "legacyId": "617ef6ff-711e-4bd7-94ae-e965911b1b40",
   "queryName": "Google project IAM binding service account has token creator or account user role",
   "severity": "HIGH",
   "category": "Access Control",

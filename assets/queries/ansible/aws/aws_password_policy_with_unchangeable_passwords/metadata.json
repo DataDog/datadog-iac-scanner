@@ -1,5 +1,6 @@
 {
-  "id": "e28ceb92-d588-4166-aac5-766c8f5b7472",
+  "id": "ansible-aws-aws-password-policy-with-unchangeable-passwords",
+  "legacyId": "e28ceb92-d588-4166-aac5-766c8f5b7472",
   "queryName": "AWS password policy with unchangeable passwords",
   "severity": "LOW",
   "category": "Insecure Configurations",

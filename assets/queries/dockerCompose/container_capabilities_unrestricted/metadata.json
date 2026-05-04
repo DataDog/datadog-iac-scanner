@@ -1,5 +1,6 @@
 {
-  "id": "ce76b7d0-9e77-464d-b86f-c5c48e03e22d",
+  "id": "dockercompose-container-capabilities-unrestricted",
+  "legacyId": "ce76b7d0-9e77-464d-b86f-c5c48e03e22d",
   "queryName": "Container Capabilities Unrestricted",
   "severity": "MEDIUM",
   "category": "Resource Management",

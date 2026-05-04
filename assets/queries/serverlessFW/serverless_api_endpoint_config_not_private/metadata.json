@@ -1,5 +1,6 @@
 {
-  "id": "4d424558-c6d1-453c-be98-9a7f877abd9a",
+  "id": "serverlessfw-serverless-api-endpoint-config-not-private",
+  "legacyId": "4d424558-c6d1-453c-be98-9a7f877abd9a",
   "queryName": "Serverless API Endpoint Config Not Private",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

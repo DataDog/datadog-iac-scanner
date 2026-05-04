@@ -1,5 +1,6 @@
 {
-  "id": "8d22ae91-6ac1-459f-95be-d37bd373f244",
+  "id": "ansible-common-insecure-relative-path-resolution",
+  "legacyId": "8d22ae91-6ac1-459f-95be-d37bd373f244",
   "queryName": "Insecure relative path resolution",
   "severity": "LOW",
   "category": "Best Practices",

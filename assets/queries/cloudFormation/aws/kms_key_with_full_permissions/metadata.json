@@ -1,5 +1,6 @@
 {
-  "id": "da905474-7454-43c0-b8d2-5756ab951aba",
+  "id": "cloudformation-aws-kms-key-with-full-permissions",
+  "legacyId": "da905474-7454-43c0-b8d2-5756ab951aba",
   "queryName": "KMS key with a vulnerable policy",
   "severity": "HIGH",
   "category": "Insecure Configurations",

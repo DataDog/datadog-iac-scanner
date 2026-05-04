@@ -1,5 +1,6 @@
 {
-  "id": "265d9725-2fb8-42a2-bc57-3279c5db82d5",
+  "id": "ansible-aws-lambda-function-without-tags",
+  "legacyId": "265d9725-2fb8-42a2-bc57-3279c5db82d5",
   "queryName": "Lambda function without tags",
   "severity": "LOW",
   "category": "Insecure Configurations",

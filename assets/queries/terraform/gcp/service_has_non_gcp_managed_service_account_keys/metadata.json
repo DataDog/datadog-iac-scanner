@@ -1,5 +1,6 @@
 {
-  "id": "3jh54js8-e5f6-7890-abcd-ef1234567890",
+  "id": "terraform-gcp-service-has-non-gcp-managed-service-account-keys",
+  "legacyId": "3jh54js8-e5f6-7890-abcd-ef1234567890",
   "descriptionID": "3jh54js8",
   "queryName": "There are non GCP-managed service account keys for a service account",
   "severity": "HIGH",

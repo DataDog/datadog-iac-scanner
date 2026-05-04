@@ -1,5 +1,6 @@
 {
-  "id": "7f91992f-b4c8-43bf-9bf9-fae9ecdb6e3a",
+  "id": "openapi-file-parameter-with-wrong-consumes-property",
+  "legacyId": "7f91992f-b4c8-43bf-9bf9-fae9ecdb6e3a",
   "queryName": "File Parameter With Wrong Consumes Property",
   "severity": "INFO",
   "category": "Structure and Semantics",

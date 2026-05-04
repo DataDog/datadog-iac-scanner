@@ -1,5 +1,6 @@
 {
-  "id": "f317c3c2-58e5-4aa7-bb8e-3a7f6bcd274a",
+  "id": "terraform-aws-ami-owner-missing",
+  "legacyId": "f317c3c2-58e5-4aa7-bb8e-3a7f6bcd274a",
   "queryName": "AMI most recent without owner or filter",
   "severity": "HIGH",
   "category": "Access Control",

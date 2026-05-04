@@ -1,5 +1,6 @@
 {
-  "id": "0b93729a-d882-4803-bdc3-ac429a21f158",
+  "id": "terraform-aws-ec2-instance-using-api-keys",
+  "legacyId": "0b93729a-d882-4803-bdc3-ac429a21f158",
   "queryName": "EC2 instance using API keys",
   "severity": "LOW",
   "category": "Access Control",

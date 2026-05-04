@@ -1,5 +1,6 @@
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": "terraform-gcp-legacy-networks-exist-for-project",
+  "legacyId": "550e8400-e29b-41d4-a716-446655440000",
   "descriptionID": "550e8400",
   "queryName": "Ensure legacy networks do not exist for a project",
   "severity": "HIGH",
