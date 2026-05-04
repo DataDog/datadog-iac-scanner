@@ -122,7 +122,7 @@ def build_markdown(
     rule_id = (
         f"{platform}-{to_slug(display_name)}"
         if metadata_provider == "unknown"
-        else f"{platform}-{metadata_provider}-{to_slug(display_name)}"
+        else f"{platform}-{metadata_provider}-{to_slug(rule_name)}"
     ).lower()
     test_path = (
         rule_path / "test"
