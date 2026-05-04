@@ -3,7 +3,7 @@ title: "Databricks cluster uses non-LTS Spark version"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/use_lts_spark_version"
-  id: "terraform-common-databricks-cluster-uses-non-lts-spark-version"
+  id: "terraform-common-use-lts-spark-version"
   display_name: "Databricks cluster uses non-LTS Spark version"
   cloud_provider: "Databricks"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-databricks-cluster-uses-non-lts-spark-version`
+**Id:** `terraform-common-use-lts-spark-version`
 
 **Cloud Provider:** Databricks
 

@@ -3,7 +3,7 @@ title: "RDS instance uses a default port"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/rds_using_default_port"
-  id: "ansible-aws-rds-instance-uses-a-default-port"
+  id: "ansible-aws-rds-using-default-port"
   display_name: "RDS instance uses a default port"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-rds-instance-uses-a-default-port`
+**Id:** `ansible-aws-rds-using-default-port`
 
 **Cloud Provider:** AWS
 

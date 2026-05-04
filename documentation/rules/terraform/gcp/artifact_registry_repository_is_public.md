@@ -3,7 +3,7 @@ title: "Artifact Registry repo is public"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/artifact_registry_repository_is_public"
-  id: "terraform-gcp-artifact-registry-repo-is-public"
+  id: "terraform-gcp-artifact-registry-repository-is-public"
   display_name: "Artifact Registry repo is public"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-gcp-artifact-registry-repo-is-public`
+**Id:** `terraform-gcp-artifact-registry-repository-is-public`
 
 **Cloud Provider:** GCP
 

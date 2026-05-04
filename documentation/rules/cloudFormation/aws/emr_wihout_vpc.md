@@ -3,7 +3,7 @@ title: "EMR without VPC"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/emr_wihout_vpc"
-  id: "cloudformation-aws-emr-without-vpc"
+  id: "cloudformation-aws-emr-wihout-vpc"
   display_name: "EMR without VPC"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-emr-without-vpc`
+**Id:** `cloudformation-aws-emr-wihout-vpc`
 
 **Cloud Provider:** AWS
 

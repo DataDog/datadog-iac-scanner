@@ -3,7 +3,7 @@ title: "Route table with default routing"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/routertable_with_default_routing"
-  id: "cloudformation-aws-route-table-with-default-routing"
+  id: "cloudformation-aws-routertable-with-default-routing"
   display_name: "Route table with default routing"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-route-table-with-default-routing`
+**Id:** `cloudformation-aws-routertable-with-default-routing`
 
 **Cloud Provider:** AWS
 

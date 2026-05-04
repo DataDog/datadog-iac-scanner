@@ -3,7 +3,7 @@ title: "SNS topic publicity has allow and NotAction simultaneously"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sns_topic_publicity_has_allow_and_not_action_simultaneously"
-  id: "terraform-aws-sns-topic-publicity-has-allow-and-notaction-simultaneously"
+  id: "terraform-aws-sns-topic-publicity-has-allow-and-not-action-simultaneously"
   display_name: "SNS topic publicity has allow and NotAction simultaneously"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-sns-topic-publicity-has-allow-and-notaction-simultaneously`
+**Id:** `terraform-aws-sns-topic-publicity-has-allow-and-not-action-simultaneously`
 
 **Cloud Provider:** AWS
 

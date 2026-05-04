@@ -3,7 +3,7 @@ title: "Unspecified workflows level permissions"
 group_id: "CICD / GitHub"
 meta:
   name: "github/unspecified_workflows_permissions"
-  id: "cicd-common-unspecified-workflows-level-permissions"
+  id: "cicd-common-unspecified-workflows-permissions"
   display_name: "Unspecified workflows level permissions"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cicd-common-unspecified-workflows-level-permissions`
+**Id:** `cicd-common-unspecified-workflows-permissions`
 
 **Cloud Provider:** GitHub
 

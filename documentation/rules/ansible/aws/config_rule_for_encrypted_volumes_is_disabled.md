@@ -3,7 +3,7 @@ title: "Config rule for encrypted volumes disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/config_rule_for_encrypted_volumes_is_disabled"
-  id: "ansible-aws-config-rule-for-encrypted-volumes-disabled"
+  id: "ansible-aws-config-rule-for-encrypted-volumes-is-disabled"
   display_name: "Config rule for encrypted volumes disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-config-rule-for-encrypted-volumes-disabled`
+**Id:** `ansible-aws-config-rule-for-encrypted-volumes-is-disabled`
 
 **Cloud Provider:** AWS
 

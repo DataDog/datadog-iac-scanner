@@ -3,7 +3,7 @@ title: "NIFCLOUD router undefined security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/router_security_group_undefined"
-  id: "terraform-nifcloud-nifcloud-router-undefined-security-group"
+  id: "terraform-nifcloud-router-security-group-undefined"
   display_name: "NIFCLOUD router undefined security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-router-undefined-security-group`
+**Id:** `terraform-nifcloud-router-security-group-undefined`
 
 **Cloud Provider:** Nifcloud
 

@@ -3,7 +3,7 @@ title: "NIFCLOUD VPN gateway undefined security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/vpn_gateway_security_group_undefined"
-  id: "terraform-nifcloud-nifcloud-vpn-gateway-undefined-security-group"
+  id: "terraform-nifcloud-vpn-gateway-security-group-undefined"
   display_name: "NIFCLOUD VPN gateway undefined security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-vpn-gateway-undefined-security-group`
+**Id:** `terraform-nifcloud-vpn-gateway-security-group-undefined`
 
 **Cloud Provider:** Nifcloud
 

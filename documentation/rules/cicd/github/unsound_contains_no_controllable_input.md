@@ -3,7 +3,7 @@ title: "Unsound contains without controllable input"
 group_id: "CICD / GitHub"
 meta:
   name: "github/unsound_contains_no_controllable_input"
-  id: "cicd-common-unsound-contains-without-controllable-input"
+  id: "cicd-common-unsound-contains-no-controllable-input"
   display_name: "Unsound contains without controllable input"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cicd-common-unsound-contains-without-controllable-input`
+**Id:** `cicd-common-unsound-contains-no-controllable-input`
 
 **Cloud Provider:** GitHub
 

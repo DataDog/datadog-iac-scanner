@@ -3,7 +3,7 @@ title: "Config rule for encrypted volumes disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/config_rule_for_encrypted_volumes_is_disabled"
-  id: "terraform-aws-config-rule-for-encrypted-volumes-disabled"
+  id: "terraform-aws-config-rule-for-encrypted-volumes-is-disabled"
   display_name: "Config rule for encrypted volumes disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-config-rule-for-encrypted-volumes-disabled`
+**Id:** `terraform-aws-config-rule-for-encrypted-volumes-is-disabled`
 
 **Cloud Provider:** AWS
 

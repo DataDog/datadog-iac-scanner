@@ -3,7 +3,7 @@ title: "SQL Analysis Services port 2383 (TCP) is publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sql_analysis_services_port_2383_is_publicly_accessible"
-  id: "ansible-aws-sql-analysis-services-port-2383-tcp-is-publicly-accessible"
+  id: "ansible-aws-sql-analysis-services-port-2383-is-publicly-accessible"
   display_name: "SQL Analysis Services port 2383 (TCP) is publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-sql-analysis-services-port-2383-tcp-is-publicly-accessible`
+**Id:** `ansible-aws-sql-analysis-services-port-2383-is-publicly-accessible`
 
 **Cloud Provider:** AWS
 

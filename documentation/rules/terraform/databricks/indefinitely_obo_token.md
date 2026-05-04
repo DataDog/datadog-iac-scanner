@@ -3,7 +3,7 @@ title: "Indefinitely Databricks OBO token lifetime"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/indefinitely_obo_token"
-  id: "terraform-common-indefinitely-databricks-obo-token-lifetime"
+  id: "terraform-common-indefinitely-obo-token"
   display_name: "Indefinitely Databricks OBO token lifetime"
   cloud_provider: "Databricks"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-indefinitely-databricks-obo-token-lifetime`
+**Id:** `terraform-common-indefinitely-obo-token`
 
 **Cloud Provider:** Databricks
 

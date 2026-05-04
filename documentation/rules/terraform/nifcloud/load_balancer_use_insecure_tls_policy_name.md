@@ -3,7 +3,7 @@ title: "NIFCLOUD LB using insecure TLS policy name"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/load_balancer_use_insecure_tls_policy_name"
-  id: "terraform-nifcloud-nifcloud-lb-using-insecure-tls-policy-name"
+  id: "terraform-nifcloud-load-balancer-use-insecure-tls-policy-name"
   display_name: "NIFCLOUD LB using insecure TLS policy name"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-lb-using-insecure-tls-policy-name`
+**Id:** `terraform-nifcloud-load-balancer-use-insecure-tls-policy-name`
 
 **Cloud Provider:** Nifcloud
 

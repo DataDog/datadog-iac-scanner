@@ -3,7 +3,7 @@ title: "Databricks group without user or instance profile"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/group_without_user_or_instance_profile"
-  id: "terraform-common-databricks-group-without-user-or-instance-profile"
+  id: "terraform-common-group-without-user-or-instance-profile"
   display_name: "Databricks group without user or instance profile"
   cloud_provider: "Databricks"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-databricks-group-without-user-or-instance-profile`
+**Id:** `terraform-common-group-without-user-or-instance-profile`
 
 **Cloud Provider:** Databricks
 

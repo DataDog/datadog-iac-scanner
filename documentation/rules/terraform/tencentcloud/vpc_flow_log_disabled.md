@@ -3,7 +3,7 @@ title: "VPC flow logs disabled"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/vpc_flow_log_disabled"
-  id: "terraform-tencentcloud-vpc-flow-logs-disabled"
+  id: "terraform-tencentcloud-vpc-flow-log-disabled"
   display_name: "VPC flow logs disabled"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-tencentcloud-vpc-flow-logs-disabled`
+**Id:** `terraform-tencentcloud-vpc-flow-log-disabled`
 
 **Cloud Provider:** TencentCloud
 

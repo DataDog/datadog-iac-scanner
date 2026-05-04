@@ -3,7 +3,7 @@ title: "OSS bucket encryption using CMK disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/oss_bucket_cmk_encryption_disabled"
-  id: "terraform-alicloud-oss-bucket-encryption-using-cmk-disabled"
+  id: "terraform-alicloud-oss-bucket-cmk-encryption-disabled"
   display_name: "OSS bucket encryption using CMK disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-alicloud-oss-bucket-encryption-using-cmk-disabled`
+**Id:** `terraform-alicloud-oss-bucket-cmk-encryption-disabled`
 
 **Cloud Provider:** Alicloud
 

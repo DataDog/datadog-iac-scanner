@@ -3,7 +3,7 @@ title: "ECS services should not be assigned public IP addresses"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ecs_services_assigned_with_public_ip_address"
-  id: "ansible-aws-ecs-services-should-not-be-assigned-public-ip-addresses"
+  id: "ansible-aws-ecs-services-assigned-with-public-ip-address"
   display_name: "ECS services should not be assigned public IP addresses"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-ecs-services-should-not-be-assigned-public-ip-addresses`
+**Id:** `ansible-aws-ecs-services-assigned-with-public-ip-address`
 
 **Cloud Provider:** AWS
 

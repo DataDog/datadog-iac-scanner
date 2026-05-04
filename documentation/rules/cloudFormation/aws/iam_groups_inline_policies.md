@@ -3,7 +3,7 @@ title: "IAM group inline policies"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_groups_inline_policies"
-  id: "cloudformation-aws-iam-group-inline-policies"
+  id: "cloudformation-aws-iam-groups-inline-policies"
   display_name: "IAM group inline policies"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-iam-group-inline-policies`
+**Id:** `cloudformation-aws-iam-groups-inline-policies`
 
 **Cloud Provider:** AWS
 

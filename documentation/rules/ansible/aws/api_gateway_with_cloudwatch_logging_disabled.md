@@ -3,7 +3,7 @@ title: "API Gateway with CloudWatch Logs disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_with_cloudwatch_logging_disabled"
-  id: "ansible-aws-api-gateway-with-cloudwatch-logs-disabled"
+  id: "ansible-aws-api-gateway-with-cloudwatch-logging-disabled"
   display_name: "API Gateway with CloudWatch Logs disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-api-gateway-with-cloudwatch-logs-disabled`
+**Id:** `ansible-aws-api-gateway-with-cloudwatch-logging-disabled`
 
 **Cloud Provider:** AWS
 

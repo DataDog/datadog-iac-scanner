@@ -3,7 +3,7 @@ title: "AWS DMS replication instance is publicly accessible"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/amazon_dms_replication_instance_is_publicly_accessible"
-  id: "cloudformation-aws-aws-dms-replication-instance-is-publicly-accessible"
+  id: "cloudformation-aws-amazon-dms-replication-instance-is-publicly-accessible"
   display_name: "AWS DMS replication instance is publicly accessible"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-aws-dms-replication-instance-is-publicly-accessible`
+**Id:** `cloudformation-aws-amazon-dms-replication-instance-is-publicly-accessible`
 
 **Cloud Provider:** AWS
 

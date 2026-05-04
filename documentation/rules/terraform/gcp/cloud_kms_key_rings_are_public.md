@@ -3,7 +3,7 @@ title: "Cloud KMS key ring is anonymously or publicly accessible"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/cloud_kms_key_rings_are_public"
-  id: "terraform-gcp-cloud-kms-key-ring-is-anonymously-or-publicly-accessible"
+  id: "terraform-gcp-cloud-kms-key-rings-are-public"
   display_name: "Cloud KMS key ring is anonymously or publicly accessible"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-gcp-cloud-kms-key-ring-is-anonymously-or-publicly-accessible`
+**Id:** `terraform-gcp-cloud-kms-key-rings-are-public`
 
 **Cloud Provider:** GCP
 

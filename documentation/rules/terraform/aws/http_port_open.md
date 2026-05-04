@@ -3,7 +3,7 @@ title: "HTTP port open to internet"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/http_port_open"
-  id: "terraform-aws-http-port-open-to-internet"
+  id: "terraform-aws-http-port-open"
   display_name: "HTTP port open to internet"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-http-port-open-to-internet`
+**Id:** `terraform-aws-http-port-open`
 
 **Cloud Provider:** AWS
 

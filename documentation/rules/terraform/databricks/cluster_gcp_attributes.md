@@ -3,7 +3,7 @@ title: "Check Databricks cluster GCP attribute best practices"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/cluster_gcp_attributes"
-  id: "terraform-common-check-databricks-cluster-gcp-attribute-best-practices"
+  id: "terraform-common-cluster-gcp-attributes"
   display_name: "Check Databricks cluster GCP attribute best practices"
   cloud_provider: "Databricks"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-check-databricks-cluster-gcp-attribute-best-practices`
+**Id:** `terraform-common-cluster-gcp-attributes`
 
 **Cloud Provider:** Databricks
 

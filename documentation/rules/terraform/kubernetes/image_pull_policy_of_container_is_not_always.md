@@ -3,7 +3,7 @@ title: "Image pull policy of the container is not set to always"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/image_pull_policy_of_container_is_not_always"
-  id: "terraform-common-image-pull-policy-of-the-container-is-not-set-to-always"
+  id: "terraform-common-image-pull-policy-of-container-is-not-always"
   display_name: "Image pull policy of the container is not set to always"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-image-pull-policy-of-the-container-is-not-set-to-always`
+**Id:** `terraform-common-image-pull-policy-of-container-is-not-always`
 
 **Cloud Provider:** Kubernetes
 

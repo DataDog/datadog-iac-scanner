@@ -3,7 +3,7 @@ title: "IAM policies attached to a user"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_policies_attached_to_user"
-  id: "cloudformation-aws-iam-policies-attached-to-a-user"
+  id: "cloudformation-aws-iam-policies-attached-to-user"
   display_name: "IAM policies attached to a user"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-iam-policies-attached-to-a-user`
+**Id:** `cloudformation-aws-iam-policies-attached-to-user`
 
 **Cloud Provider:** AWS
 

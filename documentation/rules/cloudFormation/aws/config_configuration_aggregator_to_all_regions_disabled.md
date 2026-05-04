@@ -3,7 +3,7 @@ title: "Configuration aggregator to all regions disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/config_configuration_aggregator_to_all_regions_disabled"
-  id: "cloudformation-aws-configuration-aggregator-to-all-regions-disabled"
+  id: "cloudformation-aws-config-configuration-aggregator-to-all-regions-disabled"
   display_name: "Configuration aggregator to all regions disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-configuration-aggregator-to-all-regions-disabled`
+**Id:** `cloudformation-aws-config-configuration-aggregator-to-all-regions-disabled`
 
 **Cloud Provider:** AWS
 

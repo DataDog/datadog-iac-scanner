@@ -3,7 +3,7 @@ title: "Incorrect volume claim access mode ReadWriteOnce"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/incorrect_volume_claim_access_mode_read_write_once"
-  id: "terraform-common-incorrect-volume-claim-access-mode-readwriteonce"
+  id: "terraform-common-incorrect-volume-claim-access-mode-read-write-once"
   display_name: "Incorrect volume claim access mode ReadWriteOnce"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-incorrect-volume-claim-access-mode-readwriteonce`
+**Id:** `terraform-common-incorrect-volume-claim-access-mode-read-write-once`
 
 **Cloud Provider:** Kubernetes
 

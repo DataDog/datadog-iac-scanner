@@ -3,7 +3,7 @@ title: "OSS bucket allows delete action from all principals"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/oss_bucket_allows_delete_from_all_principals"
-  id: "terraform-alicloud-oss-bucket-allows-delete-action-from-all-principals"
+  id: "terraform-alicloud-oss-bucket-allows-delete-from-all-principals"
   display_name: "OSS bucket allows delete action from all principals"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-alicloud-oss-bucket-allows-delete-action-from-all-principals`
+**Id:** `terraform-alicloud-oss-bucket-allows-delete-from-all-principals`
 
 **Cloud Provider:** Alicloud
 

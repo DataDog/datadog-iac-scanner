@@ -3,7 +3,7 @@ title: "Secrets Manager secret encrypted with AWS-managed key"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/secretsmanager_secret_encrypted_with_aws_managed_key"
-  id: "terraform-aws-secrets-manager-secret-encrypted-with-aws-managed-key"
+  id: "terraform-aws-secretsmanager-secret-encrypted-with-aws-managed-key"
   display_name: "Secrets Manager secret encrypted with AWS-managed key"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-secrets-manager-secret-encrypted-with-aws-managed-key`
+**Id:** `terraform-aws-secretsmanager-secret-encrypted-with-aws-managed-key`
 
 **Cloud Provider:** AWS
 

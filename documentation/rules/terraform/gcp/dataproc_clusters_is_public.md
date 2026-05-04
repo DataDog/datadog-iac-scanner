@@ -3,7 +3,7 @@ title: "Dataproc clusters publicly accessible"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/dataproc_clusters_is_public"
-  id: "terraform-gcp-dataproc-clusters-publicly-accessible"
+  id: "terraform-gcp-dataproc-clusters-is-public"
   display_name: "Dataproc clusters publicly accessible"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-gcp-dataproc-clusters-publicly-accessible`
+**Id:** `terraform-gcp-dataproc-clusters-is-public`
 
 **Cloud Provider:** GCP
 

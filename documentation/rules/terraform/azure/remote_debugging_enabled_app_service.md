@@ -3,7 +3,7 @@ title: "Ensure web app is not remotely debuggable"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/remote_debugging_enabled_app_service"
-  id: "terraform-azure-ensure-web-app-is-not-remotely-debuggable"
+  id: "terraform-azure-remote-debugging-enabled-app-service"
   display_name: "Ensure web app is not remotely debuggable"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-azure-ensure-web-app-is-not-remotely-debuggable`
+**Id:** `terraform-azure-remote-debugging-enabled-app-service`
 
 **Cloud Provider:** Azure
 

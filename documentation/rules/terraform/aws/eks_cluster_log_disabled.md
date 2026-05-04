@@ -3,7 +3,7 @@ title: "EKS cluster logging is not enabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/eks_cluster_log_disabled"
-  id: "terraform-aws-eks-cluster-logging-is-not-enabled"
+  id: "terraform-aws-eks-cluster-log-disabled"
   display_name: "EKS cluster logging is not enabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-eks-cluster-logging-is-not-enabled`
+**Id:** `terraform-aws-eks-cluster-log-disabled`
 
 **Cloud Provider:** AWS
 

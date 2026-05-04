@@ -3,7 +3,7 @@ title: "NIFCLOUD NAS has public ingress NAS security group rule"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/nas_security_group_has_public_ingress_sgr"
-  id: "terraform-nifcloud-nifcloud-nas-has-public-ingress-nas-security-group-rule"
+  id: "terraform-nifcloud-nas-security-group-has-public-ingress-sgr"
   display_name: "NIFCLOUD NAS has public ingress NAS security group rule"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-nas-has-public-ingress-nas-security-group-rule`
+**Id:** `terraform-nifcloud-nas-security-group-has-public-ingress-sgr`
 
 **Cloud Provider:** Nifcloud
 

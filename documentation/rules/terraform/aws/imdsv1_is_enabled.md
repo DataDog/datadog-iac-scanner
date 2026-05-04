@@ -3,7 +3,7 @@ title: "IMDSv1 enabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/imdsv1_is_enabled"
-  id: "terraform-aws-imdsv1-enabled"
+  id: "terraform-aws-imdsv1-is-enabled"
   display_name: "IMDSv1 enabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-imdsv1-enabled`
+**Id:** `terraform-aws-imdsv1-is-enabled`
 
 **Cloud Provider:** AWS
 

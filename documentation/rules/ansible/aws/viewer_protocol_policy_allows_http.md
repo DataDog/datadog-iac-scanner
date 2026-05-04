@@ -3,7 +3,7 @@ title: "CloudFront viewer protocol policy allows HTTP"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/viewer_protocol_policy_allows_http"
-  id: "ansible-aws-cloudfront-viewer-protocol-policy-allows-http"
+  id: "ansible-aws-viewer-protocol-policy-allows-http"
   display_name: "CloudFront viewer protocol policy allows HTTP"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-cloudfront-viewer-protocol-policy-allows-http`
+**Id:** `ansible-aws-viewer-protocol-policy-allows-http`
 
 **Cloud Provider:** AWS
 

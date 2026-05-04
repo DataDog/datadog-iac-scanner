@@ -3,7 +3,7 @@ title: "KMS key with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/kms_key_with_full_permissions"
-  id: "terraform-aws-kms-key-with-vulnerable-policy"
+  id: "terraform-aws-kms-key-with-full-permissions"
   display_name: "KMS key with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-kms-key-with-vulnerable-policy`
+**Id:** `terraform-aws-kms-key-with-full-permissions`
 
 **Cloud Provider:** AWS
 

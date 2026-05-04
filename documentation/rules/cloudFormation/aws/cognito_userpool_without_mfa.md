@@ -3,7 +3,7 @@ title: "Cognito user pool without MFA"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cognito_userpool_without_mfa"
-  id: "cloudformation-aws-cognito-user-pool-without-mfa"
+  id: "cloudformation-aws-cognito-userpool-without-mfa"
   display_name: "Cognito user pool without MFA"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-cognito-user-pool-without-mfa`
+**Id:** `cloudformation-aws-cognito-userpool-without-mfa`
 
 **Cloud Provider:** AWS
 

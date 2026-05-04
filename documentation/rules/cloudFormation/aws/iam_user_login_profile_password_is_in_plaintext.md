@@ -3,7 +3,7 @@ title: "IAM user LoginProfile password is in plaintext"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_user_login_profile_password_is_in_plaintext"
-  id: "cloudformation-aws-iam-user-loginprofile-password-is-in-plaintext"
+  id: "cloudformation-aws-iam-user-login-profile-password-is-in-plaintext"
   display_name: "IAM user LoginProfile password is in plaintext"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-iam-user-loginprofile-password-is-in-plaintext`
+**Id:** `cloudformation-aws-iam-user-login-profile-password-is-in-plaintext`
 
 **Cloud Provider:** AWS
 

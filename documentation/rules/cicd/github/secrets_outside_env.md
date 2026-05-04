@@ -3,7 +3,7 @@ title: "Secrets outside environment"
 group_id: "CICD / GitHub"
 meta:
   name: "github/secrets_outside_env"
-  id: "cicd-common-secrets-outside-environment"
+  id: "cicd-common-secrets-outside-env"
   display_name: "Secrets outside environment"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cicd-common-secrets-outside-environment`
+**Id:** `cicd-common-secrets-outside-env`
 
 **Cloud Provider:** GitHub
 

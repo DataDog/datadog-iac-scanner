@@ -3,7 +3,7 @@ title: "Configuration aggregator to all regions disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/config_configuration_aggregator_to_all_regions_disabled"
-  id: "ansible-aws-configuration-aggregator-to-all-regions-disabled"
+  id: "ansible-aws-config-configuration-aggregator-to-all-regions-disabled"
   display_name: "Configuration aggregator to all regions disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-configuration-aggregator-to-all-regions-disabled`
+**Id:** `ansible-aws-config-configuration-aggregator-to-all-regions-disabled`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Ensure Azure MariaDB server is using latest TLS (1.2)"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/mariadb_not_using_latest_tls"
-  id: "terraform-azure-ensure-azure-mariadb-server-is-using-latest-tls-1-2"
+  id: "terraform-azure-mariadb-not-using-latest-tls"
   display_name: "Ensure Azure MariaDB server is using latest TLS (1.2)"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-azure-ensure-azure-mariadb-server-is-using-latest-tls-1-2`
+**Id:** `terraform-azure-mariadb-not-using-latest-tls`
 
 **Cloud Provider:** Azure
 

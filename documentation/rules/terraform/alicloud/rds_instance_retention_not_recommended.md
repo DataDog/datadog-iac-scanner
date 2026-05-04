@@ -3,7 +3,7 @@ title: "RDS instance retention period not recommended"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/rds_instance_retention_not_recommended"
-  id: "terraform-alicloud-rds-instance-retention-period-not-recommended"
+  id: "terraform-alicloud-rds-instance-retention-not-recommended"
   display_name: "RDS instance retention period not recommended"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-alicloud-rds-instance-retention-period-not-recommended`
+**Id:** `terraform-alicloud-rds-instance-retention-not-recommended`
 
 **Cloud Provider:** Alicloud
 

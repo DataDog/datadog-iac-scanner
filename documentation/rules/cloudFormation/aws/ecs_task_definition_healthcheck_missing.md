@@ -3,7 +3,7 @@ title: "ECS task definition health check missing"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ecs_task_definition_healthcheck_missing"
-  id: "cloudformation-aws-ecs-task-definition-health-check-missing"
+  id: "cloudformation-aws-ecs-task-definition-healthcheck-missing"
   display_name: "ECS task definition health check missing"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-ecs-task-definition-health-check-missing`
+**Id:** `cloudformation-aws-ecs-task-definition-healthcheck-missing`
 
 **Cloud Provider:** AWS
 

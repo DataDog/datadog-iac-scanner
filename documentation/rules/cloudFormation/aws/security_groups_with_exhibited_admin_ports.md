@@ -3,7 +3,7 @@ title: "Security groups with exposed admin ports"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_groups_with_exhibited_admin_ports"
-  id: "cloudformation-aws-security-groups-with-exposed-admin-ports"
+  id: "cloudformation-aws-security-groups-with-exhibited-admin-ports"
   display_name: "Security groups with exposed admin ports"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-security-groups-with-exposed-admin-ports`
+**Id:** `cloudformation-aws-security-groups-with-exhibited-admin-ports`
 
 **Cloud Provider:** AWS
 

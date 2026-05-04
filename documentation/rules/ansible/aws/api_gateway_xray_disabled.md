@@ -3,7 +3,7 @@ title: "API Gateway X-Ray disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_xray_disabled"
-  id: "ansible-aws-api-gateway-x-ray-disabled"
+  id: "ansible-aws-api-gateway-xray-disabled"
   display_name: "API Gateway X-Ray disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-api-gateway-x-ray-disabled`
+**Id:** `ansible-aws-api-gateway-xray-disabled`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "VPC Flow Logs disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/vpc_flowlogs_disabled"
-  id: "cloudformation-aws-vpc-flow-logs-disabled"
+  id: "cloudformation-aws-vpc-flowlogs-disabled"
   display_name: "VPC Flow Logs disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-vpc-flow-logs-disabled`
+**Id:** `cloudformation-aws-vpc-flowlogs-disabled`
 
 **Cloud Provider:** AWS
 

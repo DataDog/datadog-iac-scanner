@@ -3,7 +3,7 @@ title: "NIFCLOUD RDB undefined description to DB security group"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/db_security_group_description_undefined"
-  id: "terraform-nifcloud-nifcloud-rdb-undefined-description-to-db-security-group"
+  id: "terraform-nifcloud-db-security-group-description-undefined"
   display_name: "NIFCLOUD RDB undefined description to DB security group"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-rdb-undefined-description-to-db-security-group`
+**Id:** `terraform-nifcloud-db-security-group-description-undefined`
 
 **Cloud Provider:** Nifcloud
 

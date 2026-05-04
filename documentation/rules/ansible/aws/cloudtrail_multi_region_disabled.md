@@ -3,7 +3,7 @@ title: "CloudTrail multi-region is disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudtrail_multi_region_disabled"
-  id: "ansible-aws-cloudtrail-multi-region-is-disabled"
+  id: "ansible-aws-cloudtrail-multi-region-disabled"
   display_name: "CloudTrail multi-region is disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-cloudtrail-multi-region-is-disabled`
+**Id:** `ansible-aws-cloudtrail-multi-region-disabled`
 
 **Cloud Provider:** AWS
 

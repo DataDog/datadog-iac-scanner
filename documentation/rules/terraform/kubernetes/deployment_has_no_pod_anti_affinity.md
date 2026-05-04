@@ -3,7 +3,7 @@ title: "Deployment has no podAntiAffinity"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/deployment_has_no_pod_anti_affinity"
-  id: "terraform-common-deployment-has-no-podantiaffinity"
+  id: "terraform-common-deployment-has-no-pod-anti-affinity"
   display_name: "Deployment has no podAntiAffinity"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-deployment-has-no-podantiaffinity`
+**Id:** `terraform-common-deployment-has-no-pod-anti-affinity`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "NIFCLOUD ELB has common private network"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/elb_has_common_private"
-  id: "terraform-nifcloud-nifcloud-elb-has-common-private-network"
+  id: "terraform-nifcloud-elb-has-common-private"
   display_name: "NIFCLOUD ELB has common private network"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-elb-has-common-private-network`
+**Id:** `terraform-nifcloud-elb-has-common-private`
 
 **Cloud Provider:** Nifcloud
 

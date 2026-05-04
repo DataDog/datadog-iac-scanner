@@ -3,7 +3,7 @@ title: "ECR repository not encrypted with CMK"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ecr_repository_not_encrypted"
-  id: "terraform-aws-ecr-repository-not-encrypted-with-cmk"
+  id: "terraform-aws-ecr-repository-not-encrypted"
   display_name: "ECR repository not encrypted with CMK"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-ecr-repository-not-encrypted-with-cmk`
+**Id:** `terraform-aws-ecr-repository-not-encrypted`
 
 **Cloud Provider:** AWS
 

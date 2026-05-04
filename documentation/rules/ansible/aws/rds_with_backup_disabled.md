@@ -3,7 +3,7 @@ title: "RDS instance with backup disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/rds_with_backup_disabled"
-  id: "ansible-aws-rds-instance-with-backup-disabled"
+  id: "ansible-aws-rds-with-backup-disabled"
   display_name: "RDS instance with backup disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-rds-instance-with-backup-disabled`
+**Id:** `ansible-aws-rds-with-backup-disabled`
 
 **Cloud Provider:** AWS
 

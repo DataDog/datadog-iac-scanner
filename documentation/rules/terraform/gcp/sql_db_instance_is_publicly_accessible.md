@@ -3,7 +3,7 @@ title: "SQL DB instance publicly accessible"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/sql_db_instance_is_publicly_accessible"
-  id: "terraform-gcp-sql-db-instance-publicly-accessible"
+  id: "terraform-gcp-sql-db-instance-is-publicly-accessible"
   display_name: "SQL DB instance publicly accessible"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-gcp-sql-db-instance-publicly-accessible`
+**Id:** `terraform-gcp-sql-db-instance-is-publicly-accessible`
 
 **Cloud Provider:** GCP
 

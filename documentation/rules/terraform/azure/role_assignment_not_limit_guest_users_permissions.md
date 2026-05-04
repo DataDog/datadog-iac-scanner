@@ -3,7 +3,7 @@ title: "Role assignment not limit guest user permissions"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/role_assignment_not_limit_guest_users_permissions"
-  id: "terraform-azure-role-assignment-not-limit-guest-user-permissions"
+  id: "terraform-azure-role-assignment-not-limit-guest-users-permissions"
   display_name: "Role assignment not limit guest user permissions"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-azure-role-assignment-not-limit-guest-user-permissions`
+**Id:** `terraform-azure-role-assignment-not-limit-guest-users-permissions`
 
 **Cloud Provider:** Azure
 

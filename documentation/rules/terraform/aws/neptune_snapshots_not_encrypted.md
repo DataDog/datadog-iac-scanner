@@ -3,7 +3,7 @@ title: "Neptune cluster snapshot not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/neptune_snapshots_not_encrypted"
-  id: "terraform-aws-neptune-cluster-snapshot-not-encrypted"
+  id: "terraform-aws-neptune-snapshots-not-encrypted"
   display_name: "Neptune cluster snapshot not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-neptune-cluster-snapshot-not-encrypted`
+**Id:** `terraform-aws-neptune-snapshots-not-encrypted`
 
 **Cloud Provider:** AWS
 

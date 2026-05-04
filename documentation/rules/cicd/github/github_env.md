@@ -3,7 +3,7 @@ title: "GitHub environment file injection"
 group_id: "CICD / GitHub"
 meta:
   name: "github/github_env"
-  id: "cicd-common-github-environment-file-injection"
+  id: "cicd-common-github-env"
   display_name: "GitHub environment file injection"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cicd-common-github-environment-file-injection`
+**Id:** `cicd-common-github-env`
 
 **Cloud Provider:** GitHub
 

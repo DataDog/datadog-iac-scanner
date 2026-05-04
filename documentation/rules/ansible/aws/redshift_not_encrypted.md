@@ -3,7 +3,7 @@ title: "Redshift cluster is not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/redshift_not_encrypted"
-  id: "ansible-aws-redshift-cluster-is-not-encrypted"
+  id: "ansible-aws-redshift-not-encrypted"
   display_name: "Redshift cluster is not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-redshift-cluster-is-not-encrypted`
+**Id:** `ansible-aws-redshift-not-encrypted`
 
 **Cloud Provider:** AWS
 

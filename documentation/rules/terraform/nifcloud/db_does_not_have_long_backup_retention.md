@@ -3,7 +3,7 @@ title: "NIFCLOUD RDB backup retention period below 7 days"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/db_does_not_have_long_backup_retention"
-  id: "terraform-nifcloud-nifcloud-rdb-backup-retention-period-below-7-days"
+  id: "terraform-nifcloud-db-does-not-have-long-backup-retention"
   display_name: "NIFCLOUD RDB backup retention period below 7 days"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-rdb-backup-retention-period-below-7-days`
+**Id:** `terraform-nifcloud-db-does-not-have-long-backup-retention`
 
 **Cloud Provider:** Nifcloud
 

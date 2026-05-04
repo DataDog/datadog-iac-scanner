@@ -3,7 +3,7 @@ title: "Cluster admin rolebinding with superuser permissions"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/cluster_admin_role_binding_with_super_user_permissions"
-  id: "terraform-common-cluster-admin-rolebinding-with-superuser-permissions"
+  id: "terraform-common-cluster-admin-role-binding-with-super-user-permissions"
   display_name: "Cluster admin rolebinding with superuser permissions"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-cluster-admin-rolebinding-with-superuser-permissions`
+**Id:** `terraform-common-cluster-admin-role-binding-with-super-user-permissions`
 
 **Cloud Provider:** Kubernetes
 

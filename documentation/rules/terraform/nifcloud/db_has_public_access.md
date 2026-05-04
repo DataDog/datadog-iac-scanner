@@ -3,7 +3,7 @@ title: "NIFCLOUD RDB has public DB access"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/db_has_public_access"
-  id: "terraform-nifcloud-nifcloud-rdb-has-public-db-access"
+  id: "terraform-nifcloud-db-has-public-access"
   display_name: "NIFCLOUD RDB has public DB access"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-rdb-has-public-db-access`
+**Id:** `terraform-nifcloud-db-has-public-access`
 
 **Cloud Provider:** Nifcloud
 

@@ -3,7 +3,7 @@ title: "NIFCLOUD RDB has common private network"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/db_instance_has_common_private"
-  id: "terraform-nifcloud-nifcloud-rdb-has-common-private-network"
+  id: "terraform-nifcloud-db-instance-has-common-private"
   display_name: "NIFCLOUD RDB has common private network"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-rdb-has-common-private-network`
+**Id:** `terraform-nifcloud-db-instance-has-common-private`
 
 **Cloud Provider:** Nifcloud
 

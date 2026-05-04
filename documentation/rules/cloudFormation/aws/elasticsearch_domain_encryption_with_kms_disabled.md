@@ -3,7 +3,7 @@ title: "Elasticsearch encryption with KMS disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elasticsearch_domain_encryption_with_kms_disabled"
-  id: "cloudformation-aws-elasticsearch-encryption-with-kms-disabled"
+  id: "cloudformation-aws-elasticsearch-domain-encryption-with-kms-disabled"
   display_name: "Elasticsearch encryption with KMS disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-elasticsearch-encryption-with-kms-disabled`
+**Id:** `cloudformation-aws-elasticsearch-domain-encryption-with-kms-disabled`
 
 **Cloud Provider:** AWS
 

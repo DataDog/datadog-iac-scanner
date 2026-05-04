@@ -3,7 +3,7 @@ title: "SQL Server cross DB ownership chaining enabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/sql_database_has_cross_db_ownership_chaining"
-  id: "terraform-gcp-sql-server-cross-db-ownership-chaining-enabled"
+  id: "terraform-gcp-sql-database-has-cross-db-ownership-chaining"
   display_name: "SQL Server cross DB ownership chaining enabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-gcp-sql-server-cross-db-ownership-chaining-enabled`
+**Id:** `terraform-gcp-sql-database-has-cross-db-ownership-chaining`
 
 **Cloud Provider:** GCP
 

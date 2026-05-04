@@ -3,7 +3,7 @@ title: "IAM password policy does not require lowercase letter"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_password_does_not_require_lowercase"
-  id: "terraform-aws-iam-password-policy-does-not-require-lowercase-letter"
+  id: "terraform-aws-iam-password-does-not-require-lowercase"
   display_name: "IAM password policy does not require lowercase letter"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-iam-password-policy-does-not-require-lowercase-letter`
+**Id:** `terraform-aws-iam-password-does-not-require-lowercase`
 
 **Cloud Provider:** AWS
 

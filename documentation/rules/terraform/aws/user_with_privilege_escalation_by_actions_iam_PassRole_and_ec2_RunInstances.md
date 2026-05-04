@@ -3,7 +3,7 @@ title: "User with privilege escalation by actions 'ec2:RunInstances' and 'iam:Pa
 group_id: "Terraform / AWS"
 meta:
   name: "aws/user_with_privilege_escalation_by_actions_iam_PassRole_and_ec2_RunInstances"
-  id: "terraform-aws-user-with-privilege-escalation-by-actions-ec2-runinstances-and-iam-passrole"
+  id: "terraform-aws-user-with-privilege-escalation-by-actions-iam-passrole-and-ec2-runinstances"
   display_name: "User with privilege escalation by actions 'ec2:RunInstances' and 'iam:PassRole'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-user-with-privilege-escalation-by-actions-ec2-runinstances-and-iam-passrole`
+**Id:** `terraform-aws-user-with-privilege-escalation-by-actions-iam-passrole-and-ec2-runinstances`
 
 **Cloud Provider:** AWS
 

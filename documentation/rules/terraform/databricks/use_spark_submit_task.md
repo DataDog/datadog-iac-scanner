@@ -3,7 +3,7 @@ title: "Job's task is legacy (spark_submit_task)"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/use_spark_submit_task"
-  id: "terraform-common-job-s-task-is-legacy-spark-submit-task"
+  id: "terraform-common-use-spark-submit-task"
   display_name: "Job's task is legacy (spark_submit_task)"
   cloud_provider: "Databricks"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-job-s-task-is-legacy-spark-submit-task`
+**Id:** `terraform-common-use-spark-submit-task`
 
 **Cloud Provider:** Databricks
 

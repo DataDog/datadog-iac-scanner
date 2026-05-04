@@ -3,7 +3,7 @@ title: "RAM account password policy does not enforce minimum password length"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ram_account_password_policy_not_required_minimum_length"
-  id: "terraform-alicloud-ram-account-password-policy-does-not-enforce-minimum-password-length"
+  id: "terraform-alicloud-ram-account-password-policy-not-required-minimum-length"
   display_name: "RAM account password policy does not enforce minimum password length"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-alicloud-ram-account-password-policy-does-not-enforce-minimum-password-length`
+**Id:** `terraform-alicloud-ram-account-password-policy-not-required-minimum-length`
 
 **Cloud Provider:** Alicloud
 

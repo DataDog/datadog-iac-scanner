@@ -3,7 +3,7 @@ title: "DocumentDB cluster without KMS"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/docdb_cluster_without_kms"
-  id: "terraform-aws-documentdb-cluster-without-kms"
+  id: "terraform-aws-docdb-cluster-without-kms"
   display_name: "DocumentDB cluster without KMS"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-documentdb-cluster-without-kms`
+**Id:** `terraform-aws-docdb-cluster-without-kms`
 
 **Cloud Provider:** AWS
 

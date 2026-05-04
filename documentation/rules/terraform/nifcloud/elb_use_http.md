@@ -3,7 +3,7 @@ title: "NIFCLOUD ELB using HTTP protocol"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/elb_use_http"
-  id: "terraform-nifcloud-nifcloud-elb-using-http-protocol"
+  id: "terraform-nifcloud-elb-use-http"
   display_name: "NIFCLOUD ELB using HTTP protocol"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-nifcloud-nifcloud-elb-using-http-protocol`
+**Id:** `terraform-nifcloud-elb-use-http`
 
 **Cloud Provider:** Nifcloud
 

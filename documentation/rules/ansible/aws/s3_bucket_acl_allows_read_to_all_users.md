@@ -3,7 +3,7 @@ title: "S3 bucket ACL allows read access to all users"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_acl_allows_read_to_all_users"
-  id: "ansible-aws-s3-bucket-acl-allows-read-access-to-all-users"
+  id: "ansible-aws-s3-bucket-acl-allows-read-to-all-users"
   display_name: "S3 bucket ACL allows read access to all users"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ansible-aws-s3-bucket-acl-allows-read-access-to-all-users`
+**Id:** `ansible-aws-s3-bucket-acl-allows-read-to-all-users`
 
 **Cloud Provider:** AWS
 

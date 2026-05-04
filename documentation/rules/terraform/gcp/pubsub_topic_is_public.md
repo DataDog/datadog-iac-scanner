@@ -3,7 +3,7 @@ title: "Pub/Sub Topics are anonymously or publicly accessible"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/pubsub_topic_is_public"
-  id: "terraform-gcp-pub-sub-topics-are-anonymously-or-publicly-accessible"
+  id: "terraform-gcp-pubsub-topic-is-public"
   display_name: "Pub/Sub Topics are anonymously or publicly accessible"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-gcp-pub-sub-topics-are-anonymously-or-publicly-accessible`
+**Id:** `terraform-gcp-pubsub-topic-is-public`
 
 **Cloud Provider:** GCP
 

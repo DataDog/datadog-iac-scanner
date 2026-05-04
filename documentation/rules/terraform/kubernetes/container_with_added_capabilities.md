@@ -3,7 +3,7 @@ title: "Containers with added capabilities"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/container_with_added_capabilities"
-  id: "terraform-common-containers-with-added-capabilities"
+  id: "terraform-common-container-with-added-capabilities"
   display_name: "Containers with added capabilities"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-common-containers-with-added-capabilities`
+**Id:** `terraform-common-container-with-added-capabilities`
 
 **Cloud Provider:** Kubernetes
 

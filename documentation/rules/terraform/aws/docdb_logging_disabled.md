@@ -3,7 +3,7 @@ title: "DocumentDB logging is disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/docdb_logging_disabled"
-  id: "terraform-aws-documentdb-logging-is-disabled"
+  id: "terraform-aws-docdb-logging-disabled"
   display_name: "DocumentDB logging is disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-documentdb-logging-is-disabled`
+**Id:** `terraform-aws-docdb-logging-disabled`
 
 **Cloud Provider:** AWS
 

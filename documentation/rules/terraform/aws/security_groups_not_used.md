@@ -3,7 +3,7 @@ title: "Security group not used"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/security_groups_not_used"
-  id: "terraform-aws-security-group-not-used"
+  id: "terraform-aws-security-groups-not-used"
   display_name: "Security group not used"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-aws-security-group-not-used`
+**Id:** `terraform-aws-security-groups-not-used`
 
 **Cloud Provider:** AWS
 

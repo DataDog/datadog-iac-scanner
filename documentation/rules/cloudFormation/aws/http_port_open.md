@@ -3,7 +3,7 @@ title: "HTTP port open to internet"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/http_port_open"
-  id: "cloudformation-aws-http-port-open-to-internet"
+  id: "cloudformation-aws-http-port-open"
   display_name: "HTTP port open to internet"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-http-port-open-to-internet`
+**Id:** `cloudformation-aws-http-port-open`
 
 **Cloud Provider:** AWS
 

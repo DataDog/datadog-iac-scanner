@@ -3,7 +3,7 @@ title: "Amazon MQ broker logging disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/mq_broker_logging_disabled"
-  id: "cloudformation-aws-amazon-mq-broker-logging-disabled"
+  id: "cloudformation-aws-mq-broker-logging-disabled"
   display_name: "Amazon MQ broker logging disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-amazon-mq-broker-logging-disabled`
+**Id:** `cloudformation-aws-mq-broker-logging-disabled`
 
 **Cloud Provider:** AWS
 

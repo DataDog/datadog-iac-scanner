@@ -3,7 +3,7 @@ title: "Security group unrestricted access to RDP"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_groups_unrestricted_access_to_rdp"
-  id: "cloudformation-aws-security-group-unrestricted-access-to-rdp"
+  id: "cloudformation-aws-security-groups-unrestricted-access-to-rdp"
   display_name: "Security group unrestricted access to RDP"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cloudformation-aws-security-group-unrestricted-access-to-rdp`
+**Id:** `cloudformation-aws-security-groups-unrestricted-access-to-rdp`
 
 **Cloud Provider:** AWS
 

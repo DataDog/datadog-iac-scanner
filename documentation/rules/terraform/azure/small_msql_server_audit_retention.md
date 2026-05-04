@@ -3,7 +3,7 @@ title: "Small MSSQL server audit retention"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/small_msql_server_audit_retention"
-  id: "terraform-azure-small-mssql-server-audit-retention"
+  id: "terraform-azure-small-msql-server-audit-retention"
   display_name: "Small MSSQL server audit retention"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `terraform-azure-small-mssql-server-audit-retention`
+**Id:** `terraform-azure-small-msql-server-audit-retention`
 
 **Cloud Provider:** Azure
 
