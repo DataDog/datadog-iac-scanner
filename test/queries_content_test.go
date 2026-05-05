@@ -20,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/golang/mock/gomock"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -42,28 +43,29 @@ var (
 		"resourceName",
 	}
 
-	// TODO uncomment this test once all metadata are fixed
 	availablePlatforms = initPlatforms()
 	platformKeys       = MapToStringSlice(availablePlatforms)
 
 	CategoriesKeys = MapToStringSlice(constants.AvailableCategories)
 
-	searchValueProperty = "searchValue"
-
-	requiredQueryMetadataProperties = map[string]func(tb testing.TB, value interface{}, metadataPath string){
-		"id": func(tb testing.TB, value interface{}, metadataPath string) {
+	requiredQueryMetadataProperties = map[string]func(tb testing.TB, value any, metadata map[string]any,
+		metadataPath string){
+		"id": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			idValue := testMetadataFieldStringType(tb, value, "id", metadataPath)
-			require.NotNil(tb, strings.TrimSpace(idValue), "invalid UUID in query metadata file %s", metadataPath)
+			platform := getMetadataField(tb, metadata["platform"])
+			cloudProvider := getMetadataField(tb, metadata["cloudProvider"])
+			querySlug := utils.ToSlug(filepath.Base(filepath.Dir(metadataPath)))
+			require.Equal(tb, strings.TrimSpace(idValue), utils.ToID(platform, cloudProvider, querySlug), "invalid UUID in query metadata file %s", metadataPath)
 		},
-		"queryName": func(tb testing.TB, value interface{}, metadataPath string) {
+		"queryName": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			nameValue := testMetadataFieldStringType(tb, value, "queryName", metadataPath)
 			require.NotEmpty(tb, nameValue, "invalid query name in query metadata file %s", metadataPath)
 		},
-		"severity": func(tb testing.TB, value interface{}, metadataPath string) {
+		"severity": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			severityValue := testMetadataFieldStringType(tb, value, "severity", metadataPath)
 			require.Contains(tb, severityList, strings.ToUpper(severityValue), "invalid severity in query metadata file %s", metadataPath)
 		},
-		"category": func(tb testing.TB, value interface{}, metadataPath string) {
+		"category": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			categoryValue := testMetadataFieldStringType(tb, value, "category", metadataPath)
 			require.NotEmpty(tb, categoryValue, "empty category in query metadata file %s", metadataPath)
 			_, ok := constants.AvailableCategories[categoryValue]
@@ -71,15 +73,15 @@ var (
 				"%s in metadata: %s\nis not a valid category must be one of:\n%v",
 				categoryValue, metadataPath, strings.Join(CategoriesKeys, "\n"))
 		},
-		"descriptionText": func(tb testing.TB, value interface{}, metadataPath string) {
+		"descriptionText": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			descriptionValue := testMetadataFieldStringType(tb, value, "descriptionText", metadataPath)
 			require.NotEmpty(tb, descriptionValue, "empty description text in query metadata file %s", metadataPath)
 		},
-		"descriptionID": func(tb testing.TB, value interface{}, metadataPath string) {
+		"descriptionID": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			descriptionIDValue := testMetadataFieldStringType(tb, value, "descriptionID", metadataPath)
 			require.NotEmpty(tb, descriptionIDValue, "empty description ID in query metadata file %s", metadataPath)
 		},
-		"platform": func(tb testing.TB, value interface{}, metadataPath string) {
+		"platform": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			platformValue := testMetadataFieldStringType(tb, value, "platform", metadataPath)
 			require.NotEmpty(tb, platformValue, "empty platform text in query metadata file %s", metadataPath)
 			platformDir, ok := availablePlatforms[platformValue]
@@ -89,7 +91,7 @@ var (
 			require.True(tb, strings.Contains(filepath.Clean(metadataPath), filepath.Join("assets", "queries", platformDir)),
 				"platform and query directory mismatch platform:\n%s\nmetadata:\n%s", platformValue, metadataPath)
 		},
-		"descriptionUrl": func(tb testing.TB, value interface{}, metadataPath string) {
+		"descriptionUrl": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			switch urlValue := value.(type) {
 			case string:
 				testMetadataURL(tb, urlValue, metadataPath)
@@ -136,7 +138,7 @@ func TestQueriesMetadata(t *testing.T) {
 			for k, validation := range requiredQueryMetadataProperties {
 				value, ok := metadata[k]
 				require.True(t, ok, "missing key '%s' in query metadata file %s", k, metadataPath)
-				validation(t, value, metadataPath)
+				validation(t, value, metadata, metadataPath)
 			}
 		})
 	}
@@ -256,6 +258,14 @@ func testQueryHasGoodReturnParams(t *testing.T, entry queryEntry) { //nolint
 	if report.Coverage < 100 {
 		t.Logf("Query '%s' has not full coverage. Want 100%%. Has %d%%", path.Base(entry.dir), int(report.Coverage))
 	}
+}
+
+func getMetadataField(tb testing.TB, value any) string {
+	stringValue, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return stringValue
 }
 
 func testMetadataFieldStringType(tb testing.TB, value interface{}, key, metadataPath string) string {
