@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	remediationsHelper "github.com/DataDog/datadog-iac-scanner/pkg/report/remediations"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 )
 
@@ -543,12 +544,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				artifactPath = ""
 			}
 
-			var queryId string
-			if issue.LegacyQueryID == "Undefined" {
-				queryId = issue.QueryID
-			} else {
-				queryId = issue.LegacyQueryID
-			}
+			queryId := utils.ChooseQueryID(issue.QueryID, issue.LegacyQueryID)
 			result := sarifResult{
 				ResultRuleID:    issue.QueryName,
 				ResultRuleIndex: ruleIndex,
