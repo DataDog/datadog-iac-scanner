@@ -3,7 +3,7 @@ title: "Redis disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/redis_disabled"
-  id: "4bd15dd9-8d5e-4008-8532-27eb0c3706d3"
+  id: "terraform-aws-redis-disabled"
   display_name: "Redis disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4bd15dd9-8d5e-4008-8532-27eb0c3706d3`
+**Id:** `terraform-aws-redis-disabled`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Unpinned package version"
 group_id: "Ansible / Common"
 meta:
   name: "general/unpinned_package_version"
-  id: "c05e2c20-0a2c-4686-b1f8-5f0a5612d4e8"
+  id: "ansible-common-unpinned-package-version"
   display_name: "Unpinned package version"
   cloud_provider: "Common"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c05e2c20-0a2c-4686-b1f8-5f0a5612d4e8`
+**Id:** `ansible-common-unpinned-package-version`
 
 **Cloud Provider:** Common
 

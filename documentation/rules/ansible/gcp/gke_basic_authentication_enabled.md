@@ -3,7 +3,7 @@ title: "GKE basic authentication enabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/gke_basic_authentication_enabled"
-  id: "344bf8ab-9308-462b-a6b2-697432e40ba1"
+  id: "ansible-gcp-gke-basic-authentication-enabled"
   display_name: "GKE basic authentication enabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `344bf8ab-9308-462b-a6b2-697432e40ba1`
+**Id:** `ansible-gcp-gke-basic-authentication-enabled`
 
 **Cloud Provider:** GCP
 

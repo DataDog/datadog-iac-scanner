@@ -3,7 +3,7 @@ title: "S3 bucket with all permissions"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_with_all_permissions"
-  id: "a4966c4f-9141-48b8-a564-ffe9959945bc"
+  id: "terraform-aws-s3-bucket-with-all-permissions"
   display_name: "S3 bucket with all permissions"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a4966c4f-9141-48b8-a564-ffe9959945bc`
+**Id:** `terraform-aws-s3-bucket-with-all-permissions`
 
 **Cloud Provider:** AWS
 

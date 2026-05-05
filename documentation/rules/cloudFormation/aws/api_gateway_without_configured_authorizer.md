@@ -3,7 +3,7 @@ title: "API Gateway without configured authorizer"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/api_gateway_without_configured_authorizer"
-  id: "7fd0d461-5b8c-4815-898c-f2b4b117eb28"
+  id: "cloudformation-aws-api-gateway-without-configured-authorizer"
   display_name: "API Gateway without configured authorizer"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7fd0d461-5b8c-4815-898c-f2b4b117eb28`
+**Id:** `cloudformation-aws-api-gateway-without-configured-authorizer`
 
 **Cloud Provider:** AWS
 

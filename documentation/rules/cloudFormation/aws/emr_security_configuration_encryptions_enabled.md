@@ -3,7 +3,7 @@ title: "EMR security configuration encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/emr_security_configuration_encryptions_enabled"
-  id: "5b033ec8-f079-4323-b5c8-99d4620433a9"
+  id: "cloudformation-aws-emr-security-configuration-encryptions-enabled"
   display_name: "EMR security configuration encryption disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5b033ec8-f079-4323-b5c8-99d4620433a9`
+**Id:** `cloudformation-aws-emr-security-configuration-encryptions-enabled`
 
 **Cloud Provider:** AWS
 

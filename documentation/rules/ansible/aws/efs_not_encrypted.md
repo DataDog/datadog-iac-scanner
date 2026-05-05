@@ -3,7 +3,7 @@ title: "EFS not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/efs_not_encrypted"
-  id: "727c4fd4-d604-4df6-a179-7713d3c85e20"
+  id: "ansible-aws-efs-not-encrypted"
   display_name: "EFS not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `727c4fd4-d604-4df6-a179-7713d3c85e20`
+**Id:** `ansible-aws-efs-not-encrypted`
 
 **Cloud Provider:** AWS
 

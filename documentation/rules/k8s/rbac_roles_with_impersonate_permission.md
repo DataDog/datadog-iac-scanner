@@ -3,7 +3,7 @@ title: "RBAC roles with impersonate permission"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/rbac_roles_with_impersonate_permission"
-  id: "9f85c3f6-26fd-4007-938a-2e0cb0100980"
+  id: "kubernetes-rbac-roles-with-impersonate-permission"
   display_name: "RBAC roles with impersonate permission"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9f85c3f6-26fd-4007-938a-2e0cb0100980`
+**Id:** `kubernetes-rbac-roles-with-impersonate-permission`
 
 **Cloud Provider:** Kubernetes
 

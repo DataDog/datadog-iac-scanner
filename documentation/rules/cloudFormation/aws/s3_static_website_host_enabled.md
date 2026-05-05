@@ -3,7 +3,7 @@ title: "S3 static website host enabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_static_website_host_enabled"
-  id: "90501b1b-cded-4cc1-9e8b-206b85cda317"
+  id: "cloudformation-aws-s3-static-website-host-enabled"
   display_name: "S3 static website host enabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `90501b1b-cded-4cc1-9e8b-206b85cda317`
+**Id:** `cloudformation-aws-s3-static-website-host-enabled`
 
 **Cloud Provider:** AWS
 

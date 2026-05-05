@@ -3,7 +3,7 @@ title: "MariaDB server public network access enabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/mariadb_public_network_access_enabled"
-  id: "7f0a8696-7159-4337-ad0d-8a3ab4a78195"
+  id: "terraform-azure-mariadb-public-network-access-enabled"
   display_name: "MariaDB server public network access enabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7f0a8696-7159-4337-ad0d-8a3ab4a78195`
+**Id:** `terraform-azure-mariadb-public-network-access-enabled`
 
 **Cloud Provider:** Azure
 

@@ -3,7 +3,7 @@ title: "NET_RAW capabilities not being dropped"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/net_raw_capabilities_not_being_dropped"
-  id: "e5587d53-a673-4a6b-b3f2-ba07ec274def"
+  id: "terraform-common-net-raw-capabilities-not-being-dropped"
   display_name: "NET_RAW capabilities not being dropped"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e5587d53-a673-4a6b-b3f2-ba07ec274def`
+**Id:** `terraform-common-net-raw-capabilities-not-being-dropped`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "ELB access log disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elb_access_log_disabled"
-  id: "ee12ad32-2863-4c0f-b13f-28272d115028"
+  id: "cloudformation-aws-elb-access-log-disabled"
   display_name: "ELB access log disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ee12ad32-2863-4c0f-b13f-28272d115028`
+**Id:** `cloudformation-aws-elb-access-log-disabled`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "CloudTrail log files not encrypted with KMS"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cloudtrail_log_files_not_encrypted_with_kms"
-  id: "050a9ba8-d1cb-4c61-a5e8-8805a70d3b85"
+  id: "cloudformation-aws-cloudtrail-log-files-not-encrypted-with-kms"
   display_name: "CloudTrail log files not encrypted with KMS"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `050a9ba8-d1cb-4c61-a5e8-8805a70d3b85`
+**Id:** `cloudformation-aws-cloudtrail-log-files-not-encrypted-with-kms`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "GKE legacy authorization enabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/gke_legacy_authorization_enabled"
-  id: "5baa92d2-d8ee-4c75-88a4-52d9d8bb8067"
+  id: "terraform-gcp-gke-legacy-authorization-enabled"
   display_name: "GKE legacy authorization enabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5baa92d2-d8ee-4c75-88a4-52d9d8bb8067`
+**Id:** `terraform-gcp-gke-legacy-authorization-enabled`
 
 **Cloud Provider:** GCP
 

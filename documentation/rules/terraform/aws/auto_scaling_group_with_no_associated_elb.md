@@ -3,7 +3,7 @@ title: "Auto scaling group with no associated ELB"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/auto_scaling_group_with_no_associated_elb"
-  id: "8e94dced-9bcc-4203-8eb7-7e41202b2505"
+  id: "terraform-aws-auto-scaling-group-with-no-associated-elb"
   display_name: "Auto scaling group with no associated ELB"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8e94dced-9bcc-4203-8eb7-7e41202b2505`
+**Id:** `terraform-aws-auto-scaling-group-with-no-associated-elb`
 
 **Cloud Provider:** AWS
 

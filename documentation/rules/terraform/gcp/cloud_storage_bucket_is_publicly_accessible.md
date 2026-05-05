@@ -3,7 +3,7 @@ title: "Cloud Storage bucket is publicly accessible"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/cloud_storage_bucket_is_publicly_accessible"
-  id: "c010082c-76e0-4b91-91d9-6e8439e455dd"
+  id: "terraform-gcp-cloud-storage-bucket-is-publicly-accessible"
   display_name: "Cloud Storage bucket is publicly accessible"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c010082c-76e0-4b91-91d9-6e8439e455dd`
+**Id:** `terraform-gcp-cloud-storage-bucket-is-publicly-accessible`
 
 **Cloud Provider:** GCP
 

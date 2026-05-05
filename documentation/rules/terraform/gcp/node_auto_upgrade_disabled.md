@@ -3,7 +3,7 @@ title: "Node auto upgrade disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/node_auto_upgrade_disabled"
-  id: "b139213e-7d24-49c2-8025-c18faa21ecaa"
+  id: "terraform-gcp-node-auto-upgrade-disabled"
   display_name: "Node auto upgrade disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b139213e-7d24-49c2-8025-c18faa21ecaa`
+**Id:** `terraform-gcp-node-auto-upgrade-disabled`
 
 **Cloud Provider:** GCP
 

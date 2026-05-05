@@ -3,7 +3,7 @@ title: "Node auto-upgrade disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/node_auto_upgrade_disabled"
-  id: "d6e10477-2e19-4bcd-b8a8-19c65b89ccdf"
+  id: "ansible-gcp-node-auto-upgrade-disabled"
   display_name: "Node auto-upgrade disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d6e10477-2e19-4bcd-b8a8-19c65b89ccdf`
+**Id:** `ansible-gcp-node-auto-upgrade-disabled`
 
 **Cloud Provider:** GCP
 

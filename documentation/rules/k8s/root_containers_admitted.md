@@ -3,7 +3,7 @@ title: "Root containers admitted"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/root_containers_admitted"
-  id: "e3aa0612-4351-4a0d-983f-aefea25cf203"
+  id: "kubernetes-root-containers-admitted"
   display_name: "Root containers admitted"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e3aa0612-4351-4a0d-983f-aefea25cf203`
+**Id:** `kubernetes-root-containers-admitted`
 
 **Cloud Provider:** Kubernetes
 

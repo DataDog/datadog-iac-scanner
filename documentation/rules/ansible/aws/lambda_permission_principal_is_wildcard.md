@@ -3,7 +3,7 @@ title: "Lambda permission principal is wildcard"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/lambda_permission_principal_is_wildcard"
-  id: "1d972c56-8ec2-48c1-a578-887adb09c57a"
+  id: "ansible-aws-lambda-permission-principal-is-wildcard"
   display_name: "Lambda permission principal is wildcard"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1d972c56-8ec2-48c1-a578-887adb09c57a`
+**Id:** `ansible-aws-lambda-permission-principal-is-wildcard`
 
 **Cloud Provider:** AWS
 

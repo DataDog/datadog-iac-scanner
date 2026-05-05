@@ -3,7 +3,7 @@ title: "Athena database not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/athena_database_not_encrypted"
-  id: "b2315cae-b110-4426-81e0-80bb8640cdd3"
+  id: "terraform-aws-athena-database-not-encrypted"
   display_name: "Athena database not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b2315cae-b110-4426-81e0-80bb8640cdd3`
+**Id:** `terraform-aws-athena-database-not-encrypted`
 
 **Cloud Provider:** AWS
 

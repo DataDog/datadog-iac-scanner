@@ -3,7 +3,7 @@ title: "Hardcoded AWS access key"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/hardcoded_aws_access_key"
-  id: "c2f15af3-66a0-4176-a56e-e4711e502e5c"
+  id: "ansible-aws-hardcoded-aws-access-key"
   display_name: "Hardcoded AWS access key"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c2f15af3-66a0-4176-a56e-e4711e502e5c`
+**Id:** `ansible-aws-hardcoded-aws-access-key`
 
 **Cloud Provider:** AWS
 

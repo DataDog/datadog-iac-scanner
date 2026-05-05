@@ -3,7 +3,7 @@ title: "S3 bucket access to any principal"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_access_to_any_principal"
-  id: "3ab1f27d-52cc-4943-af1d-43c1939e739a"
+  id: "ansible-aws-s3-bucket-access-to-any-principal"
   display_name: "S3 bucket access to any principal"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3ab1f27d-52cc-4943-af1d-43c1939e739a`
+**Id:** `ansible-aws-s3-bucket-access-to-any-principal`
 
 **Cloud Provider:** AWS
 

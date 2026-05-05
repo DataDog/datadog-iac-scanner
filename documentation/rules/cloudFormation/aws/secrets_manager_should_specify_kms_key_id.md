@@ -3,7 +3,7 @@ title: "Secrets manager should specify KmsKeyId"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/secrets_manager_should_specify_kms_key_id"
-  id: "c8ae9ba9-c2f7-4e5c-b32e-a4b7712d4d22"
+  id: "cloudformation-aws-secrets-manager-should-specify-kms-key-id"
   display_name: "Secrets manager should specify KmsKeyId"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c8ae9ba9-c2f7-4e5c-b32e-a4b7712d4d22`
+**Id:** `cloudformation-aws-secrets-manager-should-specify-kms-key-id`
 
 **Cloud Provider:** AWS
 

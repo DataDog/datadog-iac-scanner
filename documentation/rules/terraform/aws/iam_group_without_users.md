@@ -3,7 +3,7 @@ title: "IAM group without users"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_group_without_users"
-  id: "fc101ca7-c9dd-4198-a1eb-0fbe92e80044"
+  id: "terraform-aws-iam-group-without-users"
   display_name: "IAM group without users"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fc101ca7-c9dd-4198-a1eb-0fbe92e80044`
+**Id:** `terraform-aws-iam-group-without-users`
 
 **Cloud Provider:** AWS
 

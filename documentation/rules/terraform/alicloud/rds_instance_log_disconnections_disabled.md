@@ -3,7 +3,7 @@ title: "RDS instance log disconnections disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/rds_instance_log_disconnections_disabled"
-  id: "d53f4123-f8d8-4224-8cb3-f920b151cc98"
+  id: "terraform-alicloud-rds-instance-log-disconnections-disabled"
   display_name: "RDS instance log disconnections disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d53f4123-f8d8-4224-8cb3-f920b151cc98`
+**Id:** `terraform-alicloud-rds-instance-log-disconnections-disabled`
 
 **Cloud Provider:** Alicloud
 

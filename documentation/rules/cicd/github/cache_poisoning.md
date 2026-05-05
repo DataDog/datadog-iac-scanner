@@ -3,7 +3,7 @@ title: "Cache poisoning"
 group_id: "CICD / GitHub"
 meta:
   name: "github/cache_poisoning"
-  id: "e5f6a7b8-c9d0-41e2-f3a4-a2c6d7e8f9a0"
+  id: "cicd-common-cache-poisoning"
   display_name: "Cache poisoning"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e5f6a7b8-c9d0-41e2-f3a4-a2c6d7e8f9a0`
+**Id:** `cicd-common-cache-poisoning`
 
 **Cloud Provider:** GitHub
 

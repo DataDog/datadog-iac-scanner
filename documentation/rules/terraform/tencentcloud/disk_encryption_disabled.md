@@ -3,7 +3,7 @@ title: "Disk encryption disabled"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/disk_encryption_disabled"
-  id: "1ee0f202-31da-49ba-bbce-04a989912e4b"
+  id: "terraform-tencentcloud-disk-encryption-disabled"
   display_name: "Disk encryption disabled"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1ee0f202-31da-49ba-bbce-04a989912e4b`
+**Id:** `terraform-tencentcloud-disk-encryption-disabled`
 
 **Cloud Provider:** TencentCloud
 

@@ -3,7 +3,7 @@ title: "S3 bucket logging disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_logging_disabled"
-  id: "4552b71f-0a2a-4bc4-92dd-ed7ec1b4674c"
+  id: "cloudformation-aws-s3-bucket-logging-disabled"
   display_name: "S3 bucket logging disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4552b71f-0a2a-4bc4-92dd-ed7ec1b4674c`
+**Id:** `cloudformation-aws-s3-bucket-logging-disabled`
 
 **Cloud Provider:** AWS
 

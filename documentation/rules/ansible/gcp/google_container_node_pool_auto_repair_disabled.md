@@ -3,7 +3,7 @@ title: "Google container node pool auto repair disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/google_container_node_pool_auto_repair_disabled"
-  id: "d58c6f24-3763-4269-9f5b-86b2569a003b"
+  id: "ansible-gcp-google-container-node-pool-auto-repair-disabled"
   display_name: "Google container node pool auto repair disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d58c6f24-3763-4269-9f5b-86b2569a003b`
+**Id:** `ansible-gcp-google-container-node-pool-auto-repair-disabled`
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "Auto Scaling group with no associated ELB"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/auto_scaling_group_with_no_associated_elb"
-  id: "ad21e616-5026-4b9d-990d-5b007bfe679c"
+  id: "cloudformation-aws-auto-scaling-group-with-no-associated-elb"
   display_name: "Auto Scaling group with no associated ELB"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ad21e616-5026-4b9d-990d-5b007bfe679c`
+**Id:** `cloudformation-aws-auto-scaling-group-with-no-associated-elb`
 
 **Cloud Provider:** AWS
 

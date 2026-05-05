@@ -3,7 +3,7 @@ title: "CMK is unusable"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cmk_is_unusable"
-  id: "7350fa23-dcf7-4938-916d-6a60b0c73b50"
+  id: "terraform-aws-cmk-is-unusable"
   display_name: "CMK is unusable"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7350fa23-dcf7-4938-916d-6a60b0c73b50`
+**Id:** `terraform-aws-cmk-is-unusable`
 
 **Cloud Provider:** AWS
 

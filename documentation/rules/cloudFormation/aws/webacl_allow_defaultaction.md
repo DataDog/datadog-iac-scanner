@@ -3,7 +3,7 @@ title: "Permissive Web ACL default action"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/webacl_allow_defaultaction"
-  id: "6d64f311-3da6-45f3-80f1-14db9771ea40"
+  id: "cloudformation-aws-webacl-allow-defaultaction"
   display_name: "Permissive Web ACL default action"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6d64f311-3da6-45f3-80f1-14db9771ea40`
+**Id:** `cloudformation-aws-webacl-allow-defaultaction`
 
 **Cloud Provider:** AWS
 

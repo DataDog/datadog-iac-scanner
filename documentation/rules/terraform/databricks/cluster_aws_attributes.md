@@ -3,7 +3,7 @@ title: "Check Databricks cluster AWS attribute best practices"
 group_id: "Terraform / Databricks"
 meta:
   name: "databricks/cluster_aws_attributes"
-  id: "b0749c53-e3ff-4d09-bbe4-dca94e2e7a38"
+  id: "terraform-common-cluster-aws-attributes"
   display_name: "Check Databricks cluster AWS attribute best practices"
   cloud_provider: "Databricks"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b0749c53-e3ff-4d09-bbe4-dca94e2e7a38`
+**Id:** `terraform-common-cluster-aws-attributes`
 
 **Cloud Provider:** Databricks
 

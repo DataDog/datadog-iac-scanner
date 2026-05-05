@@ -3,7 +3,7 @@ title: "Permissive access to create pods"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/permissive_access_to_create_pods"
-  id: "522d4a64-4dc9-44bd-9240-7d8a0d5cb5ba"
+  id: "terraform-common-permissive-access-to-create-pods"
   display_name: "Permissive access to create pods"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `522d4a64-4dc9-44bd-9240-7d8a0d5cb5ba`
+**Id:** `terraform-common-permissive-access-to-create-pods`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "RBAC roles with exec permission"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/rbac_roles_with_exec_permission"
-  id: "c589f42c-7924-4871-aee2-1cede9bc7cbc"
+  id: "kubernetes-rbac-roles-with-exec-permission"
   display_name: "RBAC roles with exec permission"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c589f42c-7924-4871-aee2-1cede9bc7cbc`
+**Id:** `kubernetes-rbac-roles-with-exec-permission`
 
 **Cloud Provider:** Kubernetes
 

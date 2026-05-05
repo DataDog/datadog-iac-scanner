@@ -3,7 +3,7 @@ title: "S3 bucket without versioning"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_without_versioning"
-  id: "9232306a-f839-40aa-b3ef-b352001da9a5"
+  id: "ansible-aws-s3-bucket-without-versioning"
   display_name: "S3 bucket without versioning"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9232306a-f839-40aa-b3ef-b352001da9a5`
+**Id:** `ansible-aws-s3-bucket-without-versioning`
 
 **Cloud Provider:** AWS
 

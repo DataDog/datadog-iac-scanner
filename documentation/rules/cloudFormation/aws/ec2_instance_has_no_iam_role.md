@@ -3,7 +3,7 @@ title: "EC2 instance has no IAM role"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_instance_has_no_iam_role"
-  id: "f914357d-8386-4d56-9ba6-456e5723f9a6"
+  id: "cloudformation-aws-ec2-instance-has-no-iam-role"
   display_name: "EC2 instance has no IAM role"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f914357d-8386-4d56-9ba6-456e5723f9a6`
+**Id:** `cloudformation-aws-ec2-instance-has-no-iam-role`
 
 **Cloud Provider:** AWS
 

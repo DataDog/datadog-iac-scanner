@@ -3,7 +3,7 @@ title: "S3 bucket logging disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_logging_disabled"
-  id: "f861041c-8c9f-4156-acfc-5e6e524f5884"
+  id: "terraform-aws-s3-bucket-logging-disabled"
   display_name: "S3 bucket logging disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f861041c-8c9f-4156-acfc-5e6e524f5884`
+**Id:** `terraform-aws-s3-bucket-logging-disabled`
 
 **Cloud Provider:** AWS
 

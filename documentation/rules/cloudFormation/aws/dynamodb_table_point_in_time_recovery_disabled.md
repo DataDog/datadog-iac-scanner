@@ -3,7 +3,7 @@ title: "DynamoDB table point-in-time recovery disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/dynamodb_table_point_in_time_recovery_disabled"
-  id: "0f04217d-488f-4e7a-bec8-f16159686cd6"
+  id: "cloudformation-aws-dynamodb-table-point-in-time-recovery-disabled"
   display_name: "DynamoDB table point-in-time recovery disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0f04217d-488f-4e7a-bec8-f16159686cd6`
+**Id:** `cloudformation-aws-dynamodb-table-point-in-time-recovery-disabled`
 
 **Cloud Provider:** AWS
 

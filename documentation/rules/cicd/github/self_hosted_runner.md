@@ -3,7 +3,7 @@ title: "Self-hosted runner"
 group_id: "CICD / GitHub"
 meta:
   name: "github/self_hosted_runner"
-  id: "b8c9d0e1-f2a3-44b5-c6d7-e8f9a0b1c2d3"
+  id: "cicd-common-self-hosted-runner"
   display_name: "Self-hosted runner"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b8c9d0e1-f2a3-44b5-c6d7-e8f9a0b1c2d3`
+**Id:** `cicd-common-self-hosted-runner`
 
 **Cloud Provider:** GitHub
 

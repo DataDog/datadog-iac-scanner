@@ -3,7 +3,7 @@ title: "Unpinned package version in pip install"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/unpinned_package_version_in_pip_install"
-  id: "02d9c71f-3ee8-4986-9c27-1a20d0d19bfc"
+  id: "dockerfile-unpinned-package-version-in-pip-install"
   display_name: "Unpinned package version in pip install"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `02d9c71f-3ee8-4986-9c27-1a20d0d19bfc`
+**Id:** `dockerfile-unpinned-package-version-in-pip-install`
 
 **Cloud Provider:** Dockerfile
 

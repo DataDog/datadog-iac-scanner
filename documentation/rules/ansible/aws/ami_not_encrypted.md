@@ -3,7 +3,7 @@ title: "AMI not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ami_not_encrypted"
-  id: "97707503-a22c-4cd7-b7c0-f088fa7cf830"
+  id: "ansible-aws-ami-not-encrypted"
   display_name: "AMI not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `97707503-a22c-4cd7-b7c0-f088fa7cf830`
+**Id:** `ansible-aws-ami-not-encrypted`
 
 **Cloud Provider:** AWS
 

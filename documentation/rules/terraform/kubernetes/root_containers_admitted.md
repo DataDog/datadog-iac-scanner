@@ -3,7 +3,7 @@ title: "Root containers admitted"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/root_containers_admitted"
-  id: "4c415497-7410-4559-90e8-f2c8ac64ee38"
+  id: "terraform-common-root-containers-admitted"
   display_name: "Root containers admitted"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4c415497-7410-4559-90e8-f2c8ac64ee38`
+**Id:** `terraform-common-root-containers-admitted`
 
 **Cloud Provider:** Kubernetes
 

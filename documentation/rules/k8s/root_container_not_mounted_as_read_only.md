@@ -3,7 +3,7 @@ title: "Root container not mounted as read-only"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/root_container_not_mounted_as_read_only"
-  id: "a9c2f49d-0671-4fc9-9ece-f4e261e128d0"
+  id: "kubernetes-root-container-not-mounted-as-read-only"
   display_name: "Root container not mounted as read-only"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a9c2f49d-0671-4fc9-9ece-f4e261e128d0`
+**Id:** `kubernetes-root-container-not-mounted-as-read-only`
 
 **Cloud Provider:** Kubernetes
 

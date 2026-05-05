@@ -3,7 +3,7 @@ title: "Public Lambda via API Gateway"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/public_lambda_via_api_gateway"
-  id: "5e92d816-2177-4083-85b4-f61b4f7176d9"
+  id: "ansible-aws-public-lambda-via-api-gateway"
   display_name: "Public Lambda via API Gateway"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5e92d816-2177-4083-85b4-f61b4f7176d9`
+**Id:** `ansible-aws-public-lambda-via-api-gateway`
 
 **Cloud Provider:** AWS
 

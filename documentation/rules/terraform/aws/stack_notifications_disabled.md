@@ -3,7 +3,7 @@ title: "Stack notifications disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/stack_notifications_disabled"
-  id: "b72d0026-f649-4c91-a9ea-15d8f681ac09"
+  id: "terraform-aws-stack-notifications-disabled"
   display_name: "Stack notifications disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b72d0026-f649-4c91-a9ea-15d8f681ac09`
+**Id:** `terraform-aws-stack-notifications-disabled`
 
 **Cloud Provider:** AWS
 

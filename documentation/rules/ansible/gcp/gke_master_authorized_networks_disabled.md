@@ -3,7 +3,7 @@ title: "GKE master authorized networks disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/gke_master_authorized_networks_disabled"
-  id: "d43366c5-80b0-45de-bbe8-2338f4ab0a83"
+  id: "ansible-gcp-gke-master-authorized-networks-disabled"
   display_name: "GKE master authorized networks disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d43366c5-80b0-45de-bbe8-2338f4ab0a83`
+**Id:** `ansible-gcp-gke-master-authorized-networks-disabled`
 
 **Cloud Provider:** GCP
 

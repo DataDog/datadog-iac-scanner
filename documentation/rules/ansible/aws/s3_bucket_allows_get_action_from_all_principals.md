@@ -3,7 +3,7 @@ title: "S3 bucket allows GET action from all principals"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_allows_get_action_from_all_principals"
-  id: "53bce6a8-5492-4b1b-81cf-664385f0c4bf"
+  id: "ansible-aws-s3-bucket-allows-get-action-from-all-principals"
   display_name: "S3 bucket allows GET action from all principals"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `53bce6a8-5492-4b1b-81cf-664385f0c4bf`
+**Id:** `ansible-aws-s3-bucket-allows-get-action-from-all-principals`
 
 **Cloud Provider:** AWS
 

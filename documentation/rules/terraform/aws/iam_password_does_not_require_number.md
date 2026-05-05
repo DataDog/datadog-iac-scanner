@@ -3,7 +3,7 @@ title: "IAM password policy does not require numbers"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_password_does_not_require_number"
-  id: "0df2ce76-ba56-445a-89f8-5ba34b7fafe3"
+  id: "terraform-aws-iam-password-does-not-require-number"
   display_name: "IAM password policy does not require numbers"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0df2ce76-ba56-445a-89f8-5ba34b7fafe3`
+**Id:** `terraform-aws-iam-password-does-not-require-number`
 
 **Cloud Provider:** AWS
 

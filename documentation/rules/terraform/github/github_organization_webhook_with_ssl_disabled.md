@@ -3,7 +3,7 @@ title: "Github organization webhook with SSL disabled"
 group_id: "Terraform / GitHub"
 meta:
   name: "github/github_organization_webhook_with_ssl_disabled"
-  id: "ce7c874e-1b88-450b-a5e4-cb76ada3c8a9"
+  id: "terraform-common-github-organization-webhook-with-ssl-disabled"
   display_name: "Github organization webhook with SSL disabled"
   cloud_provider: "GitHub"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ce7c874e-1b88-450b-a5e4-cb76ada3c8a9`
+**Id:** `terraform-common-github-organization-webhook-with-ssl-disabled`
 
 **Cloud Provider:** GitHub
 

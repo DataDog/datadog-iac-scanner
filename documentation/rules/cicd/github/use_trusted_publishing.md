@@ -3,7 +3,7 @@ title: "Use trusted publishing for authentication"
 group_id: "CICD / GitHub"
 meta:
   name: "github/use_trusted_publishing"
-  id: "f9a0b1c2-d3e4-45f6-a7b8-c9d0e1f2a3b4"
+  id: "cicd-common-use-trusted-publishing"
   display_name: "Use trusted publishing for authentication"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f9a0b1c2-d3e4-45f6-a7b8-c9d0e1f2a3b4`
+**Id:** `cicd-common-use-trusted-publishing`
 
 **Cloud Provider:** GitHub
 

@@ -3,7 +3,7 @@ title: "MySQL SSL connection disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/mysql_ssl_connection_disabled"
-  id: "73e42469-3a86-4f39-ad78-098f325b4e9f"
+  id: "terraform-azure-mysql-ssl-connection-disabled"
   display_name: "MySQL SSL connection disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `73e42469-3a86-4f39-ad78-098f325b4e9f`
+**Id:** `terraform-azure-mysql-ssl-connection-disabled`
 
 **Cloud Provider:** Azure
 

@@ -3,7 +3,7 @@ title: "EBS default encryption disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ebs_default_encryption_disabled"
-  id: "3d3f6270-546b-443c-adb4-bb6fb2187ca6"
+  id: "terraform-aws-ebs-default-encryption-disabled"
   display_name: "EBS default encryption disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3d3f6270-546b-443c-adb4-bb6fb2187ca6`
+**Id:** `terraform-aws-ebs-default-encryption-disabled`
 
 **Cloud Provider:** AWS
 

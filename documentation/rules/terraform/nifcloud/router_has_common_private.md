@@ -3,7 +3,7 @@ title: "NIFCLOUD router has common private network"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/router_has_common_private"
-  id: "30c2760c-740e-4672-9d7f-2c29e0cb385d"
+  id: "terraform-nifcloud-router-has-common-private"
   display_name: "NIFCLOUD router has common private network"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `30c2760c-740e-4672-9d7f-2c29e0cb385d`
+**Id:** `terraform-nifcloud-router-has-common-private`
 
 **Cloud Provider:** Nifcloud
 

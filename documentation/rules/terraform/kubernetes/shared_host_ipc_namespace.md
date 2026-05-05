@@ -3,7 +3,7 @@ title: "Shared host IPC namespace"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/shared_host_ipc_namespace"
-  id: "e94d3121-c2d1-4e34-a295-139bfeb73ea3"
+  id: "terraform-common-shared-host-ipc-namespace"
   display_name: "Shared host IPC namespace"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e94d3121-c2d1-4e34-a295-139bfeb73ea3`
+**Id:** `terraform-common-shared-host-ipc-namespace`
 
 **Cloud Provider:** Kubernetes
 

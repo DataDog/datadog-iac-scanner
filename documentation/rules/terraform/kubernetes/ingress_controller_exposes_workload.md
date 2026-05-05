@@ -3,7 +3,7 @@ title: "Ingress controller exposes workload"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/ingress_controller_exposes_workload"
-  id: "e2c83c1f-84d7-4467-966c-ed41fd015bb9"
+  id: "terraform-common-ingress-controller-exposes-workload"
   display_name: "Ingress controller exposes workload"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e2c83c1f-84d7-4467-966c-ed41fd015bb9`
+**Id:** `terraform-common-ingress-controller-exposes-workload`
 
 **Cloud Provider:** Kubernetes
 

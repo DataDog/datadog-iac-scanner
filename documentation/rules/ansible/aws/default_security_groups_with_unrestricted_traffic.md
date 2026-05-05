@@ -3,7 +3,7 @@ title: "Default security groups with unrestricted traffic"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/default_security_groups_with_unrestricted_traffic"
-  id: "8010e17a-00e9-4635-a692-90d6bcec68bd"
+  id: "ansible-aws-default-security-groups-with-unrestricted-traffic"
   display_name: "Default security groups with unrestricted traffic"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8010e17a-00e9-4635-a692-90d6bcec68bd`
+**Id:** `ansible-aws-default-security-groups-with-unrestricted-traffic`
 
 **Cloud Provider:** AWS
 

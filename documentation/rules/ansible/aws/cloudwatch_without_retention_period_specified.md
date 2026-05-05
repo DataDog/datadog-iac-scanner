@@ -3,7 +3,7 @@ title: "CloudWatch without retention period specified"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudwatch_without_retention_period_specified"
-  id: "e24e18d9-4c2b-4649-b3d0-18c088145e24"
+  id: "ansible-aws-cloudwatch-without-retention-period-specified"
   display_name: "CloudWatch without retention period specified"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e24e18d9-4c2b-4649-b3d0-18c088145e24`
+**Id:** `ansible-aws-cloudwatch-without-retention-period-specified`
 
 **Cloud Provider:** AWS
 

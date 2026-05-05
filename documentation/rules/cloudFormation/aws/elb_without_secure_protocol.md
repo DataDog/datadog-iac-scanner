@@ -3,7 +3,7 @@ title: "ELB without secure protocol"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elb_without_secure_protocol"
-  id: "80908a75-586b-4c61-ab04-490f4f4525b8"
+  id: "cloudformation-aws-elb-without-secure-protocol"
   display_name: "ELB without secure protocol"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `80908a75-586b-4c61-ab04-490f4f4525b8`
+**Id:** `cloudformation-aws-elb-without-secure-protocol`
 
 **Cloud Provider:** AWS
 

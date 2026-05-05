@@ -3,7 +3,7 @@ title: "RDS DB instance publicly accessible"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/rds_instance_address_publicly_accessible"
-  id: "faaefc15-51a5-419e-bb5e-51a4b5ab3485"
+  id: "terraform-alicloud-rds-instance-address-publicly-accessible"
   display_name: "RDS DB instance publicly accessible"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `faaefc15-51a5-419e-bb5e-51a4b5ab3485`
+**Id:** `terraform-alicloud-rds-instance-address-publicly-accessible`
 
 **Cloud Provider:** Alicloud
 

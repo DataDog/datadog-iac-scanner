@@ -3,7 +3,7 @@ title: "IAM policy grants 'AssumeRole' permission across all services"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_policy_grants_assumerole_permission_across_all_services"
-  id: "12a7a7ce-39d6-49dd-923d-aeb4564eb66c"
+  id: "ansible-aws-iam-policy-grants-assumerole-permission-across-all-services"
   display_name: "IAM policy grants 'AssumeRole' permission across all services"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `12a7a7ce-39d6-49dd-923d-aeb4564eb66c`
+**Id:** `ansible-aws-iam-policy-grants-assumerole-permission-across-all-services`
 
 **Cloud Provider:** AWS
 

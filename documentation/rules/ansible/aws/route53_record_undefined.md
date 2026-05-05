@@ -3,7 +3,7 @@ title: "Route 53 record undefined"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/route53_record_undefined"
-  id: "445dce51-7e53-4e50-80ef-7f94f14169e4"
+  id: "ansible-aws-route53-record-undefined"
   display_name: "Route 53 record undefined"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `445dce51-7e53-4e50-80ef-7f94f14169e4`
+**Id:** `ansible-aws-route53-record-undefined`
 
 **Cloud Provider:** AWS
 

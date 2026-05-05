@@ -3,7 +3,7 @@ title: "AKS network policy misconfigured"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/aks_network_policy_misconfigured"
-  id: "8c3bedf1-c570-4c3b-b414-d068cd39a00c"
+  id: "ansible-azure-aks-network-policy-misconfigured"
   display_name: "AKS network policy misconfigured"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8c3bedf1-c570-4c3b-b414-d068cd39a00c`
+**Id:** `ansible-azure-aks-network-policy-misconfigured`
 
 **Cloud Provider:** Azure
 

@@ -3,7 +3,7 @@ title: "S3 bucket allows delete action from all principals"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_allows_delete_actions_from_all_principals"
-  id: "acc78859-765e-4011-a229-a65ea57db252"
+  id: "cloudformation-aws-s3-bucket-allows-delete-actions-from-all-principals"
   display_name: "S3 bucket allows delete action from all principals"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `acc78859-765e-4011-a229-a65ea57db252`
+**Id:** `cloudformation-aws-s3-bucket-allows-delete-actions-from-all-principals`
 
 **Cloud Provider:** AWS
 

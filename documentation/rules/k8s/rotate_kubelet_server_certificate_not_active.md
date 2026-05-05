@@ -3,7 +3,7 @@ title: "Rotate Kubelet server certificate not active"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/rotate_kubelet_server_certificate_not_active"
-  id: "1c621b8e-2c6a-44f5-bd6a-fb0fb7ba33e2"
+  id: "kubernetes-rotate-kubelet-server-certificate-not-active"
   display_name: "Rotate Kubelet server certificate not active"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1c621b8e-2c6a-44f5-bd6a-fb0fb7ba33e2`
+**Id:** `kubernetes-rotate-kubelet-server-certificate-not-active`
 
 **Cloud Provider:** Kubernetes
 

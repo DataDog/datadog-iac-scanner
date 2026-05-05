@@ -3,7 +3,7 @@ title: "S3 bucket without restriction of public bucket"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_without_restriction_of_public_bucket"
-  id: "1ec253ab-c220-4d63-b2de-5b40e0af9293"
+  id: "terraform-aws-s3-bucket-without-restriction-of-public-bucket"
   display_name: "S3 bucket without restriction of public bucket"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1ec253ab-c220-4d63-b2de-5b40e0af9293`
+**Id:** `terraform-aws-s3-bucket-without-restriction-of-public-bucket`
 
 **Cloud Provider:** AWS
 

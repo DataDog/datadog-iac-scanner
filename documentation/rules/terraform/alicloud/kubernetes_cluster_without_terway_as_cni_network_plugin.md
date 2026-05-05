@@ -3,7 +3,7 @@ title: "Kubernetes cluster without Terway as CNI network plugin"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/kubernetes_cluster_without_terway_as_cni_network_plugin"
-  id: "b9b7ada8-3868-4a35-854e-6100a2bb863d"
+  id: "terraform-alicloud-kubernetes-cluster-without-terway-as-cni-network-plugin"
   display_name: "Kubernetes cluster without Terway as CNI network plugin"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b9b7ada8-3868-4a35-854e-6100a2bb863d`
+**Id:** `terraform-alicloud-kubernetes-cluster-without-terway-as-cni-network-plugin`
 
 **Cloud Provider:** Alicloud
 

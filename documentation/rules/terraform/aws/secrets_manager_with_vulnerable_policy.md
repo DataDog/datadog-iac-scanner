@@ -3,7 +3,7 @@ title: "Secrets Manager with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/secrets_manager_with_vulnerable_policy"
-  id: "fa00ce45-386d-4718-8392-fb485e1f3c5b"
+  id: "terraform-aws-secrets-manager-with-vulnerable-policy"
   display_name: "Secrets Manager with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fa00ce45-386d-4718-8392-fb485e1f3c5b`
+**Id:** `terraform-aws-secrets-manager-with-vulnerable-policy`
 
 **Cloud Provider:** AWS
 

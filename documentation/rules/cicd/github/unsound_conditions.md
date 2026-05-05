@@ -3,7 +3,7 @@ title: "Unsound condition"
 group_id: "CICD / GitHub"
 meta:
   name: "github/unsound_conditions"
-  id: "d4e5f6a7-b8c9-40d1-e2f3-a4b5c6d7e8f9"
+  id: "cicd-common-unsound-conditions"
   display_name: "Unsound condition"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d4e5f6a7-b8c9-40d1-e2f3-a4b5c6d7e8f9`
+**Id:** `cicd-common-unsound-conditions`
 
 **Cloud Provider:** GitHub
 

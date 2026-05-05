@@ -3,7 +3,7 @@ title: "Missing zypper clean"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/missing_zypper_clean"
-  id: "38300d1a-feb2-4a48-936a-d1ef1cd24313"
+  id: "dockerfile-missing-zypper-clean"
   display_name: "Missing zypper clean"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `38300d1a-feb2-4a48-936a-d1ef1cd24313`
+**Id:** `dockerfile-missing-zypper-clean`
 
 **Cloud Provider:** Dockerfile
 

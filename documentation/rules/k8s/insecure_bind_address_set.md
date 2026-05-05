@@ -3,7 +3,7 @@ title: "Insecure bind address set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/insecure_bind_address_set"
-  id: "b9380fd3-5ffe-4d10-9290-13e18e71eee1"
+  id: "kubernetes-insecure-bind-address-set"
   display_name: "Insecure bind address set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b9380fd3-5ffe-4d10-9290-13e18e71eee1`
+**Id:** `kubernetes-insecure-bind-address-set`
 
 **Cloud Provider:** Kubernetes
 

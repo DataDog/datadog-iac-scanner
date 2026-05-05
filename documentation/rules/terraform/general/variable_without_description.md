@@ -3,7 +3,7 @@ title: "Variable without description"
 group_id: "Terraform / Common"
 meta:
   name: "general/variable_without_description"
-  id: "2a153952-2544-4687-bcc9-cc8fea814a9b"
+  id: "terraform-common-variable-without-description"
   display_name: "Variable without description"
   cloud_provider: "Common"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2a153952-2544-4687-bcc9-cc8fea814a9b`
+**Id:** `terraform-common-variable-without-description`
 
 **Cloud Provider:** Common
 

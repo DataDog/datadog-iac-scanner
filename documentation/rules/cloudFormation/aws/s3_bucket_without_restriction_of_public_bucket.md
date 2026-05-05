@@ -3,7 +3,7 @@ title: "S3 bucket without restriction of public bucket"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_without_restriction_of_public_bucket"
-  id: "350cd468-0e2c-44ef-9d22-cfb73a62523c"
+  id: "cloudformation-aws-s3-bucket-without-restriction-of-public-bucket"
   display_name: "S3 bucket without restriction of public bucket"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `350cd468-0e2c-44ef-9d22-cfb73a62523c`
+**Id:** `cloudformation-aws-s3-bucket-without-restriction-of-public-bucket`
 
 **Cloud Provider:** AWS
 

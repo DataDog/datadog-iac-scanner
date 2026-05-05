@@ -3,7 +3,7 @@ title: "Ensure legacy networks do not exist for a project"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/legacy_networks_exist_for_project"
-  id: "550e8400-e29b-41d4-a716-446655440000"
+  id: "terraform-gcp-legacy-networks-exist-for-project"
   display_name: "Ensure legacy networks do not exist for a project"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `550e8400-e29b-41d4-a716-446655440000`
+**Id:** `terraform-gcp-legacy-networks-exist-for-project`
 
 **Cloud Provider:** GCP
 

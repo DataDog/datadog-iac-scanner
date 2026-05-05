@@ -3,7 +3,7 @@ title: "Network policy disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/network_policy_disabled"
-  id: "98e04ca0-34f5-4c74-8fec-d2e611ce2790"
+  id: "ansible-gcp-network-policy-disabled"
   display_name: "Network policy disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `98e04ca0-34f5-4c74-8fec-d2e611ce2790`
+**Id:** `ansible-gcp-network-policy-disabled`
 
 **Cloud Provider:** GCP
 

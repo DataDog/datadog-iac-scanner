@@ -3,7 +3,7 @@ title: "Run using wget and curl"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/run_using_wget_and_curl"
-  id: "fc775e75-fcfb-4c98-b2f2-910c5858b359"
+  id: "dockerfile-run-using-wget-and-curl"
   display_name: "Run using wget and curl"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fc775e75-fcfb-4c98-b2f2-910c5858b359`
+**Id:** `dockerfile-run-using-wget-and-curl`
 
 **Cloud Provider:** Dockerfile
 

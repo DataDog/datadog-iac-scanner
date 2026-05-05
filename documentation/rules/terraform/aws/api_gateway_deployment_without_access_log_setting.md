@@ -3,7 +3,7 @@ title: "API Gateway deployment without access log setting"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/api_gateway_deployment_without_access_log_setting"
-  id: "625abc0e-f980-4ac9-a775-f7519ee34296"
+  id: "terraform-aws-api-gateway-deployment-without-access-log-setting"
   display_name: "API Gateway deployment without access log setting"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `625abc0e-f980-4ac9-a775-f7519ee34296`
+**Id:** `terraform-aws-api-gateway-deployment-without-access-log-setting`
 
 **Cloud Provider:** AWS
 

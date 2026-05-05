@@ -3,7 +3,7 @@ title: "Security group egress with all protocols"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_group_egress_with_all_protocols"
-  id: "ee464fc2-54a6-4e22-b10a-c6dcd2474d0c"
+  id: "cloudformation-aws-security-group-egress-with-all-protocols"
   display_name: "Security group egress with all protocols"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ee464fc2-54a6-4e22-b10a-c6dcd2474d0c`
+**Id:** `cloudformation-aws-security-group-egress-with-all-protocols`
 
 **Cloud Provider:** AWS
 

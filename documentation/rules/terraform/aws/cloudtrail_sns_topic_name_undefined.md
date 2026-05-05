@@ -3,7 +3,7 @@ title: "CloudTrail SNS topic name undefined"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudtrail_sns_topic_name_undefined"
-  id: "482b7d26-0bdb-4b5f-bf6f-545826c0a3dd"
+  id: "terraform-aws-cloudtrail-sns-topic-name-undefined"
   display_name: "CloudTrail SNS topic name undefined"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `482b7d26-0bdb-4b5f-bf6f-545826c0a3dd`
+**Id:** `terraform-aws-cloudtrail-sns-topic-name-undefined`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Lambda function with privileged role"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/lambda_function_with_privileged_role"
-  id: "1b3af2f9-af8c-4dfc-a0f1-a03adb70deb2"
+  id: "terraform-aws-lambda-function-with-privileged-role"
   display_name: "Lambda function with privileged role"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1b3af2f9-af8c-4dfc-a0f1-a03adb70deb2`
+**Id:** `terraform-aws-lambda-function-with-privileged-role`
 
 **Cloud Provider:** AWS
 

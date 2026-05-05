@@ -3,7 +3,7 @@ title: "ECR repository is publicly accessible"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ecr_repository_is_publicly_accessible"
-  id: "75be209d-1948-41f6-a8c8-e22dd0121134"
+  id: "cloudformation-aws-ecr-repository-is-publicly-accessible"
   display_name: "ECR repository is publicly accessible"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `75be209d-1948-41f6-a8c8-e22dd0121134`
+**Id:** `cloudformation-aws-ecr-repository-is-publicly-accessible`
 
 **Cloud Provider:** AWS
 

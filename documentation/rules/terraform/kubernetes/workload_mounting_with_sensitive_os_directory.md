@@ -3,7 +3,7 @@ title: "Workload mounting with sensitive OS directory"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/workload_mounting_with_sensitive_os_directory"
-  id: "a737be28-37d8-4bff-aa6d-1be8aa0a0015"
+  id: "terraform-common-workload-mounting-with-sensitive-os-directory"
   display_name: "Workload mounting with sensitive OS directory"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a737be28-37d8-4bff-aa6d-1be8aa0a0015`
+**Id:** `terraform-common-workload-mounting-with-sensitive-os-directory`
 
 **Cloud Provider:** Kubernetes
 

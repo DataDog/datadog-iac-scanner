@@ -3,7 +3,7 @@ title: "Trusted Microsoft services not enabled"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/trusted_microsoft_services_not_enabled"
-  id: "1bc398a8-d274-47de-a4c8-6ac867b353de"
+  id: "ansible-azure-trusted-microsoft-services-not-enabled"
   display_name: "Trusted Microsoft services not enabled"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1bc398a8-d274-47de-a4c8-6ac867b353de`
+**Id:** `ansible-azure-trusted-microsoft-services-not-enabled`
 
 **Cloud Provider:** Azure
 

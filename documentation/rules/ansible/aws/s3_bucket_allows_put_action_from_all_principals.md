@@ -3,7 +3,7 @@ title: "S3 bucket allows put action from all principals"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_allows_put_action_from_all_principals"
-  id: "a0f1bfe0-741e-473f-b3b2-13e66f856fab"
+  id: "ansible-aws-s3-bucket-allows-put-action-from-all-principals"
   display_name: "S3 bucket allows put action from all principals"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a0f1bfe0-741e-473f-b3b2-13e66f856fab`
+**Id:** `ansible-aws-s3-bucket-allows-put-action-from-all-principals`
 
 **Cloud Provider:** AWS
 

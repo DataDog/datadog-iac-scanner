@@ -3,7 +3,7 @@ title: "Client certificate disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/client_certificate_disabled"
-  id: "20180133-a0d0-4745-bfe0-94049fbb12a9"
+  id: "ansible-gcp-client-certificate-disabled"
   display_name: "Client certificate disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `20180133-a0d0-4745-bfe0-94049fbb12a9`
+**Id:** `ansible-gcp-client-certificate-disabled`
 
 **Cloud Provider:** GCP
 

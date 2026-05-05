@@ -3,7 +3,7 @@ title: "Memory limits not defined"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/memory_limits_not_defined"
-  id: "b14d1bc4-a208-45db-92f0-e21f8e2588e9"
+  id: "kubernetes-memory-limits-not-defined"
   display_name: "Memory limits not defined"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b14d1bc4-a208-45db-92f0-e21f8e2588e9`
+**Id:** `kubernetes-memory-limits-not-defined`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "ROS stack retention disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ros_stack_retention_disabled"
-  id: "4bb06fa1-2114-4a00-b7b5-6aeab8b896f0"
+  id: "terraform-alicloud-ros-stack-retention-disabled"
   display_name: "ROS stack retention disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4bb06fa1-2114-4a00-b7b5-6aeab8b896f0`
+**Id:** `terraform-alicloud-ros-stack-retention-disabled`
 
 **Cloud Provider:** Alicloud
 

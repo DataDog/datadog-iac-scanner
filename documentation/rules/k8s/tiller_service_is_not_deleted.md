@@ -3,7 +3,7 @@ title: "Tiller Service present"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/tiller_service_is_not_deleted"
-  id: "8b862ca9-0fbd-4959-ad72-b6609bdaa22d"
+  id: "kubernetes-tiller-service-is-not-deleted"
   display_name: "Tiller Service present"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8b862ca9-0fbd-4959-ad72-b6609bdaa22d`
+**Id:** `kubernetes-tiller-service-is-not-deleted`
 
 **Cloud Provider:** Kubernetes
 

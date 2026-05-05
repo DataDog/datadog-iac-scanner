@@ -3,7 +3,7 @@ title: "Email alerts disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/email_alerts_disabled"
-  id: "9db38e87-f6aa-4b5e-a1ec-7266df259409"
+  id: "terraform-azure-email-alerts-disabled"
   display_name: "Email alerts disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9db38e87-f6aa-4b5e-a1ec-7266df259409`
+**Id:** `terraform-azure-email-alerts-disabled`
 
 **Cloud Provider:** Azure
 

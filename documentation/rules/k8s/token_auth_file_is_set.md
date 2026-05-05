@@ -3,7 +3,7 @@ title: "Token auth file is set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/token_auth_file_is_set"
-  id: "32ecd76e-7bbf-402e-bf48-8b9485749558"
+  id: "kubernetes-token-auth-file-is-set"
   display_name: "Token auth file is set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `32ecd76e-7bbf-402e-bf48-8b9485749558`
+**Id:** `kubernetes-token-auth-file-is-set`
 
 **Cloud Provider:** Kubernetes
 

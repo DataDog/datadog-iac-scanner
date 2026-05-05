@@ -3,7 +3,7 @@ title: "Cross-account IAM assume role policy without ExternalId or MFA"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cross_account_iam_assume_role_policy_without_external_id_or_mfa"
-  id: "af167837-9636-4086-b815-c239186b9dda"
+  id: "ansible-aws-cross-account-iam-assume-role-policy-without-external-id-or-mfa"
   display_name: "Cross-account IAM assume role policy without ExternalId or MFA"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `af167837-9636-4086-b815-c239186b9dda`
+**Id:** `ansible-aws-cross-account-iam-assume-role-policy-without-external-id-or-mfa`
 
 **Cloud Provider:** AWS
 

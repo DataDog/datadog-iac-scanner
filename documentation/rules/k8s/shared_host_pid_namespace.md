@@ -3,7 +3,7 @@ title: "Shared host PID namespace"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/shared_host_pid_namespace"
-  id: "302736f4-b16c-41b8-befe-c0baffa0bd9d"
+  id: "kubernetes-shared-host-pid-namespace"
   display_name: "Shared host PID namespace"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `302736f4-b16c-41b8-befe-c0baffa0bd9d`
+**Id:** `kubernetes-shared-host-pid-namespace`
 
 **Cloud Provider:** Kubernetes
 

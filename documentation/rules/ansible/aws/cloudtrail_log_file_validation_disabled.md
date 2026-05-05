@@ -3,7 +3,7 @@ title: "CloudTrail log file validation disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudtrail_log_file_validation_disabled"
-  id: "4d8681a2-3d30-4c89-8070-08acd142748e"
+  id: "ansible-aws-cloudtrail-log-file-validation-disabled"
   display_name: "CloudTrail log file validation disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4d8681a2-3d30-4c89-8070-08acd142748e`
+**Id:** `ansible-aws-cloudtrail-log-file-validation-disabled`
 
 **Cloud Provider:** AWS
 

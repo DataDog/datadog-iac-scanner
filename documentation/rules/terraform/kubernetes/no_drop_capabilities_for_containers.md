@@ -3,7 +3,7 @@ title: "No drop capabilities for containers"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/no_drop_capabilities_for_containers"
-  id: "21cef75f-289f-470e-8038-c7cee0664164"
+  id: "terraform-common-no-drop-capabilities-for-containers"
   display_name: "No drop capabilities for containers"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `21cef75f-289f-470e-8038-c7cee0664164`
+**Id:** `terraform-common-no-drop-capabilities-for-containers`
 
 **Cloud Provider:** Kubernetes
 

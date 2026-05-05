@@ -3,7 +3,7 @@ title: "MSK cluster logging disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/msk_cluster_logging_disabled"
-  id: "fc7c2c15-f5d0-4b80-adb2-c89019f8f62b"
+  id: "cloudformation-aws-msk-cluster-logging-disabled"
   display_name: "MSK cluster logging disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fc7c2c15-f5d0-4b80-adb2-c89019f8f62b`
+**Id:** `cloudformation-aws-msk-cluster-logging-disabled`
 
 **Cloud Provider:** AWS
 

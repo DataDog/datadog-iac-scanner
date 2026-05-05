@@ -3,7 +3,7 @@ title: "Serial ports are enabled for VM instances"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/serial_ports_enabled_for_vm_instances"
-  id: "c6fc6f29-dc04-46b6-99ba-683c01aff350"
+  id: "ansible-gcp-serial-ports-enabled-for-vm-instances"
   display_name: "Serial ports are enabled for VM instances"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c6fc6f29-dc04-46b6-99ba-683c01aff350`
+**Id:** `ansible-gcp-serial-ports-enabled-for-vm-instances`
 
 **Cloud Provider:** GCP
 

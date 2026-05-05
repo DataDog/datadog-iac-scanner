@@ -3,7 +3,7 @@ title: "EFS without tags"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/efs_without_tags"
-  id: "08e39832-5e42-4304-98a0-aa5b43393162"
+  id: "cloudformation-aws-efs-without-tags"
   display_name: "EFS without tags"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `08e39832-5e42-4304-98a0-aa5b43393162`
+**Id:** `cloudformation-aws-efs-without-tags`
 
 **Cloud Provider:** AWS
 

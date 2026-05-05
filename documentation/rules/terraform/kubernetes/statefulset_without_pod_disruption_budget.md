@@ -3,7 +3,7 @@ title: "StatefulSet without PodDisruptionBudget"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/statefulset_without_pod_disruption_budget"
-  id: "7249e3b0-9231-4af3-bc5f-5daf4988ecbf"
+  id: "terraform-common-statefulset-without-pod-disruption-budget"
   display_name: "StatefulSet without PodDisruptionBudget"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7249e3b0-9231-4af3-bc5f-5daf4988ecbf`
+**Id:** `terraform-common-statefulset-without-pod-disruption-budget`
 
 **Cloud Provider:** Kubernetes
 

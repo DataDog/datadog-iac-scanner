@@ -3,7 +3,7 @@ title: "CloudFront without minimum protocol TLS 1.2"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudfront_without_minimum_protocol_tls_1.2"
-  id: "00e5e55e-c2ff-46b3-a757-a7a1cd802456"
+  id: "terraform-aws-cloudfront-without-minimum-protocol-tls-1-2"
   display_name: "CloudFront without minimum protocol TLS 1.2"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `00e5e55e-c2ff-46b3-a757-a7a1cd802456`
+**Id:** `terraform-aws-cloudfront-without-minimum-protocol-tls-1-2`
 
 **Cloud Provider:** AWS
 

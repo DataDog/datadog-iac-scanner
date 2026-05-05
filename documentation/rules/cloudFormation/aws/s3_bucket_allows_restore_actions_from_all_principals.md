@@ -3,7 +3,7 @@ title: "S3 bucket allows restore actions from all principals"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_allows_restore_actions_from_all_principals"
-  id: "456b00a3-1072-4149-9740-6b8bb60251b0"
+  id: "cloudformation-aws-s3-bucket-allows-restore-actions-from-all-principals"
   display_name: "S3 bucket allows restore actions from all principals"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `456b00a3-1072-4149-9740-6b8bb60251b0`
+**Id:** `cloudformation-aws-s3-bucket-allows-restore-actions-from-all-principals`
 
 **Cloud Provider:** AWS
 

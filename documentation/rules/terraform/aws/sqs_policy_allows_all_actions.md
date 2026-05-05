@@ -3,7 +3,7 @@ title: "SQS policy allows all actions"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sqs_policy_allows_all_actions"
-  id: "816ea8cf-d589-442d-a917-2dd0ce0e45e3"
+  id: "terraform-aws-sqs-policy-allows-all-actions"
   display_name: "SQS policy allows all actions"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `816ea8cf-d589-442d-a917-2dd0ce0e45e3`
+**Id:** `terraform-aws-sqs-policy-allows-all-actions`
 
 **Cloud Provider:** AWS
 

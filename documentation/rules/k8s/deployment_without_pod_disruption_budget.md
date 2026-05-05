@@ -3,7 +3,7 @@ title: "Deployment without PodDisruptionBudget"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/deployment_without_pod_disruption_budget"
-  id: "b23e9b98-0cb6-4fc9-b257-1f3270442678"
+  id: "kubernetes-deployment-without-pod-disruption-budget"
   display_name: "Deployment without PodDisruptionBudget"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b23e9b98-0cb6-4fc9-b257-1f3270442678`
+**Id:** `kubernetes-deployment-without-pod-disruption-budget`
 
 **Cloud Provider:** Kubernetes
 

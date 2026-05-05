@@ -3,7 +3,7 @@ title: "Image pull policy of the container is not set to always"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/image_pull_policy_of_container_is_not_always"
-  id: "caa3479d-885d-4882-9aac-95e5e78ef5c2"
+  id: "kubernetes-image-pull-policy-of-container-is-not-always"
   display_name: "Image pull policy of the container is not set to always"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `caa3479d-885d-4882-9aac-95e5e78ef5c2`
+**Id:** `kubernetes-image-pull-policy-of-container-is-not-always`
 
 **Cloud Provider:** Kubernetes
 

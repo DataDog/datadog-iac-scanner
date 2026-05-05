@@ -3,7 +3,7 @@ title: "AWS password policy with unchangeable passwords"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/aws_password_policy_with_unchangeable_passwords"
-  id: "e28ceb92-d588-4166-aac5-766c8f5b7472"
+  id: "ansible-aws-aws-password-policy-with-unchangeable-passwords"
   display_name: "AWS password policy with unchangeable passwords"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e28ceb92-d588-4166-aac5-766c8f5b7472`
+**Id:** `ansible-aws-aws-password-policy-with-unchangeable-passwords`
 
 **Cloud Provider:** AWS
 

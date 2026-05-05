@@ -3,7 +3,7 @@ title: "EC2 permissive network ACL protocols"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_permissive_network_acl_protocols"
-  id: "03879981-efa2-47a0-a818-c843e1441b88"
+  id: "cloudformation-aws-ec2-permissive-network-acl-protocols"
   display_name: "EC2 permissive network ACL protocols"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `03879981-efa2-47a0-a818-c843e1441b88`
+**Id:** `cloudformation-aws-ec2-permissive-network-acl-protocols`
 
 **Cloud Provider:** AWS
 

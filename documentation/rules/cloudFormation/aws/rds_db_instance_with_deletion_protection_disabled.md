@@ -3,7 +3,7 @@ title: "RDS DB instance with deletion protection disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/rds_db_instance_with_deletion_protection_disabled"
-  id: "2c161e58-cb52-454f-abea-6470c37b5e6e"
+  id: "cloudformation-aws-rds-db-instance-with-deletion-protection-disabled"
   display_name: "RDS DB instance with deletion protection disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2c161e58-cb52-454f-abea-6470c37b5e6e`
+**Id:** `cloudformation-aws-rds-db-instance-with-deletion-protection-disabled`
 
 **Cloud Provider:** AWS
 

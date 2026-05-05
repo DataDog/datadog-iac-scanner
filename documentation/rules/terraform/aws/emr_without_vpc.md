@@ -3,7 +3,7 @@ title: "EMR without VPC"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/emr_without_vpc"
-  id: "2b3c8a6d-9856-43e6-ab1d-d651094f03b4"
+  id: "terraform-aws-emr-without-vpc"
   display_name: "EMR without VPC"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2b3c8a6d-9856-43e6-ab1d-d651094f03b4`
+**Id:** `terraform-aws-emr-without-vpc`
 
 **Cloud Provider:** AWS
 

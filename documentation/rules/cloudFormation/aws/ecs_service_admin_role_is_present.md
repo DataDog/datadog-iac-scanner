@@ -3,7 +3,7 @@ title: "ECS service admin role is present"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ecs_service_admin_role_is_present"
-  id: "01986452-bdd8-4aaa-b5df-d6bf61d616ff"
+  id: "cloudformation-aws-ecs-service-admin-role-is-present"
   display_name: "ECS service admin role is present"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `01986452-bdd8-4aaa-b5df-d6bf61d616ff`
+**Id:** `cloudformation-aws-ecs-service-admin-role-is-present`
 
 **Cloud Provider:** AWS
 

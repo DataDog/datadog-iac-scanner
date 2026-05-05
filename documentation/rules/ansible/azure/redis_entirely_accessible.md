@@ -3,7 +3,7 @@ title: "Redis entirely accessible"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/redis_entirely_accessible"
-  id: "0d0c12b9-edce-4510-9065-13f6a758750c"
+  id: "ansible-azure-redis-entirely-accessible"
   display_name: "Redis entirely accessible"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0d0c12b9-edce-4510-9065-13f6a758750c`
+**Id:** `ansible-azure-redis-entirely-accessible`
 
 **Cloud Provider:** Azure
 

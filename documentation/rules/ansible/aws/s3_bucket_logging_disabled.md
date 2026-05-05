@@ -3,7 +3,7 @@ title: "S3 bucket logging disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_logging_disabled"
-  id: "c3b9f7b0-f5a0-49ec-9cbc-f1e346b7274d"
+  id: "ansible-aws-s3-bucket-logging-disabled"
   display_name: "S3 bucket logging disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c3b9f7b0-f5a0-49ec-9cbc-f1e346b7274d`
+**Id:** `ansible-aws-s3-bucket-logging-disabled`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Pod security policy disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/pod_security_policy_disabled"
-  id: "9192e0f9-eca5-4056-9282-ae2a736a4088"
+  id: "terraform-gcp-pod-security-policy-disabled"
   display_name: "Pod security policy disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9192e0f9-eca5-4056-9282-ae2a736a4088`
+**Id:** `terraform-gcp-pod-security-policy-disabled`
 
 **Cloud Provider:** GCP
 

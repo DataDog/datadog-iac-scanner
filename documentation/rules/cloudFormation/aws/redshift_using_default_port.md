@@ -3,7 +3,7 @@ title: "Redshift using default port"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/redshift_using_default_port"
-  id: "a478af30-8c3a-404d-aa64-0b673cee509a"
+  id: "cloudformation-aws-redshift-using-default-port"
   display_name: "Redshift using default port"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a478af30-8c3a-404d-aa64-0b673cee509a`
+**Id:** `cloudformation-aws-redshift-using-default-port`
 
 **Cloud Provider:** AWS
 

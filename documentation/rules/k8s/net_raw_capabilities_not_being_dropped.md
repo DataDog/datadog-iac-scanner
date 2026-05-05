@@ -3,7 +3,7 @@ title: "NET_RAW capabilities not dropped"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/net_raw_capabilities_not_being_dropped"
-  id: "dbbc6705-d541-43b0-b166-dd4be8208b54"
+  id: "kubernetes-net-raw-capabilities-not-being-dropped"
   display_name: "NET_RAW capabilities not dropped"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dbbc6705-d541-43b0-b166-dd4be8208b54`
+**Id:** `kubernetes-net-raw-capabilities-not-being-dropped`
 
 **Cloud Provider:** Kubernetes
 

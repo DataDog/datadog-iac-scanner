@@ -3,7 +3,7 @@ title: "Outdated GKE version"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/outdated_gke_version"
-  id: "128df7ec-f185-48bc-8913-ce756a3ccb85"
+  id: "terraform-gcp-outdated-gke-version"
   display_name: "Outdated GKE version"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `128df7ec-f185-48bc-8913-ce756a3ccb85`
+**Id:** `terraform-gcp-outdated-gke-version`
 
 **Cloud Provider:** GCP
 

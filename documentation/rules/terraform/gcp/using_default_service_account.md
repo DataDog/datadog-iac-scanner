@@ -3,7 +3,7 @@ title: "Using default service account"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/using_default_service_account"
-  id: "3cb4af0b-056d-4fb1-8b95-fdc4593625ff"
+  id: "terraform-gcp-using-default-service-account"
   display_name: "Using default service account"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3cb4af0b-056d-4fb1-8b95-fdc4593625ff`
+**Id:** `terraform-gcp-using-default-service-account`
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "Redshift publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/redshift_publicly_accessible"
-  id: "5c6b727b-1382-4629-8ba9-abd1365e5610"
+  id: "ansible-aws-redshift-publicly-accessible"
   display_name: "Redshift publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5c6b727b-1382-4629-8ba9-abd1365e5610`
+**Id:** `ansible-aws-redshift-publicly-accessible`
 
 **Cloud Provider:** AWS
 

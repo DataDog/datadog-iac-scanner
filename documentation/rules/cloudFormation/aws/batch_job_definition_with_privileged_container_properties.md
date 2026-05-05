@@ -3,7 +3,7 @@ title: "Batch job definition with privileged container properties"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/batch_job_definition_with_privileged_container_properties"
-  id: "76ddf32c-85b1-4808-8935-7eef8030ab36"
+  id: "cloudformation-aws-batch-job-definition-with-privileged-container-properties"
   display_name: "Batch job definition with privileged container properties"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `76ddf32c-85b1-4808-8935-7eef8030ab36`
+**Id:** `cloudformation-aws-batch-job-definition-with-privileged-container-properties`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Image without digest"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/image_without_digest"
-  id: "228c4c19-feeb-4c18-848c-800ac70fdfb7"
+  id: "terraform-common-image-without-digest"
   display_name: "Image without digest"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `228c4c19-feeb-4c18-848c-800ac70fdfb7`
+**Id:** `terraform-common-image-without-digest`
 
 **Cloud Provider:** Kubernetes
 

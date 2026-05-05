@@ -3,7 +3,7 @@ title: "Risky file permissions"
 group_id: "Ansible / Common"
 meta:
   name: "general/risky_file_permissions"
-  id: "88841d5c-d22d-4b7e-a6a0-89ca50e44b9f"
+  id: "ansible-common-risky-file-permissions"
   display_name: "Risky file permissions"
   cloud_provider: "Common"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `88841d5c-d22d-4b7e-a6a0-89ca50e44b9f`
+**Id:** `ansible-common-risky-file-permissions`
 
 **Cloud Provider:** Common
 

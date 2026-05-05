@@ -3,7 +3,7 @@ title: "ElastiCache without VPC"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/elasticache_without_vpc"
-  id: "5527dcfc-94f9-4bf6-b7d4-1b78850cf41f"
+  id: "ansible-aws-elasticache-without-vpc"
   display_name: "ElastiCache without VPC"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5527dcfc-94f9-4bf6-b7d4-1b78850cf41f`
+**Id:** `ansible-aws-elasticache-without-vpc`
 
 **Cloud Provider:** AWS
 

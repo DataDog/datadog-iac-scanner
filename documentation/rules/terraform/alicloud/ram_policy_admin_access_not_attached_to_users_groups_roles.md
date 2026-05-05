@@ -3,7 +3,7 @@ title: "RAM policy admin access not attached to users groups roles"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ram_policy_admin_access_not_attached_to_users_groups_roles"
-  id: "e8e62026-da63-4904-b402-65adfe3ca975"
+  id: "terraform-alicloud-ram-policy-admin-access-not-attached-to-users-groups-roles"
   display_name: "RAM policy admin access not attached to users groups roles"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e8e62026-da63-4904-b402-65adfe3ca975`
+**Id:** `terraform-alicloud-ram-policy-admin-access-not-attached-to-users-groups-roles`
 
 **Cloud Provider:** Alicloud
 

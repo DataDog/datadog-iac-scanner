@@ -3,7 +3,7 @@ title: "IAM role allows all principals to assume"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_role_allows_all_principals_to_assume"
-  id: "babdedcf-d859-43da-9a7b-6d72e661a8fd"
+  id: "ansible-aws-iam-role-allows-all-principals-to-assume"
   display_name: "IAM role allows all principals to assume"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `babdedcf-d859-43da-9a7b-6d72e661a8fd`
+**Id:** `ansible-aws-iam-role-allows-all-principals-to-assume`
 
 **Cloud Provider:** AWS
 

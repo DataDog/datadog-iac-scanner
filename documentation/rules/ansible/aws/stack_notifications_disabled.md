@@ -3,7 +3,7 @@ title: "Stack notifications disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/stack_notifications_disabled"
-  id: "d39761d7-94ab-45b0-ab5e-27c44e381d58"
+  id: "ansible-aws-stack-notifications-disabled"
   display_name: "Stack notifications disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d39761d7-94ab-45b0-ab5e-27c44e381d58`
+**Id:** `ansible-aws-stack-notifications-disabled`
 
 **Cloud Provider:** AWS
 

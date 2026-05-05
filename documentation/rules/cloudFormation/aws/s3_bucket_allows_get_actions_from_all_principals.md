@@ -3,7 +3,7 @@ title: "S3 bucket allows get action from all principals"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_allows_get_actions_from_all_principals"
-  id: "f97b7d23-568f-4bcc-9ac9-02df0d57fbba"
+  id: "cloudformation-aws-s3-bucket-allows-get-actions-from-all-principals"
   display_name: "S3 bucket allows get action from all principals"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f97b7d23-568f-4bcc-9ac9-02df0d57fbba`
+**Id:** `cloudformation-aws-s3-bucket-allows-get-actions-from-all-principals`
 
 **Cloud Provider:** AWS
 

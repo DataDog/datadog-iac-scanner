@@ -3,7 +3,7 @@ title: "GitHub repository set to public"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/github_repository_set_to_public"
-  id: "5906092d-5f74-490d-9a03-78febe0f65e1"
+  id: "cloudformation-aws-github-repository-set-to-public"
   display_name: "GitHub repository set to public"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5906092d-5f74-490d-9a03-78febe0f65e1`
+**Id:** `cloudformation-aws-github-repository-set-to-public`
 
 **Cloud Provider:** AWS
 

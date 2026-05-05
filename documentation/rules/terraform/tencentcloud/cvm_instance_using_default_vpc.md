@@ -3,7 +3,7 @@ title: "CVM instance using default VPC"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cvm_instance_using_default_vpc"
-  id: "b4e75c5c-83d5-4568-90e3-57ed5ec4051b"
+  id: "terraform-tencentcloud-cvm-instance-using-default-vpc"
   display_name: "CVM instance using default VPC"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b4e75c5c-83d5-4568-90e3-57ed5ec4051b`
+**Id:** `terraform-tencentcloud-cvm-instance-using-default-vpc`
 
 **Cloud Provider:** TencentCloud
 

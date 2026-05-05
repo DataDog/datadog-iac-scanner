@@ -3,7 +3,7 @@ title: "EC2 network ACL overlapping ports"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_network_acl_overlapping_ports"
-  id: "77b6f1e2-bde4-4a6a-ae7e-a40659ff1576"
+  id: "cloudformation-aws-ec2-network-acl-overlapping-ports"
   display_name: "EC2 network ACL overlapping ports"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `77b6f1e2-bde4-4a6a-ae7e-a40659ff1576`
+**Id:** `cloudformation-aws-ec2-network-acl-overlapping-ports`
 
 **Cloud Provider:** AWS
 

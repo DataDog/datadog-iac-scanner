@@ -3,7 +3,7 @@ title: "Ensure that Azure cloud resource has a team tag"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/team_tag_not_present"
-  id: "e8f4d3c2-b1a0-4e5f-8d7c-9a0b1c2d3e4f"
+  id: "terraform-azure-team-tag-not-present"
   display_name: "Ensure that Azure cloud resource has a team tag"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e8f4d3c2-b1a0-4e5f-8d7c-9a0b1c2d3e4f`
+**Id:** `terraform-azure-team-tag-not-present`
 
 **Cloud Provider:** Azure
 

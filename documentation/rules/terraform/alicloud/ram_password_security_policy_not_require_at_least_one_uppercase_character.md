@@ -3,7 +3,7 @@ title: "RAM account password policy not require at least one uppercase character
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ram_password_security_policy_not_require_at_least_one_uppercase_character"
-  id: "5e0fb613-ba9b-44c3-88f0-b44188466bfd"
+  id: "terraform-alicloud-ram-password-security-policy-not-require-at-least-one-uppercase-character"
   display_name: "RAM account password policy not require at least one uppercase character"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5e0fb613-ba9b-44c3-88f0-b44188466bfd`
+**Id:** `terraform-alicloud-ram-password-security-policy-not-require-at-least-one-uppercase-character`
 
 **Cloud Provider:** Alicloud
 

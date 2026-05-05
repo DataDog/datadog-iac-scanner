@@ -3,7 +3,7 @@ title: "StatefulSet without podAntiAffinity"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/statefulset_has_no_pod_anti_affinity"
-  id: "d740d048-8ed3-49d3-b77b-6f072f3b669e"
+  id: "kubernetes-statefulset-has-no-pod-anti-affinity"
   display_name: "StatefulSet without podAntiAffinity"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d740d048-8ed3-49d3-b77b-6f072f3b669e`
+**Id:** `kubernetes-statefulset-has-no-pod-anti-affinity`
 
 **Cloud Provider:** Kubernetes
 

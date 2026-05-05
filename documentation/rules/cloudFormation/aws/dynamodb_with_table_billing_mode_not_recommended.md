@@ -3,7 +3,7 @@ title: "DynamoDB with non-recommended table billing mode"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/dynamodb_with_table_billing_mode_not_recommended"
-  id: "c333e906-8d8b-4275-b999-78b6318f8dc6"
+  id: "cloudformation-aws-dynamodb-with-table-billing-mode-not-recommended"
   display_name: "DynamoDB with non-recommended table billing mode"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c333e906-8d8b-4275-b999-78b6318f8dc6`
+**Id:** `cloudformation-aws-dynamodb-with-table-billing-mode-not-recommended`
 
 **Cloud Provider:** AWS
 

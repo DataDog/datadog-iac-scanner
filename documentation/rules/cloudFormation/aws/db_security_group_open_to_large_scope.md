@@ -3,7 +3,7 @@ title: "DB security group open to large scope"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/db_security_group_open_to_large_scope"
-  id: "0104165b-02d5-426f-abc9-91fb48189899"
+  id: "cloudformation-aws-db-security-group-open-to-large-scope"
   display_name: "DB security group open to large scope"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0104165b-02d5-426f-abc9-91fb48189899`
+**Id:** `cloudformation-aws-db-security-group-open-to-large-scope`
 
 **Cloud Provider:** AWS
 

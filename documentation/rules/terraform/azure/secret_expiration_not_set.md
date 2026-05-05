@@ -3,7 +3,7 @@ title: "Secret expiration not set"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/secret_expiration_not_set"
-  id: "dfa20ffa-f476-428f-a490-424b41e91c7f"
+  id: "terraform-azure-secret-expiration-not-set"
   display_name: "Secret expiration not set"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dfa20ffa-f476-428f-a490-424b41e91c7f`
+**Id:** `terraform-azure-secret-expiration-not-set`
 
 **Cloud Provider:** Azure
 

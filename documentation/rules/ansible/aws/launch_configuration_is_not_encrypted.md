@@ -3,7 +3,7 @@ title: "Launch configuration is not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/launch_configuration_is_not_encrypted"
-  id: "66477506-6abb-49ed-803d-3fa174cd5f6a"
+  id: "ansible-aws-launch-configuration-is-not-encrypted"
   display_name: "Launch configuration is not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `66477506-6abb-49ed-803d-3fa174cd5f6a`
+**Id:** `ansible-aws-launch-configuration-is-not-encrypted`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Security group is not configured"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/security_group_is_not_configured"
-  id: "da4f2739-174f-4cdd-b9ef-dc3f14b5931f"
+  id: "ansible-azure-security-group-is-not-configured"
   display_name: "Security group is not configured"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `da4f2739-174f-4cdd-b9ef-dc3f14b5931f`
+**Id:** `ansible-azure-security-group-is-not-configured`
 
 **Cloud Provider:** Azure
 

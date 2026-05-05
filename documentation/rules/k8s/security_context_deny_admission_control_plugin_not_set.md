@@ -3,7 +3,7 @@ title: "Security context deny admission control plugin not set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/security_context_deny_admission_control_plugin_not_set"
-  id: "6a68bebe-c021-492e-8ddb-55b0567fb768"
+  id: "kubernetes-security-context-deny-admission-control-plugin-not-set"
   display_name: "Security context deny admission control plugin not set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6a68bebe-c021-492e-8ddb-55b0567fb768`
+**Id:** `kubernetes-security-context-deny-admission-control-plugin-not-set`
 
 **Cloud Provider:** Kubernetes
 

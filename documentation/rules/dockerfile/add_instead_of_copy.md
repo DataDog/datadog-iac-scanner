@@ -3,7 +3,7 @@ title: "ADD instead of COPY"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/add_instead_of_copy"
-  id: "9513a694-aa0d-41d8-be61-3271e056f36b"
+  id: "dockerfile-add-instead-of-copy"
   display_name: "ADD instead of COPY"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9513a694-aa0d-41d8-be61-3271e056f36b`
+**Id:** `dockerfile-add-instead-of-copy`
 
 **Cloud Provider:** Dockerfile
 

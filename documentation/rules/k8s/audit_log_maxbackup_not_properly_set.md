@@ -3,7 +3,7 @@ title: "Audit log maxbackup not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/audit_log_maxbackup_not_properly_set"
-  id: "768aab52-2504-4a2f-a3e3-329d5a679848"
+  id: "kubernetes-audit-log-maxbackup-not-properly-set"
   display_name: "Audit log maxbackup not properly set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `768aab52-2504-4a2f-a3e3-329d5a679848`
+**Id:** `kubernetes-audit-log-maxbackup-not-properly-set`
 
 **Cloud Provider:** Kubernetes
 

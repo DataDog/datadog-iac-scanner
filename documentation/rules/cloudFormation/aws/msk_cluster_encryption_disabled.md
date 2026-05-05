@@ -3,7 +3,7 @@ title: "MSK cluster encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/msk_cluster_encryption_disabled"
-  id: "a976d63f-af0e-46e8-b714-8c1a9c4bf768"
+  id: "cloudformation-aws-msk-cluster-encryption-disabled"
   display_name: "MSK cluster encryption disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a976d63f-af0e-46e8-b714-8c1a9c4bf768`
+**Id:** `cloudformation-aws-msk-cluster-encryption-disabled`
 
 **Cloud Provider:** AWS
 

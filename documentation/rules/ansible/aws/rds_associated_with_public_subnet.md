@@ -3,7 +3,7 @@ title: "RDS instance associated with a public subnet"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/rds_associated_with_public_subnet"
-  id: "16732649-4ff6-4cd2-8746-e72c13fae4b8"
+  id: "ansible-aws-rds-associated-with-public-subnet"
   display_name: "RDS instance associated with a public subnet"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `16732649-4ff6-4cd2-8746-e72c13fae4b8`
+**Id:** `ansible-aws-rds-associated-with-public-subnet`
 
 **Cloud Provider:** AWS
 

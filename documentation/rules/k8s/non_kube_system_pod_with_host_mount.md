@@ -3,7 +3,7 @@ title: "Non kube-system pod with host mount"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/non_kube_system_pod_with_host_mount"
-  id: "aa8f7a35-9923-4cad-bd61-a19b7f6aac91"
+  id: "kubernetes-non-kube-system-pod-with-host-mount"
   display_name: "Non kube-system pod with host mount"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `aa8f7a35-9923-4cad-bd61-a19b7f6aac91`
+**Id:** `kubernetes-non-kube-system-pod-with-host-mount`
 
 **Cloud Provider:** Kubernetes
 

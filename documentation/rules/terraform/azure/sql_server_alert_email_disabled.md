@@ -3,7 +3,7 @@ title: "SQL server alert email disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/sql_server_alert_email_disabled"
-  id: "55975007-f6e7-4134-83c3-298f1fe4b519"
+  id: "terraform-azure-sql-server-alert-email-disabled"
   display_name: "SQL server alert email disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `55975007-f6e7-4134-83c3-298f1fe4b519`
+**Id:** `terraform-azure-sql-server-alert-email-disabled`
 
 **Cloud Provider:** Azure
 

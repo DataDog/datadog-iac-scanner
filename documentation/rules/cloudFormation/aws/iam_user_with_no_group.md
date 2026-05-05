@@ -3,7 +3,7 @@ title: "IAM user with no group"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_user_with_no_group"
-  id: "06933df4-0ea7-461c-b9b5-104d27390e0e"
+  id: "cloudformation-aws-iam-user-with-no-group"
   display_name: "IAM user with no group"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `06933df4-0ea7-461c-b9b5-104d27390e0e`
+**Id:** `cloudformation-aws-iam-user-with-no-group`
 
 **Cloud Provider:** AWS
 

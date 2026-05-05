@@ -3,7 +3,7 @@ title: "Liveness probe is not defined"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/liveness_probe_is_not_defined"
-  id: "5b6d53dd-3ba3-4269-b4d7-f82e880e43c3"
+  id: "terraform-common-liveness-probe-is-not-defined"
   display_name: "Liveness probe is not defined"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5b6d53dd-3ba3-4269-b4d7-f82e880e43c3`
+**Id:** `terraform-common-liveness-probe-is-not-defined`
 
 **Cloud Provider:** Kubernetes
 
