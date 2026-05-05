@@ -56,3 +56,82 @@ func TestGetQueryID(t *testing.T) {
 		require.Equal(t, test.want, ChooseQueryID(test.have.queryID, test.have.legacyQueryID))
 	}
 }
+
+func TestToSlug(t *testing.T) {
+	tests := []struct {
+		name string
+		have string
+		want string
+	}{
+		{
+			name: "Regular folder name",
+			have: "test_query",
+			want: "test-query",
+		},
+		{
+			name: "Idempotency",
+			have: "test-query",
+			want: "test-query",
+		},
+		{
+			name: "Realistic typo in the middle of a folder name",
+			have: "test__query",
+			want: "test-query",
+		},
+		{
+			name: "Realistic trailing typo of a folder name",
+			have: "test_query_",
+			want: "test-query",
+		},
+		{
+			have: "",
+			want: "",
+		},
+		// Cannot have neither empty platform or slug by construction of the rules
+	}
+
+	for _, test := range tests {
+		require.Equal(t, test.want, ToSlug(test.have))
+	}
+}
+
+func TestToID(t *testing.T) {
+	type QueryInfos struct {
+		platform string
+		provider string
+		slug     string
+	}
+	tests := []struct {
+		have QueryInfos
+		want string
+	}{
+		{
+			have: QueryInfos{
+				platform: "cicd",
+				provider: "github",
+				slug:     "anonymous-definition",
+			},
+			want: "cicd-github-anonymous-definition",
+		},
+		{
+			have: QueryInfos{
+				platform: "CICD",
+				provider: "GitHub",
+				slug:     "anonymous-definition",
+			},
+			want: "cicd-github-anonymous-definition",
+		},
+		{
+			have: QueryInfos{
+				platform: "Kubernetes",
+				provider: "",
+				slug:     "test-rule",
+			},
+			want: "kubernetes-test-rule",
+		},
+	}
+
+	for _, test := range tests {
+		require.Equal(t, test.want, ToID(test.have.platform, test.have.provider, test.have.slug))
+	}
+}
