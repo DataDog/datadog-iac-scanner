@@ -142,7 +142,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** {{{{</* copyable-code */>}}}}{rule_id}{{{{</* copyable-code */>}}}}
+**Id:** {{{{< copyable-code >}}}}{rule_id}{{{{< /copyable-code >}}}}
 
 **Cloud Provider:** {clean_provider}
 

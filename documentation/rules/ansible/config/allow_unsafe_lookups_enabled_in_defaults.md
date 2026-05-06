@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** {{</* copyable-code */>}}86b97bb4-85c9-462d-8635-cbc057c5c8c5{{</* copyable-code */>}}
+**Id:** {{< copyable-code >}}86b97bb4-85c9-462d-8635-cbc057c5c8c5{{< /copyable-code >}}
 
 **Cloud Provider:** Ansible Config
 

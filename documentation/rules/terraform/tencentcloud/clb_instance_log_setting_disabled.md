@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** {{</* copyable-code */>}}ada01ed1-b10c-4f2a-b110-b20fa4f9baa6{{</* copyable-code */>}}
+**Id:** {{< copyable-code >}}ada01ed1-b10c-4f2a-b110-b20fa4f9baa6{{< /copyable-code >}}
 
 **Cloud Provider:** TencentCloud
 

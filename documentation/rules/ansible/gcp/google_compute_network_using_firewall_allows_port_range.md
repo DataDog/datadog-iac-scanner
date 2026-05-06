@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** {{</* copyable-code */>}}7289eebd-a477-4064-8ad4-3c044bd70b00{{</* copyable-code */>}}
+**Id:** {{< copyable-code >}}7289eebd-a477-4064-8ad4-3c044bd70b00{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

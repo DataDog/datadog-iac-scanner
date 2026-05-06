@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** {{</* copyable-code */>}}cb7e695d-6a85-495c-b15f-23aed2519303{{</* copyable-code */>}}
+**Id:** {{< copyable-code >}}cb7e695d-6a85-495c-b15f-23aed2519303{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

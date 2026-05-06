@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** {{</* copyable-code */>}}96fe318e-d631-4156-99fa-9080d57280ae{{</* copyable-code */>}}
+**Id:** {{< copyable-code >}}96fe318e-d631-4156-99fa-9080d57280ae{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 
