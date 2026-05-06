@@ -732,3 +732,325 @@ func TestFilesystemSource_ReadLocalFile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, query.Metadata["id"], "wonderful-query")
 }
+
+// TestCheckQueryExcludeWithLegacyId tests the checkQueryExclude function with both new ID and legacy ID
+func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		metadata       map[string]any
+		excludeIDs     []string
+		expectedResult bool
+		description    string
+	}{
+		{
+			name: "exclude_by_new_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			excludeIDs:     []string{"terraform-aws-s3-bucket-public"},
+			expectedResult: true,
+			description:    "Should exclude when new ID matches",
+		},
+		{
+			name: "exclude_by_legacy_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			excludeIDs:     []string{"abc-123-def-456"},
+			expectedResult: true,
+			description:    "Should exclude when legacy ID matches",
+		},
+		{
+			name: "exclude_by_either_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			excludeIDs:     []string{"different-id", "abc-123-def-456", "another-id"},
+			expectedResult: true,
+			description:    "Should exclude when legacy ID is in the list",
+		},
+		{
+			name: "no_exclude_when_no_match",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			excludeIDs:     []string{"different-id", "another-different-id"},
+			expectedResult: false,
+			description:    "Should not exclude when neither ID matches",
+		},
+		{
+			name: "no_exclude_with_empty_list",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			excludeIDs:     []string{},
+			expectedResult: false,
+			description:    "Should not exclude when exclude list is empty",
+		},
+		{
+			name: "exclude_case_insensitive_new_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			excludeIDs:     []string{"TERRAFORM-AWS-S3-BUCKET-PUBLIC"},
+			expectedResult: true,
+			description:    "Should exclude with case-insensitive match on new ID",
+		},
+		{
+			name: "exclude_case_insensitive_legacy_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			excludeIDs:     []string{"ABC-123-DEF-456"},
+			expectedResult: true,
+			description:    "Should exclude with case-insensitive match on legacy ID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queryParams := &QueryInspectorParameters{
+				ExcludeQueries: QueryFilter{
+					ByIDs: tt.excludeIDs,
+				},
+			}
+			result := checkQueryExclude(ctx, tt.metadata, queryParams)
+			assert.Equal(t, tt.expectedResult, result, tt.description)
+		})
+	}
+}
+
+// TestCheckQueryIncludeWithLegacyId tests the checkQueryInclude function with both new ID and legacy ID
+func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		metadata       map[string]any
+		includeIDs     []string
+		expectedResult bool
+		description    string
+	}{
+		{
+			name: "include_by_new_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			includeIDs:     []string{"terraform-aws-s3-bucket-public"},
+			expectedResult: true,
+			description:    "Should include when new ID matches",
+		},
+		{
+			name: "include_by_legacy_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			includeIDs:     []string{"abc-123-def-456"},
+			expectedResult: true,
+			description:    "Should include when legacy ID matches",
+		},
+		{
+			name: "include_by_either_id_in_list",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			includeIDs:     []string{"different-id", "terraform-aws-s3-bucket-public", "another-id"},
+			expectedResult: true,
+			description:    "Should include when new ID is in the list",
+		},
+		{
+			name: "include_by_legacy_id_in_list",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			includeIDs:     []string{"different-id", "abc-123-def-456", "another-id"},
+			expectedResult: true,
+			description:    "Should include when legacy ID is in the list",
+		},
+		{
+			name: "no_include_when_no_match",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			includeIDs:     []string{"different-id", "another-different-id"},
+			expectedResult: false,
+			description:    "Should not include when neither ID matches",
+		},
+		{
+			name: "include_all_with_empty_list",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			includeIDs:     []string{},
+			expectedResult: true,
+			description:    "Should include all when include list is empty",
+		},
+		{
+			name: "include_case_insensitive_new_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			includeIDs:     []string{"TERRAFORM-AWS-S3-BUCKET-PUBLIC"},
+			expectedResult: true,
+			description:    "Should include with case-insensitive match on new ID",
+		},
+		{
+			name: "include_case_insensitive_legacy_id",
+			metadata: map[string]any{
+				"id":       "terraform-aws-s3-bucket-public",
+				"legacyId": "abc-123-def-456",
+				"category": "Security",
+				"severity": "HIGH",
+			},
+			includeIDs:     []string{"ABC-123-DEF-456"},
+			expectedResult: true,
+			description:    "Should include with case-insensitive match on legacy ID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queryParams := &QueryInspectorParameters{
+				IncludeQueries: QueryFilter{
+					ByIDs: tt.includeIDs,
+				},
+			}
+			result := checkQueryInclude(ctx, tt.metadata, queryParams)
+			assert.Equal(t, tt.expectedResult, result, tt.description)
+		})
+	}
+}
+
+// TestGetQueriesWithLegacyIdFiltering tests end-to-end query filtering with legacy IDs
+func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	contentByte, err := os.ReadFile(filepath.FromSlash("./assets/queries/terraform/aws/alb_deletion_protection_disabled/query.rego"))
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		includeIDs  []string
+		excludeIDs  []string
+		shouldFind  bool
+		description string
+	}{
+		{
+			name:        "include_by_legacy_id",
+			includeIDs:  []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"}, // legacy ID
+			excludeIDs:  []string{},
+			shouldFind:  true,
+			description: "Should find query by legacy ID",
+		},
+		{
+			name:        "include_by_new_id",
+			includeIDs:  []string{"terraform-aws-alb-deletion-protection-disabled"}, // new ID
+			excludeIDs:  []string{},
+			shouldFind:  true,
+			description: "Should find query by new ID",
+		},
+		{
+			name:        "exclude_by_legacy_id",
+			includeIDs:  []string{},
+			excludeIDs:  []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"}, // legacy ID
+			shouldFind:  false,
+			description: "Should exclude query by legacy ID",
+		},
+		{
+			name:        "include_new_exclude_legacy",
+			includeIDs:  []string{"terraform-aws-alb-deletion-protection-disabled"},
+			excludeIDs:  []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
+			shouldFind:  false,
+			description: "Exclude should take precedence - excluded by legacy ID",
+		},
+		{
+			name:        "include_legacy_exclude_new",
+			includeIDs:  []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
+			excludeIDs:  []string{"terraform-aws-alb-deletion-protection-disabled"},
+			shouldFind:  false,
+			description: "Exclude should take precedence - excluded by new ID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewFilesystemSource(ctx, []string{""}, []string{""}, []string{""}, "./assets/libraries", true)
+			filter := QueryInspectorParameters{
+				IncludeQueries: QueryFilter{ByIDs: tt.includeIDs},
+				ExcludeQueries: QueryFilter{ByIDs: tt.excludeIDs},
+			}
+
+			got, err := s.GetQueries(ctx, &filter)
+			require.NoError(t, err, tt.description)
+
+			if tt.shouldFind {
+				require.NotEmpty(t, got, tt.description)
+				found := false
+				for _, q := range got {
+					if q.Metadata["id"] == "terraform-aws-alb-deletion-protection-disabled" {
+						found = true
+						assert.Equal(t, "alb_deletion_protection_disabled", q.Query)
+						assert.Equal(t, string(contentByte), q.Content)
+						assert.Equal(t, "terraform-aws-alb-deletion-protection-disabled", q.Metadata["id"])
+						assert.Equal(t, "afecd1f1-6378-4f7e-bb3b-60c35801fdd4", q.Metadata["legacyId"])
+						break
+					}
+				}
+				assert.True(t, found, "Expected to find query with ID terraform-aws-alb-deletion-protection-disabled")
+			} else {
+				// Should not find the specific query
+				for _, q := range got {
+					assert.NotEqual(t, "terraform-aws-alb-deletion-protection-disabled", q.Metadata["id"],
+						"Should not find query that was excluded: %s", tt.description)
+				}
+			}
+		})
+	}
+}
