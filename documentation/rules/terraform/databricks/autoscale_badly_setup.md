@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `953c0cc6-5f30-44cb-a803-bf4ef2571be8`
+**Id:** {{</* copyable-code */>}}953c0cc6-5f30-44cb-a803-bf4ef2571be8{{</* copyable-code */>}}
 
 **Cloud Provider:** Databricks
 

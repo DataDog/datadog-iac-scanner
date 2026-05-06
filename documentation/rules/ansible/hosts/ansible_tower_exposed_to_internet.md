@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc`
+**Id:** {{</* copyable-code */>}}1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc{{</* copyable-code */>}}
 
 **Cloud Provider:** Ansible Inventory
 

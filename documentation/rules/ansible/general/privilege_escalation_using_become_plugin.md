@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0e75052f-cc02-41b8-ac39-a78017527e95`
+**Id:** {{</* copyable-code */>}}0e75052f-cc02-41b8-ac39-a78017527e95{{</* copyable-code */>}}
 
 **Cloud Provider:** Common
 

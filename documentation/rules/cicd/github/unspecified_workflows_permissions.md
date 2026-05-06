@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d946b13a-0b2b-49c5-b560-45b9666373e1`
+**Id:** {{</* copyable-code */>}}d946b13a-0b2b-49c5-b560-45b9666373e1{{</* copyable-code */>}}
 
 **Cloud Provider:** GitHub
 

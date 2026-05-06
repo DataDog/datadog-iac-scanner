@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `df746b39-6564-4fed-bf85-e9c44382303c`
+**Id:** {{</* copyable-code */>}}df746b39-6564-4fed-bf85-e9c44382303c{{</* copyable-code */>}}
 
 **Cloud Provider:** Dockerfile
 

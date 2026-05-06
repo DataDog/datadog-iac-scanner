@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `940ddce2-26bd-4e31-a9b4-382714f73231`
+**Id:** {{</* copyable-code */>}}940ddce2-26bd-4e31-a9b4-382714f73231{{</* copyable-code */>}}
 
 **Cloud Provider:** Nifcloud
 

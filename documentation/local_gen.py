@@ -10,7 +10,6 @@ import yaml
 from itertools import islice
 from pathlib import Path
 
-
 NO_DESC = "No description provided"
 POSITIVE = re.compile(r"^positive\d*\..+$")
 NEGATIVE = re.compile(r"^negative\d*\..+$")
@@ -143,7 +142,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `{rule_id}`
+**Id:** {{{{</* copyable-code */>}}}}{rule_id}{{{{</* copyable-code */>}}}}
 
 **Cloud Provider:** {clean_provider}
 

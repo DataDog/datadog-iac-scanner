@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5f670f9d-b1b4-4c90-8618-2288f1ab9676`
+**Id:** {{</* copyable-code */>}}5f670f9d-b1b4-4c90-8618-2288f1ab9676{{</* copyable-code */>}}
 
 **Cloud Provider:** Alicloud
 

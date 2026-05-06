@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `218413a0-c716-4b94-9e08-0bb70d854709`
+**Id:** {{</* copyable-code */>}}218413a0-c716-4b94-9e08-0bb70d854709{{</* copyable-code */>}}
 
 **Cloud Provider:** AWS
 
