@@ -31,6 +31,7 @@ var severityLevelEquivalence = map[model.Severity]string{
 type sarifProperties map[string]interface{}
 
 type ruleMetadata struct {
+	legacyQueryID    string
 	queryID          string
 	queryName        string
 	queryDescription string
@@ -436,6 +437,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 	if len(issue.Files) > 0 {
 		metadata := ruleMetadata{
 			queryID:          issue.QueryID,
+			legacyQueryID:    issue.LegacyQueryID,
 			queryName:        issue.QueryName,
 			queryDescription: issue.Description,
 			queryURI:         issue.QueryURI,
@@ -541,6 +543,12 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				artifactPath = ""
 			}
 
+			var queryId string
+			if issue.LegacyQueryID == "Undefined" {
+				queryId = issue.QueryID
+			} else {
+				queryId = issue.LegacyQueryID
+			}
 			result := sarifResult{
 				ResultRuleID:    issue.QueryName,
 				ResultRuleIndex: ruleIndex,
@@ -571,7 +579,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 						issue.Platform,
 						resourceType,
 						resourceName,
-						issue.QueryID,
+						queryId,
 						vulnerability.LineWithVulnerability,
 					),
 				},
