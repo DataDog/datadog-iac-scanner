@@ -1,5 +1,6 @@
 {
-  "id": "45fc717a-bd86-415c-bdd8-677901be1aa6",
+  "id": "terraform-azure-function-app-not-using-latest-tls-encryption-version",
+  "legacyId": "45fc717a-bd86-415c-bdd8-677901be1aa6",
   "queryName": "Function App not using latest TLS encryption version",
   "severity": "MEDIUM",
   "category": "Encryption",

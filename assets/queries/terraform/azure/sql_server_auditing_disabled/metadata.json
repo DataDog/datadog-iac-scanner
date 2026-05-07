@@ -1,5 +1,6 @@
 {
-  "id": "f7e296b0-6660-4bc5-8f87-22ac4a815edf",
+  "id": "terraform-azure-sql-server-auditing-disabled",
+  "legacyId": "f7e296b0-6660-4bc5-8f87-22ac4a815edf",
   "queryName": "SQL server auditing disabled",
   "severity": "MEDIUM",
   "category": "Observability",

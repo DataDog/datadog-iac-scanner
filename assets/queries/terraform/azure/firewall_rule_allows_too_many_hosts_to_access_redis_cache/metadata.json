@@ -1,5 +1,6 @@
 {
-  "id": "a829b715-cf75-4e92-b645-54c9b739edfb",
+  "id": "terraform-azure-firewall-rule-allows-too-many-hosts-to-access-redis-cache",
+  "legacyId": "a829b715-cf75-4e92-b645-54c9b739edfb",
   "queryName": "Firewall rule allows too many hosts to access Redis Cache",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

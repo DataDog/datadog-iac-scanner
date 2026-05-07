@@ -1,5 +1,6 @@
 {
-  "id": "fd8da341-6760-4450-b26c-9f6d8850575e",
+  "id": "terraform-azure-redis-entirely-accessible",
+  "legacyId": "fd8da341-6760-4450-b26c-9f6d8850575e",
   "queryName": "Redis entirely accessible",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

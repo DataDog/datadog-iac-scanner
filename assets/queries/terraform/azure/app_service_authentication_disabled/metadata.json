@@ -1,5 +1,6 @@
 {
-  "id": "c7fc1481-2899-4490-bbd8-544a3a61a2f3",
+  "id": "terraform-azure-app-service-authentication-disabled",
+  "legacyId": "c7fc1481-2899-4490-bbd8-544a3a61a2f3",
   "queryName": "App Service authentication disabled",
   "severity": "MEDIUM",
   "category": "Access Control",

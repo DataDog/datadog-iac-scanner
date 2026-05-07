@@ -1,5 +1,6 @@
 {
-  "id": "3e3c175e-aadf-4e2b-a464-3fdac5748d24",
+  "id": "terraform-azure-ssh-is-exposed-to-the-internet",
+  "legacyId": "3e3c175e-aadf-4e2b-a464-3fdac5748d24",
   "queryName": "SSH is exposed to the Internet",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

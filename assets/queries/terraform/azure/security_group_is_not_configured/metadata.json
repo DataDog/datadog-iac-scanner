@@ -1,5 +1,6 @@
 {
-  "id": "5c822443-e1ea-46b8-84eb-758ec602e844",
+  "id": "terraform-azure-security-group-is-not-configured",
+  "legacyId": "5c822443-e1ea-46b8-84eb-758ec602e844",
   "queryName": "Security group is not configured",
   "severity": "HIGH",
   "category": "Insecure Configurations",

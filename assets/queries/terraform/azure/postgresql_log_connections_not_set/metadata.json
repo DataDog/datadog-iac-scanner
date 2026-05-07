@@ -1,5 +1,6 @@
 {
-  "id": "c640d783-10c5-4071-b6c1-23507300d333",
+  "id": "terraform-azure-postgresql-log-connections-not-set",
+  "legacyId": "c640d783-10c5-4071-b6c1-23507300d333",
   "queryName": "PostgreSQL log connections not set",
   "severity": "MEDIUM",
   "category": "Observability",

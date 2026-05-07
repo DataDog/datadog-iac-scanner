@@ -1,5 +1,6 @@
 {
-  "id": "55975007-f6e7-4134-83c3-298f1fe4b519",
+  "id": "terraform-azure-sql-server-alert-email-disabled",
+  "legacyId": "55975007-f6e7-4134-83c3-298f1fe4b519",
   "queryName": "SQL server alert email disabled",
   "severity": "LOW",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "a99130ab-4c0e-43aa-97f8-78d4fcb30024",
+  "id": "terraform-azure-encryption-on-managed-disk-disabled",
+  "legacyId": "a99130ab-4c0e-43aa-97f8-78d4fcb30024",
   "queryName": "Encryption on managed disk disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

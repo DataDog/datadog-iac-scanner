@@ -1,5 +1,6 @@
 {
-  "id": "c1573577-e494-4417-8854-7e119368dc8b",
+  "id": "terraform-azure-network-interfaces-with-public-ip",
+  "legacyId": "c1573577-e494-4417-8854-7e119368dc8b",
   "queryName": "Network interfaces with public IP",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "bbf6b3df-4b65-4f87-82cc-da9f30f8c033",
+  "id": "terraform-azure-vm-not-attached-to-network",
+  "legacyId": "bbf6b3df-4b65-4f87-82cc-da9f30f8c033",
   "queryName": "VM not attached to network",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

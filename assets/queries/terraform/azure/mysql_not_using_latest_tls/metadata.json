@@ -1,5 +1,6 @@
 {
-  "id": "c2a1d4e6-f789-4b0c-9e12-3456789abcde",
+  "id": "terraform-azure-mysql-not-using-latest-tls",
+  "legacyId": "c2a1d4e6-f789-4b0c-9e12-3456789abcde",
   "queryName": "Ensure MySQL is using the latest version of TLS encryption",
   "severity": "HIGH",
   "category": "Networking and Firewall",

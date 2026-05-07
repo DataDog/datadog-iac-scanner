@@ -1,5 +1,6 @@
 {
-  "id": "b897dfbf-322c-45a8-b67c-1e698beeaa51",
+  "id": "terraform-azure-admin-user-enabled-for-container-registry",
+  "legacyId": "b897dfbf-322c-45a8-b67c-1e698beeaa51",
   "queryName": "Admin user enabled for container registry",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "2ab6de9a-0136-415c-be92-79d2e4fd750f",
+  "id": "terraform-azure-sql-server-predictable-admin-account-name",
+  "legacyId": "2ab6de9a-0136-415c-be92-79d2e4fd750f",
   "queryName": "SQL server predictable admin account name",
   "severity": "LOW",
   "category": "Best Practices",

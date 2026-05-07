@@ -1,5 +1,6 @@
 {
-  "id": "8e75e431-449f-49e9-b56a-c8f1378025cf",
+  "id": "terraform-azure-role-assignment-not-limit-guest-users-permissions",
+  "legacyId": "8e75e431-449f-49e9-b56a-c8f1378025cf",
   "queryName": "Role assignment not limit guest user permissions",
   "severity": "MEDIUM",
   "category": "Access Control",
