@@ -1,5 +1,6 @@
 {
-  "id": "4ba74f01-aba5-4be2-83bc-be79ff1a3b92",
+  "id": "cloudformation-aws-serverless-function-without-unique-iam-role",
+  "legacyId": "4ba74f01-aba5-4be2-83bc-be79ff1a3b92",
   "queryName": "Serverless function without unique IAM role",
   "severity": "HIGH",
   "category": "Insecure Configurations",

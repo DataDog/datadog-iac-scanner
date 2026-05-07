@@ -1,5 +1,6 @@
 {
-  "id": "a5366a50-932f-4085-896b-41402714a388",
+  "id": "cloudformation-aws-connection-between-cloudfront-origin-not-encrypted",
+  "legacyId": "a5366a50-932f-4085-896b-41402714a388",
   "queryName": "Connection between CloudFront origin not encrypted",
   "severity": "MEDIUM",
   "category": "Encryption",

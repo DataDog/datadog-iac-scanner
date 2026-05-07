@@ -1,5 +1,6 @@
 {
-  "id": "316278b3-87ac-444c-8f8f-a733a28da60f",
+  "id": "cloudformation-aws-amazon-mq-broker-encryption-disabled",
+  "legacyId": "316278b3-87ac-444c-8f8f-a733a28da60f",
   "queryName": "Amazon MQ broker encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

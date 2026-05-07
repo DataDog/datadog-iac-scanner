@@ -1,5 +1,6 @@
 {
-  "id": "105ba098-1e34-48cd-b0f2-a8a43a51bf9b",
+  "id": "cloudformation-aws-alb-is-not-integrated-with-waf",
+  "legacyId": "105ba098-1e34-48cd-b0f2-a8a43a51bf9b",
   "queryName": "ALB is not integrated with WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

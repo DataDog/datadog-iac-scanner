@@ -1,5 +1,6 @@
 {
-  "id": "24d932e1-91f0-46ea-836f-fdbd81694151",
+  "id": "cloudformation-aws-route53-record-undefined",
+  "legacyId": "24d932e1-91f0-46ea-836f-fdbd81694151",
   "queryName": "Route53 record undefined",
   "severity": "HIGH",
   "category": "Networking and Firewall",

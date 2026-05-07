@@ -1,5 +1,6 @@
 {
-  "id": "a71ecabe-03b6-456a-b3bc-d1a39aa20c98",
+  "id": "cloudformation-aws-serverless-function-without-tags",
+  "legacyId": "a71ecabe-03b6-456a-b3bc-d1a39aa20c98",
   "queryName": "Serverless function without tags",
   "severity": "LOW",
   "category": "Insecure Configurations",

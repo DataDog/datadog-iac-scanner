@@ -1,5 +1,6 @@
 {
-  "id": "c3ce69fd-e3df-49c6-be78-1db3f802261c",
+  "id": "cloudformation-aws-s3-bucket-cloudtrail-logging-disabled",
+  "legacyId": "c3ce69fd-e3df-49c6-be78-1db3f802261c",
   "queryName": "S3 bucket CloudTrail logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

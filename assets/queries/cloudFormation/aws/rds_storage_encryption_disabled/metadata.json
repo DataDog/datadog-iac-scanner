@@ -1,5 +1,6 @@
 {
-  "id": "65844ba3-03a1-40a8-b3dd-919f122e8c95",
+  "id": "cloudformation-aws-rds-storage-encryption-disabled",
+  "legacyId": "65844ba3-03a1-40a8-b3dd-919f122e8c95",
   "queryName": "RDS storage encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "a2f2800e-614b-4bc8-89e6-fec8afd24800",
+  "id": "cloudformation-aws-serverless-api-without-content-encoding",
+  "legacyId": "a2f2800e-614b-4bc8-89e6-fec8afd24800",
   "queryName": "Serverless API without content encoding",
   "severity": "LOW",
   "category": "Encryption",

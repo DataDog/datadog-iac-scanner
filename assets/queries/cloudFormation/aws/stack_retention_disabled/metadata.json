@@ -1,5 +1,6 @@
 {
-  "id": "fe974ae9-858e-4991-bbd5-e040a834679f",
+  "id": "cloudformation-aws-stack-retention-disabled",
+  "legacyId": "fe974ae9-858e-4991-bbd5-e040a834679f",
   "queryName": "Stack retention disabled",
   "severity": "MEDIUM",
   "category": "Backup",

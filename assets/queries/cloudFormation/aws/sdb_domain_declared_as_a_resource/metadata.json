@@ -1,5 +1,6 @@
 {
-  "id": "6ea57c8b-f9c0-4ec7-bae3-bd75a9dee27d",
+  "id": "cloudformation-aws-sdb-domain-declared-as-a-resource",
+  "legacyId": "6ea57c8b-f9c0-4ec7-bae3-bd75a9dee27d",
   "queryName": "SDB domain declared as a resource",
   "severity": "LOW",
   "category": "Resource Management",

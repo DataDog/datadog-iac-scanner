@@ -1,5 +1,6 @@
 {
-  "id": "fcbf9019-566c-4832-a65c-af00d8137d2b",
+  "id": "cloudformation-aws-api-gateway-without-waf",
+  "legacyId": "fcbf9019-566c-4832-a65c-af00d8137d2b",
   "queryName": "API Gateway without WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

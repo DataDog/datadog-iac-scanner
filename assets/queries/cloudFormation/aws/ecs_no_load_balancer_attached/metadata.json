@@ -1,5 +1,6 @@
 {
-  "id": "fb2b0ecf-1492-491a-a70d-ba1df579175d",
+  "id": "cloudformation-aws-ecs-no-load-balancer-attached",
+  "legacyId": "fb2b0ecf-1492-491a-a70d-ba1df579175d",
   "queryName": "ECS no load balancer attached",
   "severity": "MEDIUM",
   "category": "Best Practices",

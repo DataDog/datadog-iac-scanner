@@ -1,5 +1,6 @@
 {
-  "id": "9b83114b-b2a1-4534-990d-06da015e47aa",
+  "id": "cloudformation-aws-lambda-permission-misconfigured",
+  "legacyId": "9b83114b-b2a1-4534-990d-06da015e47aa",
   "queryName": "Lambda permission misconfigured",
   "severity": "LOW",
   "category": "Best Practices",

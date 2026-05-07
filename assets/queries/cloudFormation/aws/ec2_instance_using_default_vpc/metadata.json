@@ -1,5 +1,6 @@
 {
-  "id": "e42a3ef0-5325-4667-84bf-075ba1c9d58e",
+  "id": "cloudformation-aws-ec2-instance-using-default-vpc",
+  "legacyId": "e42a3ef0-5325-4667-84bf-075ba1c9d58e",
   "queryName": "EC2 instance using default VPC",
   "severity": "LOW",
   "category": "Networking and Firewall",

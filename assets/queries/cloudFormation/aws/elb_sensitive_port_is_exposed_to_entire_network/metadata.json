@@ -1,5 +1,6 @@
 {
-  "id": "78055456-f670-4d2e-94d5-392d1cf4f5e4",
+  "id": "cloudformation-aws-elb-sensitive-port-is-exposed-to-entire-network",
+  "legacyId": "78055456-f670-4d2e-94d5-392d1cf4f5e4",
   "queryName": "ELB sensitive port is exposed to entire network",
   "severity": "HIGH",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "3b3b4411-ad1f-40e7-b257-a78a6bb9673a",
+  "id": "cloudformation-aws-vpc-without-attached-subnet",
+  "legacyId": "3b3b4411-ad1f-40e7-b257-a78a6bb9673a",
   "queryName": "VPC without attached subnet",
   "severity": "LOW",
   "category": "Resource Management",

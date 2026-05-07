@@ -1,5 +1,6 @@
 {
-  "id": "860ba89b-b8de-4e72-af54-d6aee4138a69",
+  "id": "cloudformation-aws-s3-bucket-with-public-policy",
+  "legacyId": "860ba89b-b8de-4e72-af54-d6aee4138a69",
   "queryName": "S3 bucket allows public policy",
   "severity": "HIGH",
   "category": "Access Control",

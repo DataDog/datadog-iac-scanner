@@ -1,5 +1,6 @@
 {
-  "id": "9488c451-074e-4cd3-aee3-7db6104f542c",
+  "id": "cloudformation-aws-lambda-functions-without-x-ray-tracing",
+  "legacyId": "9488c451-074e-4cd3-aee3-7db6104f542c",
   "queryName": "Lambda functions without X-Ray tracing",
   "severity": "LOW",
   "category": "Observability",

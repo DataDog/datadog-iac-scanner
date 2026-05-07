@@ -1,5 +1,6 @@
 {
-  "id": "2730c169-51d7-4ae7-99b5-584379eff1bb",
+  "id": "cloudformation-aws-msk",
+  "legacyId": "2730c169-51d7-4ae7-99b5-584379eff1bb",
   "queryName": "BOM - AWS MSK",
   "severity": "TRACE",
   "category": "Bill Of Materials",

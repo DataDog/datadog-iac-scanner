@@ -1,5 +1,6 @@
 {
-  "id": "8275fab0-68ec-4705-bbf4-86975edb170e",
+  "id": "cloudformation-aws-api-gateway-without-security-policy",
+  "legacyId": "8275fab0-68ec-4705-bbf4-86975edb170e",
   "queryName": "API Gateway without security policy",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

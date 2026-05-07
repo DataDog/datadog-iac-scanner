@@ -1,5 +1,6 @@
 {
-  "id": "6ef03ff6-a2bd-483c-851f-631f248bc0ea",
+  "id": "cloudformation-aws-rds",
+  "legacyId": "6ef03ff6-a2bd-483c-851f-631f248bc0ea",
   "queryName": "BOM - AWS RDS",
   "severity": "TRACE",
   "category": "Bill Of Materials",

@@ -1,5 +1,6 @@
 {
-  "id": "08b81bb3-0985-4023-8602-b606ad81d279",
+  "id": "cloudformation-aws-ec2-instance-using-default-security-group",
+  "legacyId": "08b81bb3-0985-4023-8602-b606ad81d279",
   "queryName": "EC2 instance using default security group",
   "severity": "MEDIUM",
   "category": "Access Control",

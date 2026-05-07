@@ -1,5 +1,6 @@
 {
-  "id": "783860a3-6dca-4c8b-81d0-7b62769ccbca",
+  "id": "cloudformation-aws-api-gateway-deployment-without-api-gateway-usage-plan-associated",
+  "legacyId": "783860a3-6dca-4c8b-81d0-7b62769ccbca",
   "queryName": "API Gateway deployment without usage plan associated",
   "severity": "LOW",
   "category": "Observability",

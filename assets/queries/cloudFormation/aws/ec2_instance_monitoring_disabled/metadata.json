@@ -1,5 +1,6 @@
 {
-  "id": "0264093f-6791-4475-af34-4b8102dcbcd0",
+  "id": "cloudformation-aws-ec2-instance-monitoring-disabled",
+  "legacyId": "0264093f-6791-4475-af34-4b8102dcbcd0",
   "queryName": "EC2 instance monitoring disabled",
   "severity": "MEDIUM",
   "category": "Observability",

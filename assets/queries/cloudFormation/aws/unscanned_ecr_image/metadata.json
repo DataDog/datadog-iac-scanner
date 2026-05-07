@@ -1,5 +1,6 @@
 {
-  "id": "9025b2b3-e554-4842-ba87-db7aeec36d35",
+  "id": "cloudformation-aws-unscanned-ecr-image",
+  "legacyId": "9025b2b3-e554-4842-ba87-db7aeec36d35",
   "queryName": "Unscanned ECR image",
   "severity": "LOW",
   "category": "Observability",

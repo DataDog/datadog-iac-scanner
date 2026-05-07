@@ -1,5 +1,6 @@
 {
-  "id": "9ecb6b21-18bc-4aa7-bd07-db20f1c746db",
+  "id": "cloudformation-aws-cloudformation-specifying-credentials-not-safe",
+  "legacyId": "9ecb6b21-18bc-4aa7-bd07-db20f1c746db",
   "queryName": "CloudFormation metadata contains plaintext credentials",
   "severity": "MEDIUM",
   "category": "Encryption",

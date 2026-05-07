@@ -1,5 +1,6 @@
 {
-  "id": "e519ed6a-8328-4b69-8eb7-8fa549ac3050",
+  "id": "cloudformation-aws-mq-broker-logging-disabled",
+  "legacyId": "e519ed6a-8328-4b69-8eb7-8fa549ac3050",
   "queryName": "Amazon MQ broker logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

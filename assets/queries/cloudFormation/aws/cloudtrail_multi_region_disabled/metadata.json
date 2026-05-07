@@ -1,5 +1,6 @@
 {
-  "id": "058ac855-989f-4378-ba4d-52d004020da7",
+  "id": "cloudformation-aws-cloudtrail-multi-region-disabled",
+  "legacyId": "058ac855-989f-4378-ba4d-52d004020da7",
   "queryName": "CloudTrail multi-region disabled",
   "severity": "LOW",
   "category": "Observability",

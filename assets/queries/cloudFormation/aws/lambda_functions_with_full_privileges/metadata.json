@@ -1,5 +1,6 @@
 {
-  "id": "a0ae0a4e-712b-4115-8112-51b9eeed9d69",
+  "id": "cloudformation-aws-lambda-functions-with-full-privileges",
+  "legacyId": "a0ae0a4e-712b-4115-8112-51b9eeed9d69",
   "queryName": "Lambda functions with full privileges",
   "severity": "HIGH",
   "category": "Access Control",

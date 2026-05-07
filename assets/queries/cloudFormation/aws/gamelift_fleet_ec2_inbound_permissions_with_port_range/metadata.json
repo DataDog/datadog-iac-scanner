@@ -1,5 +1,6 @@
 {
-  "id": "43356255-495d-4148-ad8d-f6af5eac09dd",
+  "id": "cloudformation-aws-gamelift-fleet-ec2-inbound-permissions-with-port-range",
+  "legacyId": "43356255-495d-4148-ad8d-f6af5eac09dd",
   "queryName": "GameLift fleet EC2 inbound permissions with port range",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

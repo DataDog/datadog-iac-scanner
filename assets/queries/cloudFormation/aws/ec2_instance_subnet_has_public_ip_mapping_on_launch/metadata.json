@@ -1,5 +1,6 @@
 {
-  "id": "b3de4e4c-14be-4159-b99d-9ad194365e4c",
+  "id": "cloudformation-aws-ec2-instance-subnet-has-public-ip-mapping-on-launch",
+  "legacyId": "b3de4e4c-14be-4159-b99d-9ad194365e4c",
   "queryName": "EC2 instance subnet has public IP mapping on launch",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

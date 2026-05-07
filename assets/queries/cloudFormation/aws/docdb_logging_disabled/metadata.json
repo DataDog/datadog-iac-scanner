@@ -1,5 +1,6 @@
 {
-  "id": "1bf3b3d4-f373-4d7c-afbb-7d85948a67a5",
+  "id": "cloudformation-aws-docdb-logging-disabled",
+  "legacyId": "1bf3b3d4-f373-4d7c-afbb-7d85948a67a5",
   "queryName": "DocDB logging is disabled",
   "severity": "MEDIUM",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "3609d27c-3698-483a-9402-13af6ae80583",
+  "id": "cloudformation-aws-s3-bucket-with-unsecured-cors-rule",
+  "legacyId": "3609d27c-3698-483a-9402-13af6ae80583",
   "queryName": "S3 bucket with unsecured CORS rule",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

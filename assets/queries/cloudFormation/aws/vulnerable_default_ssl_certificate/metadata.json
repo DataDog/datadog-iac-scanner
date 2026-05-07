@@ -1,5 +1,6 @@
 {
-  "id": "b4d9c12b-bfba-4aeb-9cb8-2358546d8041",
+  "id": "cloudformation-aws-vulnerable-default-ssl-certificate",
+  "legacyId": "b4d9c12b-bfba-4aeb-9cb8-2358546d8041",
   "queryName": "Vulnerable default SSL certificate",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

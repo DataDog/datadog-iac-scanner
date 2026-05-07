@@ -1,5 +1,6 @@
 {
-  "id": "75be209d-1948-41f6-a8c8-e22dd0121134",
+  "id": "cloudformation-aws-ecr-repository-is-publicly-accessible",
+  "legacyId": "75be209d-1948-41f6-a8c8-e22dd0121134",
   "queryName": "ECR repository is publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",

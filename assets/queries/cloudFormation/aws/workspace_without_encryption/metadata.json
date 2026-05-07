@@ -1,5 +1,6 @@
 {
-  "id": "89827c57-5a8a-49eb-9731-976a606d70db",
+  "id": "cloudformation-aws-workspace-without-encryption",
+  "legacyId": "89827c57-5a8a-49eb-9731-976a606d70db",
   "queryName": "Workspace without encryption",
   "severity": "HIGH",
   "category": "Encryption",

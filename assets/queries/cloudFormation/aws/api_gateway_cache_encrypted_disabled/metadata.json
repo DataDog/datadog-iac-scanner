@@ -1,5 +1,6 @@
 {
-  "id": "37cca703-b74c-48ba-ac81-595b53398e9b",
+  "id": "cloudformation-aws-api-gateway-cache-encrypted-disabled",
+  "legacyId": "37cca703-b74c-48ba-ac81-595b53398e9b",
   "queryName": "API Gateway cache encrypted disabled",
   "severity": "HIGH",
   "category": "Encryption",

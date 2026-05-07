@@ -1,5 +1,6 @@
 {
-  "id": "5e7acff5-095b-40ac-9073-ac2e4ad8a512",
+  "id": "cloudformation-aws-iam-policies-without-groups",
+  "legacyId": "5e7acff5-095b-40ac-9073-ac2e4ad8a512",
   "queryName": "IAM policies without groups",
   "severity": "LOW",
   "category": "Best Practices",

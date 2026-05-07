@@ -1,5 +1,6 @@
 {
-  "id": "80b7ac3f-d2b7-4577-9b10-df7913497162",
+  "id": "cloudformation-aws-ebs-volume-encryption-disabled",
+  "legacyId": "80b7ac3f-d2b7-4577-9b10-df7913497162",
   "queryName": "EBS volume encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

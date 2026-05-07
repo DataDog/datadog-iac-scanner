@@ -1,5 +1,6 @@
 {
-  "id": "0ce1ba20-8ba8-4364-836f-40c24b8cb0ab",
+  "id": "cloudformation-aws-msk-broker-is-publicly-accessible",
+  "legacyId": "0ce1ba20-8ba8-4364-836f-40c24b8cb0ab",
   "queryName": "MSK broker is publicly accessible",
   "severity": "HIGH",
   "category": "Access Control",

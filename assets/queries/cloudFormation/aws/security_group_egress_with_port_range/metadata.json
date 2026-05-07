@@ -1,5 +1,6 @@
 {
-  "id": "dae9c373-8287-462f-8746-6f93dad93610",
+  "id": "cloudformation-aws-security-group-egress-with-port-range",
+  "legacyId": "dae9c373-8287-462f-8746-6f93dad93610",
   "queryName": "Security group egress with port range",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

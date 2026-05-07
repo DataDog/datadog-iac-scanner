@@ -1,5 +1,6 @@
 {
-  "id": "829ce3b8-065c-41a3-ad57-e0accfea82d2",
+  "id": "cloudformation-aws-unknown-port-exposed-to-internet",
+  "legacyId": "829ce3b8-065c-41a3-ad57-e0accfea82d2",
   "queryName": "Unknown port exposed to internet",
   "severity": "HIGH",
   "category": "Networking and Firewall",

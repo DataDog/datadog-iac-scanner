@@ -1,5 +1,6 @@
 {
-  "id": "0f139403-303f-467c-96bd-e717e6cfd62d",
+  "id": "cloudformation-aws-cloudfront-without-waf",
+  "legacyId": "0f139403-303f-467c-96bd-e717e6cfd62d",
   "queryName": "CloudFront without WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

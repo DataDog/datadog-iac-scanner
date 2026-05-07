@@ -1,5 +1,6 @@
 {
-  "id": "80908a75-586b-4c61-ab04-490f4f4525b8",
+  "id": "cloudformation-aws-elb-without-secure-protocol",
+  "legacyId": "80908a75-586b-4c61-ab04-490f4f4525b8",
   "queryName": "ELB without secure protocol",
   "severity": "MEDIUM",
   "category": "Encryption",

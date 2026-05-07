@@ -1,5 +1,6 @@
 {
-  "id": "1fe9d958-ddce-4228-a124-05265a959a8b",
+  "id": "cloudformation-aws-rds-using-default-port",
+  "legacyId": "1fe9d958-ddce-4228-a124-05265a959a8b",
   "queryName": "RDS using default port",
   "severity": "LOW",
   "category": "Networking and Firewall",

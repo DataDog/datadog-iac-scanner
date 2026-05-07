@@ -1,5 +1,6 @@
 {
-  "id": "7772bb8c-c0f3-42d4-8e4e-f1b8939ad085",
+  "id": "cloudformation-aws-s3-bucket-access-to-any-principal",
+  "legacyId": "7772bb8c-c0f3-42d4-8e4e-f1b8939ad085",
   "queryName": "S3 bucket access to any principal",
   "severity": "CRITICAL",
   "category": "Access Control",

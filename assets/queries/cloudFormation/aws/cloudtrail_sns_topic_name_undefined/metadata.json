@@ -1,5 +1,6 @@
 {
-  "id": "3e09413f-471e-40f3-8626-990c79ae63f3",
+  "id": "cloudformation-aws-cloudtrail-sns-topic-name-undefined",
+  "legacyId": "3e09413f-471e-40f3-8626-990c79ae63f3",
   "queryName": "CloudTrail SNS topic name undefined",
   "severity": "LOW",
   "category": "Observability",

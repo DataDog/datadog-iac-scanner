@@ -1,5 +1,6 @@
 {
-  "id": "1c07bfaf-663c-4f6f-b22b-8e2d481e4df5",
+  "id": "cloudformation-aws-cmk-rotation-disabled",
+  "legacyId": "1c07bfaf-663c-4f6f-b22b-8e2d481e4df5",
   "queryName": "CMK rotation disabled",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "dfb56e5d-ee68-446e-b32a-657b62befe69",
+  "id": "cloudformation-aws-amplify-branch-basic-auth-config-password-exposed",
+  "legacyId": "dfb56e5d-ee68-446e-b32a-657b62befe69",
   "queryName": "Amplify branch basic auth config password exposed",
   "severity": "HIGH",
   "category": "Secret Management",
