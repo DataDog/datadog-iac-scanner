@@ -1,5 +1,6 @@
 {
-  "id": "d6047119-a0b2-4b59-a4f2-127a36fb685b",
+  "id": "terraform-aws-role-with-privilege-escalation-by-actions-iam-putgrouppolicy",
+  "legacyId": "d6047119-a0b2-4b59-a4f2-127a36fb685b",
   "queryName": "Role with privilege escalation by actions 'iam:PutGroupPolicy'",
   "severity": "MEDIUM",
   "category": "Access Control",

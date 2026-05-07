@@ -1,5 +1,6 @@
 {
-  "id": "5b8d7527-de8e-4114-b9dd-9d988f1f418f",
+  "id": "terraform-aws-cloudwatch-aws-config-configuration-changes-alarm-missing",
+  "legacyId": "5b8d7527-de8e-4114-b9dd-9d988f1f418f",
   "queryName": "CloudWatch AWS Config configuration changes alarm missing",
   "severity": "MEDIUM",
   "category": "Observability",

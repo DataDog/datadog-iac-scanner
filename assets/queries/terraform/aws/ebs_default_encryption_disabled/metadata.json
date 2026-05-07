@@ -1,5 +1,6 @@
 {
-  "id": "3d3f6270-546b-443c-adb4-bb6fb2187ca6",
+  "id": "terraform-aws-ebs-default-encryption-disabled",
+  "legacyId": "3d3f6270-546b-443c-adb4-bb6fb2187ca6",
   "queryName": "EBS default encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

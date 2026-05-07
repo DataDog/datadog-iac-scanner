@@ -1,5 +1,6 @@
 {
-  "id": "381c3f2a-ef6f-4eff-99f7-b169cda3422c",
+  "id": "terraform-aws-sensitive-port-is-exposed-to-entire-network",
+  "legacyId": "381c3f2a-ef6f-4eff-99f7-b169cda3422c",
   "queryName": "Sensitive port is exposed to entire network",
   "severity": "HIGH",
   "category": "Networking and Firewall",

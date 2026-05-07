@@ -1,5 +1,6 @@
 {
-  "id": "ce089fd4-1406-47bd-8aad-c259772bb294",
+  "id": "terraform-aws-dynamodb-table-not-encrypted",
+  "legacyId": "ce089fd4-1406-47bd-8aad-c259772bb294",
   "queryName": "DynamoDB table not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

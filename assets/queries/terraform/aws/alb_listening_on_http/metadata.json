@@ -1,5 +1,6 @@
 {
-  "id": "de7f5e83-da88-4046-871f-ea18504b1d43",
+  "id": "terraform-aws-alb-listening-on-http",
+  "legacyId": "de7f5e83-da88-4046-871f-ea18504b1d43",
   "queryName": "ALB listening on HTTP",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "656880aa-1388-488f-a6d4-8f73c23149b2",
+  "id": "terraform-aws-rds-database-cluster-not-encrypted",
+  "legacyId": "656880aa-1388-488f-a6d4-8f73c23149b2",
   "queryName": "RDS database cluster not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "671211c5-5d2a-4e97-8867-30fc28b02216",
+  "id": "terraform-aws-api-gateway-method-does-not-contains-an-api-key",
+  "legacyId": "671211c5-5d2a-4e97-8867-30fc28b02216",
   "queryName": "API Gateway method does not contains an API key",
   "severity": "MEDIUM",
   "category": "Access Control",

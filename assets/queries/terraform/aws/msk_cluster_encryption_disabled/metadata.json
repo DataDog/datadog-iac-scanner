@@ -1,5 +1,6 @@
 {
-  "id": "6db52fa6-d4da-4608-908a-89f0c59e743e",
+  "id": "terraform-aws-msk-cluster-encryption-disabled",
+  "legacyId": "6db52fa6-d4da-4608-908a-89f0c59e743e",
   "queryName": "MSK cluster encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

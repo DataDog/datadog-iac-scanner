@@ -1,5 +1,6 @@
 {
-  "id": "91bea7b8-0c31-4863-adc9-93f6177266c4",
+  "id": "terraform-aws-stack-without-template",
+  "legacyId": "91bea7b8-0c31-4863-adc9-93f6177266c4",
   "queryName": "Stack without template",
   "severity": "LOW",
   "category": "Build Process",

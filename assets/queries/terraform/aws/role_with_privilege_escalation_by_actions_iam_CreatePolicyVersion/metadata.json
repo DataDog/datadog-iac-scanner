@@ -1,5 +1,6 @@
 {
-  "id": "ee49557d-750c-4cc1-aa95-94ab36cbefde",
+  "id": "terraform-aws-role-with-privilege-escalation-by-actions-iam-createpolicyversion",
+  "legacyId": "ee49557d-750c-4cc1-aa95-94ab36cbefde",
   "queryName": "Role with privilege escalation by actions 'iam:CreatePolicyVersion'",
   "severity": "MEDIUM",
   "category": "Access Control",

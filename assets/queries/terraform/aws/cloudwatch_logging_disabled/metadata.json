@@ -1,5 +1,6 @@
 {
-  "id": "7dbba512-e244-42dc-98bb-422339827967",
+  "id": "terraform-aws-cloudwatch-logging-disabled",
+  "legacyId": "7dbba512-e244-42dc-98bb-422339827967",
   "queryName": "CloudWatch logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

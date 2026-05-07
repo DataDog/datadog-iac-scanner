@@ -1,5 +1,6 @@
 {
-  "id": "54c417bf-c762-48b9-9d31-b3d87047e3f0",
+  "id": "terraform-aws-sql-analysis-services-port-2383-is-publicly-accessible",
+  "legacyId": "54c417bf-c762-48b9-9d31-b3d87047e3f0",
   "queryName": "SQL analysis services port 2383 (TCP) is publicly accessible",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

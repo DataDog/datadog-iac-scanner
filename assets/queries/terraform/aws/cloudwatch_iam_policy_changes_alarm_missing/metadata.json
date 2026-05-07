@@ -1,5 +1,6 @@
 {
-  "id": "eaaba502-2f94-411a-a3c2-83d63cc1776d",
+  "id": "terraform-aws-cloudwatch-iam-policy-changes-alarm-missing",
+  "legacyId": "eaaba502-2f94-411a-a3c2-83d63cc1776d",
   "queryName": "CloudWatch IAM policy changes alarm missing",
   "severity": "LOW",
   "category": "Observability",

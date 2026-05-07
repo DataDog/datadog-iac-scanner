@@ -1,5 +1,6 @@
 {
-  "id": "d1846b12-20c5-4d45-8798-fc35b79268eb",
+  "id": "terraform-aws-ecr-image-tag-not-immutable",
+  "legacyId": "d1846b12-20c5-4d45-8798-fc35b79268eb",
   "queryName": "ECR image tag not immutable",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

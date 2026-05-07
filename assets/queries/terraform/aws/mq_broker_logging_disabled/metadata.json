@@ -1,5 +1,6 @@
 {
-  "id": "31245f98-a6a9-4182-9fc1-45482b9d030a",
+  "id": "terraform-aws-mq-broker-logging-disabled",
+  "legacyId": "31245f98-a6a9-4182-9fc1-45482b9d030a",
   "queryName": "MQ broker logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

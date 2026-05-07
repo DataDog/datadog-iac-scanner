@@ -1,5 +1,6 @@
 {
-  "id": "fc101ca7-c9dd-4198-a1eb-0fbe92e80044",
+  "id": "terraform-aws-iam-group-without-users",
+  "legacyId": "fc101ca7-c9dd-4198-a1eb-0fbe92e80044",
   "queryName": "IAM group without users",
   "severity": "MEDIUM",
   "category": "Access Control",

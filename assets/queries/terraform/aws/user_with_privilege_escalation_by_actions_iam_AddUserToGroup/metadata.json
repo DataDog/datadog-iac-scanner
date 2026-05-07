@@ -1,5 +1,6 @@
 {
-  "id": "bf9d42c7-c2f9-4dfe-942c-c8cc8249a081",
+  "id": "terraform-aws-user-with-privilege-escalation-by-actions-iam-addusertogroup",
+  "legacyId": "bf9d42c7-c2f9-4dfe-942c-c8cc8249a081",
   "queryName": "User with privilege escalation by actions 'iam:AddUserToGroup'",
   "severity": "MEDIUM",
   "category": "Access Control",

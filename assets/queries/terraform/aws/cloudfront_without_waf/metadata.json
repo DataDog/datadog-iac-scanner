@@ -1,5 +1,6 @@
 {
-  "id": "1419b4c6-6d5c-4534-9cf6-6a5266085333",
+  "id": "terraform-aws-cloudfront-without-waf",
+  "legacyId": "1419b4c6-6d5c-4534-9cf6-6a5266085333",
   "queryName": "CloudFront without WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

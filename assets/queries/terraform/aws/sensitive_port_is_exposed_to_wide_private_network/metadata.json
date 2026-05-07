@@ -1,5 +1,6 @@
 {
-  "id": "92fe237e-074c-4262-81a4-2077acb928c1",
+  "id": "terraform-aws-sensitive-port-is-exposed-to-wide-private-network",
+  "legacyId": "92fe237e-074c-4262-81a4-2077acb928c1",
   "queryName": "Sensitive port is exposed to wide private network",
   "severity": "LOW",
   "category": "Networking and Firewall",

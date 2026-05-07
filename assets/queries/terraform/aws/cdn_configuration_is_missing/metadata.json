@@ -1,5 +1,6 @@
 {
-  "id": "1bc367f6-901d-4870-ad0c-71d79762ef52",
+  "id": "terraform-aws-cdn-configuration-is-missing",
+  "legacyId": "1bc367f6-901d-4870-ad0c-71d79762ef52",
   "queryName": "CDN configuration is missing",
   "severity": "LOW",
   "category": "Best Practices",

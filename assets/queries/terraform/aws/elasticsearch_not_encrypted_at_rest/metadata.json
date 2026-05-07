@@ -1,5 +1,6 @@
 {
-  "id": "24e16922-4330-4e9d-be8a-caa90299466a",
+  "id": "terraform-aws-elasticsearch-not-encrypted-at-rest",
+  "legacyId": "24e16922-4330-4e9d-be8a-caa90299466a",
   "queryName": "Elasticsearch not encrypted at rest",
   "severity": "HIGH",
   "category": "Encryption",

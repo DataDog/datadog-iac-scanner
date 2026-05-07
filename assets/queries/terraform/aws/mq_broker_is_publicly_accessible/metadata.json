@@ -1,5 +1,6 @@
 {
-  "id": "4eb5f791-c861-4afd-9f94-f2a6a3fe49cb",
+  "id": "terraform-aws-mq-broker-is-publicly-accessible",
+  "legacyId": "4eb5f791-c861-4afd-9f94-f2a6a3fe49cb",
   "queryName": "MQ broker is publicly accessible",
   "severity": "HIGH",
   "category": "Insecure Configurations",

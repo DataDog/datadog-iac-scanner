@@ -1,5 +1,6 @@
 {
-  "id": "e227091e-2228-4b40-b046-fc13650d8e88",
+  "id": "terraform-aws-user-with-privilege-escalation-by-actions-iam-attachrolepolicy",
+  "legacyId": "e227091e-2228-4b40-b046-fc13650d8e88",
   "queryName": "User with privilege escalation by actions 'iam:AttachRolePolicy'",
   "severity": "MEDIUM",
   "category": "Access Control",

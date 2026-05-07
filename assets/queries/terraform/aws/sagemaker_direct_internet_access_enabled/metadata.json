@@ -1,5 +1,6 @@
 {
-  "id": "f3g4h5i6-j7k8-9lmn-0opq-12345abcdefg",
+  "id": "terraform-aws-sagemaker-direct-internet-access-enabled",
+  "legacyId": "f3g4h5i6-j7k8-9lmn-0opq-12345abcdefg",
   "queryName": "SageMaker notebook internet access enabled",
   "severity": "HIGH",
   "category": "Networking and Firewall",

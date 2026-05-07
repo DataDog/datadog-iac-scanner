@@ -1,5 +1,6 @@
 {
-  "id": "94690d79-b3b0-43de-b656-84ebef5753e5",
+  "id": "terraform-aws-cloudfront-logging-disabled",
+  "legacyId": "94690d79-b3b0-43de-b656-84ebef5753e5",
   "queryName": "CloudFront logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

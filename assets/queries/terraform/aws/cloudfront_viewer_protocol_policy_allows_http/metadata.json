@@ -1,5 +1,6 @@
 {
-  "id": "55af1353-2f62-4fa0-a8e1-a210ca2708f5",
+  "id": "terraform-aws-cloudfront-viewer-protocol-policy-allows-http",
+  "legacyId": "55af1353-2f62-4fa0-a8e1-a210ca2708f5",
   "queryName": "Cloudfront viewer protocol policy allows HTTP",
   "severity": "MEDIUM",
   "category": "Encryption",

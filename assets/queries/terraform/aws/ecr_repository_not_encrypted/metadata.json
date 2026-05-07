@@ -1,5 +1,6 @@
 {
-  "id": "0e32d561-4b5a-4664-a6e3-a3fa85649157",
+  "id": "terraform-aws-ecr-repository-not-encrypted",
+  "legacyId": "0e32d561-4b5a-4664-a6e3-a3fa85649157",
   "queryName": "ECR repository not encrypted with CMK",
   "severity": "LOW",
   "category": "Encryption",

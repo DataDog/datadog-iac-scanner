@@ -1,5 +1,6 @@
 {
-  "id": "0bc534c5-13d1-4353-a7fe-b8665d5c1d7d",
+  "id": "terraform-aws-dynamodb-vpc-endpoint-without-route-table-association",
+  "legacyId": "0bc534c5-13d1-4353-a7fe-b8665d5c1d7d",
   "queryName": "Dynamodb VPC endpoint without route table association",
   "severity": "LOW",
   "category": "Networking and Firewall",

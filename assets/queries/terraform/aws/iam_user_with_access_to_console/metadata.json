@@ -1,5 +1,6 @@
 {
-  "id": "9ec311bf-dfd9-421f-8498-0b063c8bc552",
+  "id": "terraform-aws-iam-user-with-access-to-console",
+  "legacyId": "9ec311bf-dfd9-421f-8498-0b063c8bc552",
   "queryName": "IAM user with access to console",
   "severity": "MEDIUM",
   "category": "Access Control",

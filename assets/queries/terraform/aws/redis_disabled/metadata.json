@@ -1,5 +1,6 @@
 {
-  "id": "4bd15dd9-8d5e-4008-8532-27eb0c3706d3",
+  "id": "terraform-aws-redis-disabled",
+  "legacyId": "4bd15dd9-8d5e-4008-8532-27eb0c3706d3",
   "queryName": "Redis disabled",
   "severity": "LOW",
   "category": "Insecure Configurations",

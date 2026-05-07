@@ -1,5 +1,6 @@
 {
-  "id": "2134641d-30a4-4b16-8ffc-2cd4c4ffd15d",
+  "id": "terraform-aws-docdb-cluster-encrypted-with-aws-managed-key",
+  "legacyId": "2134641d-30a4-4b16-8ffc-2cd4c4ffd15d",
   "queryName": "DocumentDB cluster encrypted with AWS managed key",
   "severity": "LOW",
   "category": "Encryption",

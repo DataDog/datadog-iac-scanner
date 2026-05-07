@@ -1,5 +1,6 @@
 {
-  "id": "1b3af2f9-af8c-4dfc-a0f1-a03adb70deb2",
+  "id": "terraform-aws-lambda-function-with-privileged-role",
+  "legacyId": "1b3af2f9-af8c-4dfc-a0f1-a03adb70deb2",
   "queryName": "Lambda function with privileged role",
   "severity": "HIGH",
   "category": "Insecure Configurations",

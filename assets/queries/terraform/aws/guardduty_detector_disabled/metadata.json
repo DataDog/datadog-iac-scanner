@@ -1,5 +1,6 @@
 {
-  "id": "704dadd3-54fc-48ac-b6a0-02f170011473",
+  "id": "terraform-aws-guardduty-detector-disabled",
+  "legacyId": "704dadd3-54fc-48ac-b6a0-02f170011473",
   "queryName": "GuardDuty detector disabled",
   "severity": "MEDIUM",
   "category": "Observability",

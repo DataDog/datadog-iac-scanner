@@ -1,5 +1,6 @@
 {
-  "id": "01d50b14-e933-4c99-b314-6d08cd37ad35",
+  "id": "terraform-aws-glue-data-catalog-encryption-disabled",
+  "legacyId": "01d50b14-e933-4c99-b314-6d08cd37ad35",
   "queryName": "Glue Data Catalog encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

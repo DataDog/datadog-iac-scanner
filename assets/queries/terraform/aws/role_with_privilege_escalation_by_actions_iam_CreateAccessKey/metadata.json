@@ -1,5 +1,6 @@
 {
-  "id": "5b4d4aee-ac94-4810-9611-833636e5916d",
+  "id": "terraform-aws-role-with-privilege-escalation-by-actions-iam-createaccesskey",
+  "legacyId": "5b4d4aee-ac94-4810-9611-833636e5916d",
   "queryName": "Role with privilege escalation by actions 'iam:CreateAccessKey'",
   "severity": "MEDIUM",
   "category": "Access Control",

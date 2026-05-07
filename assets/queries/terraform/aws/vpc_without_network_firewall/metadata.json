@@ -1,5 +1,6 @@
 {
-  "id": "fd632aaf-b8a1-424d-a4d1-0de22fd3247a",
+  "id": "terraform-aws-vpc-without-network-firewall",
+  "legacyId": "fd632aaf-b8a1-424d-a4d1-0de22fd3247a",
   "queryName": "VPC without Network Firewall",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

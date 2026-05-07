@@ -1,5 +1,6 @@
 {
-  "id": "e9b7acf9-9ba0-4837-a744-31e7df1e434d",
+  "id": "terraform-aws-sqs-vpc-endpoint-without-dns-resolution",
+  "legacyId": "e9b7acf9-9ba0-4837-a744-31e7df1e434d",
   "queryName": "SQS VPC endpoint without DNS resolution",
   "severity": "LOW",
   "category": "Networking and Firewall",

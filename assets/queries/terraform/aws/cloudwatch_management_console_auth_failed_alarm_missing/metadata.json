@@ -1,5 +1,6 @@
 {
-  "id": "5864d189-ee9a-4009-ac0c-8a582e6b7919",
+  "id": "terraform-aws-cloudwatch-management-console-auth-failed-alarm-missing",
+  "legacyId": "5864d189-ee9a-4009-ac0c-8a582e6b7919",
   "queryName": "CloudWatch management console auth failed alarm missing",
   "severity": "MEDIUM",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "56f6a008-1b14-4af4-b9b2-ab7cf7e27641",
+  "id": "terraform-aws-docdb-logging-disabled",
+  "legacyId": "56f6a008-1b14-4af4-b9b2-ab7cf7e27641",
   "queryName": "DocumentDB logging is disabled",
   "severity": "MEDIUM",
   "category": "Observability",

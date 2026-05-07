@@ -1,5 +1,6 @@
 {
-  "id": "a186e82c-1078-4a7b-85d8-579561fde884",
+  "id": "terraform-aws-api-gateway-without-waf",
+  "legacyId": "a186e82c-1078-4a7b-85d8-579561fde884",
   "queryName": "API Gateway without WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

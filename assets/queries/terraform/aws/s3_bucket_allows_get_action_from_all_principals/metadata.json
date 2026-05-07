@@ -1,5 +1,6 @@
 {
-  "id": "1df37f4b-7197-45ce-83f8-9994d2fcf885",
+  "id": "terraform-aws-s3-bucket-allows-get-action-from-all-principals",
+  "legacyId": "1df37f4b-7197-45ce-83f8-9994d2fcf885",
   "queryName": "S3 bucket allows get action from all principals",
   "severity": "HIGH",
   "category": "Access Control",

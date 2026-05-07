@@ -1,5 +1,6 @@
 {
-  "id": "15ccec05-5476-4890-ad19-53991eba1db8",
+  "id": "terraform-aws-api-gateway-with-open-access",
+  "legacyId": "15ccec05-5476-4890-ad19-53991eba1db8",
   "queryName": "API Gateway with open access",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

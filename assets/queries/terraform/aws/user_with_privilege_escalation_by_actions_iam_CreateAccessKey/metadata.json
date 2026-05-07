@@ -1,5 +1,6 @@
 {
-  "id": "113208f2-a886-4526-9ecc-f3218600e12c",
+  "id": "terraform-aws-user-with-privilege-escalation-by-actions-iam-createaccesskey",
+  "legacyId": "113208f2-a886-4526-9ecc-f3218600e12c",
   "queryName": "User with privilege escalation by actions 'iam:CreateAccessKey'",
   "severity": "MEDIUM",
   "category": "Access Control",

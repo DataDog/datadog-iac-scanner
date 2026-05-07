@@ -1,5 +1,6 @@
 {
-  "id": "0df2ce76-ba56-445a-89f8-5ba34b7fafe3",
+  "id": "terraform-aws-iam-password-does-not-require-number",
+  "legacyId": "0df2ce76-ba56-445a-89f8-5ba34b7fafe3",
   "queryName": "IAM password policy does not require numbers",
   "severity": "MEDIUM",
   "category": "Best Practices",

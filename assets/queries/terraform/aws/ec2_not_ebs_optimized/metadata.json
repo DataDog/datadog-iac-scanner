@@ -1,5 +1,6 @@
 {
-  "id": "60224630-175a-472a-9e23-133827040766",
+  "id": "terraform-aws-ec2-not-ebs-optimized",
+  "legacyId": "60224630-175a-472a-9e23-133827040766",
   "queryName": "EC2 not EBS optimized",
   "severity": "LOW",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "7081f85c-b94d-40fd-8b45-a4f1cac75e46",
+  "id": "terraform-aws-iam-access-key-is-exposed",
+  "legacyId": "7081f85c-b94d-40fd-8b45-a4f1cac75e46",
   "queryName": "IAM access key is exposed",
   "severity": "MEDIUM",
   "category": "Access Control",

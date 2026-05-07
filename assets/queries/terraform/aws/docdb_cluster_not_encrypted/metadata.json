@@ -1,5 +1,6 @@
 {
-  "id": "bc1f9009-84a0-490f-ae09-3e0ea6d74ad6",
+  "id": "terraform-aws-docdb-cluster-not-encrypted",
+  "legacyId": "bc1f9009-84a0-490f-ae09-3e0ea6d74ad6",
   "queryName": "DocumentDB cluster not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
+  "id": "terraform-aws-alb-is-not-integrated-with-waf",
+  "legacyId": "0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
   "queryName": "ALB is not integrated with WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

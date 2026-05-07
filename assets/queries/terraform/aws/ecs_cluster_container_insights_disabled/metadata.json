@@ -1,5 +1,6 @@
 {
-  "id": "97cb0688-369a-4d26-b1f7-86c4c91231bc",
+  "id": "terraform-aws-ecs-cluster-container-insights-disabled",
+  "legacyId": "97cb0688-369a-4d26-b1f7-86c4c91231bc",
   "queryName": "ECS cluster with container insights disabled",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "45cff7b6-3b80-40c1-ba7b-2cf480678bb8",
+  "id": "terraform-aws-neptune-logging-disabled",
+  "legacyId": "45cff7b6-3b80-40c1-ba7b-2cf480678bb8",
   "queryName": "Neptune logging is disabled",
   "severity": "MEDIUM",
   "category": "Observability",

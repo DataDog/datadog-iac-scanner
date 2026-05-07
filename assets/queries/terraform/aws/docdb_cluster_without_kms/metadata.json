@@ -1,5 +1,6 @@
 {
-  "id": "4766d3ea-241c-4ee6-93ff-c380c996bd1a",
+  "id": "terraform-aws-docdb-cluster-without-kms",
+  "legacyId": "4766d3ea-241c-4ee6-93ff-c380c996bd1a",
   "queryName": "DocumentDB cluster without KMS",
   "severity": "HIGH",
   "category": "Encryption",

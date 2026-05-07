@@ -1,5 +1,6 @@
 {
-  "id": "64a222aa-7793-4e40-915f-4b302c76e4d4",
+  "id": "terraform-aws-s3-bucket-acl-grants-write-acp-permission",
+  "legacyId": "64a222aa-7793-4e40-915f-4b302c76e4d4",
   "queryName": "S3 bucket ACL grants WRITE_ACP permission",
   "severity": "CRITICAL",
   "category": "Access Control",

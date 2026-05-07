@@ -1,5 +1,6 @@
 {
-  "id": "a2f548f2-188c-4fff-b172-e9a6acb216bd",
+  "id": "terraform-aws-secretsmanager-secret-without-kms",
+  "legacyId": "a2f548f2-188c-4fff-b172-e9a6acb216bd",
   "queryName": "Secrets Manager secret without KMS",
   "severity": "MEDIUM",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "bd0088a5-c133-4b20-b129-ec9968b16ef3",
+  "id": "terraform-aws-cloudtrail-log-files-s3-bucket-is-publicly-accessible",
+  "legacyId": "bd0088a5-c133-4b20-b129-ec9968b16ef3",
   "queryName": "CloudTrail log files S3 bucket is publicly accessible",
   "severity": "HIGH",
   "category": "Observability",

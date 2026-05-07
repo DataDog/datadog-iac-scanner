@@ -1,5 +1,6 @@
 {
-  "id": "e08ed7eb-f3ef-494d-9d22-2e3db756a347",
+  "id": "terraform-aws-lambda-permission-principal-is-wildcard",
+  "legacyId": "e08ed7eb-f3ef-494d-9d22-2e3db756a347",
   "queryName": "Lambda permission principal is wildcard",
   "severity": "MEDIUM",
   "category": "Access Control",

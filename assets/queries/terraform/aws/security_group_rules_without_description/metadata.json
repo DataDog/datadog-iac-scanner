@@ -1,5 +1,6 @@
 {
-  "id": "68eb4bf3-f9bf-463d-b5cf-e029bb446d2e",
+  "id": "terraform-aws-security-group-rules-without-description",
+  "legacyId": "68eb4bf3-f9bf-463d-b5cf-e029bb446d2e",
   "queryName": "Security group rule without description",
   "severity": "LOW",
   "category": "Best Practices",
