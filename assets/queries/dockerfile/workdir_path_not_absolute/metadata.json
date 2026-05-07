@@ -1,5 +1,6 @@
 {
-  "id": "6b376af8-cfe8-49ab-a08d-f32de23661a4",
+  "id": "dockerfile-workdir-path-not-absolute",
+  "legacyId": "6b376af8-cfe8-49ab-a08d-f32de23661a4",
   "queryName": "WORKDIR path not absolute",
   "severity": "LOW",
   "category": "Build Process",
@@ -9,5 +10,6 @@
   "descriptionID": "bfe0be8b",
   "cwe": "665",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#workdir"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#workdir",
+  "cloudProvider": ""
 }

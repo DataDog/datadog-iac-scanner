@@ -1,5 +1,6 @@
 {
-  "id": "19619060-f22e-094f-fda1-aacf37b69bba",
+  "id": "dockerfile-should-specify-base-image",
+  "legacyId": "19619060-f22e-094f-fda1-aacf37b69bba",
   "queryName": "Dockerfile should specify base image",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "19619060",
   "cwe": "710",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from",
+  "cloudProvider": ""
 }

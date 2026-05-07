@@ -1,5 +1,6 @@
 {
-  "id": "9513a694-aa0d-41d8-be61-3271e056f36b",
+  "id": "dockerfile-add-instead-of-copy",
+  "legacyId": "9513a694-aa0d-41d8-be61-3271e056f36b",
   "queryName": "ADD instead of COPY",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "0aedd324",
   "cwe": "610",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#add"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#add",
+  "cloudProvider": ""
 }

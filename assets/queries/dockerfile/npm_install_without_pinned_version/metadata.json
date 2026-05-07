@@ -1,5 +1,6 @@
 {
-  "id": "e36d8880-3f78-4546-b9a1-12f0745ca0d5",
+  "id": "dockerfile-npm-install-without-pinned-version",
+  "legacyId": "e36d8880-3f78-4546-b9a1-12f0745ca0d5",
   "queryName": "npm install command without pinned version",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "8bd60033",
   "cwe": "1357",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run",
+  "cloudProvider": ""
 }

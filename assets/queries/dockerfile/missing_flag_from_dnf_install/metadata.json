@@ -1,5 +1,6 @@
 {
-  "id": "7ebd323c-31b7-4e5b-b26f-de5e9e477af8",
+  "id": "dockerfile-missing-flag-from-dnf-install",
+  "legacyId": "7ebd323c-31b7-4e5b-b26f-de5e9e477af8",
   "queryName": "Missing flag from dnf install",
   "severity": "LOW",
   "category": "Supply-Chain",
@@ -9,5 +10,6 @@
   "descriptionID": "efc680ea",
   "cwe": "710",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "cloudProvider": ""
 }

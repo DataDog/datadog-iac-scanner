@@ -1,5 +1,6 @@
 {
-  "id": "9bae49be-0aa3-4de5-bab2-4c3a069e40cd",
+  "id": "dockerfile-update-instruction-alone",
+  "legacyId": "9bae49be-0aa3-4de5-bab2-4c3a069e40cd",
   "queryName": "Package update without install in same RUN",
   "severity": "LOW",
   "category": "Build Process",
@@ -9,5 +10,6 @@
   "descriptionID": "3785203d",
   "cwe": "710",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "cloudProvider": ""
 }
