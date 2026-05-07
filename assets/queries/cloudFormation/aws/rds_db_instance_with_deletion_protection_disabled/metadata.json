@@ -1,5 +1,6 @@
 {
-  "id": "2c161e58-cb52-454f-abea-6470c37b5e6e",
+  "id": "cloudformation-aws-rds-db-instance-with-deletion-protection-disabled",
+  "legacyId": "2c161e58-cb52-454f-abea-6470c37b5e6e",
   "queryName": "RDS DB instance with deletion protection disabled",
   "severity": "LOW",
   "category": "Backup",

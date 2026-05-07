@@ -1,5 +1,6 @@
 {
-  "id": "33f41d31-86b1-46a4-81f7-9c9a671f59ac",
+  "id": "cloudformation-aws-ecr-image-tag-not-immutable",
+  "legacyId": "33f41d31-86b1-46a4-81f7-9c9a671f59ac",
   "queryName": "ECR image tag not immutable",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "b1b20ae3-8fa7-4af5-a74d-a2145920fcb1",
+  "id": "cloudformation-aws-iam-password-without-minimum-length",
+  "legacyId": "b1b20ae3-8fa7-4af5-a74d-a2145920fcb1",
   "queryName": "IAM password without minimum length",
   "severity": "LOW",
   "category": "Best Practices",

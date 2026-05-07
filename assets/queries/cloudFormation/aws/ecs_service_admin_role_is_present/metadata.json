@@ -1,5 +1,6 @@
 {
-  "id": "01986452-bdd8-4aaa-b5df-d6bf61d616ff",
+  "id": "cloudformation-aws-ecs-service-admin-role-is-present",
+  "legacyId": "01986452-bdd8-4aaa-b5df-d6bf61d616ff",
   "queryName": "ECS service admin role is present",
   "severity": "HIGH",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "de77cd9f-0e8b-46cc-b4a4-b6b436838642",
+  "id": "cloudformation-aws-cloudfront-logging-disabled",
+  "legacyId": "de77cd9f-0e8b-46cc-b4a4-b6b436838642",
   "queryName": "CloudFront logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

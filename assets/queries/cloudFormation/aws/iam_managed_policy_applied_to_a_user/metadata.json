@@ -1,5 +1,6 @@
 {
-  "id": "0e5872b4-19a0-4165-8b2f-56d9e14b909f",
+  "id": "cloudformation-aws-iam-managed-policy-applied-to-a-user",
+  "legacyId": "0e5872b4-19a0-4165-8b2f-56d9e14b909f",
   "queryName": "IAM managed policy applied to a user",
   "severity": "MEDIUM",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "568cc372-ca64-420d-9015-ee347d00d288",
+  "id": "cloudformation-aws-user-data-contains-encoded-private-key",
+  "legacyId": "568cc372-ca64-420d-9015-ee347d00d288",
   "queryName": "User data contains encoded private key",
   "severity": "HIGH",
   "category": "Encryption",

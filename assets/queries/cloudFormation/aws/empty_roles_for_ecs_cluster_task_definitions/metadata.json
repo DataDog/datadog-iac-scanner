@@ -1,5 +1,6 @@
 {
-  "id": "7f384a5f-b5a2-4d84-8ca3-ee0a5247becb",
+  "id": "cloudformation-aws-empty-roles-for-ecs-cluster-task-definitions",
+  "legacyId": "7f384a5f-b5a2-4d84-8ca3-ee0a5247becb",
   "queryName": "Empty roles for ECS cluster task definitions",
   "severity": "MEDIUM",
   "category": "Access Control",

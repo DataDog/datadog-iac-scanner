@@ -1,5 +1,6 @@
 {
-  "id": "5864fb39-d719-4182-80e2-89dbe627be63",
+  "id": "cloudformation-aws-amazon-dms-replication-instance-is-publicly-accessible",
+  "legacyId": "5864fb39-d719-4182-80e2-89dbe627be63",
   "queryName": "AWS DMS replication instance is publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",

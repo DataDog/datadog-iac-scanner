@@ -1,5 +1,6 @@
 {
-  "id": "73980e43-f399-4fcc-a373-658228f7adf7",
+  "id": "cloudformation-aws-amplify-app-access-token-exposed",
+  "legacyId": "73980e43-f399-4fcc-a373-658228f7adf7",
   "queryName": "Amplify app access token exposed",
   "severity": "HIGH",
   "category": "Secret Management",

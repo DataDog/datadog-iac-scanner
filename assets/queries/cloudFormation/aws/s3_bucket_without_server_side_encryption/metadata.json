@@ -1,5 +1,6 @@
 {
-  "id": "b2e8752c-3497-4255-98d2-e4ae5b46bbf5",
+  "id": "cloudformation-aws-s3-bucket-without-server-side-encryption",
+  "legacyId": "b2e8752c-3497-4255-98d2-e4ae5b46bbf5",
   "queryName": "S3 bucket without server-side encryption",
   "severity": "HIGH",
   "category": "Encryption",

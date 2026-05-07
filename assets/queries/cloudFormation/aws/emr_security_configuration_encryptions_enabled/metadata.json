@@ -1,5 +1,6 @@
 {
-  "id": "5b033ec8-f079-4323-b5c8-99d4620433a9",
+  "id": "cloudformation-aws-emr-security-configuration-encryptions-enabled",
+  "legacyId": "5b033ec8-f079-4323-b5c8-99d4620433a9",
   "queryName": "EMR security configuration encryption disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

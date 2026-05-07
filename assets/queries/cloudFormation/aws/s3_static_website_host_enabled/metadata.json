@@ -1,5 +1,6 @@
 {
-  "id": "90501b1b-cded-4cc1-9e8b-206b85cda317",
+  "id": "cloudformation-aws-s3-static-website-host-enabled",
+  "legacyId": "90501b1b-cded-4cc1-9e8b-206b85cda317",
   "queryName": "S3 static website host enabled",
   "severity": "HIGH",
   "category": "Insecure Configurations",

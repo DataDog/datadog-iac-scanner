@@ -1,5 +1,6 @@
 {
-  "id": "39423ce4-9011-46cd-b6b1-009edcd9385d",
+  "id": "cloudformation-aws-docdb-cluster-master-password-in-plaintext",
+  "legacyId": "39423ce4-9011-46cd-b6b1-009edcd9385d",
   "queryName": "DocDB cluster master password in plaintext",
   "severity": "HIGH",
   "category": "Secret Management",

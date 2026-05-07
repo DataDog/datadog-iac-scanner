@@ -1,5 +1,6 @@
 {
-  "id": "2844c749-bd78-4cd1-90e8-b179df827602",
+  "id": "cloudformation-aws-cmk-is-unusable",
+  "legacyId": "2844c749-bd78-4cd1-90e8-b179df827602",
   "queryName": "CMK is unusable",
   "severity": "MEDIUM",
   "category": "Availability",

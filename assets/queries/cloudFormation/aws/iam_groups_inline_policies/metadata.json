@@ -1,5 +1,6 @@
 {
-  "id": "a58d1a2d-4078-4b80-855b-84cc3f7f4540",
+  "id": "cloudformation-aws-iam-groups-inline-policies",
+  "legacyId": "a58d1a2d-4078-4b80-855b-84cc3f7f4540",
   "queryName": "IAM group inline policies",
   "severity": "MEDIUM",
   "category": "Access Control",

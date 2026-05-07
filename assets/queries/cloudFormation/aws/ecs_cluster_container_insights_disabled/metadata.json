@@ -1,5 +1,6 @@
 {
-  "id": "ab759fde-e1e8-4b0e-ad73-ba856e490ed8",
+  "id": "cloudformation-aws-ecs-cluster-container-insights-disabled",
+  "legacyId": "ab759fde-e1e8-4b0e-ad73-ba856e490ed8",
   "queryName": "ECS cluster with Container Insights disabled",
   "severity": "LOW",
   "category": "Observability",

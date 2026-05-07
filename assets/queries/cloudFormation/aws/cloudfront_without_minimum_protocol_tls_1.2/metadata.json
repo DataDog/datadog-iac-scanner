@@ -1,5 +1,6 @@
 {
-  "id": "dc17ee4b-ddf2-4e23-96e8-7a36abad1303",
+  "id": "cloudformation-aws-cloudfront-without-minimum-protocol-tls-1-2",
+  "legacyId": "dc17ee4b-ddf2-4e23-96e8-7a36abad1303",
   "queryName": "CloudFront without minimum protocol TLS 1.2",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

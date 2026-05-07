@@ -1,5 +1,6 @@
 {
-  "id": "ef05a925-8568-4054-8ff1-f5ba82631c16",
+  "id": "cloudformation-aws-efs",
+  "legacyId": "ef05a925-8568-4054-8ff1-f5ba82631c16",
   "queryName": "BOM - AWS EFS",
   "severity": "TRACE",
   "category": "Bill Of Materials",

@@ -1,5 +1,6 @@
 {
-  "id": "37fa8188-738b-42c8-bf82-6334ea567738",
+  "id": "cloudformation-aws-s3-bucket-should-have-bucket-policy",
+  "legacyId": "37fa8188-738b-42c8-bf82-6334ea567738",
   "queryName": "S3 bucket should have bucket policy",
   "severity": "LOW",
   "category": "Insecure Defaults",

@@ -1,5 +1,6 @@
 {
-  "id": "cdbb0467-2957-4a77-9992-7b55b29df7b7",
+  "id": "cloudformation-aws-security-groups-with-exhibited-admin-ports",
+  "legacyId": "cdbb0467-2957-4a77-9992-7b55b29df7b7",
   "queryName": "Security groups with exposed admin ports",
   "severity": "HIGH",
   "category": "Networking and Firewall",

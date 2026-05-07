@@ -1,5 +1,6 @@
 {
-  "id": "edbd62d4-8700-41de-b000-b3cfebb5e996",
+  "id": "cloudformation-aws-elasticsearch-logs-disabled",
+  "legacyId": "edbd62d4-8700-41de-b000-b3cfebb5e996",
   "queryName": "Elasticsearch logs disabled",
   "severity": "MEDIUM",
   "category": "Observability",

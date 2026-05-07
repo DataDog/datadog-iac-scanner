@@ -1,5 +1,6 @@
 {
-  "id": "a3aa0087-8228-4e7e-b202-dc9036972d02",
+  "id": "cloudformation-aws-neptune-cluster-with-iam-database-authentication-disabled",
+  "legacyId": "a3aa0087-8228-4e7e-b202-dc9036972d02",
   "queryName": "Neptune cluster with IAM database authentication disabled",
   "severity": "HIGH",
   "category": "Access Control",

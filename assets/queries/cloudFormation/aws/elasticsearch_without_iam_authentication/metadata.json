@@ -1,5 +1,6 @@
 {
-  "id": "5c666ed9-b586-49ab-9873-c495a833b705",
+  "id": "cloudformation-aws-elasticsearch-without-iam-authentication",
+  "legacyId": "5c666ed9-b586-49ab-9873-c495a833b705",
   "queryName": "Elasticsearch without IAM authentication",
   "severity": "MEDIUM",
   "category": "Access Control",

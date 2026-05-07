@@ -1,5 +1,6 @@
 {
-  "id": "be96849c-3df6-49c2-bc16-778a7be2519c",
+  "id": "cloudformation-aws-secure-ciphers-disabled",
+  "legacyId": "be96849c-3df6-49c2-bc16-778a7be2519c",
   "queryName": "Secure ciphers disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

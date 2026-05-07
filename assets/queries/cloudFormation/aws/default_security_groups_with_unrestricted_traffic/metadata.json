@@ -1,5 +1,6 @@
 {
-  "id": "ea33fcf7-394b-4d11-a228-985c5d08f205",
+  "id": "cloudformation-aws-default-security-groups-with-unrestricted-traffic",
+  "legacyId": "ea33fcf7-394b-4d11-a228-985c5d08f205",
   "queryName": "Default security groups with unrestricted traffic",
   "severity": "HIGH",
   "category": "Networking and Firewall",

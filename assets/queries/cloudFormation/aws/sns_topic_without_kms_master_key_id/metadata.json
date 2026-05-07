@@ -1,5 +1,6 @@
 {
-  "id": "9d13b150-a2ab-42a1-b6f4-142e41f81e52",
+  "id": "cloudformation-aws-sns-topic-without-kms-master-key-id",
+  "legacyId": "9d13b150-a2ab-42a1-b6f4-142e41f81e52",
   "queryName": "SNS topic without KmsMasterKeyId",
   "severity": "LOW",
   "category": "Secret Management",

@@ -1,5 +1,6 @@
 {
-  "id": "ad7444cf-817a-4765-a79e-2145f7981faf",
+  "id": "cloudformation-aws-shield-advanced-not-in-use",
+  "legacyId": "ad7444cf-817a-4765-a79e-2145f7981faf",
   "queryName": "Shield Advanced not in use",
   "severity": "LOW",
   "category": "Networking and Firewall",

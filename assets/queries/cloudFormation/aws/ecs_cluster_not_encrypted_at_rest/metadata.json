@@ -1,5 +1,6 @@
 {
-  "id": "6c131358-c54d-419b-9dd6-1f7dd41d180c",
+  "id": "cloudformation-aws-ecs-cluster-not-encrypted-at-rest",
+  "legacyId": "6c131358-c54d-419b-9dd6-1f7dd41d180c",
   "queryName": "ECS cluster not encrypted at rest",
   "severity": "HIGH",
   "category": "Encryption",

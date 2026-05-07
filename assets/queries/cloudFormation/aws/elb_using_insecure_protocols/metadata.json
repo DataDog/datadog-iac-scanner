@@ -1,5 +1,6 @@
 {
-  "id": "61a94903-3cd3-4780-88ec-fc918819b9c8",
+  "id": "cloudformation-aws-elb-using-insecure-protocols",
+  "legacyId": "61a94903-3cd3-4780-88ec-fc918819b9c8",
   "queryName": "ELB using insecure protocols",
   "severity": "MEDIUM",
   "category": "Encryption",

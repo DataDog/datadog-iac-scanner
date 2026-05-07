@@ -1,5 +1,6 @@
 {
-  "id": "f914357d-8386-4d56-9ba6-456e5723f9a6",
+  "id": "cloudformation-aws-ec2-instance-has-no-iam-role",
+  "legacyId": "f914357d-8386-4d56-9ba6-456e5723f9a6",
   "queryName": "EC2 instance has no IAM role",
   "severity": "MEDIUM",
   "category": "Access Control",

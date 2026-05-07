@@ -1,5 +1,6 @@
 {
-  "id": "d24389b4-b209-4ff0-8345-dc7a4569dcdd",
+  "id": "cloudformation-aws-ecs-task-definition-healthcheck-missing",
+  "legacyId": "d24389b4-b209-4ff0-8345-dc7a4569dcdd",
   "queryName": "ECS task definition health check missing",
   "severity": "LOW",
   "category": "Observability",

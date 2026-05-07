@@ -1,5 +1,6 @@
 {
-  "id": "f6049677-ec4a-43af-8779-5190b6d03cba",
+  "id": "cloudformation-aws-kms-allows-wildcard-principal",
+  "legacyId": "f6049677-ec4a-43af-8779-5190b6d03cba",
   "queryName": "KMS allows a wildcard principal",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "837e033c-4717-40bd-807e-6abaa30161b7",
+  "id": "cloudformation-aws-stack-notifications-disabled",
+  "legacyId": "837e033c-4717-40bd-807e-6abaa30161b7",
   "queryName": "Stack notifications disabled",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "027a4b7a-8a59-4938-a04f-ed532512cf45",
+  "id": "cloudformation-aws-ecs-task-definition-network-mode-not-recommended",
+  "legacyId": "027a4b7a-8a59-4938-a04f-ed532512cf45",
   "queryName": "ECS task definition network mode not recommended",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

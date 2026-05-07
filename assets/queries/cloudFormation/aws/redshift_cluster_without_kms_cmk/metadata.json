@@ -1,5 +1,6 @@
 {
-  "id": "de76a0d6-66d5-45c9-9022-f05545b85c78",
+  "id": "cloudformation-aws-redshift-cluster-without-kms-cmk",
+  "legacyId": "de76a0d6-66d5-45c9-9022-f05545b85c78",
   "queryName": "Redshift cluster without a KMS CMK",
   "severity": "MEDIUM",
   "category": "Encryption",

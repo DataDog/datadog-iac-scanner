@@ -1,5 +1,6 @@
 {
-  "id": "209189f3-c879-48a7-9703-fbcfa96d0cef",
+  "id": "cloudformation-aws-mq",
+  "legacyId": "209189f3-c879-48a7-9703-fbcfa96d0cef",
   "queryName": "BOM - AWS MQ",
   "severity": "TRACE",
   "category": "Bill Of Materials",

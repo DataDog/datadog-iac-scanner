@@ -1,5 +1,6 @@
 {
-  "id": "d71b5fd7-9020-4b2d-9ec8-b3839faa2744",
+  "id": "cloudformation-aws-support-has-no-role-associated",
+  "legacyId": "d71b5fd7-9020-4b2d-9ec8-b3839faa2744",
   "queryName": "Support has no role associated",
   "severity": "LOW",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "8dd0ff1f-0da4-48df-9bb3-7f338ae36a40",
+  "id": "cloudformation-aws-ec2-not-ebs-optimized",
+  "legacyId": "8dd0ff1f-0da4-48df-9bb3-7f338ae36a40",
   "queryName": "EC2 not EBS optimized",
   "severity": "LOW",
   "category": "Best Practices",

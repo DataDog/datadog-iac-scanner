@@ -1,5 +1,6 @@
 {
-  "id": "1cc2fbd7-816c-4fbf-ad6d-38a4afa4312a",
+  "id": "cloudformation-aws-security-group-egress-cidr-open-to-world",
+  "legacyId": "1cc2fbd7-816c-4fbf-ad6d-38a4afa4312a",
   "queryName": "Security group egress CIDR open to world",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

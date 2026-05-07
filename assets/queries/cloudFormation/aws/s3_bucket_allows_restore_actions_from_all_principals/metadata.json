@@ -1,5 +1,6 @@
 {
-  "id": "456b00a3-1072-4149-9740-6b8bb60251b0",
+  "id": "cloudformation-aws-s3-bucket-allows-restore-actions-from-all-principals",
+  "legacyId": "456b00a3-1072-4149-9740-6b8bb60251b0",
   "queryName": "S3 bucket allows restore actions from all principals",
   "severity": "HIGH",
   "category": "Access Control",

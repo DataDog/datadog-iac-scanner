@@ -1,5 +1,6 @@
 {
-  "id": "4a8daf95-709d-4a36-9132-d3e19878fa34",
+  "id": "cloudformation-aws-api-gateway-endpoint-config-is-not-private",
+  "legacyId": "4a8daf95-709d-4a36-9132-d3e19878fa34",
   "queryName": "API Gateway endpoint config is not private",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

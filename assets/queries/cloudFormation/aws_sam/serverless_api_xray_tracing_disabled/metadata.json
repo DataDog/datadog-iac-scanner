@@ -1,5 +1,6 @@
 {
-  "id": "c757c6a3-ac87-4b9d-b28d-e5a5add6a315",
+  "id": "cloudformation-aws-serverless-api-xray-tracing-disabled",
+  "legacyId": "c757c6a3-ac87-4b9d-b28d-e5a5add6a315",
   "queryName": "Serverless API X-Ray tracing disabled",
   "severity": "MEDIUM",
   "category": "Observability",

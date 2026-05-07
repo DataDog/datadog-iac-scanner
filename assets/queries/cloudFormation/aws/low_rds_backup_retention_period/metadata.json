@@ -1,5 +1,6 @@
 {
-  "id": "e649a218-d099-4550-86a4-1231e1fcb60d",
+  "id": "cloudformation-aws-low-rds-backup-retention-period",
+  "legacyId": "e649a218-d099-4550-86a4-1231e1fcb60d",
   "queryName": "Low RDS backup retention period",
   "severity": "LOW",
   "category": "Backup",

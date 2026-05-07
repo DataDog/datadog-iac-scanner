@@ -1,5 +1,6 @@
 {
-  "id": "045ddb54-cfc5-4abb-9e05-e427b2bc96fe",
+  "id": "cloudformation-aws-ec2-network-acl-duplicate-rule",
+  "legacyId": "045ddb54-cfc5-4abb-9e05-e427b2bc96fe",
   "queryName": "EC2 network ACL duplicate rule",
   "severity": "LOW",
   "category": "Networking and Firewall",

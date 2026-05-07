@@ -1,5 +1,6 @@
 {
-  "id": "5b48c507-0d1f-41b0-a630-76817c6b4189",
+  "id": "cloudformation-aws-refresh-token-is-exposed",
+  "legacyId": "5b48c507-0d1f-41b0-a630-76817c6b4189",
   "queryName": "Refresh token is exposed",
   "severity": "HIGH",
   "category": "Secret Management",

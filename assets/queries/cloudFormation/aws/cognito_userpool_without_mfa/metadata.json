@@ -1,5 +1,6 @@
 {
-  "id": "74a18d1a-cf02-4a31-8791-ed0967ad7fdc",
+  "id": "cloudformation-aws-cognito-userpool-without-mfa",
+  "legacyId": "74a18d1a-cf02-4a31-8791-ed0967ad7fdc",
   "queryName": "Cognito user pool without MFA",
   "severity": "LOW",
   "category": "Best Practices",

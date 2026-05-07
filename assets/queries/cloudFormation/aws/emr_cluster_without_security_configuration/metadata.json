@@ -1,5 +1,6 @@
 {
-  "id": "48af92a5-c89b-4936-bc62-1086fe2bab23",
+  "id": "cloudformation-aws-emr-cluster-without-security-configuration",
+  "legacyId": "48af92a5-c89b-4936-bc62-1086fe2bab23",
   "queryName": "EMR cluster without security configuration",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

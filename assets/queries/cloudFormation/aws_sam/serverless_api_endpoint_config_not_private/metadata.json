@@ -1,5 +1,6 @@
 {
-  "id": "6b5b0313-771b-4319-ad7a-122ee78700ef",
+  "id": "cloudformation-aws-serverless-api-endpoint-config-not-private",
+  "legacyId": "6b5b0313-771b-4319-ad7a-122ee78700ef",
   "queryName": "Serverless API endpoint config not private",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
