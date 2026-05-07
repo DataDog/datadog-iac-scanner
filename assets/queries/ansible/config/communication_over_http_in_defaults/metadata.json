@@ -1,5 +1,6 @@
 {
-  "id": "d7dc9350-74bc-485b-8c85-fed22d276c43",
+  "id": "ansible-communication-over-http-in-defaults",
+  "legacyId": "d7dc9350-74bc-485b-8c85-fed22d276c43",
   "queryName": "Communication over HTTP in defaults",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/config/communication_over_http_in_defaults",
   "platform": "Ansible",
   "descriptionID": "8c03b0c0",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "",
   "providerUrl": "https://docs.ansible.com/ansible/latest/plugins/httpapi.html"
 }

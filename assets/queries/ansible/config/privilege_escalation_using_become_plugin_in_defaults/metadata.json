@@ -1,5 +1,6 @@
 {
-  "id": "404908b6-4954-4611-98f0-e8ceacdabcb1",
+  "id": "ansible-privilege-escalation-using-become-plugin-in-defaults",
+  "legacyId": "404908b6-4954-4611-98f0-e8ceacdabcb1",
   "queryName": "Privilege escalation using become plugin in defaults",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/config/privilege_escalation_using_become_plugin_in_defaults",
   "platform": "Ansible",
   "descriptionID": "00396668",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "",
   "providerUrl": "https://docs.ansible.com/ansible/latest/plugins/become.html"
 }
