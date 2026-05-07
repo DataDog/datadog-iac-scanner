@@ -1,5 +1,6 @@
 {
-  "id": "a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6",
+  "id": "cicd-github-anonymous-definition",
+  "legacyId": "a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6",
   "queryName": "Anonymous definition",
   "severity": "LOW",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/anonymous_definition",
   "platform": "CICD",
   "descriptionID": "a1b2c3d4",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#name",
   "cwe": "710"
 }

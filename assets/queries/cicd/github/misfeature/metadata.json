@@ -1,5 +1,6 @@
 {
-  "id": "a4b5c6d7-e8f9-40a1-b2c3-d4e5f6a7b8c9",
+  "id": "cicd-github-misfeature",
+  "legacyId": "a4b5c6d7-e8f9-40a1-b2c3-d4e5f6a7b8c9",
   "queryName": "Misfeature",
   "severity": "LOW",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/misfeature",
   "platform": "CICD",
   "descriptionID": "a4b5c6d7",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "710",
   "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
 }
