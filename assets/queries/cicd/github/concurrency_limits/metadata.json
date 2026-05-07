@@ -1,5 +1,6 @@
 {
-  "id": "f6a7b8c9-d0e1-42f3-a4b5-c6d7e8f9a0b1",
+  "id": "cicd-github-concurrency-limits",
+  "legacyId": "f6a7b8c9-d0e1-42f3-a4b5-c6d7e8f9a0b1",
   "queryName": "Concurrency limits",
   "severity": "LOW",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/concurrency_limits",
   "platform": "CICD",
   "descriptionID": "f6a7b8c9",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "400",
   "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency"
 }

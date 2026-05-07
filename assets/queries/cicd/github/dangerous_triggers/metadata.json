@@ -1,5 +1,6 @@
 {
-  "id": "a7b8c9d0-e1f2-43a4-b5c6-d7e8f9a0b1c2",
+  "id": "cicd-github-dangerous-triggers",
+  "legacyId": "a7b8c9d0-e1f2-43a4-b5c6-d7e8f9a0b1c2",
   "queryName": "Dangerous triggers",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/dangerous_triggers",
   "platform": "CICD",
   "descriptionID": "a7b8c9d0",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "346",
   "providerUrl": "https://securitylab.github.com/research/github-actions-preventing-pwn-requests/"
 }

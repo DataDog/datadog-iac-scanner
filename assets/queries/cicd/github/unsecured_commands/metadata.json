@@ -1,5 +1,6 @@
 {
-  "id": "60fd272d-15f4-4d8f-afe4-77d9c6cc0453",
+  "id": "cicd-github-unsecured-commands",
+  "legacyId": "60fd272d-15f4-4d8f-afe4-77d9c6cc0453",
   "queryName": "Unsecured commands",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unsecured_commands",
   "platform": "CICD",
   "descriptionID": "44751f79",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "78",
   "providerUrl": "https://0xn3va.gitbook.io/cheat-sheets/ci-cd/github/actions#misuse-of-the-events-related-to-incoming-prs"
 }

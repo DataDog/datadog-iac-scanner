@@ -1,5 +1,6 @@
 {
-  "id": "e1f2a3b4-c5d6-47e8-f9a0-b1c2d3e4f5a6",
+  "id": "cicd-github-secrets-inherit",
+  "legacyId": "e1f2a3b4-c5d6-47e8-f9a0-b1c2d3e4f5a6",
   "queryName": "Secrets inherit",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/secrets_inherit",
   "platform": "CICD",
   "descriptionID": "e1f2a3b4",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "269",
   "providerUrl": "https://docs.github.com/en/actions/using-workflows/reusing-workflows#passing-secrets-to-nested-workflows"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "d946b13a-0b2b-49c5-b560-45b9666373e1",
+  "id": "cicd-github-unspecified-workflows-permissions",
+  "legacyId": "d946b13a-0b2b-49c5-b560-45b9666373e1",
   "queryName": "Unspecified workflows level permissions",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unspecified_workflows_permissions",
   "platform": "CICD",
   "descriptionID": "d946b13a",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "732",
   "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#permissions"
 }
