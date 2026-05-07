@@ -122,12 +122,13 @@ func TestUniqueQueryIDs(t *testing.T) {
 		queryPath := strings.TrimPrefix(entry.dir, filepath.FromSlash("../assets/"))
 		query, err := source.ReadEmbeddedQuery(ctx, queryPath)
 		require.NoError(t, err)
-		uuid := query.Metadata["legacyId"].(string)
-		duplicateDir, ok := checkIdUniqueness(entry, legacyQueriesIdentifiers, uuid)
-		require.False(t, ok, "\nnon unique legacy queryID found on overriding uuid: %s\nqueryDir: %s\nduplicateDir: %s",
-			uuid, entry.dir, duplicateDir)
+		if uuid, ok := query.Metadata["legacyId"].(string); ok {
+			duplicateDir, ok := checkIdUniqueness(entry, legacyQueriesIdentifiers, uuid)
+			require.False(t, ok, "\nnon unique legacy queryID found on overriding uuid: %s\nqueryDir: %s\nduplicateDir: %s",
+				uuid, entry.dir, duplicateDir)
+		}
 		id := query.Metadata["id"].(string)
-		duplicateDir, ok = checkIdUniqueness(entry, queriesIdentifiers, id)
+		duplicateDir, ok := checkIdUniqueness(entry, queriesIdentifiers, id)
 		require.False(t, ok, "\nnon unique queryID found on overriding uuid: %s\nqueryDir: %s\nduplicateDir: %s",
 			id, entry.dir, duplicateDir)
 
