@@ -1,5 +1,6 @@
 {
-  "id": "dbfc834a-56e5-4750-b5da-73fda8e73f70",
+  "id": "terraform-alicloud-slb-policy-with-insecure-tls-version-in-use",
+  "legacyId": "dbfc834a-56e5-4750-b5da-73fda8e73f70",
   "queryName": "SLB policy with insecure TLS version in use",
   "severity": "MEDIUM",
   "category": "Encryption",

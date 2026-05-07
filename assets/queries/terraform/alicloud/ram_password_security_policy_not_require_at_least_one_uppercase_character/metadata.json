@@ -1,5 +1,6 @@
 {
-  "id": "5e0fb613-ba9b-44c3-88f0-b44188466bfd",
+  "id": "terraform-alicloud-ram-password-security-policy-not-require-at-least-one-uppercase-character",
+  "legacyId": "5e0fb613-ba9b-44c3-88f0-b44188466bfd",
   "queryName": "RAM account password policy not require at least one uppercase character",
   "severity": "LOW",
   "category": "Secret Management",

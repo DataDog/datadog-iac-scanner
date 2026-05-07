@@ -1,5 +1,6 @@
 {
-  "id": "8c0695d8-2378-4cd6-8243-7fd5894fa574",
+  "id": "terraform-alicloud-oss-bucket-allows-delete-from-all-principals",
+  "legacyId": "8c0695d8-2378-4cd6-8243-7fd5894fa574",
   "queryName": "OSS bucket allows delete action from all principals",
   "severity": "CRITICAL",
   "category": "Access Control",

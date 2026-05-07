@@ -1,5 +1,6 @@
 {
-  "id": "2ae9d554-23fb-4065-bfd1-fe43d5f7c419",
+  "id": "terraform-alicloud-public-security-group-rule-sensitive-port",
+  "legacyId": "2ae9d554-23fb-4065-bfd1-fe43d5f7c419",
   "queryName": "Public security group rule sensitive port",
   "severity": "HIGH",
   "category": "Networking and Firewall",

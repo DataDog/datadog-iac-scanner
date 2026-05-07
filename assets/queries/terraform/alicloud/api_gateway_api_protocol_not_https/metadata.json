@@ -1,5 +1,6 @@
 {
-  "id": "1bcdf9f0-b1aa-40a4-b8c6-cd7785836843",
+  "id": "terraform-alicloud-api-gateway-api-protocol-not-https",
+  "legacyId": "1bcdf9f0-b1aa-40a4-b8c6-cd7785836843",
   "queryName": "API Gateway API protocol not HTTPS",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

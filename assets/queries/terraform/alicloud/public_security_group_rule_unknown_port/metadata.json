@@ -1,5 +1,6 @@
 {
-  "id": "dd706080-b7a8-47dc-81fb-3e8184430ec0",
+  "id": "terraform-alicloud-public-security-group-rule-unknown-port",
+  "legacyId": "dd706080-b7a8-47dc-81fb-3e8184430ec0",
   "queryName": "Public security group rule unknown port",
   "severity": "HIGH",
   "category": "Networking and Firewall",

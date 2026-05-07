@@ -1,5 +1,6 @@
 {
-  "id": "39750e32-3fe9-453b-8c33-dd277acdb2cc",
+  "id": "terraform-alicloud-disk-encryption-disabled",
+  "legacyId": "39750e32-3fe9-453b-8c33-dd277acdb2cc",
   "queryName": "Disk encryption disabled",
   "severity": "MEDIUM",
   "category": "Encryption",
