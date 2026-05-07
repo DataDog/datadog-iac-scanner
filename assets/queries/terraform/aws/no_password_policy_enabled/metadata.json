@@ -1,5 +1,6 @@
 {
-  "id": "b592ffd4-0577-44b6-bd35-8c5ee81b5918",
+  "id": "terraform-aws-no-password-policy-enabled",
+  "legacyId": "b592ffd4-0577-44b6-bd35-8c5ee81b5918",
   "queryName": "No password policy enabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

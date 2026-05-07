@@ -1,5 +1,6 @@
 {
-  "id": "b5681959-6c09-4f55-b42b-c40fa12d03ec",
+  "id": "terraform-aws-iam-user-policy-without-mfa",
+  "legacyId": "b5681959-6c09-4f55-b42b-c40fa12d03ec",
   "queryName": "IAM user policy without MFA",
   "severity": "LOW",
   "category": "Insecure Configurations",

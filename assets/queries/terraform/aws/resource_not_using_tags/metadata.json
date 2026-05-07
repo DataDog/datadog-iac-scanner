@@ -1,5 +1,6 @@
 {
-  "id": "e38a8e0a-b88b-4902-b3fe-b0fcb17d5c10",
+  "id": "terraform-aws-resource-not-using-tags",
+  "legacyId": "e38a8e0a-b88b-4902-b3fe-b0fcb17d5c10",
   "queryName": "Resource not using tags",
   "severity": "LOW",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "bf878b1a-7418-4de3-b13c-3a86cf894920",
+  "id": "terraform-aws-s3-bucket-public-acl-overridden-by-public-access-block",
+  "legacyId": "bf878b1a-7418-4de3-b13c-3a86cf894920",
   "queryName": "S3 bucket public ACL overridden by public access block",
   "severity": "HIGH",
   "category": "Access Control",

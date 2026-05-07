@@ -1,5 +1,6 @@
 {
-  "id": "1bc1c685-e593-450e-88fb-19db4c82aa1d",
+  "id": "terraform-aws-iam-password-without-minimum-length",
+  "legacyId": "1bc1c685-e593-450e-88fb-19db4c82aa1d",
   "queryName": "IAM password without minimum length",
   "severity": "LOW",
   "category": "Best Practices",

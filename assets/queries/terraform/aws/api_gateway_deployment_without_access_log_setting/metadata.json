@@ -1,5 +1,6 @@
 {
-  "id": "625abc0e-f980-4ac9-a775-f7519ee34296",
+  "id": "terraform-aws-api-gateway-deployment-without-access-log-setting",
+  "legacyId": "625abc0e-f980-4ac9-a775-f7519ee34296",
   "queryName": "API Gateway deployment without access log setting",
   "severity": "MEDIUM",
   "category": "Observability",

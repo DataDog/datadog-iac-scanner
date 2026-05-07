@@ -1,5 +1,6 @@
 {
-  "id": "bbe3dd3d-fea9-4b68-a785-cfabe2bbbc54",
+  "id": "terraform-aws-policy-without-principal",
+  "legacyId": "bbe3dd3d-fea9-4b68-a785-cfabe2bbbc54",
   "queryName": "Policy without principal",
   "severity": "MEDIUM",
   "category": "Access Control",

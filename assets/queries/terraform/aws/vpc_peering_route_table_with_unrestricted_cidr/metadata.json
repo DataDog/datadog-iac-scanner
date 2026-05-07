@@ -1,5 +1,6 @@
 {
-  "id": "b3a41501-f712-4c4f-81e5-db9a7dc0e34e",
+  "id": "terraform-aws-vpc-peering-route-table-with-unrestricted-cidr",
+  "legacyId": "b3a41501-f712-4c4f-81e5-db9a7dc0e34e",
   "queryName": "VPC peering route table with unrestricted CIDR",
   "severity": "HIGH",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "741f1291-47ac-4a85-a07b-3d32a9d6bd3e",
+  "id": "terraform-aws-dynamodb-table-point-in-time-recovery-disabled",
+  "legacyId": "741f1291-47ac-4a85-a07b-3d32a9d6bd3e",
   "queryName": "DynamoDB table Point-in-Time Recovery disabled",
   "severity": "LOW",
   "category": "Best Practices",

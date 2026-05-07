@@ -1,5 +1,6 @@
 {
-  "id": "d24c0755-c028-44b1-b503-8e719c898832",
+  "id": "terraform-aws-s3-bucket-allows-put-action-from-all-principals",
+  "legacyId": "d24c0755-c028-44b1-b503-8e719c898832",
   "queryName": "S3 bucket allows put action from all principals",
   "severity": "CRITICAL",
   "category": "Access Control",

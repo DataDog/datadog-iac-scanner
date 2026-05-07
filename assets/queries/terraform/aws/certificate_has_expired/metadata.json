@@ -1,5 +1,6 @@
 {
-  "id": "c3831315-5ae6-4fa8-b458-3d4d5ab7a3f6",
+  "id": "terraform-aws-certificate-has-expired",
+  "legacyId": "c3831315-5ae6-4fa8-b458-3d4d5ab7a3f6",
   "queryName": "Certificate has expired",
   "severity": "MEDIUM",
   "category": "Access Control",

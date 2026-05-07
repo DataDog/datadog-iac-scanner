@@ -1,5 +1,6 @@
 {
-  "id": "9b877bd8-94b4-4c10-a060-8e0436cc09fa",
+  "id": "terraform-aws-user-with-privilege-escalation-by-actions-glue-updatedevendpoint",
+  "legacyId": "9b877bd8-94b4-4c10-a060-8e0436cc09fa",
   "queryName": "User with privilege escalation by actions 'glue:UpdateDevEndpoint'",
   "severity": "MEDIUM",
   "category": "Access Control",

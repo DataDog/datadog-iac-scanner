@@ -1,5 +1,6 @@
 {
-  "id": "0a96ce49-4163-4ee6-8169-eb3b0797d694",
+  "id": "terraform-aws-api-gateway-without-configured-authorizer",
+  "legacyId": "0a96ce49-4163-4ee6-8169-eb3b0797d694",
   "queryName": "API Gateway without configured authorizer",
   "severity": "MEDIUM",
   "category": "Access Control",

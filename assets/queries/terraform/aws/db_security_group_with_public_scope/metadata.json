@@ -1,5 +1,6 @@
 {
-  "id": "1e0ef61b-ad85-4518-a3d3-85eaad164885",
+  "id": "terraform-aws-db-security-group-with-public-scope",
+  "legacyId": "1e0ef61b-ad85-4518-a3d3-85eaad164885",
   "queryName": "DB security group with public scope",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

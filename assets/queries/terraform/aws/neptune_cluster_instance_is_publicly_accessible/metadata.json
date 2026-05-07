@@ -1,5 +1,6 @@
 {
-  "id": "9ba198e0-fef4-464a-8a4d-75ea55300de7",
+  "id": "terraform-aws-neptune-cluster-instance-is-publicly-accessible",
+  "legacyId": "9ba198e0-fef4-464a-8a4d-75ea55300de7",
   "queryName": "Neptune cluster instance is publicly accessible",
   "severity": "HIGH",
   "category": "Access Control",

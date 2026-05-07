@@ -1,5 +1,6 @@
 {
-  "id": "4f615f3e-fb9c-4fad-8b70-2e9f781806ce",
+  "id": "terraform-aws-db-security-group-open-to-large-scope",
+  "legacyId": "4f615f3e-fb9c-4fad-8b70-2e9f781806ce",
   "queryName": "DB security group open to large scope",
   "severity": "HIGH",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "d25edb51-07fb-4a73-97d4-41cecdc53a22",
+  "id": "terraform-aws-glue-with-vulnerable-policy",
+  "legacyId": "d25edb51-07fb-4a73-97d4-41cecdc53a22",
   "queryName": "Glue with vulnerable policy",
   "severity": "MEDIUM",
   "category": "Access Control",

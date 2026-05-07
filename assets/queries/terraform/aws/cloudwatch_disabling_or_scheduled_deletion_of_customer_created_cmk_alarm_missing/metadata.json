@@ -1,5 +1,6 @@
 {
-  "id": "56a585f5-555c-48b2-8395-e64e4740a9cf",
+  "id": "terraform-aws-cloudwatch-disabling-or-scheduled-deletion-of-customer-created-cmk-alarm-missing",
+  "legacyId": "56a585f5-555c-48b2-8395-e64e4740a9cf",
   "queryName": "CloudWatch disabling or scheduled deletion of customer created CMK alarm missing",
   "severity": "MEDIUM",
   "category": "Observability",

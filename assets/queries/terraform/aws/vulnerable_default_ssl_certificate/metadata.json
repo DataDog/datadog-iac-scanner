@@ -1,5 +1,6 @@
 {
-  "id": "3a1e94df-6847-4c0e-a3b6-6c6af4e128ef",
+  "id": "terraform-aws-vulnerable-default-ssl-certificate",
+  "legacyId": "3a1e94df-6847-4c0e-a3b6-6c6af4e128ef",
   "queryName": "Vulnerable default SSL certificate",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

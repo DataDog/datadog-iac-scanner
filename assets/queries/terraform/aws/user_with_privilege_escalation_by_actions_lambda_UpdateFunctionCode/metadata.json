@@ -1,5 +1,6 @@
 {
-  "id": "b69247e5-7e73-464e-ba74-ec9b715c6e12",
+  "id": "terraform-aws-user-with-privilege-escalation-by-actions-lambda-updatefunctioncode",
+  "legacyId": "b69247e5-7e73-464e-ba74-ec9b715c6e12",
   "queryName": "User with privilege escalation by actions 'lambda:UpdateFunctionCode'",
   "severity": "MEDIUM",
   "category": "Access Control",

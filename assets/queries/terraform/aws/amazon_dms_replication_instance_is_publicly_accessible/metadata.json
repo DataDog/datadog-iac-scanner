@@ -1,5 +1,6 @@
 {
-  "id": "030d3b18-1821-45b4-9e08-50efbe7becbb",
+  "id": "terraform-aws-amazon-dms-replication-instance-is-publicly-accessible",
+  "legacyId": "030d3b18-1821-45b4-9e08-50efbe7becbb",
   "queryName": "Amazon DMS replication instance is publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",

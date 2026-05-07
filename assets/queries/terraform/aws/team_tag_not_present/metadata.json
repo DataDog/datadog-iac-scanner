@@ -1,5 +1,6 @@
 {
-  "id": "a2b3c4d5-e6f7-8901-gh23-ijkl456m7890",
+  "id": "terraform-aws-team-tag-not-present",
+  "legacyId": "a2b3c4d5-e6f7-8901-gh23-ijkl456m7890",
   "queryName": "Team tag missing on AWS resource",
   "severity": "LOW",
   "category": "Best Practices",

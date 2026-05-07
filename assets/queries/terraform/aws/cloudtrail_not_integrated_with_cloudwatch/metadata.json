@@ -1,5 +1,6 @@
 {
-  "id": "17b30f8f-8dfb-4597-adf6-57600b6cf25e",
+  "id": "terraform-aws-cloudtrail-not-integrated-with-cloudwatch",
+  "legacyId": "17b30f8f-8dfb-4597-adf6-57600b6cf25e",
   "queryName": "CloudTrail not integrated with CloudWatch",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "61cf9883-1752-4768-b18c-0d57f2737709",
+  "id": "terraform-aws-eks-cluster-has-public-access-cidrs",
+  "legacyId": "61cf9883-1752-4768-b18c-0d57f2737709",
   "queryName": "EKS cluster has public access CIDRs",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

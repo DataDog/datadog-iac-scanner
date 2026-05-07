@@ -1,5 +1,6 @@
 {
-  "id": "46883ce1-dc3e-4b17-9195-c6a601624c73",
+  "id": "terraform-aws-default-security-groups-with-unrestricted-traffic",
+  "legacyId": "46883ce1-dc3e-4b17-9195-c6a601624c73",
   "queryName": "Default security groups with unrestricted traffic",
   "severity": "HIGH",
   "category": "Networking and Firewall",

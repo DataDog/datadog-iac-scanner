@@ -1,5 +1,6 @@
 {
-  "id": "e35c16a2-d54e-419d-8546-a804d8e024d0",
+  "id": "terraform-aws-sensitive-port-is-exposed-to-small-public-network",
+  "legacyId": "e35c16a2-d54e-419d-8546-a804d8e024d0",
   "queryName": "Sensitive port is exposed to small public network",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

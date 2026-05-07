@@ -1,5 +1,6 @@
 {
-  "id": "25d251f3-f348-4f95-845c-1090e41a615c",
+  "id": "terraform-aws-efs-without-kms",
+  "legacyId": "25d251f3-f348-4f95-845c-1090e41a615c",
   "queryName": "EFS without KMS",
   "severity": "LOW",
   "category": "Encryption",

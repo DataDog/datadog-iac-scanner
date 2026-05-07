@@ -1,5 +1,6 @@
 {
-  "id": "be2aa235-bd93-4b68-978a-1cc65d49082f",
+  "id": "terraform-aws-role-with-privilege-escalation-by-actions-iam-passrole-and-cloudformation-createstack",
+  "legacyId": "be2aa235-bd93-4b68-978a-1cc65d49082f",
   "queryName": "Role with privilege escalation by actions 'cloudformation:CreateStack' and 'iam:PassRole'",
   "severity": "MEDIUM",
   "category": "Access Control",

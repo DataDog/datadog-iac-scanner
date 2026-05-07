@@ -1,5 +1,6 @@
 {
-  "id": "00e5e55e-c2ff-46b3-a757-a7a1cd802456",
+  "id": "terraform-aws-cloudfront-without-minimum-protocol-tls-1-2",
+  "legacyId": "00e5e55e-c2ff-46b3-a757-a7a1cd802456",
   "queryName": "CloudFront without minimum protocol TLS 1.2",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

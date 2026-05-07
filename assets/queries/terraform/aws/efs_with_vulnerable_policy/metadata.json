@@ -1,5 +1,6 @@
 {
-  "id": "fae52418-bb8b-4ac2-b287-0b9082d6a3fd",
+  "id": "terraform-aws-efs-with-vulnerable-policy",
+  "legacyId": "fae52418-bb8b-4ac2-b287-0b9082d6a3fd",
   "queryName": "EFS with vulnerable policy",
   "severity": "MEDIUM",
   "category": "Access Control",

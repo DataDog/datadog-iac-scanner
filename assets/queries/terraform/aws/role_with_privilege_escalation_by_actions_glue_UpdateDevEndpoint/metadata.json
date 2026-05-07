@@ -1,5 +1,6 @@
 {
-  "id": "eda48c88-2b7d-4e34-b6ca-04c0194aee17",
+  "id": "terraform-aws-role-with-privilege-escalation-by-actions-glue-updatedevendpoint",
+  "legacyId": "eda48c88-2b7d-4e34-b6ca-04c0194aee17",
   "queryName": "Role with privilege escalation by actions 'glue:UpdateDevEndpoint'",
   "severity": "MEDIUM",
   "category": "Access Control",

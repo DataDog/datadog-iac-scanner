@@ -1,5 +1,6 @@
 {
-  "id": "b4c6d7e8-f9a1-4bcd-89ef-01234abcd567",
+  "id": "terraform-aws-elasticsearch-no-finegrain-access-control",
+  "legacyId": "b4c6d7e8-f9a1-4bcd-89ef-01234abcd567",
   "queryName": "Fine-grained access control disabled for OpenSearch/Elasticsearch",
   "severity": "HIGH",
   "category": "Access Control",

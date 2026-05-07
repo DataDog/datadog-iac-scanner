@@ -1,5 +1,6 @@
 {
-  "id": "b9033580-6886-401a-8631-5f19f5bb24c7",
+  "id": "terraform-aws-workspaces-workspace-volume-not-encrypted",
+  "legacyId": "b9033580-6886-401a-8631-5f19f5bb24c7",
   "queryName": "Workspaces workspace volume not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

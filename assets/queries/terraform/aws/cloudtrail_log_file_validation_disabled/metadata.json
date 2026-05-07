@@ -1,5 +1,6 @@
 {
-  "id": "52ffcfa6-6c70-4ea6-8376-d828d3961669",
+  "id": "terraform-aws-cloudtrail-log-file-validation-disabled",
+  "legacyId": "52ffcfa6-6c70-4ea6-8376-d828d3961669",
   "queryName": "CloudTrail log file validation disabled",
   "severity": "LOW",
   "category": "Observability",

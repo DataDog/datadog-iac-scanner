@@ -1,5 +1,6 @@
 {
-  "id": "9a4ef195-74b9-4c58-b8ed-2b2fe4353a75",
+  "id": "terraform-aws-vpc-default-security-group-accepts-all-traffic",
+  "legacyId": "9a4ef195-74b9-4c58-b8ed-2b2fe4353a75",
   "queryName": "VPC default security group accepts all traffic",
   "severity": "HIGH",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "35113e6f-2c6b-414d-beec-7a9482d3b2d1",
+  "id": "terraform-aws-rds-db-instance-publicly-accessible",
+  "legacyId": "35113e6f-2c6b-414d-beec-7a9482d3b2d1",
   "queryName": "RDS DB instance publicly accessible",
   "severity": "CRITICAL",
   "category": "Insecure Configurations",

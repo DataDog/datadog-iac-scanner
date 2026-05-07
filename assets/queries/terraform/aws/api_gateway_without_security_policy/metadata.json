@@ -1,5 +1,6 @@
 {
-  "id": "4e1cc5d3-2811-4fb2-861c-ee9b3cb7f90b",
+  "id": "terraform-aws-api-gateway-without-security-policy",
+  "legacyId": "4e1cc5d3-2811-4fb2-861c-ee9b3cb7f90b",
   "queryName": "API Gateway without security policy",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

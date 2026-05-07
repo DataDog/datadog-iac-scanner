@@ -1,5 +1,6 @@
 {
-  "id": "98a8f708-121b-455b-ae2f-da3fb59d17e1",
+  "id": "terraform-aws-s3-bucket-with-unsecured-cors-rule",
+  "legacyId": "98a8f708-121b-455b-ae2f-da3fb59d17e1",
   "queryName": "S3 bucket with unsecured CORS rule",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

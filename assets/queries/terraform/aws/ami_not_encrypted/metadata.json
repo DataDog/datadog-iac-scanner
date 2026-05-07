@@ -1,5 +1,6 @@
 {
-  "id": "8bbb242f-6e38-4127-86d4-d8f0b2687ae2",
+  "id": "terraform-aws-ami-not-encrypted",
+  "legacyId": "8bbb242f-6e38-4127-86d4-d8f0b2687ae2",
   "queryName": "AMI not encrypted",
   "severity": "MEDIUM",
   "category": "Encryption",

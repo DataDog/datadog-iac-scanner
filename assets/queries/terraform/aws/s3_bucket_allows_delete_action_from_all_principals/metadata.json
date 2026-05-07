@@ -1,5 +1,6 @@
 {
-  "id": "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+  "id": "terraform-aws-s3-bucket-allows-delete-action-from-all-principals",
+  "legacyId": "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
   "queryName": "S3 bucket allows delete action from all principals",
   "severity": "CRITICAL",
   "category": "Access Control",

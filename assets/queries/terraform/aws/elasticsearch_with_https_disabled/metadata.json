@@ -1,5 +1,6 @@
 {
-  "id": "2e9e0729-66d5-4148-9d39-5e6fb4bf2a4e",
+  "id": "terraform-aws-elasticsearch-with-https-disabled",
+  "legacyId": "2e9e0729-66d5-4148-9d39-5e6fb4bf2a4e",
   "queryName": "Elasticsearch with HTTPS disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

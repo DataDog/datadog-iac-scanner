@@ -1,5 +1,6 @@
 {
-  "id": "27c6a499-895a-4dc7-9617-5c485218db13",
+  "id": "terraform-aws-cloudwatch-s3-policy-change-alarm-missing",
+  "legacyId": "27c6a499-895a-4dc7-9617-5c485218db13",
   "queryName": "CloudWatch S3 policy change alarm missing",
   "severity": "MEDIUM",
   "category": "Observability",

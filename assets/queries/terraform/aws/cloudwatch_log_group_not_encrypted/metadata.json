@@ -1,5 +1,6 @@
 {
-  "id": "0afbcfe9-d341-4b92-a64c-7e6de0543879",
+  "id": "terraform-aws-cloudwatch-log-group-not-encrypted",
+  "legacyId": "0afbcfe9-d341-4b92-a64c-7e6de0543879",
   "queryName": "CloudWatch log group without KMS",
   "severity": "MEDIUM",
   "category": "Encryption",

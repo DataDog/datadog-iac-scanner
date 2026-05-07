@@ -1,5 +1,6 @@
 {
-  "id": "52f04a44-6bfa-4c41-b1d3-4ae99a2de05c",
+  "id": "terraform-aws-vpc-subnet-assigns-public-ip",
+  "legacyId": "52f04a44-6bfa-4c41-b1d3-4ae99a2de05c",
   "queryName": "VPC subnet assigns public IP",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

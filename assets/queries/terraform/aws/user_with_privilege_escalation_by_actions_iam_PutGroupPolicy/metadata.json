@@ -1,5 +1,6 @@
 {
-  "id": "8bfbf7ab-d5e8-4100-8618-798956e101e0",
+  "id": "terraform-aws-user-with-privilege-escalation-by-actions-iam-putgrouppolicy",
+  "legacyId": "8bfbf7ab-d5e8-4100-8618-798956e101e0",
   "queryName": "User with privilege escalation by actions 'iam:PutGroupPolicy'",
   "severity": "MEDIUM",
   "category": "Access Control",

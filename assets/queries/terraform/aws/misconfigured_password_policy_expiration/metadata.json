@@ -1,5 +1,6 @@
 {
-  "id": "ce60d060-efb8-4bfd-9cf7-ff8945d00d90",
+  "id": "terraform-aws-misconfigured-password-policy-expiration",
+  "legacyId": "ce60d060-efb8-4bfd-9cf7-ff8945d00d90",
   "queryName": "Misconfigured password policy expiration",
   "severity": "LOW",
   "category": "Best Practices",

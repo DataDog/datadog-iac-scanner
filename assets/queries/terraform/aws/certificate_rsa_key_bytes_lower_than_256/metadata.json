@@ -1,5 +1,6 @@
 {
-  "id": "874d68a3-bfbe-4a4b-aaa0-9e74d7da634b",
+  "id": "terraform-aws-certificate-rsa-key-bytes-lower-than-256",
+  "legacyId": "874d68a3-bfbe-4a4b-aaa0-9e74d7da634b",
   "queryName": "Certificate RSA key bytes lower than 256",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
