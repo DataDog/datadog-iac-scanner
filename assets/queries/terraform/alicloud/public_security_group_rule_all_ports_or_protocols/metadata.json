@@ -1,5 +1,6 @@
 {
-  "id": "60587dbd-6b67-432e-90f7-a8cf1892d968",
+  "id": "terraform-alicloud-public-security-group-rule-all-ports-or-protocols",
+  "legacyId": "60587dbd-6b67-432e-90f7-a8cf1892d968",
   "queryName": "Public security group rule all ports or protocols",
   "severity": "HIGH",
   "category": "Networking and Firewall",

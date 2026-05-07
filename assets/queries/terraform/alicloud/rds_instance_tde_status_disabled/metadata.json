@@ -1,5 +1,6 @@
 {
-  "id": "44d434ca-a9bf-4203-8828-4c81a8d5a598",
+  "id": "terraform-alicloud-rds-instance-tde-status-disabled",
+  "legacyId": "44d434ca-a9bf-4203-8828-4c81a8d5a598",
   "queryName": "RDS instance TDE status disabled",
   "severity": "HIGH",
   "category": "Encryption",

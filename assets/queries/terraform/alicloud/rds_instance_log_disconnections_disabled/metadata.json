@@ -1,5 +1,6 @@
 {
-  "id": "d53f4123-f8d8-4224-8cb3-f920b151cc98",
+  "id": "terraform-alicloud-rds-instance-log-disconnections-disabled",
+  "legacyId": "d53f4123-f8d8-4224-8cb3-f920b151cc98",
   "queryName": "RDS instance log disconnections disabled",
   "severity": "MEDIUM",
   "category": "Observability",

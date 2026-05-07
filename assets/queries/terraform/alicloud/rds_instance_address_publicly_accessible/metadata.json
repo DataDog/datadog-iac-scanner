@@ -1,5 +1,6 @@
 {
-  "id": "faaefc15-51a5-419e-bb5e-51a4b5ab3485",
+  "id": "terraform-alicloud-rds-instance-address-publicly-accessible",
+  "legacyId": "faaefc15-51a5-419e-bb5e-51a4b5ab3485",
   "queryName": "RDS DB instance publicly accessible",
   "severity": "CRITICAL",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "69b5d7da-a5db-4db9-a42e-90b65d0efb0b",
+  "id": "terraform-alicloud-actiontrail-trail-oss-bucket-is-publicly-accessible",
+  "legacyId": "69b5d7da-a5db-4db9-a42e-90b65d0efb0b",
   "queryName": "ActionTrail trail OSS bucket is publicly accessible",
   "severity": "HIGH",
   "category": "Observability",

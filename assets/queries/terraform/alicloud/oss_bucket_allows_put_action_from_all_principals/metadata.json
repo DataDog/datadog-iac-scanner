@@ -1,5 +1,6 @@
 {
-  "id": "fe286195-e75c-4359-bd58-00847c4f855a",
+  "id": "terraform-alicloud-oss-bucket-allows-put-action-from-all-principals",
+  "legacyId": "fe286195-e75c-4359-bd58-00847c4f855a",
   "queryName": "OSS bucket allows put action from all principals",
   "severity": "CRITICAL",
   "category": "Access Control",
