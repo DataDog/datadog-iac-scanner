@@ -1,5 +1,6 @@
 {
-  "id": "f45ea400-6bbe-4501-9fc7-1c3d75c32067",
+  "id": "dockerfile-image-version-using-latest",
+  "legacyId": "f45ea400-6bbe-4501-9fc7-1c3d75c32067",
   "queryName": "Image version using latest",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "22f535ec",
   "cwe": "1357",
-  "providerUrl": "https://docs.docker.com/develop/dev-best-practices/"
+  "providerUrl": "https://docs.docker.com/develop/dev-best-practices/",
+  "cloudProvider": ""
 }

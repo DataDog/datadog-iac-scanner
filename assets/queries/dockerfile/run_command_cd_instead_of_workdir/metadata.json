@@ -1,5 +1,6 @@
 {
-  "id": "f4a6bcd3-e231-4acf-993c-aa027be50d2e",
+  "id": "dockerfile-run-command-cd-instead-of-workdir",
+  "legacyId": "f4a6bcd3-e231-4acf-993c-aa027be50d2e",
   "queryName": "RUN instruction using cd instead of WORKDIR",
   "severity": "LOW",
   "category": "Build Process",
@@ -9,5 +10,6 @@
   "descriptionID": "edd9f7d3",
   "cwe": "710",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#workdir"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#workdir",
+  "cloudProvider": ""
 }

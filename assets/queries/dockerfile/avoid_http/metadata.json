@@ -1,5 +1,6 @@
 {
-  "id": "d5b3c9a1-7e8f-4c2a-9d6e-3f1a8b4c7e9d",
+  "id": "dockerfile-avoid-http",
+  "legacyId": "d5b3c9a1-7e8f-4c2a-9d6e-3f1a8b4c7e9d",
   "queryName": "Avoid HTTP",
   "severity": "MEDIUM",
   "category": "Encryption",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "e68dd80f",
   "cwe": "319",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/",
+  "cloudProvider": ""
 }

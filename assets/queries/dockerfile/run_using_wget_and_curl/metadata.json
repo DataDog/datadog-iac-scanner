@@ -1,5 +1,6 @@
 {
-  "id": "fc775e75-fcfb-4c98-b2f2-910c5858b359",
+  "id": "dockerfile-run-using-wget-and-curl",
+  "legacyId": "fc775e75-fcfb-4c98-b2f2-910c5858b359",
   "queryName": "Run using wget and curl",
   "severity": "LOW",
   "category": "Supply-Chain",
@@ -9,5 +10,6 @@
   "descriptionID": "22261deb",
   "cwe": "1041",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "cloudProvider": ""
 }

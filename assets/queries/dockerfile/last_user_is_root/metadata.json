@@ -1,5 +1,6 @@
 {
-  "id": "67fd0c4a-68cf-46d7-8c41-bc9fba7e40ae",
+  "id": "dockerfile-last-user-is-root",
+  "legacyId": "67fd0c4a-68cf-46d7-8c41-bc9fba7e40ae",
   "queryName": "Last user is root",
   "severity": "HIGH",
   "category": "Best Practices",
@@ -9,5 +10,6 @@
   "descriptionID": "f445bd25",
   "cwe": "250",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#user"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#user",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "295acb63-9246-4b21-b441-7c1f1fb62dc0",
+  "id": "dockerfile-missing-dnf-clean-all",
+  "legacyId": "295acb63-9246-4b21-b441-7c1f1fb62dc0",
   "queryName": "Missing dnf clean all",
   "severity": "LOW",
   "category": "Best Practices",
@@ -9,5 +10,6 @@
   "descriptionID": "8f8497d7",
   "cwe": "459",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "cloudProvider": ""
 }

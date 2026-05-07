@@ -1,5 +1,6 @@
 {
-  "id": "99614418-f82b-4852-a9ae-5051402b741c",
+  "id": "dockerfile-maintainer-instruction-being-used",
+  "legacyId": "99614418-f82b-4852-a9ae-5051402b741c",
   "queryName": "MAINTAINER instruction being used",
   "severity": "LOW",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "9d9cbf83",
   "cwe": "710",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#maintainer-deprecated"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#maintainer-deprecated",
+  "cloudProvider": ""
 }

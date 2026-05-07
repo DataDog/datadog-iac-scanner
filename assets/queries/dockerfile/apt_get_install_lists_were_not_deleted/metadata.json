@@ -1,5 +1,6 @@
 {
-  "id": "df746b39-6564-4fed-bf85-e9c44382303c",
+  "id": "dockerfile-apt-get-install-lists-were-not-deleted",
+  "legacyId": "df746b39-6564-4fed-bf85-e9c44382303c",
   "queryName": "apt-get install lists were not deleted",
   "severity": "LOW",
   "category": "Supply-Chain",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "4236a50c",
   "cwe": "459",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "cloudProvider": ""
 }

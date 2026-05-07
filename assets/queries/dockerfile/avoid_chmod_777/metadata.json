@@ -1,5 +1,6 @@
 {
-  "id": "3be406ec-eb81-f09e-05d4-dc6a41683b4c",
+  "id": "dockerfile-avoid-chmod-777",
+  "legacyId": "3be406ec-eb81-f09e-05d4-dc6a41683b4c",
   "queryName": "Avoid chmod 777",
   "severity": "HIGH",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "3be406ec",
   "cwe": "732",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#add"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#add",
+  "cloudProvider": ""
 }

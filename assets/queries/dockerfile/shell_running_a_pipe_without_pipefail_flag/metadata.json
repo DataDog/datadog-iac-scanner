@@ -1,5 +1,6 @@
 {
-  "id": "efbf148a-67e9-42d2-ac47-02fa1c0d0b22",
+  "id": "dockerfile-shell-running-a-pipe-without-pipefail-flag",
+  "legacyId": "efbf148a-67e9-42d2-ac47-02fa1c0d0b22",
   "queryName": "Shell running a pipe without the pipefail flag",
   "severity": "LOW",
   "category": "Insecure Defaults",
@@ -9,5 +10,6 @@
   "descriptionID": "26810b44",
   "cwe": "710",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#run",
+  "cloudProvider": ""
 }
