@@ -92,7 +92,7 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 				CloudProviders: []string{""}, Library: "./assets/libraries",
 				ExperimentalQueries: true,
 			},
-			includeIDs:        []string{"terraform-aws-alb-deletion-protection-disabled"},
+			includeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
 			excludeCategory:   []string{},
 			excludeSeverities: []string{"LOW"},
 			excludeIDs:        []string{},
@@ -102,8 +102,8 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 					Content:   string(contentByte),
 					InputData: "{}",
 					Metadata: map[string]interface{}{
-						"id":                 "terraform-aws-alb-deletion-protection-disabled",
-						"legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						"id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						// "legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
 						"queryName":          "ALB deletion protection disabled",
 						"severity":           "MEDIUM",
 						"category":           "Insecure Configurations",
@@ -131,7 +131,7 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 				CloudProviders: []string{""}, Library: "./assets/libraries",
 				ExperimentalQueries: true,
 			},
-			includeIDs:        []string{"terraform-aws-alb-deletion-protection-disabled"},
+			includeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
 			excludeCategory:   []string{},
 			excludeSeverities: []string{"MEDIUM"},
 			want:              []model.QueryMetadata{},
@@ -204,15 +204,15 @@ func TestFilesystemSource_GetQueriesWithInclude(t *testing.T) {
 				Library:             "./assets/libraries",
 				ExperimentalQueries: true,
 			},
-			includeIDs: []string{"terraform-aws-alb-deletion-protection-disabled"},
+			includeIDs: []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
 			want: []model.QueryMetadata{
 				{
 					Query:     "alb_deletion_protection_disabled",
 					Content:   string(contentByte),
 					InputData: "{}",
 					Metadata: map[string]interface{}{
-						"id":                 "terraform-aws-alb-deletion-protection-disabled",
-						"legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						"id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						// "legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
 						"queryName":          "ALB deletion protection disabled",
 						"severity":           "MEDIUM",
 						"category":           "Insecure Configurations",
@@ -426,7 +426,7 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 			name: "get_queries_1",
 			fields: fields{
 				Source: []string{""}, Types: []string{""}, CloudProviders: []string{""},
-				IncludeIDs:          []string{"terraform-aws-alb-deletion-protection-disabled"},
+				IncludeIDs:          []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
 				Library:             "./assets/libraries",
 				ExperimentalQueries: false,
 			},
@@ -436,8 +436,8 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 					Content:   string(contentByte),
 					InputData: "{}",
 					Metadata: map[string]interface{}{
-						"id":                 "terraform-aws-alb-deletion-protection-disabled",
-						"legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						"id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						// "legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
 						"queryName":          "ALB deletion protection disabled",
 						"severity":           "MEDIUM",
 						"category":           "Insecure Configurations",
@@ -733,8 +733,9 @@ func TestFilesystemSource_ReadLocalFile(t *testing.T) {
 	assert.Equal(t, query.Metadata["id"], "wonderful-query")
 }
 
+// Should be uncommented when UUID are moved to LegacyId
 // TestCheckQueryExcludeWithLegacyId tests the checkQueryExclude function with both new ID and legacy ID
-func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
+/* func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
@@ -841,10 +842,11 @@ func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
 			assert.Equal(t, tt.expectedResult, result, tt.description)
 		})
 	}
-}
+} */
 
+// Should be uncommented when UUID are moved to LegacyId
 // TestCheckQueryIncludeWithLegacyId tests the checkQueryInclude function with both new ID and legacy ID
-func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
+/* func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
@@ -963,9 +965,10 @@ func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 			assert.Equal(t, tt.expectedResult, result, tt.description)
 		})
 	}
-}
+} */
 
-// TestGetQueriesWithLegacyIdFiltering tests end-to-end query filtering with legacy IDs
+// Should be uncommented when UUID are moved to LegacyId
+/* // TestGetQueriesWithLegacyIdFiltering tests end-to-end query filtering with legacy IDs
 func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
@@ -1054,3 +1057,4 @@ func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
 		})
 	}
 }
+*/
