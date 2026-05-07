@@ -1,5 +1,6 @@
 {
-  "id": "d6fae5b6-ada9-46c0-8b36-3108a2a2f77b",
+  "id": "ansible-gcp-postgresql-logging-of-temporary-files-disabled",
+  "legacyId": "d6fae5b6-ada9-46c0-8b36-3108a2a2f77b",
   "queryName": "PostgreSQL logging of temporary files disabled",
   "severity": "LOW",
   "category": "Observability",

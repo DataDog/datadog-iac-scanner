@@ -1,5 +1,6 @@
 {
-  "id": "507df964-ad97-4035-ab14-94a82eabdfdd",
+  "id": "ansible-gcp-cloud-storage-bucket-logging-not-enabled",
+  "legacyId": "507df964-ad97-4035-ab14-94a82eabdfdd",
   "queryName": "Cloud storage bucket logging not enabled",
   "severity": "MEDIUM",
   "category": "Observability",

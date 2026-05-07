@@ -1,5 +1,6 @@
 {
-  "id": "d43366c5-80b0-45de-bbe8-2338f4ab0a83",
+  "id": "ansible-gcp-gke-master-authorized-networks-disabled",
+  "legacyId": "d43366c5-80b0-45de-bbe8-2338f4ab0a83",
   "queryName": "GKE master authorized networks disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

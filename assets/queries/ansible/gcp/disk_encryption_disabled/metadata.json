@@ -1,5 +1,6 @@
 {
-  "id": "092bae86-6105-4802-99d2-99cd7e7431f3",
+  "id": "ansible-gcp-disk-encryption-disabled",
+  "legacyId": "092bae86-6105-4802-99d2-99cd7e7431f3",
   "queryName": "Disk encryption disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

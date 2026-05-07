@@ -1,5 +1,6 @@
 {
-  "id": "d58c6f24-3763-4269-9f5b-86b2569a003b",
+  "id": "ansible-gcp-google-container-node-pool-auto-repair-disabled",
+  "legacyId": "d58c6f24-3763-4269-9f5b-86b2569a003b",
   "queryName": "Google container node pool auto repair disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

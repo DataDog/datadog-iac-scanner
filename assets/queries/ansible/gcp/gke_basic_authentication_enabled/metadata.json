@@ -1,5 +1,6 @@
 {
-  "id": "344bf8ab-9308-462b-a6b2-697432e40ba1",
+  "id": "ansible-gcp-gke-basic-authentication-enabled",
+  "legacyId": "344bf8ab-9308-462b-a6b2-697432e40ba1",
   "queryName": "GKE basic authentication enabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

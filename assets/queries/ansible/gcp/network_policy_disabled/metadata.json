@@ -1,5 +1,6 @@
 {
-  "id": "98e04ca0-34f5-4c74-8fec-d2e611ce2790",
+  "id": "ansible-gcp-network-policy-disabled",
+  "legacyId": "98e04ca0-34f5-4c74-8fec-d2e611ce2790",
   "queryName": "Network policy disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

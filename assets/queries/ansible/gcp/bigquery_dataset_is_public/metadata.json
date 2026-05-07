@@ -1,5 +1,6 @@
 {
-  "id": "2263b286-2fe9-4747-a0ae-8b4768a2bbd2",
+  "id": "ansible-gcp-bigquery-dataset-is-public",
+  "legacyId": "2263b286-2fe9-4747-a0ae-8b4768a2bbd2",
   "queryName": "BigQuery dataset is public",
   "severity": "HIGH",
   "category": "Access Control",

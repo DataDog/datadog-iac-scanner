@@ -1,5 +1,6 @@
 {
-  "id": "fbe9b2d0-a2b7-47a1-a534-03775f3013f7",
+  "id": "ansible-gcp-cluster-labels-disabled",
+  "legacyId": "fbe9b2d0-a2b7-47a1-a534-03775f3013f7",
   "queryName": "Cluster labels disabled",
   "severity": "LOW",
   "category": "Insecure Configurations",

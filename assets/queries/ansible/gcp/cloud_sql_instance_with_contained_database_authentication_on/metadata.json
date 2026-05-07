@@ -1,5 +1,6 @@
 {
-  "id": "6d34aff3-fdd2-460c-8190-756a3b4969e8",
+  "id": "ansible-gcp-cloud-sql-instance-with-contained-database-authentication-on",
+  "legacyId": "6d34aff3-fdd2-460c-8190-756a3b4969e8",
   "queryName": "Cloud SQL instance with contained database authentication on",
   "severity": "HIGH",
   "category": "Insecure Configurations",

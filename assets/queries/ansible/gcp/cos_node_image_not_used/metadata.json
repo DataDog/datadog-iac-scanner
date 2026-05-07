@@ -1,5 +1,6 @@
 {
-  "id": "be41f891-96b1-4b9d-b74f-b922a918c778",
+  "id": "ansible-gcp-cos-node-image-not-used",
+  "legacyId": "be41f891-96b1-4b9d-b74f-b922a918c778",
   "queryName": "COS node image not used",
   "severity": "LOW",
   "category": "Insecure Configurations",

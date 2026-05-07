@@ -1,5 +1,6 @@
 {
-  "id": "80b15fb1-6207-40f4-a803-6915ae619a03",
+  "id": "ansible-gcp-cloud-dns-without-dnnsec",
+  "legacyId": "80b15fb1-6207-40f4-a803-6915ae619a03",
   "queryName": "Cloud DNS without DNSSEC",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

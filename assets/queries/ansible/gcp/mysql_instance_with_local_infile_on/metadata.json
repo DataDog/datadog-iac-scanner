@@ -1,5 +1,6 @@
 {
-  "id": "a7b520bb-2509-4fb0-be05-bc38f54c7a4c",
+  "id": "ansible-gcp-mysql-instance-with-local-infile-on",
+  "legacyId": "a7b520bb-2509-4fb0-be05-bc38f54c7a4c",
   "queryName": "MySQL instance with local infile on",
   "severity": "HIGH",
   "category": "Insecure Configurations",
