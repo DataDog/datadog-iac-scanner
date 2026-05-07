@@ -1,5 +1,6 @@
 {
-  "id": "2fc5ab5a-c5eb-4ae4-b687-0f16fe77c255",
+  "id": "ansible-azure-waf-is-disabled-for-azure-application-gateway",
+  "legacyId": "2fc5ab5a-c5eb-4ae4-b687-0f16fe77c255",
   "queryName": "WAF is disabled for Azure Application Gateway",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

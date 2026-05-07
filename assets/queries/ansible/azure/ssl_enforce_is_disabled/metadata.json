@@ -1,5 +1,6 @@
 {
-  "id": "961ce567-a16d-4d7d-9027-f0ec2628a555",
+  "id": "ansible-azure-ssl-enforce-is-disabled",
+  "legacyId": "961ce567-a16d-4d7d-9027-f0ec2628a555",
   "queryName": "SSL enforce disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

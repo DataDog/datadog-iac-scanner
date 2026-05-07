@@ -1,5 +1,6 @@
 {
-  "id": "5c80db8e-03f5-43a2-b4af-1f3f87018157",
+  "id": "ansible-azure-role-definition-allows-custom-role-creation",
+  "legacyId": "5c80db8e-03f5-43a2-b4af-1f3f87018157",
   "queryName": "Role definition allows custom role creation",
   "severity": "MEDIUM",
   "category": "Access Control",

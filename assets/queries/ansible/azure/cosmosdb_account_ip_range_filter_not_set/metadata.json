@@ -1,5 +1,6 @@
 {
-  "id": "e8c80448-31d8-4755-85fc-6dbab69c2717",
+  "id": "ansible-azure-cosmosdb-account-ip-range-filter-not-set",
+  "legacyId": "e8c80448-31d8-4755-85fc-6dbab69c2717",
   "queryName": "CosmosDB account IP range filter not set",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

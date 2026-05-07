@@ -1,5 +1,6 @@
 {
-  "id": "0ac9abbc-6d7a-41cf-af23-2e57ddb3dbfc",
+  "id": "ansible-azure-sensitive-port-is-exposed-to-entire-network",
+  "legacyId": "0ac9abbc-6d7a-41cf-af23-2e57ddb3dbfc",
   "queryName": "Sensitive port is exposed to entire network",
   "severity": "HIGH",
   "category": "Networking and Firewall",
