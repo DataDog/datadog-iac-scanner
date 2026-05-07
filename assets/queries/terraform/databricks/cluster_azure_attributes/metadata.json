@@ -1,5 +1,6 @@
 {
-  "id": "38028698-e663-4ef7-aa92-773fef0ca86f",
+  "id": "terraform-databricks-cluster-azure-attributes",
+  "legacyId": "38028698-e663-4ef7-aa92-773fef0ca86f",
   "queryName": "Check Databricks cluster Azure attribute best practices",
   "severity": "LOW",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/cluster_azure_attributes",
   "platform": "Terraform",
   "descriptionID": "bb2e4c81",
-  "cloudProvider": "common",
+  "cloudProvider": "databricks",
   "cwe": "710",
   "oldSeverity": "MEDIUM",
   "providerUrl": "https://docs.databricks.com/clusters/cluster-config-best-practices.html"

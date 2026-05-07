@@ -1,5 +1,6 @@
 {
-  "id": "23c3067a-8cc9-480c-b645-7c1e0ad4bf60",
+  "id": "terraform-databricks-group-without-user-or-instance-profile",
+  "legacyId": "23c3067a-8cc9-480c-b645-7c1e0ad4bf60",
   "queryName": "Databricks group without user or instance profile",
   "severity": "LOW",
   "category": "Access Control",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/group_without_user_or_instance_profile",
   "platform": "Terraform",
   "descriptionID": "4bb78f12",
-  "cloudProvider": "common",
+  "cloudProvider": "databricks",
   "cwe": "284",
   "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/group"
 }
