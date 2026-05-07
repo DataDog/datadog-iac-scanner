@@ -1,5 +1,6 @@
 {
-  "id": "9bb3c639-5edf-458c-8ee5-30c17c7d671d",
+  "id": "terraform-azure-function-app-client-certificates-unrequired",
+  "legacyId": "9bb3c639-5edf-458c-8ee5-30c17c7d671d",
   "queryName": "Function App client certificates not required",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

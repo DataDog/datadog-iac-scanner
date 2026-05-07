@@ -1,5 +1,6 @@
 {
-  "id": "a3b4c5d6-e7f8-9012-3456-7890abcdef12",
+  "id": "terraform-azure-udp-services-not-restricted-from-internet",
+  "legacyId": "a3b4c5d6-e7f8-9012-3456-7890abcdef12",
   "queryName": "Ensure that UDP services are restricted from the Internet",
   "severity": "HIGH",
   "category": "Networking and Firewall",

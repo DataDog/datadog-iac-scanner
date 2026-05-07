@@ -1,5 +1,6 @@
 {
-  "id": "34664094-59e0-4524-b69f-deaa1a68cce3",
+  "id": "terraform-azure-security-contact-email",
+  "legacyId": "34664094-59e0-4524-b69f-deaa1a68cce3",
   "queryName": "Security contact email",
   "severity": "MEDIUM",
   "category": "Best Practices",

@@ -1,5 +1,6 @@
 {
-  "id": "a5613650-32ec-4975-a305-31af783153ea",
+  "id": "terraform-azure-default-azure-storage-account-network-access-is-too-permissive",
+  "legacyId": "a5613650-32ec-4975-a305-31af783153ea",
   "queryName": "Default Azure storage account network access is too permissive",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

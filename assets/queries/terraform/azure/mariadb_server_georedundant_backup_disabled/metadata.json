@@ -1,5 +1,6 @@
 {
-  "id": "0a70d5f3-1ecd-4c8e-9292-928fc9a8c4f1",
+  "id": "terraform-azure-mariadb-server-georedundant-backup-disabled",
+  "legacyId": "0a70d5f3-1ecd-4c8e-9292-928fc9a8c4f1",
   "queryName": "MariaDB server geo-redundant backup disabled",
   "severity": "LOW",
   "category": "Backup",

@@ -1,5 +1,6 @@
 {
-  "id": "c2a3efb6-8a58-481c-82f2-bfddf34bb4b7",
+  "id": "terraform-azure-cosmosdb-account-ip-range-filter-not-set",
+  "legacyId": "c2a3efb6-8a58-481c-82f2-bfddf34bb4b7",
   "queryName": "CosmosDB account IP range filter not set",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

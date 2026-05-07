@@ -1,5 +1,6 @@
 {
-  "id": "835a4f2f-df43-437d-9943-545ccfc55961",
+  "id": "terraform-azure-azure-front-door-waf-disabled",
+  "legacyId": "835a4f2f-df43-437d-9943-545ccfc55961",
   "queryName": "Azure Front Door WAF disabled",
   "severity": "LOW",
   "category": "Networking and Firewall",

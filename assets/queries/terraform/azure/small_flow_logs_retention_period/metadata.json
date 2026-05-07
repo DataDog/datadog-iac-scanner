@@ -1,5 +1,6 @@
 {
-  "id": "7750fcca-dd03-4d38-b663-4b70289bcfd4",
+  "id": "terraform-azure-small-flow-logs-retention-period",
+  "legacyId": "7750fcca-dd03-4d38-b663-4b70289bcfd4",
   "queryName": "Small flow logs retention period",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

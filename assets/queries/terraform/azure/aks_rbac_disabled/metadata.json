@@ -1,5 +1,6 @@
 {
-  "id": "86f92117-eed8-4614-9c6c-b26da20ff37f",
+  "id": "terraform-azure-aks-rbac-disabled",
+  "legacyId": "86f92117-eed8-4614-9c6c-b26da20ff37f",
   "queryName": "AKS RBAC disabled",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "8f0e6b2d-3c9a-4f1e-8d2a-7b6c5d4e3f21",
+  "id": "terraform-azure-mariadb-not-using-latest-tls",
+  "legacyId": "8f0e6b2d-3c9a-4f1e-8d2a-7b6c5d4e3f21",
   "queryName": "Ensure Azure MariaDB server is using latest TLS (1.2)",
   "severity": "HIGH",
   "category": "Encryption",

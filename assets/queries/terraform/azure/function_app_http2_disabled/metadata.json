@@ -1,5 +1,6 @@
 {
-  "id": "ace823d1-4432-4dee-945b-cdf11a5a6bd0",
+  "id": "terraform-azure-function-app-http2-disabled",
+  "legacyId": "ace823d1-4432-4dee-945b-cdf11a5a6bd0",
   "queryName": "Function App HTTP2 disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

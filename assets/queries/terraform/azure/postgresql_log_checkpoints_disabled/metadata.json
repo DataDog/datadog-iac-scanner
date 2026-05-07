@@ -1,5 +1,6 @@
 {
-  "id": "3790d386-be81-4dcf-9850-eaa7df6c10d9",
+  "id": "terraform-azure-postgresql-log-checkpoints-disabled",
+  "legacyId": "3790d386-be81-4dcf-9850-eaa7df6c10d9",
   "queryName": "PostgreSQL log checkpoints disabled",
   "severity": "MEDIUM",
   "category": "Observability",

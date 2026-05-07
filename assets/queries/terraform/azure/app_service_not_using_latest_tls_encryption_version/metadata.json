@@ -1,5 +1,6 @@
 {
-  "id": "b7b9d1c7-2d3b-49b4-b867-ebbe68d0b643",
+  "id": "terraform-azure-app-service-not-using-latest-tls-encryption-version",
+  "legacyId": "b7b9d1c7-2d3b-49b4-b867-ebbe68d0b643",
   "queryName": "App Service not using latest TLS encryption version",
   "severity": "MEDIUM",
   "category": "Encryption",
