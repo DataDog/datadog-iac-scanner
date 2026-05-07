@@ -1,5 +1,6 @@
 {
-  "id": "5b9d237a-57d5-4177-be0e-71434b0fef47",
+  "id": "ansible-aws-kms-key-with-full-permissions",
+  "legacyId": "5b9d237a-57d5-4177-be0e-71434b0fef47",
   "queryName": "KMS key with vulnerable policy",
   "severity": "HIGH",
   "category": "Insecure Configurations",

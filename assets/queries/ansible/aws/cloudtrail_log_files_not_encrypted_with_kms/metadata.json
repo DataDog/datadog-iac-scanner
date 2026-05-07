@@ -1,5 +1,6 @@
 {
-  "id": "f5587077-3f57-4370-9b4e-4eb5b1bac85b",
+  "id": "ansible-aws-cloudtrail-log-files-not-encrypted-with-kms",
+  "legacyId": "f5587077-3f57-4370-9b4e-4eb5b1bac85b",
   "queryName": "CloudTrail log files not encrypted with KMS",
   "severity": "LOW",
   "category": "Encryption",

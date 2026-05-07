@@ -1,5 +1,6 @@
 {
-  "id": "d31cb911-bf5b-4eb6-9fc3-16780c77c7bd",
+  "id": "ansible-aws-cloudfront-logging-disabled",
+  "legacyId": "d31cb911-bf5b-4eb6-9fc3-16780c77c7bd",
   "queryName": "CloudFront logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "8010e17a-00e9-4635-a692-90d6bcec68bd",
+  "id": "ansible-aws-default-security-groups-with-unrestricted-traffic",
+  "legacyId": "8010e17a-00e9-4635-a692-90d6bcec68bd",
   "queryName": "Default security groups with unrestricted traffic",
   "severity": "HIGH",
   "category": "Networking and Firewall",

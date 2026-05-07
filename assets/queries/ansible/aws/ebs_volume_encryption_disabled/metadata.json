@@ -1,5 +1,6 @@
 {
-  "id": "4b6012e7-7176-46e4-8108-e441785eae57",
+  "id": "ansible-aws-ebs-volume-encryption-disabled",
+  "legacyId": "4b6012e7-7176-46e4-8108-e441785eae57",
   "queryName": "EBS volume encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

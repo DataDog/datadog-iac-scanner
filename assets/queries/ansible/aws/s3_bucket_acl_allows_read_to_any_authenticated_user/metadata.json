@@ -1,5 +1,6 @@
 {
-  "id": "75480b31-f349-4b9a-861f-bce19588e674",
+  "id": "ansible-aws-s3-bucket-acl-allows-read-to-any-authenticated-user",
+  "legacyId": "75480b31-f349-4b9a-861f-bce19588e674",
   "queryName": "S3 bucket ACL allows read access to any authenticated user",
   "severity": "HIGH",
   "category": "Access Control",

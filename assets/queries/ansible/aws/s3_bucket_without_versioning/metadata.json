@@ -1,5 +1,6 @@
 {
-  "id": "9232306a-f839-40aa-b3ef-b352001da9a5",
+  "id": "ansible-aws-s3-bucket-without-versioning",
+  "legacyId": "9232306a-f839-40aa-b3ef-b352001da9a5",
   "queryName": "S3 bucket without versioning",
   "severity": "MEDIUM",
   "category": "Backup",

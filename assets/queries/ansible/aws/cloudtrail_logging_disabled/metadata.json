@@ -1,5 +1,6 @@
 {
-  "id": "d4a73c49-cbaa-4c6f-80ee-d6ef5a3a26f5",
+  "id": "ansible-aws-cloudtrail-logging-disabled",
+  "legacyId": "d4a73c49-cbaa-4c6f-80ee-d6ef5a3a26f5",
   "queryName": "CloudTrail logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "d39761d7-94ab-45b0-ab5e-27c44e381d58",
+  "id": "ansible-aws-stack-notifications-disabled",
+  "legacyId": "d39761d7-94ab-45b0-ab5e-27c44e381d58",
   "queryName": "Stack notifications disabled",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "5330b503-3319-44ff-9b1c-00ee873f728a",
+  "id": "ansible-aws-ec2-group-has-public-interface",
+  "legacyId": "5330b503-3319-44ff-9b1c-00ee873f728a",
   "queryName": "EC2 security group allows public access",
   "severity": "HIGH",
   "category": "Insecure Configurations",

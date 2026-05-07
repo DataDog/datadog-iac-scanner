@@ -1,5 +1,6 @@
 {
-  "id": "a2fdf451-89dd-451e-af92-bf6c0f4bab96",
+  "id": "ansible-aws-config-configuration-aggregator-to-all-regions-disabled",
+  "legacyId": "a2fdf451-89dd-451e-af92-bf6c0f4bab96",
   "queryName": "Configuration aggregator to all regions disabled",
   "severity": "LOW",
   "category": "Observability",

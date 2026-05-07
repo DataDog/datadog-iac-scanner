@@ -1,5 +1,6 @@
 {
-  "id": "eda7301d-1f3e-47cf-8d4e-976debc64341",
+  "id": "ansible-aws-remote-desktop-port-open",
+  "legacyId": "eda7301d-1f3e-47cf-8d4e-976debc64341",
   "queryName": "Remote desktop port open to internet",
   "severity": "HIGH",
   "category": "Networking and Firewall",

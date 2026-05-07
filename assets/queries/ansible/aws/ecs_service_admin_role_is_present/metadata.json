@@ -1,5 +1,6 @@
 {
-  "id": "7db727c1-1720-468e-b80e-06697f71e09e",
+  "id": "ansible-aws-ecs-service-admin-role-is-present",
+  "legacyId": "7db727c1-1720-468e-b80e-06697f71e09e",
   "queryName": "ECS service admin role is present",
   "severity": "HIGH",
   "category": "Access Control",

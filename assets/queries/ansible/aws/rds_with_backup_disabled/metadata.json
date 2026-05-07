@@ -1,5 +1,6 @@
 {
-  "id": "e69890e6-fce5-461d-98ad-cb98318dfc96",
+  "id": "ansible-aws-rds-with-backup-disabled",
+  "legacyId": "e69890e6-fce5-461d-98ad-cb98318dfc96",
   "queryName": "RDS instance with backup disabled",
   "severity": "MEDIUM",
   "category": "Backup",

@@ -1,5 +1,6 @@
 {
-  "id": "8833f180-96f1-46f4-9147-849aafa56029",
+  "id": "ansible-aws-ec2-instance-using-default-vpc",
+  "legacyId": "8833f180-96f1-46f4-9147-849aafa56029",
   "queryName": "EC2 instance using default VPC",
   "severity": "LOW",
   "category": "Networking and Firewall",

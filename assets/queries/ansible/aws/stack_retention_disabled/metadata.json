@@ -1,5 +1,6 @@
 {
-  "id": "17d5ba1d-7667-4729-b1a6-b11fde3db7f7",
+  "id": "ansible-aws-stack-retention-disabled",
+  "legacyId": "17d5ba1d-7667-4729-b1a6-b11fde3db7f7",
   "queryName": "Stack retention disabled",
   "severity": "MEDIUM",
   "category": "Backup",

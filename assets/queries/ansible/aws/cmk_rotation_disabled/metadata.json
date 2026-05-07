@@ -1,5 +1,6 @@
 {
-  "id": "af96d737-0818-4162-8c41-40d969bd65d1",
+  "id": "ansible-aws-cmk-rotation-disabled",
+  "legacyId": "af96d737-0818-4162-8c41-40d969bd65d1",
   "queryName": "CMK rotation disabled",
   "severity": "LOW",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "722b0f24-5a64-4cca-aa96-cfc26b7e3a5b",
+  "id": "ansible-aws-unknown-port-exposed-to-internet",
+  "legacyId": "722b0f24-5a64-4cca-aa96-cfc26b7e3a5b",
   "queryName": "Unknown port exposed to internet",
   "severity": "HIGH",
   "category": "Networking and Firewall",

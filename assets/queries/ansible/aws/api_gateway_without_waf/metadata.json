@@ -1,5 +1,6 @@
 {
-  "id": "f5f38943-664b-4acc-ab11-f292fa10ed0b",
+  "id": "ansible-aws-api-gateway-without-waf",
+  "legacyId": "f5f38943-664b-4acc-ab11-f292fa10ed0b",
   "queryName": "API Gateway without WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

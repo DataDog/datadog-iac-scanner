@@ -1,5 +1,6 @@
 {
-  "id": "218413a0-c716-4b94-9e08-0bb70d854709",
+  "id": "ansible-aws-secure-ciphers-disabled",
+  "legacyId": "218413a0-c716-4b94-9e08-0bb70d854709",
   "queryName": "Secure ciphers disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

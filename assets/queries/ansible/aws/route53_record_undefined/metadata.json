@@ -1,5 +1,6 @@
 {
-  "id": "445dce51-7e53-4e50-80ef-7f94f14169e4",
+  "id": "ansible-aws-route53-record-undefined",
+  "legacyId": "445dce51-7e53-4e50-80ef-7f94f14169e4",
   "queryName": "Route 53 record undefined",
   "severity": "HIGH",
   "category": "Networking and Firewall",

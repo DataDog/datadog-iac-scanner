@@ -1,5 +1,6 @@
 {
-  "id": "560f256b-0b45-4496-bcb5-733681e7d38d",
+  "id": "ansible-aws-ecs-services-assigned-with-public-ip-address",
+  "legacyId": "560f256b-0b45-4496-bcb5-733681e7d38d",
   "queryName": "ECS services should not be assigned public IP addresses",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

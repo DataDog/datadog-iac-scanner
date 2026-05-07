@@ -1,5 +1,6 @@
 {
-  "id": "7674a686-e4b1-4a95-83d4-1fd53c623d84",
+  "id": "ansible-aws-config-rule-for-encrypted-volumes-is-disabled",
+  "legacyId": "7674a686-e4b1-4a95-83d4-1fd53c623d84",
   "queryName": "Config rule for encrypted volumes disabled",
   "severity": "HIGH",
   "category": "Encryption",

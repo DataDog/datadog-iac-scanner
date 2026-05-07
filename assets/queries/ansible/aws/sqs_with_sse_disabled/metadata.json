@@ -1,5 +1,6 @@
 {
-  "id": "e1e7b278-2a8b-49bd-a26e-66a7f70b17eb",
+  "id": "ansible-aws-sqs-with-sse-disabled",
+  "legacyId": "e1e7b278-2a8b-49bd-a26e-66a7f70b17eb",
   "queryName": "SQS queue with SSE disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

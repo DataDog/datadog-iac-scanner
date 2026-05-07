@@ -1,5 +1,6 @@
 {
-  "id": "b5ed026d-a772-4f07-97f9-664ba0b116f8",
+  "id": "ansible-aws-iam-policy-grants-full-permissions",
+  "legacyId": "b5ed026d-a772-4f07-97f9-664ba0b116f8",
   "queryName": "IAM policy grants full permissions",
   "severity": "HIGH",
   "category": "Access Control",

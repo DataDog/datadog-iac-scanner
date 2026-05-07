@@ -1,5 +1,6 @@
 {
-  "id": "ea0ed1c7-9aef-4464-b7c7-94c762da3640",
+  "id": "ansible-aws-db-security-group-open-to-large-scope",
+  "legacyId": "ea0ed1c7-9aef-4464-b7c7-94c762da3640",
   "queryName": "DB security group open to large scope",
   "severity": "HIGH",
   "category": "Networking and Firewall",

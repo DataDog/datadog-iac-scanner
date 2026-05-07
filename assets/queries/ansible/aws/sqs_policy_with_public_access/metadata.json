@@ -1,5 +1,6 @@
 {
-  "id": "d994585f-defb-4b51-b6d2-c70f020ceb10",
+  "id": "ansible-aws-sqs-policy-with-public-access",
+  "legacyId": "d994585f-defb-4b51-b6d2-c70f020ceb10",
   "queryName": "SQS policy with public access",
   "severity": "MEDIUM",
   "category": "Access Control",

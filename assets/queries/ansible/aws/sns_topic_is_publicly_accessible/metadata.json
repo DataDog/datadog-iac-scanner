@@ -1,5 +1,6 @@
 {
-  "id": "905f4741-f965-45c1-98db-f7a00a0e5c73",
+  "id": "ansible-aws-sns-topic-is-publicly-accessible",
+  "legacyId": "905f4741-f965-45c1-98db-f7a00a0e5c73",
   "queryName": "SNS topic is publicly accessible",
   "severity": "HIGH",
   "category": "Access Control",

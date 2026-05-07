@@ -1,5 +1,6 @@
 {
-  "id": "66477506-6abb-49ed-803d-3fa174cd5f6a",
+  "id": "ansible-aws-launch-configuration-is-not-encrypted",
+  "legacyId": "66477506-6abb-49ed-803d-3fa174cd5f6a",
   "queryName": "Launch configuration is not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

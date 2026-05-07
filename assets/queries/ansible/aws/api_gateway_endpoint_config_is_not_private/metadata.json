@@ -1,5 +1,6 @@
 {
-  "id": "559439b2-3e9c-4739-ac46-17e3b24ec215",
+  "id": "ansible-aws-api-gateway-endpoint-config-is-not-private",
+  "legacyId": "559439b2-3e9c-4739-ac46-17e3b24ec215",
   "queryName": "API Gateway endpoint config is not private",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
