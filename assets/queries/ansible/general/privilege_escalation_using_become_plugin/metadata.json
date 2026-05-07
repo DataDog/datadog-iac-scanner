@@ -1,5 +1,6 @@
 {
-  "id": "0e75052f-cc02-41b8-ac39-a78017527e95",
+  "id": "ansible-privilege-escalation-using-become-plugin",
+  "legacyId": "0e75052f-cc02-41b8-ac39-a78017527e95",
   "queryName": "Privilege escalation using become plugin",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/general/privilege_escalation_using_become_plugin",
   "platform": "Ansible",
   "descriptionID": "11502e38",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "286",
   "providerUrl": "https://ansible.readthedocs.io/projects/lint/rules/partial-become/#problematic-code"
 }
