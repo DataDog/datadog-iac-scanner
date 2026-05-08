@@ -1,5 +1,6 @@
 {
-  "id": "40abce54-95b1-478c-8e5f-ea0bf0bb0e33",
+  "id": "terraform-gcp-google-compute-network-using-default-firewall-rule",
+  "legacyId": "40abce54-95b1-478c-8e5f-ea0bf0bb0e33",
   "queryName": "Google Compute network using default firewall rule",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

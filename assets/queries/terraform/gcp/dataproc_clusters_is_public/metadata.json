@@ -1,5 +1,6 @@
 {
-  "id": "e3f7a9b1-c2d3-4e5f-8901-23456789abcd",
+  "id": "terraform-gcp-dataproc-clusters-is-public",
+  "legacyId": "e3f7a9b1-c2d3-4e5f-8901-23456789abcd",
   "queryName": "Dataproc clusters publicly accessible",
   "severity": "HIGH",
   "category": "Insecure Configurations",

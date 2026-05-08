@@ -1,5 +1,6 @@
 {
-  "id": "5ef61c88-bbb4-4725-b1df-55d23c9676bb",
+  "id": "terraform-gcp-cloud-dns-without-dnssec",
+  "legacyId": "5ef61c88-bbb4-4725-b1df-55d23c9676bb",
   "queryName": "Cloud DNS without DNSSEC",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

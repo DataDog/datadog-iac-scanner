@@ -1,5 +1,6 @@
 {
-  "id": "6ccb85d7-0420-4907-9380-50313f80946b",
+  "id": "terraform-gcp-private-cluster-disabled",
+  "legacyId": "6ccb85d7-0420-4907-9380-50313f80946b",
   "queryName": "Private cluster disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

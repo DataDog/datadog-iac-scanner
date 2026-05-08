@@ -1,5 +1,6 @@
 {
-  "id": "7e3c1a2b-9d4f-4c8e-8a5b-0f1e2d3c4b6a",
+  "id": "terraform-gcp-cloud-run-service-is-public",
+  "legacyId": "7e3c1a2b-9d4f-4c8e-8a5b-0f1e2d3c4b6a",
   "queryName": "Cloud Run service is public",
   "severity": "HIGH",
   "category": "Insecure Configurations",

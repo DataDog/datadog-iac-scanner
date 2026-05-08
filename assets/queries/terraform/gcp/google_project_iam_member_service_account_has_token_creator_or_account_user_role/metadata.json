@@ -1,5 +1,6 @@
 {
-  "id": "c68b4e6d-4e01-4ca1-b256-1e18e875785c",
+  "id": "terraform-gcp-google-project-iam-member-service-account-has-token-creator-or-account-user-role",
+  "legacyId": "c68b4e6d-4e01-4ca1-b256-1e18e875785c",
   "queryName": "Google project IAM member service account has token creator or account user role",
   "severity": "HIGH",
   "category": "Access Control",

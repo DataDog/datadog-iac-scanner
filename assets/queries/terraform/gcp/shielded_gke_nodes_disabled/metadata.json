@@ -1,5 +1,6 @@
 {
-  "id": "579a0727-9c29-4d58-8195-fc5802a8bdb4",
+  "id": "terraform-gcp-shielded-gke-nodes-disabled",
+  "legacyId": "579a0727-9c29-4d58-8195-fc5802a8bdb4",
   "queryName": "Shielded GKE nodes disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "f34c0c25-47b4-41eb-9c79-249b4dd47b89",
+  "id": "terraform-gcp-ip-forwarding-enabled",
+  "legacyId": "f34c0c25-47b4-41eb-9c79-249b4dd47b89",
   "queryName": "IP forwarding enabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

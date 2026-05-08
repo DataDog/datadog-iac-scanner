@@ -1,5 +1,6 @@
 {
-  "id": "40430747-442d-450a-a34f-dc57149f4609",
+  "id": "terraform-gcp-google-compute-subnetwork-logging-disabled",
+  "legacyId": "40430747-442d-450a-a34f-dc57149f4609",
   "queryName": "Google Compute subnetwork logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

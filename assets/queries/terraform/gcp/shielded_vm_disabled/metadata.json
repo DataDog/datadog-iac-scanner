@@ -1,5 +1,6 @@
 {
-  "id": "1b44e234-3d73-41a8-9954-0b154135280e",
+  "id": "terraform-gcp-shielded-vm-disabled",
+  "legacyId": "1b44e234-3d73-41a8-9954-0b154135280e",
   "queryName": "Shielded VM disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

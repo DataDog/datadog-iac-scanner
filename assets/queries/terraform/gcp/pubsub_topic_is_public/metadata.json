@@ -1,5 +1,6 @@
 {
-  "id": "7sdj7dsj8-f348-4f95-845c-1090e41a615c",
+  "id": "terraform-gcp-pubsub-topic-is-public",
+  "legacyId": "7sdj7dsj8-f348-4f95-845c-1090e41a615c",
   "queryName": "Pub/Sub Topics are anonymously or publicly accessible",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

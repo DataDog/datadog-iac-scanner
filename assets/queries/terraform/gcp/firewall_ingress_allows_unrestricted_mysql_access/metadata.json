@@ -1,5 +1,6 @@
 {
-  "id": "d0a1b2c3-d4e5-6789-abcd-ef0123456789",
+  "id": "terraform-gcp-firewall-ingress-allows-unrestricted-mysql-access",
+  "legacyId": "d0a1b2c3-d4e5-6789-abcd-ef0123456789",
   "queryName": "Google Compute firewall ingress allows unrestricted MySQL access",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

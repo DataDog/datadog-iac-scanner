@@ -1,5 +1,6 @@
 {
-  "id": "e6f61c37-106b-449f-a5bb-81bfcaceb8b4",
+  "id": "terraform-gcp-google-compute-network-using-firewall-rule-allows-port-range",
+  "legacyId": "e6f61c37-106b-449f-a5bb-81bfcaceb8b4",
   "queryName": "Google Compute network using firewall rule that allows port range",
   "severity": "LOW",
   "category": "Networking and Firewall",
