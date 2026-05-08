@@ -1,5 +1,6 @@
 {
-  "id": "d0b4d550-c001-46c3-bbdb-d5d75d33f05f",
+  "id": "terraform-gcp-os-login-is-disabled-for-vm-instance",
+  "legacyId": "d0b4d550-c001-46c3-bbdb-d5d75d33f05f",
   "queryName": "OSLogin is disabled for VM instance",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

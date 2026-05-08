@@ -1,5 +1,6 @@
 {
-  "id": "acfdbec6-4a17-471f-b412-169d77553332",
+  "id": "terraform-gcp-google-container-node-pool-auto-repair-disabled",
+  "legacyId": "acfdbec6-4a17-471f-b412-169d77553332",
   "queryName": "Google Container node pool auto repair disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

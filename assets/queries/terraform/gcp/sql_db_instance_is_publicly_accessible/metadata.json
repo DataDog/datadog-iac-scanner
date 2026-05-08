@@ -1,5 +1,6 @@
 {
-  "id": "b187edca-b81e-4fdc-aff4-aab57db45edb",
+  "id": "terraform-gcp-sql-db-instance-is-publicly-accessible",
+  "legacyId": "b187edca-b81e-4fdc-aff4-aab57db45edb",
   "queryName": "SQL DB instance publicly accessible",
   "severity": "CRITICAL",
   "category": "Insecure Configurations",

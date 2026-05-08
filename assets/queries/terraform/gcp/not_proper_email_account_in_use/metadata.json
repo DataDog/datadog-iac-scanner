@@ -1,5 +1,6 @@
 {
-  "id": "9356962e-4a4f-4d06-ac59-dc8008775eaa",
+  "id": "terraform-gcp-not-proper-email-account-in-use",
+  "legacyId": "9356962e-4a4f-4d06-ac59-dc8008775eaa",
   "queryName": "Not proper email account in use",
   "severity": "LOW",
   "category": "Insecure Configurations",

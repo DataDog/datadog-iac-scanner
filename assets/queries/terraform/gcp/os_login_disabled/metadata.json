@@ -1,5 +1,6 @@
 {
-  "id": "32ecd6eb-0711-421f-9627-1a28d9eff217",
+  "id": "terraform-gcp-os-login-disabled",
+  "legacyId": "32ecd6eb-0711-421f-9627-1a28d9eff217",
   "queryName": "OSLogin disabled",
   "severity": "MEDIUM",
   "category": "Access Control",

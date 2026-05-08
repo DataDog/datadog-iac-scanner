@@ -1,5 +1,6 @@
 {
-  "id": "89fe890f-b480-460c-8b6b-7d8b1468adb4",
+  "id": "terraform-gcp-iam-audit-not-properly-configured",
+  "legacyId": "89fe890f-b480-460c-8b6b-7d8b1468adb4",
   "queryName": "IAM audit not properly configured",
   "severity": "LOW",
   "category": "Observability",

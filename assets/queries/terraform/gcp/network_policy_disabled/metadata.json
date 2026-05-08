@@ -1,5 +1,6 @@
 {
-  "id": "11e7550e-c4b6-472e-adff-c698f157cdd7",
+  "id": "terraform-gcp-network-policy-disabled",
+  "legacyId": "11e7550e-c4b6-472e-adff-c698f157cdd7",
   "queryName": "Network policy disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

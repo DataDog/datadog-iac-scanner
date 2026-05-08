@@ -1,5 +1,6 @@
 {
-  "id": "704fcc44-a58f-4af5-82e2-93f2a58ef918",
+  "id": "terraform-gcp-user-with-iam-role",
+  "legacyId": "704fcc44-a58f-4af5-82e2-93f2a58ef918",
   "queryName": "User with IAM role",
   "severity": "LOW",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "92e4464a-4139-4d57-8742-b5acc0347680",
+  "id": "terraform-gcp-kms-admin-and-crypto-key-roles-in-use",
+  "legacyId": "92e4464a-4139-4d57-8742-b5acc0347680",
   "queryName": "KMS admin and CryptoKey roles in use",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "a6cd52a1-3056-4910-96a5-894de9f3f3b3",
+  "id": "terraform-gcp-cloud-storage-anonymous-or-publicly-accessible",
+  "legacyId": "a6cd52a1-3056-4910-96a5-894de9f3f3b3",
   "queryName": "Cloud Storage is anonymous or publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",

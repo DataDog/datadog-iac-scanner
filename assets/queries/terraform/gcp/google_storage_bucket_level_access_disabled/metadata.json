@@ -1,5 +1,6 @@
 {
-  "id": "bb0db090-5509-4853-a827-75ced0b3caa0",
+  "id": "terraform-gcp-google-storage-bucket-level-access-disabled",
+  "legacyId": "bb0db090-5509-4853-a827-75ced0b3caa0",
   "queryName": "Google Storage bucket level access disabled",
   "severity": "HIGH",
   "category": "Insecure Configurations",

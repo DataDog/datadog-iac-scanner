@@ -1,5 +1,6 @@
 {
-  "id": "e7e961ac-d17e-4413-84bc-8a1fbe242944",
+  "id": "terraform-gcp-cloud-storage-bucket-versioning-disabled",
+  "legacyId": "e7e961ac-d17e-4413-84bc-8a1fbe242944",
   "queryName": "Cloud Storage bucket versioning disabled",
   "severity": "MEDIUM",
   "category": "Observability",
