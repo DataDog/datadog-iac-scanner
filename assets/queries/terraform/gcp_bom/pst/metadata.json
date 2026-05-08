@@ -1,5 +1,6 @@
 {
-  "id": "4b82202a-b18e-4891-a1eb-a0989850bbb3",
+  "id": "terraform-gcp-pst",
+  "legacyId": "4b82202a-b18e-4891-a1eb-a0989850bbb3",
   "queryName": "BOM - GCP PST",
   "severity": "TRACE",
   "category": "Bill Of Materials",
