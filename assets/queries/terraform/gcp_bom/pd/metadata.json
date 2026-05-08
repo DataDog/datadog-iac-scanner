@@ -1,5 +1,6 @@
 {
-  "id": "dd7d70aa-a6ec-460d-b5d2-38b40253b16f",
+  "id": "terraform-gcp-pd",
+  "legacyId": "dd7d70aa-a6ec-460d-b5d2-38b40253b16f",
   "queryName": "BOM - GCP PD",
   "severity": "TRACE",
   "category": "Bill Of Materials",
