@@ -1,5 +1,6 @@
 {
-  "id": "bdecd6db-2600-47dd-a10c-72c97cf17ae9",
+  "id": "crossplane-aws-efs-without-kms",
+  "legacyId": "bdecd6db-2600-47dd-a10c-72c97cf17ae9",
   "queryName": "EFS Without KMS",
   "severity": "LOW",
   "category": "Encryption",

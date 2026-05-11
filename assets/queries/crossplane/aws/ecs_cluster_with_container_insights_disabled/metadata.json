@@ -1,5 +1,6 @@
 {
-  "id": "0c7a76d9-7dc5-499e-81ac-9245839177cb",
+  "id": "crossplane-aws-ecs-cluster-with-container-insights-disabled",
+  "legacyId": "0c7a76d9-7dc5-499e-81ac-9245839177cb",
   "queryName": "ECS Cluster with Container Insights Disabled",
   "severity": "LOW",
   "category": "Observability",

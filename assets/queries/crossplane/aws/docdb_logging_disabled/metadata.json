@@ -1,5 +1,6 @@
 {
-  "id": "e6cd49ba-77ed-417f-9bca-4f5303554308",
+  "id": "crossplane-aws-docdb-logging-disabled",
+  "legacyId": "e6cd49ba-77ed-417f-9bca-4f5303554308",
   "queryName": "DocDB Logging Is Disabled",
   "severity": "MEDIUM",
   "category": "Observability",

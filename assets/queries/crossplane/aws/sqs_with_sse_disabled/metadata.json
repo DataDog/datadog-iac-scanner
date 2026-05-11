@@ -1,5 +1,6 @@
 {
-  "id": "9296f1cc-7a40-45de-bd41-f31745488a0e",
+  "id": "crossplane-aws-sqs-with-sse-disabled",
+  "legacyId": "9296f1cc-7a40-45de-bd41-f31745488a0e",
   "queryName": "SQS With SSE Disabled",
   "severity": "MEDIUM",
   "category": "Encryption",
