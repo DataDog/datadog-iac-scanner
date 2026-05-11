@@ -1,5 +1,6 @@
 {
-  "id": "a1bc27c6-7115-48d8-bf9d-5a7e836845ba",
+  "id": "buildah-run-using-apt",
+  "legacyId": "a1bc27c6-7115-48d8-bf9d-5a7e836845ba",
   "queryName": "Run Using apt",
   "severity": "LOW",
   "category": "Supply-Chain",
@@ -8,5 +9,6 @@
   "platform": "Buildah",
   "descriptionID": "eb58fa0b",
   "cwe": "1188",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "cloudProvider": ""
 }
