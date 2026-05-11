@@ -1,5 +1,6 @@
 {
-  "id": "a4d32883-aac7-42e1-b403-9415af0f3846",
+  "id": "serverlessfw-serverless-api-access-logging-setting-undefined",
+  "legacyId": "a4d32883-aac7-42e1-b403-9415af0f3846",
   "queryName": "Serverless API Access Logging Setting Undefined",
   "severity": "MEDIUM",
   "category": "Observability",
@@ -7,5 +8,6 @@
   "descriptionUrl": "https://www.serverless.com/framework/docs/providers/aws/guide/serverless.yml#logs",
   "platform": "ServerlessFW",
   "descriptionID": "15262598",
-  "cwe": "778"
+  "cwe": "778",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "165aae3b-a56a-48f3-b76d-d2b5083f5b8f",
+  "id": "serverlessfw-serverless-function-without-unique-iam-role",
+  "legacyId": "165aae3b-a56a-48f3-b76d-d2b5083f5b8f",
   "queryName": "Serverless Function Without Unique IAM Role",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "ServerlessFW",
   "descriptionID": "071f8656",
   "cwe": "732",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "cloudProvider": ""
 }
