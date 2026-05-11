@@ -1,5 +1,6 @@
 {
-  "id": "6b896afb-ca07-467a-b256-1a0077a1c08e",
+  "id": "kubernetes-rbac-wildcard-in-rule",
+  "legacyId": "6b896afb-ca07-467a-b256-1a0077a1c08e",
   "queryName": "RBAC wildcard in rule",
   "severity": "HIGH",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "ccf4e279",
   "cwe": "732",
-  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/"
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/",
+  "cloudProvider": ""
 }

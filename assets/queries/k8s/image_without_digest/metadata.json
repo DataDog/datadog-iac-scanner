@@ -1,5 +1,6 @@
 {
-  "id": "7c81d34c-8e5a-402b-9798-9f442630e678",
+  "id": "kubernetes-image-without-digest",
+  "legacyId": "7c81d34c-8e5a-402b-9798-9f442630e678",
   "queryName": "Image without digest",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "3f9f8d78",
   "cwe": "665",
-  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/#updating-images"
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/#updating-images",
+  "cloudProvider": ""
 }

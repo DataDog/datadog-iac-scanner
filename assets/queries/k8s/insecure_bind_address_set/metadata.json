@@ -1,5 +1,6 @@
 {
-  "id": "b9380fd3-5ffe-4d10-9290-13e18e71eee1",
+  "id": "kubernetes-insecure-bind-address-set",
+  "legacyId": "b9380fd3-5ffe-4d10-9290-13e18e71eee1",
   "queryName": "Insecure bind address set",
   "severity": "HIGH",
   "category": "Networking and Firewall",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "5b1eb26c",
   "cwe": "665",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

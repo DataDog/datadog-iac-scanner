@@ -1,5 +1,6 @@
 {
-  "id": "cb7e695d-6a85-495c-b15f-23aed2519303",
+  "id": "kubernetes-not-unique-certificate-authority",
+  "legacyId": "cb7e695d-6a85-495c-b15f-23aed2519303",
   "queryName": "Certificate authority is not unique",
   "severity": "MEDIUM",
   "category": "Secret Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "d2c6c9e8",
   "cwe": "295",
-  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/",
+  "cloudProvider": ""
 }

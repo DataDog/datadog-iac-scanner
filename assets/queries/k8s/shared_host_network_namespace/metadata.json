@@ -1,5 +1,6 @@
 {
-  "id": "6b6bdfb3-c3ae-44cb-88e4-7405c1ba2c8a",
+  "id": "kubernetes-shared-host-network-namespace",
+  "legacyId": "6b6bdfb3-c3ae-44cb-88e4-7405c1ba2c8a",
   "queryName": "Shared host network namespace",
   "severity": "MEDIUM",
   "category": "Resource Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "50e5de80",
   "cwe": "200",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }

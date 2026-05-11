@@ -1,5 +1,6 @@
 {
-  "id": "cbd2db69-0b21-4c14-8a40-7710a50571a9",
+  "id": "kubernetes-encryption-provider-config-is-not-defined",
+  "legacyId": "cbd2db69-0b21-4c14-8a40-7710a50571a9",
   "queryName": "Encryption provider config is not defined",
   "severity": "MEDIUM",
   "category": "Encryption",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "c018594c",
   "cwe": "311",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

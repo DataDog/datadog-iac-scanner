@@ -1,5 +1,6 @@
 {
-  "id": "a659f3b5-9bf0-438a-bd9a-7d3a6427f1e3",
+  "id": "kubernetes-readiness-probe-is-not-configured",
+  "legacyId": "a659f3b5-9bf0-438a-bd9a-7d3a6427f1e3",
   "queryName": "Readiness probe is not configured",
   "severity": "MEDIUM",
   "category": "Availability",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "28c0498a",
   "cwe": "754",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-readiness-probes"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-readiness-probes",
+  "cloudProvider": ""
 }

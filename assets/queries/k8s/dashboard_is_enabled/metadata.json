@@ -1,5 +1,6 @@
 {
-  "id": "d2ad057f-0928-41ef-a83c-f59203bb855b",
+  "id": "kubernetes-dashboard-is-enabled",
+  "legacyId": "d2ad057f-0928-41ef-a83c-f59203bb855b",
   "queryName": "Dashboard is enabled",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "ad0e6a8d",
   "cwe": "779",
-  "providerUrl": "https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/",
+  "cloudProvider": ""
 }

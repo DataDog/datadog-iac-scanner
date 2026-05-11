@@ -1,5 +1,6 @@
 {
-  "id": "36a27826-1bf5-49da-aeb0-a60a30c0e834",
+  "id": "kubernetes-kubelet-client-certificate-or-key-not-set",
+  "legacyId": "36a27826-1bf5-49da-aeb0-a60a30c0e834",
   "queryName": "Kubelet client certificate or key not set",
   "severity": "MEDIUM",
   "category": "Secret Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "0f0e2ae7",
   "cwe": "295",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

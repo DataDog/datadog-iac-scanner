@@ -1,5 +1,6 @@
 {
-  "id": "6d173be7-545a-46c6-a81d-2ae52ed1605d",
+  "id": "kubernetes-tiller-is-deployed",
+  "legacyId": "6d173be7-545a-46c6-a81d-2ae52ed1605d",
   "queryName": "Tiller (Helm v2) deployed",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "b0a009b5",
   "cwe": "200",
-  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/",
+  "cloudProvider": ""
 }

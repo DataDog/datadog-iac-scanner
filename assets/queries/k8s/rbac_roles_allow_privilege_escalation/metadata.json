@@ -1,5 +1,6 @@
 {
-  "id": "8320826e-7a9c-4b0b-9535-578333193432",
+  "id": "kubernetes-rbac-roles-allow-privilege-escalation",
+  "legacyId": "8320826e-7a9c-4b0b-9535-578333193432",
   "queryName": "RBAC roles allow privilege escalation",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "8320826e",
   "cwe": "288",
-  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/#restrictions-on-role-binding-creation-or-update"
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/#restrictions-on-role-binding-creation-or-update",
+  "cloudProvider": ""
 }

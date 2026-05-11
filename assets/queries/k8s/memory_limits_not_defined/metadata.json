@@ -1,5 +1,6 @@
 {
-  "id": "b14d1bc4-a208-45db-92f0-e21f8e2588e9",
+  "id": "kubernetes-memory-limits-not-defined",
+  "legacyId": "b14d1bc4-a208-45db-92f0-e21f8e2588e9",
   "queryName": "Memory limits not defined",
   "severity": "MEDIUM",
   "category": "Resource Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "e0ba95cc",
   "cwe": "400",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/",
+  "cloudProvider": ""
 }

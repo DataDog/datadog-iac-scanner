@@ -1,5 +1,6 @@
 {
-  "id": "caa93370-791f-4fc6-814b-ba6ce0cb4032",
+  "id": "kubernetes-not-limited-capabilities-for-pod-security-policy",
+  "legacyId": "caa93370-791f-4fc6-814b-ba6ce0cb4032",
   "queryName": "Unrestricted capabilities in PodSecurityPolicy",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -9,5 +10,6 @@
   "descriptionID": "eaf6d4ba",
   "cwe": "770",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }

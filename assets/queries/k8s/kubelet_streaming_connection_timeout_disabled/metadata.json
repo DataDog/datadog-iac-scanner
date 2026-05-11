@@ -1,5 +1,6 @@
 {
-  "id": "ed89b97d-04e9-4fd4-919f-ee5b27e555e9",
+  "id": "kubernetes-kubelet-streaming-connection-timeout-disabled",
+  "legacyId": "ed89b97d-04e9-4fd4-919f-ee5b27e555e9",
   "queryName": "Kubelet streaming connection timeout disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "f0a2431d",
   "cwe": "754",
-  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/",
+  "cloudProvider": ""
 }

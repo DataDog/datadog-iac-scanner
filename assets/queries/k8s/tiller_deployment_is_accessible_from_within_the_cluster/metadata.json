@@ -1,5 +1,6 @@
 {
-  "id": "e17fa86a-6222-4584-a914-56e8f6c87e06",
+  "id": "kubernetes-tiller-deployment-is-accessible-from-within-the-cluster",
+  "legacyId": "e17fa86a-6222-4584-a914-56e8f6c87e06",
   "queryName": "Tiller Deployment accessible within cluster",
   "severity": "HIGH",
   "category": "Networking and Firewall",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "615614b8",
   "cwe": "286",
-  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/",
+  "cloudProvider": ""
 }

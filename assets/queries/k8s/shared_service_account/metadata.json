@@ -1,5 +1,6 @@
 {
-  "id": "c1032cf7-3628-44e2-bd53-38c17cf31b6b",
+  "id": "kubernetes-shared-service-account",
+  "legacyId": "c1032cf7-3628-44e2-bd53-38c17cf31b6b",
   "queryName": "Shared service account",
   "severity": "MEDIUM",
   "category": "Secret Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "f1c94544",
   "cwe": "200",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "e0e00aba-5f1c-4981-a542-9a9563c0ee20",
+  "id": "kubernetes-client-certificate-authentication-not-setup-properly",
+  "legacyId": "e0e00aba-5f1c-4981-a542-9a9563c0ee20",
   "queryName": "Client certificate authentication not set up properly",
   "severity": "HIGH",
   "category": "Access Control",
@@ -16,5 +17,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/",
+  "cloudProvider": ""
 }

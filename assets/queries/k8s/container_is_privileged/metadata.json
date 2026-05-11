@@ -1,5 +1,6 @@
 {
-  "id": "dd29336b-fe57-445b-a26e-e6aa867ae609",
+  "id": "kubernetes-container-is-privileged",
+  "legacyId": "dd29336b-fe57-445b-a26e-e6aa867ae609",
   "queryName": "Container is privileged",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "55f59030",
   "cwe": "269",
-  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/pods/#privileged-mode-for-containers"
+  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/pods/#privileged-mode-for-containers",
+  "cloudProvider": ""
 }

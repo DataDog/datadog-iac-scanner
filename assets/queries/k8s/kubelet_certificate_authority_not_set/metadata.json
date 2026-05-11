@@ -1,5 +1,6 @@
 {
-  "id": "ec18a0d3-0069-4a58-a7fb-fbfe0b4bbbe0",
+  "id": "kubernetes-kubelet-certificate-authority-not-set",
+  "legacyId": "ec18a0d3-0069-4a58-a7fb-fbfe0b4bbbe0",
   "queryName": "Kubelet certificate authority not set",
   "severity": "MEDIUM",
   "category": "Secret Management",
@@ -16,5 +17,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

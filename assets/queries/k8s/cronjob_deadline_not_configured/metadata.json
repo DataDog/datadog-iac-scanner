@@ -1,5 +1,6 @@
 {
-  "id": "192fe40b-b1c3-448a-aba2-6cc19a300fe3",
+  "id": "kubernetes-cronjob-deadline-not-configured",
+  "legacyId": "192fe40b-b1c3-448a-aba2-6cc19a300fe3",
   "queryName": "CronJob deadline not configured",
   "severity": "LOW",
   "category": "Resource Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "285952e5",
   "cwe": "400",
-  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/",
+  "cloudProvider": ""
 }

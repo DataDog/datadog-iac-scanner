@@ -1,5 +1,6 @@
 {
-  "id": "d740d048-8ed3-49d3-b77b-6f072f3b669e",
+  "id": "kubernetes-statefulset-has-no-pod-anti-affinity",
+  "legacyId": "d740d048-8ed3-49d3-b77b-6f072f3b669e",
   "queryName": "StatefulSet without podAntiAffinity",
   "severity": "LOW",
   "category": "Resource Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "f0d30dd9",
   "cwe": "400",
-  "providerUrl": "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/",
+  "cloudProvider": ""
 }

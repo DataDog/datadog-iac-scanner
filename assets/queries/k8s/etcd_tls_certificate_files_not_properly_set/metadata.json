@@ -1,5 +1,6 @@
 {
-  "id": "075ca296-6768-4322-aea2-ba5063b969a9",
+  "id": "kubernetes-etcd-tls-certificate-files-not-properly-set",
+  "legacyId": "075ca296-6768-4322-aea2-ba5063b969a9",
   "queryName": "etcd TLS certificate files not properly set",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
@@ -9,5 +10,6 @@
   "descriptionID": "3c8aae35",
   "cwe": "287",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/",
+  "cloudProvider": ""
 }

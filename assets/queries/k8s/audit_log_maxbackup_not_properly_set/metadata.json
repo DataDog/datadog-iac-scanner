@@ -1,5 +1,6 @@
 {
-  "id": "768aab52-2504-4a2f-a3e3-329d5a679848",
+  "id": "kubernetes-audit-log-maxbackup-not-properly-set",
+  "legacyId": "768aab52-2504-4a2f-a3e3-329d5a679848",
   "queryName": "Audit log maxbackup not properly set",
   "severity": "LOW",
   "category": "Observability",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "eb8a6c2a",
   "cwe": "778",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

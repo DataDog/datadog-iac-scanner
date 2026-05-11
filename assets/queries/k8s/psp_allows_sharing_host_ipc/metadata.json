@@ -1,5 +1,6 @@
 {
-  "id": "80f93444-b240-4ebb-a4c6-5c40b76c04ea",
+  "id": "kubernetes-psp-allows-sharing-host-ipc",
+  "legacyId": "80f93444-b240-4ebb-a4c6-5c40b76c04ea",
   "queryName": "PSP allows sharing host IPC",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -9,5 +10,6 @@
   "descriptionID": "329be51b",
   "cwe": "250",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }

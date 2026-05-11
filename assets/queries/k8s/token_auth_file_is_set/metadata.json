@@ -1,5 +1,6 @@
 {
-  "id": "32ecd76e-7bbf-402e-bf48-8b9485749558",
+  "id": "kubernetes-token-auth-file-is-set",
+  "legacyId": "32ecd76e-7bbf-402e-bf48-8b9485749558",
   "queryName": "Token auth file is set",
   "severity": "HIGH",
   "category": "Access Control",
@@ -16,5 +17,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

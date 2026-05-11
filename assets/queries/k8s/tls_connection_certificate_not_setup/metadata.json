@@ -1,5 +1,6 @@
 {
-  "id": "fa750c81-93c2-4fab-9c6d-d3fd3ce3b89f",
+  "id": "kubernetes-tls-connection-certificate-not-setup",
+  "legacyId": "fa750c81-93c2-4fab-9c6d-d3fd3ce3b89f",
   "queryName": "TLS connection certificate not set up",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
@@ -9,5 +10,6 @@
   "descriptionID": "c8b75f30",
   "cwe": "295",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/",
+  "cloudProvider": ""
 }

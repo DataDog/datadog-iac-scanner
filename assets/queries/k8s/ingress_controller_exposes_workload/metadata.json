@@ -1,5 +1,6 @@
 {
-  "id": "69bbc5e3-0818-4150-89cc-1e989b48f23b",
+  "id": "kubernetes-ingress-controller-exposes-workload",
+  "legacyId": "69bbc5e3-0818-4150-89cc-1e989b48f23b",
   "queryName": "Ingress controller exposes workload",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "7db90ca7",
   "cwe": "779",
-  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/",
+  "cloudProvider": ""
 }

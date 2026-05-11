@@ -1,5 +1,6 @@
 {
-  "id": "b9c83569-459b-4110-8f79-6305aa33cb37",
+  "id": "kubernetes-using-kubernetes-native-secret-management",
+  "legacyId": "b9c83569-459b-4110-8f79-6305aa33cb37",
   "queryName": "Using Kubernetes native secret management",
   "severity": "LOW",
   "category": "Secret Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "3d7b569c",
   "cwe": "311",
-  "providerUrl": "https://kubernetes.io/docs/concepts/configuration/secret/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/configuration/secret/",
+  "cloudProvider": ""
 }

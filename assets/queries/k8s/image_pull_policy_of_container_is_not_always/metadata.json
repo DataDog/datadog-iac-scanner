@@ -1,5 +1,6 @@
 {
-  "id": "caa3479d-885d-4882-9aac-95e5e78ef5c2",
+  "id": "kubernetes-image-pull-policy-of-container-is-not-always",
+  "legacyId": "caa3479d-885d-4882-9aac-95e5e78ef5c2",
   "queryName": "Image pull policy of the container is not set to always",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "201e3c8d",
   "cwe": "665",
-  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/#updating-images"
+  "providerUrl": "https://kubernetes.io/docs/concepts/containers/images/#updating-images",
+  "cloudProvider": ""
 }

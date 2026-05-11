@@ -1,5 +1,6 @@
 {
-  "id": "aa8f7a35-9923-4cad-bd61-a19b7f6aac91",
+  "id": "kubernetes-non-kube-system-pod-with-host-mount",
+  "legacyId": "aa8f7a35-9923-4cad-bd61-a19b7f6aac91",
   "queryName": "Non kube-system pod with host mount",
   "severity": "HIGH",
   "category": "Access Control",
@@ -9,5 +10,6 @@
   "descriptionID": "e8553157",
   "cwe": "668",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://kubernetes.io/docs/concepts/storage/volumes/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/storage/volumes/",
+  "cloudProvider": ""
 }

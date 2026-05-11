@@ -1,5 +1,6 @@
 {
-  "id": "5f89001f-6dd9-49ff-9b15-d8cd71b617f4",
+  "id": "kubernetes-kubelet-not-managing-ip-tables",
+  "legacyId": "5f89001f-6dd9-49ff-9b15-d8cd71b617f4",
   "queryName": "Kubelet not managing IP tables",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "1bd198ea",
   "cwe": "924",
-  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/",
+  "cloudProvider": ""
 }

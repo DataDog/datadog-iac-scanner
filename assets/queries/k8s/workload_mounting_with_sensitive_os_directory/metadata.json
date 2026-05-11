@@ -1,5 +1,6 @@
 {
-  "id": "5308a7a8-06f8-45ac-bf10-791fe21de46e",
+  "id": "kubernetes-workload-mounting-with-sensitive-os-directory",
+  "legacyId": "5308a7a8-06f8-45ac-bf10-791fe21de46e",
   "queryName": "Workload mounting with sensitive OS directory",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -9,5 +10,6 @@
   "descriptionID": "73339cde",
   "cwe": "200",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }
