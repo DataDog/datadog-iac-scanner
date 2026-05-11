@@ -1,5 +1,6 @@
 {
-  "id": "fd097ed0-7fe6-4f58-8b71-fef9f0820a21",
+  "id": "terraform-kubernetes-memory-limits-not-defined",
+  "legacyId": "fd097ed0-7fe6-4f58-8b71-fef9f0820a21",
   "queryName": "Memory limits not defined",
   "severity": "MEDIUM",
   "category": "Resource Management",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "c957affa",
   "cwe": "400",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#limits"
 }

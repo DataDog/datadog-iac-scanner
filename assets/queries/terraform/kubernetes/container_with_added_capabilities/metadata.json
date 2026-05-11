@@ -1,5 +1,6 @@
 {
-  "id": "fe771ff7-ba15-4f8f-ad7a-8aa232b49a28",
+  "id": "terraform-kubernetes-container-with-added-capabilities",
+  "legacyId": "fe771ff7-ba15-4f8f-ad7a-8aa232b49a28",
   "queryName": "Containers with added capabilities",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "4422c052",
   "cwe": "269",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#capabilities-1"
 }

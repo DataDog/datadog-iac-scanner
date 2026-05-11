@@ -1,5 +1,6 @@
 {
-  "id": "4e74cf4f-ff65-4c1a-885c-67ab608206ce",
+  "id": "terraform-kubernetes-workload-host-port-not-specified",
+  "legacyId": "4e74cf4f-ff65-4c1a-885c-67ab608206ce",
   "queryName": "Workload host port not specified",
   "severity": "LOW",
   "category": "Networking and Firewall",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "b7ddd063",
   "cwe": "665",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#host_port"
 }

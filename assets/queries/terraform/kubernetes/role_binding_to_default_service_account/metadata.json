@@ -1,5 +1,6 @@
 {
-  "id": "3360c01e-c8c0-4812-96a2-a6329b9b7f9f",
+  "id": "terraform-kubernetes-role-binding-to-default-service-account",
+  "legacyId": "3360c01e-c8c0-4812-96a2-a6329b9b7f9f",
   "queryName": "Role binding to default service account",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "a90a96ca",
   "cwe": "665",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "HIGH",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/role_binding#subject"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "c878abb4-cca5-4724-92b9-289be68bd47c",
+  "id": "terraform-kubernetes-privilege-escalation-allowed",
+  "legacyId": "c878abb4-cca5-4724-92b9-289be68bd47c",
   "queryName": "Privilege escalation allowed",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "e693ddd6",
   "cwe": "269",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#allow_privilege_escalation"
 }

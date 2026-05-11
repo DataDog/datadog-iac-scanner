@@ -1,5 +1,6 @@
 {
-  "id": "9aa32890-ac1a-45ee-81ca-5164e2098556",
+  "id": "terraform-kubernetes-net-raw-capabilities-disabled-for-psp",
+  "legacyId": "9aa32890-ac1a-45ee-81ca-5164e2098556",
   "queryName": "NET_RAW capabilities disabled for PSP",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "631e9c61",
   "cwe": "250",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#required_drop_capabilities"
 }

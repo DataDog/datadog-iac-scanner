@@ -1,5 +1,6 @@
 {
-  "id": "4c415497-7410-4559-90e8-f2c8ac64ee38",
+  "id": "terraform-kubernetes-root-containers-admitted",
+  "legacyId": "4c415497-7410-4559-90e8-f2c8ac64ee38",
   "queryName": "Root containers admitted",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "aa6d70b9",
   "cwe": "732",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#run_as_user"
 }

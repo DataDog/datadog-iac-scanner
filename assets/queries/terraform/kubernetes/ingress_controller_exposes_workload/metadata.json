@@ -1,5 +1,6 @@
 {
-  "id": "e2c83c1f-84d7-4467-966c-ed41fd015bb9",
+  "id": "terraform-kubernetes-ingress-controller-exposes-workload",
+  "legacyId": "e2c83c1f-84d7-4467-966c-ed41fd015bb9",
   "queryName": "Ingress controller exposes workload",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "88c1dfb2",
   "cwe": "779",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/ingress#http"
 }

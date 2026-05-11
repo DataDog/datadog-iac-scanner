@@ -1,5 +1,6 @@
 {
-  "id": "ca2fba76-c1a7-4afd-be67-5249f861cb0e",
+  "id": "terraform-kubernetes-tiller-is-deployed",
+  "legacyId": "ca2fba76-c1a7-4afd-be67-5249f861cb0e",
   "queryName": "Tiller (Helm v2) is deployed",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "bf1b3f30",
   "cwe": "200",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#image"
 }

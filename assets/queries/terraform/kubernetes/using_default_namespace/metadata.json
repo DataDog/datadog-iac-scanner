@@ -1,5 +1,6 @@
 {
-  "id": "abcb818b-5af7-4d72-aba9-6dd84956b451",
+  "id": "terraform-kubernetes-using-default-namespace",
+  "legacyId": "abcb818b-5af7-4d72-aba9-6dd84956b451",
   "queryName": "Using default namespace",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "4d26d672",
   "cwe": "665",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "MEDIUM",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#namespace"
 }

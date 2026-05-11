@@ -1,5 +1,6 @@
 {
-  "id": "bc3dabb6-fd50-40f8-b9ba-7429c9f1fb0e",
+  "id": "terraform-kubernetes-metadata-label-is-invalid",
+  "legacyId": "bc3dabb6-fd50-40f8-b9ba-7429c9f1fb0e",
   "queryName": "Metadata label is invalid",
   "severity": "LOW",
   "category": "Best Practices",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "5448851e",
   "cwe": "710",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "LOW",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#labels"
 }

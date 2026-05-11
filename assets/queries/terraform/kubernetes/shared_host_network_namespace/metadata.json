@@ -1,5 +1,6 @@
 {
-  "id": "ac1564a3-c324-4747-9fa1-9dfc234dace0",
+  "id": "terraform-kubernetes-shared-host-network-namespace",
+  "legacyId": "ac1564a3-c324-4747-9fa1-9dfc234dace0",
   "queryName": "Shared host network namespace",
   "severity": "MEDIUM",
   "category": "Resource Management",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "bf155ca7",
   "cwe": "200",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#host_network"
 }
