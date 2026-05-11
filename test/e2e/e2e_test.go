@@ -27,12 +27,12 @@ func Test_E2EExclusions(t *testing.T) {
 				Rules:      1123,
 				ViolationBreakdowns: map[string]map[string]int{
 					"LOW": {
-						"a2b3c4d5-e6f7-8901-gh23-ijkl456m7890": 1,
-						"c5b31ab9-0f26-4a49-b8aa-4cc064392f4d": 2,
+						"terraform-aws-team-tag-not-present":                 1,
+						"terraform-aws-s3-bucket-without-enabled-mfa-delete": 2,
 					},
 					"MEDIUM": {
-						"f861041c-8c9f-4156-acfc-5e6e524f5884": 1,
-						"568a4d22-3517-44a6-a7ad-6a7eed88722c": 1,
+						"terraform-aws-s3-bucket-logging-disabled":   1,
+						"terraform-aws-s3-bucket-without-versioning": 1,
 					},
 				},
 			},
@@ -46,11 +46,11 @@ func Test_E2EExclusions(t *testing.T) {
 				Rules:      1123,
 				ViolationBreakdowns: map[string]map[string]int{
 					"LOW": {
-						"c5b31ab9-0f26-4a49-b8aa-4cc064392f4d": 2,
+						"terraform-aws-s3-bucket-without-enabled-mfa-delete": 2,
 					},
 					"MEDIUM": {
-						"f861041c-8c9f-4156-acfc-5e6e524f5884": 1,
-						"568a4d22-3517-44a6-a7ad-6a7eed88722c": 1,
+						"terraform-aws-s3-bucket-logging-disabled":   1,
+						"terraform-aws-s3-bucket-without-versioning": 1,
 					},
 				},
 			},
