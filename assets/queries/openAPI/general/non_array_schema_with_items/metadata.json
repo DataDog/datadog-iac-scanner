@@ -1,5 +1,6 @@
 {
-  "id": "20cb3159-b219-496b-8dac-54ae3ab2021a",
+  "id": "openapi-non-array-schema-with-items",
+  "legacyId": "20cb3159-b219-496b-8dac-54ae3ab2021a",
   "queryName": "Non-Array Schema With Items (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

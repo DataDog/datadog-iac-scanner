@@ -1,5 +1,6 @@
 {
-  "id": "a96bbc06-8cde-4295-ad3c-ee343a7f658e",
+  "id": "openapi-default-invalid",
+  "legacyId": "a96bbc06-8cde-4295-ad3c-ee343a7f658e",
   "queryName": "Default Invalid (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

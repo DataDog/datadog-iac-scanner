@@ -1,5 +1,6 @@
 {
-  "id": "f5b2e6af-76f5-496d-8482-8f898c5fdb4a",
+  "id": "openapi-parameters-name-in-not-unique",
+  "legacyId": "f5b2e6af-76f5-496d-8482-8f898c5fdb4a",
   "queryName": "Parameters Name In Combination Not Unique (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#parameters-object"
+  "providerUrl": "https://swagger.io/specification/#parameters-object",
+  "cloudProvider": ""
 }

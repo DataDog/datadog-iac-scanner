@@ -1,5 +1,6 @@
 {
-  "id": "1908a8ee-927d-4166-8f18-241152170cc1",
+  "id": "openapi-success-response-code-undefined-patch-operation",
+  "legacyId": "1908a8ee-927d-4166-8f18-241152170cc1",
   "queryName": "Success Response Code Undefined for Patch Operation (v3)",
   "severity": "LOW",
   "category": "Networking and Firewall",
@@ -18,5 +19,6 @@
   },
   "cwe": "665",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://swagger.io/specification/#operation-object"
+  "providerUrl": "https://swagger.io/specification/#operation-object",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "013bdb4b-9246-4248-b0c3-7fb0fee42a29",
+  "id": "openapi-required-property-default-value",
+  "legacyId": "013bdb4b-9246-4248-b0c3-7fb0fee42a29",
   "queryName": "Required Property With Default Value (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

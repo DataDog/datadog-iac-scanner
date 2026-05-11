@@ -1,5 +1,6 @@
 {
-  "id": "663c442d-f918-4f62-b096-0bf5dcbeb655",
+  "id": "openapi-security-operations-empty-array",
+  "legacyId": "663c442d-f918-4f62-b096-0bf5dcbeb655",
   "queryName": "Security Field On Operations Has An Empty Array (v3)",
   "severity": "HIGH",
   "category": "Access Control",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "284",
-  "providerUrl": "https://swagger.io/specification/#operation-object"
+  "providerUrl": "https://swagger.io/specification/#operation-object",
+  "cloudProvider": ""
 }

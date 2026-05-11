@@ -1,5 +1,6 @@
 {
-  "id": "b2d9dbf6-539c-4374-a1fd-210ddf5563a8",
+  "id": "openapi-invalid-global-external-documentation-url",
+  "legacyId": "b2d9dbf6-539c-4374-a1fd-210ddf5563a8",
   "queryName": "Invalid Global External Documentation URL (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#external-documentation-object"
+  "providerUrl": "https://swagger.io/specification/#external-documentation-object",
+  "cloudProvider": ""
 }

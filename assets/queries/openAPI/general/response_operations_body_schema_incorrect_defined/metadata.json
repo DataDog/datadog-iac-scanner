@@ -1,5 +1,6 @@
 {
-  "id": "12a7210b-f4b4-47d0-acac-0a819e2a0ca3",
+  "id": "openapi-response-operations-body-schema-incorrect-defined",
+  "legacyId": "12a7210b-f4b4-47d0-acac-0a819e2a0ca3",
   "queryName": "Response on operations that should not have a body has declared content (v3)",
   "severity": "LOW",
   "category": "Networking and Firewall",
@@ -18,5 +19,6 @@
   },
   "cwe": "665",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://swagger.io/docs/specification/describing-responses/"
+  "providerUrl": "https://swagger.io/docs/specification/describing-responses/",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "40d3df21-c170-4dbe-9c02-4289b51f994f",
+  "id": "openapi-schema-discriminator-mismatch-defined-properties",
+  "legacyId": "40d3df21-c170-4dbe-9c02-4289b51f994f",
   "queryName": "Schema Discriminator Mismatch Defined Properties (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

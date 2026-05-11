@@ -1,5 +1,6 @@
 {
-  "id": "ab2af219-cd08-4233-b5a1-a788aac88b51",
+  "id": "openapi-property-defining-maximum-not-greater-than-minimum",
+  "legacyId": "ab2af219-cd08-4233-b5a1-a788aac88b51",
   "queryName": "Property Defining Minimum Greater Than Maximum (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

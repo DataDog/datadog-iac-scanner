@@ -1,5 +1,6 @@
 {
-  "id": "6998389e-66b2-473d-8d05-c8d71ac4d04d",
+  "id": "openapi-array-without-maximum-number-items",
+  "legacyId": "6998389e-66b2-473d-8d05-c8d71ac4d04d",
   "queryName": "Array Without Maximum Number of Items (v3)",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -18,5 +19,6 @@
   },
   "cwe": "665",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

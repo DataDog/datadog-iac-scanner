@@ -1,5 +1,6 @@
 {
-  "id": "86e3702f-c868-44b2-b61d-ea5316c18110",
+  "id": "openapi-default-response-undefined-operations",
+  "legacyId": "86e3702f-c868-44b2-b61d-ea5316c18110",
   "queryName": "Default Response Undefined On Operations (v3)",
   "severity": "LOW",
   "category": "Networking and Firewall",
@@ -18,5 +19,6 @@
   },
   "cwe": "665",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://swagger.io/specification/#responses-object"
+  "providerUrl": "https://swagger.io/specification/#responses-object",
+  "cloudProvider": ""
 }
