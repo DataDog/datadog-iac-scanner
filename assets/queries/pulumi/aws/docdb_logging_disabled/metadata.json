@@ -1,5 +1,6 @@
 {
-  "id": "2ca87964-fe7e-4cdc-899c-427f0f3525f8",
+  "id": "pulumi-aws-docdb-logging-disabled",
+  "legacyId": "2ca87964-fe7e-4cdc-899c-427f0f3525f8",
   "queryName": "DocDB Logging Is Disabled",
   "severity": "MEDIUM",
   "category": "Observability",
