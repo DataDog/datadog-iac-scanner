@@ -3,7 +3,7 @@ title: "No password policy enabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/no_password_policy_enabled"
-  id: "b592ffd4-0577-44b6-bd35-8c5ee81b5918"
+  id: "terraform-aws-no-password-policy-enabled"
   display_name: "No password policy enabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b592ffd4-0577-44b6-bd35-8c5ee81b5918`
+**Id:** {{< copyable-code >}}terraform-aws-no-password-policy-enabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

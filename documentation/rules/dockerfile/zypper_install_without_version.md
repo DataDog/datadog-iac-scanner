@@ -3,7 +3,7 @@ title: "Zypper install without explicit package version"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/zypper_install_without_version"
-  id: "562952e4-0348-4dea-9826-44f3a2c6117b"
+  id: "dockerfile-zypper-install-without-version"
   display_name: "Zypper install without explicit package version"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `562952e4-0348-4dea-9826-44f3a2c6117b`
+**Id:** {{< copyable-code >}}dockerfile-zypper-install-without-version{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

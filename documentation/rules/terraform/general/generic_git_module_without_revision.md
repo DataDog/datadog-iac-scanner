@@ -3,7 +3,7 @@ title: "Generic Git module without revision"
 group_id: "Terraform / Common"
 meta:
   name: "general/generic_git_module_without_revision"
-  id: "3a81fc06-566f-492a-91dd-7448e409e2cd"
+  id: "terraform-generic-git-module-without-revision"
   display_name: "Generic Git module without revision"
   cloud_provider: "Common"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3a81fc06-566f-492a-91dd-7448e409e2cd`
+**Id:** {{< copyable-code >}}terraform-generic-git-module-without-revision{{< /copyable-code >}}
 
 **Cloud Provider:** Common
 

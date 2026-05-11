@@ -3,7 +3,7 @@ title: "Glue Data Catalog encryption disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/glue_data_catalog_encryption_disabled"
-  id: "01d50b14-e933-4c99-b314-6d08cd37ad35"
+  id: "terraform-aws-glue-data-catalog-encryption-disabled"
   display_name: "Glue Data Catalog encryption disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `01d50b14-e933-4c99-b314-6d08cd37ad35`
+**Id:** {{< copyable-code >}}terraform-aws-glue-data-catalog-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

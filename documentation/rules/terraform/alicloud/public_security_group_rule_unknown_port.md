@@ -3,7 +3,7 @@ title: "Public security group rule unknown port"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/public_security_group_rule_unknown_port"
-  id: "dd706080-b7a8-47dc-81fb-3e8184430ec0"
+  id: "terraform-alicloud-public-security-group-rule-unknown-port"
   display_name: "Public security group rule unknown port"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dd706080-b7a8-47dc-81fb-3e8184430ec0`
+**Id:** {{< copyable-code >}}terraform-alicloud-public-security-group-rule-unknown-port{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

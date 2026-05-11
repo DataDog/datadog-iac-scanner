@@ -3,7 +3,7 @@ title: "EC2 public instance exposed through subnet"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_public_instance_exposed_through_subnet"
-  id: "c44c95fc-ae92-4bb8-bdf8-bb9bc412004a"
+  id: "cloudformation-aws-ec2-public-instance-exposed-through-subnet"
   display_name: "EC2 public instance exposed through subnet"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c44c95fc-ae92-4bb8-bdf8-bb9bc412004a`
+**Id:** {{< copyable-code >}}cloudformation-aws-ec2-public-instance-exposed-through-subnet{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

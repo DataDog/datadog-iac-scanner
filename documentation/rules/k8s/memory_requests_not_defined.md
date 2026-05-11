@@ -3,7 +3,7 @@ title: "Memory requests not defined"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/memory_requests_not_defined"
-  id: "229588ef-8fde-40c8-8756-f4f2b5825ded"
+  id: "kubernetes-memory-requests-not-defined"
   display_name: "Memory requests not defined"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `229588ef-8fde-40c8-8756-f4f2b5825ded`
+**Id:** {{< copyable-code >}}kubernetes-memory-requests-not-defined{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

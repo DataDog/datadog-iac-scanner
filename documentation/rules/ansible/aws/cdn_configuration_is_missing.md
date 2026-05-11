@@ -3,7 +3,7 @@ title: "CDN configuration is missing"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cdn_configuration_is_missing"
-  id: "b25398a2-0625-4e61-8e4d-a1bb23905bf6"
+  id: "ansible-aws-cdn-configuration-is-missing"
   display_name: "CDN configuration is missing"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b25398a2-0625-4e61-8e4d-a1bb23905bf6`
+**Id:** {{< copyable-code >}}ansible-aws-cdn-configuration-is-missing{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

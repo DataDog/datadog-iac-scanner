@@ -3,7 +3,7 @@ title: "Unrestricted security group ingress"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/unrestricted_security_group_ingress"
-  id: "4728cd65-a20c-49da-8b31-9c08b423e4db"
+  id: "terraform-aws-unrestricted-security-group-ingress"
   display_name: "Unrestricted security group ingress"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4728cd65-a20c-49da-8b31-9c08b423e4db`
+**Id:** {{< copyable-code >}}terraform-aws-unrestricted-security-group-ingress{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

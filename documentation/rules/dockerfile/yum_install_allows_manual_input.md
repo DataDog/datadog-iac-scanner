@@ -3,7 +3,7 @@ title: "yum install allows manual input"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/yum_install_allows_manual_input"
-  id: "6e19193a-8753-436d-8a09-76dcff91bb03"
+  id: "dockerfile-yum-install-allows-manual-input"
   display_name: "yum install allows manual input"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6e19193a-8753-436d-8a09-76dcff91bb03`
+**Id:** {{< copyable-code >}}dockerfile-yum-install-allows-manual-input{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

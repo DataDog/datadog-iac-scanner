@@ -3,7 +3,7 @@ title: "SQS policy allows all actions"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sqs_policy_allows_all_actions"
-  id: "ed9b3beb-92cf-44d9-a9d2-171eeba569d4"
+  id: "ansible-aws-sqs-policy-allows-all-actions"
   display_name: "SQS policy allows all actions"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ed9b3beb-92cf-44d9-a9d2-171eeba569d4`
+**Id:** {{< copyable-code >}}ansible-aws-sqs-policy-allows-all-actions{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

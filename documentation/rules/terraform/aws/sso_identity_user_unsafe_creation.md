@@ -3,7 +3,7 @@ title: "SSO identity user unsafe creation"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sso_identity_user_unsafe_creation"
-  id: "4003118b-046b-4640-b200-b8c7a4c8b89f"
+  id: "terraform-aws-sso-identity-user-unsafe-creation"
   display_name: "SSO identity user unsafe creation"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4003118b-046b-4640-b200-b8c7a4c8b89f`
+**Id:** {{< copyable-code >}}terraform-aws-sso-identity-user-unsafe-creation{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

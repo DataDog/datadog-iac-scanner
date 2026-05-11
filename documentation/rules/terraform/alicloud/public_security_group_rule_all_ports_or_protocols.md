@@ -3,7 +3,7 @@ title: "Public security group rule all ports or protocols"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/public_security_group_rule_all_ports_or_protocols"
-  id: "60587dbd-6b67-432e-90f7-a8cf1892d968"
+  id: "terraform-alicloud-public-security-group-rule-all-ports-or-protocols"
   display_name: "Public security group rule all ports or protocols"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `60587dbd-6b67-432e-90f7-a8cf1892d968`
+**Id:** {{< copyable-code >}}terraform-alicloud-public-security-group-rule-all-ports-or-protocols{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

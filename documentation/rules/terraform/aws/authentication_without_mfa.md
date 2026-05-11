@@ -3,7 +3,7 @@ title: "Authentication without MFA"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/authentication_without_mfa"
-  id: "3ddfa124-6407-4845-a501-179f90c65097"
+  id: "terraform-aws-authentication-without-mfa"
   display_name: "Authentication without MFA"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3ddfa124-6407-4845-a501-179f90c65097`
+**Id:** {{< copyable-code >}}terraform-aws-authentication-without-mfa{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

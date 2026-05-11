@@ -3,7 +3,7 @@ title: "RAM account password policy not require at least one lowercase character
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ram_password_security_policy_not_require_at_least_one_lowercase_character"
-  id: "89143358-cec6-49f5-9392-920c591c669c"
+  id: "terraform-alicloud-ram-password-security-policy-not-require-at-least-one-lowercase-character"
   display_name: "RAM account password policy not require at least one lowercase character"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `89143358-cec6-49f5-9392-920c591c669c`
+**Id:** {{< copyable-code >}}terraform-alicloud-ram-password-security-policy-not-require-at-least-one-lowercase-character{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

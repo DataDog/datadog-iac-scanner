@@ -3,7 +3,7 @@ title: "API Gateway without WAF"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/api_gateway_without_waf"
-  id: "fcbf9019-566c-4832-a65c-af00d8137d2b"
+  id: "cloudformation-aws-api-gateway-without-waf"
   display_name: "API Gateway without WAF"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fcbf9019-566c-4832-a65c-af00d8137d2b`
+**Id:** {{< copyable-code >}}cloudformation-aws-api-gateway-without-waf{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

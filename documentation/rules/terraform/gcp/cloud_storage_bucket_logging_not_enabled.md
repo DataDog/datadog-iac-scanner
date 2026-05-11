@@ -3,7 +3,7 @@ title: "Cloud Storage bucket logging not enabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/cloud_storage_bucket_logging_not_enabled"
-  id: "d6cabc3a-d57e-48c2-b341-bf3dd4f4a120"
+  id: "terraform-gcp-cloud-storage-bucket-logging-not-enabled"
   display_name: "Cloud Storage bucket logging not enabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d6cabc3a-d57e-48c2-b341-bf3dd4f4a120`
+**Id:** {{< copyable-code >}}terraform-gcp-cloud-storage-bucket-logging-not-enabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

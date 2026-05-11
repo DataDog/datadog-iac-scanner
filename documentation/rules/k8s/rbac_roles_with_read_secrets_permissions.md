@@ -3,7 +3,7 @@ title: "RBAC roles with read secrets permissions"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/rbac_roles_with_read_secrets_permissions"
-  id: "b7bca5c4-1dab-4c2c-8cbe-3050b9d59b14"
+  id: "kubernetes-rbac-roles-with-read-secrets-permissions"
   display_name: "RBAC roles with read secrets permissions"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b7bca5c4-1dab-4c2c-8cbe-3050b9d59b14`
+**Id:** {{< copyable-code >}}kubernetes-rbac-roles-with-read-secrets-permissions{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

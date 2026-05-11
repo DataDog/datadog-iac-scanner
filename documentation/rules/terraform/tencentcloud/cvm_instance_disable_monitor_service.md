@@ -3,7 +3,7 @@ title: "CVM instance disable monitor service"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cvm_instance_disable_monitor_service"
-  id: "966ed4f7-b8a5-4e8d-b2bf-098657c98960"
+  id: "terraform-tencentcloud-cvm-instance-disable-monitor-service"
   display_name: "CVM instance disable monitor service"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `966ed4f7-b8a5-4e8d-b2bf-098657c98960`
+**Id:** {{< copyable-code >}}terraform-tencentcloud-cvm-instance-disable-monitor-service{{< /copyable-code >}}
 
 **Cloud Provider:** TencentCloud
 

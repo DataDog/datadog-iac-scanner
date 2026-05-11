@@ -3,7 +3,7 @@ title: "IAM password without minimum length"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_password_without_minimum_length"
-  id: "8bc2168c-1723-4eeb-a6f3-a1ba614b9a6d"
+  id: "ansible-aws-iam-password-without-minimum-length"
   display_name: "IAM password without minimum length"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8bc2168c-1723-4eeb-a6f3-a1ba614b9a6d`
+**Id:** {{< copyable-code >}}ansible-aws-iam-password-without-minimum-length{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

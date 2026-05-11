@@ -3,7 +3,7 @@ title: "RDS DB instance publicly accessible"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/rds_db_instance_publicly_accessible"
-  id: "de38e1d5-54cb-4111-a868-6f7722695007"
+  id: "cloudformation-aws-rds-db-instance-publicly-accessible"
   display_name: "RDS DB instance publicly accessible"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `de38e1d5-54cb-4111-a868-6f7722695007`
+**Id:** {{< copyable-code >}}cloudformation-aws-rds-db-instance-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "CloudWatch route table changes alarm missing"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudwatch_route_table_changes_alarm_missing"
-  id: "2285e608-ddbc-47f3-ba54-ce7121e31216"
+  id: "terraform-aws-cloudwatch-route-table-changes-alarm-missing"
   display_name: "CloudWatch route table changes alarm missing"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2285e608-ddbc-47f3-ba54-ce7121e31216`
+**Id:** {{< copyable-code >}}terraform-aws-cloudwatch-route-table-changes-alarm-missing{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

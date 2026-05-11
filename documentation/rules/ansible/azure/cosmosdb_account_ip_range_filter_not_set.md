@@ -3,7 +3,7 @@ title: "CosmosDB account IP range filter not set"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/cosmosdb_account_ip_range_filter_not_set"
-  id: "e8c80448-31d8-4755-85fc-6dbab69c2717"
+  id: "ansible-azure-cosmosdb-account-ip-range-filter-not-set"
   display_name: "CosmosDB account IP range filter not set"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e8c80448-31d8-4755-85fc-6dbab69c2717`
+**Id:** {{< copyable-code >}}ansible-azure-cosmosdb-account-ip-range-filter-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

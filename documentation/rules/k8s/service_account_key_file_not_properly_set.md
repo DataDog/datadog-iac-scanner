@@ -3,7 +3,7 @@ title: "Service account key file not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/service_account_key_file_not_properly_set"
-  id: "dab4ec72-ce2e-4732-b7c3-1757dcce01a1"
+  id: "kubernetes-service-account-key-file-not-properly-set"
   display_name: "Service account key file not properly set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dab4ec72-ce2e-4732-b7c3-1757dcce01a1`
+**Id:** {{< copyable-code >}}kubernetes-service-account-key-file-not-properly-set{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "NIFCLOUD computing has public ingress security group rule"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/computing_instance_has_public_ingress_sgr"
-  id: "b2ea2367-8dc9-4231-a035-d0b28bfa3dde"
+  id: "terraform-nifcloud-computing-instance-has-public-ingress-sgr"
   display_name: "NIFCLOUD computing has public ingress security group rule"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b2ea2367-8dc9-4231-a035-d0b28bfa3dde`
+**Id:** {{< copyable-code >}}terraform-nifcloud-computing-instance-has-public-ingress-sgr{{< /copyable-code >}}
 
 **Cloud Provider:** Nifcloud
 

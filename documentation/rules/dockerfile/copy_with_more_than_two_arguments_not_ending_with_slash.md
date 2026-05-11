@@ -3,7 +3,7 @@ title: "COPY with more than two arguments not ending with a slash"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/copy_with_more_than_two_arguments_not_ending_with_slash"
-  id: "6db6e0c2-32a3-4a2e-93b5-72c35f4119db"
+  id: "dockerfile-copy-with-more-than-two-arguments-not-ending-with-slash"
   display_name: "COPY with more than two arguments not ending with a slash"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6db6e0c2-32a3-4a2e-93b5-72c35f4119db`
+**Id:** {{< copyable-code >}}dockerfile-copy-with-more-than-two-arguments-not-ending-with-slash{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

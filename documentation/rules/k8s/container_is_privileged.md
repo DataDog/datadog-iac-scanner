@@ -3,7 +3,7 @@ title: "Container is privileged"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/container_is_privileged"
-  id: "dd29336b-fe57-445b-a26e-e6aa867ae609"
+  id: "kubernetes-container-is-privileged"
   display_name: "Container is privileged"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dd29336b-fe57-445b-a26e-e6aa867ae609`
+**Id:** {{< copyable-code >}}kubernetes-container-is-privileged{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

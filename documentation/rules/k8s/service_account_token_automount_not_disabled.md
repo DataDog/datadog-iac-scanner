@@ -3,7 +3,7 @@ title: "Service account token auto-mount not disabled"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/service_account_token_automount_not_disabled"
-  id: "48471392-d4d0-47c0-b135-cdec95eb3eef"
+  id: "kubernetes-service-account-token-automount-not-disabled"
   display_name: "Service account token auto-mount not disabled"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `48471392-d4d0-47c0-b135-cdec95eb3eef`
+**Id:** {{< copyable-code >}}kubernetes-service-account-token-automount-not-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

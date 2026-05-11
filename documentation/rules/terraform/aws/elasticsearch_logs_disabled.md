@@ -3,7 +3,7 @@ title: "Elasticsearch log disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_logs_disabled"
-  id: "acb6b4e2-a086-4f35-aefd-4db6ea51ada2"
+  id: "terraform-aws-elasticsearch-logs-disabled"
   display_name: "Elasticsearch log disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `acb6b4e2-a086-4f35-aefd-4db6ea51ada2`
+**Id:** {{< copyable-code >}}terraform-aws-elasticsearch-logs-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "SNS topic not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sns_topic_not_encrypted"
-  id: "28545147-2fc6-42d5-a1f9-cf226658e591"
+  id: "terraform-aws-sns-topic-not-encrypted"
   display_name: "SNS topic not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `28545147-2fc6-42d5-a1f9-cf226658e591`
+**Id:** {{< copyable-code >}}terraform-aws-sns-topic-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

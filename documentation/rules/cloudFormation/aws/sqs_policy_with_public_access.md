@@ -3,7 +3,7 @@ title: "SQS policy with public access"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/sqs_policy_with_public_access"
-  id: "9b6a3f5b-5fd6-40ee-9bc0-ed604911212d"
+  id: "cloudformation-aws-sqs-policy-with-public-access"
   display_name: "SQS policy with public access"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9b6a3f5b-5fd6-40ee-9bc0-ed604911212d`
+**Id:** {{< copyable-code >}}cloudformation-aws-sqs-policy-with-public-access{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

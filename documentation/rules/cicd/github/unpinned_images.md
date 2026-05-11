@@ -3,7 +3,7 @@ title: "Unpinned images"
 group_id: "CICD / GitHub"
 meta:
   name: "github/unpinned_images"
-  id: "c9d0e1f2-a3b4-45c6-d7e8-f9a0b1c2d3e4"
+  id: "cicd-github-unpinned-images"
   display_name: "Unpinned images"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c9d0e1f2-a3b4-45c6-d7e8-f9a0b1c2d3e4`
+**Id:** {{< copyable-code >}}cicd-github-unpinned-images{{< /copyable-code >}}
 
 **Cloud Provider:** GitHub
 

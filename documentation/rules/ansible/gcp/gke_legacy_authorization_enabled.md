@@ -3,7 +3,7 @@ title: "GKE legacy authorization enabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/gke_legacy_authorization_enabled"
-  id: "300a9964-b086-41f7-9378-b6de3ba1c32b"
+  id: "ansible-gcp-gke-legacy-authorization-enabled"
   display_name: "GKE legacy authorization enabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `300a9964-b086-41f7-9378-b6de3ba1c32b`
+**Id:** {{< copyable-code >}}ansible-gcp-gke-legacy-authorization-enabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

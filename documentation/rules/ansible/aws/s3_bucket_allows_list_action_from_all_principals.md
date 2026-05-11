@@ -3,7 +3,7 @@ title: "S3 bucket allows list action from all principals"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_allows_list_action_from_all_principals"
-  id: "d395a950-12ce-4314-a742-ac5a785ab44e"
+  id: "ansible-aws-s3-bucket-allows-list-action-from-all-principals"
   display_name: "S3 bucket allows list action from all principals"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d395a950-12ce-4314-a742-ac5a785ab44e`
+**Id:** {{< copyable-code >}}ansible-aws-s3-bucket-allows-list-action-from-all-principals{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

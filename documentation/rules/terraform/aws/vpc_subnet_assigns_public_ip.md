@@ -3,7 +3,7 @@ title: "VPC subnet assigns public IP"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/vpc_subnet_assigns_public_ip"
-  id: "52f04a44-6bfa-4c41-b1d3-4ae99a2de05c"
+  id: "terraform-aws-vpc-subnet-assigns-public-ip"
   display_name: "VPC subnet assigns public IP"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `52f04a44-6bfa-4c41-b1d3-4ae99a2de05c`
+**Id:** {{< copyable-code >}}terraform-aws-vpc-subnet-assigns-public-ip{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

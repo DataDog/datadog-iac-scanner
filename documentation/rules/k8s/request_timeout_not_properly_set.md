@@ -3,7 +3,7 @@ title: "Request timeout not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/request_timeout_not_properly_set"
-  id: "d89a15bb-8dba-4c71-9529-bef6729b9c09"
+  id: "kubernetes-request-timeout-not-properly-set"
   display_name: "Request timeout not properly set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d89a15bb-8dba-4c71-9529-bef6729b9c09`
+**Id:** {{< copyable-code >}}kubernetes-request-timeout-not-properly-set{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

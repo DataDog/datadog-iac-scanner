@@ -3,7 +3,7 @@ title: "Shielded GKE nodes disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/shielded_gke_nodes_disabled"
-  id: "579a0727-9c29-4d58-8195-fc5802a8bdb4"
+  id: "terraform-gcp-shielded-gke-nodes-disabled"
   display_name: "Shielded GKE nodes disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `579a0727-9c29-4d58-8195-fc5802a8bdb4`
+**Id:** {{< copyable-code >}}terraform-gcp-shielded-gke-nodes-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

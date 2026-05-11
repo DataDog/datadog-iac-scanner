@@ -3,7 +3,7 @@ title: "Serverless API access logging setting undefined"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws_sam/serverless_api_access_logging_setting_undefined"
-  id: "0a994e04-c6dc-471d-817e-d37451d18a3b"
+  id: "cloudformation-aws-serverless-api-access-logging-setting-undefined"
   display_name: "Serverless API access logging setting undefined"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0a994e04-c6dc-471d-817e-d37451d18a3b`
+**Id:** {{< copyable-code >}}cloudformation-aws-serverless-api-access-logging-setting-undefined{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "S3 bucket without SSL in write actions"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_without_ssl_in_write_actions"
-  id: "38c64e76-c71e-4d92-a337-60174d1de1c9"
+  id: "cloudformation-aws-s3-bucket-without-ssl-in-write-actions"
   display_name: "S3 bucket without SSL in write actions"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `38c64e76-c71e-4d92-a337-60174d1de1c9`
+**Id:** {{< copyable-code >}}cloudformation-aws-s3-bucket-without-ssl-in-write-actions{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

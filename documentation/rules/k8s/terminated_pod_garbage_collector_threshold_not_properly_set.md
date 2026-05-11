@@ -3,7 +3,7 @@ title: "Terminated pod garbage collector threshold not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/terminated_pod_garbage_collector_threshold_not_properly_set"
-  id: "49113af4-29ca-458e-b8d4-724c01a4a24f"
+  id: "kubernetes-terminated-pod-garbage-collector-threshold-not-properly-set"
   display_name: "Terminated pod garbage collector threshold not properly set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `49113af4-29ca-458e-b8d4-724c01a4a24f`
+**Id:** {{< copyable-code >}}kubernetes-terminated-pod-garbage-collector-threshold-not-properly-set{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

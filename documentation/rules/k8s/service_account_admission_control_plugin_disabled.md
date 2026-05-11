@@ -3,7 +3,7 @@ title: "Service account admission control plugin disabled"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/service_account_admission_control_plugin_disabled"
-  id: "9587c890-0524-40c2-9ce2-663af7c2f063"
+  id: "kubernetes-service-account-admission-control-plugin-disabled"
   display_name: "Service account admission control plugin disabled"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9587c890-0524-40c2-9ce2-663af7c2f063`
+**Id:** {{< copyable-code >}}kubernetes-service-account-admission-control-plugin-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

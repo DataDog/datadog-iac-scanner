@@ -3,7 +3,7 @@ title: "Cloud storage bucket versioning disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cloud_storage_bucket_versioning_disabled"
-  id: "7814ddda-e758-4a56-8be3-289a81ded929"
+  id: "ansible-gcp-cloud-storage-bucket-versioning-disabled"
   display_name: "Cloud storage bucket versioning disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7814ddda-e758-4a56-8be3-289a81ded929`
+**Id:** {{< copyable-code >}}ansible-gcp-cloud-storage-bucket-versioning-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

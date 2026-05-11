@@ -3,7 +3,7 @@ title: "Missing dnf clean all"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/missing_dnf_clean_all"
-  id: "295acb63-9246-4b21-b441-7c1f1fb62dc0"
+  id: "dockerfile-missing-dnf-clean-all"
   display_name: "Missing dnf clean all"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `295acb63-9246-4b21-b441-7c1f1fb62dc0`
+**Id:** {{< copyable-code >}}dockerfile-missing-dnf-clean-all{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

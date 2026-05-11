@@ -488,7 +488,7 @@ rules:
       trusted_microsoft_services_not_enabled:
         description: Trusted Microsoft services not enabled
         title: Trusted Microsoft services not enabled
-      unrestricted_sql_server_acess:
+      unrestricted_sql_server_access:
         description: Unrestricted SQL Server access
         title: Unrestricted SQL Server access
       vm_not_attached_to_network:
@@ -520,7 +520,7 @@ rules:
       client_certificate_disabled:
         description: Client certificate disabled
         title: Client certificate disabled
-      cloud_dns_without_dnnsec:
+      cloud_dns_without_dnssec:
         description: Cloud DNS without DNSSEC
         title: Cloud DNS without DNSSEC
       cloud_sql_instance_with_contained_database_authentication_on:
@@ -814,7 +814,7 @@ rules:
       api_gateway_endpoint_config_is_not_private:
         description: API Gateway endpoint config is not private
         title: API Gateway endpoint config is not private
-      api_gateway_method_does_not_contains_an_api_key:
+      api_gateway_method_does_not_contain_an_api_key:
         description: API Gateway method does not contain an API key
         title: API Gateway method does not contain an API key
       api_gateway_stage_without_api_gateway_usage_plan_associated:
@@ -2360,9 +2360,9 @@ rules:
       api_gateway_endpoint_config_is_not_private:
         description: API Gateway endpoint config is not private
         title: API Gateway endpoint config is not private
-      api_gateway_method_does_not_contains_an_api_key:
-        description: API Gateway method does not contains an API key
-        title: API Gateway method does not contains an API key
+      api_gateway_method_does_not_contain_an_api_key:
+        description: API Gateway method does not contain an API key
+        title: API Gateway method does not contain an API key
       api_gateway_method_settings_cache_not_encrypted:
         description: API Gateway method settings cache not encrypted
         title: API Gateway method settings cache not encrypted
@@ -3947,10 +3947,10 @@ rules:
         description: Variable without type
         title: Variable without type
     github:
-      github_organization_webhook_with_ssl_disabled:
+      organization_webhook_with_ssl_disabled:
         description: Github organization webhook with SSL disabled
         title: Github organization webhook with SSL disabled
-      github_repository_set_to_public:
+      repository_set_to_public:
         description: GitHub repository set to public
         title: GitHub repository set to public
     kubernetes:

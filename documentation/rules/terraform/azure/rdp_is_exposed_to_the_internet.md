@@ -3,7 +3,7 @@ title: "RDP is exposed to the internet"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/rdp_is_exposed_to_the_internet"
-  id: "efbf6449-5ec5-4cfe-8f15-acc51e0d787c"
+  id: "terraform-azure-rdp-is-exposed-to-the-internet"
   display_name: "RDP is exposed to the internet"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `efbf6449-5ec5-4cfe-8f15-acc51e0d787c`
+**Id:** {{< copyable-code >}}terraform-azure-rdp-is-exposed-to-the-internet{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

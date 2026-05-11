@@ -3,7 +3,7 @@ title: "Small activity log retention period"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/small_activity_log_retention_period"
-  id: "37fafbea-dedb-4e0d-852e-d16ee0589326"
+  id: "ansible-azure-small-activity-log-retention-period"
   display_name: "Small activity log retention period"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `37fafbea-dedb-4e0d-852e-d16ee0589326`
+**Id:** {{< copyable-code >}}ansible-azure-small-activity-log-retention-period{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

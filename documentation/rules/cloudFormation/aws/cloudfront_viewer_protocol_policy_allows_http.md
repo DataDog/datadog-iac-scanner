@@ -3,7 +3,7 @@ title: "CloudFront viewer protocol policy allows HTTP"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cloudfront_viewer_protocol_policy_allows_http"
-  id: "31733ee2-fef0-4e87-9778-65da22a8ecf1"
+  id: "cloudformation-aws-cloudfront-viewer-protocol-policy-allows-http"
   display_name: "CloudFront viewer protocol policy allows HTTP"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `31733ee2-fef0-4e87-9778-65da22a8ecf1`
+**Id:** {{< copyable-code >}}cloudformation-aws-cloudfront-viewer-protocol-policy-allows-http{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

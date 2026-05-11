@@ -3,7 +3,7 @@ title: "Shield Advanced not in use"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/shield_advanced_not_in_use"
-  id: "084c6686-2a70-4710-91b1-000393e54c12"
+  id: "terraform-aws-shield-advanced-not-in-use"
   display_name: "Shield Advanced not in use"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `084c6686-2a70-4710-91b1-000393e54c12`
+**Id:** {{< copyable-code >}}terraform-aws-shield-advanced-not-in-use{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

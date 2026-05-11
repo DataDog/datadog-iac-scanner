@@ -3,7 +3,7 @@ title: "Using unrecommended namespace"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/using_unrecommended_namespace"
-  id: "611ab018-c4aa-4ba2-b0f6-a448337509a6"
+  id: "kubernetes-using-unrecommended-namespace"
   display_name: "Using unrecommended namespace"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `611ab018-c4aa-4ba2-b0f6-a448337509a6`
+**Id:** {{< copyable-code >}}kubernetes-using-unrecommended-namespace{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

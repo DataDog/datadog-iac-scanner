@@ -3,7 +3,7 @@ title: "ECR repository is publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ecr_repository_is_publicly_accessible"
-  id: "fb5a5df7-6d74-4243-ab82-ff779a958bfd"
+  id: "ansible-aws-ecr-repository-is-publicly-accessible"
   display_name: "ECR repository is publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fb5a5df7-6d74-4243-ab82-ff779a958bfd`
+**Id:** {{< copyable-code >}}ansible-aws-ecr-repository-is-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

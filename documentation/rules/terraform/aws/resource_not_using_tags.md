@@ -3,7 +3,7 @@ title: "Resource not using tags"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/resource_not_using_tags"
-  id: "e38a8e0a-b88b-4902-b3fe-b0fcb17d5c10"
+  id: "terraform-aws-resource-not-using-tags"
   display_name: "Resource not using tags"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e38a8e0a-b88b-4902-b3fe-b0fcb17d5c10`
+**Id:** {{< copyable-code >}}terraform-aws-resource-not-using-tags{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

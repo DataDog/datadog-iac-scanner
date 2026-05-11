@@ -3,7 +3,7 @@ title: "SNS topic is publicly accessible"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sns_topic_is_publicly_accessible"
-  id: "b26d2b7e-60f6-413d-a3a1-a57db24aa2b3"
+  id: "terraform-aws-sns-topic-is-publicly-accessible"
   display_name: "SNS topic is publicly accessible"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b26d2b7e-60f6-413d-a3a1-a57db24aa2b3`
+**Id:** {{< copyable-code >}}terraform-aws-sns-topic-is-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

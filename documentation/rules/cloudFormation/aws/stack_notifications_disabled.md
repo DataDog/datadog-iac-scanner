@@ -3,7 +3,7 @@ title: "Stack notifications disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/stack_notifications_disabled"
-  id: "837e033c-4717-40bd-807e-6abaa30161b7"
+  id: "cloudformation-aws-stack-notifications-disabled"
   display_name: "Stack notifications disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `837e033c-4717-40bd-807e-6abaa30161b7`
+**Id:** {{< copyable-code >}}cloudformation-aws-stack-notifications-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

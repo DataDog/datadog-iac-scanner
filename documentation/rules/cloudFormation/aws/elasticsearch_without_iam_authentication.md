@@ -3,7 +3,7 @@ title: "Elasticsearch without IAM authentication"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elasticsearch_without_iam_authentication"
-  id: "5c666ed9-b586-49ab-9873-c495a833b705"
+  id: "cloudformation-aws-elasticsearch-without-iam-authentication"
   display_name: "Elasticsearch without IAM authentication"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5c666ed9-b586-49ab-9873-c495a833b705`
+**Id:** {{< copyable-code >}}cloudformation-aws-elasticsearch-without-iam-authentication{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "IAM user policy without MFA"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_user_policy_without_mfa"
-  id: "b5681959-6c09-4f55-b42b-c40fa12d03ec"
+  id: "terraform-aws-iam-user-policy-without-mfa"
   display_name: "IAM user policy without MFA"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b5681959-6c09-4f55-b42b-c40fa12d03ec`
+**Id:** {{< copyable-code >}}terraform-aws-iam-user-policy-without-mfa{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

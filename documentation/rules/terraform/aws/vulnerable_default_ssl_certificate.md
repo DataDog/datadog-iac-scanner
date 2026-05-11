@@ -3,7 +3,7 @@ title: "Vulnerable default SSL certificate"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/vulnerable_default_ssl_certificate"
-  id: "3a1e94df-6847-4c0e-a3b6-6c6af4e128ef"
+  id: "terraform-aws-vulnerable-default-ssl-certificate"
   display_name: "Vulnerable default SSL certificate"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3a1e94df-6847-4c0e-a3b6-6c6af4e128ef`
+**Id:** {{< copyable-code >}}terraform-aws-vulnerable-default-ssl-certificate{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "CPU requests not set"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/cpu_requests_not_set"
-  id: "577ac19c-6a77-46d7-9f14-e049cdd15ec2"
+  id: "terraform-kubernetes-cpu-requests-not-set"
   display_name: "CPU requests not set"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `577ac19c-6a77-46d7-9f14-e049cdd15ec2`
+**Id:** {{< copyable-code >}}terraform-kubernetes-cpu-requests-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

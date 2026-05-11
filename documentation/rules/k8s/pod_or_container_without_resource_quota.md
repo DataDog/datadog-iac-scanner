@@ -3,7 +3,7 @@ title: "Pod or container without ResourceQuota"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/pod_or_container_without_resource_quota"
-  id: "48a5beba-e4c0-4584-a2aa-e6894e4cf424"
+  id: "kubernetes-pod-or-container-without-resource-quota"
   display_name: "Pod or container without ResourceQuota"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `48a5beba-e4c0-4584-a2aa-e6894e4cf424`
+**Id:** {{< copyable-code >}}kubernetes-pod-or-container-without-resource-quota{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

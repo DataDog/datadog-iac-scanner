@@ -3,7 +3,7 @@ title: "Missing AppArmor profile"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/missing_app_armor_config"
-  id: "8b36775e-183d-4d46-b0f7-96a6f34a723f"
+  id: "kubernetes-missing-app-armor-config"
   display_name: "Missing AppArmor profile"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8b36775e-183d-4d46-b0f7-96a6f34a723f`
+**Id:** {{< copyable-code >}}kubernetes-missing-app-armor-config{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

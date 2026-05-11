@@ -3,7 +3,7 @@ title: "IAM access key is exposed"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_access_key_is_exposed"
-  id: "7f79f858-fbe8-4186-8a2c-dfd0d958a40f"
+  id: "ansible-aws-iam-access-key-is-exposed"
   display_name: "IAM access key is exposed"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7f79f858-fbe8-4186-8a2c-dfd0d958a40f`
+**Id:** {{< copyable-code >}}ansible-aws-iam-access-key-is-exposed{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

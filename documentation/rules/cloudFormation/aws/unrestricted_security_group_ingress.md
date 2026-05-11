@@ -3,7 +3,7 @@ title: "Unrestricted security group ingress"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/unrestricted_security_group_ingress"
-  id: "4a1e6b34-1008-4e61-a5f2-1f7c276f8d14"
+  id: "cloudformation-aws-unrestricted-security-group-ingress"
   display_name: "Unrestricted security group ingress"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4a1e6b34-1008-4e61-a5f2-1f7c276f8d14`
+**Id:** {{< copyable-code >}}cloudformation-aws-unrestricted-security-group-ingress{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "ELB using insecure protocols"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/elb_using_insecure_protocols"
-  id: "730a5951-2760-407a-b032-dd629b55c23a"
+  id: "ansible-aws-elb-using-insecure-protocols"
   display_name: "ELB using insecure protocols"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `730a5951-2760-407a-b032-dd629b55c23a`
+**Id:** {{< copyable-code >}}ansible-aws-elb-using-insecure-protocols{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

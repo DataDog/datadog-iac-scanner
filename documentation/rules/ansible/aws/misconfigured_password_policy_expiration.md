@@ -3,7 +3,7 @@ title: "Misconfigured password policy expiration"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/misconfigured_password_policy_expiration"
-  id: "3f2cf811-88fa-4eda-be45-7a191a18aba9"
+  id: "ansible-aws-misconfigured-password-policy-expiration"
   display_name: "Misconfigured password policy expiration"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3f2cf811-88fa-4eda-be45-7a191a18aba9`
+**Id:** {{< copyable-code >}}ansible-aws-misconfigured-password-policy-expiration{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "CloudFront without WAF"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudfront_without_waf"
-  id: "22c80725-e390-4055-8d14-a872230f6607"
+  id: "ansible-aws-cloudfront-without-waf"
   display_name: "CloudFront without WAF"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `22c80725-e390-4055-8d14-a872230f6607`
+**Id:** {{< copyable-code >}}ansible-aws-cloudfront-without-waf{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

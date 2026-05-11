@@ -3,7 +3,7 @@ title: "S3 bucket with unsecured CORS rule"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_with_unsecured_cors_rule"
-  id: "3609d27c-3698-483a-9402-13af6ae80583"
+  id: "cloudformation-aws-s3-bucket-with-unsecured-cors-rule"
   display_name: "S3 bucket with unsecured CORS rule"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3609d27c-3698-483a-9402-13af6ae80583`
+**Id:** {{< copyable-code >}}cloudformation-aws-s3-bucket-with-unsecured-cors-rule{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

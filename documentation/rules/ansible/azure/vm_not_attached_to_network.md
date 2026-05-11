@@ -3,7 +3,7 @@ title: "VM not attached to network"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/vm_not_attached_to_network"
-  id: "1e5f5307-3e01-438d-8da6-985307ed25ce"
+  id: "ansible-azure-vm-not-attached-to-network"
   display_name: "VM not attached to network"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1e5f5307-3e01-438d-8da6-985307ed25ce`
+**Id:** {{< copyable-code >}}ansible-azure-vm-not-attached-to-network{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

@@ -3,7 +3,7 @@ title: "Container Registry repo is public"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/container_registry_repository_is_public"
-  id: "f6a7b8c9-d0e1-2345-f678-90abcdef1234"
+  id: "terraform-gcp-container-registry-repository-is-public"
   display_name: "Container Registry repo is public"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f6a7b8c9-d0e1-2345-f678-90abcdef1234`
+**Id:** {{< copyable-code >}}terraform-gcp-container-registry-repository-is-public{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

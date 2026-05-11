@@ -3,7 +3,7 @@ title: "Logging of sensitive data"
 group_id: "Ansible / Common"
 meta:
   name: "general/logging_of_sensitive_data"
-  id: "59029ddf-e651-412b-ae7b-ff6d403184bc"
+  id: "ansible-logging-of-sensitive-data"
   display_name: "Logging of sensitive data"
   cloud_provider: "Common"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `59029ddf-e651-412b-ae7b-ff6d403184bc`
+**Id:** {{< copyable-code >}}ansible-logging-of-sensitive-data{{< /copyable-code >}}
 
 **Cloud Provider:** Common
 

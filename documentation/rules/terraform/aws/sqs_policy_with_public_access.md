@@ -3,7 +3,7 @@ title: "SQS policy with public access"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sqs_policy_with_public_access"
-  id: "730675f9-52ed-49b6-8ead-0acb5dd7df7f"
+  id: "terraform-aws-sqs-policy-with-public-access"
   display_name: "SQS policy with public access"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `730675f9-52ed-49b6-8ead-0acb5dd7df7f`
+**Id:** {{< copyable-code >}}terraform-aws-sqs-policy-with-public-access{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

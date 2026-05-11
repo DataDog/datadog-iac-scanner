@@ -3,7 +3,7 @@ title: "Stack without template"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/stack_without_template"
-  id: "91bea7b8-0c31-4863-adc9-93f6177266c4"
+  id: "terraform-aws-stack-without-template"
   display_name: "Stack without template"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `91bea7b8-0c31-4863-adc9-93f6177266c4`
+**Id:** {{< copyable-code >}}terraform-aws-stack-without-template{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "S3 bucket allows delete action from all principals"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_allows_delete_action_from_all_principals"
-  id: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09"
+  id: "terraform-aws-s3-bucket-allows-delete-action-from-all-principals"
   display_name: "S3 bucket allows delete action from all principals"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ffdf4b37-7703-4dfe-a682-9d2e99bc6c09`
+**Id:** {{< copyable-code >}}terraform-aws-s3-bucket-allows-delete-action-from-all-principals{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "ELB using weak ciphers"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elb_using_weak_ciphers"
-  id: "809f77f8-d10e-4842-a84f-3be7b6ff1190"
+  id: "cloudformation-aws-elb-using-weak-ciphers"
   display_name: "ELB using weak ciphers"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `809f77f8-d10e-4842-a84f-3be7b6ff1190`
+**Id:** {{< copyable-code >}}cloudformation-aws-elb-using-weak-ciphers{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

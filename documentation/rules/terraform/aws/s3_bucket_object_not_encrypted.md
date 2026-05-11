@@ -3,7 +3,7 @@ title: "S3 bucket object not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_object_not_encrypted"
-  id: "5fb49a69-8d46-4495-a2f8-9c8c622b2b6e"
+  id: "terraform-aws-s3-bucket-object-not-encrypted"
   display_name: "S3 bucket object not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5fb49a69-8d46-4495-a2f8-9c8c622b2b6e`
+**Id:** {{< copyable-code >}}terraform-aws-s3-bucket-object-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

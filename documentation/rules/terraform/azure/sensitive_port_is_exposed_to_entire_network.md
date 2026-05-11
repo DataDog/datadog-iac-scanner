@@ -3,7 +3,7 @@ title: "Sensitive port is exposed to entire network"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/sensitive_port_is_exposed_to_entire_network"
-  id: "594c198b-4d79-41b8-9b36-fde13348b619"
+  id: "terraform-azure-sensitive-port-is-exposed-to-entire-network"
   display_name: "Sensitive port is exposed to entire network"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `594c198b-4d79-41b8-9b36-fde13348b619`
+**Id:** {{< copyable-code >}}terraform-azure-sensitive-port-is-exposed-to-entire-network{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

@@ -3,7 +3,7 @@ title: "Amazon MQ broker encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/amazon_mq_broker_encryption_disabled"
-  id: "316278b3-87ac-444c-8f8f-a733a28da60f"
+  id: "cloudformation-aws-amazon-mq-broker-encryption-disabled"
   display_name: "Amazon MQ broker encryption disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `316278b3-87ac-444c-8f8f-a733a28da60f`
+**Id:** {{< copyable-code >}}cloudformation-aws-amazon-mq-broker-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

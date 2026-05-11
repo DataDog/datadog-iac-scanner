@@ -3,7 +3,7 @@ title: "NAS file system without KMS"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/nas_file_system_without_kms"
-  id: "5f670f9d-b1b4-4c90-8618-2288f1ab9676"
+  id: "terraform-alicloud-nas-file-system-without-kms"
   display_name: "NAS file system without KMS"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5f670f9d-b1b4-4c90-8618-2288f1ab9676`
+**Id:** {{< copyable-code >}}terraform-alicloud-nas-file-system-without-kms{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

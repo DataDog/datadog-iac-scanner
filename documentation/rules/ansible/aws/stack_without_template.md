@@ -3,7 +3,7 @@ title: "Stack without template"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/stack_without_template"
-  id: "32d31f1f-0f83-4721-b7ec-1e6948c60145"
+  id: "ansible-aws-stack-without-template"
   display_name: "Stack without template"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `32d31f1f-0f83-4721-b7ec-1e6948c60145`
+**Id:** {{< copyable-code >}}ansible-aws-stack-without-template{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

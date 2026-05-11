@@ -3,7 +3,7 @@ title: "CloudWatch logging disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudwatch_logging_disabled"
-  id: "7dbba512-e244-42dc-98bb-422339827967"
+  id: "terraform-aws-cloudwatch-logging-disabled"
   display_name: "CloudWatch logging disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7dbba512-e244-42dc-98bb-422339827967`
+**Id:** {{< copyable-code >}}terraform-aws-cloudwatch-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

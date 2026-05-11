@@ -3,7 +3,7 @@ title: "App Service managed identity disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/app_service_managed_identity_disabled"
-  id: "b61cce4b-0cc4-472b-8096-15617a6d769b"
+  id: "terraform-azure-app-service-managed-identity-disabled"
   display_name: "App Service managed identity disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b61cce4b-0cc4-472b-8096-15617a6d769b`
+**Id:** {{< copyable-code >}}terraform-azure-app-service-managed-identity-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

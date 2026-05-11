@@ -3,7 +3,7 @@ title: "EC2 instance using default VPC"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_instance_using_default_vpc"
-  id: "e42a3ef0-5325-4667-84bf-075ba1c9d58e"
+  id: "cloudformation-aws-ec2-instance-using-default-vpc"
   display_name: "EC2 instance using default VPC"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e42a3ef0-5325-4667-84bf-075ba1c9d58e`
+**Id:** {{< copyable-code >}}cloudformation-aws-ec2-instance-using-default-vpc{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

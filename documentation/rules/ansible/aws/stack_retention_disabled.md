@@ -3,7 +3,7 @@ title: "Stack retention disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/stack_retention_disabled"
-  id: "17d5ba1d-7667-4729-b1a6-b11fde3db7f7"
+  id: "ansible-aws-stack-retention-disabled"
   display_name: "Stack retention disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `17d5ba1d-7667-4729-b1a6-b11fde3db7f7`
+**Id:** {{< copyable-code >}}ansible-aws-stack-retention-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

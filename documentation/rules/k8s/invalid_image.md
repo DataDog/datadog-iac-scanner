@@ -3,7 +3,7 @@ title: "Invalid image tag"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/invalid_image"
-  id: "583053b7-e632-46f0-b989-f81ff8045385"
+  id: "kubernetes-invalid-image"
   display_name: "Invalid image tag"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `583053b7-e632-46f0-b989-f81ff8045385`
+**Id:** {{< copyable-code >}}kubernetes-invalid-image{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

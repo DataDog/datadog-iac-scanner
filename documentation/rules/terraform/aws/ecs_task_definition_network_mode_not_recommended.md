@@ -3,7 +3,7 @@ title: "ECS task definition network mode not recommended"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ecs_task_definition_network_mode_not_recommended"
-  id: "9f4a9409-9c60-4671-be96-9716dbf63db1"
+  id: "terraform-aws-ecs-task-definition-network-mode-not-recommended"
   display_name: "ECS task definition network mode not recommended"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9f4a9409-9c60-4671-be96-9716dbf63db1`
+**Id:** {{< copyable-code >}}terraform-aws-ecs-task-definition-network-mode-not-recommended{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

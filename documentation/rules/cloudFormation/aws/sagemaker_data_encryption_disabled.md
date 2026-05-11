@@ -3,7 +3,7 @@ title: "SageMaker data encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/sagemaker_data_encryption_disabled"
-  id: "709e6da6-fa1f-44cc-8f17-7f25f96dadbe"
+  id: "cloudformation-aws-sagemaker-data-encryption-disabled"
   display_name: "SageMaker data encryption disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `709e6da6-fa1f-44cc-8f17-7f25f96dadbe`
+**Id:** {{< copyable-code >}}cloudformation-aws-sagemaker-data-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

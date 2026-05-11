@@ -3,7 +3,7 @@ title: "Containers missing drop capabilities"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/no_drop_capabilities_for_containers"
-  id: "268ca686-7fb7-4ae9-b129-955a2a89064e"
+  id: "kubernetes-no-drop-capabilities-for-containers"
   display_name: "Containers missing drop capabilities"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `268ca686-7fb7-4ae9-b129-955a2a89064e`
+**Id:** {{< copyable-code >}}kubernetes-no-drop-capabilities-for-containers{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

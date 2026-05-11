@@ -3,7 +3,7 @@ title: "COPY --from references current FROM alias"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/copy_from_references_current_from_alias"
-  id: "cdddb86f-95f6-4fc4-b5a1-483d9afceb2b"
+  id: "dockerfile-copy-from-references-current-from-alias"
   display_name: "COPY --from references current FROM alias"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cdddb86f-95f6-4fc4-b5a1-483d9afceb2b`
+**Id:** {{< copyable-code >}}dockerfile-copy-from-references-current-from-alias{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

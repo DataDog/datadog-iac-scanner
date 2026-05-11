@@ -3,7 +3,7 @@ title: "ALB listening on HTTP"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/alb_listening_on_http"
-  id: "de7f5e83-da88-4046-871f-ea18504b1d43"
+  id: "terraform-aws-alb-listening-on-http"
   display_name: "ALB listening on HTTP"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `de7f5e83-da88-4046-871f-ea18504b1d43`
+**Id:** {{< copyable-code >}}terraform-aws-alb-listening-on-http{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

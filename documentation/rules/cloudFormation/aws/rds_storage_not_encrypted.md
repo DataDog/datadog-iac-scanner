@@ -3,7 +3,7 @@ title: "RDS storage not encrypted"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/rds_storage_not_encrypted"
-  id: "5beacce3-4020-4a3d-9e1d-a36f953df630"
+  id: "cloudformation-aws-rds-storage-not-encrypted"
   display_name: "RDS storage not encrypted"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5beacce3-4020-4a3d-9e1d-a36f953df630`
+**Id:** {{< copyable-code >}}cloudformation-aws-rds-storage-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

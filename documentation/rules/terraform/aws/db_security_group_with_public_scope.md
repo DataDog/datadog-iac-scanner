@@ -3,7 +3,7 @@ title: "DB security group with public scope"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/db_security_group_with_public_scope"
-  id: "1e0ef61b-ad85-4518-a3d3-85eaad164885"
+  id: "terraform-aws-db-security-group-with-public-scope"
   display_name: "DB security group with public scope"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1e0ef61b-ad85-4518-a3d3-85eaad164885`
+**Id:** {{< copyable-code >}}terraform-aws-db-security-group-with-public-scope{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

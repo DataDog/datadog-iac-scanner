@@ -3,7 +3,7 @@ title: "Lambda function without dead-letter queue"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/lambda_function_without_dead_letter_queue"
-  id: "c2eae442-d3ba-4cb1-84ca-1db4f80eae3d"
+  id: "cloudformation-aws-lambda-function-without-dead-letter-queue"
   display_name: "Lambda function without dead-letter queue"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c2eae442-d3ba-4cb1-84ca-1db4f80eae3d`
+**Id:** {{< copyable-code >}}cloudformation-aws-lambda-function-without-dead-letter-queue{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

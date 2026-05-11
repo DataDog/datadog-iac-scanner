@@ -3,7 +3,7 @@ title: "Shared service account"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/shared_service_account"
-  id: "c1032cf7-3628-44e2-bd53-38c17cf31b6b"
+  id: "kubernetes-shared-service-account"
   display_name: "Shared service account"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c1032cf7-3628-44e2-bd53-38c17cf31b6b`
+**Id:** {{< copyable-code >}}kubernetes-shared-service-account{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

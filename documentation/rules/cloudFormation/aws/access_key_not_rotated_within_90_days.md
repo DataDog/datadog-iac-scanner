@@ -3,7 +3,7 @@ title: "High access key rotation period"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/access_key_not_rotated_within_90_days"
-  id: "800fa019-49dd-421b-9042-7331fdd83fa2"
+  id: "cloudformation-aws-access-key-not-rotated-within-90-days"
   display_name: "High access key rotation period"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `800fa019-49dd-421b-9042-7331fdd83fa2`
+**Id:** {{< copyable-code >}}cloudformation-aws-access-key-not-rotated-within-90-days{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Azure App Service client certificate disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/azure_app_service_client_certificate_disabled"
-  id: "a81573f9-3691-4d83-88a0-7d4af63e17a3"
+  id: "terraform-azure-azure-app-service-client-certificate-disabled"
   display_name: "Azure App Service client certificate disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a81573f9-3691-4d83-88a0-7d4af63e17a3`
+**Id:** {{< copyable-code >}}terraform-azure-azure-app-service-client-certificate-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

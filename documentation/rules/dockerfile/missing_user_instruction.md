@@ -3,7 +3,7 @@ title: "Missing user instruction"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/missing_user_instruction"
-  id: "fd54f200-402c-4333-a5a4-36ef6709af2f"
+  id: "dockerfile-missing-user-instruction"
   display_name: "Missing user instruction"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fd54f200-402c-4333-a5a4-36ef6709af2f`
+**Id:** {{< copyable-code >}}dockerfile-missing-user-instruction{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

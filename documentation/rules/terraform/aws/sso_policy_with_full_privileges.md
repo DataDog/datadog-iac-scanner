@@ -3,7 +3,7 @@ title: "SSO policy with full privileges"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sso_policy_with_full_privileges"
-  id: "132a8c31-9837-4203-9fd1-15ca210c7b73"
+  id: "terraform-aws-sso-policy-with-full-privileges"
   display_name: "SSO policy with full privileges"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `132a8c31-9837-4203-9fd1-15ca210c7b73`
+**Id:** {{< copyable-code >}}terraform-aws-sso-policy-with-full-privileges{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

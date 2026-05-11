@@ -3,7 +3,7 @@ title: "Shared service account"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/shared_service_account"
-  id: "f74b9c43-161a-4799-bc95-0b0ec81801b9"
+  id: "terraform-kubernetes-shared-service-account"
   display_name: "Shared service account"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f74b9c43-161a-4799-bc95-0b0ec81801b9`
+**Id:** {{< copyable-code >}}terraform-kubernetes-shared-service-account{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

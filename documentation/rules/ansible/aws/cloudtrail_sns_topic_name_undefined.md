@@ -3,7 +3,7 @@ title: "CloudTrail SNS topic name undefined"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudtrail_sns_topic_name_undefined"
-  id: "5ba316a9-c466-4ec1-8d5b-bc6107dc9a92"
+  id: "ansible-aws-cloudtrail-sns-topic-name-undefined"
   display_name: "CloudTrail SNS topic name undefined"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5ba316a9-c466-4ec1-8d5b-bc6107dc9a92`
+**Id:** {{< copyable-code >}}ansible-aws-cloudtrail-sns-topic-name-undefined{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

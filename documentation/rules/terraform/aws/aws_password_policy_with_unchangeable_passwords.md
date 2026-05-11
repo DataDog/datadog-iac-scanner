@@ -3,7 +3,7 @@ title: "AWS password policy with unchangeable passwords"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/aws_password_policy_with_unchangeable_passwords"
-  id: "9ef7d25d-9764-4224-9968-fa321c56ef76"
+  id: "terraform-aws-aws-password-policy-with-unchangeable-passwords"
   display_name: "AWS password policy with unchangeable passwords"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9ef7d25d-9764-4224-9968-fa321c56ef76`
+**Id:** {{< copyable-code >}}terraform-aws-aws-password-policy-with-unchangeable-passwords{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Google Compute subnetwork logging disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/google_compute_subnetwork_logging_disabled"
-  id: "40430747-442d-450a-a34f-dc57149f4609"
+  id: "terraform-gcp-google-compute-subnetwork-logging-disabled"
   display_name: "Google Compute subnetwork logging disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `40430747-442d-450a-a34f-dc57149f4609`
+**Id:** {{< copyable-code >}}terraform-gcp-google-compute-subnetwork-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "Kinesis SSE not configured"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/kinesis_sse_not_configured"
-  id: "5c6dd5e7-1fe0-4cae-8f81-4c122717cef3"
+  id: "terraform-aws-kinesis-sse-not-configured"
   display_name: "Kinesis SSE not configured"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5c6dd5e7-1fe0-4cae-8f81-4c122717cef3`
+**Id:** {{< copyable-code >}}terraform-aws-kinesis-sse-not-configured{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

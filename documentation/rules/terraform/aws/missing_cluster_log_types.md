@@ -3,7 +3,7 @@ title: "Missing cluster log types"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/missing_cluster_log_types"
-  id: "66f130d9-b81d-4e8e-9b08-da74b9c891df"
+  id: "terraform-aws-missing-cluster-log-types"
   display_name: "Missing cluster log types"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `66f130d9-b81d-4e8e-9b08-da74b9c891df`
+**Id:** {{< copyable-code >}}terraform-aws-missing-cluster-log-types{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

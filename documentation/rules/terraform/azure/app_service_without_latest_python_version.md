@@ -3,7 +3,7 @@ title: "App Service without latest Python version"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/app_service_without_latest_python_version"
-  id: "cc4aaa9d-1070-461a-b519-04e00f42db8a"
+  id: "terraform-azure-app-service-without-latest-python-version"
   display_name: "App Service without latest Python version"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cc4aaa9d-1070-461a-b519-04e00f42db8a`
+**Id:** {{< copyable-code >}}terraform-azure-app-service-without-latest-python-version{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

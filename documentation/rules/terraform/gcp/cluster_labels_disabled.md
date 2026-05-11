@@ -3,7 +3,7 @@ title: "Cluster labels disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/cluster_labels_disabled"
-  id: "65c1bc7a-4835-4ac4-a2b6-13d310b0648d"
+  id: "terraform-gcp-cluster-labels-disabled"
   display_name: "Cluster labels disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `65c1bc7a-4835-4ac4-a2b6-13d310b0648d`
+**Id:** {{< copyable-code >}}terraform-gcp-cluster-labels-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

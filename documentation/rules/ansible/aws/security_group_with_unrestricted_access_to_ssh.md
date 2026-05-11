@@ -3,7 +3,7 @@ title: "Security group with unrestricted access to SSH"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/security_group_with_unrestricted_access_to_ssh"
-  id: "57ced4b9-6ba4-487b-8843-b65562b90c77"
+  id: "ansible-aws-security-group-with-unrestricted-access-to-ssh"
   display_name: "Security group with unrestricted access to SSH"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `57ced4b9-6ba4-487b-8843-b65562b90c77`
+**Id:** {{< copyable-code >}}ansible-aws-security-group-with-unrestricted-access-to-ssh{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

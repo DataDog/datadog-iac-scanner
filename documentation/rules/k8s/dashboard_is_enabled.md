@@ -3,7 +3,7 @@ title: "Dashboard is enabled"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/dashboard_is_enabled"
-  id: "d2ad057f-0928-41ef-a83c-f59203bb855b"
+  id: "kubernetes-dashboard-is-enabled"
   display_name: "Dashboard is enabled"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d2ad057f-0928-41ef-a83c-f59203bb855b`
+**Id:** {{< copyable-code >}}kubernetes-dashboard-is-enabled{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

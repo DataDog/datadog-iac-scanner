@@ -3,7 +3,7 @@ title: "AMI shared with multiple accounts"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ami_shared_with_multiple_accounts"
-  id: "a19b2942-142e-4e2b-93b7-6cf6a6c8d90f"
+  id: "ansible-aws-ami-shared-with-multiple-accounts"
   display_name: "AMI shared with multiple accounts"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a19b2942-142e-4e2b-93b7-6cf6a6c8d90f`
+**Id:** {{< copyable-code >}}ansible-aws-ami-shared-with-multiple-accounts{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

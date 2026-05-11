@@ -3,7 +3,7 @@ title: "Serverless function environment variables not encrypted"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws_sam/serverless_function_environment_variables_not_encrypted"
-  id: "a7f8ac28-eed1-483d-87c8-4c325f022572"
+  id: "cloudformation-aws-serverless-function-environment-variables-not-encrypted"
   display_name: "Serverless function environment variables not encrypted"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a7f8ac28-eed1-483d-87c8-4c325f022572`
+**Id:** {{< copyable-code >}}cloudformation-aws-serverless-function-environment-variables-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

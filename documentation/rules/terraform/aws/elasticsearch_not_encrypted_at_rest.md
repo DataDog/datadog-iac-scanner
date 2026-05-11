@@ -3,7 +3,7 @@ title: "Elasticsearch not encrypted at rest"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_not_encrypted_at_rest"
-  id: "24e16922-4330-4e9d-be8a-caa90299466a"
+  id: "terraform-aws-elasticsearch-not-encrypted-at-rest"
   display_name: "Elasticsearch not encrypted at rest"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `24e16922-4330-4e9d-be8a-caa90299466a`
+**Id:** {{< copyable-code >}}terraform-aws-elasticsearch-not-encrypted-at-rest{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

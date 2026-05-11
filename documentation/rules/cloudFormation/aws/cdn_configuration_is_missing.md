@@ -3,7 +3,7 @@ title: "CDN configuration is missing"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cdn_configuration_is_missing"
-  id: "e4f54ff4-d352-40e8-a096-5141073c37a2"
+  id: "cloudformation-aws-cdn-configuration-is-missing"
   display_name: "CDN configuration is missing"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e4f54ff4-d352-40e8-a096-5141073c37a2`
+**Id:** {{< copyable-code >}}cloudformation-aws-cdn-configuration-is-missing{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

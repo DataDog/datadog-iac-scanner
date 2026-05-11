@@ -3,7 +3,7 @@ title: "No ROS stack policy"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/no_ros_stack_policy"
-  id: "72ceb736-0aee-43ea-a191-3a69ab135681"
+  id: "terraform-alicloud-no-ros-stack-policy"
   display_name: "No ROS stack policy"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `72ceb736-0aee-43ea-a191-3a69ab135681`
+**Id:** {{< copyable-code >}}terraform-alicloud-no-ros-stack-policy{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

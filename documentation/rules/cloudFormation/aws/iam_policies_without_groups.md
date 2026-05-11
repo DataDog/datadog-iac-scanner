@@ -3,7 +3,7 @@ title: "IAM policies without groups"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_policies_without_groups"
-  id: "5e7acff5-095b-40ac-9073-ac2e4ad8a512"
+  id: "cloudformation-aws-iam-policies-without-groups"
   display_name: "IAM policies without groups"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5e7acff5-095b-40ac-9073-ac2e4ad8a512`
+**Id:** {{< copyable-code >}}cloudformation-aws-iam-policies-without-groups{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

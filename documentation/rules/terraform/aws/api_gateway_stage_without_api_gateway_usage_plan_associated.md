@@ -3,7 +3,7 @@ title: "API Gateway stage without API Gateway usage plan associated"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/api_gateway_stage_without_api_gateway_usage_plan_associated"
-  id: "c999cf62-0920-40f8-8dda-0caccd66ed7e"
+  id: "terraform-aws-api-gateway-stage-without-api-gateway-usage-plan-associated"
   display_name: "API Gateway stage without API Gateway usage plan associated"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c999cf62-0920-40f8-8dda-0caccd66ed7e`
+**Id:** {{< copyable-code >}}terraform-aws-api-gateway-stage-without-api-gateway-usage-plan-associated{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

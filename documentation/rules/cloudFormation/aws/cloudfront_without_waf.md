@@ -3,7 +3,7 @@ title: "CloudFront without WAF"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cloudfront_without_waf"
-  id: "0f139403-303f-467c-96bd-e717e6cfd62d"
+  id: "cloudformation-aws-cloudfront-without-waf"
   display_name: "CloudFront without WAF"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0f139403-303f-467c-96bd-e717e6cfd62d`
+**Id:** {{< copyable-code >}}cloudformation-aws-cloudfront-without-waf{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

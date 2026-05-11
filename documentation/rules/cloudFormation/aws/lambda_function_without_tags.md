@@ -3,7 +3,7 @@ title: "Lambda function without tags"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/lambda_function_without_tags"
-  id: "8df8e857-bd59-44fa-9f4c-d77594b95b46"
+  id: "cloudformation-aws-lambda-function-without-tags"
   display_name: "Lambda function without tags"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8df8e857-bd59-44fa-9f4c-d77594b95b46`
+**Id:** {{< copyable-code >}}cloudformation-aws-lambda-function-without-tags{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

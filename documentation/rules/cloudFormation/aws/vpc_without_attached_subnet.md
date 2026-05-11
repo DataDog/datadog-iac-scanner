@@ -3,7 +3,7 @@ title: "VPC without attached subnet"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/vpc_without_attached_subnet"
-  id: "3b3b4411-ad1f-40e7-b257-a78a6bb9673a"
+  id: "cloudformation-aws-vpc-without-attached-subnet"
   display_name: "VPC without attached subnet"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3b3b4411-ad1f-40e7-b257-a78a6bb9673a`
+**Id:** {{< copyable-code >}}cloudformation-aws-vpc-without-attached-subnet{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

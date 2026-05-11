@@ -3,7 +3,7 @@ title: "DB instance storage not encrypted"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/db_instance_storage_not_encrypted"
-  id: "7dfb316c-a6c2-454d-b8a2-97f147b0c0ff"
+  id: "ansible-aws-db-instance-storage-not-encrypted"
   display_name: "DB instance storage not encrypted"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7dfb316c-a6c2-454d-b8a2-97f147b0c0ff`
+**Id:** {{< copyable-code >}}ansible-aws-db-instance-storage-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

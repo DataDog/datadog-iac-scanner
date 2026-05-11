@@ -3,7 +3,7 @@ title: "PostgreSQL log duration not set"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_log_duration_not_set"
-  id: "729ebb15-8060-40f7-9017-cb72676a5487"
+  id: "ansible-azure-postgresql-log-duration-not-set"
   display_name: "PostgreSQL log duration not set"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `729ebb15-8060-40f7-9017-cb72676a5487`
+**Id:** {{< copyable-code >}}ansible-azure-postgresql-log-duration-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

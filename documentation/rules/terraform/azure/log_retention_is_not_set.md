@@ -3,7 +3,7 @@ title: "Log retention is not set"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/log_retention_is_not_set"
-  id: "ffb02aca-0d12-475e-b77c-a726f7aeff4b"
+  id: "terraform-azure-log-retention-is-not-set"
   display_name: "Log retention is not set"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ffb02aca-0d12-475e-b77c-a726f7aeff4b`
+**Id:** {{< copyable-code >}}terraform-azure-log-retention-is-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

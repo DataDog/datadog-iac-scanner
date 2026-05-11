@@ -3,7 +3,7 @@ title: "SQL DB instance backup disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/sql_db_instance_backup_disabled"
-  id: "cf3c7631-cd1e-42f3-8801-a561214a6e79"
+  id: "terraform-gcp-sql-db-instance-backup-disabled"
   display_name: "SQL DB instance backup disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cf3c7631-cd1e-42f3-8801-a561214a6e79`
+**Id:** {{< copyable-code >}}terraform-gcp-sql-db-instance-backup-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

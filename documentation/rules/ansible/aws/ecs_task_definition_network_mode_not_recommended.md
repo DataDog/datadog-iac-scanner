@@ -3,7 +3,7 @@ title: "ECS task definition network mode not recommended"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ecs_task_definition_network_mode_not_recommended"
-  id: "01aec7c2-3e4d-4274-ae47-2b8fea22fd1f"
+  id: "ansible-aws-ecs-task-definition-network-mode-not-recommended"
   display_name: "ECS task definition network mode not recommended"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `01aec7c2-3e4d-4274-ae47-2b8fea22fd1f`
+**Id:** {{< copyable-code >}}ansible-aws-ecs-task-definition-network-mode-not-recommended{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

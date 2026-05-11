@@ -3,7 +3,7 @@ title: "Unknown port exposed to internet"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/unknown_port_exposed_to_internet"
-  id: "829ce3b8-065c-41a3-ad57-e0accfea82d2"
+  id: "cloudformation-aws-unknown-port-exposed-to-internet"
   display_name: "Unknown port exposed to internet"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `829ce3b8-065c-41a3-ad57-e0accfea82d2`
+**Id:** {{< copyable-code >}}cloudformation-aws-unknown-port-exposed-to-internet{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

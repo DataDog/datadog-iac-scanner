@@ -3,7 +3,7 @@ title: "ElastiCache replication group not encrypted at transit"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticache_replication_group_not_encrypted_at_transit"
-  id: "1afbb3fa-cf6c-4a3d-b730-95e9f4df343e"
+  id: "terraform-aws-elasticache-replication-group-not-encrypted-at-transit"
   display_name: "ElastiCache replication group not encrypted at transit"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1afbb3fa-cf6c-4a3d-b730-95e9f4df343e`
+**Id:** {{< copyable-code >}}terraform-aws-elasticache-replication-group-not-encrypted-at-transit{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

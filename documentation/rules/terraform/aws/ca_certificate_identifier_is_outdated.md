@@ -3,7 +3,7 @@ title: "CA certificate identifier is outdated"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ca_certificate_identifier_is_outdated"
-  id: "9f40c07e-699e-4410-8856-3ba0f2e3a2dd"
+  id: "terraform-aws-ca-certificate-identifier-is-outdated"
   display_name: "CA certificate identifier is outdated"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9f40c07e-699e-4410-8856-3ba0f2e3a2dd`
+**Id:** {{< copyable-code >}}terraform-aws-ca-certificate-identifier-is-outdated{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

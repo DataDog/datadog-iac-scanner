@@ -3,7 +3,7 @@ title: "User data contains encoded private key"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/user_data_contains_encoded_private_key"
-  id: "568cc372-ca64-420d-9015-ee347d00d288"
+  id: "cloudformation-aws-user-data-contains-encoded-private-key"
   display_name: "User data contains encoded private key"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `568cc372-ca64-420d-9015-ee347d00d288`
+**Id:** {{< copyable-code >}}cloudformation-aws-user-data-contains-encoded-private-key{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

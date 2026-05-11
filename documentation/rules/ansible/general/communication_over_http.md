@@ -3,7 +3,7 @@ title: "Communication over HTTP"
 group_id: "Ansible / Common"
 meta:
   name: "general/communication_over_http"
-  id: "2e8d4922-8362-4606-8c14-aa10466a1ce3"
+  id: "ansible-communication-over-http"
   display_name: "Communication over HTTP"
   cloud_provider: "Common"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2e8d4922-8362-4606-8c14-aa10466a1ce3`
+**Id:** {{< copyable-code >}}ansible-communication-over-http{{< /copyable-code >}}
 
 **Cloud Provider:** Common
 

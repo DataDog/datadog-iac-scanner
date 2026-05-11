@@ -3,7 +3,7 @@ title: "Memory limits not defined"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/memory_limits_not_defined"
-  id: "fd097ed0-7fe6-4f58-8b71-fef9f0820a21"
+  id: "terraform-kubernetes-memory-limits-not-defined"
   display_name: "Memory limits not defined"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fd097ed0-7fe6-4f58-8b71-fef9f0820a21`
+**Id:** {{< copyable-code >}}terraform-kubernetes-memory-limits-not-defined{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

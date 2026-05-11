@@ -3,7 +3,7 @@ title: "BigQuery table is public"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/bigquery_table_is_public"
-  id: "a9b8c7d6-e5f4-3210-abcd-1234567890ab"
+  id: "terraform-gcp-bigquery-table-is-public"
   display_name: "BigQuery table is public"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a9b8c7d6-e5f4-3210-abcd-1234567890ab`
+**Id:** {{< copyable-code >}}terraform-gcp-bigquery-table-is-public{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

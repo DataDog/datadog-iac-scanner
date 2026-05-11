@@ -3,7 +3,7 @@ title: "EC2 instance using default security group"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ec2_instance_using_default_security_group"
-  id: "08b81bb3-0985-4023-8602-b606ad81d279"
+  id: "cloudformation-aws-ec2-instance-using-default-security-group"
   display_name: "EC2 instance using default security group"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `08b81bb3-0985-4023-8602-b606ad81d279`
+**Id:** {{< copyable-code >}}cloudformation-aws-ec2-instance-using-default-security-group{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

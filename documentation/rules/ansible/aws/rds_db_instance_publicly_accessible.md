@@ -3,7 +3,7 @@ title: "RDS DB instance is not publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/rds_db_instance_publicly_accessible"
-  id: "c09e3ca5-f08a-4717-9c87-3919c5e6d209"
+  id: "ansible-aws-rds-db-instance-publicly-accessible"
   display_name: "RDS DB instance is not publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c09e3ca5-f08a-4717-9c87-3919c5e6d209`
+**Id:** {{< copyable-code >}}ansible-aws-rds-db-instance-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "RDS associated with a public subnet"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/rds_associated_with_public_subnet"
-  id: "4e88adee-a8eb-4605-a78d-9fb1096e3091"
+  id: "cloudformation-aws-rds-associated-with-public-subnet"
   display_name: "RDS associated with a public subnet"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4e88adee-a8eb-4605-a78d-9fb1096e3091`
+**Id:** {{< copyable-code >}}cloudformation-aws-rds-associated-with-public-subnet{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

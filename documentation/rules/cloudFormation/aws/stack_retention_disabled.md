@@ -3,7 +3,7 @@ title: "Stack retention disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/stack_retention_disabled"
-  id: "fe974ae9-858e-4991-bbd5-e040a834679f"
+  id: "cloudformation-aws-stack-retention-disabled"
   display_name: "Stack retention disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fe974ae9-858e-4991-bbd5-e040a834679f`
+**Id:** {{< copyable-code >}}cloudformation-aws-stack-retention-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

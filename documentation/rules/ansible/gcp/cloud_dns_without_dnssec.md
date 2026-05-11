@@ -2,8 +2,8 @@
 title: "Cloud DNS without DNSSEC"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/cloud_dns_without_dnnsec"
-  id: "80b15fb1-6207-40f4-a803-6915ae619a03"
+  name: "gcp/cloud_dns_without_dnssec"
+  id: "ansible-gcp-cloud-dns-without-dnssec"
   display_name: "Cloud DNS without DNSSEC"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `80b15fb1-6207-40f4-a803-6915ae619a03`
+**Id:** {{< copyable-code >}}ansible-gcp-cloud-dns-without-dnssec{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

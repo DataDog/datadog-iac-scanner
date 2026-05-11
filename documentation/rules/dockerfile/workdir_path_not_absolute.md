@@ -3,7 +3,7 @@ title: "WORKDIR path not absolute"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/workdir_path_not_absolute"
-  id: "6b376af8-cfe8-49ab-a08d-f32de23661a4"
+  id: "dockerfile-workdir-path-not-absolute"
   display_name: "WORKDIR path not absolute"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6b376af8-cfe8-49ab-a08d-f32de23661a4`
+**Id:** {{< copyable-code >}}dockerfile-workdir-path-not-absolute{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

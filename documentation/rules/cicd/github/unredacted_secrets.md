@@ -3,7 +3,7 @@ title: "Unredacted secrets"
 group_id: "CICD / GitHub"
 meta:
   name: "github/unredacted_secrets"
-  id: "c3d4e5f6-a7b8-49c0-d1e2-f3a4b5c6d7e8"
+  id: "cicd-github-unredacted-secrets"
   display_name: "Unredacted secrets"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c3d4e5f6-a7b8-49c0-d1e2-f3a4b5c6d7e8`
+**Id:** {{< copyable-code >}}cicd-github-unredacted-secrets{{< /copyable-code >}}
 
 **Cloud Provider:** GitHub
 

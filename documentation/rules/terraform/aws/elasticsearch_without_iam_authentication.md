@@ -3,7 +3,7 @@ title: "Elasticsearch without IAM authentication"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_without_iam_authentication"
-  id: "e7530c3c-b7cf-4149-8db9-d037a0b5268e"
+  id: "terraform-aws-elasticsearch-without-iam-authentication"
   display_name: "Elasticsearch without IAM authentication"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e7530c3c-b7cf-4149-8db9-d037a0b5268e`
+**Id:** {{< copyable-code >}}terraform-aws-elasticsearch-without-iam-authentication{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "PostgreSQL log connections not set"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_log_connections_not_set"
-  id: "7b47138f-ec0e-47dc-8516-e7728fe3cc17"
+  id: "ansible-azure-postgresql-log-connections-not-set"
   display_name: "PostgreSQL log connections not set"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7b47138f-ec0e-47dc-8516-e7728fe3cc17`
+**Id:** {{< copyable-code >}}ansible-azure-postgresql-log-connections-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

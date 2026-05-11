@@ -3,7 +3,7 @@ title: "EC2 instance using default security group"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ec2_instance_using_default_security_group"
-  id: "8d03993b-8384-419b-a681-d1f55149397c"
+  id: "ansible-aws-ec2-instance-using-default-security-group"
   display_name: "EC2 instance using default security group"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8d03993b-8384-419b-a681-d1f55149397c`
+**Id:** {{< copyable-code >}}ansible-aws-ec2-instance-using-default-security-group{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

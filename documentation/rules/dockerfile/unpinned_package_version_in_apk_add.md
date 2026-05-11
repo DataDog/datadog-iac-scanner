@@ -3,7 +3,7 @@ title: "Unpinned package version in apk add"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/unpinned_package_version_in_apk_add"
-  id: "d3499f6d-1651-41bb-a9a7-de925fea487b"
+  id: "dockerfile-unpinned-package-version-in-apk-add"
   display_name: "Unpinned package version in apk add"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d3499f6d-1651-41bb-a9a7-de925fea487b`
+**Id:** {{< copyable-code >}}dockerfile-unpinned-package-version-in-apk-add{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

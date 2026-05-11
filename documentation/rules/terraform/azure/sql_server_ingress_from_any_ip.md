@@ -3,7 +3,7 @@ title: "Sqlserver ingress from any IP"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/sql_server_ingress_from_any_ip"
-  id: "25c0ea09-f1c5-4380-b055-3b83863f2bb8"
+  id: "terraform-azure-sql-server-ingress-from-any-ip"
   display_name: "Sqlserver ingress from any IP"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `25c0ea09-f1c5-4380-b055-3b83863f2bb8`
+**Id:** {{< copyable-code >}}terraform-azure-sql-server-ingress-from-any-ip{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

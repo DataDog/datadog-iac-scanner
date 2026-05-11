@@ -3,7 +3,7 @@ title: "RDS using default port"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/rds_using_default_port"
-  id: "bca7cc4d-b3a4-4345-9461-eb69c68fcd26"
+  id: "terraform-aws-rds-using-default-port"
   display_name: "RDS using default port"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bca7cc4d-b3a4-4345-9461-eb69c68fcd26`
+**Id:** {{< copyable-code >}}terraform-aws-rds-using-default-port{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

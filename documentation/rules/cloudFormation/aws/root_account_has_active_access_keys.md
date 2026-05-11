@@ -3,7 +3,7 @@ title: "Root account has active access keys"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/root_account_has_active_access_keys"
-  id: "4c137350-7307-4803-8c04-17c09a7a9fcf"
+  id: "cloudformation-aws-root-account-has-active-access-keys"
   display_name: "Root account has active access keys"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4c137350-7307-4803-8c04-17c09a7a9fcf`
+**Id:** {{< copyable-code >}}cloudformation-aws-root-account-has-active-access-keys{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

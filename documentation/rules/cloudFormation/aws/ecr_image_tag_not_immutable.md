@@ -3,7 +3,7 @@ title: "ECR image tag not immutable"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ecr_image_tag_not_immutable"
-  id: "33f41d31-86b1-46a4-81f7-9c9a671f59ac"
+  id: "cloudformation-aws-ecr-image-tag-not-immutable"
   display_name: "ECR image tag not immutable"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `33f41d31-86b1-46a4-81f7-9c9a671f59ac`
+**Id:** {{< copyable-code >}}cloudformation-aws-ecr-image-tag-not-immutable{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

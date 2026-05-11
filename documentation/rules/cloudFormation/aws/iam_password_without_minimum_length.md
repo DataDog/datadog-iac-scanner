@@ -3,7 +3,7 @@ title: "IAM password without minimum length"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_password_without_minimum_length"
-  id: "b1b20ae3-8fa7-4af5-a74d-a2145920fcb1"
+  id: "cloudformation-aws-iam-password-without-minimum-length"
   display_name: "IAM password without minimum length"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b1b20ae3-8fa7-4af5-a74d-a2145920fcb1`
+**Id:** {{< copyable-code >}}cloudformation-aws-iam-password-without-minimum-length{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

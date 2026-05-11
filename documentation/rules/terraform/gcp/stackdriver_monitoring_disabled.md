@@ -3,7 +3,7 @@ title: "Stackdriver Monitoring disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/stackdriver_monitoring_disabled"
-  id: "30e8dfd2-3591-4d19-8d11-79e93106c93d"
+  id: "terraform-gcp-stackdriver-monitoring-disabled"
   display_name: "Stackdriver Monitoring disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `30e8dfd2-3591-4d19-8d11-79e93106c93d`
+**Id:** {{< copyable-code >}}terraform-gcp-stackdriver-monitoring-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

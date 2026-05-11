@@ -3,7 +3,7 @@ title: "VM with full cloud access"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/vm_with_full_cloud_access"
-  id: "bc280331-27b9-4acb-a010-018e8098aa5d"
+  id: "terraform-gcp-vm-with-full-cloud-access"
   display_name: "VM with full cloud access"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bc280331-27b9-4acb-a010-018e8098aa5d`
+**Id:** {{< copyable-code >}}terraform-gcp-vm-with-full-cloud-access{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

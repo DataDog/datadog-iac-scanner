@@ -3,7 +3,7 @@ title: "SSH access is not restricted"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/ssh_access_is_not_restricted"
-  id: "b2fbf1df-76dd-4d78-a6c0-e538f4a9b016"
+  id: "ansible-gcp-ssh-access-is-not-restricted"
   display_name: "SSH access is not restricted"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b2fbf1df-76dd-4d78-a6c0-e538f4a9b016`
+**Id:** {{< copyable-code >}}ansible-gcp-ssh-access-is-not-restricted{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "ECS task definition network mode not recommended"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/ecs_task_definition_network_mode_not_recommended"
-  id: "027a4b7a-8a59-4938-a04f-ed532512cf45"
+  id: "cloudformation-aws-ecs-task-definition-network-mode-not-recommended"
   display_name: "ECS task definition network mode not recommended"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `027a4b7a-8a59-4938-a04f-ed532512cf45`
+**Id:** {{< copyable-code >}}cloudformation-aws-ecs-task-definition-network-mode-not-recommended{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

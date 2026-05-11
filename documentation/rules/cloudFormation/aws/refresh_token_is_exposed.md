@@ -3,7 +3,7 @@ title: "Refresh token is exposed"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/refresh_token_is_exposed"
-  id: "5b48c507-0d1f-41b0-a630-76817c6b4189"
+  id: "cloudformation-aws-refresh-token-is-exposed"
   display_name: "Refresh token is exposed"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5b48c507-0d1f-41b0-a630-76817c6b4189`
+**Id:** {{< copyable-code >}}cloudformation-aws-refresh-token-is-exposed{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

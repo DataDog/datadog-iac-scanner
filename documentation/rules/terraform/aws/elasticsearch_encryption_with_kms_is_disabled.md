@@ -3,7 +3,7 @@ title: "Elasticsearch encryption with KMS disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_encryption_with_kms_is_disabled"
-  id: "7af2f4a3-00d9-47f3-8d15-ca0888f4e5b2"
+  id: "terraform-aws-elasticsearch-encryption-with-kms-is-disabled"
   display_name: "Elasticsearch encryption with KMS disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7af2f4a3-00d9-47f3-8d15-ca0888f4e5b2`
+**Id:** {{< copyable-code >}}terraform-aws-elasticsearch-encryption-with-kms-is-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

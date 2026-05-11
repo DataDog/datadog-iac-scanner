@@ -3,7 +3,7 @@ title: "WAF is disabled for Azure application gateway"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/waf_is_disabled_for_azure_application_gateway"
-  id: "2e48d91c-50e4-45c8-9312-27b625868a72"
+  id: "terraform-azure-waf-is-disabled-for-azure-application-gateway"
   display_name: "WAF is disabled for Azure application gateway"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2e48d91c-50e4-45c8-9312-27b625868a72`
+**Id:** {{< copyable-code >}}terraform-azure-waf-is-disabled-for-azure-application-gateway{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

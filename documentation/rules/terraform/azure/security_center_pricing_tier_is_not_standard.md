@@ -3,7 +3,7 @@ title: "Security center pricing tier is not standard"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/security_center_pricing_tier_is_not_standard"
-  id: "819d50fd-1cdf-45c3-9936-be408aaad93e"
+  id: "terraform-azure-security-center-pricing-tier-is-not-standard"
   display_name: "Security center pricing tier is not standard"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `819d50fd-1cdf-45c3-9936-be408aaad93e`
+**Id:** {{< copyable-code >}}terraform-azure-security-center-pricing-tier-is-not-standard{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

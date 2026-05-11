@@ -3,7 +3,7 @@ title: "COS node image not used"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/cos_node_image_not_used"
-  id: "be41f891-96b1-4b9d-b74f-b922a918c778"
+  id: "ansible-gcp-cos-node-image-not-used"
   display_name: "COS node image not used"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `be41f891-96b1-4b9d-b74f-b922a918c778`
+**Id:** {{< copyable-code >}}ansible-gcp-cos-node-image-not-used{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

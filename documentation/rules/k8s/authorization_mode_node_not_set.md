@@ -3,7 +3,7 @@ title: "Authorization mode node not set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/authorization_mode_node_not_set"
-  id: "4d7ee40f-fc5d-427d-8cac-dffbe22d42d1"
+  id: "kubernetes-authorization-mode-node-not-set"
   display_name: "Authorization mode node not set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4d7ee40f-fc5d-427d-8cac-dffbe22d42d1`
+**Id:** {{< copyable-code >}}kubernetes-authorization-mode-node-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

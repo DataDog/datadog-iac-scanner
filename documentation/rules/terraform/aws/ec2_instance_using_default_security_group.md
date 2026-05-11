@@ -3,7 +3,7 @@ title: "EC2 instance using default security group"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ec2_instance_using_default_security_group"
-  id: "f1adc521-f79a-4d71-b55b-a68294687432"
+  id: "terraform-aws-ec2-instance-using-default-security-group"
   display_name: "EC2 instance using default security group"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f1adc521-f79a-4d71-b55b-a68294687432`
+**Id:** {{< copyable-code >}}terraform-aws-ec2-instance-using-default-security-group{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

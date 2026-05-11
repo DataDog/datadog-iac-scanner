@@ -3,7 +3,7 @@ title: "API Gateway without configured authorizer"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/api_gateway_without_configured_authorizer"
-  id: "0a96ce49-4163-4ee6-8169-eb3b0797d694"
+  id: "terraform-aws-api-gateway-without-configured-authorizer"
   display_name: "API Gateway without configured authorizer"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0a96ce49-4163-4ee6-8169-eb3b0797d694`
+**Id:** {{< copyable-code >}}terraform-aws-api-gateway-without-configured-authorizer{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

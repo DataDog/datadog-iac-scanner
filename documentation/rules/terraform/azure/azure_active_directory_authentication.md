@@ -3,7 +3,7 @@ title: "Azure Active Directory authentication"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/azure_active_directory_authentication"
-  id: "a21c8da9-41bf-40cf-941d-330cf0d11fc7"
+  id: "terraform-azure-azure-active-directory-authentication"
   display_name: "Azure Active Directory authentication"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a21c8da9-41bf-40cf-941d-330cf0d11fc7`
+**Id:** {{< copyable-code >}}terraform-azure-azure-active-directory-authentication{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

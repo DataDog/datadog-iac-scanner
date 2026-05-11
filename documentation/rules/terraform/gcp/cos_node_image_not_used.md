@@ -3,7 +3,7 @@ title: "COS node image not used"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/cos_node_image_not_used"
-  id: "8a893e46-e267-485a-8690-51f39951de58"
+  id: "terraform-gcp-cos-node-image-not-used"
   display_name: "COS node image not used"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8a893e46-e267-485a-8690-51f39951de58`
+**Id:** {{< copyable-code >}}terraform-gcp-cos-node-image-not-used{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "Key expiration not set"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/key_expiration_not_set"
-  id: "4d080822-5ee2-49a4-8984-68f3d4c890fc"
+  id: "terraform-azure-key-expiration-not-set"
   display_name: "Key expiration not set"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4d080822-5ee2-49a4-8984-68f3d4c890fc`
+**Id:** {{< copyable-code >}}terraform-azure-key-expiration-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

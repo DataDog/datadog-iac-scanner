@@ -3,7 +3,7 @@ title: "S3 bucket without server-side encryption"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_without_server-side_encryption"
-  id: "594f54e7-f744-45ab-93e4-c6dbaf6cd571"
+  id: "ansible-aws-s3-bucket-without-server-side-encryption"
   display_name: "S3 bucket without server-side encryption"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `594f54e7-f744-45ab-93e4-c6dbaf6cd571`
+**Id:** {{< copyable-code >}}ansible-aws-s3-bucket-without-server-side-encryption{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Service account allows access secrets"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/service_account_allows_access_secrets"
-  id: "07fc3413-e572-42f7-9877-5c8fc6fccfb5"
+  id: "terraform-kubernetes-service-account-allows-access-secrets"
   display_name: "Service account allows access secrets"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `07fc3413-e572-42f7-9877-5c8fc6fccfb5`
+**Id:** {{< copyable-code >}}terraform-kubernetes-service-account-allows-access-secrets{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

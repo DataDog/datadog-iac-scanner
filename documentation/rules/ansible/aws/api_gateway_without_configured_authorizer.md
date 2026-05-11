@@ -3,7 +3,7 @@ title: "API Gateway without configured authorizer"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_without_configured_authorizer"
-  id: "b16cdb37-ce15-4ab2-8401-d42b05d123fc"
+  id: "ansible-aws-api-gateway-without-configured-authorizer"
   display_name: "API Gateway without configured authorizer"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b16cdb37-ce15-4ab2-8401-d42b05d123fc`
+**Id:** {{< copyable-code >}}ansible-aws-api-gateway-without-configured-authorizer{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "CVM instance has public IP"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cvm_instance_has_public_ip"
-  id: "a74b4602-a62c-4a02-956a-e19f86ea24b5"
+  id: "terraform-tencentcloud-cvm-instance-has-public-ip"
   display_name: "CVM instance has public IP"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a74b4602-a62c-4a02-956a-e19f86ea24b5`
+**Id:** {{< copyable-code >}}terraform-tencentcloud-cvm-instance-has-public-ip{{< /copyable-code >}}
 
 **Cloud Provider:** TencentCloud
 

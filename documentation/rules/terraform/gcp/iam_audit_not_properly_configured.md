@@ -3,7 +3,7 @@ title: "IAM audit not properly configured"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/iam_audit_not_properly_configured"
-  id: "89fe890f-b480-460c-8b6b-7d8b1468adb4"
+  id: "terraform-gcp-iam-audit-not-properly-configured"
   display_name: "IAM audit not properly configured"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `89fe890f-b480-460c-8b6b-7d8b1468adb4`
+**Id:** {{< copyable-code >}}terraform-gcp-iam-audit-not-properly-configured{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

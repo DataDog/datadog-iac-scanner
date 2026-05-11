@@ -3,7 +3,7 @@ title: "Image without digest"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/image_without_digest"
-  id: "7c81d34c-8e5a-402b-9798-9f442630e678"
+  id: "kubernetes-image-without-digest"
   display_name: "Image without digest"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7c81d34c-8e5a-402b-9798-9f442630e678`
+**Id:** {{< copyable-code >}}kubernetes-image-without-digest{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "Automatic minor upgrades disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/automatic_minor_upgrades_disabled"
-  id: "857f8808-e96a-4ba8-a9b7-f2d4ec6cad94"
+  id: "ansible-aws-automatic-minor-upgrades-disabled"
   display_name: "Automatic minor upgrades disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `857f8808-e96a-4ba8-a9b7-f2d4ec6cad94`
+**Id:** {{< copyable-code >}}ansible-aws-automatic-minor-upgrades-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

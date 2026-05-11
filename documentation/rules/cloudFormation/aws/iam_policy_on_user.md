@@ -3,7 +3,7 @@ title: "IAM policy on user"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_policy_on_user"
-  id: "e4239438-e639-44aa-adb8-866e400e3ade"
+  id: "cloudformation-aws-iam-policy-on-user"
   display_name: "IAM policy on user"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e4239438-e639-44aa-adb8-866e400e3ade`
+**Id:** {{< copyable-code >}}cloudformation-aws-iam-policy-on-user{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 
