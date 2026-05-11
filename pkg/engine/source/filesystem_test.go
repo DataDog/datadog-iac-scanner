@@ -735,7 +735,7 @@ func TestFilesystemSource_ReadLocalFile(t *testing.T) {
 
 // Should be uncommented when UUID are moved to LegacyId
 // TestCheckQueryExcludeWithLegacyId tests the checkQueryExclude function with both new ID and legacy ID
-/* func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
+func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
@@ -842,11 +842,11 @@ func TestFilesystemSource_ReadLocalFile(t *testing.T) {
 			assert.Equal(t, tt.expectedResult, result, tt.description)
 		})
 	}
-} */
+}
 
 // Should be uncommented when UUID are moved to LegacyId
 // TestCheckQueryIncludeWithLegacyId tests the checkQueryInclude function with both new ID and legacy ID
-/* func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
+func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
@@ -965,10 +965,10 @@ func TestFilesystemSource_ReadLocalFile(t *testing.T) {
 			assert.Equal(t, tt.expectedResult, result, tt.description)
 		})
 	}
-} */
+}
 
 // Should be uncommented when UUID are moved to LegacyId
-/* // TestGetQueriesWithLegacyIdFiltering tests end-to-end query filtering with legacy IDs
+// TestGetQueriesWithLegacyIdFiltering tests end-to-end query filtering with legacy IDs
 func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
@@ -1057,4 +1057,3 @@ func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
 		})
 	}
 }
-*/
