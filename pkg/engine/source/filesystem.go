@@ -176,6 +176,9 @@ func (s *FilesystemSource) CheckCloudProvider(cloudProvider any) bool {
 }
 
 func checkQueryFilterFieldExclude(ctx context.Context, id any, queries []string) bool {
+	if id == nil {
+		return false
+	}
 	contextLogger := logger.FromContext(ctx)
 	queryMetadataKey, ok := id.(string)
 	if !ok {
