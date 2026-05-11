@@ -1,5 +1,6 @@
 {
-  "id": "9038b526-4c19-4928-bca2-c03d503bdb79",
+  "id": "googledeploymentmanager-gcp-shielded-vm-disabled",
+  "legacyId": "9038b526-4c19-4928-bca2-c03d503bdb79",
   "queryName": "Shielded VM Disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

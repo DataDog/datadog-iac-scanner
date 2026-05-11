@@ -1,5 +1,6 @@
 {
-  "id": "63ae3638-a38c-4ff4-b616-6e1f72a31a6a",
+  "id": "googledeploymentmanager-gcp-cloud-storage-anonymous-or-publicly-accessible",
+  "legacyId": "63ae3638-a38c-4ff4-b616-6e1f72a31a6a",
   "queryName": "Cloud Storage Anonymous or Publicly Accessible",
   "severity": "CRITICAL",
   "category": "Access Control",

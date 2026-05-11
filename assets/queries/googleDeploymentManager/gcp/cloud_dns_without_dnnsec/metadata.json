@@ -1,5 +1,6 @@
 {
-  "id": "313d6deb-3b67-4948-b41d-35b699c2492e",
+  "id": "googledeploymentmanager-gcp-cloud-dns-without-dnnsec",
+  "legacyId": "313d6deb-3b67-4948-b41d-35b699c2492e",
   "queryName": "Cloud DNS Without DNSSEC",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

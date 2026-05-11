@@ -1,5 +1,6 @@
 {
-  "id": "62c8cf50-87f0-4295-a974-8184ed78fe02",
+  "id": "googledeploymentmanager-gcp-gke-master-authorized-networks-disabled",
+  "legacyId": "62c8cf50-87f0-4295-a974-8184ed78fe02",
   "queryName": "GKE Master Authorized Networks Disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "dd690686-2bf9-4012-a821-f61912dd77be",
+  "id": "googledeploymentmanager-gcp-client-certificate-disabled",
+  "legacyId": "dd690686-2bf9-4012-a821-f61912dd77be",
   "queryName": "Client Certificate Disabled",
   "severity": "HIGH",
   "category": "Insecure Configurations",

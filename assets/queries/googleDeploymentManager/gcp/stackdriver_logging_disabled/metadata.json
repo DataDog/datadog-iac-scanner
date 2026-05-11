@@ -1,5 +1,6 @@
 {
-  "id": "95601b9a-7fe8-4aee-9b58-d36fd9382dfc",
+  "id": "googledeploymentmanager-gcp-stackdriver-logging-disabled",
+  "legacyId": "95601b9a-7fe8-4aee-9b58-d36fd9382dfc",
   "queryName": "Stackdriver Logging Disabled",
   "severity": "MEDIUM",
   "category": "Observability",

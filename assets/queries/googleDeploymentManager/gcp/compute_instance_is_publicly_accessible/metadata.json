@@ -1,5 +1,6 @@
 {
-  "id": "8212e2d7-e683-49bc-bf78-d6799075c5a7",
+  "id": "googledeploymentmanager-gcp-compute-instance-is-publicly-accessible",
+  "legacyId": "8212e2d7-e683-49bc-bf78-d6799075c5a7",
   "queryName": "Compute Instance Is Publicly Accessible",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

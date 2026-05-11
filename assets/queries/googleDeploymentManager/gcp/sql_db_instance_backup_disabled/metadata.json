@@ -1,5 +1,6 @@
 {
-  "id": "a5bf1a1c-92c7-401c-b4c6-ebdc8b686c01",
+  "id": "googledeploymentmanager-gcp-sql-db-instance-backup-disabled",
+  "legacyId": "a5bf1a1c-92c7-401c-b4c6-ebdc8b686c01",
   "queryName": "SQL DB Instance Backup Disabled",
   "severity": "MEDIUM",
   "category": "Backup",
