@@ -1,5 +1,6 @@
 {
-  "id": "dee21308-2a7a-49de-8ff7-c9b87e188575",
+  "id": "googledeploymentmanager-gcp-ssh-access-is-not-restricted",
+  "legacyId": "dee21308-2a7a-49de-8ff7-c9b87e188575",
   "queryName": "SSH Access Is Not Restricted",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

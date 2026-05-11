@@ -1,5 +1,6 @@
 {
-  "id": "c47f90e8-4a19-43f0-8413-cc434d286c4e",
+  "id": "googledeploymentmanager-gcp-network-policy-disabled",
+  "legacyId": "c47f90e8-4a19-43f0-8413-cc434d286c4e",
   "queryName": "Network Policy Disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

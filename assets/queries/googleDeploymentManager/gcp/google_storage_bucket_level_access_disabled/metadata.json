@@ -1,5 +1,6 @@
 {
-  "id": "1239f54b-33de-482a-8132-faebe288e6a6",
+  "id": "googledeploymentmanager-gcp-google-storage-bucket-level-access-disabled",
+  "legacyId": "1239f54b-33de-482a-8132-faebe288e6a6",
   "queryName": "Google Storage Bucket Level Access Disabled",
   "severity": "HIGH",
   "category": "Insecure Configurations",

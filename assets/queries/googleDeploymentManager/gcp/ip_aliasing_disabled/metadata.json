@@ -1,5 +1,6 @@
 {
-  "id": "28727987-e398-49b8-aef1-8a3e7789d111",
+  "id": "googledeploymentmanager-gcp-ip-aliasing-disabled",
+  "legacyId": "28727987-e398-49b8-aef1-8a3e7789d111",
   "queryName": "IP Aliasing Disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

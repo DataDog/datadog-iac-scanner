@@ -1,5 +1,6 @@
 {
-  "id": "48c61fbd-09c9-46cc-a521-012e0c325412",
+  "id": "googledeploymentmanager-gcp-private-cluster-disabled",
+  "legacyId": "48c61fbd-09c9-46cc-a521-012e0c325412",
   "queryName": "Private Cluster Disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

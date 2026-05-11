@@ -1,5 +1,6 @@
 {
-  "id": "83103dff-d57f-42a8-bd81-40abab64c1a7",
+  "id": "googledeploymentmanager-gcp-bigquery-database-is-public",
+  "legacyId": "83103dff-d57f-42a8-bd81-40abab64c1a7",
   "queryName": "BigQuery Dataset Is Public",
   "severity": "HIGH",
   "category": "Access Control",

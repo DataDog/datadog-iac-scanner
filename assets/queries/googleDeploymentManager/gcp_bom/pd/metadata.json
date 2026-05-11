@@ -1,5 +1,6 @@
 {
-  "id": "268c65a8-58ad-43e4-9019-1a9bbc56749f",
+  "id": "googledeploymentmanager-gcp-pd",
+  "legacyId": "268c65a8-58ad-43e4-9019-1a9bbc56749f",
   "queryName": "BOM - GCP PD",
   "severity": "TRACE",
   "category": "Bill Of Materials",
