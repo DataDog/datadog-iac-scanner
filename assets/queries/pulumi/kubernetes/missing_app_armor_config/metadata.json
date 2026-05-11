@@ -1,5 +1,6 @@
 {
-  "id": "95588189-1abd-4df1-9588-b0a5034f9e87",
+  "id": "pulumi-kubernetes-missing-app-armor-config",
+  "legacyId": "95588189-1abd-4df1-9588-b0a5034f9e87",
   "queryName": "Missing App Armor Config",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,7 +9,7 @@
   "platform": "Pulumi",
   "descriptionID": "15676623",
   "cwe": "284",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "LOW",
   "providerUrl": "https://www.pulumi.com/registry/packages/kubernetes/api-docs/core/v1/pod/#objectmeta"
 }
