@@ -1,5 +1,6 @@
 {
-  "id": "2d16c3fb-35ba-4ec0-b4e4-06ee3cbd4045",
+  "id": "terraform-aws-s3-bucket",
+  "legacyId": "2d16c3fb-35ba-4ec0-b4e4-06ee3cbd4045",
   "queryName": "BOM - AWS S3 Buckets",
   "severity": "TRACE",
   "category": "Bill Of Materials",

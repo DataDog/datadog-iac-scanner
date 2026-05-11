@@ -1,5 +1,6 @@
 {
-  "id": "fcb1b388-f558-4b7f-9b6e-f4e98abb7380",
+  "id": "terraform-aws-mq",
+  "legacyId": "fcb1b388-f558-4b7f-9b6e-f4e98abb7380",
   "queryName": "BOM - AWS MQ",
   "severity": "TRACE",
   "category": "Bill Of Materials",
