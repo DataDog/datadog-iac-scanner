@@ -104,31 +104,45 @@ func TestQueries(t *testing.T) {
 // 	}
 // }
 
+func checkIdUniqueness(entry queryEntry, idMap map[string]string, id string) (duplicateDir string, ok bool) {
+	duplicateDir, ok = idMap[id]
+	idMap[id] = entry.dir
+	return duplicateDir, ok
+}
+
 func TestUniqueQueryIDs(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: io.Discard})
 	queries := loadQueries(t)
 
 	queriesIdentifiers := make(map[string]string)
+	legacyQueriesIdentifiers := make(map[string]string)
 
 	ctx := context.Background()
 	for _, entry := range queries {
 		queryPath := strings.TrimPrefix(entry.dir, filepath.FromSlash("../assets/"))
 		query, err := source.ReadEmbeddedQuery(ctx, queryPath)
 		require.NoError(t, err)
-		uuid := query.Metadata["id"].(string)
-		duplicateDir, ok := queriesIdentifiers[uuid]
-		require.False(t, ok, "\nnon unique queryID found uuid: %s\nqueryDir: %s\nduplicateDir: %s",
+		uuid := query.Metadata["legacyId"].(string)
+		duplicateDir, ok := checkIdUniqueness(entry, legacyQueriesIdentifiers, uuid)
+		require.False(t, ok, "\nnon unique legacy queryID found on overriding uuid: %s\nqueryDir: %s\nduplicateDir: %s",
 			uuid, entry.dir, duplicateDir)
-		queriesIdentifiers[uuid] = entry.dir
+		id := query.Metadata["id"].(string)
+		duplicateDir, ok = checkIdUniqueness(entry, queriesIdentifiers, id)
+		require.False(t, ok, "\nnon unique queryID found on overriding uuid: %s\nqueryDir: %s\nduplicateDir: %s",
+			id, entry.dir, duplicateDir)
 
 		if override, ok := query.Metadata["override"].(map[string]interface{}); ok {
 			for _, v := range override {
 				if convertedValue, converted := v.(map[string]interface{}); converted {
+					if uuid, ok := convertedValue["legacyId"].(string); ok {
+						duplicateDir, ok = checkIdUniqueness(entry, legacyQueriesIdentifiers, uuid)
+						require.False(t, ok, "\nnon unique legacy queryID found on overriding uuid: %s\nqueryDir: %s\nduplicateDir: %s",
+							uuid, entry.dir, duplicateDir)
+					}
 					if id, ok := convertedValue["id"].(string); ok {
-						duplicateDir, ok = queriesIdentifiers[id]
+						duplicateDir, ok = checkIdUniqueness(entry, queriesIdentifiers, id)
 						require.False(t, ok, "\nnon unique queryID found on overriding uuid: %s\nqueryDir: %s\nduplicateDir: %s",
 							id, entry.dir, duplicateDir)
-						queriesIdentifiers[id] = entry.dir
 					}
 				}
 			}
