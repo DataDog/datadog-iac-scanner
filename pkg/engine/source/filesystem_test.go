@@ -92,7 +92,7 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 				CloudProviders: []string{""}, Library: "./assets/libraries",
 				ExperimentalQueries: true,
 			},
-			includeIDs:        []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
+			includeIDs:        []string{"terraform-aws-alb-deletion-protection-disabled"},
 			excludeCategory:   []string{},
 			excludeSeverities: []string{"LOW"},
 			excludeIDs:        []string{},
@@ -102,8 +102,8 @@ func TestFilesystemSource_GetQueriesWithExclude(t *testing.T) { //nolint
 					Content:   string(contentByte),
 					InputData: "{}",
 					Metadata: map[string]interface{}{
-						"id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
-						// "legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						"id":                 "terraform-aws-alb-deletion-protection-disabled",
+						"legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
 						"queryName":          "ALB deletion protection disabled",
 						"severity":           "MEDIUM",
 						"category":           "Insecure Configurations",
@@ -204,15 +204,15 @@ func TestFilesystemSource_GetQueriesWithInclude(t *testing.T) {
 				Library:             "./assets/libraries",
 				ExperimentalQueries: true,
 			},
-			includeIDs: []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
+			includeIDs: []string{"terraform-aws-alb-deletion-protection-disabled"},
 			want: []model.QueryMetadata{
 				{
 					Query:     "alb_deletion_protection_disabled",
 					Content:   string(contentByte),
 					InputData: "{}",
 					Metadata: map[string]interface{}{
-						"id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
-						// "legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						"id":                 "terraform-aws-alb-deletion-protection-disabled",
+						"legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
 						"queryName":          "ALB deletion protection disabled",
 						"severity":           "MEDIUM",
 						"category":           "Insecure Configurations",
@@ -426,7 +426,7 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 			name: "get_queries_1",
 			fields: fields{
 				Source: []string{""}, Types: []string{""}, CloudProviders: []string{""},
-				IncludeIDs:          []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
+				IncludeIDs:          []string{"terraform-aws-alb-deletion-protection-disabled"},
 				Library:             "./assets/libraries",
 				ExperimentalQueries: false,
 			},
@@ -436,8 +436,8 @@ func TestFilesystemSource_GetQueries(t *testing.T) {
 					Content:   string(contentByte),
 					InputData: "{}",
 					Metadata: map[string]interface{}{
-						"id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
-						// "legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+						"id":                 "terraform-aws-alb-deletion-protection-disabled",
+						"legacyId":           "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
 						"queryName":          "ALB deletion protection disabled",
 						"severity":           "MEDIUM",
 						"category":           "Insecure Configurations",
