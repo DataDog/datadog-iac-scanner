@@ -1,5 +1,6 @@
 {
-  "id": "b2418936-cd47-4ea2-8346-623c0bdb87bd",
+  "id": "crossplane-azure-aks-rbac-disabled",
+  "legacyId": "b2418936-cd47-4ea2-8346-623c0bdb87bd",
   "queryName": "AKS RBAC Disabled",
   "severity": "MEDIUM",
   "category": "Access Control",
