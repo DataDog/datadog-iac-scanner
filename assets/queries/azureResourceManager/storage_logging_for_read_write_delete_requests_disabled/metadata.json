@@ -1,5 +1,6 @@
 {
-  "id": "43f6e60c-9cdb-4e77-864d-a66595d26518",
+  "id": "azureresourcemanager-azure-storage-logging-for-read-write-delete-requests-disabled",
+  "legacyId": "43f6e60c-9cdb-4e77-864d-a66595d26518",
   "queryName": "Storage Logging For Read Write And Delete Requests Disabled",
   "severity": "MEDIUM",
   "category": "Observability",

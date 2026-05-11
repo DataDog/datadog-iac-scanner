@@ -1,5 +1,6 @@
 {
-  "id": "a6d774b6-d9ea-4bf4-8433-217bf15d2fb8",
+  "id": "azureresourcemanager-azure-postgres-sql-database-server-connection-throttling-disabled",
+  "legacyId": "a6d774b6-d9ea-4bf4-8433-217bf15d2fb8",
   "queryName": "PostgresSQL Database Server Connection Throttling Disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

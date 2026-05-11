@@ -1,5 +1,6 @@
 {
-  "id": "d855ced8-6157-448f-9f1d-f05a41d046f7",
+  "id": "azureresourcemanager-azure-default-azure-storage-account-network-access-is-too-permissive",
+  "legacyId": "d855ced8-6157-448f-9f1d-f05a41d046f7",
   "queryName": "Default Azure Storage Account Network Access Is Too Permissive",
   "severity": "HIGH",
   "category": "Access Control",
