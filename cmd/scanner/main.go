@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	cli "github.com/urfave/cli/v3"
@@ -58,6 +59,9 @@ func main() {
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
 		var exitCode *normalExitCode
 		if errors.As(err, &exitCode) {
+			if exitCode.code == constants.InvalidConfigErrorCode {
+				log.Error().Err(err).Msg("invalid IaC configuration")
+			}
 			os.Exit(exitCode.code)
 		}
 

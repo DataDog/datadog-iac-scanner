@@ -111,6 +111,9 @@ const (
 	// EngineErrorCode - Exit Status code for error in engine
 	EngineErrorCode = 126
 
+	// InvalidConfigErrorCode - Exit status code for an invalid IaC configuration file
+	InvalidConfigErrorCode = 127
+
 	// SignalInterruptCode - Exit Status code for a signal interrupt
 	SignalInterruptCode = 130
 
