@@ -1,5 +1,6 @@
 {
-  "id": "a31b7b82-d994-48c4-bd21-3bab6c31827a",
+  "id": "kubernetes-deployment-has-no-pod-anti-affinity",
+  "legacyId": "a31b7b82-d994-48c4-bd21-3bab6c31827a",
   "queryName": "Deployment without podAntiAffinity",
   "severity": "LOW",
   "category": "Resource Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "22146f41",
   "cwe": "710",
-  "providerUrl": "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/",
+  "cloudProvider": ""
 }

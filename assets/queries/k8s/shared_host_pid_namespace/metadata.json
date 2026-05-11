@@ -1,5 +1,6 @@
 {
-  "id": "302736f4-b16c-41b8-befe-c0baffa0bd9d",
+  "id": "kubernetes-shared-host-pid-namespace",
+  "legacyId": "302736f4-b16c-41b8-befe-c0baffa0bd9d",
   "queryName": "Shared host PID namespace",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "c34092eb",
   "cwe": "200",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }

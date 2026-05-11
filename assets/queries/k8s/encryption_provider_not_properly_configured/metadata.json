@@ -1,5 +1,6 @@
 {
-  "id": "10efce34-5af6-4d83-b414-9e096d5a06a9",
+  "id": "kubernetes-encryption-provider-not-properly-configured",
+  "legacyId": "10efce34-5af6-4d83-b414-9e096d5a06a9",
   "queryName": "Encryption provider not properly configured",
   "severity": "MEDIUM",
   "category": "Encryption",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "c60a5ece",
   "cwe": "311",
-  "providerUrl": "https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/#understanding-the-encryption-at-rest-configuration"
+  "providerUrl": "https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/#understanding-the-encryption-at-rest-configuration",
+  "cloudProvider": ""
 }

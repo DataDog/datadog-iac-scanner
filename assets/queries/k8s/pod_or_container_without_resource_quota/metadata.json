@@ -1,5 +1,6 @@
 {
-  "id": "48a5beba-e4c0-4584-a2aa-e6894e4cf424",
+  "id": "kubernetes-pod-or-container-without-resource-quota",
+  "legacyId": "48a5beba-e4c0-4584-a2aa-e6894e4cf424",
   "queryName": "Pod or container without ResourceQuota",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "86499ed5",
   "cwe": "400",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/resource-quotas/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/resource-quotas/",
+  "cloudProvider": ""
 }

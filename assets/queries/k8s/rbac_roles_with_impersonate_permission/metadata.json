@@ -1,5 +1,6 @@
 {
-  "id": "9f85c3f6-26fd-4007-938a-2e0cb0100980",
+  "id": "kubernetes-rbac-roles-with-impersonate-permission",
+  "legacyId": "9f85c3f6-26fd-4007-938a-2e0cb0100980",
   "queryName": "RBAC roles with impersonate permission",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "9f85c3f6",
   "cwe": "732",
-  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/authentication/#user-impersonation"
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/authentication/#user-impersonation",
+  "cloudProvider": ""
 }

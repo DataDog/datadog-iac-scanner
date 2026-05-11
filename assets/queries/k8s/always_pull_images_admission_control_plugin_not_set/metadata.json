@@ -1,5 +1,6 @@
 {
-  "id": "a77f4d07-c6e0-4a48-8b35-0eeb51576f4f",
+  "id": "kubernetes-always-pull-images-admission-control-plugin-not-set",
+  "legacyId": "a77f4d07-c6e0-4a48-8b35-0eeb51576f4f",
   "queryName": "Always pull images admission control plugin not set",
   "severity": "MEDIUM",
   "category": "Build Process",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "503bf412",
   "cwe": "829",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

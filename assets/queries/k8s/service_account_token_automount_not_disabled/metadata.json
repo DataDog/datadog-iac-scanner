@@ -1,5 +1,6 @@
 {
-  "id": "48471392-d4d0-47c0-b135-cdec95eb3eef",
+  "id": "kubernetes-service-account-token-automount-not-disabled",
+  "legacyId": "48471392-d4d0-47c0-b135-cdec95eb3eef",
   "queryName": "Service account token auto-mount not disabled",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "51cade0f",
   "cwe": "665",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-the-default-service-account-to-access-the-api-server"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-the-default-service-account-to-access-the-api-server",
+  "cloudProvider": ""
 }

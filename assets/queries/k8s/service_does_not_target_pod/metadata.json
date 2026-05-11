@@ -1,5 +1,6 @@
 {
-  "id": "3ca03a61-3249-4c16-8427-6f8e47dda729",
+  "id": "kubernetes-service-does-not-target-pod",
+  "legacyId": "3ca03a61-3249-4c16-8427-6f8e47dda729",
   "queryName": "Service does not target a Pod",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "e7c26645",
   "cwe": "665",
-  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/service/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/service/",
+  "cloudProvider": ""
 }

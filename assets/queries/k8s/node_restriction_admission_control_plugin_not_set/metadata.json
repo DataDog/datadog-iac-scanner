@@ -1,5 +1,6 @@
 {
-  "id": "33fc6923-6553-4fe6-9d3a-4efa51eb874b",
+  "id": "kubernetes-node-restriction-admission-control-plugin-not-set",
+  "legacyId": "33fc6923-6553-4fe6-9d3a-4efa51eb874b",
   "queryName": "Node restriction admission control plugin not set",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -17,5 +18,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

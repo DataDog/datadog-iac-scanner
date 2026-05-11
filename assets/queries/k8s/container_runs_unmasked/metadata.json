@@ -1,5 +1,6 @@
 {
-  "id": "f922827f-aab6-447c-832a-e1ff63312bd3",
+  "id": "kubernetes-container-runs-unmasked",
+  "legacyId": "f922827f-aab6-447c-832a-e1ff63312bd3",
   "queryName": "Container with unmasked /proc access",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/container_runs_unmasked",
   "platform": "Kubernetes",
   "descriptionID": "50caf90a",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "1188",
   "oldSeverity": "MEDIUM",
   "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/#allowedprocmounttypes"

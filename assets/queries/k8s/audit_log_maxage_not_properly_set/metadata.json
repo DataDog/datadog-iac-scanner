@@ -1,5 +1,6 @@
 {
-  "id": "da9f3aa8-fbfb-472f-b5a1-576127944218",
+  "id": "kubernetes-audit-log-maxage-not-properly-set",
+  "legacyId": "da9f3aa8-fbfb-472f-b5a1-576127944218",
   "queryName": "Audit log maxage not properly set",
   "severity": "LOW",
   "category": "Observability",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "a5bc6d07",
   "cwe": "778",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

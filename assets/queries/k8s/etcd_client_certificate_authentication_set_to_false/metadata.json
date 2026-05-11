@@ -1,5 +1,6 @@
 {
-  "id": "9391103a-d8d7-4671-ac5d-606ba7ccb0ac",
+  "id": "kubernetes-etcd-client-certificate-authentication-set-to-false",
+  "legacyId": "9391103a-d8d7-4671-ac5d-606ba7ccb0ac",
   "queryName": "etcd client certificate authentication set to false",
   "severity": "MEDIUM",
   "category": "Secret Management",
@@ -16,5 +17,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/",
+  "cloudProvider": ""
 }

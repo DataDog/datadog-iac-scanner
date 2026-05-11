@@ -1,5 +1,6 @@
 {
-  "id": "dbbc6705-d541-43b0-b166-dd4be8208b54",
+  "id": "kubernetes-net-raw-capabilities-not-being-dropped",
+  "legacyId": "dbbc6705-d541-43b0-b166-dd4be8208b54",
   "queryName": "NET_RAW capabilities not dropped",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "e9790956",
   "cwe": "269",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+  "cloudProvider": ""
 }

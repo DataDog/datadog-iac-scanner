@@ -1,5 +1,6 @@
 {
-  "id": "5da47109-f8d6-4585-9e2b-96a8958a12f5",
+  "id": "kubernetes-basic-auth-file-is-set",
+  "legacyId": "5da47109-f8d6-4585-9e2b-96a8958a12f5",
   "queryName": "Basic auth file is set",
   "severity": "HIGH",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "e021b84c",
   "cwe": "1390",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

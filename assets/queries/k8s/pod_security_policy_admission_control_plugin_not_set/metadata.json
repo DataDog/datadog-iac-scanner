@@ -1,5 +1,6 @@
 {
-  "id": "afa36afb-39fe-4d94-b9b6-afb236f7a03d",
+  "id": "kubernetes-pod-security-policy-admission-control-plugin-not-set",
+  "legacyId": "afa36afb-39fe-4d94-b9b6-afb236f7a03d",
   "queryName": "Pod security policy admission control plugin not set",
   "severity": "HIGH",
   "category": "Build Process",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "5b3d44e9",
   "cwe": "284",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

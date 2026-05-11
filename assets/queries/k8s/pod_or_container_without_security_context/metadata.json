@@ -1,5 +1,6 @@
 {
-  "id": "a97a340a-0063-418e-b3a1-3028941d0995",
+  "id": "kubernetes-pod-or-container-without-security-context",
+  "legacyId": "a97a340a-0063-418e-b3a1-3028941d0995",
   "queryName": "Pod or container without security context",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "68a1650b",
   "cwe": "285",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+  "cloudProvider": ""
 }

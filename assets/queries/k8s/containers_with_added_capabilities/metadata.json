@@ -1,5 +1,6 @@
 {
-  "id": "19ebaa28-fc86-4a58-bcfa-015c9e22fe40",
+  "id": "kubernetes-containers-with-added-capabilities",
+  "legacyId": "19ebaa28-fc86-4a58-bcfa-015c9e22fe40",
   "queryName": "Containers with added capabilities",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "719acefd",
   "cwe": "269",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+  "cloudProvider": ""
 }

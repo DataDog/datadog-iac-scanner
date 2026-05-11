@@ -1,5 +1,6 @@
 {
-  "id": "e3aa0612-4351-4a0d-983f-aefea25cf203",
+  "id": "kubernetes-root-containers-admitted",
+  "legacyId": "e3aa0612-4351-4a0d-983f-aefea25cf203",
   "queryName": "Root containers admitted",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "2fe54446",
   "cwe": "732",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }
