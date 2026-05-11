@@ -3,7 +3,7 @@ title: "CloudTrail not integrated with CloudWatch"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudtrail_not_integrated_with_cloudwatch"
-  id: "17b30f8f-8dfb-4597-adf6-57600b6cf25e"
+  id: "terraform-aws-cloudtrail-not-integrated-with-cloudwatch"
   display_name: "CloudTrail not integrated with CloudWatch"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `17b30f8f-8dfb-4597-adf6-57600b6cf25e`
+**Id:** `terraform-aws-cloudtrail-not-integrated-with-cloudwatch`
 
 **Cloud Provider:** AWS
 

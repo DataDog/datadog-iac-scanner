@@ -3,7 +3,7 @@ title: "Kinesis SSE not configured"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/kinesis_sse_not_configured"
-  id: "7f65be75-90ab-4036-8c2a-410aef7bb650"
+  id: "cloudformation-aws-kinesis-sse-not-configured"
   display_name: "Kinesis SSE not configured"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7f65be75-90ab-4036-8c2a-410aef7bb650`
+**Id:** `cloudformation-aws-kinesis-sse-not-configured`
 
 **Cloud Provider:** AWS
 

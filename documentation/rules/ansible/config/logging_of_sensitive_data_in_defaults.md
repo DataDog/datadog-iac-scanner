@@ -3,7 +3,7 @@ title: "Logging of sensitive data in defaults"
 group_id: "Ansible / Ansible Config"
 meta:
   name: "config/logging_of_sensitive_data_in_defaults"
-  id: "c6473dae-8477-4119-88b7-b909b435ce7b"
+  id: "ansible-logging-of-sensitive-data-in-defaults"
   display_name: "Logging of sensitive data in defaults"
   cloud_provider: "Ansible Config"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c6473dae-8477-4119-88b7-b909b435ce7b`
+**Id:** `ansible-logging-of-sensitive-data-in-defaults`
 
 **Cloud Provider:** Ansible Config
 

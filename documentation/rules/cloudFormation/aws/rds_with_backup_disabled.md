@@ -3,7 +3,7 @@ title: "RDS with backup disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/rds_with_backup_disabled"
-  id: "8c415f6f-7b90-4a27-a44a-51047e1506f9"
+  id: "cloudformation-aws-rds-with-backup-disabled"
   display_name: "RDS with backup disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8c415f6f-7b90-4a27-a44a-51047e1506f9`
+**Id:** `cloudformation-aws-rds-with-backup-disabled`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "ALB listening on HTTP"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/alb_listening_on_http"
-  id: "ee3b1557-9fb5-4685-a95d-93f1edf2a0d7"
+  id: "terraform-alicloud-alb-listening-on-http"
   display_name: "ALB listening on HTTP"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ee3b1557-9fb5-4685-a95d-93f1edf2a0d7`
+**Id:** `terraform-alicloud-alb-listening-on-http`
 
 **Cloud Provider:** Alicloud
 

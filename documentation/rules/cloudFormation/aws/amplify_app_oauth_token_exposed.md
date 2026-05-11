@@ -3,7 +3,7 @@ title: "Amplify app OAuth token exposed"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/amplify_app_oauth_token_exposed"
-  id: "03b38885-8f4e-480c-a0e4-12c1affd15db"
+  id: "cloudformation-aws-amplify-app-oauth-token-exposed"
   display_name: "Amplify app OAuth token exposed"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `03b38885-8f4e-480c-a0e4-12c1affd15db`
+**Id:** `cloudformation-aws-amplify-app-oauth-token-exposed`
 
 **Cloud Provider:** AWS
 

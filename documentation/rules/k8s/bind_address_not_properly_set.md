@@ -3,7 +3,7 @@ title: "Bind address not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/bind_address_not_properly_set"
-  id: "46a2e9ec-6a5f-4faa-9d39-4ea44d5d87a2"
+  id: "kubernetes-bind-address-not-properly-set"
   display_name: "Bind address not properly set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `46a2e9ec-6a5f-4faa-9d39-4ea44d5d87a2`
+**Id:** `kubernetes-bind-address-not-properly-set`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "Role with privilege escalation by actions 'iam:PutRolePolicy'"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/role_with_privilege_escalation_by_actions_iam_PutRolePolicy"
-  id: "eb64f1e9-f67d-4e35-8a3c-3d6a2f9efea7"
+  id: "terraform-aws-role-with-privilege-escalation-by-actions-iam-putrolepolicy"
   display_name: "Role with privilege escalation by actions 'iam:PutRolePolicy'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `eb64f1e9-f67d-4e35-8a3c-3d6a2f9efea7`
+**Id:** `terraform-aws-role-with-privilege-escalation-by-actions-iam-putrolepolicy`
 
 **Cloud Provider:** AWS
 

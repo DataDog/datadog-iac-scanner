@@ -3,7 +3,7 @@ title: "Storage container is publicly accessible"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/storage_container_is_publicly_accessible"
-  id: "dd5230f8-a577-4bbb-b7ac-f2c2fe7d5299"
+  id: "terraform-azure-storage-container-is-publicly-accessible"
   display_name: "Storage container is publicly accessible"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dd5230f8-a577-4bbb-b7ac-f2c2fe7d5299`
+**Id:** `terraform-azure-storage-container-is-publicly-accessible`
 
 **Cloud Provider:** Azure
 

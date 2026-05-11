@@ -3,7 +3,7 @@ title: "EC2 instance has public IP"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ec2_instance_has_public_ip"
-  id: "5a2486aa-facf-477d-a5c1-b010789459ce"
+  id: "terraform-aws-ec2-instance-has-public-ip"
   display_name: "EC2 instance has public IP"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5a2486aa-facf-477d-a5c1-b010789459ce`
+**Id:** `terraform-aws-ec2-instance-has-public-ip`
 
 **Cloud Provider:** AWS
 

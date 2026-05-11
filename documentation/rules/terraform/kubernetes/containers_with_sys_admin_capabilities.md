@@ -3,7 +3,7 @@ title: "Containers with sys admin capabilities"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/containers_with_sys_admin_capabilities"
-  id: "3f55386d-75cd-4e9a-ac47-167b26c04724"
+  id: "terraform-kubernetes-containers-with-sys-admin-capabilities"
   display_name: "Containers with sys admin capabilities"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3f55386d-75cd-4e9a-ac47-167b26c04724`
+**Id:** `terraform-kubernetes-containers-with-sys-admin-capabilities`
 
 **Cloud Provider:** Kubernetes
 

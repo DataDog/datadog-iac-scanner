@@ -3,7 +3,7 @@ title: "Deployment without podAntiAffinity"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/deployment_has_no_pod_anti_affinity"
-  id: "a31b7b82-d994-48c4-bd21-3bab6c31827a"
+  id: "kubernetes-deployment-has-no-pod-anti-affinity"
   display_name: "Deployment without podAntiAffinity"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a31b7b82-d994-48c4-bd21-3bab6c31827a`
+**Id:** `kubernetes-deployment-has-no-pod-anti-affinity`
 
 **Cloud Provider:** Kubernetes
 

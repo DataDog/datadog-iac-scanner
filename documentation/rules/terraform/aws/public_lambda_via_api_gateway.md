@@ -3,7 +3,7 @@ title: "Public Lambda via API Gateway"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/public_lambda_via_api_gateway"
-  id: "3ef8696c-e4ae-4872-92c7-520bb44dfe77"
+  id: "terraform-aws-public-lambda-via-api-gateway"
   display_name: "Public Lambda via API Gateway"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3ef8696c-e4ae-4872-92c7-520bb44dfe77`
+**Id:** `terraform-aws-public-lambda-via-api-gateway`
 
 **Cloud Provider:** AWS
 

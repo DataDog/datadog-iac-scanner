@@ -3,7 +3,7 @@ title: "Lambda permission misconfigured"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/lambda_permission_misconfigured"
-  id: "3ddf3417-424d-420d-8275-0724dc426520"
+  id: "ansible-aws-lambda-permission-misconfigured"
   display_name: "Lambda permission misconfigured"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3ddf3417-424d-420d-8275-0724dc426520`
+**Id:** `ansible-aws-lambda-permission-misconfigured`
 
 **Cloud Provider:** AWS
 

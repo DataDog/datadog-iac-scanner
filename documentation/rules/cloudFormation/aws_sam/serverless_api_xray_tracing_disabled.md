@@ -3,7 +3,7 @@ title: "Serverless API X-Ray tracing disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws_sam/serverless_api_xray_tracing_disabled"
-  id: "c757c6a3-ac87-4b9d-b28d-e5a5add6a315"
+  id: "cloudformation-aws-serverless-api-xray-tracing-disabled"
   display_name: "Serverless API X-Ray tracing disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c757c6a3-ac87-4b9d-b28d-e5a5add6a315`
+**Id:** `cloudformation-aws-serverless-api-xray-tracing-disabled`
 
 **Cloud Provider:** AWS
 

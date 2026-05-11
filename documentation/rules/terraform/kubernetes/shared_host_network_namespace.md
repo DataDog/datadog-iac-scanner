@@ -3,7 +3,7 @@ title: "Shared host network namespace"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/shared_host_network_namespace"
-  id: "ac1564a3-c324-4747-9fa1-9dfc234dace0"
+  id: "terraform-kubernetes-shared-host-network-namespace"
   display_name: "Shared host network namespace"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ac1564a3-c324-4747-9fa1-9dfc234dace0`
+**Id:** `terraform-kubernetes-shared-host-network-namespace`
 
 **Cloud Provider:** Kubernetes
 

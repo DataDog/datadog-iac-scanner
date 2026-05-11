@@ -3,7 +3,7 @@ title: "Instance with no VPC"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/instance_with_no_vpc"
-  id: "61d1a2d0-4db8-405a-913d-5d2ce49dff6f"
+  id: "ansible-aws-instance-with-no-vpc"
   display_name: "Instance with no VPC"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `61d1a2d0-4db8-405a-913d-5d2ce49dff6f`
+**Id:** `ansible-aws-instance-with-no-vpc`
 
 **Cloud Provider:** AWS
 

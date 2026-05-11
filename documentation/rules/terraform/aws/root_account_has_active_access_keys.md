@@ -3,7 +3,7 @@ title: "Root account has active access keys"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/root_account_has_active_access_keys"
-  id: "970d224d-b42a-416b-81f9-8f4dfe70c4bc"
+  id: "terraform-aws-root-account-has-active-access-keys"
   display_name: "Root account has active access keys"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `970d224d-b42a-416b-81f9-8f4dfe70c4bc`
+**Id:** `terraform-aws-root-account-has-active-access-keys`
 
 **Cloud Provider:** AWS
 

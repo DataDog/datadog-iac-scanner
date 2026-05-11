@@ -3,7 +3,7 @@ title: "Avoid HTTP"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/avoid_http"
-  id: "d5b3c9a1-7e8f-4c2a-9d6e-3f1a8b4c7e9d"
+  id: "dockerfile-avoid-http"
   display_name: "Avoid HTTP"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d5b3c9a1-7e8f-4c2a-9d6e-3f1a8b4c7e9d`
+**Id:** `dockerfile-avoid-http`
 
 **Cloud Provider:** Dockerfile
 

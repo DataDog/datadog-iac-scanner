@@ -3,7 +3,7 @@ title: "apt-get install pin version not defined"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/apt_get_install_pin_version_not_defined"
-  id: "965a08d7-ef86-4f14-8792-4a3b2098937e"
+  id: "dockerfile-apt-get-install-pin-version-not-defined"
   display_name: "apt-get install pin version not defined"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `965a08d7-ef86-4f14-8792-4a3b2098937e`
+**Id:** `dockerfile-apt-get-install-pin-version-not-defined`
 
 **Cloud Provider:** Dockerfile
 

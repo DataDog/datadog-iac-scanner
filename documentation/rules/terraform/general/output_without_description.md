@@ -3,7 +3,7 @@ title: "Output without description"
 group_id: "Terraform / Common"
 meta:
   name: "general/output_without_description"
-  id: "59312e8a-a64e-41e7-a252-618533dd1ea8"
+  id: "terraform-output-without-description"
   display_name: "Output without description"
   cloud_provider: "Common"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `59312e8a-a64e-41e7-a252-618533dd1ea8`
+**Id:** `terraform-output-without-description`
 
 **Cloud Provider:** Common
 

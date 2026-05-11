@@ -3,7 +3,7 @@ title: "IAM password policy does not require symbol"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_password_does_not_require_symbol"
-  id: "bts2c3d4-e5f6-7890-ab12-cd34ef567890"
+  id: "terraform-aws-iam-password-does-not-require-symbol"
   display_name: "IAM password policy does not require symbol"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bts2c3d4-e5f6-7890-ab12-cd34ef567890`
+**Id:** `terraform-aws-iam-password-does-not-require-symbol`
 
 **Cloud Provider:** AWS
 

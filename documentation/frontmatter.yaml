@@ -3947,10 +3947,10 @@ rules:
         description: Variable without type
         title: Variable without type
     github:
-      github_organization_webhook_with_ssl_disabled:
+      organization_webhook_with_ssl_disabled:
         description: Github organization webhook with SSL disabled
         title: Github organization webhook with SSL disabled
-      github_repository_set_to_public:
+      repository_set_to_public:
         description: GitHub repository set to public
         title: GitHub repository set to public
     kubernetes:

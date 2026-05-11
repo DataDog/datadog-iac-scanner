@@ -3,7 +3,7 @@ title: "yum clean all missing"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/yum_clean_all_missing"
-  id: "00481784-25aa-4a55-8633-3136dfcf4f37"
+  id: "dockerfile-yum-clean-all-missing"
   display_name: "yum clean all missing"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `00481784-25aa-4a55-8633-3136dfcf4f37`
+**Id:** `dockerfile-yum-clean-all-missing`
 
 **Cloud Provider:** Dockerfile
 

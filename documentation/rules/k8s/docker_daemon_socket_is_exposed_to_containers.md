@@ -3,7 +3,7 @@ title: "Docker daemon socket is exposed to containers"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/docker_daemon_socket_is_exposed_to_containers"
-  id: "a6f34658-fdfb-4154-9536-56d516f65828"
+  id: "kubernetes-docker-daemon-socket-is-exposed-to-containers"
   display_name: "Docker daemon socket is exposed to containers"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a6f34658-fdfb-4154-9536-56d516f65828`
+**Id:** `kubernetes-docker-daemon-socket-is-exposed-to-containers`
 
 **Cloud Provider:** Kubernetes
 

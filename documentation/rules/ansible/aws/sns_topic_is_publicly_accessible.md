@@ -3,7 +3,7 @@ title: "SNS topic is publicly accessible"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/sns_topic_is_publicly_accessible"
-  id: "905f4741-f965-45c1-98db-f7a00a0e5c73"
+  id: "ansible-aws-sns-topic-is-publicly-accessible"
   display_name: "SNS topic is publicly accessible"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `905f4741-f965-45c1-98db-f7a00a0e5c73`
+**Id:** `ansible-aws-sns-topic-is-publicly-accessible`
 
 **Cloud Provider:** AWS
 

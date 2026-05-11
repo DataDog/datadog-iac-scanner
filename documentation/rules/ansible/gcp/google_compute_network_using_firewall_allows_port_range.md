@@ -3,7 +3,7 @@ title: "Google Compute network using firewall rule that allows port range"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/google_compute_network_using_firewall_allows_port_range"
-  id: "7289eebd-a477-4064-8ad4-3c044bd70b00"
+  id: "ansible-gcp-google-compute-network-using-firewall-allows-port-range"
   display_name: "Google Compute network using firewall rule that allows port range"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7289eebd-a477-4064-8ad4-3c044bd70b00`
+**Id:** `ansible-gcp-google-compute-network-using-firewall-allows-port-range`
 
 **Cloud Provider:** GCP
 

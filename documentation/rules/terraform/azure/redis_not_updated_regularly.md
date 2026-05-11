@@ -3,7 +3,7 @@ title: "Redis not updated regularly"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/redis_not_updated_regularly"
-  id: "b947809d-dd2f-4de9-b724-04d101c515aa"
+  id: "terraform-azure-redis-not-updated-regularly"
   display_name: "Redis not updated regularly"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b947809d-dd2f-4de9-b724-04d101c515aa`
+**Id:** `terraform-azure-redis-not-updated-regularly`
 
 **Cloud Provider:** Azure
 

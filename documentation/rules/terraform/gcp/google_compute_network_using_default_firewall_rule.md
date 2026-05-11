@@ -3,7 +3,7 @@ title: "Google Compute network using default firewall rule"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/google_compute_network_using_default_firewall_rule"
-  id: "40abce54-95b1-478c-8e5f-ea0bf0bb0e33"
+  id: "terraform-gcp-google-compute-network-using-default-firewall-rule"
   display_name: "Google Compute network using default firewall rule"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `40abce54-95b1-478c-8e5f-ea0bf0bb0e33`
+**Id:** `terraform-gcp-google-compute-network-using-default-firewall-rule`
 
 **Cloud Provider:** GCP
 

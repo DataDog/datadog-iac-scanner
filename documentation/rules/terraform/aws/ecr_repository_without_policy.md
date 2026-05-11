@@ -3,7 +3,7 @@ title: "ECR repository without policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ecr_repository_without_policy"
-  id: "69e7c320-b65d-41bb-be02-d63ecc0bcc9d"
+  id: "terraform-aws-ecr-repository-without-policy"
   display_name: "ECR repository without policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `69e7c320-b65d-41bb-be02-d63ecc0bcc9d`
+**Id:** `terraform-aws-ecr-repository-without-policy`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Redis cache allows non-SSL connections"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/redis_cache_allows_non_ssl_connections"
-  id: "869e7fb4-30f0-4bdb-b360-ad548f337f2f"
+  id: "ansible-azure-redis-cache-allows-non-ssl-connections"
   display_name: "Redis cache allows non-SSL connections"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `869e7fb4-30f0-4bdb-b360-ad548f337f2f`
+**Id:** `ansible-azure-redis-cache-allows-non-ssl-connections`
 
 **Cloud Provider:** Azure
 

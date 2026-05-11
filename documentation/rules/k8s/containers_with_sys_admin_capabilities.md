@@ -3,7 +3,7 @@ title: "Containers with sys admin capabilities"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/containers_with_sys_admin_capabilities"
-  id: "235236ee-ad78-4065-bd29-61b061f28ce0"
+  id: "kubernetes-containers-with-sys-admin-capabilities"
   display_name: "Containers with sys admin capabilities"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `235236ee-ad78-4065-bd29-61b061f28ce0`
+**Id:** `kubernetes-containers-with-sys-admin-capabilities`
 
 **Cloud Provider:** Kubernetes
 

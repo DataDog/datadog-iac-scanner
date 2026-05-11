@@ -3,7 +3,7 @@ title: "User with IAM role"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/user_with_iam_role"
-  id: "704fcc44-a58f-4af5-82e2-93f2a58ef918"
+  id: "terraform-gcp-user-with-iam-role"
   display_name: "User with IAM role"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `704fcc44-a58f-4af5-82e2-93f2a58ef918`
+**Id:** `terraform-gcp-user-with-iam-role`
 
 **Cloud Provider:** GCP
 

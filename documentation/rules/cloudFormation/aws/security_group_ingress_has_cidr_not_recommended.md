@@ -3,7 +3,7 @@ title: "Security group ingress has CIDR not recommended"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_group_ingress_has_cidr_not_recommended"
-  id: "a3e4e39a-e5fc-4ee9-8cf5-700febfa86dd"
+  id: "cloudformation-aws-security-group-ingress-has-cidr-not-recommended"
   display_name: "Security group ingress has CIDR not recommended"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a3e4e39a-e5fc-4ee9-8cf5-700febfa86dd`
+**Id:** `cloudformation-aws-security-group-ingress-has-cidr-not-recommended`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "User with privilege escalation by actions 'iam:CreateLoginProfile'"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/user_with_privilege_escalation_by_actions_iam_CreateLoginProfile"
-  id: "0fd7d920-4711-46bd-aff2-d307d82cd8b7"
+  id: "terraform-aws-user-with-privilege-escalation-by-actions-iam-createloginprofile"
   display_name: "User with privilege escalation by actions 'iam:CreateLoginProfile'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0fd7d920-4711-46bd-aff2-d307d82cd8b7`
+**Id:** `terraform-aws-user-with-privilege-escalation-by-actions-iam-createloginprofile`
 
 **Cloud Provider:** AWS
 

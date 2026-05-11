@@ -3,7 +3,7 @@ title: "RBAC roles with read secrets permissions"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/rbac_roles_with_read_secrets_permissions"
-  id: "826abb30-3cd5-4e0b-a93b-67729b4f7e63"
+  id: "terraform-kubernetes-rbac-roles-with-read-secrets-permissions"
   display_name: "RBAC roles with read secrets permissions"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `826abb30-3cd5-4e0b-a93b-67729b4f7e63`
+**Id:** `terraform-kubernetes-rbac-roles-with-read-secrets-permissions`
 
 **Cloud Provider:** Kubernetes
 

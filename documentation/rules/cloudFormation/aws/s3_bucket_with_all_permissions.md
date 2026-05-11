@@ -3,7 +3,7 @@ title: "S3 bucket with all permissions"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_with_all_permissions"
-  id: "4ae8af91-5108-42cb-9471-3bdbe596eac9"
+  id: "cloudformation-aws-s3-bucket-with-all-permissions"
   display_name: "S3 bucket with all permissions"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4ae8af91-5108-42cb-9471-3bdbe596eac9`
+**Id:** `cloudformation-aws-s3-bucket-with-all-permissions`
 
 **Cloud Provider:** AWS
 

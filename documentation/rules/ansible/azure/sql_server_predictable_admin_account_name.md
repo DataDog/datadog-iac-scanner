@@ -3,7 +3,7 @@ title: "SQL Server predictable admin account name"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/sql_server_predictable_admin_account_name"
-  id: "663062e9-473d-4e87-99bc-6f3684b3df40"
+  id: "ansible-azure-sql-server-predictable-admin-account-name"
   display_name: "SQL Server predictable admin account name"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `663062e9-473d-4e87-99bc-6f3684b3df40`
+**Id:** `ansible-azure-sql-server-predictable-admin-account-name`
 
 **Cloud Provider:** Azure
 

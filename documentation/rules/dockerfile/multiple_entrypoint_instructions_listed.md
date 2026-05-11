@@ -3,7 +3,7 @@ title: "Multiple ENTRYPOINT instructions listed"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/multiple_entrypoint_instructions_listed"
-  id: "6938958b-3f1a-451c-909b-baeee14bdc97"
+  id: "dockerfile-multiple-entrypoint-instructions-listed"
   display_name: "Multiple ENTRYPOINT instructions listed"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6938958b-3f1a-451c-909b-baeee14bdc97`
+**Id:** `dockerfile-multiple-entrypoint-instructions-listed`
 
 **Cloud Provider:** Dockerfile
 

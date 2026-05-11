@@ -3,7 +3,7 @@ title: "Privilege escalation allowed"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/privilege_escalation_allowed"
-  id: "c878abb4-cca5-4724-92b9-289be68bd47c"
+  id: "terraform-kubernetes-privilege-escalation-allowed"
   display_name: "Privilege escalation allowed"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c878abb4-cca5-4724-92b9-289be68bd47c`
+**Id:** `terraform-kubernetes-privilege-escalation-allowed`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "Auto TLS set to true"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/auto_tls_set_to_true"
-  id: "98ce8b81-7707-4734-aa39-627c6db3d84b"
+  id: "kubernetes-auto-tls-set-to-true"
   display_name: "Auto TLS set to true"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `98ce8b81-7707-4734-aa39-627c6db3d84b`
+**Id:** `kubernetes-auto-tls-set-to-true`
 
 **Cloud Provider:** Kubernetes
 

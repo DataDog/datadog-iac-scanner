@@ -3,7 +3,7 @@ title: "Private cluster disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/private_cluster_disabled"
-  id: "3b30e3d6-c99b-4318-b38f-b99db74578b5"
+  id: "ansible-gcp-private-cluster-disabled"
   display_name: "Private cluster disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3b30e3d6-c99b-4318-b38f-b99db74578b5`
+**Id:** `ansible-gcp-private-cluster-disabled`
 
 **Cloud Provider:** GCP
 

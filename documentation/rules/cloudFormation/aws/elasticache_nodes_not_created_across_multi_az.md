@@ -3,7 +3,7 @@ title: "ElastiCache nodes not created across multi-AZ"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elasticache_nodes_not_created_across_multi_az"
-  id: "cfdef2e5-1fe4-4ef4-bea8-c56e08963150"
+  id: "cloudformation-aws-elasticache-nodes-not-created-across-multi-az"
   display_name: "ElastiCache nodes not created across multi-AZ"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cfdef2e5-1fe4-4ef4-bea8-c56e08963150`
+**Id:** `cloudformation-aws-elasticache-nodes-not-created-across-multi-az`
 
 **Cloud Provider:** AWS
 

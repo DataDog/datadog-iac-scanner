@@ -3,7 +3,7 @@ title: "S3 bucket allows public ACL"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_allows_public_acl"
-  id: "d0cc8694-fcad-43ff-ac86-32331d7e867f"
+  id: "terraform-aws-s3-bucket-allows-public-acl"
   display_name: "S3 bucket allows public ACL"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d0cc8694-fcad-43ff-ac86-32331d7e867f`
+**Id:** `terraform-aws-s3-bucket-allows-public-acl`
 
 **Cloud Provider:** AWS
 

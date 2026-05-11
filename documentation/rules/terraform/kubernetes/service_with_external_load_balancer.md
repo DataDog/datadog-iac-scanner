@@ -3,7 +3,7 @@ title: "Service with external load balancer"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/service_with_external_load_balancer"
-  id: "2a52567c-abb8-4651-a038-52fa27c77aed"
+  id: "terraform-kubernetes-service-with-external-load-balancer"
   display_name: "Service with external load balancer"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2a52567c-abb8-4651-a038-52fa27c77aed`
+**Id:** `terraform-kubernetes-service-with-external-load-balancer`
 
 **Cloud Provider:** Kubernetes
 

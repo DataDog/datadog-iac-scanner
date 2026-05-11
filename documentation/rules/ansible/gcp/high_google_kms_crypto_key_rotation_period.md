@@ -3,7 +3,7 @@ title: "High Google KMS crypto key rotation period"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/high_google_kms_crypto_key_rotation_period"
-  id: "f9b7086b-deb8-4034-9330-d7fd38f1b8de"
+  id: "ansible-gcp-high-google-kms-crypto-key-rotation-period"
   display_name: "High Google KMS crypto key rotation period"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f9b7086b-deb8-4034-9330-d7fd38f1b8de`
+**Id:** `ansible-gcp-high-google-kms-crypto-key-rotation-period`
 
 **Cloud Provider:** GCP
 

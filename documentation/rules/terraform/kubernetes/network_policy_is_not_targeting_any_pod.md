@@ -3,7 +3,7 @@ title: "Network policy is not targeting any pod"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/network_policy_is_not_targeting_any_pod"
-  id: "b80b14c6-aaa2-4876-b651-8a48b6c32fbf"
+  id: "terraform-kubernetes-network-policy-is-not-targeting-any-pod"
   display_name: "Network policy is not targeting any pod"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b80b14c6-aaa2-4876-b651-8a48b6c32fbf`
+**Id:** `terraform-kubernetes-network-policy-is-not-targeting-any-pod`
 
 **Cloud Provider:** Kubernetes
 

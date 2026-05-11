@@ -3,7 +3,7 @@ title: "Superfluous actions"
 group_id: "CICD / GitHub"
 meta:
   name: "github/superfluous_actions"
-  id: "b5c6d7e8-f9a0-41b2-c3d4-e5f6a7b8c9d0"
+  id: "cicd-github-superfluous-actions"
   display_name: "Superfluous actions"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b5c6d7e8-f9a0-41b2-c3d4-e5f6a7b8c9d0`
+**Id:** `cicd-github-superfluous-actions`
 
 **Cloud Provider:** GitHub
 

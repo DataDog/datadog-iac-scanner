@@ -3,7 +3,7 @@ title: "Secure ciphers disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/secure_ciphers_disabled"
-  id: "be96849c-3df6-49c2-bc16-778a7be2519c"
+  id: "cloudformation-aws-secure-ciphers-disabled"
   display_name: "Secure ciphers disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `be96849c-3df6-49c2-bc16-778a7be2519c`
+**Id:** `cloudformation-aws-secure-ciphers-disabled`
 
 **Cloud Provider:** AWS
 

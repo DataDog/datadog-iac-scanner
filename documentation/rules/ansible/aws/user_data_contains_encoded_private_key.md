@@ -3,7 +3,7 @@ title: "User data contains encoded private key"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/user_data_contains_encoded_private_key"
-  id: "c09f4d3e-27d2-4d46-9453-abbe9687a64e"
+  id: "ansible-aws-user-data-contains-encoded-private-key"
   display_name: "User data contains encoded private key"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c09f4d3e-27d2-4d46-9453-abbe9687a64e`
+**Id:** `ansible-aws-user-data-contains-encoded-private-key`
 
 **Cloud Provider:** AWS
 

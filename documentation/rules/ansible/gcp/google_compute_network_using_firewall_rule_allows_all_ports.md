@@ -3,7 +3,7 @@ title: "Google Compute network using firewall rule that allows all ports"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/google_compute_network_using_firewall_rule_allows_all_ports"
-  id: "3602d273-3290-47b2-80fa-720162b1a8af"
+  id: "ansible-gcp-google-compute-network-using-firewall-rule-allows-all-ports"
   display_name: "Google Compute network using firewall rule that allows all ports"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3602d273-3290-47b2-80fa-720162b1a8af`
+**Id:** `ansible-gcp-google-compute-network-using-firewall-rule-allows-all-ports`
 
 **Cloud Provider:** GCP
 

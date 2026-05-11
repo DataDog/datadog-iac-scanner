@@ -3,7 +3,7 @@ title: "User with privilege escalation by actions 'iam:CreateAccessKey'"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/user_with_privilege_escalation_by_actions_iam_CreateAccessKey"
-  id: "113208f2-a886-4526-9ecc-f3218600e12c"
+  id: "terraform-aws-user-with-privilege-escalation-by-actions-iam-createaccesskey"
   display_name: "User with privilege escalation by actions 'iam:CreateAccessKey'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `113208f2-a886-4526-9ecc-f3218600e12c`
+**Id:** `terraform-aws-user-with-privilege-escalation-by-actions-iam-createaccesskey`
 
 **Cloud Provider:** AWS
 

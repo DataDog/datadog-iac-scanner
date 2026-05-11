@@ -3,7 +3,7 @@ title: "Run utilities and POSIX commands"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/run_utilities_and_posix_commands"
-  id: "9b6b0f38-92a2-41f9-b881-3a1083d99f1b"
+  id: "dockerfile-run-utilities-and-posix-commands"
   display_name: "Run utilities and POSIX commands"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9b6b0f38-92a2-41f9-b881-3a1083d99f1b`
+**Id:** `dockerfile-run-utilities-and-posix-commands`
 
 **Cloud Provider:** Dockerfile
 

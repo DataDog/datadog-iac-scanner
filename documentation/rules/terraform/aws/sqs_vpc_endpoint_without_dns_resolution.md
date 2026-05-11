@@ -3,7 +3,7 @@ title: "SQS VPC endpoint without DNS resolution"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/sqs_vpc_endpoint_without_dns_resolution"
-  id: "e9b7acf9-9ba0-4837-a744-31e7df1e434d"
+  id: "terraform-aws-sqs-vpc-endpoint-without-dns-resolution"
   display_name: "SQS VPC endpoint without DNS resolution"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e9b7acf9-9ba0-4837-a744-31e7df1e434d`
+**Id:** `terraform-aws-sqs-vpc-endpoint-without-dns-resolution`
 
 **Cloud Provider:** AWS
 

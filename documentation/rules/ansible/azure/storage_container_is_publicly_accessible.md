@@ -3,7 +3,7 @@ title: "Storage container is publicly accessible"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/storage_container_is_publicly_accessible"
-  id: "4d3817db-dd35-4de4-a80d-3867157e7f7f"
+  id: "ansible-azure-storage-container-is-publicly-accessible"
   display_name: "Storage container is publicly accessible"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4d3817db-dd35-4de4-a80d-3867157e7f7f`
+**Id:** `ansible-azure-storage-container-is-publicly-accessible`
 
 **Cloud Provider:** Azure
 

@@ -3,7 +3,7 @@ title: "ElastiCache using default port"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elasticache_using_default_port"
-  id: "323db967-c68e-44e6-916c-a777f95af34b"
+  id: "cloudformation-aws-elasticache-using-default-port"
   display_name: "ElastiCache using default port"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `323db967-c68e-44e6-916c-a777f95af34b`
+**Id:** `cloudformation-aws-elasticache-using-default-port`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Security contact email"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/security_contact_email"
-  id: "34664094-59e0-4524-b69f-deaa1a68cce3"
+  id: "terraform-azure-security-contact-email"
   display_name: "Security contact email"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `34664094-59e0-4524-b69f-deaa1a68cce3`
+**Id:** `terraform-azure-security-contact-email`
 
 **Cloud Provider:** Azure
 

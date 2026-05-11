@@ -3,7 +3,7 @@ title: "Image version using latest"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/image_version_using_latest"
-  id: "f45ea400-6bbe-4501-9fc7-1c3d75c32067"
+  id: "dockerfile-image-version-using-latest"
   display_name: "Image version using latest"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f45ea400-6bbe-4501-9fc7-1c3d75c32067`
+**Id:** `dockerfile-image-version-using-latest`
 
 **Cloud Provider:** Dockerfile
 

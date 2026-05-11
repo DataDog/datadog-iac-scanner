@@ -3,7 +3,7 @@ title: "ElastiCache with disabled transit encryption"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elasticache_with_disabled_transit_encryption"
-  id: "3b02569b-fc6f-4153-b3a3-ba91022fed68"
+  id: "cloudformation-aws-elasticache-with-disabled-transit-encryption"
   display_name: "ElastiCache with disabled transit encryption"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3b02569b-fc6f-4153-b3a3-ba91022fed68`
+**Id:** `cloudformation-aws-elasticache-with-disabled-transit-encryption`
 
 **Cloud Provider:** AWS
 

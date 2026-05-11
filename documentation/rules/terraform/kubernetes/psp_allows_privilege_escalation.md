@@ -3,7 +3,7 @@ title: "PSP allows privilege escalation"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/psp_allows_privilege_escalation"
-  id: "2bff9906-4e9b-4f71-9346-8ebedfdf43ef"
+  id: "terraform-kubernetes-psp-allows-privilege-escalation"
   display_name: "PSP allows privilege escalation"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2bff9906-4e9b-4f71-9346-8ebedfdf43ef`
+**Id:** `terraform-kubernetes-psp-allows-privilege-escalation`
 
 **Cloud Provider:** Kubernetes
 

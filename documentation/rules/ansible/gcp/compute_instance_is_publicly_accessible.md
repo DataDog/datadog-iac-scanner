@@ -3,7 +3,7 @@ title: "Compute instance is publicly accessible"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/compute_instance_is_publicly_accessible"
-  id: "829f1c60-2bab-44c6-8a21-5cd9d39a2c82"
+  id: "ansible-gcp-compute-instance-is-publicly-accessible"
   display_name: "Compute instance is publicly accessible"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `829f1c60-2bab-44c6-8a21-5cd9d39a2c82`
+**Id:** `ansible-gcp-compute-instance-is-publicly-accessible`
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "Lambda functions without X-Ray tracing"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/lambda_functions_without_x-ray_tracing"
-  id: "9488c451-074e-4cd3-aee3-7db6104f542c"
+  id: "cloudformation-aws-lambda-functions-without-x-ray-tracing"
   display_name: "Lambda functions without X-Ray tracing"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9488c451-074e-4cd3-aee3-7db6104f542c`
+**Id:** `cloudformation-aws-lambda-functions-without-x-ray-tracing`
 
 **Cloud Provider:** AWS
 

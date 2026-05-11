@@ -3,7 +3,7 @@ title: "API Gateway deployment without access log setting"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/api_gateway_deployment_without_access_log_setting"
-  id: "06ec63e3-9f72-4fe2-a218-2eb9200b8db5"
+  id: "cloudformation-aws-api-gateway-deployment-without-access-log-setting"
   display_name: "API Gateway deployment without access log setting"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `06ec63e3-9f72-4fe2-a218-2eb9200b8db5`
+**Id:** `cloudformation-aws-api-gateway-deployment-without-access-log-setting`
 
 **Cloud Provider:** AWS
 

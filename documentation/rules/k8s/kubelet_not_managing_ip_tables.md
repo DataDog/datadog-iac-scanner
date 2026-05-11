@@ -3,7 +3,7 @@ title: "Kubelet not managing IP tables"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/kubelet_not_managing_ip_tables"
-  id: "5f89001f-6dd9-49ff-9b15-d8cd71b617f4"
+  id: "kubernetes-kubelet-not-managing-ip-tables"
   display_name: "Kubelet not managing IP tables"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5f89001f-6dd9-49ff-9b15-d8cd71b617f4`
+**Id:** `kubernetes-kubelet-not-managing-ip-tables`
 
 **Cloud Provider:** Kubernetes
 

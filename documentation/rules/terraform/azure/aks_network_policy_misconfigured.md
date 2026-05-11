@@ -3,7 +3,7 @@ title: "AKS network policy misconfigured"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/aks_network_policy_misconfigured"
-  id: "f5342045-b935-402d-adf1-8dbbd09c0eef"
+  id: "terraform-azure-aks-network-policy-misconfigured"
   display_name: "AKS network policy misconfigured"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f5342045-b935-402d-adf1-8dbbd09c0eef`
+**Id:** `terraform-azure-aks-network-policy-misconfigured`
 
 **Cloud Provider:** Azure
 

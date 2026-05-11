@@ -3,7 +3,7 @@ title: "RDS DB instance publicly accessible"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/rds_db_instance_publicly_accessible"
-  id: "35113e6f-2c6b-414d-beec-7a9482d3b2d1"
+  id: "terraform-aws-rds-db-instance-publicly-accessible"
   display_name: "RDS DB instance publicly accessible"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `35113e6f-2c6b-414d-beec-7a9482d3b2d1`
+**Id:** `terraform-aws-rds-db-instance-publicly-accessible`
 
 **Cloud Provider:** AWS
 

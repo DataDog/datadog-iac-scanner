@@ -3,7 +3,7 @@ title: "Always pull images admission control plugin not set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/always_pull_images_admission_control_plugin_not_set"
-  id: "a77f4d07-c6e0-4a48-8b35-0eeb51576f4f"
+  id: "kubernetes-always-pull-images-admission-control-plugin-not-set"
   display_name: "Always pull images admission control plugin not set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a77f4d07-c6e0-4a48-8b35-0eeb51576f4f`
+**Id:** `kubernetes-always-pull-images-admission-control-plugin-not-set`
 
 **Cloud Provider:** Kubernetes
 

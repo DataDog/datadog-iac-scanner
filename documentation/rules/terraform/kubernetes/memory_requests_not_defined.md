@@ -3,7 +3,7 @@ title: "Memory requests not defined"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/memory_requests_not_defined"
-  id: "21719347-d02b-497d-bda4-04a03c8e5b61"
+  id: "terraform-kubernetes-memory-requests-not-defined"
   display_name: "Memory requests not defined"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `21719347-d02b-497d-bda4-04a03c8e5b61`
+**Id:** `terraform-kubernetes-memory-requests-not-defined`
 
 **Cloud Provider:** Kubernetes
 

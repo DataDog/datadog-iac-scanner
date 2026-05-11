@@ -3,7 +3,7 @@ title: "Neptune cluster with IAM database authentication disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/neptune_cluster_with_iam_database_authentication_disabled"
-  id: "a3aa0087-8228-4e7e-b202-dc9036972d02"
+  id: "cloudformation-aws-neptune-cluster-with-iam-database-authentication-disabled"
   display_name: "Neptune cluster with IAM database authentication disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a3aa0087-8228-4e7e-b202-dc9036972d02`
+**Id:** `cloudformation-aws-neptune-cluster-with-iam-database-authentication-disabled`
 
 **Cloud Provider:** AWS
 

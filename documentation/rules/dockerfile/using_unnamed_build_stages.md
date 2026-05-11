@@ -3,7 +3,7 @@ title: "Using unnamed build stages"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/using_unnamed_build_stages"
-  id: "68a51e22-ae5a-4d48-8e87-b01a323605c9"
+  id: "dockerfile-using-unnamed-build-stages"
   display_name: "Using unnamed build stages"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `68a51e22-ae5a-4d48-8e87-b01a323605c9`
+**Id:** `dockerfile-using-unnamed-build-stages`
 
 **Cloud Provider:** Dockerfile
 

@@ -3,7 +3,7 @@ title: "NIFCLOUD NAS has common private network"
 group_id: "Terraform / Nifcloud"
 meta:
   name: "nifcloud/nas_instance_has_common_private"
-  id: "4b801c38-ebb4-4c81-984b-1ba525d43adf"
+  id: "terraform-nifcloud-nas-instance-has-common-private"
   display_name: "NIFCLOUD NAS has common private network"
   cloud_provider: "Nifcloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4b801c38-ebb4-4c81-984b-1ba525d43adf`
+**Id:** `terraform-nifcloud-nas-instance-has-common-private`
 
 **Cloud Provider:** Nifcloud
 

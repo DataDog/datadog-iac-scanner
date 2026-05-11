@@ -3,7 +3,7 @@ title: "Missing version specification in dnf install"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/missing_version_specification_in_dnf_install"
-  id: "93d88cf7-f078-46a8-8ddc-178e03aeacf1"
+  id: "dockerfile-missing-version-specification-in-dnf-install"
   display_name: "Missing version specification in dnf install"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `93d88cf7-f078-46a8-8ddc-178e03aeacf1`
+**Id:** `dockerfile-missing-version-specification-in-dnf-install`
 
 **Cloud Provider:** Dockerfile
 

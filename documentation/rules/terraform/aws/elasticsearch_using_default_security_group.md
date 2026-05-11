@@ -3,7 +3,7 @@ title: "Elasticsearch uses default security group"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_using_default_security_group"
-  id: "d3e1f5a9-bb45-4c89-b97c-12d34ef56789"
+  id: "terraform-aws-elasticsearch-using-default-security-group"
   display_name: "Elasticsearch uses default security group"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d3e1f5a9-bb45-4c89-b97c-12d34ef56789`
+**Id:** `terraform-aws-elasticsearch-using-default-security-group`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Athena workgroup not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/athena_workgroup_not_encrypted"
-  id: "d364984a-a222-4b5f-a8b0-e23ab19ebff3"
+  id: "terraform-aws-athena-workgroup-not-encrypted"
   display_name: "Athena workgroup not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d364984a-a222-4b5f-a8b0-e23ab19ebff3`
+**Id:** `terraform-aws-athena-workgroup-not-encrypted`
 
 **Cloud Provider:** AWS
 

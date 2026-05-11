@@ -3,7 +3,7 @@ title: "Unknown port exposed to internet"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/unknown_port_exposed_to_internet"
-  id: "722b0f24-5a64-4cca-aa96-cfc26b7e3a5b"
+  id: "ansible-aws-unknown-port-exposed-to-internet"
   display_name: "Unknown port exposed to internet"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `722b0f24-5a64-4cca-aa96-cfc26b7e3a5b`
+**Id:** `ansible-aws-unknown-port-exposed-to-internet`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "gem install without version"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/gem_install_without_version"
-  id: "22cd11f7-9c6c-4f6e-84c0-02058120b341"
+  id: "dockerfile-gem-install-without-version"
   display_name: "gem install without version"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `22cd11f7-9c6c-4f6e-84c0-02058120b341`
+**Id:** `dockerfile-gem-install-without-version`
 
 **Cloud Provider:** Dockerfile
 

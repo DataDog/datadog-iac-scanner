@@ -3,7 +3,7 @@ title: "PostgreSQL log connections not set"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/postgresql_log_connections_not_set"
-  id: "c640d783-10c5-4071-b6c1-23507300d333"
+  id: "terraform-azure-postgresql-log-connections-not-set"
   display_name: "PostgreSQL log connections not set"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c640d783-10c5-4071-b6c1-23507300d333`
+**Id:** `terraform-azure-postgresql-log-connections-not-set`
 
 **Cloud Provider:** Azure
 

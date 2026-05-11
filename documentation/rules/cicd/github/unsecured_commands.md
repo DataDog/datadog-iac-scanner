@@ -3,7 +3,7 @@ title: "Unsecured commands"
 group_id: "CICD / GitHub"
 meta:
   name: "github/unsecured_commands"
-  id: "60fd272d-15f4-4d8f-afe4-77d9c6cc0453"
+  id: "cicd-github-unsecured-commands"
   display_name: "Unsecured commands"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `60fd272d-15f4-4d8f-afe4-77d9c6cc0453`
+**Id:** `cicd-github-unsecured-commands`
 
 **Cloud Provider:** GitHub
 

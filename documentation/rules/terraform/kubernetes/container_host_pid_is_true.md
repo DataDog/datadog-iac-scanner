@@ -3,7 +3,7 @@ title: "Container host PID is true"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/container_host_pid_is_true"
-  id: "587d5d82-70cf-449b-9817-f60f9bccb88c"
+  id: "terraform-kubernetes-container-host-pid-is-true"
   display_name: "Container host PID is true"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `587d5d82-70cf-449b-9817-f60f9bccb88c`
+**Id:** `terraform-kubernetes-container-host-pid-is-true`
 
 **Cloud Provider:** Kubernetes
 

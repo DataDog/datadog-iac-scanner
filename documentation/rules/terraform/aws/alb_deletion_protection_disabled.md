@@ -3,7 +3,7 @@ title: "ALB deletion protection disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/alb_deletion_protection_disabled"
-  id: "afecd1f1-6378-4f7e-bb3b-60c35801fdd4"
+  id: "terraform-aws-alb-deletion-protection-disabled"
   display_name: "ALB deletion protection disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `afecd1f1-6378-4f7e-bb3b-60c35801fdd4`
+**Id:** `terraform-aws-alb-deletion-protection-disabled`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "PSP allows containers to share the host network namespace"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/psp_allows_containers_to_share_the_host_network_namespace"
-  id: "4950837c-0ce5-4e42-9bee-a25eae73740b"
+  id: "terraform-kubernetes-psp-allows-containers-to-share-the-host-network-namespace"
   display_name: "PSP allows containers to share the host network namespace"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4950837c-0ce5-4e42-9bee-a25eae73740b`
+**Id:** `terraform-kubernetes-psp-allows-containers-to-share-the-host-network-namespace`
 
 **Cloud Provider:** Kubernetes
 

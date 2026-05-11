@@ -3,7 +3,7 @@ title: "Firewall rule allows too many hosts to access Redis Cache"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/firewall_rule_allows_too_many_hosts_to_access_redis_cache"
-  id: "69f72007-502e-457b-bd2d-5012e31ac049"
+  id: "ansible-azure-firewall-rule-allows-too-many-hosts-to-access-redis-cache"
   display_name: "Firewall rule allows too many hosts to access Redis Cache"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `69f72007-502e-457b-bd2d-5012e31ac049`
+**Id:** `ansible-azure-firewall-rule-allows-too-many-hosts-to-access-redis-cache`
 
 **Cloud Provider:** Azure
 

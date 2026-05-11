@@ -3,7 +3,7 @@ title: "PostgreSQL misconfigured log messages flag"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/postgresql_misconfigured_log_messages_flag"
-  id: "28a757fc-3d8f-424a-90c0-4233363b2711"
+  id: "ansible-gcp-postgresql-misconfigured-log-messages-flag"
   display_name: "PostgreSQL misconfigured log messages flag"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `28a757fc-3d8f-424a-90c0-4233363b2711`
+**Id:** `ansible-gcp-postgresql-misconfigured-log-messages-flag`
 
 **Cloud Provider:** GCP
 

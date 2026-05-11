@@ -3,7 +3,7 @@ title: "Deployment without PodDisruptionBudget"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/deployment_without_pod_disruption_budget"
-  id: "a05331ee-1653-45cb-91e6-13637a76e4f0"
+  id: "terraform-kubernetes-deployment-without-pod-disruption-budget"
   display_name: "Deployment without PodDisruptionBudget"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a05331ee-1653-45cb-91e6-13637a76e4f0`
+**Id:** `terraform-kubernetes-deployment-without-pod-disruption-budget`
 
 **Cloud Provider:** Kubernetes
 

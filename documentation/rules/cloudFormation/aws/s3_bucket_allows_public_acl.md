@@ -3,7 +3,7 @@ title: "S3 bucket allows public ACL"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_allows_public_acl"
-  id: "48f100d9-f499-4c6d-b2b8-deafe47ffb26"
+  id: "cloudformation-aws-s3-bucket-allows-public-acl"
   display_name: "S3 bucket allows public ACL"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `48f100d9-f499-4c6d-b2b8-deafe47ffb26`
+**Id:** `cloudformation-aws-s3-bucket-allows-public-acl`
 
 **Cloud Provider:** AWS
 

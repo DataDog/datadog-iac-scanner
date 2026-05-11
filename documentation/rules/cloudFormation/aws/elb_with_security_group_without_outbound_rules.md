@@ -3,7 +3,7 @@ title: "ELB with security group without outbound rules"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elb_with_security_group_without_outbound_rules"
-  id: "01d5a458-a6c4-452a-ac50-054d59275b7c"
+  id: "cloudformation-aws-elb-with-security-group-without-outbound-rules"
   display_name: "ELB with security group without outbound rules"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `01d5a458-a6c4-452a-ac50-054d59275b7c`
+**Id:** `cloudformation-aws-elb-with-security-group-without-outbound-rules`
 
 **Cloud Provider:** AWS
 

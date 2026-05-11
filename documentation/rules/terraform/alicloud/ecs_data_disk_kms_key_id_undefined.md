@@ -3,7 +3,7 @@ title: "ECS data disk KMS key ID undefined"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ecs_data_disk_kms_key_id_undefined"
-  id: "f262118c-1ac6-4bb3-8495-cc48f1775b85"
+  id: "terraform-alicloud-ecs-data-disk-kms-key-id-undefined"
   display_name: "ECS data disk KMS key ID undefined"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f262118c-1ac6-4bb3-8495-cc48f1775b85`
+**Id:** `terraform-alicloud-ecs-data-disk-kms-key-id-undefined`
 
 **Cloud Provider:** Alicloud
 

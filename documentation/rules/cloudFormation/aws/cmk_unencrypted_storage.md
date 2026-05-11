@@ -3,7 +3,7 @@ title: "CMK unencrypted storage"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cmk_unencrypted_storage"
-  id: "ffee2785-c347-451e-89f3-11aeb08e5c84"
+  id: "cloudformation-aws-cmk-unencrypted-storage"
   display_name: "CMK unencrypted storage"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ffee2785-c347-451e-89f3-11aeb08e5c84`
+**Id:** `cloudformation-aws-cmk-unencrypted-storage`
 
 **Cloud Provider:** AWS
 

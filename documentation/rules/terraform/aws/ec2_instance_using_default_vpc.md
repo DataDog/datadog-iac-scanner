@@ -3,7 +3,7 @@ title: "EC2 instance using default VPC"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ec2_instance_using_default_vpc"
-  id: "7e4a6e76-568d-43ef-8c4e-36dea481bff1"
+  id: "terraform-aws-ec2-instance-using-default-vpc"
   display_name: "EC2 instance using default VPC"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7e4a6e76-568d-43ef-8c4e-36dea481bff1`
+**Id:** `terraform-aws-ec2-instance-using-default-vpc`
 
 **Cloud Provider:** AWS
 

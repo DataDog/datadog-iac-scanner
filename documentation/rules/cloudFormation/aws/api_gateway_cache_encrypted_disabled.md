@@ -3,7 +3,7 @@ title: "API Gateway cache encrypted disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/api_gateway_cache_encrypted_disabled"
-  id: "37cca703-b74c-48ba-ac81-595b53398e9b"
+  id: "cloudformation-aws-api-gateway-cache-encrypted-disabled"
   display_name: "API Gateway cache encrypted disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `37cca703-b74c-48ba-ac81-595b53398e9b`
+**Id:** `cloudformation-aws-api-gateway-cache-encrypted-disabled`
 
 **Cloud Provider:** AWS
 

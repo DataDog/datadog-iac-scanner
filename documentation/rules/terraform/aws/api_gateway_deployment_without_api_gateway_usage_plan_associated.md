@@ -3,7 +3,7 @@ title: "API Gateway deployment without API Gateway usage plan associated"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/api_gateway_deployment_without_api_gateway_usage_plan_associated"
-  id: "b3a59b8e-94a3-403e-b6e2-527abaf12034"
+  id: "terraform-aws-api-gateway-deployment-without-api-gateway-usage-plan-associated"
   display_name: "API Gateway deployment without API Gateway usage plan associated"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b3a59b8e-94a3-403e-b6e2-527abaf12034`
+**Id:** `terraform-aws-api-gateway-deployment-without-api-gateway-usage-plan-associated`
 
 **Cloud Provider:** AWS
 

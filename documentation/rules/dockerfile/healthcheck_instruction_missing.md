@@ -3,7 +3,7 @@ title: "Healthcheck instruction missing"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/healthcheck_instruction_missing"
-  id: "b03a748a-542d-44f4-bb86-9199ab4fd2d5"
+  id: "dockerfile-healthcheck-instruction-missing"
   display_name: "Healthcheck instruction missing"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b03a748a-542d-44f4-bb86-9199ab4fd2d5`
+**Id:** `dockerfile-healthcheck-instruction-missing`
 
 **Cloud Provider:** Dockerfile
 

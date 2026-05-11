@@ -3,7 +3,7 @@ title: "Dockerfile should specify base image"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/should_specify_base_image"
-  id: "19619060-f22e-094f-fda1-aacf37b69bba"
+  id: "dockerfile-should-specify-base-image"
   display_name: "Dockerfile should specify base image"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `19619060-f22e-094f-fda1-aacf37b69bba`
+**Id:** `dockerfile-should-specify-base-image`
 
 **Cloud Provider:** Dockerfile
 

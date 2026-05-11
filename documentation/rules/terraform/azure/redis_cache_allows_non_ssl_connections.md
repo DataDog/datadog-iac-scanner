@@ -3,7 +3,7 @@ title: "Redis cache allows non SSL connections"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/redis_cache_allows_non_ssl_connections"
-  id: "e29a75e6-aba3-4896-b42d-b87818c16b58"
+  id: "terraform-azure-redis-cache-allows-non-ssl-connections"
   display_name: "Redis cache allows non SSL connections"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e29a75e6-aba3-4896-b42d-b87818c16b58`
+**Id:** `terraform-azure-redis-cache-allows-non-ssl-connections`
 
 **Cloud Provider:** Azure
 

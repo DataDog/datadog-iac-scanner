@@ -3,7 +3,7 @@ title: "S3 bucket without ignore public ACL"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_without_ignore_public_acl"
-  id: "4fa66806-0dd9-4f8d-9480-3174d39c7c91"
+  id: "terraform-aws-s3-bucket-without-ignore-public-acl"
   display_name: "S3 bucket without ignore public ACL"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4fa66806-0dd9-4f8d-9480-3174d39c7c91`
+**Id:** `terraform-aws-s3-bucket-without-ignore-public-acl`
 
 **Cloud Provider:** AWS
 

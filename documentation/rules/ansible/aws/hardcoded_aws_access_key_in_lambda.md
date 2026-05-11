@@ -3,7 +3,7 @@ title: "Hardcoded AWS access key in Lambda"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/hardcoded_aws_access_key_in_lambda"
-  id: "f34508b9-f574-4330-b42d-88c44cced645"
+  id: "ansible-aws-hardcoded-aws-access-key-in-lambda"
   display_name: "Hardcoded AWS access key in Lambda"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f34508b9-f574-4330-b42d-88c44cced645`
+**Id:** `ansible-aws-hardcoded-aws-access-key-in-lambda`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "S3 static website host enabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_static_website_host_enabled"
-  id: "42bb6b7f-6d54-4428-b707-666f669d94fb"
+  id: "terraform-aws-s3-static-website-host-enabled"
   display_name: "S3 static website host enabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `42bb6b7f-6d54-4428-b707-666f669d94fb`
+**Id:** `terraform-aws-s3-static-website-host-enabled`
 
 **Cloud Provider:** AWS
 

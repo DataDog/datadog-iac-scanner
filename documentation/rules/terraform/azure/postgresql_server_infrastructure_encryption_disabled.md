@@ -3,7 +3,7 @@ title: "PostgreSQL server infrastructure encryption disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/postgresql_server_infrastructure_encryption_disabled"
-  id: "6425c98b-ca4e-41fe-896a-c78772c131f8"
+  id: "terraform-azure-postgresql-server-infrastructure-encryption-disabled"
   display_name: "PostgreSQL server infrastructure encryption disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6425c98b-ca4e-41fe-896a-c78772c131f8`
+**Id:** `terraform-azure-postgresql-server-infrastructure-encryption-disabled`
 
 **Cloud Provider:** Azure
 

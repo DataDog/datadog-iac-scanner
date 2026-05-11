@@ -3,7 +3,7 @@ title: "SageMaker enabling internet access"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/sagemaker_enabling_internet_access"
-  id: "88d55d94-315d-4564-beee-d2d725feab11"
+  id: "cloudformation-aws-sagemaker-enabling-internet-access"
   display_name: "SageMaker enabling internet access"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `88d55d94-315d-4564-beee-d2d725feab11`
+**Id:** `cloudformation-aws-sagemaker-enabling-internet-access`
 
 **Cloud Provider:** AWS
 

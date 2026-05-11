@@ -3,7 +3,7 @@ title: "Lambda with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/lambda_with_vulnerable_policy"
-  id: "ad9dabc7-7839-4bae-a957-aa9120013f39"
+  id: "terraform-aws-lambda-with-vulnerable-policy"
   display_name: "Lambda with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ad9dabc7-7839-4bae-a957-aa9120013f39`
+**Id:** `terraform-aws-lambda-with-vulnerable-policy`
 
 **Cloud Provider:** AWS
 

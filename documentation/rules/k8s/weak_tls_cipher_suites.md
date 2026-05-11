@@ -3,7 +3,7 @@ title: "Weak TLS cipher suites"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/weak_tls_cipher_suites"
-  id: "510d5810-9a30-443a-817d-5c1fa527b110"
+  id: "kubernetes-weak-tls-cipher-suites"
   display_name: "Weak TLS cipher suites"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `510d5810-9a30-443a-817d-5c1fa527b110`
+**Id:** `kubernetes-weak-tls-cipher-suites`
 
 **Cloud Provider:** Kubernetes
 

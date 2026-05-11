@@ -3,7 +3,7 @@ title: "Workload mounting with sensitive OS directory"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/workload_mounting_with_sensitive_os_directory"
-  id: "5308a7a8-06f8-45ac-bf10-791fe21de46e"
+  id: "kubernetes-workload-mounting-with-sensitive-os-directory"
   display_name: "Workload mounting with sensitive OS directory"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5308a7a8-06f8-45ac-bf10-791fe21de46e`
+**Id:** `kubernetes-workload-mounting-with-sensitive-os-directory`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "PostgreSQL log checkpoints disabled"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_log_checkpoints_disabled"
-  id: "7ab33ac0-e4a3-418f-a673-50da4e34df21"
+  id: "ansible-azure-postgresql-log-checkpoints-disabled"
   display_name: "PostgreSQL log checkpoints disabled"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7ab33ac0-e4a3-418f-a673-50da4e34df21`
+**Id:** `ansible-azure-postgresql-log-checkpoints-disabled`
 
 **Cloud Provider:** Azure
 

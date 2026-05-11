@@ -3,7 +3,7 @@ title: "PSP set to privileged"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/psp_set_to_privileged"
-  id: "a6a4d4fc-4e8f-47d1-969f-e9d4a084f3b9"
+  id: "terraform-kubernetes-psp-set-to-privileged"
   display_name: "PSP set to privileged"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a6a4d4fc-4e8f-47d1-969f-e9d4a084f3b9`
+**Id:** `terraform-kubernetes-psp-set-to-privileged`
 
 **Cloud Provider:** Kubernetes
 

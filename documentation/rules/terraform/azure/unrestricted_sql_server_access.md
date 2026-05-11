@@ -3,7 +3,7 @@ title: "Unrestricted SQL server access"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/unrestricted_sql_server_access"
-  id: "d7ba74da-2da0-4d4b-83c8-2fd72a3f6c28"
+  id: "terraform-azure-unrestricted-sql-server-access"
   display_name: "Unrestricted SQL server access"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d7ba74da-2da0-4d4b-83c8-2fd72a3f6c28`
+**Id:** `terraform-azure-unrestricted-sql-server-access`
 
 **Cloud Provider:** Azure
 

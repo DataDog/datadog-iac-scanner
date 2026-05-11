@@ -3,7 +3,7 @@ title: "Default security groups with unrestricted traffic"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/default_security_groups_with_unrestricted_traffic"
-  id: "46883ce1-dc3e-4b17-9195-c6a601624c73"
+  id: "terraform-aws-default-security-groups-with-unrestricted-traffic"
   display_name: "Default security groups with unrestricted traffic"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `46883ce1-dc3e-4b17-9195-c6a601624c73`
+**Id:** `terraform-aws-default-security-groups-with-unrestricted-traffic`
 
 **Cloud Provider:** AWS
 

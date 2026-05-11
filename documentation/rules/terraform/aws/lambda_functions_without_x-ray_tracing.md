@@ -3,7 +3,7 @@ title: "Lambda functions without X-Ray tracing"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/lambda_functions_without_x-ray_tracing"
-  id: "8152e0cf-d2f0-47ad-96d5-d003a76eabd1"
+  id: "terraform-aws-lambda-functions-without-x-ray-tracing"
   display_name: "Lambda functions without X-Ray tracing"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8152e0cf-d2f0-47ad-96d5-d003a76eabd1`
+**Id:** `terraform-aws-lambda-functions-without-x-ray-tracing`
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Cognito user pool without MFA"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cognito_userpool_without_mfa"
-  id: "ec28bf61-a474-4dbe-b414-6dd3a067d6f0"
+  id: "terraform-aws-cognito-userpool-without-mfa"
   display_name: "Cognito user pool without MFA"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ec28bf61-a474-4dbe-b414-6dd3a067d6f0`
+**Id:** `terraform-aws-cognito-userpool-without-mfa`
 
 **Cloud Provider:** AWS
 

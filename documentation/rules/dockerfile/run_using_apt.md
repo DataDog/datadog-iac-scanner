@@ -3,7 +3,7 @@ title: "Run using apt"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/run_using_apt"
-  id: "b84a0b47-2e99-4c9f-8933-98bcabe2b94d"
+  id: "dockerfile-run-using-apt"
   display_name: "Run using apt"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b84a0b47-2e99-4c9f-8933-98bcabe2b94d`
+**Id:** `dockerfile-run-using-apt`
 
 **Cloud Provider:** Dockerfile
 

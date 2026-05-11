@@ -3,7 +3,7 @@ title: "Dependabot cooldown"
 group_id: "CICD / GitHub"
 meta:
   name: "github/dependabot_cooldown"
-  id: "f2a3b4c5-d6e7-48f9-a0b1-c2d3e4f5a6b7"
+  id: "cicd-github-dependabot-cooldown"
   display_name: "Dependabot cooldown"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f2a3b4c5-d6e7-48f9-a0b1-c2d3e4f5a6b7`
+**Id:** `cicd-github-dependabot-cooldown`
 
 **Cloud Provider:** GitHub
 

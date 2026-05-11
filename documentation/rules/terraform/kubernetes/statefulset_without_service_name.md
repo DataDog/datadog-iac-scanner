@@ -3,7 +3,7 @@ title: "StatefulSet without service name"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/statefulset_without_service_name"
-  id: "420e6360-47bb-46f6-9072-b20ed22c842d"
+  id: "terraform-kubernetes-statefulset-without-service-name"
   display_name: "StatefulSet without service name"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `420e6360-47bb-46f6-9072-b20ed22c842d`
+**Id:** `terraform-kubernetes-statefulset-without-service-name`
 
 **Cloud Provider:** Kubernetes
 

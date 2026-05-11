@@ -3,7 +3,7 @@ title: "AD admin not configured for SQL server"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/ad_admin_not_configured_for_sql_server"
-  id: "a3a055d2-9a2e-4cc9-b9fb-12850a1a3a4b"
+  id: "terraform-azure-ad-admin-not-configured-for-sql-server"
   display_name: "AD admin not configured for SQL server"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a3a055d2-9a2e-4cc9-b9fb-12850a1a3a4b`
+**Id:** `terraform-azure-ad-admin-not-configured-for-sql-server`
 
 **Cloud Provider:** Azure
 

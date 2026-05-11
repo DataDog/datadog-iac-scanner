@@ -3,7 +3,7 @@ title: "CDN configuration is missing"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cdn_configuration_is_missing"
-  id: "1bc367f6-901d-4870-ad0c-71d79762ef52"
+  id: "terraform-aws-cdn-configuration-is-missing"
   display_name: "CDN configuration is missing"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1bc367f6-901d-4870-ad0c-71d79762ef52`
+**Id:** `terraform-aws-cdn-configuration-is-missing`
 
 **Cloud Provider:** AWS
 

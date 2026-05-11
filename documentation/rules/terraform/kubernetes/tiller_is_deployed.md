@@ -3,7 +3,7 @@ title: "Tiller (Helm v2) is deployed"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/tiller_is_deployed"
-  id: "ca2fba76-c1a7-4afd-be67-5249f861cb0e"
+  id: "terraform-kubernetes-tiller-is-deployed"
   display_name: "Tiller (Helm v2) is deployed"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ca2fba76-c1a7-4afd-be67-5249f861cb0e`
+**Id:** `terraform-kubernetes-tiller-is-deployed`
 
 **Cloud Provider:** Kubernetes
 

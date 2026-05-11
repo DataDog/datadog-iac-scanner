@@ -3,7 +3,7 @@ title: "Google Compute network using firewall rule that allows all ports"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/google_compute_network_using_firewall_rule_allows_all_ports"
-  id: "22ef1d26-80f8-4a6c-8c15-f35aab3cac78"
+  id: "terraform-gcp-google-compute-network-using-firewall-rule-allows-all-ports"
   display_name: "Google Compute network using firewall rule that allows all ports"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `22ef1d26-80f8-4a6c-8c15-f35aab3cac78`
+**Id:** `terraform-gcp-google-compute-network-using-firewall-rule-allows-all-ports`
 
 **Cloud Provider:** GCP
 

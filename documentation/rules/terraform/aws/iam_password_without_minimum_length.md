@@ -3,7 +3,7 @@ title: "IAM password without minimum length"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_password_without_minimum_length"
-  id: "1bc1c685-e593-450e-88fb-19db4c82aa1d"
+  id: "terraform-aws-iam-password-without-minimum-length"
   display_name: "IAM password without minimum length"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1bc1c685-e593-450e-88fb-19db4c82aa1d`
+**Id:** `terraform-aws-iam-password-without-minimum-length`
 
 **Cloud Provider:** AWS
 

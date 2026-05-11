@@ -3,7 +3,7 @@ title: "IAM user has too many access keys"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_user_too_many_access_keys"
-  id: "48677914-6fdf-40ec-80c4-2b0e94079f54"
+  id: "cloudformation-aws-iam-user-too-many-access-keys"
   display_name: "IAM user has too many access keys"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `48677914-6fdf-40ec-80c4-2b0e94079f54`
+**Id:** `cloudformation-aws-iam-user-too-many-access-keys`
 
 **Cloud Provider:** AWS
 

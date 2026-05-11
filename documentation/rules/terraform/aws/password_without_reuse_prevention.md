@@ -3,7 +3,7 @@ title: "Password without reuse prevention"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/password_without_reuse_prevention"
-  id: "89806cdc-9c2e-4bd1-a0dc-53f339bcfb2a"
+  id: "terraform-aws-password-without-reuse-prevention"
   display_name: "Password without reuse prevention"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `89806cdc-9c2e-4bd1-a0dc-53f339bcfb2a`
+**Id:** `terraform-aws-password-without-reuse-prevention`
 
 **Cloud Provider:** AWS
 

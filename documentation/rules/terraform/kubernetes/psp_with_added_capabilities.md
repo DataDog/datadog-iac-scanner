@@ -3,7 +3,7 @@ title: "PSP with added capabilities"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/psp_with_added_capabilities"
-  id: "48388bd2-7201-4dcc-b56d-e8a9efa58fad"
+  id: "terraform-kubernetes-psp-with-added-capabilities"
   display_name: "PSP with added capabilities"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `48388bd2-7201-4dcc-b56d-e8a9efa58fad`
+**Id:** `terraform-kubernetes-psp-with-added-capabilities`
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "Batch job definition with privileged container properties"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/batch_job_definition_with_privileged_container_properties"
-  id: "defe5b18-978d-4722-9325-4d1975d3699f"
+  id: "ansible-aws-batch-job-definition-with-privileged-container-properties"
   display_name: "Batch job definition with privileged container properties"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `defe5b18-978d-4722-9325-4d1975d3699f`
+**Id:** `ansible-aws-batch-job-definition-with-privileged-container-properties`
 
 **Cloud Provider:** AWS
 

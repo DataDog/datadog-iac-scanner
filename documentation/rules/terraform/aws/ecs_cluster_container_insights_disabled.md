@@ -3,7 +3,7 @@ title: "ECS cluster with container insights disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ecs_cluster_container_insights_disabled"
-  id: "97cb0688-369a-4d26-b1f7-86c4c91231bc"
+  id: "terraform-aws-ecs-cluster-container-insights-disabled"
   display_name: "ECS cluster with container insights disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `97cb0688-369a-4d26-b1f7-86c4c91231bc`
+**Id:** `terraform-aws-ecs-cluster-container-insights-disabled`
 
 **Cloud Provider:** AWS
 

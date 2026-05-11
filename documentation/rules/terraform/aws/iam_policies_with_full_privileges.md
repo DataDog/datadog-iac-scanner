@@ -3,7 +3,7 @@ title: "IAM policies with full privileges"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_policies_with_full_privileges"
-  id: "2f37c4a3-58b9-4afe-8a87-d7f1d2286f84"
+  id: "terraform-aws-iam-policies-with-full-privileges"
   display_name: "IAM policies with full privileges"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2f37c4a3-58b9-4afe-8a87-d7f1d2286f84`
+**Id:** `terraform-aws-iam-policies-with-full-privileges`
 
 **Cloud Provider:** AWS
 

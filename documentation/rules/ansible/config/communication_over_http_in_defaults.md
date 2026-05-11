@@ -3,7 +3,7 @@ title: "Communication over HTTP in defaults"
 group_id: "Ansible / Ansible Config"
 meta:
   name: "config/communication_over_http_in_defaults"
-  id: "d7dc9350-74bc-485b-8c85-fed22d276c43"
+  id: "ansible-communication-over-http-in-defaults"
   display_name: "Communication over HTTP in defaults"
   cloud_provider: "Ansible Config"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d7dc9350-74bc-485b-8c85-fed22d276c43`
+**Id:** `ansible-communication-over-http-in-defaults`
 
 **Cloud Provider:** Ansible Config
 

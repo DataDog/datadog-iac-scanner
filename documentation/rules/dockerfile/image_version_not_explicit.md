@@ -3,7 +3,7 @@ title: "Image version not explicit"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/image_version_not_explicit"
-  id: "9efb0b2d-89c9-41a3-91ca-dcc0aec911fd"
+  id: "dockerfile-image-version-not-explicit"
   display_name: "Image version not explicit"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9efb0b2d-89c9-41a3-91ca-dcc0aec911fd`
+**Id:** `dockerfile-image-version-not-explicit`
 
 **Cloud Provider:** Dockerfile
 

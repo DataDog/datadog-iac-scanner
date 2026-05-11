@@ -3,7 +3,7 @@ title: "Security group with unrestricted access to SSH"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_groups_with_unrestricted_access_to_ssh"
-  id: "6e856af2-62d7-4ba2-adc1-73b62cef9cc1"
+  id: "cloudformation-aws-security-groups-with-unrestricted-access-to-ssh"
   display_name: "Security group with unrestricted access to SSH"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6e856af2-62d7-4ba2-adc1-73b62cef9cc1`
+**Id:** `cloudformation-aws-security-groups-with-unrestricted-access-to-ssh`
 
 **Cloud Provider:** AWS
 

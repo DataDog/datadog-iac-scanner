@@ -3,7 +3,7 @@ title: "Elasticsearch not encrypted at rest"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elasticsearch_not_encrypted_at_rest"
-  id: "86a248ab-0e01-4564-a82a-878303e253bb"
+  id: "cloudformation-aws-elasticsearch-not-encrypted-at-rest"
   display_name: "Elasticsearch not encrypted at rest"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `86a248ab-0e01-4564-a82a-878303e253bb`
+**Id:** `cloudformation-aws-elasticsearch-not-encrypted-at-rest`
 
 **Cloud Provider:** AWS
 

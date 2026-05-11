@@ -3,7 +3,7 @@ title: "Workspaces workspace volume not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/workspaces_workspace_volume_not_encrypted"
-  id: "b9033580-6886-401a-8631-5f19f5bb24c7"
+  id: "terraform-aws-workspaces-workspace-volume-not-encrypted"
   display_name: "Workspaces workspace volume not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b9033580-6886-401a-8631-5f19f5bb24c7`
+**Id:** `terraform-aws-workspaces-workspace-volume-not-encrypted`
 
 **Cloud Provider:** AWS
 

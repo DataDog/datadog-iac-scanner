@@ -3,7 +3,7 @@ title: "EFS without tags"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/efs_without_tags"
-  id: "b8a9852c-9943-4973-b8d5-77dae9352851"
+  id: "ansible-aws-efs-without-tags"
   display_name: "EFS without tags"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b8a9852c-9943-4973-b8d5-77dae9352851`
+**Id:** `ansible-aws-efs-without-tags`
 
 **Cloud Provider:** AWS
 

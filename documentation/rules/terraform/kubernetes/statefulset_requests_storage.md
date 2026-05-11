@@ -3,7 +3,7 @@ title: "StatefulSet requests storage"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/statefulset_requests_storage"
-  id: "fcc2612a-1dfe-46e4-8ce6-0320959f0040"
+  id: "terraform-kubernetes-statefulset-requests-storage"
   display_name: "StatefulSet requests storage"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fcc2612a-1dfe-46e4-8ce6-0320959f0040`
+**Id:** `terraform-kubernetes-statefulset-requests-storage`
 
 **Cloud Provider:** Kubernetes
 

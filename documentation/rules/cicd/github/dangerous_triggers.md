@@ -3,7 +3,7 @@ title: "Dangerous triggers"
 group_id: "CICD / GitHub"
 meta:
   name: "github/dangerous_triggers"
-  id: "a7b8c9d0-e1f2-43a4-b5c6-d7e8f9a0b1c2"
+  id: "cicd-github-dangerous-triggers"
   display_name: "Dangerous triggers"
   cloud_provider: "GitHub"
   platform: "CICD"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a7b8c9d0-e1f2-43a4-b5c6-d7e8f9a0b1c2`
+**Id:** `cicd-github-dangerous-triggers`
 
 **Cloud Provider:** GitHub
 

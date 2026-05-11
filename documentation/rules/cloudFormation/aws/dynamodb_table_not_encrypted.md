@@ -3,7 +3,7 @@ title: "DynamoDB table not encrypted"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/dynamodb_table_not_encrypted"
-  id: "4bd21e68-38c1-4d58-acdc-6a14b203237f"
+  id: "cloudformation-aws-dynamodb-table-not-encrypted"
   display_name: "DynamoDB table not encrypted"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4bd21e68-38c1-4d58-acdc-6a14b203237f`
+**Id:** `cloudformation-aws-dynamodb-table-not-encrypted`
 
 **Cloud Provider:** AWS
 

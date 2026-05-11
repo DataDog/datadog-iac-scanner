@@ -3,7 +3,7 @@ title: "Ensure administrative boundaries between resources"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/ensure_administrative_boundaries_between_resources"
-  id: "e84eaf4d-2f45-47b2-abe8-e581b06deb66"
+  id: "kubernetes-ensure-administrative-boundaries-between-resources"
   display_name: "Ensure administrative boundaries between resources"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e84eaf4d-2f45-47b2-abe8-e581b06deb66`
+**Id:** `kubernetes-ensure-administrative-boundaries-between-resources`
 
 **Cloud Provider:** Kubernetes
 

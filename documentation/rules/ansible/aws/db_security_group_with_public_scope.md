@@ -3,7 +3,7 @@ title: "DB security group with public scope"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/db_security_group_with_public_scope"
-  id: "0956aedf-6a7a-478b-ab56-63e2b19923ad"
+  id: "ansible-aws-db-security-group-with-public-scope"
   display_name: "DB security group with public scope"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0956aedf-6a7a-478b-ab56-63e2b19923ad`
+**Id:** `ansible-aws-db-security-group-with-public-scope`
 
 **Cloud Provider:** AWS
 

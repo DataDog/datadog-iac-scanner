@@ -3,7 +3,7 @@ title: "User with privilege escalation by actions 'cloudformation:CreateStack' a
 group_id: "Terraform / AWS"
 meta:
   name: "aws/user_with_privilege_escalation_by_actions_iam_PassRole_and_cloudformation_CreateStack"
-  id: "19ffbe31-9d72-4379-9768-431195eae328"
+  id: "terraform-aws-user-with-privilege-escalation-by-actions-iam-passrole-and-cloudformation-createstack"
   display_name: "User with privilege escalation by actions 'cloudformation:CreateStack' and 'iam:PassRole'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `19ffbe31-9d72-4379-9768-431195eae328`
+**Id:** `terraform-aws-user-with-privilege-escalation-by-actions-iam-passrole-and-cloudformation-createstack`
 
 **Cloud Provider:** AWS
 

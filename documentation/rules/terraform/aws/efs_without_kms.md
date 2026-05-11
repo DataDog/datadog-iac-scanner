@@ -3,7 +3,7 @@ title: "EFS without KMS"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/efs_without_kms"
-  id: "25d251f3-f348-4f95-845c-1090e41a615c"
+  id: "terraform-aws-efs-without-kms"
   display_name: "EFS without KMS"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `25d251f3-f348-4f95-845c-1090e41a615c`
+**Id:** `terraform-aws-efs-without-kms`
 
 **Cloud Provider:** AWS
 

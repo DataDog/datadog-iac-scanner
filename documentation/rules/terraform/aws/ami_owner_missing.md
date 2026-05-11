@@ -3,7 +3,7 @@ title: "AMI most recent without owner or filter"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ami_owner_missing"
-  id: "f317c3c2-58e5-4aa7-bb8e-3a7f6bcd274a"
+  id: "terraform-aws-ami-owner-missing"
   display_name: "AMI most recent without owner or filter"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f317c3c2-58e5-4aa7-bb8e-3a7f6bcd274a`
+**Id:** `terraform-aws-ami-owner-missing`
 
 **Cloud Provider:** AWS
 

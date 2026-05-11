@@ -5310,11 +5310,11 @@
         "short_description": "GITHUB Rules",
         "rules": [
           {
-            "name": "github_organization_webhook_with_ssl_disabled",
+            "name": "organization_webhook_with_ssl_disabled",
             "short_description": "Github organization webhook with SSL disabled"
           },
           {
-            "name": "github_repository_set_to_public",
+            "name": "repository_set_to_public",
             "short_description": "GitHub repository set to public"
           }
         ]
