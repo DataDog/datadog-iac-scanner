@@ -1,5 +1,6 @@
 {
-  "id": "b4f65d13-a609-4dc1-af7c-63d2e08bffe9",
+  "id": "crossplane-gcp-google-container-node-pool-auto-repair-disabled",
+  "legacyId": "b4f65d13-a609-4dc1-af7c-63d2e08bffe9",
   "queryName": "Google Container Node Pool Auto Repair Disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
