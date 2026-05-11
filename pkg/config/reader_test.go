@@ -141,7 +141,7 @@ func TestIgnoredConfigFile(t *testing.T) {
 
 			cfg, b, err := ReadConfiguration(t.Context(), tmp)
 			assert.NoError(t, err)
-			assert.Equal(t, tc.cfg, string(b))
+			assert.Empty(t, b)
 			assert.Equal(t, IacConfig{}, *cfg)
 		})
 	}
@@ -200,12 +200,29 @@ func TestConfigFilePrecedenceWithIgnoredConfigFile(t *testing.T) {
 			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
 			require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
 
+			// New config file has no iac section, so legacy takes over.
 			cfg, b, err := ReadConfiguration(t.Context(), tmp)
 			assert.NoError(t, err)
 			assert.Equal(t, convertedLegacyCfg+excludeSuffix, string(b))
 			assert.Equal(t, parsedLegacyCfg, *cfg)
 		})
 	}
+}
+
+func TestNoConfigWithDatadog(t *testing.T) {
+	const repoUrl = "https://example.com/repo.git"
+	client := &fakeDatadogClient{
+		t:                  t,
+		expectedSentConfig: nil,
+		expectedRepoUrl:    repoUrl,
+		remoteConfig:       []byte(cfgFile),
+	}
+
+	// No local config file — options must still be applied so server-side config is fetched.
+	cfg, b, err := ReadConfiguration(t.Context(), t.TempDir(), WithDatadog(client, repoUrl))
+	assert.NoError(t, err)
+	assert.Equal(t, cfgFile, string(b))
+	assert.Equal(t, parsedCfgFile, *cfg)
 }
 
 func TestConfigFileFromDatadog(t *testing.T) {
@@ -223,9 +240,20 @@ func TestConfigFileFromDatadog(t *testing.T) {
 		parsedConfig   *IacConfig
 	}{
 		{
-			name:           "regular config",
-			localConfig:    "local config file",
-			sentConfig:     "local config file",
+			// New config file has no iac section: falls through to legacy path (none here),
+			// so nil is sent to the API which returns a merged config.
+			name:           "regular config without iac section",
+			localConfig:    emptyCfgFile,
+			sentConfig:     "",
+			finalConfig:    cfgFile,
+			expectedConfig: cfgFile,
+			parsedConfig:   &parsedCfgFile,
+		},
+		{
+			// New config file has an iac section: sent directly to the API.
+			name:           "regular config with iac section",
+			localConfig:    cfgFile,
+			sentConfig:     cfgFile,
 			finalConfig:    cfgFile,
 			expectedConfig: cfgFile,
 			parsedConfig:   &parsedCfgFile,
