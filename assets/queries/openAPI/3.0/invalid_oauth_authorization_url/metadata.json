@@ -1,5 +1,6 @@
 {
-  "id": "52c0d841-60d6-4a81-88dd-c35fef36d315",
+  "id": "openapi-3.0-invalid-oauth-authorization-url",
+  "legacyId": "52c0d841-60d6-4a81-88dd-c35fef36d315",
   "queryName": "Invalid OAuth2 Authorization URL (v3)",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "92051404",
   "cwe": "284",
-  "providerUrl": "https://swagger.io/specification/#oauth-flow-object"
+  "providerUrl": "https://swagger.io/specification/#oauth-flow-object",
+  "cloudProvider": "3.0"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "86b1fa30-9790-4980-994d-a27e0f6f27c1",
+  "id": "openapi-3.0-cleartext-credentials-with-basic-auth-for-operation",
+  "legacyId": "86b1fa30-9790-4980-994d-a27e0f6f27c1",
   "queryName": "Cleartext Credentials With Basic Authentication For Operation",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -9,5 +10,6 @@
   "descriptionID": "dc667769",
   "cwe": "319",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://swagger.io/specification/#operation-object"
+  "providerUrl": "https://swagger.io/specification/#operation-object",
+  "cloudProvider": "3.0"
 }

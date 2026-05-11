@@ -1,5 +1,6 @@
 {
-  "id": "c19779a9-5774-4d2f-a3a1-a99831730375",
+  "id": "openapi-3.0-components-link-definition-unused",
+  "legacyId": "c19779a9-5774-4d2f-a3a1-a99831730375",
   "queryName": "Components Link Definition Is Unused",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "3e317e78",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#components-object"
+  "providerUrl": "https://swagger.io/specification/#components-object",
+  "cloudProvider": "3.0"
 }

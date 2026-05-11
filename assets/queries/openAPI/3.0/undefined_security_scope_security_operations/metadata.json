@@ -1,5 +1,6 @@
 {
-  "id": "462d6a1d-fed9-4d75-bb9e-3de902f35e6e",
+  "id": "openapi-3.0-undefined-security-scope-security-operations",
+  "legacyId": "462d6a1d-fed9-4d75-bb9e-3de902f35e6e",
   "queryName": "Undefined Scope 'securityScheme' On 'security' Field On Operations",
   "severity": "LOW",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "31fb94e2",
   "cwe": "284",
-  "providerUrl": "https://swagger.io/specification/#oauth-flow-object"
+  "providerUrl": "https://swagger.io/specification/#oauth-flow-object",
+  "cloudProvider": "3.0"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "ab1263c2-81df-46f0-9f2c-0b62fdb68419",
+  "id": "openapi-3.0-security-field-undefined",
+  "legacyId": "ab1263c2-81df-46f0-9f2c-0b62fdb68419",
   "queryName": "Security Field Undefined",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "2d06cd16",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#security-requirement-object"
+  "providerUrl": "https://swagger.io/specification/#security-requirement-object",
+  "cloudProvider": "3.0"
 }

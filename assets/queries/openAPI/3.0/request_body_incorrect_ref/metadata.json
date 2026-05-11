@@ -1,5 +1,6 @@
 {
-  "id": "0f6cd0ab-c366-4595-84fc-fbd8b9901e4d",
+  "id": "openapi-3.0-request-body-incorrect-ref",
+  "legacyId": "0f6cd0ab-c366-4595-84fc-fbd8b9901e4d",
   "queryName": "Request Body With Incorrect Ref",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "1b450a4b",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#request-body-object"
+  "providerUrl": "https://swagger.io/specification/#request-body-object",
+  "cloudProvider": "3.0"
 }

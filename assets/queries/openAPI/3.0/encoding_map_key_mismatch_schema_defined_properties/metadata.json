@@ -1,5 +1,6 @@
 {
-  "id": "cd7a52cf-8d7f-4cfe-bbeb-6306d23f576b",
+  "id": "openapi-3.0-encoding-map-key-mismatch-schema-defined-properties",
+  "legacyId": "cd7a52cf-8d7f-4cfe-bbeb-6306d23f576b",
   "queryName": "Encoding Map Key Mismatch Schema Defined Properties",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "f929aa5c",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#media-type-object"
+  "providerUrl": "https://swagger.io/specification/#media-type-object",
+  "cloudProvider": "3.0"
 }

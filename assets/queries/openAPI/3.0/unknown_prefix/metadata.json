@@ -1,5 +1,6 @@
 {
-  "id": "a5375be3-521c-43bb-9eab-e2432e368ee4",
+  "id": "openapi-3.0-unknown-prefix",
+  "legacyId": "a5375be3-521c-43bb-9eab-e2432e368ee4",
   "queryName": "Unknown Prefix (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "18c553ae",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#media-type-object"
+  "providerUrl": "https://swagger.io/specification/#media-type-object",
+  "cloudProvider": "3.0"
 }

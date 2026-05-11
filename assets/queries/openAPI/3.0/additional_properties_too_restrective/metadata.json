@@ -1,5 +1,6 @@
 {
-  "id": "a19c3bbd-c056-40d7-9e1c-eeb0634e320d",
+  "id": "openapi-3.0-additional-properties-too-restrective",
+  "legacyId": "a19c3bbd-c056-40d7-9e1c-eeb0634e320d",
   "queryName": "Additional Properties Too Restrictive",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -9,5 +10,6 @@
   "descriptionID": "d470a878",
   "cwe": "665",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": "3.0"
 }

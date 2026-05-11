@@ -1,5 +1,6 @@
 {
-  "id": "7a01dfbd-da62-4165-aed7-71349ad42ab4",
+  "id": "openapi-3.0-json-reference-does-not-exists-response",
+  "legacyId": "7a01dfbd-da62-4165-aed7-71349ad42ab4",
   "queryName": "Response JSON Reference Does Not Exists (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "e443a03e",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#components-object"
+  "providerUrl": "https://swagger.io/specification/#components-object",
+  "cloudProvider": "3.0"
 }

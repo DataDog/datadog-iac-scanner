@@ -1,5 +1,6 @@
 {
-  "id": "a4dd69b8-49fa-45d2-a060-c76655405b05",
+  "id": "openapi-3.0-property-explode-encoding-object-ignored",
+  "legacyId": "a4dd69b8-49fa-45d2-a060-c76655405b05",
   "queryName": "Property 'explode' of Encoding Object Ignored",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "927e421b",
   "cwe": "665",
-  "providerUrl": "https://swagger.io/specification/#encoding-object"
+  "providerUrl": "https://swagger.io/specification/#encoding-object",
+  "cloudProvider": "3.0"
 }

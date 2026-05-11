@@ -1,5 +1,6 @@
 {
-  "id": "6b76f589-9713-44ab-97f5-59a3dba1a285",
+  "id": "openapi-3.0-components-request-body-definition-unused",
+  "legacyId": "6b76f589-9713-44ab-97f5-59a3dba1a285",
   "queryName": "Components Request Body Definition Is Unused",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "f3414d1a",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#components-object"
+  "providerUrl": "https://swagger.io/specification/#components-object",
+  "cloudProvider": "3.0"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "20a482d5-c5d9-4a7a-b7a4-60d0805047b4",
+  "id": "openapi-3.0-security-operation-field-undefined",
+  "legacyId": "20a482d5-c5d9-4a7a-b7a4-60d0805047b4",
   "queryName": "Security Operation Field Undefined",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "5ece1b91",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#operation-object"
+  "providerUrl": "https://swagger.io/specification/#operation-object",
+  "cloudProvider": "3.0"
 }

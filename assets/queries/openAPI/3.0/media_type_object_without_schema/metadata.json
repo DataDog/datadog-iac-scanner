@@ -1,5 +1,6 @@
 {
-  "id": "f79b9d26-e945-44e7-98a1-b93f0f7a68a0",
+  "id": "openapi-3.0-media-type-object-without-schema",
+  "legacyId": "f79b9d26-e945-44e7-98a1-b93f0f7a68a0",
   "queryName": "Media Type Object Without Schema",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "a7ffc444",
   "cwe": "665",
-  "providerUrl": "https://swagger.io/specification/#media-type-object"
+  "providerUrl": "https://swagger.io/specification/#media-type-object",
+  "cloudProvider": "3.0"
 }

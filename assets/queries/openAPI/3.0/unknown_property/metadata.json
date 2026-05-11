@@ -1,5 +1,6 @@
 {
-  "id": "fb7d81e7-4150-48c4-b914-92fc05da6a2f",
+  "id": "openapi-3.0-unknown-property",
+  "legacyId": "fb7d81e7-4150-48c4-b914-92fc05da6a2f",
   "queryName": "Unknown Property (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "44e287cd",
   "cwe": "665",
-  "providerUrl": "https://swagger.io/specification/"
+  "providerUrl": "https://swagger.io/specification/",
+  "cloudProvider": "3.0"
 }

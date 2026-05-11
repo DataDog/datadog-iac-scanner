@@ -1,5 +1,6 @@
 {
-  "id": "bac56e3c-1f71-4a74-8ae6-2fba07efcddb",
+  "id": "openapi-3.0-example-json-reference-outside-components-examples",
+  "legacyId": "bac56e3c-1f71-4a74-8ae6-2fba07efcddb",
   "queryName": "Example JSON Reference Outside Components Examples",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "8984393e",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#reference-object"
+  "providerUrl": "https://swagger.io/specification/#reference-object",
+  "cloudProvider": "3.0"
 }

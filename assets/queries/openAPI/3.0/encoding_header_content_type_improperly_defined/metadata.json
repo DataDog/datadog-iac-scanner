@@ -1,5 +1,6 @@
 {
-  "id": "4cd8de87-b595-48b6-ab3c-1904567135ab",
+  "id": "openapi-3.0-encoding-header-content-type-improperly-defined",
+  "legacyId": "4cd8de87-b595-48b6-ab3c-1904567135ab",
   "queryName": "Encoding Header 'Content-Type' Improperly Defined",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "61185041",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#media-type-object"
+  "providerUrl": "https://swagger.io/specification/#media-type-object",
+  "cloudProvider": "3.0"
 }

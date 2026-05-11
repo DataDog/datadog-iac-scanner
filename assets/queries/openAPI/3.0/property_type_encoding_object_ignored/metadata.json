@@ -1,5 +1,6 @@
 {
-  "id": "d3ea644a-9a5c-4fee-941f-f8a6786c0470",
+  "id": "openapi-3.0-property-type-encoding-object-ignored",
+  "legacyId": "d3ea644a-9a5c-4fee-941f-f8a6786c0470",
   "queryName": "Property 'style' of Encoding Object Ignored",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "66497e8a",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#encoding-object"
+  "providerUrl": "https://swagger.io/specification/#encoding-object",
+  "cloudProvider": "3.0"
 }

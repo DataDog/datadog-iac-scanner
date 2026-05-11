@@ -1,5 +1,6 @@
 {
-  "id": "77276d82-4f45-4cf1-8e2b-4d345b936228",
+  "id": "openapi-3.0-global-security-scheme-using-basic-authentication",
+  "legacyId": "77276d82-4f45-4cf1-8e2b-4d345b936228",
   "queryName": "Global Security Scheme Using Basic Authentication",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -9,5 +10,6 @@
   "descriptionID": "f29b5719",
   "cwe": "284",
   "oldSeverity": "LOW",
-  "providerUrl": "https://swagger.io/specification/#security-scheme-object"
+  "providerUrl": "https://swagger.io/specification/#security-scheme-object",
+  "cloudProvider": "3.0"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "a0bf7382-5d5a-4224-924c-3db8466026c9",
+  "id": "openapi-3.0-server-url-not-absolute",
+  "legacyId": "a0bf7382-5d5a-4224-924c-3db8466026c9",
   "queryName": "Server URL Not Absolute",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "2dd5856c",
   "cwe": "665",
-  "providerUrl": "https://swagger.io/specification/#server-object"
+  "providerUrl": "https://swagger.io/specification/#server-object",
+  "cloudProvider": "3.0"
 }
