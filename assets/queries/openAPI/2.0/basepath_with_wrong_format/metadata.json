@@ -1,5 +1,6 @@
 {
-  "id": "b4803607-ed72-4d60-99e2-3fa6edf471c6",
+  "id": "openapi-2.0-basepath-with-wrong-format",
+  "legacyId": "b4803607-ed72-4d60-99e2-3fa6edf471c6",
   "queryName": "BasePath With Wrong Format",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "c97fafa0",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#schema"
+  "providerUrl": "https://swagger.io/specification/v2/#schema",
+  "cloudProvider": "2.0"
 }

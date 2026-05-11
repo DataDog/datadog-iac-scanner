@@ -1,5 +1,6 @@
 {
-  "id": "73c3bc54-3cc6-4c0a-b30a-e19f2abfc951",
+  "id": "openapi-2.0-non-body-parameter-with-schema",
+  "legacyId": "73c3bc54-3cc6-4c0a-b30a-e19f2abfc951",
   "queryName": "Non Body Parameter Without Schema",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "e135be5b",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#parameterObject"
+  "providerUrl": "https://swagger.io/specification/v2/#parameterObject",
+  "cloudProvider": "2.0"
 }

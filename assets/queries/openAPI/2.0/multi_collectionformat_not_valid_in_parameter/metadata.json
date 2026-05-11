@@ -1,5 +1,6 @@
 {
-  "id": "750f6448-27c0-49f8-a153-b81735c1e19c",
+  "id": "openapi-2.0-multi-collectionformat-not-valid-in-parameter",
+  "legacyId": "750f6448-27c0-49f8-a153-b81735c1e19c",
   "queryName": "Multi 'collectionformat' Not Valid For 'in' Parameter",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "e0b264a9",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#parameterObject"
+  "providerUrl": "https://swagger.io/specification/v2/#parameterObject",
+  "cloudProvider": "2.0"
 }

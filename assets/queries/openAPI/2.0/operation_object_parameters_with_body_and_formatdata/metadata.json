@@ -1,5 +1,6 @@
 {
-  "id": "eb3f9744-d24e-4614-b1ff-2a9514eca21c",
+  "id": "openapi-2.0-operation-object-parameters-with-body-and-formatdata",
+  "legacyId": "eb3f9744-d24e-4614-b1ff-2a9514eca21c",
   "queryName": "Operation Object Parameters With 'body' And 'formatData' locations",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "007c8e83",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#parameterObject"
+  "providerUrl": "https://swagger.io/specification/v2/#parameterObject",
+  "cloudProvider": "2.0"
 }

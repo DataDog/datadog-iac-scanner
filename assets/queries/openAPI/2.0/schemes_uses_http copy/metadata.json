@@ -1,5 +1,6 @@
 {
-  "id": "a46928f1-43d7-4671-94e0-2dd99746f389",
+  "id": "openapi-2.0-schemes-uses-http-copy",
+  "legacyId": "a46928f1-43d7-4671-94e0-2dd99746f389",
   "queryName": "Schemes Uses HTTP",
   "severity": "MEDIUM",
   "category": "Encryption",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "34948b49",
   "cwe": "",
-  "providerUrl": "https://swagger.io/specification/v2/#swaggerObject"
+  "providerUrl": "https://swagger.io/specification/v2/#swaggerObject",
+  "cloudProvider": "2.0"
 }

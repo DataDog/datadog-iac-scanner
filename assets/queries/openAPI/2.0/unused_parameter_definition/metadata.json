@@ -1,5 +1,6 @@
 {
-  "id": "b30981fa-a12e-49c7-a5bb-eeafb61d0f0f",
+  "id": "openapi-2.0-unused-parameter-definition",
+  "legacyId": "b30981fa-a12e-49c7-a5bb-eeafb61d0f0f",
   "queryName": "Global Parameter Definition Not Being Used",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "9850673a",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/v2/#parametersDefinitionsObject"
+  "providerUrl": "https://swagger.io/specification/v2/#parametersDefinitionsObject",
+  "cloudProvider": "2.0"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "7f91992f-b4c8-43bf-9bf9-fae9ecdb6e3a",
+  "id": "openapi-2.0-file-parameter-with-wrong-consumes-property",
+  "legacyId": "7f91992f-b4c8-43bf-9bf9-fae9ecdb6e3a",
   "queryName": "File Parameter With Wrong Consumes Property",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "f6b7b31a",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#operation-object"
+  "providerUrl": "https://swagger.io/specification/v2/#operation-object",
+  "cloudProvider": "2.0"
 }

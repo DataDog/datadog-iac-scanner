@@ -1,5 +1,6 @@
 {
-  "id": "ba239cb9-f342-4c20-812d-7b5a2aa6969e",
+  "id": "openapi-2.0-non-oauth2-security-requirement-defining-oauth2-scopes",
+  "legacyId": "ba239cb9-f342-4c20-812d-7b5a2aa6969e",
   "queryName": "Non OAuth2 Security Requirement Defining OAuth2 Scopes",
   "severity": "MEDIUM",
   "category": "Structure and Semantics",
@@ -9,5 +10,6 @@
   "descriptionID": "33e1e674",
   "cwe": "20",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://swagger.io/specification/v2/#securityRequirementObject"
+  "providerUrl": "https://swagger.io/specification/v2/#securityRequirementObject",
+  "cloudProvider": "2.0"
 }

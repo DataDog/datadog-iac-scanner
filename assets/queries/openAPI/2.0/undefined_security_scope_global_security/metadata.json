@@ -1,5 +1,6 @@
 {
-  "id": "9aa6e95c-d964-4239-a3a8-9f37a3c5a31f",
+  "id": "openapi-2.0-undefined-security-scope-global-security",
+  "legacyId": "9aa6e95c-d964-4239-a3a8-9f37a3c5a31f",
   "queryName": "Undefined Scope 'securityDefinition' On Global 'security' Field",
   "severity": "LOW",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "13115433",
   "cwe": "284",
-  "providerUrl": "https://swagger.io/specification/v2/#security-scheme-object"
+  "providerUrl": "https://swagger.io/specification/v2/#security-scheme-object",
+  "cloudProvider": "2.0"
 }

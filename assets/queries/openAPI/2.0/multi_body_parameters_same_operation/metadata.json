@@ -1,5 +1,6 @@
 {
-  "id": "b90033cf-ad9f-4fb9-acd1-1b9d6d278c87",
+  "id": "openapi-2.0-multi-body-parameters-same-operation",
+  "legacyId": "b90033cf-ad9f-4fb9-acd1-1b9d6d278c87",
   "queryName": "Multiple Body Parameters In The Same Operation",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "817fa38a",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#parameterObject"
+  "providerUrl": "https://swagger.io/specification/v2/#parameterObject",
+  "cloudProvider": "2.0"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "0b76d993-ee52-43e0-8b39-3787d2ddabf1",
+  "id": "openapi-2.0-unused-response-definition",
+  "legacyId": "0b76d993-ee52-43e0-8b39-3787d2ddabf1",
   "queryName": "Global Responses Definition Not Being Used",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "a2cfcc90",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/v2/#responsesDefinitionsObject"
+  "providerUrl": "https://swagger.io/specification/v2/#responsesDefinitionsObject",
+  "cloudProvider": "2.0"
 }
