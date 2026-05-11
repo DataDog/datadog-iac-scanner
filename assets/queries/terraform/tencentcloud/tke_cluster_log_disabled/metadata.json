@@ -1,5 +1,6 @@
 {
-  "id": "fe405074-7e18-40f9-9aef-024aa1d0a889",
+  "id": "terraform-tencentcloud-tke-cluster-log-disabled",
+  "legacyId": "fe405074-7e18-40f9-9aef-024aa1d0a889",
   "queryName": "TKE cluster log agent is not enabled",
   "severity": "LOW",
   "category": "Observability",

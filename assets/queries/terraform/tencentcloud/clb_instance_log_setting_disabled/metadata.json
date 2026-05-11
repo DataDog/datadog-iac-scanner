@@ -1,5 +1,6 @@
 {
-  "id": "ada01ed1-b10c-4f2a-b110-b20fa4f9baa6",
+  "id": "terraform-tencentcloud-clb-instance-log-setting-disabled",
+  "legacyId": "ada01ed1-b10c-4f2a-b110-b20fa4f9baa6",
   "queryName": "CLB instance log setting disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "a74b4602-a62c-4a02-956a-e19f86ea24b5",
+  "id": "terraform-tencentcloud-cvm-instance-has-public-ip",
+  "legacyId": "a74b4602-a62c-4a02-956a-e19f86ea24b5",
   "queryName": "CVM instance has public IP",
   "severity": "HIGH",
   "category": "Networking and Firewall",
