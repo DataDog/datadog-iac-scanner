@@ -1,5 +1,6 @@
 {
-  "id": "c09cdac2-7670-458a-bf6c-efad6880973a",
+  "id": "azureresourcemanager-azure-sql-server-database-with-low-retention-days",
+  "legacyId": "c09cdac2-7670-458a-bf6c-efad6880973a",
   "queryName": "SQL Server Database With Unrecommended Retention Days",
   "severity": "LOW",
   "category": "Observability",

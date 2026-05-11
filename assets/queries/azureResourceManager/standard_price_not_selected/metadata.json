@@ -1,5 +1,6 @@
 {
-  "id": "2081c7d6-2851-4cce-bda5-cb49d462da42",
+  "id": "azureresourcemanager-azure-standard-price-not-selected",
+  "legacyId": "2081c7d6-2851-4cce-bda5-cb49d462da42",
   "queryName": "Standard Price Is Not Selected",
   "severity": "LOW",
   "category": "Resource Management",

@@ -1,5 +1,6 @@
 {
-  "id": "59cb3da7-f206-4ae6-b827-7abf0a9cab9d",
+  "id": "azureresourcemanager-azure-network-security-group-with-unrestricted-access-to-rdp",
+  "legacyId": "59cb3da7-f206-4ae6-b827-7abf0a9cab9d",
   "queryName": "Network Security Group With Unrestricted Access To RDP",
   "severity": "HIGH",
   "category": "Networking and Firewall",

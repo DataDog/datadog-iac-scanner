@@ -1,5 +1,6 @@
 {
-  "id": "6797f581-0433-4768-ae3e-7ceb2f8b138e",
+  "id": "azureresourcemanager-azure-azure-instance-using-basic-authentication",
+  "legacyId": "6797f581-0433-4768-ae3e-7ceb2f8b138e",
   "queryName": "Azure Instance Using Basic Authentication",
   "severity": "MEDIUM",
   "category": "Best Practices",
