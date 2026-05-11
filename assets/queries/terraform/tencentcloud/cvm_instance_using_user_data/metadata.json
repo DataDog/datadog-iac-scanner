@@ -1,5 +1,6 @@
 {
-  "id": "5bb6fa08-5e84-4760-a54a-cdcd66626976",
+  "id": "terraform-tencentcloud-cvm-instance-using-user-data",
+  "legacyId": "5bb6fa08-5e84-4760-a54a-cdcd66626976",
   "queryName": "CVM instance using user data",
   "severity": "LOW",
   "category": "Access Control",

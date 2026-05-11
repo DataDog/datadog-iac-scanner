@@ -1,5 +1,6 @@
 {
-  "id": "fe08b81c-12e9-4b5e-9006-4218fca750fd",
+  "id": "terraform-tencentcloud-clb-listener-using-insecure-protocols",
+  "legacyId": "fe08b81c-12e9-4b5e-9006-4218fca750fd",
   "queryName": "CLB listener using insecure protocols",
   "severity": "HIGH",
   "category": "Encryption",

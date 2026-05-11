@@ -1,5 +1,6 @@
 {
-  "id": "ca94be07-7de3-4ae7-85ef-67e0462ec694",
+  "id": "terraform-tencentcloud-cdb-instance-without-backup-policy",
+  "legacyId": "ca94be07-7de3-4ae7-85ef-67e0462ec694",
   "queryName": "CDB instance without backup policy",
   "severity": "MEDIUM",
   "category": "Backup",

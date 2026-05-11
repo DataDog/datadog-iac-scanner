@@ -1,5 +1,6 @@
 {
-  "id": "b4e75c5c-83d5-4568-90e3-57ed5ec4051b",
+  "id": "terraform-tencentcloud-cvm-instance-using-default-vpc",
+  "legacyId": "b4e75c5c-83d5-4568-90e3-57ed5ec4051b",
   "queryName": "CVM instance using default VPC",
   "severity": "LOW",
   "category": "Networking and Firewall",
