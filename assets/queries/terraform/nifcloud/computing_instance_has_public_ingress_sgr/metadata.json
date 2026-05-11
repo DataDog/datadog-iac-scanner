@@ -1,5 +1,6 @@
 {
-  "id": "b2ea2367-8dc9-4231-a035-d0b28bfa3dde",
+  "id": "terraform-nifcloud-computing-instance-has-public-ingress-sgr",
+  "legacyId": "b2ea2367-8dc9-4231-a035-d0b28bfa3dde",
   "queryName": "NIFCLOUD computing has public ingress security group rule",
   "severity": "HIGH",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "a0b846e8-815f-4f15-b660-bc4ab9fa1e1a",
+  "id": "terraform-nifcloud-db-security-group-has-public-ingress-sgr",
+  "legacyId": "a0b846e8-815f-4f15-b660-bc4ab9fa1e1a",
   "queryName": "NIFCLOUD RDB has public DB ingress security group rule",
   "severity": "HIGH",
   "category": "Networking and Firewall",

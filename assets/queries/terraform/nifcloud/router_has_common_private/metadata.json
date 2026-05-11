@@ -1,5 +1,6 @@
 {
-  "id": "30c2760c-740e-4672-9d7f-2c29e0cb385d",
+  "id": "terraform-nifcloud-router-has-common-private",
+  "legacyId": "30c2760c-740e-4672-9d7f-2c29e0cb385d",
   "queryName": "NIFCLOUD router has common private network",
   "severity": "LOW",
   "category": "Networking and Firewall",

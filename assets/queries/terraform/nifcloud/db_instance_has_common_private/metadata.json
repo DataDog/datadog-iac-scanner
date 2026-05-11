@@ -1,5 +1,6 @@
 {
-  "id": "9bf57c23-fbab-4222-85f3-3f207a53c6a8",
+  "id": "terraform-nifcloud-db-instance-has-common-private",
+  "legacyId": "9bf57c23-fbab-4222-85f3-3f207a53c6a8",
   "queryName": "NIFCLOUD RDB has common private network",
   "severity": "LOW",
   "category": "Networking and Firewall",
