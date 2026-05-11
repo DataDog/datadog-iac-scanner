@@ -91,6 +91,10 @@ var (
 			require.True(tb, strings.Contains(filepath.Clean(metadataPath), filepath.Join("assets", "queries", platformDir)),
 				"platform and query directory mismatch platform:\n%s\nmetadata:\n%s", platformValue, metadataPath)
 		},
+		"cloudProvider": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
+			providerValue := testMetadataFieldStringType(tb, value, "cloudProvider", metadataPath)
+			require.Equal(tb, strings.ToLower(providerValue), providerValue)
+		},
 		"descriptionUrl": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
 			switch urlValue := value.(type) {
 			case string:
