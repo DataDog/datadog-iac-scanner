@@ -129,7 +129,7 @@ func Test_GetTotalFiles(t *testing.T) {
 		{
 			name:           "count utils folder files",
 			paths:          []string{filepath.Join("..", "..", "pkg", "utils")},
-			expectedOutput: 18,
+			expectedOutput: 20,
 		},
 		{
 			name:           "count analyzer folder files",
@@ -139,7 +139,7 @@ func Test_GetTotalFiles(t *testing.T) {
 		{
 			name:           "count analyzer and utils folder files",
 			paths:          []string{filepath.Join("..", "..", "pkg", "analyzer"), filepath.Join("..", "..", "pkg", "utils")},
-			expectedOutput: 20,
+			expectedOutput: 22,
 		},
 		{
 			name:           "count invalid folder",

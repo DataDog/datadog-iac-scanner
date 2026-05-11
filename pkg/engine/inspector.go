@@ -40,16 +40,16 @@ import (
 // Default values for inspector
 const (
 	UndetectedVulnerabilityLine = -1
-	DefaultQueryID              = "Undefined"
-	DefaultQueryName            = "Anonymous"
-	DefaultExperimental         = false
-	DefaultQueryDescription     = "Undefined"
-	DefaultQueryDescriptionID   = "Undefined"
-	DefaultQueryURI             = "https://github.com/DataDog/datadog-iac-scanner/"
+	DefaultQueryID              = utils.DefaultQueryID
+	DefaultQueryName            = utils.DefaultQueryName
+	DefaultExperimental         = utils.DefaultExperimental
+	DefaultQueryDescription     = utils.DefaultQueryDescription
+	DefaultQueryDescriptionID   = utils.DefaultQueryDescriptionID
+	DefaultQueryURI             = utils.DefaultQueryURI
 	DefaultIssueType            = model.IssueTypeIncorrectValue
-	unresolvedPlaceholder       = "__UNRESOLVED__"
+	unresolvedPlaceholder       = utils.UnresolvedPlaceholder
 
-	regoQuery = `result = data.Cx.CxPolicy`
+	regoQuery = utils.RegoQuery
 )
 
 // ErrNoResult - error representing when a query didn't return a result
