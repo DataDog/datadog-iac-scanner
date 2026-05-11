@@ -1,5 +1,6 @@
 {
-  "id": "e5587d53-a673-4a6b-b3f2-ba07ec274def",
+  "id": "terraform-kubernetes-net-raw-capabilities-not-being-dropped",
+  "legacyId": "e5587d53-a673-4a6b-b3f2-ba07ec274def",
   "queryName": "NET_RAW capabilities not being dropped",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "548d4eac",
   "cwe": "269",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#drop"
 }

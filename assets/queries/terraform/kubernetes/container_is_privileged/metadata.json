@@ -1,5 +1,6 @@
 {
-  "id": "87065ef8-de9b-40d8-9753-f4a4303e27a4",
+  "id": "terraform-kubernetes-container-is-privileged",
+  "legacyId": "87065ef8-de9b-40d8-9753-f4a4303e27a4",
   "queryName": "Container is privileged",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "e2be4ab9",
   "cwe": "269",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#privileged"
 }

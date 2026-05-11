@@ -1,5 +1,6 @@
 {
-  "id": "455f2e0c-686d-4fcb-8b5f-3f953f12c43c",
+  "id": "terraform-kubernetes-seccomp-profile-is-not-configured",
+  "legacyId": "455f2e0c-686d-4fcb-8b5f-3f953f12c43c",
   "queryName": "Seccomp profile is not configured",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "ad5436a1",
   "cwe": "665",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#annotations"
 }

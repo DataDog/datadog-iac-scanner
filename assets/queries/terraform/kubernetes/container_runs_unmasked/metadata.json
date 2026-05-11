@@ -1,5 +1,6 @@
 {
-  "id": "0ad60203-c050-4115-83b6-b94bde92541d",
+  "id": "terraform-kubernetes-container-runs-unmasked",
+  "legacyId": "0ad60203-c050-4115-83b6-b94bde92541d",
   "queryName": "Container runs unmasked",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "bbb3aa40",
   "cwe": "1188",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "MEDIUM",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#allowed_proc_mount_types"
 }

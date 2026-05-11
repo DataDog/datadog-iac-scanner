@@ -1,5 +1,6 @@
 {
-  "id": "5f4735ce-b9ba-4d95-a089-a37a767b716f",
+  "id": "terraform-kubernetes-cpu-limits-not-set",
+  "legacyId": "5f4735ce-b9ba-4d95-a089-a37a767b716f",
   "queryName": "CPU limits not set",
   "severity": "LOW",
   "category": "Resource Management",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "9dd8e356",
   "cwe": "400",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "MEDIUM",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#limits"
 }

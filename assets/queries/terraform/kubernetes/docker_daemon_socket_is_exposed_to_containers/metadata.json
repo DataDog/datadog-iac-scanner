@@ -1,5 +1,6 @@
 {
-  "id": "4e203a65-c8d8-49a2-b749-b124d43c9dc1",
+  "id": "terraform-kubernetes-docker-daemon-socket-is-exposed-to-containers",
+  "legacyId": "4e203a65-c8d8-49a2-b749-b124d43c9dc1",
   "queryName": "Docker daemon socket is exposed to containers",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "836d927e",
   "cwe": "668",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "LOW",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#host_path"
 }

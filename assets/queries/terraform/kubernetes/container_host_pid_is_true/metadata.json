@@ -1,5 +1,6 @@
 {
-  "id": "587d5d82-70cf-449b-9817-f60f9bccb88c",
+  "id": "terraform-kubernetes-container-host-pid-is-true",
+  "legacyId": "587d5d82-70cf-449b-9817-f60f9bccb88c",
   "queryName": "Container host PID is true",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "74aa164e",
   "cwe": "250",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#host_pid"
 }

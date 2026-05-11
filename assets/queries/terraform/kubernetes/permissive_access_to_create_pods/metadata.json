@@ -1,5 +1,6 @@
 {
-  "id": "522d4a64-4dc9-44bd-9240-7d8a0d5cb5ba",
+  "id": "terraform-kubernetes-permissive-access-to-create-pods",
+  "legacyId": "522d4a64-4dc9-44bd-9240-7d8a0d5cb5ba",
   "queryName": "Permissive access to create pods",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "cca5f42d",
   "cwe": "269",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/role#rule"
 }

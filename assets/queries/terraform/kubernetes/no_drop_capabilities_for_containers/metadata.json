@@ -1,5 +1,6 @@
 {
-  "id": "21cef75f-289f-470e-8038-c7cee0664164",
+  "id": "terraform-kubernetes-no-drop-capabilities-for-containers",
+  "legacyId": "21cef75f-289f-470e-8038-c7cee0664164",
   "queryName": "No drop capabilities for containers",
   "severity": "LOW",
   "category": "Best Practices",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "f547f3d7",
   "cwe": "754",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#drop"
 }

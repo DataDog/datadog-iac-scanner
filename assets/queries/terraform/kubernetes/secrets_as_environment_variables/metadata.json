@@ -1,5 +1,6 @@
 {
-  "id": "6d8f1a10-b6cd-48f0-b960-f7c535d5cdb8",
+  "id": "terraform-kubernetes-secrets-as-environment-variables",
+  "legacyId": "6d8f1a10-b6cd-48f0-b960-f7c535d5cdb8",
   "queryName": "Secrets as environment variables",
   "severity": "LOW",
   "category": "Secret Management",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "f5c43d1e",
   "cwe": "526",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#secret_key_ref"
 }

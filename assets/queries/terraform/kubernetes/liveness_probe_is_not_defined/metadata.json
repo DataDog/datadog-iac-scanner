@@ -1,5 +1,6 @@
 {
-  "id": "5b6d53dd-3ba3-4269-b4d7-f82e880e43c3",
+  "id": "terraform-kubernetes-liveness-probe-is-not-defined",
+  "legacyId": "5b6d53dd-3ba3-4269-b4d7-f82e880e43c3",
   "queryName": "Liveness probe is not defined",
   "severity": "LOW",
   "category": "Availability",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "e5105a57",
   "cwe": "754",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "LOW",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#liveness_probe"
 }

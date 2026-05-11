@@ -1,5 +1,6 @@
 {
-  "id": "24b132df-5cc7-4823-8029-f898e1c50b72",
+  "id": "terraform-kubernetes-service-account-name-undefined-or-empty",
+  "legacyId": "24b132df-5cc7-4823-8029-f898e1c50b72",
   "queryName": "Service account name undefined or empty",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "ce3648b0",
   "cwe": "665",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#service_account_name"
 }

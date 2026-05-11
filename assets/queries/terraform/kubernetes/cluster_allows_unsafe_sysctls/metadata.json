@@ -1,5 +1,6 @@
 {
-  "id": "a9174d31-d526-4ad9-ace4-ce7ddbf52e03",
+  "id": "terraform-kubernetes-cluster-allows-unsafe-sysctls",
+  "legacyId": "a9174d31-d526-4ad9-ace4-ce7ddbf52e03",
   "queryName": "Cluster allows unsafe sysctls",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "21547beb",
   "cwe": "732",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#allowed_unsafe_sysctls"
 }
