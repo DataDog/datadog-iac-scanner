@@ -1,5 +1,6 @@
 {
-  "id": "f99d3482-fa8c-4f79-bad9-35212dded164",
+  "id": "serverlessfw-serverless-function-without-tags",
+  "legacyId": "f99d3482-fa8c-4f79-bad9-35212dded164",
   "queryName": "Serverless Function Without Tags",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "ServerlessFW",
   "descriptionID": "39d4d6d2",
   "cwe": "800",
-  "oldSeverity": "MEDIUM"
+  "oldSeverity": "MEDIUM",
+  "cloudProvider": ""
 }
