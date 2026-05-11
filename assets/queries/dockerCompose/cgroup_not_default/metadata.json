@@ -1,5 +1,6 @@
 {
-  "id": "4d9f44c6-2f4a-4317-9bb5-267adbea0232",
+  "id": "dockercompose-cgroup-not-default",
+  "legacyId": "4d9f44c6-2f4a-4317-9bb5-267adbea0232",
   "queryName": "Cgroup Not Default",
   "severity": "MEDIUM",
   "category": "Build Process",
@@ -7,5 +8,6 @@
   "descriptionUrl": "https://docs.docker.com/compose/compose-file/compose-file-v3/#cgroup_parent",
   "platform": "DockerCompose",
   "descriptionID": "b3657456",
-  "cwe": "400"
+  "cwe": "400",
+  "cloudProvider": ""
 }

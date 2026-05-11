@@ -1,5 +1,6 @@
 {
-  "id": "ae5b6871-7f45-42e0-bb4c-ab300c4d2026",
+  "id": "dockercompose-privileged-containers-enabled",
+  "legacyId": "ae5b6871-7f45-42e0-bb4c-ab300c4d2026",
   "queryName": "Privileged Containers Enabled",
   "severity": "HIGH",
   "category": "Resource Management",
@@ -7,5 +8,6 @@
   "descriptionUrl": "https://docs.docker.com/compose/compose-file/#privileged",
   "platform": "DockerCompose",
   "descriptionID": "029f6145",
-  "cwe": "250"
+  "cwe": "250",
+  "cloudProvider": ""
 }

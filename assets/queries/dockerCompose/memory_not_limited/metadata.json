@@ -1,5 +1,6 @@
 {
-  "id": "bb9ac4f7-e13b-423d-a010-c74a1bfbe492",
+  "id": "dockercompose-memory-not-limited",
+  "legacyId": "bb9ac4f7-e13b-423d-a010-c74a1bfbe492",
   "queryName": "Memory Not Limited",
   "severity": "MEDIUM",
   "category": "Resource Management",
@@ -7,5 +8,6 @@
   "descriptionUrl": "https://docs.docker.com/compose/compose-file/compose-file-v3/#resources",
   "platform": "DockerCompose",
   "descriptionID": "8fcb9f7d",
-  "cwe": "770"
+  "cwe": "770",
+  "cloudProvider": ""
 }
