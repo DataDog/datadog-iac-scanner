@@ -1,5 +1,6 @@
 {
-  "id": "934613fe-b12c-4e5a-95f5-c1dcdffac1ff",
+  "id": "crossplane-aws-cloudwatch-without-retention-period-specified",
+  "legacyId": "934613fe-b12c-4e5a-95f5-c1dcdffac1ff",
   "queryName": "CloudWatch Without Retention Period Specified",
   "severity": "INFO",
   "category": "Observability",
