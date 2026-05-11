@@ -1,5 +1,6 @@
 {
-  "id": "00603add-7f72-448f-a6c0-9e456a7a3f94",
+  "id": "pulumi-aws-elasticsearch-with-https-disabled",
+  "legacyId": "00603add-7f72-448f-a6c0-9e456a7a3f94",
   "queryName": "Elasticsearch with HTTPS disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

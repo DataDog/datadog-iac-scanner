@@ -1,5 +1,6 @@
 {
-  "id": "327b0729-4c5c-4c44-8b5c-e476cd9c7290",
+  "id": "pulumi-aws-dynamodb-table-point-in-time-recovery-disabled",
+  "legacyId": "327b0729-4c5c-4c44-8b5c-e476cd9c7290",
   "queryName": "DynamoDB Table Point In Time Recovery Disabled",
   "severity": "INFO",
   "category": "Best Practices",
