@@ -1,5 +1,6 @@
 {
-  "id": "e2de2b80-2fc2-4502-a764-40930dfcc70a",
+  "id": "terraform-nifcloud-elb-use-http",
+  "legacyId": "e2de2b80-2fc2-4502-a764-40930dfcc70a",
   "queryName": "NIFCLOUD ELB using HTTP protocol",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "df58dd45-8009-43c2-90f7-c90eb9d53ed9",
+  "id": "terraform-nifcloud-computing-instance-has-common-private",
+  "legacyId": "df58dd45-8009-43c2-90f7-c90eb9d53ed9",
   "queryName": "NIFCLOUD computing has common private network",
   "severity": "LOW",
   "category": "Networking and Firewall",

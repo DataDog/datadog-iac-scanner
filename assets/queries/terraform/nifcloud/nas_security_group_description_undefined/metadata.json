@@ -1,5 +1,6 @@
 {
-  "id": "e840c54a-7a4c-405f-b8c1-c49a54b87d11",
+  "id": "terraform-nifcloud-nas-security-group-description-undefined",
+  "legacyId": "e840c54a-7a4c-405f-b8c1-c49a54b87d11",
   "queryName": "NIFCLOUD NAS undefined description to NAS security group",
   "severity": "LOW",
   "category": "Best Practices",

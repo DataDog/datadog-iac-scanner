@@ -1,5 +1,6 @@
 {
-  "id": "afcb0771-4f94-44ed-ad4a-9f73f11ce6e0",
+  "id": "terraform-nifcloud-elb-listener-use-http",
+  "legacyId": "afcb0771-4f94-44ed-ad4a-9f73f11ce6e0",
   "queryName": "NIFCLOUD ELB listener using HTTP protocol",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

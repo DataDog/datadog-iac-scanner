@@ -1,5 +1,6 @@
 {
-  "id": "e7dada38-af20-4899-8955-dabea84ab1f0",
+  "id": "terraform-nifcloud-router-security-group-undefined",
+  "legacyId": "e7dada38-af20-4899-8955-dabea84ab1f0",
   "queryName": "NIFCLOUD router undefined security group",
   "severity": "HIGH",
   "category": "Networking and Firewall",
