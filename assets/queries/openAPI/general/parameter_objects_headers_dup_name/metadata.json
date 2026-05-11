@@ -1,5 +1,6 @@
 {
-  "id": "05505192-ba2c-4a81-9b25-dcdbcc973746",
+  "id": "openapi-parameter-objects-headers-dup-name",
+  "legacyId": "05505192-ba2c-4a81-9b25-dcdbcc973746",
   "queryName": "Parameter Objects Headers With Duplicated Name (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "665",
-  "providerUrl": "https://swagger.io/specification/#parameter-object"
+  "providerUrl": "https://swagger.io/specification/#parameter-object",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "00b78adf-b83f-419c-8ed8-c6018441dd3a",
+  "id": "openapi-pattern-undefined",
+  "legacyId": "00b78adf-b83f-419c-8ed8-c6018441dd3a",
   "queryName": "Pattern Undefined (v3)",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

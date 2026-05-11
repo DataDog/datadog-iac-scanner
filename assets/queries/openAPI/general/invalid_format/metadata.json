@@ -1,5 +1,6 @@
 {
-  "id": "d929c031-078f-4241-b802-e224656ad890",
+  "id": "openapi-invalid-format",
+  "legacyId": "d929c031-078f-4241-b802-e224656ad890",
   "queryName": "Invalid Format (v3)",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "665",
-  "providerUrl": "https://swagger.io/docs/specification/data-models/data-types/"
+  "providerUrl": "https://swagger.io/docs/specification/data-models/data-types/",
+  "cloudProvider": ""
 }

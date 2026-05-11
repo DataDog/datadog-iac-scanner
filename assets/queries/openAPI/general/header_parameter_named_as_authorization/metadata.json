@@ -1,5 +1,6 @@
 {
-  "id": "8c84f75e-5048-4926-a4cb-33e7b3431300",
+  "id": "openapi-header-parameter-named-as-authorization",
+  "legacyId": "8c84f75e-5048-4926-a4cb-33e7b3431300",
   "queryName": "Header Parameter Named as 'Authorization' (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#parameter-object"
+  "providerUrl": "https://swagger.io/specification/#parameter-object",
+  "cloudProvider": ""
 }

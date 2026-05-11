@@ -1,5 +1,6 @@
 {
-  "id": "3fb03214-25d4-4bd4-867c-c2d8d708a483",
+  "id": "openapi-properties-missing-required-property",
+  "legacyId": "3fb03214-25d4-4bd4-867c-c2d8d708a483",
   "queryName": "Properties Missing Required Property (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

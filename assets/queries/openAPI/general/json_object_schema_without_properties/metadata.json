@@ -1,5 +1,6 @@
 {
-  "id": "9d967a2b-9d64-41a6-abea-dfc4960299bd",
+  "id": "openapi-json-object-schema-without-properties",
+  "legacyId": "9d967a2b-9d64-41a6-abea-dfc4960299bd",
   "queryName": "JSON Object Schema Without Properties (v3)",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

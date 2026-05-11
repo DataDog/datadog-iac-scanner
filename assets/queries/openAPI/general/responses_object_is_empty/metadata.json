@@ -1,5 +1,6 @@
 {
-  "id": "990eaf09-d6f1-4c3c-b174-a517b1de8917",
+  "id": "openapi-responses-object-is-empty",
+  "legacyId": "990eaf09-d6f1-4c3c-b174-a517b1de8917",
   "queryName": "Responses Object Is Empty (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#responses-object"
+  "providerUrl": "https://swagger.io/specification/#responses-object",
+  "cloudProvider": ""
 }

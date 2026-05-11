@@ -1,5 +1,6 @@
 {
-  "id": "dadc2f36-1f5a-46c0-8289-75e626583123",
+  "id": "openapi-schema-discriminator-property-not-string",
+  "legacyId": "dadc2f36-1f5a-46c0-8289-75e626583123",
   "queryName": "Schema Discriminator Property Not String (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#discriminator-object"
+  "providerUrl": "https://swagger.io/specification/#discriminator-object",
+  "cloudProvider": ""
 }

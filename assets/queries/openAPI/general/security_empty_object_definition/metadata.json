@@ -1,5 +1,6 @@
 {
-  "id": "543e38f4-1eee-479e-8eb0-15257013aa0a",
+  "id": "openapi-security-empty-object-definition",
+  "legacyId": "543e38f4-1eee-479e-8eb0-15257013aa0a",
   "queryName": "Global security field has an empty object (v3)",
   "severity": "HIGH",
   "category": "Access Control",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "284",
-  "providerUrl": "https://swagger.io/specification/#security-requirement-object"
+  "providerUrl": "https://swagger.io/specification/#security-requirement-object",
+  "cloudProvider": ""
 }

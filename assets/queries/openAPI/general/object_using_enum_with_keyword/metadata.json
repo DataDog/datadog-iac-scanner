@@ -1,5 +1,6 @@
 {
-  "id": "2e9b6612-8f69-42e0-a5b8-ed17739c2f3a",
+  "id": "openapi-object-using-enum-with-keyword",
+  "legacyId": "2e9b6612-8f69-42e0-a5b8-ed17739c2f3a",
   "queryName": "Object Using Enum With Keyword (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }
