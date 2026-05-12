@@ -1,5 +1,6 @@
 {
-  "id": "c3cab8c4-6c52-47a9-942b-c27f26fbd7d2",
+  "id": "openapi-2-0-parameter-file-type-not-in-formdata",
+  "legacyId": "c3cab8c4-6c52-47a9-942b-c27f26fbd7d2",
   "queryName": "Parameter File Type Not In 'formData'",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "e8a62738",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#parameterObject"
+  "providerUrl": "https://swagger.io/specification/v2/#parameterObject",
+  "cloudProvider": "2.0"
 }

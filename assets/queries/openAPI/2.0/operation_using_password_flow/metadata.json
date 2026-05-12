@@ -1,5 +1,6 @@
 {
-  "id": "2e44e632-d617-43cb-b294-6bfe72a08938",
+  "id": "openapi-2-0-operation-using-password-flow",
+  "legacyId": "2e44e632-d617-43cb-b294-6bfe72a08938",
   "queryName": "Operation Using Password Flow",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "e0279bb3",
   "cwe": "798",
-  "providerUrl": "https://swagger.io/specification/v2/#operation-object"
+  "providerUrl": "https://swagger.io/specification/v2/#operation-object",
+  "cloudProvider": "2.0"
 }

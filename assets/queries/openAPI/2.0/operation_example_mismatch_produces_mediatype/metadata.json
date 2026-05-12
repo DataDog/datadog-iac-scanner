@@ -1,5 +1,6 @@
 {
-  "id": "2cf35b40-ded3-43d6-9633-c8dcc8bcc822",
+  "id": "openapi-2-0-operation-example-mismatch-produces-mediatype",
+  "legacyId": "2cf35b40-ded3-43d6-9633-c8dcc8bcc822",
   "queryName": "Operation Example Mismatch Produces MimeType",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "77f2d405",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#exampleObject"
+  "providerUrl": "https://swagger.io/specification/v2/#exampleObject",
+  "cloudProvider": "2.0"
 }

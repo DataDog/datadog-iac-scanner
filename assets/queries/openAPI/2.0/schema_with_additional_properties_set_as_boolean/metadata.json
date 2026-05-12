@@ -1,5 +1,6 @@
 {
-  "id": "3a01790c-ebee-4da6-8fd3-e78657383b75",
+  "id": "openapi-2-0-schema-with-additional-properties-set-as-boolean",
+  "legacyId": "3a01790c-ebee-4da6-8fd3-e78657383b75",
   "queryName": "Schema with 'additionalProperties' set as Boolean",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "2509db0d",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/v2/#schema-object"
+  "providerUrl": "https://swagger.io/specification/v2/#schema-object",
+  "cloudProvider": "2.0"
 }

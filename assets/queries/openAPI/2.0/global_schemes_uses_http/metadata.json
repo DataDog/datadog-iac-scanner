@@ -1,5 +1,6 @@
 {
-  "id": "f30ee711-0082-4480-85ab-31d922d9a2b2",
+  "id": "openapi-2-0-global-schemes-uses-http",
+  "legacyId": "f30ee711-0082-4480-85ab-31d922d9a2b2",
   "queryName": "Global Schemes Uses HTTP",
   "severity": "MEDIUM",
   "category": "Encryption",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "11bb39ad",
   "cwe": "319",
-  "providerUrl": "https://swagger.io/specification/v2/#swaggerObject"
+  "providerUrl": "https://swagger.io/specification/v2/#swaggerObject",
+  "cloudProvider": "2.0"
 }

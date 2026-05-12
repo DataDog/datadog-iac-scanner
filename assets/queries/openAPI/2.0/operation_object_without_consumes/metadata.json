@@ -1,5 +1,6 @@
 {
-  "id": "0c79e50e-b3cf-490c-b8f6-587c644d4d0c",
+  "id": "openapi-2-0-operation-object-without-consumes",
+  "legacyId": "0c79e50e-b3cf-490c-b8f6-587c644d4d0c",
   "queryName": "Operation Object Without 'consumes'",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "de859594",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/v2/#operation-object"
+  "providerUrl": "https://swagger.io/specification/v2/#operation-object",
+  "cloudProvider": "2.0"
 }
