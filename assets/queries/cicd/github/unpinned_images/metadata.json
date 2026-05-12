@@ -1,5 +1,6 @@
 {
-  "id": "c9d0e1f2-a3b4-45c6-d7e8-f9a0b1c2d3e4",
+  "id": "cicd-github-unpinned-images",
+  "legacyId": "c9d0e1f2-a3b4-45c6-d7e8-f9a0b1c2d3e4",
   "queryName": "Unpinned images",
   "severity": "HIGH",
   "category": "Supply-Chain",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unpinned_images",
   "platform": "CICD",
   "descriptionID": "c9d0e1f2",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "829",
   "providerUrl": "https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idcontainer"
 }

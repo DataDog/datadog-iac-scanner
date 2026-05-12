@@ -1,5 +1,6 @@
 {
-  "id": "62ff6823-927a-427f-acf9-f1ea2932d616",
+  "id": "cicd-github-script-block-injection",
+  "legacyId": "62ff6823-927a-427f-acf9-f1ea2932d616",
   "queryName": "Script block injection",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/script_block_injection",
   "platform": "CICD",
   "descriptionID": "63e215f4",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "94",
   "providerUrl": "https://securitylab.github.com/research/github-actions-untrusted-input/"
 }

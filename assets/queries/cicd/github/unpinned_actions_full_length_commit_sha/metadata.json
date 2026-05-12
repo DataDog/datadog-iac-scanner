@@ -1,5 +1,6 @@
 {
-  "id": "555ab8f9-2001-455e-a077-f2d0f41e2fb9",
+  "id": "cicd-github-unpinned-actions-full-length-commit-sha",
+  "legacyId": "555ab8f9-2001-455e-a077-f2d0f41e2fb9",
   "queryName": "Unpinned actions full length commit SHA",
   "severity": "LOW",
   "category": "Supply-Chain",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unpinned_actions_full_length_commit_sha",
   "platform": "CICD",
   "descriptionID": "9cb8402d",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "829",
   "oldSeverity": "MEDIUM",
   "providerUrl": "https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions"

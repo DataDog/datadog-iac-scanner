@@ -1,5 +1,6 @@
 {
-  "id": "e8f9a0b1-c2d3-44e5-f6a7-b8c9d0e1f2a3",
+  "id": "cicd-github-github-env",
+  "legacyId": "e8f9a0b1-c2d3-44e5-f6a7-b8c9d0e1f2a3",
   "queryName": "GitHub environment file injection",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/github_env",
   "platform": "CICD",
   "descriptionID": "e8f9a0b1",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "94",
   "providerUrl": "https://securitylab.github.com/research/github-actions-untrusted-input/"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "f2a3b4c5-d6e7-48f9-a0b1-c2d3e4f5a6b7",
+  "id": "cicd-github-dependabot-cooldown",
+  "legacyId": "f2a3b4c5-d6e7-48f9-a0b1-c2d3e4f5a6b7",
   "queryName": "Dependabot cooldown",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/dependabot_cooldown",
   "platform": "CICD",
   "descriptionID": "f2a3b4c5",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "400",
   "providerUrl": "https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file#cooldown"
 }

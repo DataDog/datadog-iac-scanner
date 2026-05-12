@@ -1,5 +1,6 @@
 {
-  "id": "b5c6d7e8-f9a0-41b2-c3d4-e5f6a7b8c9d0",
+  "id": "cicd-github-superfluous-actions",
+  "legacyId": "b5c6d7e8-f9a0-41b2-c3d4-e5f6a7b8c9d0",
   "queryName": "Superfluous actions",
   "severity": "LOW",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/superfluous_actions",
   "platform": "CICD",
   "descriptionID": "b5c6d7e8",
-  "cloudProvider": "common",
+  "cloudProvider": "github",
   "cwe": "1395",
   "providerUrl": "https://docs.github.com/en/actions/using-workflows/about-workflows"
 }
