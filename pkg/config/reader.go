@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -52,6 +53,34 @@ func ReadConfiguration(ctx context.Context, rootPath string, options ...ReadConf
 	return &IacConfig{}, cfgBytes, nil
 }
 
+// minimalCfgFile is a minimal view of the config file used for fall-through detection only.
+// It does not use KnownFields, so unknown properties (future minor-version additions) are accepted.
+type minimalCfgFile struct {
+	SchemaVersion string `yaml:"schema-version"`
+	Iac           any    `yaml:"iac"`
+}
+
+// hasIacSectionForSupportedVersion reports whether b contains an iac: section for a supported
+// schema version, using lenient YAML parsing. Unknown root or iac fields are ignored so that
+// files from future minor versions are not incorrectly treated as "no iac section".
+func hasIacSectionForSupportedVersion(b []byte) (bool, error) {
+	var doc minimalCfgFile
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		return false, newInvalidLocalConfigError(fmt.Errorf("could not parse configuration file: %w", err))
+	}
+	version, err := parseSchemaVersion(doc.SchemaVersion)
+	if err != nil {
+		return false, newInvalidLocalConfigError(fmt.Errorf("invalid schema version: %w", err))
+	}
+	if version.compare(minUnsupportedVersion) >= 0 {
+		return false, newInvalidLocalConfigError(fmt.Errorf("configuration schema version %s is not supported", version))
+	}
+	if version.compare(minIacVersion) < 0 {
+		return false, nil
+	}
+	return doc.Iac != nil, nil
+}
+
 // findLocalConfig returns the local configuration as YAML bytes.
 // The new config format (code-security.datadog.yaml) takes priority over the legacy
 // format only when it contains an iac section. If the new file exists but has no iac
@@ -63,15 +92,14 @@ func findLocalConfig(ctx context.Context, rootPath string) (cfgBytes []byte, leg
 		if err != nil {
 			return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not read configuration file %s: %w", path, err))
 		}
-		cfg, err := ParseConfig(b)
+		hasIac, err := hasIacSectionForSupportedVersion(b)
 		if err != nil {
-			return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not parse configuration file: %w", err))
+			return nil, nil, err
 		}
-		if cfg != nil {
-			// New file has an iac section: use it exclusively.
+		if hasIac {
 			return b, nil, nil
 		}
-		// New file has no iac section: fall through to legacy.
+		// No iac section or schema too old: fall through to legacy.
 	}
 
 	return readLegacyConfigBytes(ctx, rootPath)
