@@ -60,34 +60,47 @@ Run `datadog-iac-scanner scan --help` to see all available flags.
 
 ### Configuring the scan
 
-Create a file named `dd-iac-scan.config` in your repository to customize scanner behavior. Use this file to exclude specific categories, paths, severities, or queries. The file can be written in YAML, JSON, TOML, or HCL.
+Create a file named `code-security.datadog.yaml` at the root of your repository to customize scanner behavior. Use this file to choose which rules run, restrict scanning to specific paths, or filter findings by severity and category.
 
 ```yaml
-exclude-severities:
-  - "info"
-  - "low"
-exclude-paths:
-  - "./shouldNotScan/*"
-  - "dir/somefile.txt"
-exclude-queries:
-  - "e69890e6-fce5-461d-98ad-cb98318dfc96"
-  - "4728cd65-a20c-49da-8b31-9c08b423e4db"
-exclude-categories:
-  - "Access Control"
-  - "Best Practices"
+schema-version: v1.2
+iac:
+  # Do not run these rules.
+  ignore-rules:
+    - A
+    - B
+  # Run only these rules. If set, all other rules are ignored.
+  use-rules:
+    - A
+  global-config:
+    # Only analyze the following paths/files.
+    only-paths:
+      - "infra/"
+    # Do not analyze the following paths/files.
+    ignore-paths:
+      - "**/*.tfvars"
+    # Do not report findings with these severities.
+    ignore-severities:
+      - info
+      - low
+    # Do not report findings in these categories.
+    ignore-categories:
+      - "Best Practices"
 ```
 
-You can also use inline comments to exclude files, blocks, and individual lines from scan results. Add a comment starting with `# dd-iac-scan` followed by a command.
+Replace placeholders such as `A` and `B` with Code Security rule IDs. For the full schema, see the [IaC Security configuration documentation](https://docs.datadoghq.com/security/code_security/iac_security/configuration/).
+
+> The legacy `dd-iac-scan.config` file is still supported for backwards compatibility, but its schema is deprecated and does not receive new updates. See [`legacy_config.md`](legacy_config.md) for its reference.
+
+You can also use inline comments to exclude files, blocks, and individual lines from scan results. Add a comment containing `dd-iac-scan` followed by a command (prefixed with the comment syntax for the file format).
 
 | Comment | Description |
 |---------|-------------|
 | `# dd-iac-scan ignore-line` | Ignores findings on the next line. |
 | `# dd-iac-scan ignore-block` | Ignores findings in the following block. |
 | `# dd-iac-scan ignore` | Ignores findings in the entire file. Must appear at the beginning of the file. |
-| `# dd-iac-scan disable=queryId` | Ignores results for the specified query ID. Must appear at the beginning of the file; applies to the whole file. |
-| `# dd-iac-scan enable=queryId` | Ignores results for all queries _except_ the specified query ID. Must appear at the beginning of the file; applies to the whole file. |
-
-See the [exclusions documentation](https://docs.datadoghq.com/security/code_security/iac_security/exclusions/) for more information.
+| `# dd-iac-scan disable=<rule_id>` | Ignores findings for the specified rule. Must appear at the beginning of the file; applies to the whole file. |
+| `# dd-iac-scan enable=<rule_id>` | Ignores findings for all rules _except_ the specified rule. Must appear at the beginning of the file; applies to the whole file. |
 
 ## License
 
