@@ -176,6 +176,9 @@ func (s *FilesystemSource) CheckCloudProvider(cloudProvider any) bool {
 }
 
 func checkQueryFilterFieldExclude(ctx context.Context, id any, queries []string) bool {
+	if id == nil {
+		return false
+	}
 	contextLogger := logger.FromContext(ctx)
 	queryMetadataKey, ok := id.(string)
 	if !ok {
@@ -193,6 +196,7 @@ func checkQueryFilterFieldExclude(ctx context.Context, id any, queries []string)
 
 func checkQueryExclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
 	return checkQueryFilterFieldExclude(ctx, metadata["id"], queryParameters.ExcludeQueries.ByIDs) ||
+		checkQueryFilterFieldExclude(ctx, metadata["legacyId"], queryParameters.ExcludeQueries.ByIDs) ||
 		checkQueryFilterFieldExclude(ctx, metadata["category"], queryParameters.ExcludeQueries.ByCategories) ||
 		checkQueryFilterFieldExclude(ctx, metadata["severity"], queryParameters.ExcludeQueries.BySeverities) ||
 		(!queryParameters.BomQueries && metadata["severity"] == model.SeverityTrace) ||
@@ -204,7 +208,8 @@ func checkQueryFilterFieldInclude(ctx context.Context, id any, queries []string)
 }
 
 func checkQueryInclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
-	return checkQueryFilterFieldInclude(ctx, metadata["id"], queryParameters.IncludeQueries.ByIDs) &&
+	return (checkQueryFilterFieldInclude(ctx, metadata["id"], queryParameters.IncludeQueries.ByIDs) ||
+		checkQueryFilterFieldInclude(ctx, metadata["legacyId"], queryParameters.IncludeQueries.ByIDs)) &&
 		checkQueryFilterFieldInclude(ctx, metadata["category"], queryParameters.IncludeQueries.ByCategories) &&
 		checkQueryFilterFieldInclude(ctx, metadata["severity"], queryParameters.IncludeQueries.BySeverities)
 }

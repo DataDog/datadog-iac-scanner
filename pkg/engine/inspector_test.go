@@ -399,8 +399,9 @@ func TestEngine_GetFailedQueries(t *testing.T) {
 
 func TestShouldSkipFile(t *testing.T) {
 	type args struct {
-		commands model.CommentsCommands
-		queryID  string
+		commands      model.CommentsCommands
+		queryID       string
+		legacyQueryID string
 	}
 	tests := []struct {
 		name     string
@@ -408,12 +409,24 @@ func TestShouldSkipFile(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "test_enabled_queries_valid_query",
+			name: "test_enabled_queries_valid_query_legacy_id",
 			args: args{
 				commands: model.CommentsCommands{
 					"enable": "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09,0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
 				},
-				queryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+				queryID:       "platform-cloudprovider-slug",
+				legacyQueryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+			},
+			expected: false,
+		},
+		{
+			name: "test_enabled_queries_valid_query_id",
+			args: args{
+				commands: model.CommentsCommands{
+					"enable": "platform-cloudprovider-slug,0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
+				},
+				queryID:       "platform-cloudprovider-slug",
+				legacyQueryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
 			},
 			expected: false,
 		},
@@ -423,17 +436,30 @@ func TestShouldSkipFile(t *testing.T) {
 				commands: model.CommentsCommands{
 					"enable": "0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
 				},
-				queryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+				queryID:       "platform-cloudprovider-slug",
+				legacyQueryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
 			},
 			expected: true,
 		},
 		{
-			name: "test_disabled_queries_invalid_query",
+			name: "test_disabled_queries_valid_query_legacy_id",
 			args: args{
 				commands: model.CommentsCommands{
 					"disable": "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09,0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
 				},
-				queryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+				queryID:       "platform-cloudprovider-slug",
+				legacyQueryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+			},
+			expected: true,
+		},
+		{
+			name: "test_disabled_queries_valid_query_id",
+			args: args{
+				commands: model.CommentsCommands{
+					"disable": "platform-cloudprovider-slug,0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
+				},
+				queryID:       "platform-cloudprovider-slug",
+				legacyQueryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
 			},
 			expected: true,
 		},
@@ -443,22 +469,24 @@ func TestShouldSkipFile(t *testing.T) {
 				commands: model.CommentsCommands{
 					"disable": "0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
 				},
-				queryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+				queryID:       "platform-cloudprovider-slug",
+				legacyQueryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
 			},
 			expected: false,
 		},
 		{
 			name: "test_withoutCommands",
 			args: args{
-				commands: model.CommentsCommands{},
-				queryID:  "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+				commands:      model.CommentsCommands{},
+				queryID:       "platform-cloudprovider-slug",
+				legacyQueryID: "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
 			},
 			expected: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ShouldSkipVulnerability(tt.args.commands, tt.args.queryID)
+			got := ShouldSkipVulnerability(tt.args.commands, tt.args.queryID, tt.args.legacyQueryID)
 			require.Equal(t, tt.expected, got)
 		})
 	}

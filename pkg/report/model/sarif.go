@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	remediationsHelper "github.com/DataDog/datadog-iac-scanner/pkg/report/remediations"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 )
 
@@ -31,6 +32,7 @@ var severityLevelEquivalence = map[model.Severity]string{
 type sarifProperties map[string]interface{}
 
 type ruleMetadata struct {
+	legacyQueryID    string
 	queryID          string
 	queryName        string
 	queryDescription string
@@ -436,6 +438,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 	if len(issue.Files) > 0 {
 		metadata := ruleMetadata{
 			queryID:          issue.QueryID,
+			legacyQueryID:    issue.LegacyQueryID,
 			queryName:        issue.QueryName,
 			queryDescription: issue.Description,
 			queryURI:         issue.QueryURI,
@@ -541,6 +544,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				artifactPath = ""
 			}
 
+			queryID := utils.ChooseQueryID(issue.QueryID, issue.LegacyQueryID)
 			result := sarifResult{
 				ResultRuleID:    issue.QueryName,
 				ResultRuleIndex: ruleIndex,
@@ -571,7 +575,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 						issue.Platform,
 						resourceType,
 						resourceName,
-						issue.QueryID,
+						queryID,
 						vulnerability.LineWithVulnerability,
 					),
 				},
