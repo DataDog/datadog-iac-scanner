@@ -1,19 +1,19 @@
 [
   {
     "line": 1,
-    "queryName": "API Gateway method does not contains an API key",
+    "queryName": "API Gateway method does not contain an API key",
     "severity": "MEDIUM",
     "filename": "positive.tf"
   },
   {
     "line": 13,
-    "queryName": "API Gateway method does not contains an API key",
+    "queryName": "API Gateway method does not contain an API key",
     "severity": "MEDIUM",
     "filename": "positive.tf"
   },
   {
     "line": 1,
-    "queryName": "API Gateway method does not contains an API key",
+    "queryName": "API Gateway method does not contain an API key",
     "severity": "MEDIUM",
     "filename": "positive_module.tf"
   }
