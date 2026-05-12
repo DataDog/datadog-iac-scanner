@@ -122,6 +122,34 @@ func TestReadConfig(t *testing.T) {
 	}
 }
 
+// Parsers MUST reject schema major versions >= 2.
+func TestUnsupportedSchemaVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name, cfg string
+	}{
+		{name: "v2.0", cfg: "schema-version: v2.0\niac:\n  ignore-rules:\n    - r1\n"},
+		{name: "v3.0", cfg: "schema-version: v3.0\niac:\n  ignore-rules:\n    - r1\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
+
+			_, _, err := ReadConfiguration(t.Context(), tmp)
+			assert.Error(t, err)
+		})
+	}
+}
+
+// When the new config file has an unsupported major version, the legacy config is NOT used as fallback.
+func TestUnsupportedSchemaVersionIgnoresLegacy(t *testing.T) {
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte("schema-version: v2.0\niac:\n  ignore-rules:\n    - r1\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
+
+	_, _, err := ReadConfiguration(t.Context(), tmp)
+	assert.Error(t, err)
+}
+
 func TestIgnoredConfigFile(t *testing.T) {
 	for _, tc := range []struct {
 		name, cfg string
@@ -240,8 +268,7 @@ func TestConfigFileFromDatadog(t *testing.T) {
 		parsedConfig   *IacConfig
 	}{
 		{
-			// New config file has no iac section: falls through to legacy path (none here),
-			// so nil is sent to the API which returns a merged config.
+			// New config file has no iac section: falls through, sending nil to the API.
 			name:           "regular config without iac section",
 			localConfig:    emptyCfgFile,
 			sentConfig:     "",
@@ -250,10 +277,20 @@ func TestConfigFileFromDatadog(t *testing.T) {
 			parsedConfig:   &parsedCfgFile,
 		},
 		{
-			// New config file has an iac section: sent directly to the API.
+			// New config file has an iac section: bytes sent directly to the API.
 			name:           "regular config with iac section",
 			localConfig:    cfgFile,
 			sentConfig:     cfgFile,
+			finalConfig:    cfgFile,
+			expectedConfig: cfgFile,
+			parsedConfig:   &parsedCfgFile,
+		},
+		{
+			// v1.5 file with an unknown root key and no iac section: lenient check sees no iac key,
+			// falls through, sends nil to the API (same as no local file).
+			name:           "future minor version without iac section",
+			localConfig:    "schema-version: v1.5\nfuture-product:\n  config: foo\n",
+			sentConfig:     "",
 			finalConfig:    cfgFile,
 			expectedConfig: cfgFile,
 			parsedConfig:   &parsedCfgFile,
