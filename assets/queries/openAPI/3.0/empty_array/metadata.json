@@ -1,5 +1,6 @@
 {
-  "id": "5915c20f-dffa-4cee-b5d4-f457ddc0151a",
+  "id": "openapi-3-0-empty-array",
+  "legacyId": "5915c20f-dffa-4cee-b5d4-f457ddc0151a",
   "queryName": "Empty Array",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "84f9722b",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/"
+  "providerUrl": "https://swagger.io/specification/",
+  "cloudProvider": "3.0"
 }

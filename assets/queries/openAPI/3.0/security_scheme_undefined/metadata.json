@@ -1,5 +1,6 @@
 {
-  "id": "8db5544e-4874-4baa-9322-e9f75a2d219e",
+  "id": "openapi-3-0-security-scheme-undefined",
+  "legacyId": "8db5544e-4874-4baa-9322-e9f75a2d219e",
   "queryName": "Field 'securityScheme' On Components Is Undefined",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -9,5 +10,6 @@
   "descriptionID": "61dba06b",
   "cwe": "284",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://swagger.io/specification/#security-scheme-object"
+  "providerUrl": "https://swagger.io/specification/#security-scheme-object",
+  "cloudProvider": "3.0"
 }

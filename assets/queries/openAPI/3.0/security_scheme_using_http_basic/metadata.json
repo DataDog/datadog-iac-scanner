@@ -1,5 +1,6 @@
 {
-  "id": "68e5fcac-390c-4939-a373-6074b7be7c71",
+  "id": "openapi-3-0-security-scheme-using-http-basic",
+  "legacyId": "68e5fcac-390c-4939-a373-6074b7be7c71",
   "queryName": "Security Scheme Using HTTP Basic",
   "severity": "LOW",
   "category": "Access Control",
@@ -9,5 +10,6 @@
   "descriptionID": "2aa53f7c",
   "cwe": "285",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://swagger.io/specification/#security-scheme-object"
+  "providerUrl": "https://swagger.io/specification/#security-scheme-object",
+  "cloudProvider": "3.0"
 }

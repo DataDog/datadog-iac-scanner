@@ -1,5 +1,6 @@
 {
-  "id": "c66ebeaa-676c-40dc-a3ff-3e49395dcd5e",
+  "id": "openapi-3-0-servers-undefined",
+  "legacyId": "c66ebeaa-676c-40dc-a3ff-3e49395dcd5e",
   "queryName": "Servers Array Undefined",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "890ee1bd",
   "cwe": "665",
-  "providerUrl": "https://swagger.io/specification/#server-object"
+  "providerUrl": "https://swagger.io/specification/#server-object",
+  "cloudProvider": "3.0"
 }

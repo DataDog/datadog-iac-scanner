@@ -1,5 +1,6 @@
 {
-  "id": "151331e2-11f4-4bb6-bd35-9a005e695087",
+  "id": "openapi-3-0-components-object-fixed-field-key-improperly-named",
+  "legacyId": "151331e2-11f4-4bb6-bd35-9a005e695087",
   "queryName": "Components Object Fixed Field Key Improperly Named",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "a6f85ed4",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#components-object"
+  "providerUrl": "https://swagger.io/specification/#components-object",
+  "cloudProvider": "3.0"
 }
