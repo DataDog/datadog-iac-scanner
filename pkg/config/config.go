@@ -52,11 +52,9 @@ func ParseConfig(cfgBytes []byte) (*IacConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Versions older than v1.2 can't have an IaC configuration
 	if version.compare(minIacVersion) < 0 {
 		return nil, nil
 	}
-	// Versions v2.0 and higher are not supported
 	if version.compare(minUnsupportedVersion) >= 0 {
 		return nil, fmt.Errorf("configuration schema version %s is not supported", version)
 	}

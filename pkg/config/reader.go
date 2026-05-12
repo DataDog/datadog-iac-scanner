@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -52,19 +53,25 @@ func ReadConfiguration(ctx context.Context, rootPath string, options ...ReadConf
 	return &IacConfig{}, cfgBytes, nil
 }
 
-// minimalCfgFile is a minimal view of the config file used for fall-through detection only.
-// It does not use KnownFields, so unknown properties (future minor-version additions) are accepted.
-type minimalCfgFile struct {
+// knownRootsCfgFile is the exhaustive set of valid root-level product keys. Used with
+// KnownFields to reject unrecognized root properties per the RFC requirement.
+type knownRootsCfgFile struct {
 	SchemaVersion string `yaml:"schema-version"`
 	Iac           any    `yaml:"iac"`
+	Sast          any    `yaml:"sast"`
+	Secrets       any    `yaml:"secrets"`
+	Sca           any    `yaml:"sca"`
+	Iast          any    `yaml:"iast"`
 }
 
 // hasIacSectionForSupportedVersion reports whether b contains an iac: section for a supported
-// schema version, using lenient YAML parsing. Unknown root or iac fields are ignored so that
-// files from future minor versions are not incorrectly treated as "no iac section".
+// schema version. Unknown root keys are rejected (all products fail per the RFC). Unknown
+// fields within known sections are accepted because each product key is typed as any.
 func hasIacSectionForSupportedVersion(b []byte) (bool, error) {
-	var doc minimalCfgFile
-	if err := yaml.Unmarshal(b, &doc); err != nil {
+	var doc knownRootsCfgFile
+	decoder := yaml.NewDecoder(bytes.NewReader(b))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&doc); err != nil {
 		return false, newInvalidLocalConfigError(fmt.Errorf("could not parse configuration file: %w", err))
 	}
 	version, err := parseSchemaVersion(doc.SchemaVersion)

@@ -122,6 +122,40 @@ func TestReadConfig(t *testing.T) {
 	}
 }
 
+// Unknown root properties cause all products to fail.
+func TestUnknownRootKey(t *testing.T) {
+	for _, tc := range []struct {
+		name, cfg string
+	}{
+		{
+			name: "unknown root key only",
+			cfg:  "schema-version: v1.2\nfuture-product:\n  config: foo\n",
+		},
+		{
+			name: "unknown root key alongside iac section",
+			cfg:  "schema-version: v1.2\niac:\n  ignore-rules:\n    - r1\nfuture-product:\n  config: foo\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
+
+			_, _, err := ReadConfiguration(t.Context(), tmp)
+			assert.Error(t, err)
+		})
+	}
+}
+
+// When the new config file has an unknown root key, the legacy config is NOT used as fallback.
+func TestUnknownRootKeyIgnoresLegacy(t *testing.T) {
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte("schema-version: v1.2\nfuture-product:\n  config: foo\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
+
+	_, _, err := ReadConfiguration(t.Context(), tmp)
+	assert.Error(t, err)
+}
+
 // Parsers MUST reject schema major versions >= 2.
 func TestUnsupportedSchemaVersion(t *testing.T) {
 	for _, tc := range []struct {
@@ -286,10 +320,10 @@ func TestConfigFileFromDatadog(t *testing.T) {
 			parsedConfig:   &parsedCfgFile,
 		},
 		{
-			// v1.5 file with an unknown root key and no iac section: lenient check sees no iac key,
-			// falls through, sends nil to the API (same as no local file).
+			// v1.5 file with only known root keys and no iac section: falls through,
+			// sending nil to the API (same as no local file).
 			name:           "future minor version without iac section",
-			localConfig:    "schema-version: v1.5\nfuture-product:\n  config: foo\n",
+			localConfig:    "schema-version: v1.5\nsast:\n  use-rulesets: [foo]\n",
 			sentConfig:     "",
 			finalConfig:    cfgFile,
 			expectedConfig: cfgFile,
