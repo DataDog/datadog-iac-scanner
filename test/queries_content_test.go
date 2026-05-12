@@ -48,6 +48,17 @@ var (
 
 	CategoriesKeys = MapToStringSlice(constants.AvailableCategories)
 
+	optionalQueryMetadataProperties = map[string]func(tb testing.TB, value any, metadata map[string]any,
+		metadataPath string){
+		"legacyId": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
+			if value == nil {
+				return
+			}
+			legacyIdValue := testMetadataFieldStringType(tb, value, "legacyId", metadataPath)
+			require.NotEmpty(tb, legacyIdValue, "legacyId must not be empty if present in %s", metadataPath)
+		},
+	}
+
 	requiredQueryMetadataProperties = map[string]func(tb testing.TB, value any, metadata map[string]any,
 		metadataPath string){
 		"id": func(tb testing.TB, value any, metadata map[string]any, metadataPath string) {
@@ -142,6 +153,11 @@ func TestQueriesMetadata(t *testing.T) {
 			for k, validation := range requiredQueryMetadataProperties {
 				value, ok := metadata[k]
 				require.True(t, ok, "missing key '%s' in query metadata file %s", k, metadataPath)
+				validation(t, value, metadata, metadataPath)
+			}
+
+			for k, validation := range optionalQueryMetadataProperties {
+				value := metadata[k]
 				validation(t, value, metadata, metadataPath)
 			}
 		})
