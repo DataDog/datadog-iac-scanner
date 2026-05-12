@@ -473,8 +473,12 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 			}
 		/* It could be Ansible, Buildah, CICD, CloudFormation, Crossplane, OpenAPI, Azure Resource Manager
 		Docker Compose, Knative, Kubernetes, Pulumi, ServerlessFW or Google Deployment Manager*/
-		case yaml, yml, json, sh:
+		case yaml, yml, sh:
 			a.checkContent(ctx, results, unwanted, locCount, linesCount, ext)
+		// Temporarily has its own case while only terraform json are supported, was part of the case above.
+		case json:
+			results <- terraform
+			locCount <- linesCount
 		}
 	}
 }

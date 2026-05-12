@@ -25,6 +25,7 @@ import (
 	buildahParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/buildah"
 	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
+	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
@@ -258,6 +259,7 @@ func (c *Client) createService(
 		Add(&buildahParser.Parser{}).
 		Add(&ansibleConfigParser.Parser{}).
 		Add(&ansibleHostsParser.Parser{}).
+		Add(&jsonParser.Parser{}).
 		Build(types, cloudProviders)
 	if err != nil {
 		return nil, err
