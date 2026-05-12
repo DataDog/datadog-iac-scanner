@@ -1,5 +1,6 @@
 {
-  "id": "babdedcf-d859-43da-9a7b-6d72e661a8fd",
+  "id": "ansible-aws-iam-role-allows-all-principals-to-assume",
+  "legacyId": "babdedcf-d859-43da-9a7b-6d72e661a8fd",
   "queryName": "IAM role allows all principals to assume",
   "severity": "MEDIUM",
   "category": "Access Control",

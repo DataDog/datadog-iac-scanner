@@ -1,5 +1,6 @@
 {
-  "id": "099b4411-d11e-4537-a0fc-146b19762a79",
+  "id": "ansible-gcp-project-wide-ssh-keys-are-enabled-in-vm-instances",
+  "legacyId": "099b4411-d11e-4537-a0fc-146b19762a79",
   "queryName": "Project-wide SSH keys are enabled in VM instances",
   "severity": "MEDIUM",
   "category": "Secret Management",

@@ -1,5 +1,6 @@
 {
-  "id": "881696a8-68c5-4073-85bc-7c38a3deb854",
+  "id": "ansible-azure-key-vault-soft-delete-is-disabled",
+  "legacyId": "881696a8-68c5-4073-85bc-7c38a3deb854",
   "queryName": "Key Vault soft delete is disabled",
   "severity": "MEDIUM",
   "category": "Backup",

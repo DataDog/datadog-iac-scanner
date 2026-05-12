@@ -1,5 +1,6 @@
 {
-  "id": "dc126833-125a-40fb-905a-ce5f2afde240",
+  "id": "ansible-gcp-gke-using-default-service-account",
+  "legacyId": "dc126833-125a-40fb-905a-ce5f2afde240",
   "queryName": "GKE using default service account",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

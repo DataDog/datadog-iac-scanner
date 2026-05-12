@@ -1,5 +1,6 @@
 {
-  "id": "7ab33ac0-e4a3-418f-a673-50da4e34df21",
+  "id": "ansible-azure-postgresql-log-checkpoints-disabled",
+  "legacyId": "7ab33ac0-e4a3-418f-a673-50da4e34df21",
   "queryName": "PostgreSQL log checkpoints disabled",
   "severity": "MEDIUM",
   "category": "Observability",

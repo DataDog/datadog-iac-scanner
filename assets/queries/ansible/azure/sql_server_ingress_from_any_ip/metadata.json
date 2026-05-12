@@ -1,5 +1,6 @@
 {
-  "id": "f4e9ff70-0f3b-4c50-a713-26cbe7ec4039",
+  "id": "ansible-azure-sql-server-ingress-from-any-ip",
+  "legacyId": "f4e9ff70-0f3b-4c50-a713-26cbe7ec4039",
   "queryName": "SQLServer ingress from any IP",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

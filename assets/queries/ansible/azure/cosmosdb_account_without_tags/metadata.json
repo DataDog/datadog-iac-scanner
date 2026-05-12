@@ -1,5 +1,6 @@
 {
-  "id": "23a4dc83-4959-4d99-8056-8e051a82bc1e",
+  "id": "ansible-azure-cosmosdb-account-without-tags",
+  "legacyId": "23a4dc83-4959-4d99-8056-8e051a82bc1e",
   "queryName": "Cosmos DB account without tags",
   "severity": "LOW",
   "category": "Build Process",

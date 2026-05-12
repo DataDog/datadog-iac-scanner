@@ -1,5 +1,6 @@
 {
-  "id": "35e2f133-a395-40de-a79d-b260d973d1bd",
+  "id": "ansible-azure-public-storage-account",
+  "legacyId": "35e2f133-a395-40de-a79d-b260d973d1bd",
   "queryName": "Public storage account",
   "severity": "HIGH",
   "category": "Access Control",

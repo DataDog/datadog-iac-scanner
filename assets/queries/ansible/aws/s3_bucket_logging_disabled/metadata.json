@@ -1,5 +1,6 @@
 {
-  "id": "c3b9f7b0-f5a0-49ec-9cbc-f1e346b7274d",
+  "id": "ansible-aws-s3-bucket-logging-disabled",
+  "legacyId": "c3b9f7b0-f5a0-49ec-9cbc-f1e346b7274d",
   "queryName": "S3 bucket logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

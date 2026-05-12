@@ -1,5 +1,6 @@
 {
-  "id": "2e8d4922-8362-4606-8c14-aa10466a1ce3",
+  "id": "ansible-communication-over-http",
+  "legacyId": "2e8d4922-8362-4606-8c14-aa10466a1ce3",
   "queryName": "Communication over HTTP",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/general/communication_over_http",
   "platform": "Ansible",
   "descriptionID": "04892b9b",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "319",
   "providerUrl": "https://docs.ansible.com/ansible/latest/collections/ansible/builtin/uri_module.html#parameter-url"
 }

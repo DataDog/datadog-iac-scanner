@@ -1,5 +1,6 @@
 {
-  "id": "d6e10477-2e19-4bcd-b8a8-19c65b89ccdf",
+  "id": "ansible-gcp-node-auto-upgrade-disabled",
+  "legacyId": "d6e10477-2e19-4bcd-b8a8-19c65b89ccdf",
   "queryName": "Node auto-upgrade disabled",
   "severity": "MEDIUM",
   "category": "Resource Management",

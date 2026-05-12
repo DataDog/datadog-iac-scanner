@@ -1,5 +1,6 @@
 {
-  "id": "5ba316a9-c466-4ec1-8d5b-bc6107dc9a92",
+  "id": "ansible-aws-cloudtrail-sns-topic-name-undefined",
+  "legacyId": "5ba316a9-c466-4ec1-8d5b-bc6107dc9a92",
   "queryName": "CloudTrail SNS topic name undefined",
   "severity": "LOW",
   "category": "Observability",

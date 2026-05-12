@@ -1,5 +1,6 @@
 {
-  "id": "20dcd953-a8b8-4892-9026-9afa6d05a525",
+  "id": "ansible-gcp-stackdriver-monitoring-disabled",
+  "legacyId": "20dcd953-a8b8-4892-9026-9afa6d05a525",
   "queryName": "Stackdriver monitoring disabled",
   "severity": "MEDIUM",
   "category": "Observability",

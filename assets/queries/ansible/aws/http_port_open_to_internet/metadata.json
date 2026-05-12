@@ -1,5 +1,6 @@
 {
-  "id": "a14ad534-acbe-4a8e-9404-2f7e1045646e",
+  "id": "ansible-aws-http-port-open-to-internet",
+  "legacyId": "a14ad534-acbe-4a8e-9404-2f7e1045646e",
   "queryName": "HTTP port open to internet",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

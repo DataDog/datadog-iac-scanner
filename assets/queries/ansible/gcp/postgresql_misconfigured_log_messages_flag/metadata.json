@@ -1,5 +1,6 @@
 {
-  "id": "28a757fc-3d8f-424a-90c0-4233363b2711",
+  "id": "ansible-gcp-postgresql-misconfigured-log-messages-flag",
+  "legacyId": "28a757fc-3d8f-424a-90c0-4233363b2711",
   "queryName": "PostgreSQL misconfigured log messages flag",
   "severity": "LOW",
   "category": "Observability",

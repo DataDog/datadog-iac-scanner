@@ -1,5 +1,6 @@
 {
-  "id": "29f35127-98e6-43af-8ec1-201b79f99604",
+  "id": "ansible-azure-admin-user-enabled-for-container-registry",
+  "legacyId": "29f35127-98e6-43af-8ec1-201b79f99604",
   "queryName": "Admin user enabled for container registry",
   "severity": "MEDIUM",
   "category": "Access Control",

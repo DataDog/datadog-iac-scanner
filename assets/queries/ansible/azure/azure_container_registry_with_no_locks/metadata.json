@@ -1,5 +1,6 @@
 {
-  "id": "581dae78-307d-45d5-aae4-fe2b0db267a5",
+  "id": "ansible-azure-azure-container-registry-with-no-locks",
+  "legacyId": "581dae78-307d-45d5-aae4-fe2b0db267a5",
   "queryName": "Azure Container Registry with no locks",
   "severity": "HIGH",
   "category": "Insecure Configurations",

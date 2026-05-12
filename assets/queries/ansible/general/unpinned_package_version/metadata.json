@@ -1,5 +1,6 @@
 {
-  "id": "c05e2c20-0a2c-4686-b1f8-5f0a5612d4e8",
+  "id": "ansible-unpinned-package-version",
+  "legacyId": "c05e2c20-0a2c-4686-b1f8-5f0a5612d4e8",
   "queryName": "Unpinned package version",
   "severity": "LOW",
   "category": "Supply-Chain",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/general/unpinned_package_version",
   "platform": "Ansible",
   "descriptionID": "43e877b3",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "706",
   "providerUrl": "https://ansible.readthedocs.io/projects/lint/rules/package-latest/"
 }

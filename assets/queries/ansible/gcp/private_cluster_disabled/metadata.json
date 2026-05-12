@@ -1,5 +1,6 @@
 {
-  "id": "3b30e3d6-c99b-4318-b38f-b99db74578b5",
+  "id": "ansible-gcp-private-cluster-disabled",
+  "legacyId": "3b30e3d6-c99b-4318-b38f-b99db74578b5",
   "queryName": "Private cluster disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

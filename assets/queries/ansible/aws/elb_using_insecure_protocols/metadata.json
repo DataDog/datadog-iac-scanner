@@ -1,5 +1,6 @@
 {
-  "id": "730a5951-2760-407a-b032-dd629b55c23a",
+  "id": "ansible-aws-elb-using-insecure-protocols",
+  "legacyId": "730a5951-2760-407a-b032-dd629b55c23a",
   "queryName": "ELB using insecure protocols",
   "severity": "MEDIUM",
   "category": "Encryption",

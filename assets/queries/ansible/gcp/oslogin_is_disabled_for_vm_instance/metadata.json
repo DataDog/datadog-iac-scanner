@@ -1,5 +1,6 @@
 {
-  "id": "66dae697-507b-4aef-be18-eec5bd707f33",
+  "id": "ansible-gcp-oslogin-is-disabled-for-vm-instance",
+  "legacyId": "66dae697-507b-4aef-be18-eec5bd707f33",
   "queryName": "OSLogin is disabled in VM instance",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "c6fc6f29-dc04-46b6-99ba-683c01aff350",
+  "id": "ansible-gcp-serial-ports-enabled-for-vm-instances",
+  "legacyId": "c6fc6f29-dc04-46b6-99ba-683c01aff350",
   "queryName": "Serial ports are enabled for VM instances",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "88841d5c-d22d-4b7e-a6a0-89ca50e44b9f",
+  "id": "ansible-risky-file-permissions",
+  "legacyId": "88841d5c-d22d-4b7e-a6a0-89ca50e44b9f",
   "queryName": "Risky file permissions",
   "severity": "LOW",
   "category": "Supply-Chain",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/general/risky_file_permissions",
   "platform": "Ansible",
   "descriptionID": "1f0e1485",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "732",
   "providerUrl": "https://ansible.readthedocs.io/projects/lint/rules/risky-file-permissions/"
 }

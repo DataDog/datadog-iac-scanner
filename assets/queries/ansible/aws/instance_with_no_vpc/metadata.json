@@ -1,5 +1,6 @@
 {
-  "id": "61d1a2d0-4db8-405a-913d-5d2ce49dff6f",
+  "id": "ansible-aws-instance-with-no-vpc",
+  "legacyId": "61d1a2d0-4db8-405a-913d-5d2ce49dff6f",
   "queryName": "Instance with no VPC",
   "severity": "LOW",
   "category": "Insecure Configurations",

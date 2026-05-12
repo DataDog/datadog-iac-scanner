@@ -1,5 +1,6 @@
 {
-  "id": "53bce6a8-5492-4b1b-81cf-664385f0c4bf",
+  "id": "ansible-aws-s3-bucket-allows-get-action-from-all-principals",
+  "legacyId": "53bce6a8-5492-4b1b-81cf-664385f0c4bf",
   "queryName": "S3 bucket allows GET action from all principals",
   "severity": "HIGH",
   "category": "Access Control",

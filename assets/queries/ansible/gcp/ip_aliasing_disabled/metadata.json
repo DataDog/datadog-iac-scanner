@@ -1,5 +1,6 @@
 {
-  "id": "ed672a9f-fbf0-44d8-a47d-779501b0db05",
+  "id": "ansible-gcp-ip-aliasing-disabled",
+  "legacyId": "ed672a9f-fbf0-44d8-a47d-779501b0db05",
   "queryName": "IP aliasing disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

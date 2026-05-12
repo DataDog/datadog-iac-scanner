@@ -1,5 +1,6 @@
 {
-  "id": "0956aedf-6a7a-478b-ab56-63e2b19923ad",
+  "id": "ansible-aws-db-security-group-with-public-scope",
+  "legacyId": "0956aedf-6a7a-478b-ab56-63e2b19923ad",
   "queryName": "DB security group with public scope",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

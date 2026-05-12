@@ -1,5 +1,6 @@
 {
-  "id": "16732649-4ff6-4cd2-8746-e72c13fae4b8",
+  "id": "ansible-aws-rds-associated-with-public-subnet",
+  "legacyId": "16732649-4ff6-4cd2-8746-e72c13fae4b8",
   "queryName": "RDS instance associated with a public subnet",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

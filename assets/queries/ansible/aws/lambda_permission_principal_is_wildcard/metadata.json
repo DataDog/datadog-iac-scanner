@@ -1,5 +1,6 @@
 {
-  "id": "1d972c56-8ec2-48c1-a578-887adb09c57a",
+  "id": "ansible-aws-lambda-permission-principal-is-wildcard",
+  "legacyId": "1d972c56-8ec2-48c1-a578-887adb09c57a",
   "queryName": "Lambda permission principal is wildcard",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "2a901825-0f3b-4655-a0fe-e0470e50f8e6",
+  "id": "ansible-azure-mysql-ssl-connection-disabled",
+  "legacyId": "2a901825-0f3b-4655-a0fe-e0470e50f8e6",
   "queryName": "MySQL SSL connection disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

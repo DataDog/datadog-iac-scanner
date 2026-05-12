@@ -1,5 +1,6 @@
 {
-  "id": "133fee21-37ef-45df-a563-4d07edc169f4",
+  "id": "ansible-aws-cmk-is-unusable",
+  "legacyId": "133fee21-37ef-45df-a563-4d07edc169f4",
   "queryName": "CMK is unusable",
   "severity": "MEDIUM",
   "category": "Availability",

@@ -1,5 +1,6 @@
 {
-  "id": "7cc6c791-5f68-4816-a564-b9b699f9d26e",
+  "id": "ansible-aws-elasticache-using-default-port",
+  "legacyId": "7cc6c791-5f68-4816-a564-b9b699f9d26e",
   "queryName": "ElastiCache using default port",
   "severity": "LOW",
   "category": "Networking and Firewall",

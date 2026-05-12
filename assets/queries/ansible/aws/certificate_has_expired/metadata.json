@@ -1,5 +1,6 @@
 {
-  "id": "5a443297-19d4-4381-9e5b-24faf947ec22",
+  "id": "ansible-aws-certificate-has-expired",
+  "legacyId": "5a443297-19d4-4381-9e5b-24faf947ec22",
   "queryName": "Certificate has expired",
   "severity": "MEDIUM",
   "category": "Access Control",

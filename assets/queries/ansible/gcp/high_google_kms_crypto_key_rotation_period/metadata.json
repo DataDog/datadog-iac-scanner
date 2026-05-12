@@ -1,5 +1,6 @@
 {
-  "id": "f9b7086b-deb8-4034-9330-d7fd38f1b8de",
+  "id": "ansible-gcp-high-google-kms-crypto-key-rotation-period",
+  "legacyId": "f9b7086b-deb8-4034-9330-d7fd38f1b8de",
   "queryName": "High Google KMS crypto key rotation period",
   "severity": "MEDIUM",
   "category": "Secret Management",

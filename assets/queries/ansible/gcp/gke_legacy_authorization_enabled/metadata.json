@@ -1,5 +1,6 @@
 {
-  "id": "300a9964-b086-41f7-9378-b6de3ba1c32b",
+  "id": "ansible-gcp-gke-legacy-authorization-enabled",
+  "legacyId": "300a9964-b086-41f7-9378-b6de3ba1c32b",
   "queryName": "GKE legacy authorization enabled",
   "severity": "HIGH",
   "category": "Insecure Configurations",

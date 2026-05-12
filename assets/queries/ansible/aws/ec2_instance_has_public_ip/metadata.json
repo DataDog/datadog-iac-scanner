@@ -1,5 +1,6 @@
 {
-  "id": "a8b0c58b-cd25-4b53-9ad0-55bca0be0bc1",
+  "id": "ansible-aws-ec2-instance-has-public-ip",
+  "legacyId": "a8b0c58b-cd25-4b53-9ad0-55bca0be0bc1",
   "queryName": "EC2 instance has public IP",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

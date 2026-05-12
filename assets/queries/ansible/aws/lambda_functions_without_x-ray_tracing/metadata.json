@@ -1,5 +1,6 @@
 {
-  "id": "71397b34-1d50-4ee1-97cb-c96c34676f74",
+  "id": "ansible-aws-lambda-functions-without-x-ray-tracing",
+  "legacyId": "71397b34-1d50-4ee1-97cb-c96c34676f74",
   "queryName": "Lambda functions without X-Ray tracing",
   "severity": "LOW",
   "category": "Observability",

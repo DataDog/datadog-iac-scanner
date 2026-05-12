@@ -1,5 +1,6 @@
 {
-  "id": "6f5f5444-1422-495f-81ef-24cefd61ed2c",
+  "id": "ansible-aws-password-without-reuse-prevention",
+  "legacyId": "6f5f5444-1422-495f-81ef-24cefd61ed2c",
   "queryName": "Password without reuse prevention",
   "severity": "LOW",
   "category": "Best Practices",

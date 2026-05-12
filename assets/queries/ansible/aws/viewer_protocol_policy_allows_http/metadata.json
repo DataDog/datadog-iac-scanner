@@ -1,5 +1,6 @@
 {
-  "id": "a6d27cf7-61dc-4bde-ae08-3b353b609f76",
+  "id": "ansible-aws-viewer-protocol-policy-allows-http",
+  "legacyId": "a6d27cf7-61dc-4bde-ae08-3b353b609f76",
   "queryName": "CloudFront viewer protocol policy allows HTTP",
   "severity": "MEDIUM",
   "category": "Encryption",

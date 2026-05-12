@@ -1,5 +1,6 @@
 {
-  "id": "b2fbf1df-76dd-4d78-a6c0-e538f4a9b016",
+  "id": "ansible-gcp-ssh-access-is-not-restricted",
+  "legacyId": "b2fbf1df-76dd-4d78-a6c0-e538f4a9b016",
   "queryName": "SSH access is not restricted",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

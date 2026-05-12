@@ -1,5 +1,6 @@
 {
-  "id": "2cb674f6-32f9-40be-97f2-62c0dc38f0d5",
+  "id": "ansible-aws-rds-using-default-port",
+  "legacyId": "2cb674f6-32f9-40be-97f2-62c0dc38f0d5",
   "queryName": "RDS instance uses a default port",
   "severity": "LOW",
   "category": "Networking and Firewall",

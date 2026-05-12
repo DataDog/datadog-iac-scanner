@@ -1,5 +1,6 @@
 {
-  "id": "f5c45127-1d28-4b49-a692-0b97da1c3a84",
+  "id": "ansible-aws-ecs-service-without-running-tasks",
+  "legacyId": "f5c45127-1d28-4b49-a692-0b97da1c3a84",
   "queryName": "ECS service without running tasks",
   "severity": "LOW",
   "category": "Availability",

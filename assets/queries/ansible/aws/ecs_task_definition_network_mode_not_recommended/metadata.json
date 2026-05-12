@@ -1,5 +1,6 @@
 {
-  "id": "01aec7c2-3e4d-4274-ae47-2b8fea22fd1f",
+  "id": "ansible-aws-ecs-task-definition-network-mode-not-recommended",
+  "legacyId": "01aec7c2-3e4d-4274-ae47-2b8fea22fd1f",
   "queryName": "ECS task definition network mode not recommended",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

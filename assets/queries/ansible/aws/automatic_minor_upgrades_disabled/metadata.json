@@ -1,5 +1,6 @@
 {
-  "id": "857f8808-e96a-4ba8-a9b7-f2d4ec6cad94",
+  "id": "ansible-aws-automatic-minor-upgrades-disabled",
+  "legacyId": "857f8808-e96a-4ba8-a9b7-f2d4ec6cad94",
   "queryName": "Automatic minor upgrades disabled",
   "severity": "LOW",
   "category": "Best Practices",

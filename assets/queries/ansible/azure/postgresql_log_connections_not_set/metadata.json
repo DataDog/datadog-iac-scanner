@@ -1,5 +1,6 @@
 {
-  "id": "7b47138f-ec0e-47dc-8516-e7728fe3cc17",
+  "id": "ansible-azure-postgresql-log-connections-not-set",
+  "legacyId": "7b47138f-ec0e-47dc-8516-e7728fe3cc17",
   "queryName": "PostgreSQL log connections not set",
   "severity": "MEDIUM",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "a1423864-2fbc-4f46-bfe1-fbbf125c71c9",
+  "id": "ansible-aws-codebuild-not-encrypted",
+  "legacyId": "a1423864-2fbc-4f46-bfe1-fbbf125c71c9",
   "queryName": "CodeBuild project is not encrypted",
   "severity": "MEDIUM",
   "category": "Encryption",

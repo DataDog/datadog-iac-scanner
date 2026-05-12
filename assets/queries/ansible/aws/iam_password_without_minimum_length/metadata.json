@@ -1,5 +1,6 @@
 {
-  "id": "8bc2168c-1723-4eeb-a6f3-a1ba614b9a6d",
+  "id": "ansible-aws-iam-password-without-minimum-length",
+  "legacyId": "8bc2168c-1723-4eeb-a6f3-a1ba614b9a6d",
   "queryName": "IAM password without minimum length",
   "severity": "LOW",
   "category": "Best Practices",

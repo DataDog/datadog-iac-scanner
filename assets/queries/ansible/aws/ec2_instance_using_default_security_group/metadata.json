@@ -1,5 +1,6 @@
 {
-  "id": "8d03993b-8384-419b-a681-d1f55149397c",
+  "id": "ansible-aws-ec2-instance-using-default-security-group",
+  "legacyId": "8d03993b-8384-419b-a681-d1f55149397c",
   "queryName": "EC2 instance using default security group",
   "severity": "MEDIUM",
   "category": "Access Control",

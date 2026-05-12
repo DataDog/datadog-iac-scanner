@@ -1,5 +1,6 @@
 {
-  "id": "ca4df748-613a-4fbf-9c76-f02cbd580307",
+  "id": "ansible-azure-default-azure-storage-account-network-access-is-too-permissive",
+  "legacyId": "ca4df748-613a-4fbf-9c76-f02cbd580307",
   "queryName": "Default Azure storage account network access is too permissive",
   "severity": "HIGH",
   "category": "Access Control",

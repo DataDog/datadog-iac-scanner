@@ -1,5 +1,6 @@
 {
-  "id": "bd77554e-f138-40c5-91b2-2a09f878608e",
+  "id": "ansible-aws-efs-without-kms",
+  "legacyId": "bd77554e-f138-40c5-91b2-2a09f878608e",
   "queryName": "EFS without KMS",
   "severity": "LOW",
   "category": "Encryption",

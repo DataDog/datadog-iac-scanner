@@ -1,5 +1,6 @@
 {
-  "id": "1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc",
+  "id": "ansible-ansible-tower-exposed-to-internet",
+  "legacyId": "1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc",
   "queryName": "Ansible Tower exposed to the internet",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/hosts/ansible_tower_exposed_to_internet",
   "platform": "Ansible",
   "descriptionID": "657a8b1d",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "668",
   "providerUrl": "https://docs.ansible.com/ansible-tower/latest/html/administration/security_best_practices.html#understand-the-architecture-of-ansible-and-tower"
 }

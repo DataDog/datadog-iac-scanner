@@ -1,5 +1,6 @@
 {
-  "id": "d5e83b32-56dd-4247-8c2e-074f43b38a5e",
+  "id": "ansible-azure-aks-monitoring-logging-disabled",
+  "legacyId": "d5e83b32-56dd-4247-8c2e-074f43b38a5e",
   "queryName": "AKS monitoring logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

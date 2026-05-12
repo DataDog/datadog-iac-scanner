@@ -1,5 +1,6 @@
 {
-  "id": "75418eb9-39ec-465f-913c-6f2b6a80dc77",
+  "id": "ansible-gcp-rdp-access-is-not-restricted",
+  "legacyId": "75418eb9-39ec-465f-913c-6f2b6a80dc77",
   "queryName": "RDP access is not restricted",
   "severity": "HIGH",
   "category": "Networking and Firewall",

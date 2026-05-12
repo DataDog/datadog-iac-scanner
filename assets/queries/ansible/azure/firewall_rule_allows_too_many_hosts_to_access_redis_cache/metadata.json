@@ -1,5 +1,6 @@
 {
-  "id": "69f72007-502e-457b-bd2d-5012e31ac049",
+  "id": "ansible-azure-firewall-rule-allows-too-many-hosts-to-access-redis-cache",
+  "legacyId": "69f72007-502e-457b-bd2d-5012e31ac049",
   "queryName": "Firewall rule allows too many hosts to access Redis Cache",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

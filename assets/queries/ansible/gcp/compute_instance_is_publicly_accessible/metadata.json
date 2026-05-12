@@ -1,5 +1,6 @@
 {
-  "id": "829f1c60-2bab-44c6-8a21-5cd9d39a2c82",
+  "id": "ansible-gcp-compute-instance-is-publicly-accessible",
+  "legacyId": "829f1c60-2bab-44c6-8a21-5cd9d39a2c82",
   "queryName": "Compute instance is publicly accessible",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

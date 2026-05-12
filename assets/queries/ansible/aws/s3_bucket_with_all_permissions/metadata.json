@@ -1,5 +1,6 @@
 {
-  "id": "6a6d7e56-c913-4549-b5c5-5221e624d2ec",
+  "id": "ansible-aws-s3-bucket-with-all-permissions",
+  "legacyId": "6a6d7e56-c913-4549-b5c5-5221e624d2ec",
   "queryName": "S3 bucket with all permissions",
   "severity": "CRITICAL",
   "category": "Access Control",
