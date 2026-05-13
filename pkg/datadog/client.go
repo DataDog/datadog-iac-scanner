@@ -89,7 +89,7 @@ func WithAppKeyFromEnv() DatadogClientOption {
 	return WithAppKey(getDdEnvvar("APP_KEY"))
 }
 
-// WithJwtToken lets you specify a Datadog auth JWT for service-to-service authentication.
+// WithJwtToken lets you specify a Datadog auth JWT, sent as the `dd-auth-jwt` request header.
 // If unspecified, the JWT will be fetched from the environment using WithJwtTokenFromEnv.
 func WithJwtToken(jwtToken string) DatadogClientOption {
 	return func(ds *datadogClient) {
@@ -98,8 +98,7 @@ func WithJwtToken(jwtToken string) DatadogClientOption {
 }
 
 // WithJwtTokenFromEnv uses the JWT specified in the DD_JWT_TOKEN or DATADOG_JWT_TOKEN environment variable.
-// If neither variable exists, an empty JWT will be used. The JWT is sent as the `dd-auth-jwt`
-// header and is the auth mechanism used by Datadog code-workload-runner environments.
+// If neither variable exists, an empty JWT will be used.
 func WithJwtTokenFromEnv() DatadogClientOption {
 	return WithJwtToken(getDdEnvvar("JWT_TOKEN"))
 }
@@ -121,9 +120,7 @@ func WithHostname(hostname string) DatadogClientOption {
 }
 
 // WithHostnameFromEnv uses the hostname specified in the DD_HOSTNAME or DATADOG_HOSTNAME environment variable.
-// When set, it takes precedence over DD_SITE so that internal Datadog runners can point the scanner at a
-// private static-analysis-api address (e.g. an internal fabric.dog host). Matches the behavior of
-// datadog-static-analyzer's get_datadog_basename.
+// When set, it takes precedence over DD_SITE. If neither variable exists, an empty hostname will be used.
 func WithHostnameFromEnv() DatadogClientOption {
 	return WithHostname(getDdEnvvar("HOSTNAME"))
 }
@@ -224,8 +221,7 @@ func (s *datadogClient) sendRequest(ctx context.Context, method, path string, re
 	return s.httpClient.Do(req)
 }
 
-// baseURL returns the API base URL, preserving an explicit http:// or https:// scheme
-// when present in the hostname and defaulting to https:// otherwise.
+// baseURL returns the API base URL, defaulting to https:// when the hostname has no scheme.
 func (s *datadogClient) baseURL() string {
 	if strings.HasPrefix(s.hostname, "http://") || strings.HasPrefix(s.hostname, "https://") {
 		return s.hostname
@@ -233,11 +229,8 @@ func (s *datadogClient) baseURL() string {
 	return "https://" + s.hostname
 }
 
-// getDdEnvvar returns the value of the given Datadog environment variable.
-// The DD_ prefix is checked first, then the DATADOG_ prefix. An explicitly empty
-// value is treated as absent so that callers fall through to the next candidate,
-// matching the behavior of datadog-static-analyzer's get_datadog_variable_value.
-// Returns an empty string if neither environment variable provides a value.
+// getDdEnvvar returns the value of the DD_<name> environment variable, falling back to DATADOG_<name>.
+// An explicitly empty value is treated as absent so callers fall through to the next candidate.
 func getDdEnvvar(name string) string {
 	for _, prefix := range []string{"DD_", "DATADOG_"} {
 		if v, ok := os.LookupEnv(prefix + name); ok && v != "" {

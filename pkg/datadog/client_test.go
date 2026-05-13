@@ -62,8 +62,8 @@ func TestGetRemoteConfig(t *testing.T) {
 	assert.Equal(t, remoteConfig, string(actual))
 }
 
-// TestGetRemoteConfig_WithJwtToken exercises the JWT auth path used by
-// internal Datadog code-workload runners (no API/app keys, only `dd-auth-jwt`).
+// TestGetRemoteConfig_WithJwtToken verifies that the client authenticates with
+// only a JWT (no API or application key) by sending the `dd-auth-jwt` header.
 func TestGetRemoteConfig_WithJwtToken(t *testing.T) {
 	clearDatadogEnv(t)
 
@@ -103,10 +103,8 @@ func TestGetRemoteConfig_WithJwtToken(t *testing.T) {
 	assert.Equal(t, remoteConfig, string(actual))
 }
 
-// TestGetRemoteConfig_EmptyDdJwtTokenFallsBackToDatadogJwtToken covers the case
-// where DD_JWT_TOKEN is exported but empty (a common shell or runner pattern) and
-// the real token is provided via DATADOG_JWT_TOKEN. An explicitly empty DD_ value
-// must not shadow a populated DATADOG_ value.
+// TestGetRemoteConfig_EmptyDdJwtTokenFallsBackToDatadogJwtToken verifies that
+// an explicitly empty DD_JWT_TOKEN does not shadow a populated DATADOG_JWT_TOKEN.
 func TestGetRemoteConfig_EmptyDdJwtTokenFallsBackToDatadogJwtToken(t *testing.T) {
 	clearDatadogEnv(t)
 	t.Setenv("DD_JWT_TOKEN", "")
@@ -137,9 +135,9 @@ func TestGetRemoteConfig_EmptyDdJwtTokenFallsBackToDatadogJwtToken(t *testing.T)
 	assert.Equal(t, remoteConfig, string(actual))
 }
 
-// TestGetRemoteConfig_NoCredentials documents that with no API key, no application
-// key, and no JWT token, the client echoes the local configuration without making
-// any HTTP request. The provided HTTP client would fail the test if called.
+// TestGetRemoteConfig_NoCredentials verifies that, with no API key, no application
+// key, and no JWT, the client echoes the local configuration without making any
+// HTTP request. The handler fails the test if called.
 func TestGetRemoteConfig_NoCredentials(t *testing.T) {
 	clearDatadogEnv(t)
 
@@ -160,9 +158,9 @@ func TestGetRemoteConfig_NoCredentials(t *testing.T) {
 	assert.Equal(t, string(local), string(actual))
 }
 
-// clearDatadogEnv ensures that no DD_* / DATADOG_* credential or endpoint env vars
-// leak into the constructor's env fallbacks, which would otherwise make these tests
-// dependent on the developer's local environment.
+// clearDatadogEnv prevents DD_* / DATADOG_* credential and endpoint env vars from
+// leaking into the constructor's env fallbacks and making the tests depend on the
+// developer's local environment.
 func clearDatadogEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
@@ -177,9 +175,7 @@ func clearDatadogEnv(t *testing.T) {
 }
 
 // TestGetRemoteConfig_DdHostnameTakesPrecedenceOverDdSite verifies that the
-// internal endpoint passed via DD_HOSTNAME wins over DD_SITE so that internal
-// Datadog runners (which point the scanner at a private static-analysis-api host)
-// don't accidentally fall through to the public api.datadoghq.com endpoint.
+// hostname passed via DD_HOSTNAME wins over DD_SITE when both are set.
 func TestGetRemoteConfig_DdHostnameTakesPrecedenceOverDdSite(t *testing.T) {
 	clearDatadogEnv(t)
 
@@ -209,10 +205,9 @@ func TestGetRemoteConfig_DdHostnameTakesPrecedenceOverDdSite(t *testing.T) {
 	assert.Equal(t, remoteConfig, string(actual))
 }
 
-// TestGetRemoteConfig_HostnameWithHttpScheme verifies that DD_HOSTNAME values that
-// already include an http:// scheme are used as-is, matching the behavior of
-// datadog-static-analyzer. This is what dd-in-a-can needs to redirect the scanner
-// at a local mock server.
+// TestGetRemoteConfig_HostnameWithHttpScheme verifies that a hostname that
+// already includes an http:// scheme is used as-is, instead of being prefixed
+// with https://.
 func TestGetRemoteConfig_HostnameWithHttpScheme(t *testing.T) {
 	clearDatadogEnv(t)
 
