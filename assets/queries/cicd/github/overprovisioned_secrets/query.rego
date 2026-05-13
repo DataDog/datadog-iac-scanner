@@ -283,6 +283,46 @@ CxPolicy[result] {
 	}
 }
 
+# Detect toJSON(secrets) or dynamic secret access in root env block
+CxPolicy[result] {
+	doc := input.document[i]
+	cicd_lib.check_provider(doc) == "github"
+	env := doc.env
+
+	# Get the env block
+	env_value := env[e]
+
+	# Check if it's a string with parsed expressions
+	is_string(env_value)
+
+	# Build the parsed expressions key
+	parsed_key := concat("", ["_parsed_expressions_", e])
+	parsed_exprs := env[parsed_key][_]
+
+	# Verify parsing succeeded
+	parsed_exprs.parse_ok == true
+
+	# Check for either secrets expansion or dynamic secret key
+	any([parsed_exprs.has_secrets_expansion, parsed_exprs.has_dynamic_secret_key])
+
+	# Build appropriate message
+	message := sprintf("Expression '%s' %s", [
+		parsed_exprs.raw,
+		get_submessage(parsed_exprs.has_secrets_expansion)
+	])
+
+	result := {
+		"documentId": doc.id,
+		"searchKey": sprintf("env.%s", [e]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "Secrets should be referenced individually with literal keys",
+		"keyActualValue": message,
+		"searchLine": common_lib.build_search_line(["env", e], []),
+		"resourceType": "github_action",
+		"resourceName": "env"
+	}
+}
+
 get_submessage(has_secrets_expansion) = "injects the entire secrets context" {
 	has_secrets_expansion
 } else = "uses dynamic indexing to access secrets" {
