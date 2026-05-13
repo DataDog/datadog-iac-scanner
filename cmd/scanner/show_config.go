@@ -14,10 +14,10 @@ var showConfigAction = &cli.Command{
 	Usage: "Displays the Datadog IaC scanner configuration for this repository",
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
-			Name:    "path",
-			Aliases: []string{"p"},
-			Usage:   "repository root path",
-			Value:   []string{"."},
+			Name:        "path",
+			Aliases:     []string{"p"},
+			Usage:       "repository root path",
+			DefaultText: ".",
 		},
 		&cli.BoolFlag{
 			Name:  "local",
@@ -29,7 +29,11 @@ var showConfigAction = &cli.Command{
 }
 
 func showConfig(ctx context.Context, c *cli.Command) error {
-	repoInfo, repoDir, err := getRepositoryCommitInfo(c.StringSlice("path"))
+	paths := c.StringSlice("path")
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
+	repoInfo, repoDir, err := getRepositoryCommitInfo(paths)
 	if err != nil {
 		return fmt.Errorf("error retrieving repository commit information: %w", err)
 	}
