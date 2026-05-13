@@ -1,5 +1,6 @@
 {
-  "id": "cdc8b54e-6b16-4538-a1b0-35849dbe29cf",
+  "id": "kubernetes-kubelet-https-set-to-false",
+  "legacyId": "cdc8b54e-6b16-4538-a1b0-35849dbe29cf",
   "queryName": "Kubelet HTTPS set to false",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
@@ -9,5 +10,6 @@
   "descriptionID": "754a303a",
   "cwe": "311",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

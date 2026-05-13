@@ -1,5 +1,6 @@
 {
-  "id": "510d5810-9a30-443a-817d-5c1fa527b110",
+  "id": "kubernetes-weak-tls-cipher-suites",
+  "legacyId": "510d5810-9a30-443a-817d-5c1fa527b110",
   "queryName": "Weak TLS cipher suites",
   "severity": "MEDIUM",
   "category": "Encryption",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "cbb6cab8",
   "cwe": "326",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/",
+  "cloudProvider": ""
 }

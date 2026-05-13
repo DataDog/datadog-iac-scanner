@@ -1,5 +1,6 @@
 {
-  "id": "87554eef-154d-411d-bdce-9dbd91e56851",
+  "id": "kubernetes-psp-allows-privilege-escalation",
+  "legacyId": "87554eef-154d-411d-bdce-9dbd91e56851",
   "queryName": "PSP allows privilege escalation",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -9,5 +10,6 @@
   "descriptionID": "d7c5e3ad",
   "cwe": "269",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }

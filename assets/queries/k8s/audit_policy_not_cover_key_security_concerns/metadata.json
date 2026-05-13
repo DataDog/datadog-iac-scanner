@@ -1,5 +1,6 @@
 {
-  "id": "1828a670-5957-4bc5-9974-47da228f75e2",
+  "id": "kubernetes-audit-policy-not-cover-key-security-concerns",
+  "legacyId": "1828a670-5957-4bc5-9974-47da228f75e2",
   "queryName": "Audit policy does not cover key security concerns",
   "severity": "LOW",
   "category": "Observability",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "4a720a0c",
   "cwe": "532",
-  "providerUrl": "https://kubernetes.io/docs/tasks/debug-application-cluster/audit/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/debug-application-cluster/audit/",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "ae8827e2-4af9-4baa-9998-87539ae0d6f0",
+  "id": "kubernetes-peer-auto-tls-set-to-true",
+  "legacyId": "ae8827e2-4af9-4baa-9998-87539ae0d6f0",
   "queryName": "Peer auto TLS set to true",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
@@ -9,5 +10,6 @@
   "descriptionID": "02a0a4d9",
   "cwe": "295",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/",
+  "cloudProvider": ""
 }

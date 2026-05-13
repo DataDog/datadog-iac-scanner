@@ -1,5 +1,6 @@
 {
-  "id": "0401f71b-9c1e-4821-ab15-a955caa621be",
+  "id": "kubernetes-pod-misconfigured-network-policy",
+  "legacyId": "0401f71b-9c1e-4821-ab15-a955caa621be",
   "queryName": "Pod misconfigured network policy",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "20500552",
   "cwe": "665",
-  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/network-policies/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/network-policies/",
+  "cloudProvider": ""
 }

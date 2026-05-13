@@ -1,5 +1,6 @@
 {
-  "id": "e0099af2-fe17-411f-9991-0de28fe15f3c",
+  "id": "kubernetes-event-rate-limit-admission-control-plugin-not-set",
+  "legacyId": "e0099af2-fe17-411f-9991-0de28fe15f3c",
   "queryName": "Event rate limit admission control plugin not set",
   "severity": "LOW",
   "category": "Availability",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "3cc9eca8",
   "cwe": "284",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

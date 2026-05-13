@@ -1,5 +1,6 @@
 {
-  "id": "056ac60e-fe07-4acc-9b34-8e1d51716ab9",
+  "id": "kubernetes-service-account-allows-access-secrets",
+  "legacyId": "056ac60e-fe07-4acc-9b34-8e1d51716ab9",
   "queryName": "ServiceAccount allows access to secrets",
   "severity": "MEDIUM",
   "category": "Secret Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "79619280",
   "cwe": "522",
-  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/"
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/",
+  "cloudProvider": ""
 }

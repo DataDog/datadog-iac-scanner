@@ -1,5 +1,6 @@
 {
-  "id": "52d70f2e-3257-474c-b3dc-8ad9ba6a061a",
+  "id": "kubernetes-kubelet-client-periodic-certificate-switch-disabled",
+  "legacyId": "52d70f2e-3257-474c-b3dc-8ad9ba6a061a",
   "queryName": "Kubelet client periodic certificate switch disabled",
   "severity": "MEDIUM",
   "category": "Secret Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "1a17c91a",
   "cwe": "295",
-  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/",
+  "cloudProvider": ""
 }

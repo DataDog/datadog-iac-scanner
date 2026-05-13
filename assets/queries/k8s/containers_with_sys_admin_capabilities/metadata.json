@@ -1,5 +1,6 @@
 {
-  "id": "235236ee-ad78-4065-bd29-61b061f28ce0",
+  "id": "kubernetes-containers-with-sys-admin-capabilities",
+  "legacyId": "235236ee-ad78-4065-bd29-61b061f28ce0",
   "queryName": "Containers with sys admin capabilities",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -9,5 +10,6 @@
   "descriptionID": "029aeb1d",
   "cwe": "250",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+  "cloudProvider": ""
 }

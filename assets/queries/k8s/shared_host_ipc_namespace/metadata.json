@@ -1,5 +1,6 @@
 {
-  "id": "cd290efd-6c82-4e9d-a698-be12ae31d536",
+  "id": "kubernetes-shared-host-ipc-namespace",
+  "legacyId": "cd290efd-6c82-4e9d-a698-be12ae31d536",
   "queryName": "Shared host IPC namespace",
   "severity": "MEDIUM",
   "category": "Resource Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "1ef1fe71",
   "cwe": "200",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }

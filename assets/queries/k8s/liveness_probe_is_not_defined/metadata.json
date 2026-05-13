@@ -1,5 +1,6 @@
 {
-  "id": "ade74944-a674-4e00-859e-c6eab5bde441",
+  "id": "kubernetes-liveness-probe-is-not-defined",
+  "legacyId": "ade74944-a674-4e00-859e-c6eab5bde441",
   "queryName": "Liveness probe is not defined",
   "severity": "LOW",
   "category": "Availability",
@@ -9,5 +10,6 @@
   "descriptionID": "f724fa60",
   "cwe": "754",
   "oldSeverity": "LOW",
-  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#when-should-you-use-a-liveness-probe"
+  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#when-should-you-use-a-liveness-probe",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "bf36b900-b5ef-4828-adb7-70eb543b7cfb",
+  "id": "kubernetes-kubelet-hostname-override-is-set",
+  "legacyId": "bf36b900-b5ef-4828-adb7-70eb543b7cfb",
   "queryName": "Kubelet hostname override is set",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "a3adb557",
   "cwe": "269",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/",
+  "cloudProvider": ""
 }

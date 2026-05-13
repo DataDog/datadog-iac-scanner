@@ -1,5 +1,6 @@
 {
-  "id": "2f491173-6375-4a84-b28e-a4e2b9a58a69",
+  "id": "kubernetes-profiling-not-set-to-false",
+  "legacyId": "2f491173-6375-4a84-b28e-a4e2b9a58a69",
   "queryName": "Profiling not set to false",
   "severity": "LOW",
   "category": "Observability",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "622a1db7",
   "cwe": "779",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

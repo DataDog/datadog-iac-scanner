@@ -1,5 +1,6 @@
 {
-  "id": "1acd93f1-5a37-45c0-aaac-82ece818be7d",
+  "id": "kubernetes-use-service-account-credentials-not-set-to-true",
+  "legacyId": "1acd93f1-5a37-45c0-aaac-82ece818be7d",
   "queryName": "Use service account credentials not set to true",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -17,5 +18,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/",
+  "cloudProvider": ""
 }

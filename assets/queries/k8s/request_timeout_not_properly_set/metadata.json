@@ -1,5 +1,6 @@
 {
-  "id": "d89a15bb-8dba-4c71-9529-bef6729b9c09",
+  "id": "kubernetes-request-timeout-not-properly-set",
+  "legacyId": "d89a15bb-8dba-4c71-9529-bef6729b9c09",
   "queryName": "Request timeout not properly set",
   "severity": "MEDIUM",
   "category": "Availability",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "592c7cba",
   "cwe": "754",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "592ad21d-ad9b-46c6-8d2d-fad09d62a942",
+  "id": "kubernetes-permissive-access-to-create-pods",
+  "legacyId": "592ad21d-ad9b-46c6-8d2d-fad09d62a942",
   "queryName": "Permissive access to create pods",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "c78cb1a7",
   "cwe": "269",
-  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/#privilege-escalation-prevention-and-bootstrapping"
+  "providerUrl": "https://kubernetes.io/docs/reference/access-authn-authz/rbac/#privilege-escalation-prevention-and-bootstrapping",
+  "cloudProvider": ""
 }

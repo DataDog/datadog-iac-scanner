@@ -1,5 +1,6 @@
 {
-  "id": "6a68bebe-c021-492e-8ddb-55b0567fb768",
+  "id": "kubernetes-security-context-deny-admission-control-plugin-not-set",
+  "legacyId": "6a68bebe-c021-492e-8ddb-55b0567fb768",
   "queryName": "Security context deny admission control plugin not set",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "571f15ee",
   "cwe": "284",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

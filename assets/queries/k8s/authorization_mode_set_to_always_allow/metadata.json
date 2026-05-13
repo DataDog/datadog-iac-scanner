@@ -1,5 +1,6 @@
 {
-  "id": "f1f4d8da-1ac4-47d0-b1aa-91e69d33f7d5",
+  "id": "kubernetes-authorization-mode-set-to-always-allow",
+  "legacyId": "f1f4d8da-1ac4-47d0-b1aa-91e69d33f7d5",
   "queryName": "Authorization mode set to always allow",
   "severity": "HIGH",
   "category": "Access Control",
@@ -23,5 +24,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/",
+  "cloudProvider": ""
 }

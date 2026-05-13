@@ -1,5 +1,6 @@
 {
-  "id": "8b862ca9-0fbd-4959-ad72-b6609bdaa22d",
+  "id": "kubernetes-tiller-service-is-not-deleted",
+  "legacyId": "8b862ca9-0fbd-4959-ad72-b6609bdaa22d",
   "queryName": "Tiller Service present",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "4e704117",
   "cwe": "665",
-  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/service"
+  "providerUrl": "https://kubernetes.io/docs/concepts/services-networking/service",
+  "cloudProvider": ""
 }

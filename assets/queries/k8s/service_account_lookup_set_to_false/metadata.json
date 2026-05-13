@@ -1,5 +1,6 @@
 {
-  "id": "a5530bd7-225a-48f9-91bb-f40b04200165",
+  "id": "kubernetes-service-account-lookup-set-to-false",
+  "legacyId": "a5530bd7-225a-48f9-91bb-f40b04200165",
   "queryName": "Service account lookup set to false",
   "severity": "HIGH",
   "category": "Access Control",
@@ -16,5 +17,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "ca469dd4-c736-448f-8ac1-30a642705e0a",
+  "id": "kubernetes-cpu-requests-not-set",
+  "legacyId": "ca469dd4-c736-448f-8ac1-30a642705e0a",
   "queryName": "CPU requests not set",
   "severity": "LOW",
   "category": "Resource Management",
@@ -9,5 +10,6 @@
   "descriptionID": "ac7ad5df",
   "cwe": "400",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#"
+  "providerUrl": "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "46a2e9ec-6a5f-4faa-9d39-4ea44d5d87a2",
+  "id": "kubernetes-bind-address-not-properly-set",
+  "legacyId": "46a2e9ec-6a5f-4faa-9d39-4ea44d5d87a2",
   "queryName": "Bind address not properly set",
   "severity": "LOW",
   "category": "Networking and Firewall",
@@ -9,6 +10,6 @@
   "descriptionID": "b52844f2",
   "cwe": "710",
   "oldSeverity": "HIGH",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/"
 }

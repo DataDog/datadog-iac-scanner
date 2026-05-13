@@ -1,5 +1,6 @@
 {
-  "id": "b7d0181d-0a9b-4611-9d1c-1ad4f0b620ff",
+  "id": "kubernetes-etcd-peer-client-certificate-authentication-set-to-false",
+  "legacyId": "b7d0181d-0a9b-4611-9d1c-1ad4f0b620ff",
   "queryName": "etcd peer client certificate authentication set to false",
   "severity": "MEDIUM",
   "category": "Secret Management",
@@ -16,5 +17,6 @@
       "requirement": "kubernetes"
     }
   ],
-  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/"
+  "providerUrl": "https://etcd.io/docs/v3.4/op-guide/security/",
+  "cloudProvider": ""
 }

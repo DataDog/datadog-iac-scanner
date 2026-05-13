@@ -1,5 +1,6 @@
 {
-  "id": "229588ef-8fde-40c8-8756-f4f2b5825ded",
+  "id": "kubernetes-memory-requests-not-defined",
+  "legacyId": "229588ef-8fde-40c8-8756-f4f2b5825ded",
   "queryName": "Memory requests not defined",
   "severity": "MEDIUM",
   "category": "Resource Management",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "3dcbd683",
   "cwe": "400",
-  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/"
+  "providerUrl": "https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/",
+  "cloudProvider": ""
 }

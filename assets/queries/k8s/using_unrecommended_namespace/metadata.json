@@ -1,5 +1,6 @@
 {
-  "id": "611ab018-c4aa-4ba2-b0f6-a448337509a6",
+  "id": "kubernetes-using-unrecommended-namespace",
+  "legacyId": "611ab018-c4aa-4ba2-b0f6-a448337509a6",
   "queryName": "Using unrecommended namespace",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "29549ea9",
   "cwe": "665",
-  "providerUrl": "https://kubernetes.io/docs/concepts/overview/working-with-objects/kubernetes-objects/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/overview/working-with-objects/kubernetes-objects/",
+  "cloudProvider": ""
 }

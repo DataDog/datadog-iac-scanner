@@ -1,5 +1,6 @@
 {
-  "id": "a33e9173-b674-4dfb-9d82-cf3754816e4b",
+  "id": "kubernetes-psp-containers-share-host-network-namespace",
+  "legacyId": "a33e9173-b674-4dfb-9d82-cf3754816e4b",
   "queryName": "PodSecurityPolicy allows host network sharing",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "4b468f08",
   "cwe": "250",
-  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/"
+  "providerUrl": "https://kubernetes.io/docs/concepts/policy/pod-security-policy/",
+  "cloudProvider": ""
 }

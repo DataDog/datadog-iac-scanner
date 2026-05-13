@@ -1,5 +1,6 @@
 {
-  "id": "35c0a471-f7c8-4993-aa2c-503a3c712a66",
+  "id": "kubernetes-audit-log-maxsize-not-properly-set",
+  "legacyId": "35c0a471-f7c8-4993-aa2c-503a3c712a66",
   "queryName": "Audit log maxsize not properly set",
   "severity": "LOW",
   "category": "Observability",
@@ -8,5 +9,6 @@
   "platform": "Kubernetes",
   "descriptionID": "9609fc23",
   "cwe": "778",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "ccc98ff7-68a7-436e-9218-185cb0b0b780",
+  "id": "kubernetes-service-account-private-key-file-not-defined",
+  "legacyId": "ccc98ff7-68a7-436e-9218-185cb0b0b780",
   "queryName": "Service account private key file not defined",
   "severity": "MEDIUM",
   "category": "Encryption",
@@ -9,5 +10,6 @@
   "descriptionID": "b2fc61b4",
   "cwe": "286",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/"
+  "providerUrl": "https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/",
+  "cloudProvider": ""
 }
