@@ -1,5 +1,6 @@
 {
-  "id": "baa3890f-bed7-46f5-ab8f-1da8fc91c729",
+  "id": "dockercompose-shared-host-ipc-namespace",
+  "legacyId": "baa3890f-bed7-46f5-ab8f-1da8fc91c729",
   "queryName": "Shared Host IPC Namespace",
   "severity": "MEDIUM",
   "category": "Resource Management",
@@ -7,5 +8,6 @@
   "descriptionUrl": "https://docs.docker.com/compose/compose-file/compose-file-v3/#domainname-hostname-ipc-mac_address-privileged-read_only-shm_size-stdin_open-tty-user-working_dir",
   "platform": "DockerCompose",
   "descriptionID": "987dc2d7",
-  "cwe": "668"
+  "cwe": "668",
+  "cloudProvider": ""
 }

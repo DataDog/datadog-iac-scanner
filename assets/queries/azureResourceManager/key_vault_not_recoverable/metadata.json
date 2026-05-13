@@ -1,5 +1,6 @@
 {
-  "id": "7c25f361-7c66-44bf-9b69-022acd5eb4bd",
+  "id": "azureresourcemanager-azure-key-vault-not-recoverable",
+  "legacyId": "7c25f361-7c66-44bf-9b69-022acd5eb4bd",
   "queryName": "Key Vault Not Recoverable",
   "severity": "HIGH",
   "category": "Backup",

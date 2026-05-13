@@ -1,5 +1,6 @@
 {
-  "id": "84c826c9-1893-4b34-8cdd-db97645b4bf3",
+  "id": "openapi-path-without-operation",
+  "legacyId": "84c826c9-1893-4b34-8cdd-db97645b4bf3",
   "queryName": "Path Without Operation (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#path-item-object"
+  "providerUrl": "https://swagger.io/specification/#path-item-object",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "abcefee4-a0c1-4245-9f82-a473f79a9e2f",
+  "id": "pulumi-aws-ecs-cluster-container-insights-disabled",
+  "legacyId": "abcefee4-a0c1-4245-9f82-a473f79a9e2f",
   "queryName": "ECS Cluster with Container Insights Disabled",
   "severity": "LOW",
   "category": "Observability",

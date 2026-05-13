@@ -1,5 +1,6 @@
 {
-  "id": "5e5ecb9d-04b5-4e4f-b5a5-6ee04279b275",
+  "id": "openapi-2-0-object-without-required-property",
+  "legacyId": "5e5ecb9d-04b5-4e4f-b5a5-6ee04279b275",
   "queryName": "Object Without Required Property (v2)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "0bc1b81e",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/"
+  "providerUrl": "https://swagger.io/specification/v2/",
+  "cloudProvider": "2.0"
 }

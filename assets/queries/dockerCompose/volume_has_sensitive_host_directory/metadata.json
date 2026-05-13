@@ -1,5 +1,6 @@
 {
-  "id": "1c1325ff-831d-43a1-973e-839ae57dfcc0",
+  "id": "dockercompose-volume-has-sensitive-host-directory",
+  "legacyId": "1c1325ff-831d-43a1-973e-839ae57dfcc0",
   "queryName": "Volume Has Sensitive Host Directory",
   "severity": "HIGH",
   "category": "Build Process",
@@ -7,5 +8,6 @@
   "descriptionUrl": "https://docs.docker.com/compose/compose-file/compose-file-v3/#volume-configuration-reference",
   "platform": "DockerCompose",
   "descriptionID": "8361cc0a",
-  "cwe": "668"
+  "cwe": "668",
+  "cloudProvider": ""
 }

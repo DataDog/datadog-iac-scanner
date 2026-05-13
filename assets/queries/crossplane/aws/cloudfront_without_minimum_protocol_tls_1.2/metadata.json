@@ -1,5 +1,6 @@
 {
-  "id": "255b0fcc-9f82-41fe-9229-01b163e3376b",
+  "id": "crossplane-aws-cloudfront-without-minimum-protocol-tls-1-2",
+  "legacyId": "255b0fcc-9f82-41fe-9229-01b163e3376b",
   "queryName": "CloudFront Without Minimum Protocol TLS 1.2",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

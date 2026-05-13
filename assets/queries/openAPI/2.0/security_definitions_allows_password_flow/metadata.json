@@ -1,5 +1,6 @@
 {
-  "id": "773116aa-2e6d-416f-bd85-f0301cc05d76",
+  "id": "openapi-2-0-security-definitions-allows-password-flow",
+  "legacyId": "773116aa-2e6d-416f-bd85-f0301cc05d76",
   "queryName": "Security Definitions Allows Password Flow",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "7b681b12",
   "cwe": "285",
-  "providerUrl": "https://swagger.io/specification/v2/#securitySchemeObject"
+  "providerUrl": "https://swagger.io/specification/v2/#securitySchemeObject",
+  "cloudProvider": "2.0"
 }

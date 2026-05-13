@@ -1,5 +1,6 @@
 {
-  "id": "df58d46c-783b-43e0-bdd0-d99164f712ee",
+  "id": "googledeploymentmanager-gcp-gke-legacy-authorization-enabled",
+  "legacyId": "df58d46c-783b-43e0-bdd0-d99164f712ee",
   "queryName": "GKE Legacy Authorization Enabled",
   "severity": "HIGH",
   "category": "Insecure Configurations",

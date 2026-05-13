@@ -1,5 +1,6 @@
 {
-  "id": "aecee30b-8ea1-4776-a99c-d6d600f0862f",
+  "id": "openapi-api-key-exposed-in-global-security",
+  "legacyId": "aecee30b-8ea1-4776-a99c-d6d600f0862f",
   "queryName": "API Key Exposed In Global Security (v3)",
   "severity": "LOW",
   "category": "Access Control",
@@ -18,6 +19,6 @@
   },
   "cwe": "319",
   "oldSeverity": "MEDIUM",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "providerUrl": "https://swagger.io/specification/#security-scheme-object"
 }

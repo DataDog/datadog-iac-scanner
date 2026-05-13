@@ -1,5 +1,6 @@
 {
-  "id": "4495bc5d-4d1e-4a26-ae92-152d18195648",
+  "id": "serverlessfw-serverless-function-environment-variables-not-encrypted",
+  "legacyId": "4495bc5d-4d1e-4a26-ae92-152d18195648",
   "queryName": "Serverless Function Environment Variables Not Encrypted",
   "severity": "MEDIUM",
   "category": "Encryption",
@@ -8,5 +9,6 @@
   "platform": "ServerlessFW",
   "descriptionID": "d900c253",
   "cwe": "311",
-  "oldSeverity": "HIGH"
+  "oldSeverity": "HIGH",
+  "cloudProvider": ""
 }

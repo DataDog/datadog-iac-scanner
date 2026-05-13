@@ -1,5 +1,6 @@
 {
-  "id": "be1d8733-3731-40c7-a845-734741c6871d",
+  "id": "openapi-2-0-constraining-enum-property",
+  "legacyId": "be1d8733-3731-40c7-a845-734741c6871d",
   "queryName": "Constraining Enum Property",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "63cd2785",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#schemaObject"
+  "providerUrl": "https://swagger.io/specification/v2/#schemaObject",
+  "cloudProvider": "2.0"
 }

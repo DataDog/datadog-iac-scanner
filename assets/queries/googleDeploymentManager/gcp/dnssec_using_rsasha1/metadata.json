@@ -1,5 +1,6 @@
 {
-  "id": "6d7b121a-a2ed-4e37-bd2f-80d9df1dfd35",
+  "id": "googledeploymentmanager-gcp-dnssec-using-rsasha1",
+  "legacyId": "6d7b121a-a2ed-4e37-bd2f-80d9df1dfd35",
   "queryName": "DNSSEC Using RSASHA1",
   "severity": "MEDIUM",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "8d0921d6-4131-461f-a253-99e873f8f77e",
+  "id": "openapi-3-0-server-url-uses-undefined-variables",
+  "legacyId": "8d0921d6-4131-461f-a253-99e873f8f77e",
   "queryName": "Server URL Uses Undefined Variables",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "c8a70e31",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#server-object"
+  "providerUrl": "https://swagger.io/specification/#server-object",
+  "cloudProvider": "3.0"
 }

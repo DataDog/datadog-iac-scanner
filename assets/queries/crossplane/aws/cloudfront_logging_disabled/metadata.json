@@ -1,5 +1,6 @@
 {
-  "id": "7b590235-1ff4-421b-b9ff-5227134be9bb",
+  "id": "crossplane-aws-cloudfront-logging-disabled",
+  "legacyId": "7b590235-1ff4-421b-b9ff-5227134be9bb",
   "queryName": "CloudFront Logging Disabled",
   "severity": "MEDIUM",
   "category": "Observability",

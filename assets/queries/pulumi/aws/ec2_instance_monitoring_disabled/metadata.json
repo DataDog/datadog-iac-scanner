@@ -1,5 +1,6 @@
 {
-  "id": "daa581ef-731c-4121-832d-cf078f67759d",
+  "id": "pulumi-aws-ec2-instance-monitoring-disabled",
+  "legacyId": "daa581ef-731c-4121-832d-cf078f67759d",
   "queryName": "EC2 Instance Monitoring Disabled",
   "severity": "MEDIUM",
   "category": "Observability",

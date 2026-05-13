@@ -1,5 +1,6 @@
 {
-  "id": "9073f073-5d60-4b46-b569-0d6baa80ed95",
+  "id": "azureresourcemanager-azure-storage-account-allows-network-default-access",
+  "legacyId": "9073f073-5d60-4b46-b569-0d6baa80ed95",
   "queryName": "Storage Account Allows Default Network Access",
   "severity": "LOW",
   "category": "Networking and Firewall",

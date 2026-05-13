@@ -1,5 +1,6 @@
 {
-  "id": "332cf2ad-380d-4b90-b436-46f8e635cf38",
+  "id": "openapi-invalid-contact-url",
+  "legacyId": "332cf2ad-380d-4b90-b436-46f8e635cf38",
   "queryName": "Invalid Contact URL (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#contact-object"
+  "providerUrl": "https://swagger.io/specification/#contact-object",
+  "cloudProvider": ""
 }

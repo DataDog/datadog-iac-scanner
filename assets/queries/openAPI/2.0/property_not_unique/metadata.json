@@ -1,5 +1,6 @@
 {
-  "id": "750b40be-4bac-4f59-bdc4-1ca0e6c3450e",
+  "id": "openapi-2-0-property-not-unique",
+  "legacyId": "750b40be-4bac-4f59-bdc4-1ca0e6c3450e",
   "queryName": "Property Not Unique",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "eb2e14e6",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#schemaObject"
+  "providerUrl": "https://swagger.io/specification/v2/#schemaObject",
+  "cloudProvider": "2.0"
 }

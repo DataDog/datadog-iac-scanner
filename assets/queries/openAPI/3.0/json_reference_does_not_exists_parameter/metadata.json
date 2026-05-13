@@ -1,5 +1,6 @@
 {
-  "id": "2e275f16-b627-4d3f-ae73-a6153a23ae8f",
+  "id": "openapi-3-0-json-reference-does-not-exists-parameter",
+  "legacyId": "2e275f16-b627-4d3f-ae73-a6153a23ae8f",
   "queryName": "Parameter JSON Reference Does Not Exists (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "a4f776da",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#components-object"
+  "providerUrl": "https://swagger.io/specification/#components-object",
+  "cloudProvider": "3.0"
 }

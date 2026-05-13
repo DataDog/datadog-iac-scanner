@@ -1,5 +1,6 @@
 {
-  "id": "baa452f0-1f21-4a25-ace5-844e7a5f410d",
+  "id": "dockercompose-volume-mounted-in-multiple-containers",
+  "legacyId": "baa452f0-1f21-4a25-ace5-844e7a5f410d",
   "queryName": "Volume Mounted In Multiple Containers",
   "severity": "HIGH",
   "category": "Build Process",
@@ -7,5 +8,6 @@
   "descriptionUrl": "https://docs.docker.com/compose/compose-file/compose-file-v3/#volumes",
   "platform": "DockerCompose",
   "descriptionID": "1c7ca167",
-  "cwe": "668"
+  "cwe": "668",
+  "cloudProvider": ""
 }

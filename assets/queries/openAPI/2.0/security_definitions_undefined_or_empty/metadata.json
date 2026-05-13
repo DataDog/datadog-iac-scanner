@@ -1,5 +1,6 @@
 {
-  "id": "e3f026e8-fdb4-4d5a-bcfd-bd94452073fe",
+  "id": "openapi-2-0-security-definitions-undefined-or-empty",
+  "legacyId": "e3f026e8-fdb4-4d5a-bcfd-bd94452073fe",
   "queryName": "Security Definitions Undefined or Empty",
   "severity": "HIGH",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "170dbeca",
   "cwe": "284",
-  "providerUrl": "https://swagger.io/specification/v2/#securityDefinitionsObject"
+  "providerUrl": "https://swagger.io/specification/v2/#securityDefinitionsObject",
+  "cloudProvider": "2.0"
 }

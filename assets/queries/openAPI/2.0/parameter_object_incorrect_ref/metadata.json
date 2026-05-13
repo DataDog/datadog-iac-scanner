@@ -1,5 +1,6 @@
 {
-  "id": "2596545e-1757-4ff7-a15a-8a9a180a42f3",
+  "id": "openapi-2-0-parameter-object-incorrect-ref",
+  "legacyId": "2596545e-1757-4ff7-a15a-8a9a180a42f3",
   "queryName": "Parameter Object With Incorrect Ref (v2)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "9b33f092",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#parameter-object"
+  "providerUrl": "https://swagger.io/specification/v2/#parameter-object",
+  "cloudProvider": "2.0"
 }

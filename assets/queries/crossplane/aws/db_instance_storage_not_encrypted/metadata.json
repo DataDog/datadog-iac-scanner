@@ -1,5 +1,6 @@
 {
-  "id": "e50eb68a-a4af-4048-8bbe-8ec324421469",
+  "id": "crossplane-aws-db-instance-storage-not-encrypted",
+  "legacyId": "e50eb68a-a4af-4048-8bbe-8ec324421469",
   "queryName": "DB Instance Storage Not Encrypted",
   "severity": "HIGH",
   "category": "Encryption",

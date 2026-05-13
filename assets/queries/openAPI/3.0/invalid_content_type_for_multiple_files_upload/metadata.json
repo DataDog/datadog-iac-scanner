@@ -1,5 +1,6 @@
 {
-  "id": "26f06397-36d8-4ce7-b993-17711261d777",
+  "id": "openapi-3-0-invalid-content-type-for-multiple-files-upload",
+  "legacyId": "26f06397-36d8-4ce7-b993-17711261d777",
   "queryName": "Invalid Content Type For Multiple Files Upload",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "d74b6525",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/docs/specification/describing-request-body/file-upload/"
+  "providerUrl": "https://swagger.io/docs/specification/describing-request-body/file-upload/",
+  "cloudProvider": "3.0"
 }

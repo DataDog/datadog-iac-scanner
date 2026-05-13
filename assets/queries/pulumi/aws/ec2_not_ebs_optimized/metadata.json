@@ -1,5 +1,6 @@
 {
-  "id": "d991e4ae-42ab-429b-ab43-d5e5fa9ca633",
+  "id": "pulumi-aws-ec2-not-ebs-optimized",
+  "legacyId": "d991e4ae-42ab-429b-ab43-d5e5fa9ca633",
   "queryName": "EC2 Not EBS Optimized",
   "severity": "INFO",
   "category": "Best Practices",

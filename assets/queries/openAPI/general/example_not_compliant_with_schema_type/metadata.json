@@ -1,5 +1,6 @@
 {
-  "id": "881a6e71-c2a7-4fe2-b9c3-dfcf08895331",
+  "id": "openapi-example-not-compliant-with-schema-type",
+  "legacyId": "881a6e71-c2a7-4fe2-b9c3-dfcf08895331",
   "queryName": "Example Not Compliant With Schema Type (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#example-object"
+  "providerUrl": "https://swagger.io/specification/#example-object",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "8c81d6c0-716b-49ec-afa5-2d62da4e3f3c",
+  "id": "openapi-string-schema-with-broad-pattern",
+  "legacyId": "8c81d6c0-716b-49ec-afa5-2d62da4e3f3c",
   "queryName": "String Schema with Broad Pattern (v3)",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -18,5 +19,6 @@
   },
   "cwe": "20",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://swagger.io/specification/#schema-object"
+  "providerUrl": "https://swagger.io/specification/#schema-object",
+  "cloudProvider": ""
 }

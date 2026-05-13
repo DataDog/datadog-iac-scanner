@@ -1,5 +1,6 @@
 {
-  "id": "83bf5aca-138a-498e-b9cd-ad5bc5e117b4",
+  "id": "crossplane-aws-neptune-database-cluster-encryption-disabled",
+  "legacyId": "83bf5aca-138a-498e-b9cd-ad5bc5e117b4",
   "queryName": "Neptune Database Cluster Encryption Disabled",
   "severity": "HIGH",
   "category": "Encryption",

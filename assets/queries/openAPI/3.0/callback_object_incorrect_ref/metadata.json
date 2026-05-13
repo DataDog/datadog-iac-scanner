@@ -1,5 +1,6 @@
 {
-  "id": "ba066cda-e808-450d-92b6-f29109754d45",
+  "id": "openapi-3-0-callback-object-incorrect-ref",
+  "legacyId": "ba066cda-e808-450d-92b6-f29109754d45",
   "queryName": "Callback Object With Incorrect Ref",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "ac521411",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#callback-object"
+  "providerUrl": "https://swagger.io/specification/#callback-object",
+  "cloudProvider": "3.0"
 }

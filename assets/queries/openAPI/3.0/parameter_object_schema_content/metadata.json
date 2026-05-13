@@ -1,5 +1,6 @@
 {
-  "id": "31dd6fc0-f274-493b-9614-e063086c19fc",
+  "id": "openapi-3-0-parameter-object-schema-content",
+  "legacyId": "31dd6fc0-f274-493b-9614-e063086c19fc",
   "queryName": "Parameter Object With Schema And Content",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "379a120d",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#parameter-object"
+  "providerUrl": "https://swagger.io/specification/#parameter-object",
+  "cloudProvider": "3.0"
 }

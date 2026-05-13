@@ -1,5 +1,6 @@
 {
-  "id": "cf4a5f45-a27b-49df-843a-9911dbfe71d4",
+  "id": "openapi-3-0-invalid-media-type-value",
+  "legacyId": "cf4a5f45-a27b-49df-843a-9911dbfe71d4",
   "queryName": "Invalid Media Type Value (v3)",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "6d641994",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/#media-type-object"
+  "providerUrl": "https://swagger.io/specification/#media-type-object",
+  "cloudProvider": "3.0"
 }

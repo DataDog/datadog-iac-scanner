@@ -1,5 +1,6 @@
 {
-  "id": "561710b1-b845-4562-95ce-2397a05ccef4",
+  "id": "openapi-template-path-parameter-with-no-corresponding-path-parameter",
+  "legacyId": "561710b1-b845-4562-95ce-2397a05ccef4",
   "queryName": "Template Path With No Corresponding Path Parameter (v3)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -17,5 +18,6 @@
     }
   },
   "cwe": "20",
-  "providerUrl": "https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.0.2.md#pathTemplating"
+  "providerUrl": "https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.0.2.md#pathTemplating",
+  "cloudProvider": ""
 }

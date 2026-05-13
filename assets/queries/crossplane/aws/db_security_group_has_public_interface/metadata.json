@@ -1,5 +1,6 @@
 {
-  "id": "dd667399-8d9d-4a8d-bbb4-e49ab53b2f52",
+  "id": "crossplane-aws-db-security-group-has-public-interface",
+  "legacyId": "dd667399-8d9d-4a8d-bbb4-e49ab53b2f52",
   "queryName": "DB Security Group Has Public Interface",
   "severity": "HIGH",
   "category": "Insecure Configurations",

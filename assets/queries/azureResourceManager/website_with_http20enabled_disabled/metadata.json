@@ -1,5 +1,6 @@
 {
-  "id": "70111098-7f85-48f0-b1b4-e4261cf5f61b",
+  "id": "azureresourcemanager-azure-website-with-http20enabled-disabled",
+  "legacyId": "70111098-7f85-48f0-b1b4-e4261cf5f61b",
   "queryName": "Website with 'Http20Enabled' Disabled",
   "severity": "LOW",
   "category": "Networking and Firewall",

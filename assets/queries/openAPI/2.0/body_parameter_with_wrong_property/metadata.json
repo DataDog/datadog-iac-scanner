@@ -1,5 +1,6 @@
 {
-  "id": "c38d630d-a415-4e3e-bac2-65475979ba88",
+  "id": "openapi-2-0-body-parameter-with-wrong-property",
+  "legacyId": "c38d630d-a415-4e3e-bac2-65475979ba88",
   "queryName": "Body Parameter With Wrong Property",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "93b15115",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#parameterObject"
+  "providerUrl": "https://swagger.io/specification/v2/#parameterObject",
+  "cloudProvider": "2.0"
 }

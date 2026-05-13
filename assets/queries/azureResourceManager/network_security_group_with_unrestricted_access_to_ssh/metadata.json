@@ -1,5 +1,6 @@
 {
-  "id": "2ade1579-4b2c-4590-bebb-f99bf597f612",
+  "id": "azureresourcemanager-azure-network-security-group-with-unrestricted-access-to-ssh",
+  "legacyId": "2ade1579-4b2c-4590-bebb-f99bf597f612",
   "queryName": "Network Security Group With Unrestricted Access To SSH",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

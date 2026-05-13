@@ -1,5 +1,6 @@
 {
-  "id": "b9db8a10-020c-49ca-88c6-780e5fdb4328",
+  "id": "openapi-3-0-link-object-incorrect-ref",
+  "legacyId": "b9db8a10-020c-49ca-88c6-780e5fdb4328",
   "queryName": "Link Object Incorrect Ref",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "d32809e9",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#link-object"
+  "providerUrl": "https://swagger.io/specification/#link-object",
+  "cloudProvider": "3.0"
 }

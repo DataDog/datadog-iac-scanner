@@ -1,5 +1,6 @@
 {
-  "id": "647de8aa-5a42-41b5-9faf-22136f117380",
+  "id": "pulumi-aws-rds-db-instance-publicly-accessible",
+  "legacyId": "647de8aa-5a42-41b5-9faf-22136f117380",
   "queryName": "RDS DB Instance Publicly Accessible",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "8fe1846f-52cc-4413-ace9-1933d7d23672",
+  "id": "openapi-3-0-parameter-object-without-schema",
+  "legacyId": "8fe1846f-52cc-4413-ace9-1933d7d23672",
   "queryName": "Parameter Object Without Schema",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "de40b141",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/#parameter-object"
+  "providerUrl": "https://swagger.io/specification/#parameter-object",
+  "cloudProvider": "3.0"
 }

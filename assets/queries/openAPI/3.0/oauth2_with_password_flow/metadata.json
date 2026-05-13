@@ -1,5 +1,6 @@
 {
-  "id": "3979b0a4-532c-4ea7-86e4-34c090eaa4f2",
+  "id": "openapi-3-0-oauth2-with-password-flow",
+  "legacyId": "3979b0a4-532c-4ea7-86e4-34c090eaa4f2",
   "queryName": "OAuth2 With Password Flow",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "dd7818af",
   "cwe": "285",
-  "providerUrl": "https://swagger.io/specification/#oauth-flows-object"
+  "providerUrl": "https://swagger.io/specification/#oauth-flows-object",
+  "cloudProvider": "3.0"
 }

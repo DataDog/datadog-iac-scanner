@@ -1,5 +1,6 @@
 {
-  "id": "bccfa089-89e4-47e0-a0e5-185fe6902220",
+  "id": "openapi-2-0-response-object-incorrect-ref",
+  "legacyId": "bccfa089-89e4-47e0-a0e5-185fe6902220",
   "queryName": "Response Object With Incorrect Ref (v2)",
   "severity": "INFO",
   "category": "Structure and Semantics",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "7a486064",
   "cwe": "20",
-  "providerUrl": "https://swagger.io/specification/v2/#responses-object"
+  "providerUrl": "https://swagger.io/specification/v2/#responses-object",
+  "cloudProvider": "2.0"
 }

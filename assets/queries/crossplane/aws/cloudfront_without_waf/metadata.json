@@ -1,5 +1,6 @@
 {
-  "id": "6d19ce0f-b3d8-4128-ac3d-1064e0f00494",
+  "id": "crossplane-aws-cloudfront-without-waf",
+  "legacyId": "6d19ce0f-b3d8-4128-ac3d-1064e0f00494",
   "queryName": "CloudFront Without WAF",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

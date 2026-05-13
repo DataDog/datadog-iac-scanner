@@ -1,5 +1,6 @@
 {
-  "id": "bf4b48b9-fc1f-4552-984a-4becdb5bf503",
+  "id": "pulumi-aws-api-gateway-access-logging-disabled",
+  "legacyId": "bf4b48b9-fc1f-4552-984a-4becdb5bf503",
   "queryName": "API Gateway Access Logging Disabled",
   "severity": "MEDIUM",
   "category": "Observability",

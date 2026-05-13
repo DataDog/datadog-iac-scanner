@@ -1,5 +1,6 @@
 {
-  "id": "6d2e0790-cc3d-4c74-b973-d4e8b09f4455",
+  "id": "openapi-2-0-unused-schema-definition",
+  "legacyId": "6d2e0790-cc3d-4c74-b973-d4e8b09f4455",
   "queryName": "Global Schema Definition Not Being Used",
   "severity": "INFO",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "OpenAPI",
   "descriptionID": "70f940b4",
   "cwe": "710",
-  "providerUrl": "https://swagger.io/specification/v2/#definitionsObject"
+  "providerUrl": "https://swagger.io/specification/v2/#definitionsObject",
+  "cloudProvider": "2.0"
 }
