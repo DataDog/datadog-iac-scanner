@@ -1,5 +1,6 @@
 {
-  "id": "493d9591-6249-47bf-8dc0-5c10161cc558",
+  "id": "cloudformation-aws-security-groups-without-vpc-attached",
+  "legacyId": "493d9591-6249-47bf-8dc0-5c10161cc558",
   "queryName": "Security groups without VPC attached",
   "severity": "LOW",
   "category": "Networking and Firewall",

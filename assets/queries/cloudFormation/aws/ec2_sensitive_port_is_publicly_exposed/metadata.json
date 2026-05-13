@@ -1,5 +1,6 @@
 {
-  "id": "494b03d3-bf40-4464-8524-7c56ad0700ed",
+  "id": "cloudformation-aws-ec2-sensitive-port-is-publicly-exposed",
+  "legacyId": "494b03d3-bf40-4464-8524-7c56ad0700ed",
   "queryName": "EC2 sensitive port is publicly exposed",
   "severity": "HIGH",
   "category": "Networking and Firewall",

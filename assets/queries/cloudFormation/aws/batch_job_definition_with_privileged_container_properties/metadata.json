@@ -1,5 +1,6 @@
 {
-  "id": "76ddf32c-85b1-4808-8935-7eef8030ab36",
+  "id": "cloudformation-aws-batch-job-definition-with-privileged-container-properties",
+  "legacyId": "76ddf32c-85b1-4808-8935-7eef8030ab36",
   "queryName": "Batch job definition with privileged container properties",
   "severity": "HIGH",
   "category": "Insecure Configurations",

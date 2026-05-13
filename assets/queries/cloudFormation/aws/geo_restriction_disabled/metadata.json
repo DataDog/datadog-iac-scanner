@@ -1,5 +1,6 @@
 {
-  "id": "7f8843f0-9ea5-42b4-a02b-753055113195",
+  "id": "cloudformation-aws-geo-restriction-disabled",
+  "legacyId": "7f8843f0-9ea5-42b4-a02b-753055113195",
   "queryName": "Geo restriction disabled",
   "severity": "LOW",
   "category": "Best Practices",

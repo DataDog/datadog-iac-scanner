@@ -1,5 +1,6 @@
 {
-  "id": "86a248ab-0e01-4564-a82a-878303e253bb",
+  "id": "cloudformation-aws-elasticsearch-not-encrypted-at-rest",
+  "legacyId": "86a248ab-0e01-4564-a82a-878303e253bb",
   "queryName": "Elasticsearch not encrypted at rest",
   "severity": "HIGH",
   "category": "Encryption",

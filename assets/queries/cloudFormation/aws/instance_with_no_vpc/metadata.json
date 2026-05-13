@@ -1,5 +1,6 @@
 {
-  "id": "8a6d36cd-0bc6-42b7-92c4-67acc8576861",
+  "id": "cloudformation-aws-instance-with-no-vpc",
+  "legacyId": "8a6d36cd-0bc6-42b7-92c4-67acc8576861",
   "queryName": "Instance with no VPC",
   "severity": "LOW",
   "category": "Insecure Configurations",

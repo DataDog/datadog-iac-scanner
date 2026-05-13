@@ -1,5 +1,6 @@
 {
-  "id": "4bd21e68-38c1-4d58-acdc-6a14b203237f",
+  "id": "cloudformation-aws-dynamodb-table-not-encrypted",
+  "legacyId": "4bd21e68-38c1-4d58-acdc-6a14b203237f",
   "queryName": "DynamoDB table not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

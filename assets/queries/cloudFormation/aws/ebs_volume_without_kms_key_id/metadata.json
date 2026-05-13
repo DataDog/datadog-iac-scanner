@@ -1,5 +1,6 @@
 {
-  "id": "b7063015-6c31-4658-a8e7-14f98f37fd42",
+  "id": "cloudformation-aws-ebs-volume-without-kms-key-id",
+  "legacyId": "b7063015-6c31-4658-a8e7-14f98f37fd42",
   "queryName": "EBS volume without KmsKeyId",
   "severity": "LOW",
   "category": "Secret Management",

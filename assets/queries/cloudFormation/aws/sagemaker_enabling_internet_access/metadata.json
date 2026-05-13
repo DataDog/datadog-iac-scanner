@@ -1,5 +1,6 @@
 {
-  "id": "88d55d94-315d-4564-beee-d2d725feab11",
+  "id": "cloudformation-aws-sagemaker-enabling-internet-access",
+  "legacyId": "88d55d94-315d-4564-beee-d2d725feab11",
   "queryName": "SageMaker enabling internet access",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

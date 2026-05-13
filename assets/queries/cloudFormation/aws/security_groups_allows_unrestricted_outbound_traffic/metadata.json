@@ -1,5 +1,6 @@
 {
-  "id": "66f2d8f9-a911-4ced-ae27-34f09690bb2c",
+  "id": "cloudformation-aws-security-groups-allows-unrestricted-outbound-traffic",
+  "legacyId": "66f2d8f9-a911-4ced-ae27-34f09690bb2c",
   "queryName": "Security groups allows unrestricted outbound traffic",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

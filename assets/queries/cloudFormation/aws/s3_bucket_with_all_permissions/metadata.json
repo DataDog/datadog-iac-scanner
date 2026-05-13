@@ -1,5 +1,6 @@
 {
-  "id": "4ae8af91-5108-42cb-9471-3bdbe596eac9",
+  "id": "cloudformation-aws-s3-bucket-with-all-permissions",
+  "legacyId": "4ae8af91-5108-42cb-9471-3bdbe596eac9",
   "queryName": "S3 bucket with all permissions",
   "severity": "CRITICAL",
   "category": "Access Control",

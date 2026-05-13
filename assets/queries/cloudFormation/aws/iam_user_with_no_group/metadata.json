@@ -1,5 +1,6 @@
 {
-  "id": "06933df4-0ea7-461c-b9b5-104d27390e0e",
+  "id": "cloudformation-aws-iam-user-with-no-group",
+  "legacyId": "06933df4-0ea7-461c-b9b5-104d27390e0e",
   "queryName": "IAM user with no group",
   "severity": "LOW",
   "category": "Access Control",

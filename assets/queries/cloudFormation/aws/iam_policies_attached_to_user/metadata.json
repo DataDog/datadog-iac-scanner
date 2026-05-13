@@ -1,5 +1,6 @@
 {
-  "id": "edc95c10-7366-4f30-9b4b-f995c84eceb5",
+  "id": "cloudformation-aws-iam-policies-attached-to-user",
+  "legacyId": "edc95c10-7366-4f30-9b4b-f995c84eceb5",
   "queryName": "IAM policies attached to a user",
   "severity": "MEDIUM",
   "category": "Access Control",

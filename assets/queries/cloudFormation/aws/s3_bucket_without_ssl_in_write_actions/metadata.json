@@ -1,5 +1,6 @@
 {
-  "id": "38c64e76-c71e-4d92-a337-60174d1de1c9",
+  "id": "cloudformation-aws-s3-bucket-without-ssl-in-write-actions",
+  "legacyId": "38c64e76-c71e-4d92-a337-60174d1de1c9",
   "queryName": "S3 bucket without SSL in write actions",
   "severity": "MEDIUM",
   "category": "Encryption",

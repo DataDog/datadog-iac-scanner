@@ -1,5 +1,6 @@
 {
-  "id": "2623d682-dccb-44cd-99d0-54d9fd62f8f2",
+  "id": "cloudformation-aws-ec2-network-acl-ineffective-denied-traffic",
+  "legacyId": "2623d682-dccb-44cd-99d0-54d9fd62f8f2",
   "queryName": "EC2 Network ACL Deny rule not blocking all traffic",
   "severity": "MEDIUM",
   "category": "Access Control",

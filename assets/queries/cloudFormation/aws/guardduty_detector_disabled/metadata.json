@@ -1,5 +1,6 @@
 {
-  "id": "a25cd877-375c-4121-a640-730929936fac",
+  "id": "cloudformation-aws-guardduty-detector-disabled",
+  "legacyId": "a25cd877-375c-4121-a640-730929936fac",
   "queryName": "GuardDuty detector disabled",
   "severity": "MEDIUM",
   "category": "Observability",

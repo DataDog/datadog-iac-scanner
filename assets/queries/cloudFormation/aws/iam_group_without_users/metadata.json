@@ -1,5 +1,6 @@
 {
-  "id": "8f957abd-9703-413d-87d3-c578950a753c",
+  "id": "cloudformation-aws-iam-group-without-users",
+  "legacyId": "8f957abd-9703-413d-87d3-c578950a753c",
   "queryName": "IAM group without users",
   "severity": "MEDIUM",
   "category": "Access Control",

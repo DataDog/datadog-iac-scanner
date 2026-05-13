@@ -1,5 +1,6 @@
 {
-  "id": "48f100d9-f499-4c6d-b2b8-deafe47ffb26",
+  "id": "cloudformation-aws-s3-bucket-allows-public-acl",
+  "legacyId": "48f100d9-f499-4c6d-b2b8-deafe47ffb26",
   "queryName": "S3 bucket allows public ACL",
   "severity": "MEDIUM",
   "category": "Access Control",

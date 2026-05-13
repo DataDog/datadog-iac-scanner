@@ -1,5 +1,6 @@
 {
-  "id": "80d45af4-4920-4236-a56e-b7ef419d1941",
+  "id": "cloudformation-aws-api-gateway-access-logging-disabled",
+  "legacyId": "80d45af4-4920-4236-a56e-b7ef419d1941",
   "queryName": "API Gateway V2 stage access logging settings not defined",
   "severity": "MEDIUM",
   "category": "Observability",

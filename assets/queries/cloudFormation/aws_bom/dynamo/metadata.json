@@ -1,5 +1,6 @@
 {
-  "id": "4e67c0ae-38a0-47f4-a50c-f0c9b75826df",
+  "id": "cloudformation-aws-dynamo",
+  "legacyId": "4e67c0ae-38a0-47f4-a50c-f0c9b75826df",
   "queryName": "BOM - AWS DynamoDB",
   "severity": "TRACE",
   "category": "Bill Of Materials",

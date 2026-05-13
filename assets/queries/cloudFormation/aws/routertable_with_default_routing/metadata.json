@@ -1,5 +1,6 @@
 {
-  "id": "4f0908b9-eb66-433f-9145-134274e1e944",
+  "id": "cloudformation-aws-routertable-with-default-routing",
+  "legacyId": "4f0908b9-eb66-433f-9145-134274e1e944",
   "queryName": "Route table with default routing",
   "severity": "LOW",
   "category": "Insecure Defaults",

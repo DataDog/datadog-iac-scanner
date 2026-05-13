@@ -1,5 +1,6 @@
 {
-  "id": "03879981-efa2-47a0-a818-c843e1441b88",
+  "id": "cloudformation-aws-ec2-permissive-network-acl-protocols",
+  "legacyId": "03879981-efa2-47a0-a818-c843e1441b88",
   "queryName": "EC2 permissive network ACL protocols",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

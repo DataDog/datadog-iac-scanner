@@ -1,5 +1,6 @@
 {
-  "id": "71493c8b-3014-404c-9802-078b74496fb7",
+  "id": "cloudformation-aws-amplify-app-basic-auth-config-password-exposed",
+  "legacyId": "71493c8b-3014-404c-9802-078b74496fb7",
   "queryName": "Amplify app basic auth config password exposed",
   "severity": "HIGH",
   "category": "Secret Management",

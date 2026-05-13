@@ -1,5 +1,6 @@
 {
-  "id": "79d745f0-d5f3-46db-9504-bef73e9fd528",
+  "id": "cloudformation-aws-ecs-service-without-running-tasks",
+  "legacyId": "79d745f0-d5f3-46db-9504-bef73e9fd528",
   "queryName": "ECS service without running tasks",
   "severity": "LOW",
   "category": "Availability",

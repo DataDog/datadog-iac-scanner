@@ -1,5 +1,6 @@
 {
-  "id": "57b12981-3816-4c31-b190-a1e614361dd2",
+  "id": "cloudformation-aws-public-lambda-via-api-gateway",
+  "legacyId": "57b12981-3816-4c31-b190-a1e614361dd2",
   "queryName": "Public Lambda function via API Gateway",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "d6653eee-2d4d-4e6a-976f-6794a497999a",
+  "id": "cloudformation-aws-api-gateway-with-invalid-compression",
+  "legacyId": "d6653eee-2d4d-4e6a-976f-6794a497999a",
   "queryName": "API Gateway with invalid compression",
   "severity": "LOW",
   "category": "Encryption",

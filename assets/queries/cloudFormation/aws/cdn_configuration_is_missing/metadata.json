@@ -1,5 +1,6 @@
 {
-  "id": "e4f54ff4-d352-40e8-a096-5141073c37a2",
+  "id": "cloudformation-aws-cdn-configuration-is-missing",
+  "legacyId": "e4f54ff4-d352-40e8-a096-5141073c37a2",
   "queryName": "CDN configuration is missing",
   "severity": "LOW",
   "category": "Best Practices",

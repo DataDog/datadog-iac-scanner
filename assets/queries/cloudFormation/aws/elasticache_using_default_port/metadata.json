@@ -1,5 +1,6 @@
 {
-  "id": "323db967-c68e-44e6-916c-a777f95af34b",
+  "id": "cloudformation-aws-elasticache-using-default-port",
+  "legacyId": "323db967-c68e-44e6-916c-a777f95af34b",
   "queryName": "ElastiCache using default port",
   "severity": "LOW",
   "category": "Networking and Firewall",

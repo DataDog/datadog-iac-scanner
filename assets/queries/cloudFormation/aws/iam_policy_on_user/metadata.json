@@ -1,5 +1,6 @@
 {
-  "id": "e4239438-e639-44aa-adb8-866e400e3ade",
+  "id": "cloudformation-aws-iam-policy-on-user",
+  "legacyId": "e4239438-e639-44aa-adb8-866e400e3ade",
   "queryName": "IAM policy on user",
   "severity": "MEDIUM",
   "category": "Access Control",

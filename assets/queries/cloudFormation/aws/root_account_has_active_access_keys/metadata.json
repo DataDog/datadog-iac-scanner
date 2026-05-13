@@ -1,5 +1,6 @@
 {
-  "id": "4c137350-7307-4803-8c04-17c09a7a9fcf",
+  "id": "cloudformation-aws-root-account-has-active-access-keys",
+  "legacyId": "4c137350-7307-4803-8c04-17c09a7a9fcf",
   "queryName": "Root account has active access keys",
   "severity": "HIGH",
   "category": "Insecure Configurations",

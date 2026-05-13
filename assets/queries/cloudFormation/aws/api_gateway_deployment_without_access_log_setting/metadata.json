@@ -1,5 +1,6 @@
 {
-  "id": "06ec63e3-9f72-4fe2-a218-2eb9200b8db5",
+  "id": "cloudformation-aws-api-gateway-deployment-without-access-log-setting",
+  "legacyId": "06ec63e3-9f72-4fe2-a218-2eb9200b8db5",
   "queryName": "API Gateway deployment without access log setting",
   "severity": "MEDIUM",
   "category": "Observability",

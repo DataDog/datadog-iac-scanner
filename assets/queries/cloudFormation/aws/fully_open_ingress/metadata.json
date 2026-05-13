@@ -1,5 +1,6 @@
 {
-  "id": "e415f8d3-fc2b-4f52-88ab-1129e8c8d3f5",
+  "id": "cloudformation-aws-fully-open-ingress",
+  "legacyId": "e415f8d3-fc2b-4f52-88ab-1129e8c8d3f5",
   "queryName": "Fully open ingress",
   "severity": "HIGH",
   "category": "Networking and Firewall",

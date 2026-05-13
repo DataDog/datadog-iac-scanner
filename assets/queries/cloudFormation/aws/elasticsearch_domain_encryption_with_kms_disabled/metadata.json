@@ -1,5 +1,6 @@
 {
-  "id": "d926aa95-0a04-4abc-b20c-acf54afe38a1",
+  "id": "cloudformation-aws-elasticsearch-domain-encryption-with-kms-disabled",
+  "legacyId": "d926aa95-0a04-4abc-b20c-acf54afe38a1",
   "queryName": "Elasticsearch encryption with KMS disabled",
   "severity": "HIGH",
   "category": "Encryption",

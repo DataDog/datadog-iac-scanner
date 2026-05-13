@@ -1,5 +1,6 @@
 {
-  "id": "c2eae442-d3ba-4cb1-84ca-1db4f80eae3d",
+  "id": "cloudformation-aws-lambda-function-without-dead-letter-queue",
+  "legacyId": "c2eae442-d3ba-4cb1-84ca-1db4f80eae3d",
   "queryName": "Lambda function without dead-letter queue",
   "severity": "LOW",
   "category": "Insecure Configurations",

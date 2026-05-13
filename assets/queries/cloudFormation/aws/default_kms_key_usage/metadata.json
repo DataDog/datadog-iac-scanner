@@ -1,5 +1,6 @@
 {
-  "id": "e52395b4-250b-4c60-81d5-2e58c1d37abc",
+  "id": "cloudformation-aws-default-kms-key-usage",
+  "legacyId": "e52395b4-250b-4c60-81d5-2e58c1d37abc",
   "queryName": "Default KMS key usage",
   "severity": "MEDIUM",
   "category": "Encryption",

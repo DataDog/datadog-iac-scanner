@@ -1,5 +1,6 @@
 {
-  "id": "3ae83918-7ec7-4cb8-80db-b91ef0f94002",
+  "id": "cloudformation-aws-security-groups-unrestricted-access-to-rdp",
+  "legacyId": "3ae83918-7ec7-4cb8-80db-b91ef0f94002",
   "queryName": "Security group unrestricted access to RDP",
   "severity": "HIGH",
   "category": "Networking and Firewall",

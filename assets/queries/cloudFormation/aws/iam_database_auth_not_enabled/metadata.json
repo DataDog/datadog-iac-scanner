@@ -1,5 +1,6 @@
 {
-  "id": "9fcd0a0a-9b6f-4670-a215-d94e6bf3f184",
+  "id": "cloudformation-aws-iam-database-auth-not-enabled",
+  "legacyId": "9fcd0a0a-9b6f-4670-a215-d94e6bf3f184",
   "queryName": "IAM database auth not enabled",
   "severity": "MEDIUM",
   "category": "Encryption",

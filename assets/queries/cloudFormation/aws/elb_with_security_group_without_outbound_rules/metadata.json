@@ -1,5 +1,6 @@
 {
-  "id": "01d5a458-a6c4-452a-ac50-054d59275b7c",
+  "id": "cloudformation-aws-elb-with-security-group-without-outbound-rules",
+  "legacyId": "01d5a458-a6c4-452a-ac50-054d59275b7c",
   "queryName": "ELB with security group without outbound rules",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

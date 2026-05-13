@@ -1,5 +1,6 @@
 {
-  "id": "ddfc4eaa-af23-409f-b96c-bf5c45dc4daa",
+  "id": "cloudformation-aws-http-port-open",
+  "legacyId": "ddfc4eaa-af23-409f-b96c-bf5c45dc4daa",
   "queryName": "HTTP port open to internet",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

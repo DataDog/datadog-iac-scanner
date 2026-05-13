@@ -1,5 +1,6 @@
 {
-  "id": "219f4c95-aa50-44e0-97de-cf71f4641170",
+  "id": "cloudformation-aws-s3-bucket-acl-allows-read-to-all-users",
+  "legacyId": "219f4c95-aa50-44e0-97de-cf71f4641170",
   "queryName": "S3 bucket ACL allows read to all users",
   "severity": "HIGH",
   "category": "Access Control",

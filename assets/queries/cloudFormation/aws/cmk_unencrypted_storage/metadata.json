@@ -1,5 +1,6 @@
 {
-  "id": "ffee2785-c347-451e-89f3-11aeb08e5c84",
+  "id": "cloudformation-aws-cmk-unencrypted-storage",
+  "legacyId": "ffee2785-c347-451e-89f3-11aeb08e5c84",
   "queryName": "CMK unencrypted storage",
   "severity": "HIGH",
   "category": "Encryption",

@@ -1,5 +1,6 @@
 {
-  "id": "4ab10c48-bedb-4deb-8f3b-ff12783b61de",
+  "id": "cloudformation-aws-api-gateway-xray-disabled",
+  "legacyId": "4ab10c48-bedb-4deb-8f3b-ff12783b61de",
   "queryName": "API Gateway X-Ray disabled",
   "severity": "LOW",
   "category": "Observability",

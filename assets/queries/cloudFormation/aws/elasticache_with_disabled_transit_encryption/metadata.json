@@ -1,5 +1,6 @@
 {
-  "id": "3b02569b-fc6f-4153-b3a3-ba91022fed68",
+  "id": "cloudformation-aws-elasticache-with-disabled-transit-encryption",
+  "legacyId": "3b02569b-fc6f-4153-b3a3-ba91022fed68",
   "queryName": "ElastiCache with disabled transit encryption",
   "severity": "MEDIUM",
   "category": "Encryption",

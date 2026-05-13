@@ -1,5 +1,6 @@
 {
-  "id": "f6397a20-4cf1-4540-a997-1d363c25ef58",
+  "id": "cloudformation-aws-s3-bucket-allows-put-actions-from-all-principals",
+  "legacyId": "f6397a20-4cf1-4540-a997-1d363c25ef58",
   "queryName": "S3 bucket allows put action from all principals",
   "severity": "CRITICAL",
   "category": "Access Control",

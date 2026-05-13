@@ -1,5 +1,6 @@
 {
-  "id": "97e94d17-e2c7-4109-a53b-6536ac1bb64e",
+  "id": "cloudformation-aws-vpc-attached-with-too-many-gateways",
+  "legacyId": "97e94d17-e2c7-4109-a53b-6536ac1bb64e",
   "queryName": "VPC attached with too many gateways",
   "severity": "LOW",
   "category": "Availability",

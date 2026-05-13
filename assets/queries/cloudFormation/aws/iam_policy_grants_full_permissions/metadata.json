@@ -1,5 +1,6 @@
 {
-  "id": "f62aa827-4ade-4dc4-89e4-1433d384a368",
+  "id": "cloudformation-aws-iam-policy-grants-full-permissions",
+  "legacyId": "f62aa827-4ade-4dc4-89e4-1433d384a368",
   "queryName": "IAM policy grants full permissions",
   "severity": "HIGH",
   "category": "Access Control",
