@@ -1,5 +1,6 @@
 {
-  "id": "140869ea-25f2-40d4-a595-0c0da135114e",
+  "id": "terraform-alicloud-rds-instance-log-connections-disabled",
+  "legacyId": "140869ea-25f2-40d4-a595-0c0da135114e",
   "queryName": "RDS instance log connections disabled",
   "severity": "MEDIUM",
   "category": "Observability",

@@ -1,5 +1,6 @@
 {
-  "id": "a9dfec39-a740-4105-bbd6-721ba163c053",
+  "id": "terraform-alicloud-ram-account-password-policy-not-required-minimum-length",
+  "legacyId": "a9dfec39-a740-4105-bbd6-721ba163c053",
   "queryName": "RAM account password policy does not enforce minimum password length",
   "severity": "LOW",
   "category": "Secret Management",

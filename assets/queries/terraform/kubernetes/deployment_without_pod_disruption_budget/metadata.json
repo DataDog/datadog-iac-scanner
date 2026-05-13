@@ -1,5 +1,6 @@
 {
-  "id": "a05331ee-1653-45cb-91e6-13637a76e4f0",
+  "id": "terraform-kubernetes-deployment-without-pod-disruption-budget",
+  "legacyId": "a05331ee-1653-45cb-91e6-13637a76e4f0",
   "queryName": "Deployment without PodDisruptionBudget",
   "severity": "LOW",
   "category": "Availability",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "add58c0c",
   "cwe": "400",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/deployment#selector"
 }

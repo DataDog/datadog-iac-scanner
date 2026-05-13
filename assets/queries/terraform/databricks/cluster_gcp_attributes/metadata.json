@@ -1,5 +1,6 @@
 {
-  "id": "539e4557-d2b5-4d57-a001-cb01140a4e2d",
+  "id": "terraform-databricks-cluster-gcp-attributes",
+  "legacyId": "539e4557-d2b5-4d57-a001-cb01140a4e2d",
   "queryName": "Check Databricks cluster GCP attribute best practices",
   "severity": "LOW",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/cluster_gcp_attributes",
   "platform": "Terraform",
   "descriptionID": "c1fe1954",
-  "cloudProvider": "common",
+  "cloudProvider": "databricks",
   "cwe": "710",
   "oldSeverity": "MEDIUM",
   "providerUrl": "https://docs.databricks.com/clusters/cluster-config-best-practices.html"

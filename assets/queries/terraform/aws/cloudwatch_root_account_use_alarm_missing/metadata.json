@@ -1,5 +1,6 @@
 {
-  "id": "8b1b1e67-6248-4dca-bbad-93486bb181c0",
+  "id": "terraform-aws-cloudwatch-root-account-use-alarm-missing",
+  "legacyId": "8b1b1e67-6248-4dca-bbad-93486bb181c0",
   "queryName": "CloudWatch root account use missing",
   "severity": "MEDIUM",
   "category": "Observability",

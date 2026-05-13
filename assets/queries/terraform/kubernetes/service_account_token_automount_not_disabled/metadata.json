@@ -1,5 +1,6 @@
 {
-  "id": "a9a13d4f-f17a-491b-b074-f54bffffcb4a",
+  "id": "terraform-kubernetes-service-account-token-automount-not-disabled",
+  "legacyId": "a9a13d4f-f17a-491b-b074-f54bffffcb4a",
   "queryName": "Service account token automount not disabled",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "9674e7f6",
   "cwe": "665",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#automount_service_account_token"
 }

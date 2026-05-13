@@ -1,5 +1,6 @@
 {
-  "id": "bd6bd46c-57db-4887-956d-d372f21291b6",
+  "id": "terraform-kubernetes-missing-app-armor-config",
+  "legacyId": "bd6bd46c-57db-4887-956d-d372f21291b6",
   "queryName": "Missing AppArmor config",
   "severity": "MEDIUM",
   "category": "Access Control",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "ba36908b",
   "cwe": "284",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "LOW",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#annotations"
 }

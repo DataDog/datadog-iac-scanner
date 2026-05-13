@@ -1,5 +1,6 @@
 {
-  "id": "3206240f-2e87-4e58-8d24-3e19e7c83d7c",
+  "id": "terraform-aws-ecs-service-admin-role-is-present",
+  "legacyId": "3206240f-2e87-4e58-8d24-3e19e7c83d7c",
   "queryName": "ECS service admin role is present",
   "severity": "HIGH",
   "category": "Access Control",

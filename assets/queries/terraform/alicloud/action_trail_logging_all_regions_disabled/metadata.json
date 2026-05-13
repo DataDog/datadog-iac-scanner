@@ -1,5 +1,6 @@
 {
-  "id": "c065b98e-1515-4991-9dca-b602bd6a2fbb",
+  "id": "terraform-alicloud-action-trail-logging-all-regions-disabled",
+  "legacyId": "c065b98e-1515-4991-9dca-b602bd6a2fbb",
   "queryName": "Action trail logging for all regions disabled",
   "severity": "MEDIUM",
   "category": "Observability",

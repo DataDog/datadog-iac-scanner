@@ -1,5 +1,6 @@
 {
-  "id": "7a1ee8a9-71be-4b11-bb70-efb62d16863b",
+  "id": "terraform-alicloud-rds-instance-ssl-action-disabled",
+  "legacyId": "7a1ee8a9-71be-4b11-bb70-efb62d16863b",
   "queryName": "RDS instance SSL action disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

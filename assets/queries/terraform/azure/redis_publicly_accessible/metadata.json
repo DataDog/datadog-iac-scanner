@@ -1,5 +1,6 @@
 {
-  "id": "5089d055-53ff-421b-9482-a5267bdce629",
+  "id": "terraform-azure-redis-publicly-accessible",
+  "legacyId": "5089d055-53ff-421b-9482-a5267bdce629",
   "queryName": "Redis publicly accessible",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "dcda2d32-e482-43ee-a926-75eaabeaa4e0",
+  "id": "terraform-alicloud-ram-security-preference-not-enforce-mfa",
+  "legacyId": "dcda2d32-e482-43ee-a926-75eaabeaa4e0",
   "queryName": "RAM security preference does not enforce MFA login",
   "severity": "LOW",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "51bed0ac-a8ae-407a-895e-90c6cb0610ce",
+  "id": "terraform-kubernetes-psp-allows-sharing-host-ipc",
+  "legacyId": "51bed0ac-a8ae-407a-895e-90c6cb0610ce",
   "queryName": "PSP allows sharing host IPC",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,7 +9,7 @@
   "platform": "Terraform",
   "descriptionID": "45566e38",
   "cwe": "250",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "oldSeverity": "MEDIUM",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#host_ipc"
 }

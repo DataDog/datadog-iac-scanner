@@ -1,5 +1,6 @@
 {
-  "id": "8c849af7-a399-46f7-a34c-32d3dc96f1fc",
+  "id": "terraform-aws-elasticache-without-vpc",
+  "legacyId": "8c849af7-a399-46f7-a34c-32d3dc96f1fc",
   "queryName": "ElastiCache without VPC",
   "severity": "LOW",
   "category": "Networking and Firewall",

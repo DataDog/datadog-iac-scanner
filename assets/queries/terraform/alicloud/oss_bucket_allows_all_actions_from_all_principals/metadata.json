@@ -1,5 +1,6 @@
 {
-  "id": "ec62a32c-a297-41ca-a850-cab40b42094a",
+  "id": "terraform-alicloud-oss-bucket-allows-all-actions-from-all-principals",
+  "legacyId": "ec62a32c-a297-41ca-a850-cab40b42094a",
   "queryName": "OSS bucket allows all actions from all principals",
   "severity": "CRITICAL",
   "category": "Access Control",

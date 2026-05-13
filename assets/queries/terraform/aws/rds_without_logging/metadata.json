@@ -1,5 +1,6 @@
 {
-  "id": "8d7f7b8c-6c7c-40f8-baa6-62006c6c7b56",
+  "id": "terraform-aws-rds-without-logging",
+  "legacyId": "8d7f7b8c-6c7c-40f8-baa6-62006c6c7b56",
   "queryName": "RDS without logging",
   "severity": "MEDIUM",
   "category": "Observability",

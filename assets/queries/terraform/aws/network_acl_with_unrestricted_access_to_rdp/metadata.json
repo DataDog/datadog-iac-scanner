@@ -1,5 +1,6 @@
 {
-  "id": "a20be318-cac7-457b-911d-04cc6e812c25",
+  "id": "terraform-aws-network-acl-with-unrestricted-access-to-rdp",
+  "legacyId": "a20be318-cac7-457b-911d-04cc6e812c25",
   "queryName": "Network ACL with unrestricted access to RDP",
   "severity": "HIGH",
   "category": "Networking and Firewall",

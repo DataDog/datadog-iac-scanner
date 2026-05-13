@@ -1,5 +1,6 @@
 {
-  "id": "a9b8c7d6-e5f4-3210-abcd-1234567890ab",
+  "id": "terraform-gcp-bigquery-table-is-public",
+  "legacyId": "a9b8c7d6-e5f4-3210-abcd-1234567890ab",
   "queryName": "BigQuery table is public",
   "severity": "HIGH",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "0fd7d920-4711-46bd-aff2-d307d82cd8b7",
+  "id": "terraform-aws-user-with-privilege-escalation-by-actions-iam-createloginprofile",
+  "legacyId": "0fd7d920-4711-46bd-aff2-d307d82cd8b7",
   "queryName": "User with privilege escalation by actions 'iam:CreateLoginProfile'",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "e2f9b5c7-8d3a-4a5f-93b0-78aeb39d7e09",
+  "id": "terraform-gcp-gke-control-plane-is-public",
+  "legacyId": "e2f9b5c7-8d3a-4a5f-93b0-78aeb39d7e09",
   "queryName": "GKE control plane is public",
   "severity": "HIGH",
   "category": "Networking and Firewall",

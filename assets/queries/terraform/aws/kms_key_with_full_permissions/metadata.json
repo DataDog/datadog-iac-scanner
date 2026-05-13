@@ -1,5 +1,6 @@
 {
-  "id": "7ebc9038-0bde-479a-acc4-6ed7b6758899",
+  "id": "terraform-aws-kms-key-with-full-permissions",
+  "legacyId": "7ebc9038-0bde-479a-acc4-6ed7b6758899",
   "queryName": "KMS key with vulnerable policy",
   "severity": "HIGH",
   "category": "Insecure Configurations",

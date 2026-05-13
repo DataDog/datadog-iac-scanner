@@ -1,5 +1,6 @@
 {
-  "id": "1dc73fb4-5b51-430c-8c5f-25dcf9090b02",
+  "id": "terraform-aws-rds-with-backup-disabled",
+  "legacyId": "1dc73fb4-5b51-430c-8c5f-25dcf9090b02",
   "queryName": "RDS with backup disabled",
   "severity": "MEDIUM",
   "category": "Backup",

@@ -1,5 +1,6 @@
 {
-  "id": "4003118b-046b-4640-b200-b8c7a4c8b89f",
+  "id": "terraform-aws-sso-identity-user-unsafe-creation",
+  "legacyId": "4003118b-046b-4640-b200-b8c7a4c8b89f",
   "queryName": "SSO identity user unsafe creation",
   "severity": "MEDIUM",
   "category": "Access Control",

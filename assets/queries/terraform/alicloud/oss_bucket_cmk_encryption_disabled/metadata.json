@@ -1,5 +1,6 @@
 {
-  "id": "f20e97f9-4919-43f1-9be9-f203cd339cdd",
+  "id": "terraform-alicloud-oss-bucket-cmk-encryption-disabled",
+  "legacyId": "f20e97f9-4919-43f1-9be9-f203cd339cdd",
   "queryName": "OSS bucket encryption using CMK disabled",
   "severity": "MEDIUM",
   "category": "Encryption",

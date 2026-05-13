@@ -1,5 +1,6 @@
 {
-  "id": "58876b44-a690-4e9f-9214-7735fa0dd15d",
+  "id": "terraform-kubernetes-cronjob-deadline-not-configured",
+  "legacyId": "58876b44-a690-4e9f-9214-7735fa0dd15d",
   "queryName": "CronJob deadline not configured",
   "severity": "LOW",
   "category": "Resource Management",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "030edc62",
   "cwe": "400",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/cron_job#starting_deadline_seconds"
 }

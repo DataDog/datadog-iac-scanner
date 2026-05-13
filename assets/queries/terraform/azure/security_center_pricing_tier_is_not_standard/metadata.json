@@ -1,5 +1,6 @@
 {
-  "id": "819d50fd-1cdf-45c3-9936-be408aaad93e",
+  "id": "terraform-azure-security-center-pricing-tier-is-not-standard",
+  "legacyId": "819d50fd-1cdf-45c3-9936-be408aaad93e",
   "queryName": "Security center pricing tier is not standard",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

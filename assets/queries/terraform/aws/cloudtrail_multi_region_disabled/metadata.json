@@ -1,5 +1,6 @@
 {
-  "id": "8173d5eb-96b5-4aa6-a71b-ecfa153c123d",
+  "id": "terraform-aws-cloudtrail-multi-region-disabled",
+  "legacyId": "8173d5eb-96b5-4aa6-a71b-ecfa153c123d",
   "queryName": "CloudTrail multi region disabled",
   "severity": "LOW",
   "category": "Observability",

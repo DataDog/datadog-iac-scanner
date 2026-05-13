@@ -1,5 +1,6 @@
 {
-  "id": "cc997676-481b-4e93-aa81-d19f8c5e9b12",
+  "id": "terraform-aws-ebs-volume-encryption-disabled",
+  "legacyId": "cc997676-481b-4e93-aa81-d19f8c5e9b12",
   "queryName": "EBS volume encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

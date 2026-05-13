@@ -1,5 +1,6 @@
 {
-  "id": "0a494a6a-ebe2-48a0-9d77-cf9d5125e1b3",
+  "id": "terraform-aws-redshift-cluster-without-vpc",
+  "legacyId": "0a494a6a-ebe2-48a0-9d77-cf9d5125e1b3",
   "queryName": "Redshift cluster without VPC",
   "severity": "LOW",
   "category": "Insecure Configurations",

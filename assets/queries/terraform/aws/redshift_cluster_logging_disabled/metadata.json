@@ -1,5 +1,6 @@
 {
-  "id": "15ffbacc-fa42-4f6f-a57d-2feac7365caa",
+  "id": "terraform-aws-redshift-cluster-logging-disabled",
+  "legacyId": "15ffbacc-fa42-4f6f-a57d-2feac7365caa",
   "queryName": "Redshift cluster logging disabled",
   "severity": "MEDIUM",
   "category": "Observability",

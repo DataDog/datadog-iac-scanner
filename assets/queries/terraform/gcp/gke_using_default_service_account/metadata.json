@@ -1,5 +1,6 @@
 {
-  "id": "1c8eef02-17b1-4a3e-b01d-dcc3292d2c38",
+  "id": "terraform-gcp-gke-using-default-service-account",
+  "legacyId": "1c8eef02-17b1-4a3e-b01d-dcc3292d2c38",
   "queryName": "GKE using default service account",
   "severity": "MEDIUM",
   "category": "Insecure Defaults",

@@ -1,5 +1,6 @@
 {
-  "id": "92d65c51-5d82-4507-a2a1-d252e9706855",
+  "id": "terraform-alicloud-ros-stack-without-template",
+  "legacyId": "92d65c51-5d82-4507-a2a1-d252e9706855",
   "queryName": "ROS stack without template",
   "severity": "MEDIUM",
   "category": "Build Process",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ros_stack_without_template",
   "platform": "Terraform",
   "descriptionID": "29378f62",
-  "cloudProvider": "aws",
+  "cloudProvider": "alicloud",
   "cwe": "20",
   "providerUrl": "https://registry.terraform.io/providers/aliyun/alicloud/latest/docs/resources/ros_stack"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "c53c7a89-f9d7-4c7b-8b66-8a555be99593",
+  "id": "terraform-aws-public-and-private-ec2-share-role",
+  "legacyId": "c53c7a89-f9d7-4c7b-8b66-8a555be99593",
   "queryName": "Public and private EC2 share role",
   "severity": "MEDIUM",
   "category": "Access Control",

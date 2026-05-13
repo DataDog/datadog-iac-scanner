@@ -1,5 +1,6 @@
 {
-  "id": "66cd88ac-9ddf-424a-b77e-e55e17630bee",
+  "id": "terraform-aws-batch-job-definition-with-privileged-container-properties",
+  "legacyId": "66cd88ac-9ddf-424a-b77e-e55e17630bee",
   "queryName": "Batch job definition with privileged container properties",
   "severity": "HIGH",
   "category": "Insecure Configurations",

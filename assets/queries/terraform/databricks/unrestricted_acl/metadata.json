@@ -1,5 +1,6 @@
 {
-  "id": "2c4fe4a9-f44b-4c70-b09b-5b75cd251805",
+  "id": "terraform-databricks-unrestricted-acl",
+  "legacyId": "2c4fe4a9-f44b-4c70-b09b-5b75cd251805",
   "queryName": "Unrestricted Databricks ACL",
   "severity": "HIGH",
   "category": "Networking and Firewall",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/unrestricted_acl",
   "platform": "Terraform",
   "descriptionID": "9670a9f6",
-  "cloudProvider": "common",
+  "cloudProvider": "databricks",
   "cwe": "285",
   "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/ip_access_list"
 }

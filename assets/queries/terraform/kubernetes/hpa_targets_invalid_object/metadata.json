@@ -1,5 +1,6 @@
 {
-  "id": "17e52ca3-ddd0-4610-9d56-ce107442e110",
+  "id": "terraform-kubernetes-hpa-targets-invalid-object",
+  "legacyId": "17e52ca3-ddd0-4610-9d56-ce107442e110",
   "queryName": "HPA targets invalid object",
   "severity": "LOW",
   "category": "Availability",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "f4d95aa4",
   "cwe": "400",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/horizontal_pod_autoscaler#metric"
 }

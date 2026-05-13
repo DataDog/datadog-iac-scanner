@@ -1,5 +1,6 @@
 {
-  "id": "66f130d9-b81d-4e8e-9b08-da74b9c891df",
+  "id": "terraform-aws-missing-cluster-log-types",
+  "legacyId": "66f130d9-b81d-4e8e-9b08-da74b9c891df",
   "queryName": "Missing cluster log types",
   "severity": "MEDIUM",
   "category": "Observability",

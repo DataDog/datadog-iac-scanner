@@ -1,5 +1,6 @@
 {
-  "id": "420e6360-47bb-46f6-9072-b20ed22c842d",
+  "id": "terraform-kubernetes-statefulset-without-service-name",
+  "legacyId": "420e6360-47bb-46f6-9072-b20ed22c842d",
   "queryName": "StatefulSet without service name",
   "severity": "LOW",
   "category": "Availability",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "a0d17b18",
   "cwe": "665",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/stateful_set#selector"
 }

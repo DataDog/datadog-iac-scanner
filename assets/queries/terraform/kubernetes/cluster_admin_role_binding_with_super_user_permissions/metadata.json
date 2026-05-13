@@ -1,5 +1,6 @@
 {
-  "id": "17172bc2-56fb-4f17-916f-a014147706cd",
+  "id": "terraform-kubernetes-cluster-admin-role-binding-with-super-user-permissions",
+  "legacyId": "17172bc2-56fb-4f17-916f-a014147706cd",
   "queryName": "Cluster admin rolebinding with superuser permissions",
   "severity": "LOW",
   "category": "Access Control",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "3cfeabe4",
   "cwe": "250",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/cluster_role_binding#name"
 }

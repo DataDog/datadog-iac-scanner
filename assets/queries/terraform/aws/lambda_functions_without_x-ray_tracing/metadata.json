@@ -1,5 +1,6 @@
 {
-  "id": "8152e0cf-d2f0-47ad-96d5-d003a76eabd1",
+  "id": "terraform-aws-lambda-functions-without-x-ray-tracing",
+  "legacyId": "8152e0cf-d2f0-47ad-96d5-d003a76eabd1",
   "queryName": "Lambda functions without X-Ray tracing",
   "severity": "LOW",
   "category": "Observability",

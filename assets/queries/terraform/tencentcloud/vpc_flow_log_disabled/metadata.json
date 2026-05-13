@@ -1,5 +1,6 @@
 {
-  "id": "a3240001-40db-47b7-abb9-2bcd6a04c430",
+  "id": "terraform-tencentcloud-vpc-flow-log-disabled",
+  "legacyId": "a3240001-40db-47b7-abb9-2bcd6a04c430",
   "queryName": "VPC flow logs disabled",
   "severity": "LOW",
   "category": "Observability",

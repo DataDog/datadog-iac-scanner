@@ -1,5 +1,6 @@
 {
-  "id": "dafe30ec-325d-4516-85d1-e8e6776f012c",
+  "id": "terraform-azure-azure-instance-using-basic-authentication",
+  "legacyId": "dafe30ec-325d-4516-85d1-e8e6776f012c",
   "queryName": "Azure instance using basic authentication",
   "severity": "MEDIUM",
   "category": "Best Practices",

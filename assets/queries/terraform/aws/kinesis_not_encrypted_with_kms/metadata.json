@@ -1,5 +1,6 @@
 {
-  "id": "862fe4bf-3eec-4767-a517-40f378886b88",
+  "id": "terraform-aws-kinesis-not-encrypted-with-kms",
+  "legacyId": "862fe4bf-3eec-4767-a517-40f378886b88",
   "queryName": "Kinesis not encrypted with KMS",
   "severity": "HIGH",
   "category": "Encryption",

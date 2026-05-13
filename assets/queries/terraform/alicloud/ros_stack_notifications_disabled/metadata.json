@@ -1,5 +1,6 @@
 {
-  "id": "9ef08939-ea40-489c-8851-667870b2ef50",
+  "id": "terraform-alicloud-ros-stack-notifications-disabled",
+  "legacyId": "9ef08939-ea40-489c-8851-667870b2ef50",
   "queryName": "ROS stack notifications disabled",
   "severity": "LOW",
   "category": "Observability",

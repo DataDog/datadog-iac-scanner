@@ -1,5 +1,6 @@
 {
-  "id": "28545147-2fc6-42d5-a1f9-cf226658e591",
+  "id": "terraform-aws-sns-topic-not-encrypted",
+  "legacyId": "28545147-2fc6-42d5-a1f9-cf226658e591",
   "queryName": "SNS topic not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

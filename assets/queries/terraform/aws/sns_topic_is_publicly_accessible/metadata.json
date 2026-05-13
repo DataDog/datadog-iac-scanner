@@ -1,5 +1,6 @@
 {
-  "id": "b26d2b7e-60f6-413d-a3a1-a57db24aa2b3",
+  "id": "terraform-aws-sns-topic-is-publicly-accessible",
+  "legacyId": "b26d2b7e-60f6-413d-a3a1-a57db24aa2b3",
   "queryName": "SNS topic is publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",

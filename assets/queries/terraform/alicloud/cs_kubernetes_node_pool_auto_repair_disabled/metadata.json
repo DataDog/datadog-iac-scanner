@@ -1,5 +1,6 @@
 {
-  "id": "81ce9394-013d-4731-8fcc-9d229b474073",
+  "id": "terraform-alicloud-cs-kubernetes-node-pool-auto-repair-disabled",
+  "legacyId": "81ce9394-013d-4731-8fcc-9d229b474073",
   "queryName": "CS Kubernetes node pool auto repair disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

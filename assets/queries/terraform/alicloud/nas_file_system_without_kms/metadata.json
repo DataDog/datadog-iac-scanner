@@ -1,5 +1,6 @@
 {
-  "id": "5f670f9d-b1b4-4c90-8618-2288f1ab9676",
+  "id": "terraform-alicloud-nas-file-system-without-kms",
+  "legacyId": "5f670f9d-b1b4-4c90-8618-2288f1ab9676",
   "queryName": "NAS file system without KMS",
   "severity": "HIGH",
   "category": "Encryption",

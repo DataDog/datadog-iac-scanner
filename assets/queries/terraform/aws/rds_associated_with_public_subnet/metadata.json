@@ -1,5 +1,6 @@
 {
-  "id": "2f737336-b18a-4602-8ea0-b200312e1ac1",
+  "id": "terraform-aws-rds-associated-with-public-subnet",
+  "legacyId": "2f737336-b18a-4602-8ea0-b200312e1ac1",
   "queryName": "RDS associated with public subnet",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",

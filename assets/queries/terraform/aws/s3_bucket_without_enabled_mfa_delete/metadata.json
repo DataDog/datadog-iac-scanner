@@ -1,5 +1,6 @@
 {
-  "id": "c5b31ab9-0f26-4a49-b8aa-4cc064392f4d",
+  "id": "terraform-aws-s3-bucket-without-enabled-mfa-delete",
+  "legacyId": "c5b31ab9-0f26-4a49-b8aa-4cc064392f4d",
   "queryName": "S3 bucket without enabled MFA delete",
   "severity": "LOW",
   "category": "Insecure Configurations",

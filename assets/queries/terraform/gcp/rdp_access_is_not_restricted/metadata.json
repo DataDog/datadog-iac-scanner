@@ -1,5 +1,6 @@
 {
-  "id": "678fd659-96f2-454a-a2a0-c2571f83a4a3",
+  "id": "terraform-gcp-rdp-access-is-not-restricted",
+  "legacyId": "678fd659-96f2-454a-a2a0-c2571f83a4a3",
   "queryName": "RDP access is not restricted",
   "severity": "HIGH",
   "category": "Networking and Firewall",

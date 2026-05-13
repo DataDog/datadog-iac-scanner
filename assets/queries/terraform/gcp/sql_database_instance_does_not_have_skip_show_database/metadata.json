@@ -1,5 +1,6 @@
 {
-  "id": "a8b7c6d5-e4f3-2109-8a7b-6c5d4e3f2109",
+  "id": "terraform-gcp-sql-database-instance-does-not-have-skip-show-database",
+  "legacyId": "a8b7c6d5-e4f3-2109-8a7b-6c5d4e3f2109",
   "queryName": "Ensure SQL database instance has skip show database flag",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

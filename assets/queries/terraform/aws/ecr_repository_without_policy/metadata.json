@@ -1,5 +1,6 @@
 {
-  "id": "69e7c320-b65d-41bb-be02-d63ecc0bcc9d",
+  "id": "terraform-aws-ecr-repository-without-policy",
+  "legacyId": "69e7c320-b65d-41bb-be02-d63ecc0bcc9d",
   "queryName": "ECR repository without policy",
   "severity": "LOW",
   "category": "Best Practices",

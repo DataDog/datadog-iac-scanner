@@ -1,5 +1,6 @@
 {
-  "id": "084c6686-2a70-4710-91b1-000393e54c12",
+  "id": "terraform-aws-shield-advanced-not-in-use",
+  "legacyId": "084c6686-2a70-4710-91b1-000393e54c12",
   "queryName": "Shield Advanced not in use",
   "severity": "LOW",
   "category": "Networking and Firewall",

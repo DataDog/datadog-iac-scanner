@@ -1,5 +1,6 @@
 {
-  "id": "ba40ace1-a047-483c-8a8d-bc2d3a67a82d",
+  "id": "terraform-aws-eks-node-group-remote-access-disabled",
+  "legacyId": "ba40ace1-a047-483c-8a8d-bc2d3a67a82d",
   "queryName": "EKS node group remote access disabled",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

@@ -1,5 +1,6 @@
 {
-  "id": "83a229ba-483e-47c6-8db7-dc96969bce5a",
+  "id": "terraform-azure-sql-database-audit-disabled",
+  "legacyId": "83a229ba-483e-47c6-8db7-dc96969bce5a",
   "queryName": "SQL database audit disabled",
   "severity": "MEDIUM",
   "category": "Resource Management",

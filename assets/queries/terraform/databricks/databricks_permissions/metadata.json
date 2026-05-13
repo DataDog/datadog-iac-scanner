@@ -1,5 +1,6 @@
 {
-  "id": "a4edb7e1-c0e0-4f7f-9d7c-d1b603e81ad5",
+  "id": "terraform-databricks-databricks-permissions",
+  "legacyId": "a4edb7e1-c0e0-4f7f-9d7c-d1b603e81ad5",
   "queryName": "Databricks cluster or job with no or insecure permissions",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/databricks_permissions",
   "platform": "Terraform",
   "descriptionID": "66b9bc6e",
-  "cloudProvider": "common",
+  "cloudProvider": "databricks",
   "cwe": "284",
   "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/permissions"
 }

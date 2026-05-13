@@ -1,5 +1,6 @@
 {
-  "id": "5a2486aa-facf-477d-a5c1-b010789459ce",
+  "id": "terraform-aws-ec2-instance-has-public-ip",
+  "legacyId": "5a2486aa-facf-477d-a5c1-b010789459ce",
   "queryName": "EC2 instance has public IP",
   "severity": "MEDIUM",
   "category": "Networking and Firewall",

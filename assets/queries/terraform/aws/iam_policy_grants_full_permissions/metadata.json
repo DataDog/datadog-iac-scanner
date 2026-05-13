@@ -1,5 +1,6 @@
 {
-  "id": "575a2155-6af1-4026-b1af-d5bc8fe2a904",
+  "id": "terraform-aws-iam-policy-grants-full-permissions",
+  "legacyId": "575a2155-6af1-4026-b1af-d5bc8fe2a904",
   "queryName": "IAM policy grants full permissions",
   "severity": "HIGH",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "58b35504-0287-4154-bf69-02c0573deab8",
+  "id": "terraform-aws-sagemaker-endpoint-configuration-encryption-disabled",
+  "legacyId": "58b35504-0287-4154-bf69-02c0573deab8",
   "queryName": "SageMaker endpoint configuration encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

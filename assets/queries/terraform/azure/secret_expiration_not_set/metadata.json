@@ -1,5 +1,6 @@
 {
-  "id": "dfa20ffa-f476-428f-a490-424b41e91c7f",
+  "id": "terraform-azure-secret-expiration-not-set",
+  "legacyId": "dfa20ffa-f476-428f-a490-424b41e91c7f",
   "queryName": "Secret expiration not set",
   "severity": "MEDIUM",
   "category": "Secret Management",

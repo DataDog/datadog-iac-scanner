@@ -1,5 +1,6 @@
 {
-  "id": "5813ef56-fa94-406a-b35d-977d4a56ff2b",
+  "id": "terraform-aws-api-gateway-xray-disabled",
+  "legacyId": "5813ef56-fa94-406a-b35d-977d4a56ff2b",
   "queryName": "API Gateway X-Ray disabled",
   "severity": "LOW",
   "category": "Observability",

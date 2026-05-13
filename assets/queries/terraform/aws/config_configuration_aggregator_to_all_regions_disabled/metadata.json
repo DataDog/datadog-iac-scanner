@@ -1,5 +1,6 @@
 {
-  "id": "ac5a0bc0-a54c-45aa-90c3-15f7703b9132",
+  "id": "terraform-aws-config-configuration-aggregator-to-all-regions-disabled",
+  "legacyId": "ac5a0bc0-a54c-45aa-90c3-15f7703b9132",
   "queryName": "Configuration aggregator to all regions disabled",
   "severity": "LOW",
   "category": "Observability",

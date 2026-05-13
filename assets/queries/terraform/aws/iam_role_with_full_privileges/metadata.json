@@ -1,5 +1,6 @@
 {
-  "id": "b1ffa705-19a3-4b73-b9d0-0c97d0663842",
+  "id": "terraform-aws-iam-role-with-full-privileges",
+  "legacyId": "b1ffa705-19a3-4b73-b9d0-0c97d0663842",
   "queryName": "IAM role with full privileges",
   "severity": "HIGH",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "ed6e3ba0-278f-47b6-a1f5-173576b40b7e",
+  "id": "terraform-alicloud-cmk-is-unusable",
+  "legacyId": "ed6e3ba0-278f-47b6-a1f5-173576b40b7e",
   "queryName": "CMK is unusable",
   "severity": "MEDIUM",
   "category": "Availability",

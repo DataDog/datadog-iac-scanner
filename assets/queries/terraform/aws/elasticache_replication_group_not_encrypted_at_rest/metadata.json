@@ -1,5 +1,6 @@
 {
-  "id": "76976de7-c7b1-4f64-a94f-90c1345914c2",
+  "id": "terraform-aws-elasticache-replication-group-not-encrypted-at-rest",
+  "legacyId": "76976de7-c7b1-4f64-a94f-90c1345914c2",
   "queryName": "ElastiCache replication group not encrypted at rest",
   "severity": "HIGH",
   "category": "Encryption",

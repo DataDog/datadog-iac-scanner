@@ -1,5 +1,6 @@
 {
-  "id": "3ddfa124-6407-4845-a501-179f90c65097",
+  "id": "terraform-aws-authentication-without-mfa",
+  "legacyId": "3ddfa124-6407-4845-a501-179f90c65097",
   "queryName": "Authentication without MFA",
   "severity": "LOW",
   "category": "Access Control",

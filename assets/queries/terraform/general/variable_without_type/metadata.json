@@ -1,5 +1,6 @@
 {
-  "id": "fc5109bf-01fd-49fb-8bde-4492b543c34a",
+  "id": "terraform-variable-without-type",
+  "legacyId": "fc5109bf-01fd-49fb-8bde-4492b543c34a",
   "queryName": "Variable without type",
   "severity": "LOW",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/general/variable_without_type",
   "platform": "Terraform",
   "descriptionID": "bba696eb",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "710",
   "providerUrl": "https://www.terraform.io/docs/language/values/variables.html#input-variable-documentation"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "g3l20gd0k-e5f6-7890-ab12-cd34ef567890",
+  "id": "terraform-aws-neptune-snapshots-not-encrypted",
+  "legacyId": "g3l20gd0k-e5f6-7890-ab12-cd34ef567890",
   "queryName": "Neptune cluster snapshot not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

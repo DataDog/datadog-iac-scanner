@@ -1,5 +1,6 @@
 {
-  "id": "4950837c-0ce5-4e42-9bee-a25eae73740b",
+  "id": "terraform-kubernetes-psp-allows-containers-to-share-the-host-network-namespace",
+  "legacyId": "4950837c-0ce5-4e42-9bee-a25eae73740b",
   "queryName": "PSP allows containers to share the host network namespace",
   "severity": "HIGH",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "531152cf",
   "cwe": "250",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod_security_policy#host_network"
 }

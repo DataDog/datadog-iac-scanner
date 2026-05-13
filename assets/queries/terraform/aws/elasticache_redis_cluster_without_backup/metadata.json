@@ -1,5 +1,6 @@
 {
-  "id": "8fdb08a0-a868-4fdf-9c27-ccab0237f1ab",
+  "id": "terraform-aws-elasticache-redis-cluster-without-backup",
+  "legacyId": "8fdb08a0-a868-4fdf-9c27-ccab0237f1ab",
   "queryName": "ElastiCache Redis cluster without backup",
   "severity": "MEDIUM",
   "category": "Backup",

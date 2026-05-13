@@ -1,5 +1,6 @@
 {
-  "id": "f8e08a38-fc6e-4915-abbe-a7aadf1d59ef",
+  "id": "terraform-azure-key-vault-secrets-content-type-undefined",
+  "legacyId": "f8e08a38-fc6e-4915-abbe-a7aadf1d59ef",
   "queryName": "Key Vault secrets content type undefined",
   "severity": "MEDIUM",
   "category": "Best Practices",

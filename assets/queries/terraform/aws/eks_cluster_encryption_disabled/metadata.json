@@ -1,5 +1,6 @@
 {
-  "id": "63ebcb19-2739-4d3f-aa5c-e8bbb9b85281",
+  "id": "terraform-aws-eks-cluster-encryption-disabled",
+  "legacyId": "63ebcb19-2739-4d3f-aa5c-e8bbb9b85281",
   "queryName": "EKS cluster encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

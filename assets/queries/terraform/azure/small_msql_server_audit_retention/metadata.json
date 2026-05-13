@@ -1,5 +1,6 @@
 {
-  "id": "59acb56b-2b10-4c2c-ba38-f2223c3f5cfc",
+  "id": "terraform-azure-small-msql-server-audit-retention",
+  "legacyId": "59acb56b-2b10-4c2c-ba38-f2223c3f5cfc",
   "queryName": "Small MSSQL server audit retention",
   "severity": "LOW",
   "category": "Observability",

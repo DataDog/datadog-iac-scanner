@@ -1,5 +1,6 @@
 {
-  "id": "57b9893d-33b1-4419-bcea-a717ea87e139",
+  "id": "terraform-aws-s3-bucket-acl-allows-read-to-any-authenticated-user",
+  "legacyId": "57b9893d-33b1-4419-bcea-a717ea87e139",
   "queryName": "S3 bucket ACL allows read to any authenticated user",
   "severity": "HIGH",
   "category": "Access Control",

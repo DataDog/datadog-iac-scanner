@@ -1,5 +1,6 @@
 {
-  "id": "4beaf898-9f8b-4237-89e2-5ffdc7ee6006",
+  "id": "terraform-aws-cloudwatch-security-group-changes-alarm-missing",
+  "legacyId": "4beaf898-9f8b-4237-89e2-5ffdc7ee6006",
   "queryName": "Cloudwatch security group changes alarm missing",
   "severity": "MEDIUM",
   "category": "Observability",

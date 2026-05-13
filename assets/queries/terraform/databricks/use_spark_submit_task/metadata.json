@@ -1,5 +1,6 @@
 {
-  "id": "375cdab9-3f94-4ae0-b1e3-8fbdf9cdf4d7",
+  "id": "terraform-databricks-use-spark-submit-task",
+  "legacyId": "375cdab9-3f94-4ae0-b1e3-8fbdf9cdf4d7",
   "queryName": "Job's task is legacy (spark_submit_task)",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/use_spark_submit_task",
   "platform": "Terraform",
   "descriptionID": "fcfdfbd3",
-  "cloudProvider": "common",
+  "cloudProvider": "databricks",
   "cwe": "477",
   "providerUrl": "https://registry.terraform.io/providers/databricks/databricks/latest/docs/resources/job#spark_submit_task-configuration-block"
 }

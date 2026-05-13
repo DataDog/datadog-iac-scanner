@@ -1,5 +1,6 @@
 {
-  "id": "228c4c19-feeb-4c18-848c-800ac70fdfb7",
+  "id": "terraform-kubernetes-image-without-digest",
+  "legacyId": "228c4c19-feeb-4c18-848c-800ac70fdfb7",
   "queryName": "Image without digest",
   "severity": "LOW",
   "category": "Insecure Configurations",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "fec9b353",
   "cwe": "665",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#image"
 }

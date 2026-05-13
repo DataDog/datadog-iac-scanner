@@ -1,5 +1,6 @@
 {
-  "id": "fa00ce45-386d-4718-8392-fb485e1f3c5b",
+  "id": "terraform-aws-secrets-manager-with-vulnerable-policy",
+  "legacyId": "fa00ce45-386d-4718-8392-fb485e1f3c5b",
   "queryName": "Secrets Manager with vulnerable policy",
   "severity": "HIGH",
   "category": "Access Control",

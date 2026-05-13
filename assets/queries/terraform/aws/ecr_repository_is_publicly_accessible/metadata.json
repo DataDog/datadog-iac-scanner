@@ -1,5 +1,6 @@
 {
-  "id": "e86e26fc-489e-44f0-9bcd-97305e4ba69a",
+  "id": "terraform-aws-ecr-repository-is-publicly-accessible",
+  "legacyId": "e86e26fc-489e-44f0-9bcd-97305e4ba69a",
   "queryName": "ECR repository is publicly accessible",
   "severity": "CRITICAL",
   "category": "Access Control",

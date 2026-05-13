@@ -1,5 +1,6 @@
 {
-  "id": "443488f5-c734-460b-a36d-5b3f330174dc",
+  "id": "terraform-aws-user-data-contains-encoded-private-key",
+  "legacyId": "443488f5-c734-460b-a36d-5b3f330174dc",
   "queryName": "User data contains encoded private key",
   "severity": "HIGH",
   "category": "Encryption",

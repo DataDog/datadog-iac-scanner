@@ -1,5 +1,6 @@
 {
-  "id": "89143358-cec6-49f5-9392-920c591c669c",
+  "id": "terraform-alicloud-ram-password-security-policy-not-require-at-least-one-lowercase-character",
+  "legacyId": "89143358-cec6-49f5-9392-920c591c669c",
   "queryName": "RAM account password policy not require at least one lowercase character",
   "severity": "LOW",
   "category": "Secret Management",

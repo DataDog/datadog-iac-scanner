@@ -1,5 +1,6 @@
 {
-  "id": "482b7d26-0bdb-4b5f-bf6f-545826c0a3dd",
+  "id": "terraform-aws-cloudtrail-sns-topic-name-undefined",
+  "legacyId": "482b7d26-0bdb-4b5f-bf6f-545826c0a3dd",
   "queryName": "CloudTrail SNS topic name undefined",
   "severity": "LOW",
   "category": "Observability",

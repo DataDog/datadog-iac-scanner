@@ -1,5 +1,6 @@
 {
-  "id": "a597e05a-c065-44e7-9cc8-742f572a504a",
+  "id": "terraform-alicloud-rds-instance-log-duration-disabled",
+  "legacyId": "a597e05a-c065-44e7-9cc8-742f572a504a",
   "queryName": "RDS instance log duration disabled",
   "severity": "MEDIUM",
   "category": "Observability",

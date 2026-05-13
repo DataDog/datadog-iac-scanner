@@ -1,5 +1,6 @@
 {
-  "id": "525b53be-62ed-4244-b4df-41aecfcb4071",
+  "id": "terraform-azure-app-service-http2-disabled",
+  "legacyId": "525b53be-62ed-4244-b4df-41aecfcb4071",
   "queryName": "App Service HTTP2 disabled",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

@@ -1,5 +1,6 @@
 {
-  "id": "675e8eaa-2754-42b7-bf33-bfa295d1601d",
+  "id": "terraform-nifcloud-load-balancer-use-insecure-tls-policy-name",
+  "legacyId": "675e8eaa-2754-42b7-bf33-bfa295d1601d",
   "queryName": "NIFCLOUD LB using insecure TLS policy name",
   "severity": "MEDIUM",
   "category": "Encryption",

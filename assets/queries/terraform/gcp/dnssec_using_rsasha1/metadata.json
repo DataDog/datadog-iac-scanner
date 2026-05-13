@@ -1,5 +1,6 @@
 {
-  "id": "ccc3100c-0fdd-4a5e-9908-c10107291860",
+  "id": "terraform-gcp-dnssec-using-rsasha1",
+  "legacyId": "ccc3100c-0fdd-4a5e-9908-c10107291860",
   "queryName": "DNSSEC using RSASHA1",
   "severity": "MEDIUM",
   "category": "Encryption",

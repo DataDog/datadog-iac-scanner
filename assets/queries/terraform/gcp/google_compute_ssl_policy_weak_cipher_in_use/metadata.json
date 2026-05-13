@@ -1,5 +1,6 @@
 {
-  "id": "14a457f0-473d-4d1d-9e37-6d99b355b336",
+  "id": "terraform-gcp-google-compute-ssl-policy-weak-cipher-in-use",
+  "legacyId": "14a457f0-473d-4d1d-9e37-6d99b355b336",
   "queryName": "Google Compute SSL policy weak cipher in use",
   "severity": "MEDIUM",
   "category": "Encryption",

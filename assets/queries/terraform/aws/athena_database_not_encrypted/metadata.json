@@ -1,5 +1,6 @@
 {
-  "id": "b2315cae-b110-4426-81e0-80bb8640cdd3",
+  "id": "terraform-aws-athena-database-not-encrypted",
+  "legacyId": "b2315cae-b110-4426-81e0-80bb8640cdd3",
   "queryName": "Athena database not encrypted",
   "severity": "HIGH",
   "category": "Encryption",

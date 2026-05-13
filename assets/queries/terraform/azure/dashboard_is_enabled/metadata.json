@@ -1,5 +1,6 @@
 {
-  "id": "61c3cb8b-0715-47e4-b788-86dde40dd2db",
+  "id": "terraform-azure-dashboard-is-enabled",
+  "legacyId": "61c3cb8b-0715-47e4-b788-86dde40dd2db",
   "queryName": "Dashboard is enabled",
   "severity": "LOW",
   "category": "Insecure Configurations",

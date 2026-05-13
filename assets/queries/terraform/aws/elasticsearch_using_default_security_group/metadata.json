@@ -1,5 +1,6 @@
 {
-  "id": "d3e1f5a9-bb45-4c89-b97c-12d34ef56789",
+  "id": "terraform-aws-elasticsearch-using-default-security-group",
+  "legacyId": "d3e1f5a9-bb45-4c89-b97c-12d34ef56789",
   "queryName": "Elasticsearch uses default security group",
   "severity": "HIGH",
   "category": "Networking and Firewall",

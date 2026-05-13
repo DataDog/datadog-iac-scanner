@@ -1,5 +1,6 @@
 {
-  "id": "d2c4b6a8-1234-4f56-9abc-def012345678",
+  "id": "terraform-gcp-dataproc-cluster-has-public-ip",
+  "legacyId": "d2c4b6a8-1234-4f56-9abc-def012345678",
   "queryName": "Dataproc clusters has public IPs",
   "severity": "HIGH",
   "category": "Insecure Configurations",

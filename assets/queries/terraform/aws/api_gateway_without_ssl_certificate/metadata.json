@@ -1,5 +1,6 @@
 {
-  "id": "0b4869fc-a842-4597-aa00-1294df425440",
+  "id": "terraform-aws-api-gateway-without-ssl-certificate",
+  "legacyId": "0b4869fc-a842-4597-aa00-1294df425440",
   "queryName": "API Gateway without SSL certificate",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

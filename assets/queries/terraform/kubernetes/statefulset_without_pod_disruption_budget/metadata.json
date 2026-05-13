@@ -1,5 +1,6 @@
 {
-  "id": "7249e3b0-9231-4af3-bc5f-5daf4988ecbf",
+  "id": "terraform-kubernetes-statefulset-without-pod-disruption-budget",
+  "legacyId": "7249e3b0-9231-4af3-bc5f-5daf4988ecbf",
   "queryName": "StatefulSet without PodDisruptionBudget",
   "severity": "LOW",
   "category": "Availability",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "efa415db",
   "cwe": "754",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/stateful_set#selector"
 }

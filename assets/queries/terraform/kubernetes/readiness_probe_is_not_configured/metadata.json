@@ -1,5 +1,6 @@
 {
-  "id": "8657197e-3f87-4694-892b-8144701d83c1",
+  "id": "terraform-kubernetes-readiness-probe-is-not-configured",
+  "legacyId": "8657197e-3f87-4694-892b-8144701d83c1",
   "queryName": "Readiness probe is not configured",
   "severity": "MEDIUM",
   "category": "Availability",
@@ -8,6 +9,6 @@
   "platform": "Terraform",
   "descriptionID": "a333fe96",
   "cwe": "754",
-  "cloudProvider": "common",
+  "cloudProvider": "kubernetes",
   "providerUrl": "https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/pod#readiness_probe"
 }

@@ -1,5 +1,6 @@
 {
-  "id": "9c301481-e6ec-44f7-8a49-8ec63e2969ea",
+  "id": "terraform-azure-small-mssql-audit-retention-period",
+  "legacyId": "9c301481-e6ec-44f7-8a49-8ec63e2969ea",
   "queryName": "Small MSSQL audit retention period",
   "severity": "LOW",
   "category": "Observability",

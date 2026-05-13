@@ -1,5 +1,6 @@
 {
-  "id": "3a81fc06-566f-492a-91dd-7448e409e2cd",
+  "id": "terraform-generic-git-module-without-revision",
+  "legacyId": "3a81fc06-566f-492a-91dd-7448e409e2cd",
   "queryName": "Generic Git module without revision",
   "severity": "LOW",
   "category": "Best Practices",
@@ -7,7 +8,7 @@
   "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/general/generic_git_module_without_revision",
   "platform": "Terraform",
   "descriptionID": "2ee26fd1",
-  "cloudProvider": "common",
+  "cloudProvider": "",
   "cwe": "703",
   "providerUrl": "https://www.terraform.io/docs/language/modules/sources.html#selecting-a-revision"
 }

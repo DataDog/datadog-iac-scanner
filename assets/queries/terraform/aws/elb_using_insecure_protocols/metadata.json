@@ -1,5 +1,6 @@
 {
-  "id": "126c1788-23c2-4a10-906c-ef179f4f96ec",
+  "id": "terraform-aws-elb-using-insecure-protocols",
+  "legacyId": "126c1788-23c2-4a10-906c-ef179f4f96ec",
   "queryName": "ELB using insecure protocols",
   "severity": "MEDIUM",
   "category": "Encryption",

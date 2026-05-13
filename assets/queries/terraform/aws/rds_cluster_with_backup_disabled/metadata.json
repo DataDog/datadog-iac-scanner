@@ -1,5 +1,6 @@
 {
-  "id": "e542bd46-58c4-4e0f-a52a-1fb4f9548e02",
+  "id": "terraform-aws-rds-cluster-with-backup-disabled",
+  "legacyId": "e542bd46-58c4-4e0f-a52a-1fb4f9548e02",
   "queryName": "RDS cluster with backup disabled",
   "severity": "MEDIUM",
   "category": "Backup",

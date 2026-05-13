@@ -1,5 +1,6 @@
 {
-  "id": "96e8183b-e985-457b-90cd-61c0503a3369",
+  "id": "terraform-aws-global-accelerator-flow-logs-disabled",
+  "legacyId": "96e8183b-e985-457b-90cd-61c0503a3369",
   "queryName": "Global Accelerator flow logs disabled",
   "severity": "MEDIUM",
   "category": "Observability",

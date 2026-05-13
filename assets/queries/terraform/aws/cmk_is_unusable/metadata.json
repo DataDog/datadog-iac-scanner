@@ -1,5 +1,6 @@
 {
-  "id": "7350fa23-dcf7-4938-916d-6a60b0c73b50",
+  "id": "terraform-aws-cmk-is-unusable",
+  "legacyId": "7350fa23-dcf7-4938-916d-6a60b0c73b50",
   "queryName": "CMK is unusable",
   "severity": "MEDIUM",
   "category": "Availability",

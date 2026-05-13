@@ -1,5 +1,6 @@
 {
-  "id": "f118890b-2468-42b1-9ce9-af35146b425b",
+  "id": "terraform-azure-mysql-server-public-access-enabled",
+  "legacyId": "f118890b-2468-42b1-9ce9-af35146b425b",
   "queryName": "MySQL server public access enabled",
   "severity": "HIGH",
   "category": "Networking and Firewall",

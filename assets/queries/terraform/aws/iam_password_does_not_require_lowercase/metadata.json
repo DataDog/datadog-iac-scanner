@@ -1,5 +1,6 @@
 {
-  "id": "a1b2c3d4-e5f6-7890-ab12-cd34ef567890",
+  "id": "terraform-aws-iam-password-does-not-require-lowercase",
+  "legacyId": "a1b2c3d4-e5f6-7890-ab12-cd34ef567890",
   "queryName": "IAM password policy does not require lowercase letter",
   "severity": "MEDIUM",
   "category": "Best Practices",

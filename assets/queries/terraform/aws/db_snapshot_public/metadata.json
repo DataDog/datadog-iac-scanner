@@ -1,5 +1,6 @@
 {
-  "id": "f0d8781f-1991-4958-9917-d39283b168a0",
+  "id": "terraform-aws-db-snapshot-public",
+  "legacyId": "f0d8781f-1991-4958-9917-d39283b168a0",
   "queryName": "DB snapshot is public",
   "severity": "HIGH",
   "category": "Access Control",

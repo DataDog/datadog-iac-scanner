@@ -1,5 +1,6 @@
 {
-  "id": "ad5b4e97-2850-4adf-be17-1d293e0b85ee",
+  "id": "terraform-aws-glue-security-configuration-encryption-disabled",
+  "legacyId": "ad5b4e97-2850-4adf-be17-1d293e0b85ee",
   "queryName": "Glue security configuration encryption disabled",
   "severity": "HIGH",
   "category": "Encryption",

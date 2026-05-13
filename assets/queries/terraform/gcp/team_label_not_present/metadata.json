@@ -1,5 +1,6 @@
 {
-  "id": "b2b3c4d5-e6f7-8901-gh23-ijkl456m7890",
+  "id": "terraform-gcp-team-label-not-present",
+  "legacyId": "b2b3c4d5-e6f7-8901-gh23-ijkl456m7890",
   "queryName": "Team label missing on GCP resource",
   "severity": "LOW",
   "category": "Best Practices",

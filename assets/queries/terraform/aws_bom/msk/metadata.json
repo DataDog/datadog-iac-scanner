@@ -1,5 +1,6 @@
 {
-  "id": "051f2063-2517-4295-ad8e-ba88c1bf5cfc",
+  "id": "terraform-aws-msk",
+  "legacyId": "051f2063-2517-4295-ad8e-ba88c1bf5cfc",
   "queryName": "BOM - AWS MSK",
   "severity": "TRACE",
   "category": "Bill Of Materials",

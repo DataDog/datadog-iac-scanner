@@ -1,5 +1,6 @@
 {
-  "id": "16c4216a-50d3-4785-bfb2-4adb5144a8ba",
+  "id": "terraform-aws-elasticsearch-domain-with-vulnerable-policy",
+  "legacyId": "16c4216a-50d3-4785-bfb2-4adb5144a8ba",
   "queryName": "Elasticsearch domain with vulnerable policy",
   "severity": "MEDIUM",
   "category": "Access Control",

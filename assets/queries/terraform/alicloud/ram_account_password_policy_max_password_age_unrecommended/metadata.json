@@ -1,5 +1,6 @@
 {
-  "id": "2bb13841-7575-439e-8e0a-cccd9ede2fa8",
+  "id": "terraform-alicloud-ram-account-password-policy-max-password-age-unrecommended",
+  "legacyId": "2bb13841-7575-439e-8e0a-cccd9ede2fa8",
   "queryName": "RAM account password policy max password age not recommended",
   "severity": "MEDIUM",
   "category": "Secret Management",

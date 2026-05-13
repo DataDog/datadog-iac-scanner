@@ -1,5 +1,6 @@
 {
-  "id": "2b856bf9-8e8c-4005-875f-303a8cba3918",
+  "id": "terraform-azure-small-activity-log-retention-period",
+  "legacyId": "2b856bf9-8e8c-4005-875f-303a8cba3918",
   "queryName": "Small activity log retention period",
   "severity": "LOW",
   "category": "Observability",

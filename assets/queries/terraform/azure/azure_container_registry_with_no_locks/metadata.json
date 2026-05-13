@@ -1,5 +1,6 @@
 {
-  "id": "a187ac47-8163-42ce-8a63-c115236be6fb",
+  "id": "terraform-azure-azure-container-registry-with-no-locks",
+  "legacyId": "a187ac47-8163-42ce-8a63-c115236be6fb",
   "queryName": "Azure Container Registry with no locks",
   "severity": "HIGH",
   "category": "Insecure Configurations",

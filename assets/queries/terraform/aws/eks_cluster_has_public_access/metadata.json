@@ -1,5 +1,6 @@
 {
-  "id": "42f4b905-3736-4213-bfe9-c0660518cda8",
+  "id": "terraform-aws-eks-cluster-has-public-access",
+  "legacyId": "42f4b905-3736-4213-bfe9-c0660518cda8",
   "queryName": "EKS cluster has public access",
   "severity": "MEDIUM",
   "category": "Insecure Configurations",

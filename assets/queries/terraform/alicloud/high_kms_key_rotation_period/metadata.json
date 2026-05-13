@@ -1,5 +1,6 @@
 {
-  "id": "cb319d87-b90f-485e-a7e7-f2408380f309",
+  "id": "terraform-alicloud-high-kms-key-rotation-period",
+  "legacyId": "cb319d87-b90f-485e-a7e7-f2408380f309",
   "queryName": "High KMS key rotation period",
   "severity": "MEDIUM",
   "category": "Secret Management",

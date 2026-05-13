@@ -1,5 +1,6 @@
 {
-  "id": "ee7b93c1-b3f8-4a3b-9588-146d481814f5",
+  "id": "terraform-gcp-google-compute-subnetwork-with-private-google-access-disabled",
+  "legacyId": "ee7b93c1-b3f8-4a3b-9588-146d481814f5",
   "queryName": "Google Compute subnetwork with private Google access disabled",
   "severity": "LOW",
   "category": "Networking and Firewall",

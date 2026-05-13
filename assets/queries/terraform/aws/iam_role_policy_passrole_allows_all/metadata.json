@@ -1,5 +1,6 @@
 {
-  "id": "e39bee8c-fe54-4a3f-824d-e5e2d1cca40a",
+  "id": "terraform-aws-iam-role-policy-passrole-allows-all",
+  "legacyId": "e39bee8c-fe54-4a3f-824d-e5e2d1cca40a",
   "queryName": "IAM role policy passrole allows all",
   "severity": "MEDIUM",
   "category": "Access Control",

@@ -1,5 +1,6 @@
 {
-  "id": "25c0ea09-f1c5-4380-b055-3b83863f2bb8",
+  "id": "terraform-azure-sql-server-ingress-from-any-ip",
+  "legacyId": "25c0ea09-f1c5-4380-b055-3b83863f2bb8",
   "queryName": "Sqlserver ingress from any IP",
   "severity": "CRITICAL",
   "category": "Networking and Firewall",
