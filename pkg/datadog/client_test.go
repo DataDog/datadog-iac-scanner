@@ -103,6 +103,40 @@ func TestGetRemoteConfig_WithJwtToken(t *testing.T) {
 	assert.Equal(t, remoteConfig, string(actual))
 }
 
+// TestGetRemoteConfig_EmptyDdJwtTokenFallsBackToDatadogJwtToken covers the case
+// where DD_JWT_TOKEN is exported but empty (a common shell or runner pattern) and
+// the real token is provided via DATADOG_JWT_TOKEN. An explicitly empty DD_ value
+// must not shadow a populated DATADOG_ value.
+func TestGetRemoteConfig_EmptyDdJwtTokenFallsBackToDatadogJwtToken(t *testing.T) {
+	clearDatadogEnv(t)
+	t.Setenv("DD_JWT_TOKEN", "")
+	t.Setenv("DATADOG_JWT_TOKEN", "real-jwt-token")
+
+	repoUrl := "https://example.com/repo"
+	remoteConfig := "remote configuration"
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "real-jwt-token", r.Header.Get("dd-auth-jwt"))
+		require.Equal(t, "/api/v2/static-analysis/config/client", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
+		body, err := jsonapi.Marshal(remoteConfigResponse{ID: "cfg", Config: []byte(remoteConfig)})
+		require.NoError(t, err)
+		w.Header().Add("content-type", "application/json")
+		_, err = w.Write(body)
+		require.NoError(t, err)
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(handler))
+	t.Cleanup(server.Close)
+
+	client := NewDatadogClient(
+		WithHostname(server.Listener.Addr().String()),
+		WithHttpClient(server.Client()),
+	)
+	actual, err := client.GetRemoteConfig(t.Context(), repoUrl, []byte{})
+	assert.NoError(t, err)
+	assert.Equal(t, remoteConfig, string(actual))
+}
+
 // TestGetRemoteConfig_NoCredentials documents that with no API key, no application
 // key, and no JWT token, the client echoes the local configuration without making
 // any HTTP request. The provided HTTP client would fail the test if called.

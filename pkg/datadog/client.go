@@ -213,13 +213,15 @@ func (s *datadogClient) sendRequest(ctx context.Context, method, path string, re
 }
 
 // getDdEnvvar returns the value of the given Datadog environment variable.
-// The DD_ prefix is checked first, then the DATADOG_ prefix.
-// Returns an empty string if neither environment variable exists.
+// The DD_ prefix is checked first, then the DATADOG_ prefix. An explicitly empty
+// value is treated as absent so that callers fall through to the next candidate,
+// matching the behavior of datadog-static-analyzer's get_datadog_variable_value.
+// Returns an empty string if neither environment variable provides a value.
 func getDdEnvvar(name string) string {
-	if v, ok := os.LookupEnv("DD_" + name); ok {
-		return v
-	} else if v, ok = os.LookupEnv("DATADOG_" + name); ok {
-		return v
+	for _, prefix := range []string{"DD_", "DATADOG_"} {
+		if v, ok := os.LookupEnv(prefix + name); ok && v != "" {
+			return v
+		}
 	}
 	return ""
 }
