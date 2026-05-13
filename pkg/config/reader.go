@@ -42,7 +42,7 @@ func readAndParseConfiguration(ctx context.Context, rootPath string, options ...
 
 	cfgBytes, err := os.ReadFile(path) // nolint:gosec
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not read configuration file %s: %w", path, err)
+		return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not read configuration file %s: %w", path, err))
 	}
 
 	for _, option := range options {
@@ -55,7 +55,7 @@ func readAndParseConfiguration(ctx context.Context, rootPath string, options ...
 
 	cfg, err := ParseConfig(cfgBytes)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not parse configuration file: %w", err)
+		return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not parse configuration file: %w", err))
 	}
 	return cfg, cfgBytes, nil
 }
@@ -68,13 +68,13 @@ func readAndParseLegacyConfiguration(ctx context.Context, rootPath string, optio
 
 	converted, err := readLegacyConfiguration(ctx, rootPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not read legacy configuration file: %w", err)
+		return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not read legacy configuration file: %w", err))
 	}
 
 	// Try to convert the legacy configuration to the new format so we can apply the options
 	cfgBytes, err := UnparseConfig(converted)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not convert legacy configuration file: %w", err)
+		return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not convert legacy configuration file: %w", err))
 	}
 
 	for _, option := range options {
@@ -87,7 +87,7 @@ func readAndParseLegacyConfiguration(ctx context.Context, rootPath string, optio
 
 	cfg, err := ParseConfig(cfgBytes)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not parse configuration file: %w", err)
+		return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not parse configuration file: %w", err))
 	}
 
 	// Restore the original file's 'exclude-results' setting on the final configuration

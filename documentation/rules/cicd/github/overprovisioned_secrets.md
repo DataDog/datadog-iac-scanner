@@ -165,3 +165,20 @@ jobs:
       - run: echo "Running"
 
 ```
+
+```yaml
+name: dogfood-overprovisioned-secrets-noncompliant-workflow-env
+on:
+  workflow_dispatch: {}
+
+env:
+  ALL_SECRETS: ${{ toJSON(secrets) }}
+  DYNAMIC_SECRET: ${{ secrets[matrix.secret_key] }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "inherits env; entire secrets JSON is available to the job"
+
+```
