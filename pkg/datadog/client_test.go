@@ -62,6 +62,84 @@ func TestGetRemoteConfig(t *testing.T) {
 	assert.Equal(t, remoteConfig, string(actual))
 }
 
+// TestGetRemoteConfig_WithJwtToken exercises the JWT auth path used by
+// internal Datadog code-workload runners (no API/app keys, only `dd-auth-jwt`).
+func TestGetRemoteConfig_WithJwtToken(t *testing.T) {
+	clearDatadogEnv(t)
+
+	repoUrl := "https://example.com/repo"
+	remoteConfig := "remote configuration"
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "", r.Header.Get("dd-api-key"))
+		assert.Equal(t, "", r.Header.Get("dd-application-key"))
+		assert.Equal(t, "my-jwt-token", r.Header.Get("dd-auth-jwt"))
+
+		require.Equal(t, "/api/v2/static-analysis/config/client", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
+		defer r.Body.Close()
+		var request remoteConfigRequest
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, jsonapi.Unmarshal(body, &request))
+		assert.Equal(t, repoUrl, request.Repository)
+
+		body, err = jsonapi.Marshal(remoteConfigResponse{ID: "cfg", Config: []byte(remoteConfig)})
+		require.NoError(t, err)
+		w.Header().Add("content-type", "application/json")
+		_, err = w.Write(body)
+		require.NoError(t, err)
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(handler))
+	t.Cleanup(server.Close)
+
+	client := NewDatadogClient(
+		WithHostname(server.Listener.Addr().String()),
+		WithHttpClient(server.Client()),
+		WithJwtToken("my-jwt-token"),
+	)
+	actual, err := client.GetRemoteConfig(t.Context(), repoUrl, []byte{})
+	assert.NoError(t, err)
+	assert.Equal(t, remoteConfig, string(actual))
+}
+
+// TestGetRemoteConfig_NoCredentials documents that with no API key, no application
+// key, and no JWT token, the client echoes the local configuration without making
+// any HTTP request. The provided HTTP client would fail the test if called.
+func TestGetRemoteConfig_NoCredentials(t *testing.T) {
+	clearDatadogEnv(t)
+
+	failingHandler := func(w http.ResponseWriter, r *http.Request) {
+		assert.Failf(t, "unexpected request", "the client must not contact the API without credentials: %s %s", r.Method, r.URL)
+		http.Error(w, "should not be called", http.StatusInternalServerError)
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(failingHandler))
+	t.Cleanup(server.Close)
+
+	client := NewDatadogClient(
+		WithHostname(server.Listener.Addr().String()),
+		WithHttpClient(server.Client()),
+	)
+	local := []byte("local config")
+	actual, err := client.GetRemoteConfig(t.Context(), "https://example.com/repo", local)
+	assert.NoError(t, err)
+	assert.Equal(t, string(local), string(actual))
+}
+
+// clearDatadogEnv ensures that no DD_* / DATADOG_* credential env vars leak into
+// the constructor's env fallbacks, which would otherwise make these tests
+// dependent on the developer's local environment.
+func clearDatadogEnv(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{
+		"DD_API_KEY", "DATADOG_API_KEY",
+		"DD_APP_KEY", "DATADOG_APP_KEY",
+		"DD_JWT_TOKEN", "DATADOG_JWT_TOKEN",
+	} {
+		t.Setenv(name, "")
+	}
+}
+
 func getDatadogClient(t *testing.T, rules []*Rule, repoUrl string, config []byte) Client {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "my-api-key", r.Header.Get("dd-api-key"))

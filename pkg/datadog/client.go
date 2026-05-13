@@ -35,6 +35,9 @@ func NewDatadogClient(options ...DatadogClientOption) Client {
 	if out.appKey == "" {
 		WithAppKeyFromEnv()(out)
 	}
+	if out.jwtToken == "" {
+		WithJwtTokenFromEnv()(out)
+	}
 	return out
 }
 
@@ -82,6 +85,21 @@ func WithAppKeyFromEnv() DatadogClientOption {
 	return WithAppKey(getDdEnvvar("APP_KEY"))
 }
 
+// WithJwtToken lets you specify a Datadog auth JWT for service-to-service authentication.
+// If unspecified, the JWT will be fetched from the environment using WithJwtTokenFromEnv.
+func WithJwtToken(jwtToken string) DatadogClientOption {
+	return func(ds *datadogClient) {
+		ds.jwtToken = jwtToken
+	}
+}
+
+// WithJwtTokenFromEnv uses the JWT specified in the DD_JWT_TOKEN or DATADOG_JWT_TOKEN environment variable.
+// If neither variable exists, an empty JWT will be used. The JWT is sent as the `dd-auth-jwt`
+// header and is the auth mechanism used by Datadog code-workload-runner environments.
+func WithJwtTokenFromEnv() DatadogClientOption {
+	return WithJwtToken(getDdEnvvar("JWT_TOKEN"))
+}
+
 // WithHttpClient lets you specify an http.Client instance to use.
 // If unspecified, the [http.DefaultClient] will be used.
 func WithHttpClient(client *http.Client) DatadogClientOption {
@@ -106,6 +124,7 @@ type datadogClient struct {
 	hostname   string
 	apiKey     string
 	appKey     string
+	jwtToken   string
 	httpClient *http.Client
 }
 
@@ -135,7 +154,7 @@ func (s *datadogClient) GetDefaultRuleset(ctx context.Context) (*Ruleset, error)
 
 // GetRemoteConfig applies server-side changes to the local configuration.
 func (s *datadogClient) GetRemoteConfig(ctx context.Context, repoUrl string, localConfig []byte) ([]byte, error) {
-	if s.apiKey == "" && s.appKey == "" {
+	if s.apiKey == "" && s.appKey == "" && s.jwtToken == "" {
 		// Without credentials, do not send the request; echo the local configuration instead
 		return localConfig, nil
 	}
@@ -186,6 +205,9 @@ func (s *datadogClient) sendRequest(ctx context.Context, method, path string, re
 	}
 	if s.appKey != "" {
 		req.Header.Add("dd-application-key", s.appKey)
+	}
+	if s.jwtToken != "" {
+		req.Header.Add("dd-auth-jwt", s.jwtToken)
 	}
 	return s.httpClient.Do(req)
 }
