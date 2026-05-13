@@ -122,6 +122,68 @@ func TestReadConfig(t *testing.T) {
 	}
 }
 
+// Unknown root properties cause all products to fail.
+func TestUnknownRootKey(t *testing.T) {
+	for _, tc := range []struct {
+		name, cfg string
+	}{
+		{
+			name: "unknown root key only",
+			cfg:  "schema-version: v1.2\nfuture-product:\n  config: foo\n",
+		},
+		{
+			name: "unknown root key alongside iac section",
+			cfg:  "schema-version: v1.2\niac:\n  ignore-rules:\n    - r1\nfuture-product:\n  config: foo\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
+
+			_, _, err := ReadConfiguration(t.Context(), tmp)
+			assert.Error(t, err)
+		})
+	}
+}
+
+// When the new config file has an unknown root key, the legacy config is NOT used as fallback.
+func TestUnknownRootKeyIgnoresLegacy(t *testing.T) {
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte("schema-version: v1.2\nfuture-product:\n  config: foo\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
+
+	_, _, err := ReadConfiguration(t.Context(), tmp)
+	assert.Error(t, err)
+}
+
+// Parsers MUST reject schema major versions >= 2.
+func TestUnsupportedSchemaVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name, cfg string
+	}{
+		{name: "v2.0", cfg: "schema-version: v2.0\niac:\n  ignore-rules:\n    - r1\n"},
+		{name: "v3.0", cfg: "schema-version: v3.0\niac:\n  ignore-rules:\n    - r1\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
+
+			_, _, err := ReadConfiguration(t.Context(), tmp)
+			assert.Error(t, err)
+		})
+	}
+}
+
+// When the new config file has an unsupported major version, the legacy config is NOT used as fallback.
+func TestUnsupportedSchemaVersionIgnoresLegacy(t *testing.T) {
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte("schema-version: v2.0\niac:\n  ignore-rules:\n    - r1\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
+
+	_, _, err := ReadConfiguration(t.Context(), tmp)
+	assert.Error(t, err)
+}
+
 func TestIgnoredConfigFile(t *testing.T) {
 	for _, tc := range []struct {
 		name, cfg string
@@ -141,7 +203,7 @@ func TestIgnoredConfigFile(t *testing.T) {
 
 			cfg, b, err := ReadConfiguration(t.Context(), tmp)
 			assert.NoError(t, err)
-			assert.Equal(t, tc.cfg, string(b))
+			assert.Empty(t, b)
 			assert.Equal(t, IacConfig{}, *cfg)
 		})
 	}
@@ -200,12 +262,29 @@ func TestConfigFilePrecedenceWithIgnoredConfigFile(t *testing.T) {
 			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
 			require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
 
+			// New config file has no iac section, so legacy takes over.
 			cfg, b, err := ReadConfiguration(t.Context(), tmp)
 			assert.NoError(t, err)
 			assert.Equal(t, convertedLegacyCfg+excludeSuffix, string(b))
 			assert.Equal(t, parsedLegacyCfg, *cfg)
 		})
 	}
+}
+
+func TestNoConfigWithDatadog(t *testing.T) {
+	const repoUrl = "https://example.com/repo.git"
+	client := &fakeDatadogClient{
+		t:                  t,
+		expectedSentConfig: nil,
+		expectedRepoUrl:    repoUrl,
+		remoteConfig:       []byte(cfgFile),
+	}
+
+	// No local config file — options must still be applied so server-side config is fetched.
+	cfg, b, err := ReadConfiguration(t.Context(), t.TempDir(), WithDatadog(client, repoUrl))
+	assert.NoError(t, err)
+	assert.Equal(t, cfgFile, string(b))
+	assert.Equal(t, parsedCfgFile, *cfg)
 }
 
 func TestConfigFileFromDatadog(t *testing.T) {
@@ -223,9 +302,29 @@ func TestConfigFileFromDatadog(t *testing.T) {
 		parsedConfig   *IacConfig
 	}{
 		{
-			name:           "regular config",
-			localConfig:    "local config file",
-			sentConfig:     "local config file",
+			// New config file has no iac section: falls through, sending nil to the API.
+			name:           "regular config without iac section",
+			localConfig:    emptyCfgFile,
+			sentConfig:     "",
+			finalConfig:    cfgFile,
+			expectedConfig: cfgFile,
+			parsedConfig:   &parsedCfgFile,
+		},
+		{
+			// New config file has an iac section: bytes sent directly to the API.
+			name:           "regular config with iac section",
+			localConfig:    cfgFile,
+			sentConfig:     cfgFile,
+			finalConfig:    cfgFile,
+			expectedConfig: cfgFile,
+			parsedConfig:   &parsedCfgFile,
+		},
+		{
+			// v1.5 file with only known root keys and no iac section: falls through,
+			// sending nil to the API (same as no local file).
+			name:           "future minor version without iac section",
+			localConfig:    "schema-version: v1.5\nsast:\n  use-rulesets: [foo]\n",
+			sentConfig:     "",
 			finalConfig:    cfgFile,
 			expectedConfig: cfgFile,
 			parsedConfig:   &parsedCfgFile,
