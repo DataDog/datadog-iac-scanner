@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/DataDog/jsonapi"
 )
@@ -25,6 +26,9 @@ func NewDatadogClient(options ...DatadogClientOption) Client {
 	}
 	for _, option := range options {
 		option(out)
+	}
+	if out.hostname == "" {
+		WithHostnameFromEnv()(out)
 	}
 	if out.hostname == "" {
 		WithSiteFromEnv()(out)
@@ -109,11 +113,19 @@ func WithHttpClient(client *http.Client) DatadogClientOption {
 }
 
 // WithHostname lets you specify the hostname to use for Datadog API requests.
-// Used in the implementation and unit tests.
+// The value may include an http:// or https:// scheme; when omitted, https:// is used.
 func WithHostname(hostname string) DatadogClientOption {
 	return func(ds *datadogClient) {
 		ds.hostname = hostname
 	}
+}
+
+// WithHostnameFromEnv uses the hostname specified in the DD_HOSTNAME or DATADOG_HOSTNAME environment variable.
+// When set, it takes precedence over DD_SITE so that internal Datadog runners can point the scanner at a
+// private static-analysis-api address (e.g. an internal fabric.dog host). Matches the behavior of
+// datadog-static-analyzer's get_datadog_basename.
+func WithHostnameFromEnv() DatadogClientOption {
+	return WithHostname(getDdEnvvar("HOSTNAME"))
 }
 
 type DatadogClientOption func(source *datadogClient)
@@ -194,7 +206,7 @@ func (s *datadogClient) GetRemoteConfig(ctx context.Context, repoUrl string, loc
 
 // sendRequest sends a Datadog API request
 func (s *datadogClient) sendRequest(ctx context.Context, method, path string, requestBody io.Reader) (*http.Response, error) {
-	url := fmt.Sprintf("https://%s/api/v2/static-analysis/%s", s.hostname, path)
+	url := fmt.Sprintf("%s/api/v2/static-analysis/%s", s.baseURL(), path)
 	req, err := http.NewRequestWithContext(ctx, method, url, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("error building %s %s request: %w", method, url, err)
@@ -210,6 +222,15 @@ func (s *datadogClient) sendRequest(ctx context.Context, method, path string, re
 		req.Header.Add("dd-auth-jwt", s.jwtToken)
 	}
 	return s.httpClient.Do(req)
+}
+
+// baseURL returns the API base URL, preserving an explicit http:// or https:// scheme
+// when present in the hostname and defaulting to https:// otherwise.
+func (s *datadogClient) baseURL() string {
+	if strings.HasPrefix(s.hostname, "http://") || strings.HasPrefix(s.hostname, "https://") {
+		return s.hostname
+	}
+	return "https://" + s.hostname
 }
 
 // getDdEnvvar returns the value of the given Datadog environment variable.

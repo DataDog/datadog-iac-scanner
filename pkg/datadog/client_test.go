@@ -160,8 +160,8 @@ func TestGetRemoteConfig_NoCredentials(t *testing.T) {
 	assert.Equal(t, string(local), string(actual))
 }
 
-// clearDatadogEnv ensures that no DD_* / DATADOG_* credential env vars leak into
-// the constructor's env fallbacks, which would otherwise make these tests
+// clearDatadogEnv ensures that no DD_* / DATADOG_* credential or endpoint env vars
+// leak into the constructor's env fallbacks, which would otherwise make these tests
 // dependent on the developer's local environment.
 func clearDatadogEnv(t *testing.T) {
 	t.Helper()
@@ -169,9 +169,74 @@ func clearDatadogEnv(t *testing.T) {
 		"DD_API_KEY", "DATADOG_API_KEY",
 		"DD_APP_KEY", "DATADOG_APP_KEY",
 		"DD_JWT_TOKEN", "DATADOG_JWT_TOKEN",
+		"DD_SITE", "DATADOG_SITE",
+		"DD_HOSTNAME", "DATADOG_HOSTNAME",
 	} {
 		t.Setenv(name, "")
 	}
+}
+
+// TestGetRemoteConfig_DdHostnameTakesPrecedenceOverDdSite verifies that the
+// internal endpoint passed via DD_HOSTNAME wins over DD_SITE so that internal
+// Datadog runners (which point the scanner at a private static-analysis-api host)
+// don't accidentally fall through to the public api.datadoghq.com endpoint.
+func TestGetRemoteConfig_DdHostnameTakesPrecedenceOverDdSite(t *testing.T) {
+	clearDatadogEnv(t)
+
+	repoUrl := "https://example.com/repo"
+	remoteConfig := "remote configuration"
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/v2/static-analysis/config/client", r.URL.Path)
+		body, err := jsonapi.Marshal(remoteConfigResponse{ID: "cfg", Config: []byte(remoteConfig)})
+		require.NoError(t, err)
+		w.Header().Add("content-type", "application/json")
+		_, err = w.Write(body)
+		require.NoError(t, err)
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(handler))
+	t.Cleanup(server.Close)
+
+	t.Setenv("DD_HOSTNAME", server.Listener.Addr().String())
+	t.Setenv("DD_SITE", "should-be-ignored.invalid")
+
+	client := NewDatadogClient(
+		WithHttpClient(server.Client()),
+		WithJwtToken("jwt"),
+	)
+	actual, err := client.GetRemoteConfig(t.Context(), repoUrl, []byte{})
+	assert.NoError(t, err)
+	assert.Equal(t, remoteConfig, string(actual))
+}
+
+// TestGetRemoteConfig_HostnameWithHttpScheme verifies that DD_HOSTNAME values that
+// already include an http:// scheme are used as-is, matching the behavior of
+// datadog-static-analyzer. This is what dd-in-a-can needs to redirect the scanner
+// at a local mock server.
+func TestGetRemoteConfig_HostnameWithHttpScheme(t *testing.T) {
+	clearDatadogEnv(t)
+
+	repoUrl := "https://example.com/repo"
+	remoteConfig := "remote configuration"
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/v2/static-analysis/config/client", r.URL.Path)
+		body, err := jsonapi.Marshal(remoteConfigResponse{ID: "cfg", Config: []byte(remoteConfig)})
+		require.NoError(t, err)
+		w.Header().Add("content-type", "application/json")
+		_, err = w.Write(body)
+		require.NoError(t, err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	t.Cleanup(server.Close)
+
+	client := NewDatadogClient(
+		WithHostname(server.URL),
+		WithJwtToken("jwt"),
+	)
+	actual, err := client.GetRemoteConfig(t.Context(), repoUrl, []byte{})
+	assert.NoError(t, err)
+	assert.Equal(t, remoteConfig, string(actual))
 }
 
 func getDatadogClient(t *testing.T, rules []*Rule, repoUrl string, config []byte) Client {
