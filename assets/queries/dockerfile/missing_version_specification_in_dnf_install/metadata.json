@@ -1,5 +1,6 @@
 {
-  "id": "93d88cf7-f078-46a8-8ddc-178e03aeacf1",
+  "id": "dockerfile-missing-version-specification-in-dnf-install",
+  "legacyId": "93d88cf7-f078-46a8-8ddc-178e03aeacf1",
   "queryName": "Missing version specification in dnf install",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "0ab4ed7e",
   "cwe": "1357",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "cloudProvider": ""
 }

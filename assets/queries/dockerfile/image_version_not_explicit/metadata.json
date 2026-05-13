@@ -1,5 +1,6 @@
 {
-  "id": "9efb0b2d-89c9-41a3-91ca-dcc0aec911fd",
+  "id": "dockerfile-image-version-not-explicit",
+  "legacyId": "9efb0b2d-89c9-41a3-91ca-dcc0aec911fd",
   "queryName": "Image version not explicit",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "4f469f06",
   "cwe": "1357",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "cdddb86f-95f6-4fc4-b5a1-483d9afceb2b",
+  "id": "dockerfile-copy-from-references-current-from-alias",
+  "legacyId": "cdddb86f-95f6-4fc4-b5a1-483d9afceb2b",
   "queryName": "COPY --from references current FROM alias",
   "severity": "LOW",
   "category": "Build Process",
@@ -9,5 +10,6 @@
   "descriptionID": "a248d89e",
   "cwe": "706",
   "oldSeverity": "HIGH",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/multistage-build/"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/multistage-build/",
+  "cloudProvider": ""
 }

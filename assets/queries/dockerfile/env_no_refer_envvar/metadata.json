@@ -1,5 +1,6 @@
 {
-  "id": "be8aab51-94cb-cc12-c40e-f6928d9b544a",
+  "id": "dockerfile-env-no-refer-envvar",
+  "legacyId": "be8aab51-94cb-cc12-c40e-f6928d9b544a",
   "queryName": "ENV refers to itself",
   "severity": "LOW",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "be8aab51",
   "cwe": "710",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#env"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#env",
+  "cloudProvider": ""
 }

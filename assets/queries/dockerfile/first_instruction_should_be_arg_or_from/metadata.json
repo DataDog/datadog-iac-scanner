@@ -1,5 +1,6 @@
 {
-  "id": "52e2b1c6-56e4-5264-2fc6-523166b2c8f3",
+  "id": "dockerfile-first-instruction-should-be-arg-or-from",
+  "legacyId": "52e2b1c6-56e4-5264-2fc6-523166b2c8f3",
   "queryName": "First instruction must be ARG or FROM",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "52e2b1c6",
   "cwe": "710",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#from",
+  "cloudProvider": ""
 }

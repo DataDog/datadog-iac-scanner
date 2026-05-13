@@ -1,5 +1,6 @@
 {
-  "id": "38300d1a-feb2-4a48-936a-d1ef1cd24313",
+  "id": "dockerfile-missing-zypper-clean",
+  "legacyId": "38300d1a-feb2-4a48-936a-d1ef1cd24313",
   "queryName": "Missing zypper clean",
   "severity": "LOW",
   "category": "Best Practices",
@@ -9,5 +10,6 @@
   "descriptionID": "a95b2646",
   "cwe": "459",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "cloudProvider": ""
 }

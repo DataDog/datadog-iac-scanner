@@ -1,5 +1,6 @@
 {
-  "id": "22cd11f7-9c6c-4f6e-84c0-02058120b341",
+  "id": "dockerfile-gem-install-without-version",
+  "legacyId": "22cd11f7-9c6c-4f6e-84c0-02058120b341",
   "queryName": "gem install without version",
   "severity": "MEDIUM",
   "category": "Supply-Chain",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "0586ed55",
   "cwe": "1357",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#run",
+  "cloudProvider": ""
 }

@@ -1,5 +1,6 @@
 {
-  "id": "41c195f4-fc31-4a5c-8a1b-90605538d49f",
+  "id": "dockerfile-multiple-cmd-instructions-listed",
+  "legacyId": "41c195f4-fc31-4a5c-8a1b-90605538d49f",
   "queryName": "Multiple CMD instructions listed",
   "severity": "LOW",
   "category": "Build Process",
@@ -9,5 +10,6 @@
   "descriptionID": "96f59ca3",
   "cwe": "1041",
   "oldSeverity": "MEDIUM",
-  "providerUrl": "https://docs.docker.com/engine/reference/builder/#cmd"
+  "providerUrl": "https://docs.docker.com/engine/reference/builder/#cmd",
+  "cloudProvider": ""
 }

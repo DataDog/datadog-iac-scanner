@@ -1,5 +1,6 @@
 {
-  "id": "aa93e17f-b6db-4162-9334-c70334e7ac28",
+  "id": "dockerfile-chown-flag-exists",
+  "legacyId": "aa93e17f-b6db-4162-9334-c70334e7ac28",
   "queryName": "chown flag exists",
   "severity": "LOW",
   "category": "Best Practices",
@@ -8,5 +9,6 @@
   "platform": "Dockerfile",
   "descriptionID": "ba0a34dc",
   "cwe": "282",
-  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"
+  "providerUrl": "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+  "cloudProvider": ""
 }
