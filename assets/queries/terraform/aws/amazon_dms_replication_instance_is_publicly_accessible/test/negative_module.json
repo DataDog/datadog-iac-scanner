@@ -1,0 +1,807 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.2",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_dms_replication_subnet_group.main",
+          "mode": "managed",
+          "type": "aws_dms_replication_subnet_group",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "replication_subnet_group_description": "Main replication subnet group",
+            "replication_subnet_group_id": "main-dms-replication-subnet-group-tf",
+            "tags": {
+              "Name": "main-dms-replication-subnet-group-tf"
+            },
+            "tags_all": {
+              "Name": "main-dms-replication-subnet-group-tf"
+            }
+          },
+          "sensitive_values": {
+            "subnet_ids": [],
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_dms_replication_subnet_group.test-dms-replication-subnet-group-tf",
+          "mode": "managed",
+          "type": "aws_dms_replication_subnet_group",
+          "name": "test-dms-replication-subnet-group-tf",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "replication_subnet_group_description": "Test replication subnet group",
+            "replication_subnet_group_id": "test-dms-replication-subnet-group-tf",
+            "tags": {
+              "Name": "test-dms-replication-subnet-group-tf"
+            },
+            "tags_all": {
+              "Name": "test-dms-replication-subnet-group-tf"
+            }
+          },
+          "sensitive_values": {
+            "subnet_ids": [],
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_security_group.dms",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "dms",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "description": "Managed by Terraform",
+            "egress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "-1",
+                "security_groups": [],
+                "self": false,
+                "to_port": 0
+              }
+            ],
+            "ingress": [
+              {
+                "cidr_blocks": [],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": true,
+                "to_port": 65535
+              }
+            ],
+            "name_prefix": "dms-",
+            "revoke_rules_on_delete": false,
+            "tags": {
+              "Name": "dms-security-group"
+            },
+            "tags_all": {
+              "Name": "dms-security-group"
+            },
+            "timeouts": null
+          },
+          "sensitive_values": {
+            "egress": [
+              {
+                "cidr_blocks": [
+                  false
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": []
+              }
+            ],
+            "ingress": [
+              {
+                "cidr_blocks": [],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": []
+              }
+            ],
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_subnet.private_a",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private_a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "assign_ipv6_address_on_creation": false,
+            "availability_zone": "us-east-1a",
+            "cidr_block": "10.0.1.0/24",
+            "customer_owned_ipv4_pool": null,
+            "enable_dns64": false,
+            "enable_lni_at_device_index": null,
+            "enable_resource_name_dns_a_record_on_launch": false,
+            "enable_resource_name_dns_aaaa_record_on_launch": false,
+            "ipv6_cidr_block": null,
+            "ipv6_native": false,
+            "map_customer_owned_ip_on_launch": null,
+            "map_public_ip_on_launch": false,
+            "outpost_arn": null,
+            "tags": {
+              "Name": "dms-private-a"
+            },
+            "tags_all": {
+              "Name": "dms-private-a"
+            },
+            "timeouts": null
+          },
+          "sensitive_values": {
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_subnet.private_b",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private_b",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "assign_ipv6_address_on_creation": false,
+            "availability_zone": "us-east-1b",
+            "cidr_block": "10.0.2.0/24",
+            "customer_owned_ipv4_pool": null,
+            "enable_dns64": false,
+            "enable_lni_at_device_index": null,
+            "enable_resource_name_dns_a_record_on_launch": false,
+            "enable_resource_name_dns_aaaa_record_on_launch": false,
+            "ipv6_cidr_block": null,
+            "ipv6_native": false,
+            "map_customer_owned_ip_on_launch": null,
+            "map_public_ip_on_launch": false,
+            "outpost_arn": null,
+            "tags": {
+              "Name": "dms-private-b"
+            },
+            "tags_all": {
+              "Name": "dms-private-b"
+            },
+            "timeouts": null
+          },
+          "sensitive_values": {
+            "tags": {},
+            "tags_all": {}
+          }
+        },
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "assign_generated_ipv6_cidr_block": null,
+            "cidr_block": "10.0.0.0/16",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true,
+            "instance_tenancy": "default",
+            "ipv4_ipam_pool_id": null,
+            "ipv4_netmask_length": null,
+            "ipv6_ipam_pool_id": null,
+            "ipv6_netmask_length": null,
+            "tags": {
+              "Name": "dms-vpc"
+            },
+            "tags_all": {
+              "Name": "dms-vpc"
+            }
+          },
+          "sensitive_values": {
+            "tags": {},
+            "tags_all": {}
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_dms_replication_subnet_group.main",
+      "mode": "managed",
+      "type": "aws_dms_replication_subnet_group",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "replication_subnet_group_description": "Main replication subnet group",
+          "replication_subnet_group_id": "main-dms-replication-subnet-group-tf",
+          "tags": {
+            "Name": "main-dms-replication-subnet-group-tf"
+          },
+          "tags_all": {
+            "Name": "main-dms-replication-subnet-group-tf"
+          }
+        },
+        "after_unknown": {
+          "id": true,
+          "replication_subnet_group_arn": true,
+          "subnet_ids": true,
+          "tags": {},
+          "tags_all": {},
+          "vpc_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "subnet_ids": [],
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_dms_replication_subnet_group.test-dms-replication-subnet-group-tf",
+      "mode": "managed",
+      "type": "aws_dms_replication_subnet_group",
+      "name": "test-dms-replication-subnet-group-tf",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "replication_subnet_group_description": "Test replication subnet group",
+          "replication_subnet_group_id": "test-dms-replication-subnet-group-tf",
+          "tags": {
+            "Name": "test-dms-replication-subnet-group-tf"
+          },
+          "tags_all": {
+            "Name": "test-dms-replication-subnet-group-tf"
+          }
+        },
+        "after_unknown": {
+          "id": true,
+          "replication_subnet_group_arn": true,
+          "subnet_ids": true,
+          "tags": {},
+          "tags_all": {},
+          "vpc_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "subnet_ids": [],
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_security_group.dms",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "dms",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "description": "Managed by Terraform",
+          "egress": [
+            {
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ],
+              "description": "",
+              "from_port": 0,
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "protocol": "-1",
+              "security_groups": [],
+              "self": false,
+              "to_port": 0
+            }
+          ],
+          "ingress": [
+            {
+              "cidr_blocks": [],
+              "description": "",
+              "from_port": 0,
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "protocol": "tcp",
+              "security_groups": [],
+              "self": true,
+              "to_port": 65535
+            }
+          ],
+          "name_prefix": "dms-",
+          "revoke_rules_on_delete": false,
+          "tags": {
+            "Name": "dms-security-group"
+          },
+          "tags_all": {
+            "Name": "dms-security-group"
+          },
+          "timeouts": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "egress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "id": true,
+          "ingress": [
+            {
+              "cidr_blocks": [],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "name": true,
+          "owner_id": true,
+          "tags": {},
+          "tags_all": {},
+          "vpc_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "egress": [
+            {
+              "cidr_blocks": [
+                false
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "ingress": [
+            {
+              "cidr_blocks": [],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": []
+            }
+          ],
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_subnet.private_a",
+      "mode": "managed",
+      "type": "aws_subnet",
+      "name": "private_a",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "assign_ipv6_address_on_creation": false,
+          "availability_zone": "us-east-1a",
+          "cidr_block": "10.0.1.0/24",
+          "customer_owned_ipv4_pool": null,
+          "enable_dns64": false,
+          "enable_lni_at_device_index": null,
+          "enable_resource_name_dns_a_record_on_launch": false,
+          "enable_resource_name_dns_aaaa_record_on_launch": false,
+          "ipv6_cidr_block": null,
+          "ipv6_native": false,
+          "map_customer_owned_ip_on_launch": null,
+          "map_public_ip_on_launch": false,
+          "outpost_arn": null,
+          "tags": {
+            "Name": "dms-private-a"
+          },
+          "tags_all": {
+            "Name": "dms-private-a"
+          },
+          "timeouts": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "availability_zone_id": true,
+          "id": true,
+          "ipv6_cidr_block_association_id": true,
+          "owner_id": true,
+          "private_dns_hostname_type_on_launch": true,
+          "tags": {},
+          "tags_all": {},
+          "vpc_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_subnet.private_b",
+      "mode": "managed",
+      "type": "aws_subnet",
+      "name": "private_b",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "assign_ipv6_address_on_creation": false,
+          "availability_zone": "us-east-1b",
+          "cidr_block": "10.0.2.0/24",
+          "customer_owned_ipv4_pool": null,
+          "enable_dns64": false,
+          "enable_lni_at_device_index": null,
+          "enable_resource_name_dns_a_record_on_launch": false,
+          "enable_resource_name_dns_aaaa_record_on_launch": false,
+          "ipv6_cidr_block": null,
+          "ipv6_native": false,
+          "map_customer_owned_ip_on_launch": null,
+          "map_public_ip_on_launch": false,
+          "outpost_arn": null,
+          "tags": {
+            "Name": "dms-private-b"
+          },
+          "tags_all": {
+            "Name": "dms-private-b"
+          },
+          "timeouts": null
+        },
+        "after_unknown": {
+          "arn": true,
+          "availability_zone_id": true,
+          "id": true,
+          "ipv6_cidr_block_association_id": true,
+          "owner_id": true,
+          "private_dns_hostname_type_on_launch": true,
+          "tags": {},
+          "tags_all": {},
+          "vpc_id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_vpc.main",
+      "mode": "managed",
+      "type": "aws_vpc",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "assign_generated_ipv6_cidr_block": null,
+          "cidr_block": "10.0.0.0/16",
+          "enable_dns_hostnames": true,
+          "enable_dns_support": true,
+          "instance_tenancy": "default",
+          "ipv4_ipam_pool_id": null,
+          "ipv4_netmask_length": null,
+          "ipv6_ipam_pool_id": null,
+          "ipv6_netmask_length": null,
+          "tags": {
+            "Name": "dms-vpc"
+          },
+          "tags_all": {
+            "Name": "dms-vpc"
+          }
+        },
+        "after_unknown": {
+          "arn": true,
+          "default_network_acl_id": true,
+          "default_route_table_id": true,
+          "default_security_group_id": true,
+          "dhcp_options_id": true,
+          "enable_network_address_usage_metrics": true,
+          "id": true,
+          "ipv6_association_id": true,
+          "ipv6_cidr_block": true,
+          "ipv6_cidr_block_network_border_group": true,
+          "main_route_table_id": true,
+          "owner_id": true,
+          "tags": {},
+          "tags_all": {}
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws",
+        "version_constraint": "~> 5.0",
+        "expressions": {
+          "access_key": {
+            "constant_value": "mock_access_key"
+          },
+          "region": {
+            "constant_value": "us-east-1"
+          },
+          "secret_key": {
+            "constant_value": "mock_secret_key"
+          },
+          "skip_credentials_validation": {
+            "constant_value": true
+          },
+          "skip_metadata_api_check": {
+            "constant_value": true
+          },
+          "skip_requesting_account_id": {
+            "constant_value": true
+          }
+        }
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_dms_replication_subnet_group.main",
+          "mode": "managed",
+          "type": "aws_dms_replication_subnet_group",
+          "name": "main",
+          "provider_config_key": "aws",
+          "expressions": {
+            "replication_subnet_group_description": {
+              "constant_value": "Main replication subnet group"
+            },
+            "replication_subnet_group_id": {
+              "constant_value": "main-dms-replication-subnet-group-tf"
+            },
+            "subnet_ids": {
+              "references": [
+                "aws_subnet.private_a.id",
+                "aws_subnet.private_a",
+                "aws_subnet.private_b.id",
+                "aws_subnet.private_b"
+              ]
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "main-dms-replication-subnet-group-tf"
+              }
+            }
+          },
+          "schema_version": 0,
+          "depends_on": [
+            "aws_dms_replication_subnet_group.test-dms-replication-subnet-group-tf"
+          ]
+        },
+        {
+          "address": "aws_dms_replication_subnet_group.test-dms-replication-subnet-group-tf",
+          "mode": "managed",
+          "type": "aws_dms_replication_subnet_group",
+          "name": "test-dms-replication-subnet-group-tf",
+          "provider_config_key": "aws",
+          "expressions": {
+            "replication_subnet_group_description": {
+              "constant_value": "Test replication subnet group"
+            },
+            "replication_subnet_group_id": {
+              "constant_value": "test-dms-replication-subnet-group-tf"
+            },
+            "subnet_ids": {
+              "references": [
+                "aws_subnet.private_a.id",
+                "aws_subnet.private_a",
+                "aws_subnet.private_b.id",
+                "aws_subnet.private_b"
+              ]
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "test-dms-replication-subnet-group-tf"
+              }
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_security_group.dms",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "dms",
+          "provider_config_key": "aws",
+          "expressions": {
+            "egress": {
+              "constant_value": [
+                {
+                  "cidr_blocks": [
+                    "0.0.0.0/0"
+                  ],
+                  "description": null,
+                  "from_port": 0,
+                  "ipv6_cidr_blocks": null,
+                  "prefix_list_ids": null,
+                  "protocol": "-1",
+                  "security_groups": null,
+                  "self": null,
+                  "to_port": 0
+                }
+              ]
+            },
+            "ingress": {
+              "constant_value": [
+                {
+                  "cidr_blocks": null,
+                  "description": null,
+                  "from_port": 0,
+                  "ipv6_cidr_blocks": null,
+                  "prefix_list_ids": null,
+                  "protocol": "tcp",
+                  "security_groups": null,
+                  "self": true,
+                  "to_port": 65535
+                }
+              ]
+            },
+            "name_prefix": {
+              "constant_value": "dms-"
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "dms-security-group"
+              }
+            },
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            }
+          },
+          "schema_version": 1
+        },
+        {
+          "address": "aws_subnet.private_a",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private_a",
+          "provider_config_key": "aws",
+          "expressions": {
+            "availability_zone": {
+              "constant_value": "us-east-1a"
+            },
+            "cidr_block": {
+              "constant_value": "10.0.1.0/24"
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "dms-private-a"
+              }
+            },
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            }
+          },
+          "schema_version": 1
+        },
+        {
+          "address": "aws_subnet.private_b",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private_b",
+          "provider_config_key": "aws",
+          "expressions": {
+            "availability_zone": {
+              "constant_value": "us-east-1b"
+            },
+            "cidr_block": {
+              "constant_value": "10.0.2.0/24"
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "dms-private-b"
+              }
+            },
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            }
+          },
+          "schema_version": 1
+        },
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_config_key": "aws",
+          "expressions": {
+            "cidr_block": {
+              "constant_value": "10.0.0.0/16"
+            },
+            "enable_dns_hostnames": {
+              "constant_value": true
+            },
+            "enable_dns_support": {
+              "constant_value": true
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "dms-vpc"
+              }
+            }
+          },
+          "schema_version": 1
+        }
+      ]
+    }
+  },
+  "relevant_attributes": [
+    {
+      "resource": "aws_subnet.private_a",
+      "attribute": [
+        "id"
+      ]
+    },
+    {
+      "resource": "aws_vpc.main",
+      "attribute": [
+        "id"
+      ]
+    },
+    {
+      "resource": "aws_subnet.private_b",
+      "attribute": [
+        "id"
+      ]
+    }
+  ],
+  "timestamp": "2026-05-13T13:50:50Z",
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}
