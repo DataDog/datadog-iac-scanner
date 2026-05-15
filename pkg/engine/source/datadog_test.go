@@ -429,7 +429,8 @@ var queries = []model.QueryMetadata{
 		Query:     "rule-2",
 		Content:   "query text 2",
 		Metadata: map[string]any{
-			"id":              "rule-2",
+			"id":              "common-rule-2",
+			"legacyId":        "rule-2",
 			"queryName":       "short 2",
 			"descriptionText": "full 2",
 			"platform":        "Common",
