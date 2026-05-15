@@ -169,16 +169,12 @@ func isInCaseInsensitiveNotEmptyList(id *string, list []string) bool {
 // nolint:gocyclo
 // ConvertRule converts a Datadog api [Rule] to a [model.QueryMetadata]
 func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
-	id := rule.ID
-	if rule.LegacyId != nil {
-		id = *rule.LegacyId
-	}
 	out := model.QueryMetadata{
 		InputData: "{}",
 		Query:     rule.Name,
 		Content:   string(rule.RegoQuery),
 		Metadata: map[string]any{
-			"id":              id,
+			"id":              rule.ID,
 			"queryName":       rule.ShortDescription,
 			"descriptionText": rule.Description,
 			"platform":        rule.Platform,
@@ -189,6 +185,7 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 		Aggregation:  1,
 		Experimental: rule.IsTesting,
 	}
+	setStringPtr(out.Metadata, "legacyId", rule.LegacyId)
 	setStringPtr(out.Metadata, "providerUrl", rule.ProviderUrl)
 	setStringPtr(out.Metadata, "descriptionID", rule.DescriptionId)
 	setStringPtr(out.Metadata, "cloudProvider", rule.Provider)
