@@ -24,21 +24,14 @@ CODE_SUFFIX = {
 PROVIDER = {
     "alicloud": "Alicloud",
     "aws": "AWS",
-    "aws_sam": "AWS",
     "gcp": "GCP",
-    "k8s": "Kubernetes",
     "dockerfile": "Dockerfile",
     "azure": "Azure",
     "databricks": "Databricks",
-    "gcp": "GCP",
-    "general": "Common",
     "github": "GitHub",
-    "k8s": "Kubernetes",
     "kubernetes": "Kubernetes",
     "nifcloud": "Nifcloud",
     "tencentcloud": "TencentCloud",
-    "config": "Ansible Config",
-    "hosts": "Ansible Inventory",
 }
 
 
