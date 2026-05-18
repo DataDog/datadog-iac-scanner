@@ -174,8 +174,6 @@ def process_provider(
     input_dir,
     output_dir,
     max_examples,
-    list_json_data,
-    dict_frontmatter,
 ):
     if provider != "no-provider":
         provider_path = input_dir / resource_type / provider
@@ -198,8 +196,6 @@ def process_provider(
         "short_description": f"{provider.upper()} Rules",
         "rules": [],
     }
-
-    dict_frontmatter[provider] = {}
 
     for rule_dir in provider_path.iterdir():
         if not rule_dir.is_dir():
@@ -226,11 +222,6 @@ def process_provider(
             {"name": rule_name, "short_description": rule_desc}
         )
 
-        dict_frontmatter[provider][rule_name] = {
-            "title": rule_desc,
-            "description": rule_desc,
-        }
-
         output_file = output_provider_path / f"{rule_name}.md"
         md_content = build_markdown(
             rule_dir,
@@ -241,9 +232,6 @@ def process_provider(
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(md_content)
         print(f"Generated: {output_file}")
-
-    provider_entry["rules"].sort(key=lambda r: r["name"])
-    list_json_data.append(provider_entry)
     return 1
 
 
@@ -261,9 +249,6 @@ def main():
 
     resource_type_dict = load_list(args.resources_json)
 
-    list_json_data = []
-    dict_yaml_data = {"rules": {}}
-
     for resource_type, providers in resource_type_dict.items():
         resource_path = input_dir / resource_type
         if not resource_path.is_dir():
@@ -271,8 +256,6 @@ def main():
             continue
 
         resource_entry = {"name": resource_type, "providers": []}
-        list_json_data.append(resource_entry)
-        dict_yaml_data["rules"][resource_type] = {}
 
         providers = providers if len(providers) > 0 else ["no-provider"]
         for provider in providers:
@@ -282,28 +265,7 @@ def main():
                 input_dir,
                 output_dir,
                 max_examples,
-                list_json_data[-1]["providers"],
-                dict_yaml_data["rules"][resource_type],
             )
-
-        list_json_data[-1]["providers"].sort(key=lambda p: p["name"])
-
-    list_json_data.sort(key=lambda p: p["name"])
-
-    try:
-        with open(dict_yaml_path, "w", encoding="utf-8") as f:
-            yaml.dump(dict_yaml_data, f)
-        print(f"Generated frontmatter yaml: {dict_yaml_path}")
-    except Exception as e:
-        sys.exit("Failed to write frontmatter.yaml")
-
-    try:
-        with open(list_json_path, "w", encoding="utf-8") as f:
-            json.dump(list_json_data, f, indent=2, ensure_ascii=False)
-        print(f"Generated list JSON: {list_json_path}")
-    except Exception as e:
-        print(f"Failed to write list.json: {e}")
-        sys.exit(1)
 
 
 if __name__ == "__main__":
