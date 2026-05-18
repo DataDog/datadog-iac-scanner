@@ -3,7 +3,7 @@ title: "Unscanned ECR image"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/unscanned_ecr_image"
-  id: "9025b2b3-e554-4842-ba87-db7aeec36d35"
+  id: "cloudformation-aws-unscanned-ecr-image"
   display_name: "Unscanned ECR image"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9025b2b3-e554-4842-ba87-db7aeec36d35`
+**Id:** {{< copyable-code >}}cloudformation-aws-unscanned-ecr-image{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

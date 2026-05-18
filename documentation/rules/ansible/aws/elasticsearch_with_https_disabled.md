@@ -3,7 +3,7 @@ title: "Elasticsearch with HTTPS disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/elasticsearch_with_https_disabled"
-  id: "d6c2d06f-43c1-488a-9ba1-8d75b40fc62d"
+  id: "ansible-aws-elasticsearch-with-https-disabled"
   display_name: "Elasticsearch with HTTPS disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d6c2d06f-43c1-488a-9ba1-8d75b40fc62d`
+**Id:** {{< copyable-code >}}ansible-aws-elasticsearch-with-https-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

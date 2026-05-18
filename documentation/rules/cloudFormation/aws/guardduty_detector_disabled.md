@@ -3,7 +3,7 @@ title: "GuardDuty detector disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/guardduty_detector_disabled"
-  id: "a25cd877-375c-4121-a640-730929936fac"
+  id: "cloudformation-aws-guardduty-detector-disabled"
   display_name: "GuardDuty detector disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a25cd877-375c-4121-a640-730929936fac`
+**Id:** {{< copyable-code >}}cloudformation-aws-guardduty-detector-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

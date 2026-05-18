@@ -3,7 +3,7 @@ title: "S3 bucket ACL allows read to any authenticated user"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_acl_allows_read_to_any_authenticated_user"
-  id: "57b9893d-33b1-4419-bcea-a717ea87e139"
+  id: "terraform-aws-s3-bucket-acl-allows-read-to-any-authenticated-user"
   display_name: "S3 bucket ACL allows read to any authenticated user"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `57b9893d-33b1-4419-bcea-a717ea87e139`
+**Id:** {{< copyable-code >}}terraform-aws-s3-bucket-acl-allows-read-to-any-authenticated-user{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

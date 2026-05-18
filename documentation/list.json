@@ -661,7 +661,7 @@
             "short_description": "Trusted Microsoft services not enabled"
           },
           {
-            "name": "unrestricted_sql_server_acess",
+            "name": "unrestricted_sql_server_access",
             "short_description": "Unrestricted SQL Server access"
           },
           {
@@ -713,7 +713,7 @@
             "short_description": "Client certificate disabled"
           },
           {
-            "name": "cloud_dns_without_dnnsec",
+            "name": "cloud_dns_without_dnssec",
             "short_description": "Cloud DNS without DNSSEC"
           },
           {
@@ -1131,7 +1131,7 @@
             "short_description": "API Gateway endpoint config is not private"
           },
           {
-            "name": "api_gateway_method_does_not_contains_an_api_key",
+            "name": "api_gateway_method_does_not_contain_an_api_key",
             "short_description": "API Gateway method does not contain an API key"
           },
           {
@@ -3220,8 +3220,8 @@
             "short_description": "API Gateway endpoint config is not private"
           },
           {
-            "name": "api_gateway_method_does_not_contains_an_api_key",
-            "short_description": "API Gateway method does not contains an API key"
+            "name": "api_gateway_method_does_not_contain_an_api_key",
+            "short_description": "API Gateway method does not contain an API key"
           },
           {
             "name": "api_gateway_method_settings_cache_not_encrypted",
@@ -5310,11 +5310,11 @@
         "short_description": "GITHUB Rules",
         "rules": [
           {
-            "name": "github_organization_webhook_with_ssl_disabled",
+            "name": "organization_webhook_with_ssl_disabled",
             "short_description": "Github organization webhook with SSL disabled"
           },
           {
-            "name": "github_repository_set_to_public",
+            "name": "repository_set_to_public",
             "short_description": "GitHub repository set to public"
           }
         ]

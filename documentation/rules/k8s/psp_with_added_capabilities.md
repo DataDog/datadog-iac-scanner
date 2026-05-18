@@ -3,7 +3,7 @@ title: "PSP with added capabilities"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/psp_with_added_capabilities"
-  id: "7307579a-3abb-46ad-9ce5-2a915634d5c8"
+  id: "kubernetes-psp-with-added-capabilities"
   display_name: "PSP with added capabilities"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7307579a-3abb-46ad-9ce5-2a915634d5c8`
+**Id:** {{< copyable-code >}}kubernetes-psp-with-added-capabilities{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "RDP access is not restricted"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/rdp_access_is_not_restricted"
-  id: "75418eb9-39ec-465f-913c-6f2b6a80dc77"
+  id: "ansible-gcp-rdp-access-is-not-restricted"
   display_name: "RDP access is not restricted"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `75418eb9-39ec-465f-913c-6f2b6a80dc77`
+**Id:** {{< copyable-code >}}ansible-gcp-rdp-access-is-not-restricted{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

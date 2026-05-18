@@ -3,7 +3,7 @@ title: "DB instance storage not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/db_instance_storage_not_encrypted"
-  id: "08bd0760-8752-44e1-9779-7bb369b2b4e4"
+  id: "terraform-aws-db-instance-storage-not-encrypted"
   display_name: "DB instance storage not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `08bd0760-8752-44e1-9779-7bb369b2b4e4`
+**Id:** {{< copyable-code >}}terraform-aws-db-instance-storage-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

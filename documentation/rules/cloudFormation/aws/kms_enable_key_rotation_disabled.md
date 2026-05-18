@@ -3,7 +3,7 @@ title: "KMS key rotation disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/kms_enable_key_rotation_disabled"
-  id: "235ca980-eb71-48f4-9030-df0c371029eb"
+  id: "cloudformation-aws-kms-enable-key-rotation-disabled"
   display_name: "KMS key rotation disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `235ca980-eb71-48f4-9030-df0c371029eb`
+**Id:** {{< copyable-code >}}cloudformation-aws-kms-enable-key-rotation-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

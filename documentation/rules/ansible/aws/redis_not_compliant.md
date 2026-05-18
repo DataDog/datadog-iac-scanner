@@ -3,7 +3,7 @@ title: "Redis not compliant"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/redis_not_compliant"
-  id: "9f34885e-c08f-4d13-a7d1-cf190c5bd268"
+  id: "ansible-aws-redis-not-compliant"
   display_name: "Redis not compliant"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9f34885e-c08f-4d13-a7d1-cf190c5bd268`
+**Id:** {{< copyable-code >}}ansible-aws-redis-not-compliant{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

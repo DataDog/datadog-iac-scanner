@@ -3,7 +3,7 @@ title: "Disk encryption disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/disk_encryption_disabled"
-  id: "092bae86-6105-4802-99d2-99cd7e7431f3"
+  id: "ansible-gcp-disk-encryption-disabled"
   display_name: "Disk encryption disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `092bae86-6105-4802-99d2-99cd7e7431f3`
+**Id:** {{< copyable-code >}}ansible-gcp-disk-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

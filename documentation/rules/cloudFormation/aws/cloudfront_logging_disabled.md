@@ -3,7 +3,7 @@ title: "CloudFront logging disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cloudfront_logging_disabled"
-  id: "de77cd9f-0e8b-46cc-b4a4-b6b436838642"
+  id: "cloudformation-aws-cloudfront-logging-disabled"
   display_name: "CloudFront logging disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `de77cd9f-0e8b-46cc-b4a4-b6b436838642`
+**Id:** {{< copyable-code >}}cloudformation-aws-cloudfront-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

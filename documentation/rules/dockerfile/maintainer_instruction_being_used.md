@@ -3,7 +3,7 @@ title: "MAINTAINER instruction being used"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/maintainer_instruction_being_used"
-  id: "99614418-f82b-4852-a9ae-5051402b741c"
+  id: "dockerfile-maintainer-instruction-being-used"
   display_name: "MAINTAINER instruction being used"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `99614418-f82b-4852-a9ae-5051402b741c`
+**Id:** {{< copyable-code >}}dockerfile-maintainer-instruction-being-used{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

@@ -3,7 +3,7 @@ title: "Ensure MySQL is using the latest version of TLS encryption"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/mysql_not_using_latest_tls"
-  id: "c2a1d4e6-f789-4b0c-9e12-3456789abcde"
+  id: "terraform-azure-mysql-not-using-latest-tls"
   display_name: "Ensure MySQL is using the latest version of TLS encryption"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c2a1d4e6-f789-4b0c-9e12-3456789abcde`
+**Id:** {{< copyable-code >}}terraform-azure-mysql-not-using-latest-tls{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

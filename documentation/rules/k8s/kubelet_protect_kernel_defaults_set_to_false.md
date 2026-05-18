@@ -3,7 +3,7 @@ title: "Kubelet protect-kernel-defaults set to false"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/kubelet_protect_kernel_defaults_set_to_false"
-  id: "6cf42c97-facd-4fda-b8af-ea4529123355"
+  id: "kubernetes-kubelet-protect-kernel-defaults-set-to-false"
   display_name: "Kubelet protect-kernel-defaults set to false"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6cf42c97-facd-4fda-b8af-ea4529123355`
+**Id:** {{< copyable-code >}}kubernetes-kubelet-protect-kernel-defaults-set-to-false{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

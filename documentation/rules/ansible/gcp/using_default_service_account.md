@@ -3,7 +3,7 @@ title: "Using default service account"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/using_default_service_account"
-  id: "2775e169-e708-42a9-9305-b58aadd2c4dd"
+  id: "ansible-gcp-using-default-service-account"
   display_name: "Using default service account"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2775e169-e708-42a9-9305-b58aadd2c4dd`
+**Id:** {{< copyable-code >}}ansible-gcp-using-default-service-account{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

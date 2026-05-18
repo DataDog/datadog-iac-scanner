@@ -3,7 +3,7 @@ title: "Redshift cluster logging disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/redshift_cluster_logging_disabled"
-  id: "15ffbacc-fa42-4f6f-a57d-2feac7365caa"
+  id: "terraform-aws-redshift-cluster-logging-disabled"
   display_name: "Redshift cluster logging disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `15ffbacc-fa42-4f6f-a57d-2feac7365caa`
+**Id:** {{< copyable-code >}}terraform-aws-redshift-cluster-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

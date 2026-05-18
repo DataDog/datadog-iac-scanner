@@ -3,7 +3,7 @@ title: "IAM database auth not enabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_database_auth_not_enabled"
-  id: "9fcd0a0a-9b6f-4670-a215-d94e6bf3f184"
+  id: "cloudformation-aws-iam-database-auth-not-enabled"
   display_name: "IAM database auth not enabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9fcd0a0a-9b6f-4670-a215-d94e6bf3f184`
+**Id:** {{< copyable-code >}}cloudformation-aws-iam-database-auth-not-enabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

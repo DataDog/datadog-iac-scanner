@@ -3,7 +3,7 @@ title: "API Gateway without SSL certificate"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/api_gateway_without_ssl_certificate"
-  id: "b47b98ab-e481-4a82-8bb1-1ab39fd36e33"
+  id: "ansible-aws-api-gateway-without-ssl-certificate"
   display_name: "API Gateway without SSL certificate"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b47b98ab-e481-4a82-8bb1-1ab39fd36e33`
+**Id:** {{< copyable-code >}}ansible-aws-api-gateway-without-ssl-certificate{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

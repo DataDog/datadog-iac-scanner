@@ -3,7 +3,7 @@ title: "EKS node group remote access disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/eks_node_group_remote_access_disabled"
-  id: "ba40ace1-a047-483c-8a8d-bc2d3a67a82d"
+  id: "terraform-aws-eks-node-group-remote-access-disabled"
   display_name: "EKS node group remote access disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ba40ace1-a047-483c-8a8d-bc2d3a67a82d`
+**Id:** {{< copyable-code >}}terraform-aws-eks-node-group-remote-access-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

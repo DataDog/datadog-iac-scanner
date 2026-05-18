@@ -3,7 +3,7 @@ title: "RAM account password policy max login attempts not recommended"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ram_account_password_policy_max_login_attempts_unrecommended"
-  id: "e76fd7ab-7333-40c6-a2d8-ea28af4a319e"
+  id: "terraform-alicloud-ram-account-password-policy-max-login-attempts-unrecommended"
   display_name: "RAM account password policy max login attempts not recommended"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e76fd7ab-7333-40c6-a2d8-ea28af4a319e`
+**Id:** {{< copyable-code >}}terraform-alicloud-ram-account-password-policy-max-login-attempts-unrecommended{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

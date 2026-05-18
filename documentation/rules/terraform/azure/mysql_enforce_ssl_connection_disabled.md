@@ -3,7 +3,7 @@ title: "ssl_enforcement_enabled is not set to ENABLED for MySQL database server"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/mysql_enforce_ssl_connection_disabled"
-  id: "c3f2e1d0-b9a8-7c6d-5e4f-3210fedcba98"
+  id: "terraform-azure-mysql-enforce-ssl-connection-disabled"
   display_name: "ssl_enforcement_enabled is not set to ENABLED for MySQL database server"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c3f2e1d0-b9a8-7c6d-5e4f-3210fedcba98`
+**Id:** {{< copyable-code >}}terraform-azure-mysql-enforce-ssl-connection-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

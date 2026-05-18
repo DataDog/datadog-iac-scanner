@@ -3,7 +3,7 @@ title: "Aurora with disabled at rest encryption"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/aurora_with_disabled_at_rest_encryption"
-  id: "1a690d1d-0ae7-49fa-b2db-b75ae0dd1d3e"
+  id: "terraform-aws-aurora-with-disabled-at-rest-encryption"
   display_name: "Aurora with disabled at rest encryption"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1a690d1d-0ae7-49fa-b2db-b75ae0dd1d3e`
+**Id:** {{< copyable-code >}}terraform-aws-aurora-with-disabled-at-rest-encryption{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

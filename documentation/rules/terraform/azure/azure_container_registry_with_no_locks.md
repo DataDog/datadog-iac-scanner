@@ -3,7 +3,7 @@ title: "Azure Container Registry with no locks"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/azure_container_registry_with_no_locks"
-  id: "a187ac47-8163-42ce-8a63-c115236be6fb"
+  id: "terraform-azure-azure-container-registry-with-no-locks"
   display_name: "Azure Container Registry with no locks"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a187ac47-8163-42ce-8a63-c115236be6fb`
+**Id:** {{< copyable-code >}}terraform-azure-azure-container-registry-with-no-locks{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

@@ -3,7 +3,7 @@ title: "Amplify branch basic auth config password exposed"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/amplify_branch_basic_auth_config_password_exposed"
-  id: "dfb56e5d-ee68-446e-b32a-657b62befe69"
+  id: "cloudformation-aws-amplify-branch-basic-auth-config-password-exposed"
   display_name: "Amplify branch basic auth config password exposed"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dfb56e5d-ee68-446e-b32a-657b62befe69`
+**Id:** {{< copyable-code >}}cloudformation-aws-amplify-branch-basic-auth-config-password-exposed{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Stackdriver Logging disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/stackdriver_logging_disabled"
-  id: "4c7ebcb2-eae2-461e-bc83-456ee2d4f694"
+  id: "terraform-gcp-stackdriver-logging-disabled"
   display_name: "Stackdriver Logging disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4c7ebcb2-eae2-461e-bc83-456ee2d4f694`
+**Id:** {{< copyable-code >}}terraform-gcp-stackdriver-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

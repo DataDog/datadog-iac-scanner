@@ -3,7 +3,7 @@ title: "PostgreSQL log disconnections not set"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_log_disconnections_not_set"
-  id: "054d07b5-941b-4c28-8eef-18989dc62323"
+  id: "ansible-azure-postgresql-log-disconnections-not-set"
   display_name: "PostgreSQL log disconnections not set"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `054d07b5-941b-4c28-8eef-18989dc62323`
+**Id:** {{< copyable-code >}}ansible-azure-postgresql-log-disconnections-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

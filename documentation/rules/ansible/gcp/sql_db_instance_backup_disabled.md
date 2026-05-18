@@ -3,7 +3,7 @@ title: "SQL DB instance backup disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/sql_db_instance_backup_disabled"
-  id: "0c82eae2-aca0-401f-93e4-fb37a0f9e5e8"
+  id: "ansible-gcp-sql-db-instance-backup-disabled"
   display_name: "SQL DB instance backup disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0c82eae2-aca0-401f-93e4-fb37a0f9e5e8`
+**Id:** {{< copyable-code >}}ansible-gcp-sql-db-instance-backup-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

@@ -3,7 +3,7 @@ title: "EFS not encrypted"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/efs_not_encrypted"
-  id: "2ff8e83c-90e1-4d68-a300-6d652112e622"
+  id: "cloudformation-aws-efs-not-encrypted"
   display_name: "EFS not encrypted"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2ff8e83c-90e1-4d68-a300-6d652112e622`
+**Id:** {{< copyable-code >}}cloudformation-aws-efs-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

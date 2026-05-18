@@ -3,7 +3,7 @@ title: "S3 bucket allows get action from all principals"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_allows_get_action_from_all_principals"
-  id: "1df37f4b-7197-45ce-83f8-9994d2fcf885"
+  id: "terraform-aws-s3-bucket-allows-get-action-from-all-principals"
   display_name: "S3 bucket allows get action from all principals"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1df37f4b-7197-45ce-83f8-9994d2fcf885`
+**Id:** {{< copyable-code >}}terraform-aws-s3-bucket-allows-get-action-from-all-principals{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

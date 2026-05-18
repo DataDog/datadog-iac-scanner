@@ -3,7 +3,7 @@ title: "MySQL SSL connection disabled"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/mysql_ssl_connection_disabled"
-  id: "2a901825-0f3b-4655-a0fe-e0470e50f8e6"
+  id: "ansible-azure-mysql-ssl-connection-disabled"
   display_name: "MySQL SSL connection disabled"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2a901825-0f3b-4655-a0fe-e0470e50f8e6`
+**Id:** {{< copyable-code >}}ansible-azure-mysql-ssl-connection-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

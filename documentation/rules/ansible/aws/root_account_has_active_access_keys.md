@@ -3,7 +3,7 @@ title: "Root account has active access keys"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/root_account_has_active_access_keys"
-  id: "e71d0bc7-d9e8-4e6e-ae90-0a4206db6f40"
+  id: "ansible-aws-root-account-has-active-access-keys"
   display_name: "Root account has active access keys"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e71d0bc7-d9e8-4e6e-ae90-0a4206db6f40`
+**Id:** {{< copyable-code >}}ansible-aws-root-account-has-active-access-keys{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

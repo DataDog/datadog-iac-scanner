@@ -3,7 +3,7 @@ title: "Kubelet HTTPS set to false"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/kubelet_https_set_to_false"
-  id: "cdc8b54e-6b16-4538-a1b0-35849dbe29cf"
+  id: "kubernetes-kubelet-https-set-to-false"
   display_name: "Kubelet HTTPS set to false"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cdc8b54e-6b16-4538-a1b0-35849dbe29cf`
+**Id:** {{< copyable-code >}}kubernetes-kubelet-https-set-to-false{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

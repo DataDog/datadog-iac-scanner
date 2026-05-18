@@ -3,7 +3,7 @@ title: "KMS CryptoKey is publicly accessible"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/kms_crypto_key_publicly_accessible"
-  id: "16cc87d1-dd47-4f46-b3ce-4dfcac8fd2f5"
+  id: "terraform-gcp-kms-crypto-key-publicly-accessible"
   display_name: "KMS CryptoKey is publicly accessible"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `16cc87d1-dd47-4f46-b3ce-4dfcac8fd2f5`
+**Id:** {{< copyable-code >}}terraform-gcp-kms-crypto-key-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

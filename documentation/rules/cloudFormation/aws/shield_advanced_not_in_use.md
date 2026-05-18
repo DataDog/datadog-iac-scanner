@@ -3,7 +3,7 @@ title: "Shield Advanced not in use"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/shield_advanced_not_in_use"
-  id: "ad7444cf-817a-4765-a79e-2145f7981faf"
+  id: "cloudformation-aws-shield-advanced-not-in-use"
   display_name: "Shield Advanced not in use"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ad7444cf-817a-4765-a79e-2145f7981faf`
+**Id:** {{< copyable-code >}}cloudformation-aws-shield-advanced-not-in-use{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

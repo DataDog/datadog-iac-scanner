@@ -3,7 +3,7 @@ title: "Security groups allows unrestricted outbound traffic"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_groups_allows_unrestricted_outbound_traffic"
-  id: "66f2d8f9-a911-4ced-ae27-34f09690bb2c"
+  id: "cloudformation-aws-security-groups-allows-unrestricted-outbound-traffic"
   display_name: "Security groups allows unrestricted outbound traffic"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `66f2d8f9-a911-4ced-ae27-34f09690bb2c`
+**Id:** {{< copyable-code >}}cloudformation-aws-security-groups-allows-unrestricted-outbound-traffic{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

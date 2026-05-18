@@ -3,7 +3,7 @@ title: "Service with external load balancer"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/service_with_external_load_balancer"
-  id: "26763a1c-5dda-4772-b507-5fca7fb5f165"
+  id: "kubernetes-service-with-external-load-balancer"
   display_name: "Service with external load balancer"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `26763a1c-5dda-4772-b507-5fca7fb5f165`
+**Id:** {{< copyable-code >}}kubernetes-service-with-external-load-balancer{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

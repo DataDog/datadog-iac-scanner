@@ -3,7 +3,7 @@ title: "Service account with improper privileges"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/service_account_with_improper_privileges"
-  id: "cefdad16-0dd5-4ac5-8ed2-a37502c78672"
+  id: "terraform-gcp-service-account-with-improper-privileges"
   display_name: "Service account with improper privileges"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cefdad16-0dd5-4ac5-8ed2-a37502c78672`
+**Id:** {{< copyable-code >}}terraform-gcp-service-account-with-improper-privileges{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

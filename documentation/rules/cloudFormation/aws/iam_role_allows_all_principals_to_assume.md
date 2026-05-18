@@ -3,7 +3,7 @@ title: "IAM role allows all principals to assume"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_role_allows_all_principals_to_assume"
-  id: "f80e3aa7-7b34-4185-954e-440a6894dde6"
+  id: "cloudformation-aws-iam-role-allows-all-principals-to-assume"
   display_name: "IAM role allows all principals to assume"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f80e3aa7-7b34-4185-954e-440a6894dde6`
+**Id:** {{< copyable-code >}}cloudformation-aws-iam-role-allows-all-principals-to-assume{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "API Gateway without SSL certificate"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/api_gateway_without_ssl_certificate"
-  id: "0b4869fc-a842-4597-aa00-1294df425440"
+  id: "terraform-aws-api-gateway-without-ssl-certificate"
   display_name: "API Gateway without SSL certificate"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0b4869fc-a842-4597-aa00-1294df425440`
+**Id:** {{< copyable-code >}}terraform-aws-api-gateway-without-ssl-certificate{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

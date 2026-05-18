@@ -3,7 +3,7 @@ title: "IAM policy grants full permissions"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_policy_grants_full_permissions"
-  id: "b5ed026d-a772-4f07-97f9-664ba0b116f8"
+  id: "ansible-aws-iam-policy-grants-full-permissions"
   display_name: "IAM policy grants full permissions"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b5ed026d-a772-4f07-97f9-664ba0b116f8`
+**Id:** {{< copyable-code >}}ansible-aws-iam-policy-grants-full-permissions{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

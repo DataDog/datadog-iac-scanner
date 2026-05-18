@@ -3,7 +3,7 @@ title: "SQL server predictable Active Directory admin account name"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/sql_server_predictable_active_directory_admin_account_name"
-  id: "bcd3fc01-5902-4f2a-b05a-227f9bbf5450"
+  id: "terraform-azure-sql-server-predictable-active-directory-admin-account-name"
   display_name: "SQL server predictable Active Directory admin account name"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bcd3fc01-5902-4f2a-b05a-227f9bbf5450`
+**Id:** {{< copyable-code >}}terraform-azure-sql-server-predictable-active-directory-admin-account-name{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

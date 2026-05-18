@@ -3,7 +3,7 @@ title: "Authorization mode set to always allow"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/authorization_mode_set_to_always_allow"
-  id: "f1f4d8da-1ac4-47d0-b1aa-91e69d33f7d5"
+  id: "kubernetes-authorization-mode-set-to-always-allow"
   display_name: "Authorization mode set to always allow"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f1f4d8da-1ac4-47d0-b1aa-91e69d33f7d5`
+**Id:** {{< copyable-code >}}kubernetes-authorization-mode-set-to-always-allow{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

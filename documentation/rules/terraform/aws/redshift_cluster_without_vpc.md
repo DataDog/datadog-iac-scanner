@@ -3,7 +3,7 @@ title: "Redshift cluster without VPC"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/redshift_cluster_without_vpc"
-  id: "0a494a6a-ebe2-48a0-9d77-cf9d5125e1b3"
+  id: "terraform-aws-redshift-cluster-without-vpc"
   display_name: "Redshift cluster without VPC"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0a494a6a-ebe2-48a0-9d77-cf9d5125e1b3`
+**Id:** {{< copyable-code >}}terraform-aws-redshift-cluster-without-vpc{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

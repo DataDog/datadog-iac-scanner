@@ -3,7 +3,7 @@ title: "CloudFormation metadata contains plaintext credentials"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cloudformation_specifying_credentials_not_safe"
-  id: "9ecb6b21-18bc-4aa7-bd07-db20f1c746db"
+  id: "cloudformation-aws-cloudformation-specifying-credentials-not-safe"
   display_name: "CloudFormation metadata contains plaintext credentials"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9ecb6b21-18bc-4aa7-bd07-db20f1c746db`
+**Id:** {{< copyable-code >}}cloudformation-aws-cloudformation-specifying-credentials-not-safe{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

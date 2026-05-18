@@ -3,7 +3,7 @@ title: "Audit log maxage not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/audit_log_maxage_not_properly_set"
-  id: "da9f3aa8-fbfb-472f-b5a1-576127944218"
+  id: "kubernetes-audit-log-maxage-not-properly-set"
   display_name: "Audit log maxage not properly set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `da9f3aa8-fbfb-472f-b5a1-576127944218`
+**Id:** {{< copyable-code >}}kubernetes-audit-log-maxage-not-properly-set{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "EBS volume encryption disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ebs_volume_encryption_disabled"
-  id: "cc997676-481b-4e93-aa81-d19f8c5e9b12"
+  id: "terraform-aws-ebs-volume-encryption-disabled"
   display_name: "EBS volume encryption disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cc997676-481b-4e93-aa81-d19f8c5e9b12`
+**Id:** {{< copyable-code >}}terraform-aws-ebs-volume-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

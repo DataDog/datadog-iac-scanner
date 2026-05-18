@@ -3,7 +3,7 @@ title: "Elasticsearch domain with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_domain_with_vulnerable_policy"
-  id: "16c4216a-50d3-4785-bfb2-4adb5144a8ba"
+  id: "terraform-aws-elasticsearch-domain-with-vulnerable-policy"
   display_name: "Elasticsearch domain with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `16c4216a-50d3-4785-bfb2-4adb5144a8ba`
+**Id:** {{< copyable-code >}}terraform-aws-elasticsearch-domain-with-vulnerable-policy{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

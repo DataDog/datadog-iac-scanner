@@ -3,7 +3,7 @@ title: "EC2 not EBS optimized"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ec2_not_ebs_optimized"
-  id: "60224630-175a-472a-9e23-133827040766"
+  id: "terraform-aws-ec2-not-ebs-optimized"
   display_name: "EC2 not EBS optimized"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `60224630-175a-472a-9e23-133827040766`
+**Id:** {{< copyable-code >}}terraform-aws-ec2-not-ebs-optimized{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

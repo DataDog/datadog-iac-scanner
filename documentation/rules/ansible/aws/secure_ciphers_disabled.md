@@ -3,7 +3,7 @@ title: "Secure ciphers disabled"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/secure_ciphers_disabled"
-  id: "218413a0-c716-4b94-9e08-0bb70d854709"
+  id: "ansible-aws-secure-ciphers-disabled"
   display_name: "Secure ciphers disabled"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `218413a0-c716-4b94-9e08-0bb70d854709`
+**Id:** {{< copyable-code >}}ansible-aws-secure-ciphers-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

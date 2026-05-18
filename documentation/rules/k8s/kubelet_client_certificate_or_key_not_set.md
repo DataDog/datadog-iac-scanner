@@ -3,7 +3,7 @@ title: "Kubelet client certificate or key not set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/kubelet_client_certificate_or_key_not_set"
-  id: "36a27826-1bf5-49da-aeb0-a60a30c0e834"
+  id: "kubernetes-kubelet-client-certificate-or-key-not-set"
   display_name: "Kubelet client certificate or key not set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `36a27826-1bf5-49da-aeb0-a60a30c0e834`
+**Id:** {{< copyable-code >}}kubernetes-kubelet-client-certificate-or-key-not-set{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

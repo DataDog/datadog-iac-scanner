@@ -3,7 +3,7 @@ title: "Cluster allows unsafe sysctls"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/cluster_allows_unsafe_sysctls"
-  id: "9127f0d9-2310-42e7-866f-5fd9d20dcbad"
+  id: "kubernetes-cluster-allows-unsafe-sysctls"
   display_name: "Cluster allows unsafe sysctls"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9127f0d9-2310-42e7-866f-5fd9d20dcbad`
+**Id:** {{< copyable-code >}}kubernetes-cluster-allows-unsafe-sysctls{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

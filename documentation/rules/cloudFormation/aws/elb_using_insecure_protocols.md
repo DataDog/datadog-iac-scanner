@@ -3,7 +3,7 @@ title: "ELB using insecure protocols"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/elb_using_insecure_protocols"
-  id: "61a94903-3cd3-4780-88ec-fc918819b9c8"
+  id: "cloudformation-aws-elb-using-insecure-protocols"
   display_name: "ELB using insecure protocols"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `61a94903-3cd3-4780-88ec-fc918819b9c8`
+**Id:** {{< copyable-code >}}cloudformation-aws-elb-using-insecure-protocols{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Serverless API cache cluster disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws_sam/serverless_api_cache_cluster_disabled"
-  id: "60a05ede-0a68-4d0d-a58f-f538cf55ff79"
+  id: "cloudformation-aws-serverless-api-cache-cluster-disabled"
   display_name: "Serverless API cache cluster disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `60a05ede-0a68-4d0d-a58f-f538cf55ff79`
+**Id:** {{< copyable-code >}}cloudformation-aws-serverless-api-cache-cluster-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

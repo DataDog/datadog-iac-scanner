@@ -3,7 +3,7 @@ title: "OSS bucket allows all actions from all principals"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/oss_bucket_allows_all_actions_from_all_principals"
-  id: "ec62a32c-a297-41ca-a850-cab40b42094a"
+  id: "terraform-alicloud-oss-bucket-allows-all-actions-from-all-principals"
   display_name: "OSS bucket allows all actions from all principals"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ec62a32c-a297-41ca-a850-cab40b42094a`
+**Id:** {{< copyable-code >}}terraform-alicloud-oss-bucket-allows-all-actions-from-all-principals{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

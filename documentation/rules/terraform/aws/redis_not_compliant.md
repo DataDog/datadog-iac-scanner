@@ -3,7 +3,7 @@ title: "Redis not compliant"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/redis_not_compliant"
-  id: "254c932d-e3bf-44b2-bc9d-eb5fdb09f8d4"
+  id: "terraform-aws-redis-not-compliant"
   display_name: "Redis not compliant"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `254c932d-e3bf-44b2-bc9d-eb5fdb09f8d4`
+**Id:** {{< copyable-code >}}terraform-aws-redis-not-compliant{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

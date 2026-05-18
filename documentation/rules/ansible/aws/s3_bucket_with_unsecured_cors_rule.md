@@ -3,7 +3,7 @@ title: "S3 bucket with unsecured CORS rule"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_with_unsecured_cors_rule"
-  id: "3505094c-f77c-4ba0-95da-f83db712f86c"
+  id: "ansible-aws-s3-bucket-with-unsecured-cors-rule"
   display_name: "S3 bucket with unsecured CORS rule"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3505094c-f77c-4ba0-95da-f83db712f86c`
+**Id:** {{< copyable-code >}}ansible-aws-s3-bucket-with-unsecured-cors-rule{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

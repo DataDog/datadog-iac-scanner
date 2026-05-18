@@ -3,7 +3,7 @@ title: "Ansible Tower exposed to the internet"
 group_id: "Ansible / Ansible Inventory"
 meta:
   name: "hosts/ansible_tower_exposed_to_internet"
-  id: "1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc"
+  id: "ansible-ansible-tower-exposed-to-internet"
   display_name: "Ansible Tower exposed to the internet"
   cloud_provider: "Ansible Inventory"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1b2bf3ff-31e9-460e-bbfb-45e48f4f20cc`
+**Id:** {{< copyable-code >}}ansible-ansible-tower-exposed-to-internet{{< /copyable-code >}}
 
 **Cloud Provider:** Ansible Inventory
 

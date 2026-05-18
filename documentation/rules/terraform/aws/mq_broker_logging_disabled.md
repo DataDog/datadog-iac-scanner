@@ -3,7 +3,7 @@ title: "MQ broker logging disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/mq_broker_logging_disabled"
-  id: "31245f98-a6a9-4182-9fc1-45482b9d030a"
+  id: "terraform-aws-mq-broker-logging-disabled"
   display_name: "MQ broker logging disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `31245f98-a6a9-4182-9fc1-45482b9d030a`
+**Id:** {{< copyable-code >}}terraform-aws-mq-broker-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "REST API with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/rest_api_with_vulnerable_policy"
-  id: "b161c11b-a59b-4431-9a29-4e19f63e6b27"
+  id: "terraform-aws-rest-api-with-vulnerable-policy"
   display_name: "REST API with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b161c11b-a59b-4431-9a29-4e19f63e6b27`
+**Id:** {{< copyable-code >}}terraform-aws-rest-api-with-vulnerable-policy{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "DB security group with public scope"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/db_security_group_with_public_scope"
-  id: "9564406d-e761-4e61-b8d7-5926e3ab8e79"
+  id: "cloudformation-aws-db-security-group-with-public-scope"
   display_name: "DB security group with public scope"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9564406d-e761-4e61-b8d7-5926e3ab8e79`
+**Id:** {{< copyable-code >}}cloudformation-aws-db-security-group-with-public-scope{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

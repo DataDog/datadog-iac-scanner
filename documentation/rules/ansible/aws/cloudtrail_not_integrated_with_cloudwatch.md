@@ -3,7 +3,7 @@ title: "CloudTrail not integrated with CloudWatch"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cloudtrail_not_integrated_with_cloudwatch"
-  id: "ebb2118a-03bc-4d53-ab43-d8750f5cb8d3"
+  id: "ansible-aws-cloudtrail-not-integrated-with-cloudwatch"
   display_name: "CloudTrail not integrated with CloudWatch"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ebb2118a-03bc-4d53-ab43-d8750f5cb8d3`
+**Id:** {{< copyable-code >}}ansible-aws-cloudtrail-not-integrated-with-cloudwatch{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

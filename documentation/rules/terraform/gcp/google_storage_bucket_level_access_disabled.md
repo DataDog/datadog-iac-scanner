@@ -3,7 +3,7 @@ title: "Google Storage bucket level access disabled"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/google_storage_bucket_level_access_disabled"
-  id: "bb0db090-5509-4853-a827-75ced0b3caa0"
+  id: "terraform-gcp-google-storage-bucket-level-access-disabled"
   display_name: "Google Storage bucket level access disabled"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bb0db090-5509-4853-a827-75ced0b3caa0`
+**Id:** {{< copyable-code >}}terraform-gcp-google-storage-bucket-level-access-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

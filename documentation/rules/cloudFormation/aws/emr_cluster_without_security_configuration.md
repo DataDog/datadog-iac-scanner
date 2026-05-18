@@ -3,7 +3,7 @@ title: "EMR cluster without security configuration"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/emr_cluster_without_security_configuration"
-  id: "48af92a5-c89b-4936-bc62-1086fe2bab23"
+  id: "cloudformation-aws-emr-cluster-without-security-configuration"
   display_name: "EMR cluster without security configuration"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `48af92a5-c89b-4936-bc62-1086fe2bab23`
+**Id:** {{< copyable-code >}}cloudformation-aws-emr-cluster-without-security-configuration{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

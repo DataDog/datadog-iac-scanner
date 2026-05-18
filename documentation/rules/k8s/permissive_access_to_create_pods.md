@@ -3,7 +3,7 @@ title: "Permissive access to create pods"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/permissive_access_to_create_pods"
-  id: "592ad21d-ad9b-46c6-8d2d-fad09d62a942"
+  id: "kubernetes-permissive-access-to-create-pods"
   display_name: "Permissive access to create pods"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `592ad21d-ad9b-46c6-8d2d-fad09d62a942`
+**Id:** {{< copyable-code >}}kubernetes-permissive-access-to-create-pods{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

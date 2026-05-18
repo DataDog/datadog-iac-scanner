@@ -3,7 +3,7 @@ title: "Lambda permission principal is a wildcard"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/lambda_permission_principal_is_wildcard"
-  id: "1d6e16f1-5d8a-4379-bfb3-2dadd38ed5a7"
+  id: "cloudformation-aws-lambda-permission-principal-is-wildcard"
   display_name: "Lambda permission principal is a wildcard"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1d6e16f1-5d8a-4379-bfb3-2dadd38ed5a7`
+**Id:** {{< copyable-code >}}cloudformation-aws-lambda-permission-principal-is-wildcard{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

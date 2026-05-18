@@ -3,7 +3,7 @@ title: "RDS with backup disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/rds_with_backup_disabled"
-  id: "1dc73fb4-5b51-430c-8c5f-25dcf9090b02"
+  id: "terraform-aws-rds-with-backup-disabled"
   display_name: "RDS with backup disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1dc73fb4-5b51-430c-8c5f-25dcf9090b02`
+**Id:** {{< copyable-code >}}terraform-aws-rds-with-backup-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

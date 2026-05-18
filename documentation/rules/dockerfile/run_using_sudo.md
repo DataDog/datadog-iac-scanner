@@ -3,7 +3,7 @@ title: "Run using sudo"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/run_using_sudo"
-  id: "8ada6e80-0ade-439e-b176-0b28f6bce35a"
+  id: "dockerfile-run-using-sudo"
   display_name: "Run using sudo"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8ada6e80-0ade-439e-b176-0b28f6bce35a`
+**Id:** {{< copyable-code >}}dockerfile-run-using-sudo{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

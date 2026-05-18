@@ -3,7 +3,7 @@ title: "IAM policy grants full permissions"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_policy_grants_full_permissions"
-  id: "575a2155-6af1-4026-b1af-d5bc8fe2a904"
+  id: "terraform-aws-iam-policy-grants-full-permissions"
   display_name: "IAM policy grants full permissions"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `575a2155-6af1-4026-b1af-d5bc8fe2a904`
+**Id:** {{< copyable-code >}}terraform-aws-iam-policy-grants-full-permissions{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

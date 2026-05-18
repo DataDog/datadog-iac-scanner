@@ -3,7 +3,7 @@ title: "BigQuery dataset is public"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/bigquery_dataset_is_public"
-  id: "2263b286-2fe9-4747-a0ae-8b4768a2bbd2"
+  id: "ansible-gcp-bigquery-dataset-is-public"
   display_name: "BigQuery dataset is public"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2263b286-2fe9-4747-a0ae-8b4768a2bbd2`
+**Id:** {{< copyable-code >}}ansible-gcp-bigquery-dataset-is-public{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

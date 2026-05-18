@@ -3,7 +3,7 @@ title: "CMK is unusable"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/cmk_is_unusable"
-  id: "133fee21-37ef-45df-a563-4d07edc169f4"
+  id: "ansible-aws-cmk-is-unusable"
   display_name: "CMK is unusable"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `133fee21-37ef-45df-a563-4d07edc169f4`
+**Id:** {{< copyable-code >}}ansible-aws-cmk-is-unusable{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

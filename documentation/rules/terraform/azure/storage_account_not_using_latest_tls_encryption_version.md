@@ -3,7 +3,7 @@ title: "Storage account not using latest TLS encryption version"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/storage_account_not_using_latest_tls_encryption_version"
-  id: "8263f146-5e03-43e0-9cfe-db960d56d1e7"
+  id: "terraform-azure-storage-account-not-using-latest-tls-encryption-version"
   display_name: "Storage account not using latest TLS encryption version"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8263f146-5e03-43e0-9cfe-db960d56d1e7`
+**Id:** {{< copyable-code >}}terraform-azure-storage-account-not-using-latest-tls-encryption-version{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

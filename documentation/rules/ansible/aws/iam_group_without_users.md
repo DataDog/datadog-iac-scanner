@@ -3,7 +3,7 @@ title: "IAM group without users"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/iam_group_without_users"
-  id: "f509931b-bbb0-443c-bd9b-10e92ecf2193"
+  id: "ansible-aws-iam-group-without-users"
   display_name: "IAM group without users"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f509931b-bbb0-443c-bd9b-10e92ecf2193`
+**Id:** {{< copyable-code >}}ansible-aws-iam-group-without-users{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

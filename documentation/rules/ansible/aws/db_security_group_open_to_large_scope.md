@@ -3,7 +3,7 @@ title: "DB security group open to large scope"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/db_security_group_open_to_large_scope"
-  id: "ea0ed1c7-9aef-4464-b7c7-94c762da3640"
+  id: "ansible-aws-db-security-group-open-to-large-scope"
   display_name: "DB security group open to large scope"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ea0ed1c7-9aef-4464-b7c7-94c762da3640`
+**Id:** {{< copyable-code >}}ansible-aws-db-security-group-open-to-large-scope{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "IP aliasing disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/ip_aliasing_disabled"
-  id: "ed672a9f-fbf0-44d8-a47d-779501b0db05"
+  id: "ansible-gcp-ip-aliasing-disabled"
   display_name: "IP aliasing disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ed672a9f-fbf0-44d8-a47d-779501b0db05`
+**Id:** {{< copyable-code >}}ansible-gcp-ip-aliasing-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

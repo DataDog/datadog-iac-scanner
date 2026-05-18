@@ -3,7 +3,7 @@ title: "S3 bucket without versioning"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_without_versioning"
-  id: "568a4d22-3517-44a6-a7ad-6a7eed88722c"
+  id: "terraform-aws-s3-bucket-without-versioning"
   display_name: "S3 bucket without versioning"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `568a4d22-3517-44a6-a7ad-6a7eed88722c`
+**Id:** {{< copyable-code >}}terraform-aws-s3-bucket-without-versioning{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

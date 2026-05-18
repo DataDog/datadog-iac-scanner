@@ -3,7 +3,7 @@ title: "Group with privilege escalation by actions 'iam:UpdateAssumeRolePolicy' 
 group_id: "Terraform / AWS"
 meta:
   name: "aws/group_with_privilege_escalation_by_actions_iam_UpdateAssumeRolePolicy_and_sts_AssumeRole"
-  id: "78f1ec6f-5659-41ea-bd48-d0a142dce4f2"
+  id: "terraform-aws-group-with-privilege-escalation-by-actions-iam-updateassumerolepolicy-and-sts-assumerole"
   display_name: "Group with privilege escalation by actions 'iam:UpdateAssumeRolePolicy' and 'sts:AssumeRole'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `78f1ec6f-5659-41ea-bd48-d0a142dce4f2`
+**Id:** {{< copyable-code >}}terraform-aws-group-with-privilege-escalation-by-actions-iam-updateassumerolepolicy-and-sts-assumerole{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

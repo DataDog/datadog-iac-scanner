@@ -3,7 +3,7 @@ title: "Elasticsearch with HTTPS disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_with_https_disabled"
-  id: "2e9e0729-66d5-4148-9d39-5e6fb4bf2a4e"
+  id: "terraform-aws-elasticsearch-with-https-disabled"
   display_name: "Elasticsearch with HTTPS disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2e9e0729-66d5-4148-9d39-5e6fb4bf2a4e`
+**Id:** {{< copyable-code >}}terraform-aws-elasticsearch-with-https-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

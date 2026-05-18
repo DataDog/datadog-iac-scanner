@@ -3,7 +3,7 @@ title: "Security group with unrestricted access to SSH"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/security_group_with_unrestricted_access_to_ssh"
-  id: "65905cec-d691-4320-b320-2000436cb696"
+  id: "terraform-aws-security-group-with-unrestricted-access-to-ssh"
   display_name: "Security group with unrestricted access to SSH"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `65905cec-d691-4320-b320-2000436cb696`
+**Id:** {{< copyable-code >}}terraform-aws-security-group-with-unrestricted-access-to-ssh{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

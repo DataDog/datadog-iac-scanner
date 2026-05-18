@@ -3,7 +3,7 @@ title: "RAM policy attached to user"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/ram_policy_attached_to_user"
-  id: "66505003-7aba-45a1-8d83-5162d5706ef5"
+  id: "terraform-alicloud-ram-policy-attached-to-user"
   display_name: "RAM policy attached to user"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `66505003-7aba-45a1-8d83-5162d5706ef5`
+**Id:** {{< copyable-code >}}terraform-alicloud-ram-policy-attached-to-user{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

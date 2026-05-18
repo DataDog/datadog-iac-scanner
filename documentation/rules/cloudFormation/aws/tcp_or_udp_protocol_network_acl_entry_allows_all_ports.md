@@ -3,7 +3,7 @@ title: "TCP UDP protocol network ACL entry allows all ports"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/tcp_or_udp_protocol_network_acl_entry_allows_all_ports"
-  id: "f57f849c-883b-4cb7-85e7-f7b199dff163"
+  id: "cloudformation-aws-tcp-or-udp-protocol-network-acl-entry-allows-all-ports"
   display_name: "TCP UDP protocol network ACL entry allows all ports"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f57f849c-883b-4cb7-85e7-f7b199dff163`
+**Id:** {{< copyable-code >}}cloudformation-aws-tcp-or-udp-protocol-network-acl-entry-allows-all-ports{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

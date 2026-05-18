@@ -3,7 +3,7 @@ title: "MSK cluster encryption disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/msk_cluster_encryption_disabled"
-  id: "6db52fa6-d4da-4608-908a-89f0c59e743e"
+  id: "terraform-aws-msk-cluster-encryption-disabled"
   display_name: "MSK cluster encryption disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6db52fa6-d4da-4608-908a-89f0c59e743e`
+**Id:** {{< copyable-code >}}terraform-aws-msk-cluster-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

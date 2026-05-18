@@ -3,7 +3,7 @@ title: "Storage share file allows all ACL permissions"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/storage_share_file_allows_all_acl_permissions"
-  id: "48bbe0fd-57e4-4678-a4a1-119e79c90fc3"
+  id: "terraform-azure-storage-share-file-allows-all-acl-permissions"
   display_name: "Storage share file allows all ACL permissions"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `48bbe0fd-57e4-4678-a4a1-119e79c90fc3`
+**Id:** {{< copyable-code >}}terraform-azure-storage-share-file-allows-all-acl-permissions{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

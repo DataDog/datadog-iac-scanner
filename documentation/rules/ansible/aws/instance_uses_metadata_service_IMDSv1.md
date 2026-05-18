@@ -3,7 +3,7 @@ title: "Instance uses metadata service IMDSv1"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/instance_uses_metadata_service_IMDSv1"
-  id: "b9ef8c0e-1392-4df4-aa84-2e0f95681c75"
+  id: "ansible-aws-instance-uses-metadata-service-imdsv1"
   display_name: "Instance uses metadata service IMDSv1"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b9ef8c0e-1392-4df4-aa84-2e0f95681c75`
+**Id:** {{< copyable-code >}}ansible-aws-instance-uses-metadata-service-imdsv1{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

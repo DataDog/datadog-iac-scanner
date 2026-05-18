@@ -3,7 +3,7 @@ title: "Disk encryption disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/disk_encryption_disabled"
-  id: "39750e32-3fe9-453b-8c33-dd277acdb2cc"
+  id: "terraform-alicloud-disk-encryption-disabled"
   display_name: "Disk encryption disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `39750e32-3fe9-453b-8c33-dd277acdb2cc`
+**Id:** {{< copyable-code >}}terraform-alicloud-disk-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

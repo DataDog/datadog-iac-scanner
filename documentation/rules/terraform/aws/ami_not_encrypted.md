@@ -3,7 +3,7 @@ title: "AMI not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ami_not_encrypted"
-  id: "8bbb242f-6e38-4127-86d4-d8f0b2687ae2"
+  id: "terraform-aws-ami-not-encrypted"
   display_name: "AMI not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8bbb242f-6e38-4127-86d4-d8f0b2687ae2`
+**Id:** {{< copyable-code >}}terraform-aws-ami-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

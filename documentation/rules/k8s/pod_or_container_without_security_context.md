@@ -3,7 +3,7 @@ title: "Pod or container without security context"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/pod_or_container_without_security_context"
-  id: "a97a340a-0063-418e-b3a1-3028941d0995"
+  id: "kubernetes-pod-or-container-without-security-context"
   display_name: "Pod or container without security context"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a97a340a-0063-418e-b3a1-3028941d0995`
+**Id:** {{< copyable-code >}}kubernetes-pod-or-container-without-security-context{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

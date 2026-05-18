@@ -3,7 +3,7 @@ title: "Lambda function without tags"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/lambda_function_without_tags"
-  id: "265d9725-2fb8-42a2-bc57-3279c5db82d5"
+  id: "ansible-aws-lambda-function-without-tags"
   display_name: "Lambda function without tags"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `265d9725-2fb8-42a2-bc57-3279c5db82d5`
+**Id:** {{< copyable-code >}}ansible-aws-lambda-function-without-tags{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

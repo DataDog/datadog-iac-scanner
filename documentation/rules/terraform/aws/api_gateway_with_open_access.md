@@ -3,7 +3,7 @@ title: "API Gateway with open access"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/api_gateway_with_open_access"
-  id: "15ccec05-5476-4890-ad19-53991eba1db8"
+  id: "terraform-aws-api-gateway-with-open-access"
   display_name: "API Gateway with open access"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `15ccec05-5476-4890-ad19-53991eba1db8`
+**Id:** {{< copyable-code >}}terraform-aws-api-gateway-with-open-access{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

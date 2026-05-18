@@ -3,7 +3,7 @@ title: "EFS with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/efs_with_vulnerable_policy"
-  id: "fae52418-bb8b-4ac2-b287-0b9082d6a3fd"
+  id: "terraform-aws-efs-with-vulnerable-policy"
   display_name: "EFS with vulnerable policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fae52418-bb8b-4ac2-b287-0b9082d6a3fd`
+**Id:** {{< copyable-code >}}terraform-aws-efs-with-vulnerable-policy{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

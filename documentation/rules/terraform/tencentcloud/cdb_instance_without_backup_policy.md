@@ -3,7 +3,7 @@ title: "CDB instance without backup policy"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cdb_instance_without_backup_policy"
-  id: "ca94be07-7de3-4ae7-85ef-67e0462ec694"
+  id: "terraform-tencentcloud-cdb-instance-without-backup-policy"
   display_name: "CDB instance without backup policy"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ca94be07-7de3-4ae7-85ef-67e0462ec694`
+**Id:** {{< copyable-code >}}terraform-tencentcloud-cdb-instance-without-backup-policy{{< /copyable-code >}}
 
 **Cloud Provider:** TencentCloud
 

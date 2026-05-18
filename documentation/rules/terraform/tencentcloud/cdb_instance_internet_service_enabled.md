@@ -3,7 +3,7 @@ title: "CDB instance internet service enabled"
 group_id: "Terraform / TencentCloud"
 meta:
   name: "tencentcloud/cdb_instance_internet_service_enabled"
-  id: "5d820574-4a60-4916-b049-0810b8629731"
+  id: "terraform-tencentcloud-cdb-instance-internet-service-enabled"
   display_name: "CDB instance internet service enabled"
   cloud_provider: "TencentCloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5d820574-4a60-4916-b049-0810b8629731`
+**Id:** {{< copyable-code >}}terraform-tencentcloud-cdb-instance-internet-service-enabled{{< /copyable-code >}}
 
 **Cloud Provider:** TencentCloud
 

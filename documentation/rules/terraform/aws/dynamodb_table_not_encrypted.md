@@ -3,7 +3,7 @@ title: "DynamoDB table not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/dynamodb_table_not_encrypted"
-  id: "ce089fd4-1406-47bd-8aad-c259772bb294"
+  id: "terraform-aws-dynamodb-table-not-encrypted"
   display_name: "DynamoDB table not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ce089fd4-1406-47bd-8aad-c259772bb294`
+**Id:** {{< copyable-code >}}terraform-aws-dynamodb-table-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

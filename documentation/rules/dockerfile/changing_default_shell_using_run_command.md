@@ -3,7 +3,7 @@ title: "Changing default shell using RUN command"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/changing_default_shell_using_run_command"
-  id: "8a301064-c291-4b20-adcb-403fe7fd95fd"
+  id: "dockerfile-changing-default-shell-using-run-command"
   display_name: "Changing default shell using RUN command"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8a301064-c291-4b20-adcb-403fe7fd95fd`
+**Id:** {{< copyable-code >}}dockerfile-changing-default-shell-using-run-command{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

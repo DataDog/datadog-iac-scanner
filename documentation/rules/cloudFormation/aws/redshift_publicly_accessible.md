@@ -3,7 +3,7 @@ title: "Redshift publicly accessible"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/redshift_publicly_accessible"
-  id: "bdf8dcb4-75df-4370-92c4-606e4ae6c4d3"
+  id: "cloudformation-aws-redshift-publicly-accessible"
   display_name: "Redshift publicly accessible"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bdf8dcb4-75df-4370-92c4-606e4ae6c4d3`
+**Id:** {{< copyable-code >}}cloudformation-aws-redshift-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

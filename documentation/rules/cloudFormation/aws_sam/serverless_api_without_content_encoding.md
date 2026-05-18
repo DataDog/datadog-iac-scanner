@@ -3,7 +3,7 @@ title: "Serverless API without content encoding"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws_sam/serverless_api_without_content_encoding"
-  id: "a2f2800e-614b-4bc8-89e6-fec8afd24800"
+  id: "cloudformation-aws-serverless-api-without-content-encoding"
   display_name: "Serverless API without content encoding"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a2f2800e-614b-4bc8-89e6-fec8afd24800`
+**Id:** {{< copyable-code >}}cloudformation-aws-serverless-api-without-content-encoding{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

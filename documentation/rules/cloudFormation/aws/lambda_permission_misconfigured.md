@@ -3,7 +3,7 @@ title: "Lambda permission misconfigured"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/lambda_permission_misconfigured"
-  id: "9b83114b-b2a1-4534-990d-06da015e47aa"
+  id: "cloudformation-aws-lambda-permission-misconfigured"
   display_name: "Lambda permission misconfigured"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9b83114b-b2a1-4534-990d-06da015e47aa`
+**Id:** {{< copyable-code >}}cloudformation-aws-lambda-permission-misconfigured{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

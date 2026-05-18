@@ -3,7 +3,7 @@ title: "DAX cluster not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/dax_cluster_not_encrypted"
-  id: "f11aec39-858f-4b6f-b946-0a1bf46c0c87"
+  id: "terraform-aws-dax-cluster-not-encrypted"
   display_name: "DAX cluster not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f11aec39-858f-4b6f-b946-0a1bf46c0c87`
+**Id:** {{< copyable-code >}}terraform-aws-dax-cluster-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

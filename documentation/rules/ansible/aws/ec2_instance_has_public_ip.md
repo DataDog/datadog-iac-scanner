@@ -3,7 +3,7 @@ title: "EC2 instance has public IP"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/ec2_instance_has_public_ip"
-  id: "a8b0c58b-cd25-4b53-9ad0-55bca0be0bc1"
+  id: "ansible-aws-ec2-instance-has-public-ip"
   display_name: "EC2 instance has public IP"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a8b0c58b-cd25-4b53-9ad0-55bca0be0bc1`
+**Id:** {{< copyable-code >}}ansible-aws-ec2-instance-has-public-ip{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

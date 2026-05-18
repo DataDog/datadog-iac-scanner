@@ -3,7 +3,7 @@ title: "Cross-account IAM assume role policy without external ID or MFA"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cross_account_iam_assume_role_policy_without_external_id_or_mfa"
-  id: "85138beb-ce7c-4ca3-a09f-e8fbcc57ddd7"
+  id: "cloudformation-aws-cross-account-iam-assume-role-policy-without-external-id-or-mfa"
   display_name: "Cross-account IAM assume role policy without external ID or MFA"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `85138beb-ce7c-4ca3-a09f-e8fbcc57ddd7`
+**Id:** {{< copyable-code >}}cloudformation-aws-cross-account-iam-assume-role-policy-without-external-id-or-mfa{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

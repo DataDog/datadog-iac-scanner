@@ -3,7 +3,7 @@ title: "CloudTrail log file validation disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/cloudtrail_log_file_validation_disabled"
-  id: "52ffcfa6-6c70-4ea6-8376-d828d3961669"
+  id: "terraform-aws-cloudtrail-log-file-validation-disabled"
   display_name: "CloudTrail log file validation disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `52ffcfa6-6c70-4ea6-8376-d828d3961669`
+**Id:** {{< copyable-code >}}terraform-aws-cloudtrail-log-file-validation-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

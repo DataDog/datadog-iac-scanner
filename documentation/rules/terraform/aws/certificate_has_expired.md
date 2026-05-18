@@ -3,7 +3,7 @@ title: "Certificate has expired"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/certificate_has_expired"
-  id: "c3831315-5ae6-4fa8-b458-3d4d5ab7a3f6"
+  id: "terraform-aws-certificate-has-expired"
   display_name: "Certificate has expired"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c3831315-5ae6-4fa8-b458-3d4d5ab7a3f6`
+**Id:** {{< copyable-code >}}terraform-aws-certificate-has-expired{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

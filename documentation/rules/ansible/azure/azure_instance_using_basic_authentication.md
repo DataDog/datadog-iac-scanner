@@ -3,7 +3,7 @@ title: "Azure instance using basic authentication"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/azure_instance_using_basic_authentication"
-  id: "e2d834b7-8b25-4935-af53-4a60668dcbe0"
+  id: "ansible-azure-azure-instance-using-basic-authentication"
   display_name: "Azure instance using basic authentication"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e2d834b7-8b25-4935-af53-4a60668dcbe0`
+**Id:** {{< copyable-code >}}ansible-azure-azure-instance-using-basic-authentication{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

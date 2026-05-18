@@ -3,7 +3,7 @@ title: "Directory service simple AD password exposed"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/directory_service_simple_ad_password_exposed"
-  id: "6685d912-d81f-4cfa-95ad-e316ea31c989"
+  id: "cloudformation-aws-directory-service-simple-ad-password-exposed"
   display_name: "Directory service simple AD password exposed"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6685d912-d81f-4cfa-95ad-e316ea31c989`
+**Id:** {{< copyable-code >}}cloudformation-aws-directory-service-simple-ad-password-exposed{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

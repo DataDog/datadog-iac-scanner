@@ -3,7 +3,7 @@ title: "PostgreSQL server without connection throttling"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/postgresql_server_without_connection_throttling"
-  id: "a9becca7-892a-4af7-b9e1-44bf20a4cd9a"
+  id: "ansible-azure-postgresql-server-without-connection-throttling"
   display_name: "PostgreSQL server without connection throttling"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a9becca7-892a-4af7-b9e1-44bf20a4cd9a`
+**Id:** {{< copyable-code >}}ansible-azure-postgresql-server-without-connection-throttling{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

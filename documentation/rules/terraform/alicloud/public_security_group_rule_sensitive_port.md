@@ -3,7 +3,7 @@ title: "Public security group rule sensitive port"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/public_security_group_rule_sensitive_port"
-  id: "2ae9d554-23fb-4065-bfd1-fe43d5f7c419"
+  id: "terraform-alicloud-public-security-group-rule-sensitive-port"
   display_name: "Public security group rule sensitive port"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2ae9d554-23fb-4065-bfd1-fe43d5f7c419`
+**Id:** {{< copyable-code >}}terraform-alicloud-public-security-group-rule-sensitive-port{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

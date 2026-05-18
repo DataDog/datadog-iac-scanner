@@ -3,7 +3,7 @@ title: "Google project IAM member service account has token creator or account u
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/google_project_iam_member_service_account_has_token_creator_or_account_user_role"
-  id: "c68b4e6d-4e01-4ca1-b256-1e18e875785c"
+  id: "terraform-gcp-google-project-iam-member-service-account-has-token-creator-or-account-user-role"
   display_name: "Google project IAM member service account has token creator or account user role"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `c68b4e6d-4e01-4ca1-b256-1e18e875785c`
+**Id:** {{< copyable-code >}}terraform-gcp-google-project-iam-member-service-account-has-token-creator-or-account-user-role{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

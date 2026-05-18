@@ -3,7 +3,7 @@ title: "User with privilege escalation by actions 'iam:SetDefaultPolicyVersion'"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/user_with_privilege_escalation_by_actions_iam_SetDefaultPolicyVersion"
-  id: "43a41523-386a-4cb1-becb-42af6b414433"
+  id: "terraform-aws-user-with-privilege-escalation-by-actions-iam-setdefaultpolicyversion"
   display_name: "User with privilege escalation by actions 'iam:SetDefaultPolicyVersion'"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `43a41523-386a-4cb1-becb-42af6b414433`
+**Id:** {{< copyable-code >}}terraform-aws-user-with-privilege-escalation-by-actions-iam-setdefaultpolicyversion{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

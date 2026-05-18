@@ -3,7 +3,7 @@ title: "Readiness probe is not configured"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/readiness_probe_is_not_configured"
-  id: "a659f3b5-9bf0-438a-bd9a-7d3a6427f1e3"
+  id: "kubernetes-readiness-probe-is-not-configured"
   display_name: "Readiness probe is not configured"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a659f3b5-9bf0-438a-bd9a-7d3a6427f1e3`
+**Id:** {{< copyable-code >}}kubernetes-readiness-probe-is-not-configured{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

@@ -3,7 +3,7 @@ title: "IP forwarding enabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/ip_forwarding_enabled"
-  id: "11bd3554-cd56-4257-8e25-7aaf30cf8f5f"
+  id: "ansible-gcp-ip-forwarding-enabled"
   display_name: "IP forwarding enabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `11bd3554-cd56-4257-8e25-7aaf30cf8f5f`
+**Id:** {{< copyable-code >}}ansible-gcp-ip-forwarding-enabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

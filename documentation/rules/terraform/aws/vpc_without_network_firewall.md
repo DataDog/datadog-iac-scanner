@@ -3,7 +3,7 @@ title: "VPC without Network Firewall"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/vpc_without_network_firewall"
-  id: "fd632aaf-b8a1-424d-a4d1-0de22fd3247a"
+  id: "terraform-aws-vpc-without-network-firewall"
   display_name: "VPC without Network Firewall"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `fd632aaf-b8a1-424d-a4d1-0de22fd3247a`
+**Id:** {{< copyable-code >}}terraform-aws-vpc-without-network-firewall{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

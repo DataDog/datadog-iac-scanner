@@ -3,7 +3,7 @@ title: "CloudWatch metrics disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cloudwatch_metrics_disabled"
-  id: "5d3c1807-acb3-4bb0-be4e-0440230feeaf"
+  id: "cloudformation-aws-cloudwatch-metrics-disabled"
   display_name: "CloudWatch metrics disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5d3c1807-acb3-4bb0-be4e-0440230feeaf`
+**Id:** {{< copyable-code >}}cloudformation-aws-cloudwatch-metrics-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

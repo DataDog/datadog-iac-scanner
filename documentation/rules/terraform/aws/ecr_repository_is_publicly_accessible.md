@@ -3,7 +3,7 @@ title: "ECR repository is publicly accessible"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ecr_repository_is_publicly_accessible"
-  id: "e86e26fc-489e-44f0-9bcd-97305e4ba69a"
+  id: "terraform-aws-ecr-repository-is-publicly-accessible"
   display_name: "ECR repository is publicly accessible"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e86e26fc-489e-44f0-9bcd-97305e4ba69a`
+**Id:** {{< copyable-code >}}terraform-aws-ecr-repository-is-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

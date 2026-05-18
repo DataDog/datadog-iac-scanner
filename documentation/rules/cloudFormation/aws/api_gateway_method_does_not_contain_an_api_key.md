@@ -2,8 +2,8 @@
 title: "API Gateway method does not contain an API key"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/api_gateway_method_does_not_contains_an_api_key"
-  id: "3641d5b4-d339-4bc2-bfb9-208fe8d3477f"
+  name: "aws/api_gateway_method_does_not_contain_an_api_key"
+  id: "cloudformation-aws-api-gateway-method-does-not-contain-an-api-key"
   display_name: "API Gateway method does not contain an API key"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3641d5b4-d339-4bc2-bfb9-208fe8d3477f`
+**Id:** {{< copyable-code >}}cloudformation-aws-api-gateway-method-does-not-contain-an-api-key{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

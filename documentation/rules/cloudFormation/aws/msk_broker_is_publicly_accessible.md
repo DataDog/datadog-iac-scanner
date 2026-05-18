@@ -3,7 +3,7 @@ title: "MSK broker is publicly accessible"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/msk_broker_is_publicly_accessible"
-  id: "0ce1ba20-8ba8-4364-836f-40c24b8cb0ab"
+  id: "cloudformation-aws-msk-broker-is-publicly-accessible"
   display_name: "MSK broker is publicly accessible"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0ce1ba20-8ba8-4364-836f-40c24b8cb0ab`
+**Id:** {{< copyable-code >}}cloudformation-aws-msk-broker-is-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

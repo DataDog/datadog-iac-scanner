@@ -3,7 +3,7 @@ title: "yum install without version"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/yum_install_without_version"
-  id: "6452c424-1d92-4deb-bb18-a03e95d579c4"
+  id: "dockerfile-yum-install-without-version"
   display_name: "yum install without version"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6452c424-1d92-4deb-bb18-a03e95d579c4`
+**Id:** {{< copyable-code >}}dockerfile-yum-install-without-version{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

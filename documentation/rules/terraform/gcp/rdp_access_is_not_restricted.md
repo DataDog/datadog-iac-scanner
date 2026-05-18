@@ -3,7 +3,7 @@ title: "RDP access is not restricted"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/rdp_access_is_not_restricted"
-  id: "678fd659-96f2-454a-a2a0-c2571f83a4a3"
+  id: "terraform-gcp-rdp-access-is-not-restricted"
   display_name: "RDP access is not restricted"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `678fd659-96f2-454a-a2a0-c2571f83a4a3`
+**Id:** {{< copyable-code >}}terraform-gcp-rdp-access-is-not-restricted{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

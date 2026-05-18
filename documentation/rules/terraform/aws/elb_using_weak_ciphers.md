@@ -3,7 +3,7 @@ title: "ELB using weak ciphers"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elb_using_weak_ciphers"
-  id: "4a800e14-c94a-442d-9067-5a2e9f6c0a4c"
+  id: "terraform-aws-elb-using-weak-ciphers"
   display_name: "ELB using weak ciphers"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4a800e14-c94a-442d-9067-5a2e9f6c0a4c`
+**Id:** {{< copyable-code >}}terraform-aws-elb-using-weak-ciphers{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

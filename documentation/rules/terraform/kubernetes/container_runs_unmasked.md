@@ -3,7 +3,7 @@ title: "Container runs unmasked"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/container_runs_unmasked"
-  id: "0ad60203-c050-4115-83b6-b94bde92541d"
+  id: "terraform-kubernetes-container-runs-unmasked"
   display_name: "Container runs unmasked"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0ad60203-c050-4115-83b6-b94bde92541d`
+**Id:** {{< copyable-code >}}terraform-kubernetes-container-runs-unmasked{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

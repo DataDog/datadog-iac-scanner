@@ -3,7 +3,7 @@ title: "PostgreSQL logging of temporary files disabled"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/postgresql_logging_of_temporary_files_disabled"
-  id: "d6fae5b6-ada9-46c0-8b36-3108a2a2f77b"
+  id: "ansible-gcp-postgresql-logging-of-temporary-files-disabled"
   display_name: "PostgreSQL logging of temporary files disabled"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d6fae5b6-ada9-46c0-8b36-3108a2a2f77b`
+**Id:** {{< copyable-code >}}ansible-gcp-postgresql-logging-of-temporary-files-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

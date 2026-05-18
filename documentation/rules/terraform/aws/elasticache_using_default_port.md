@@ -3,7 +3,7 @@ title: "ElastiCache using default port"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticache_using_default_port"
-  id: "5d89db57-8b51-4b38-bb76-b9bd42bd40f0"
+  id: "terraform-aws-elasticache-using-default-port"
   display_name: "ElastiCache using default port"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5d89db57-8b51-4b38-bb76-b9bd42bd40f0`
+**Id:** {{< copyable-code >}}terraform-aws-elasticache-using-default-port{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

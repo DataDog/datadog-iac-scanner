@@ -3,7 +3,7 @@ title: "IAM user with access to console"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_user_with_access_to_console"
-  id: "9ec311bf-dfd9-421f-8498-0b063c8bc552"
+  id: "terraform-aws-iam-user-with-access-to-console"
   display_name: "IAM user with access to console"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `9ec311bf-dfd9-421f-8498-0b063c8bc552`
+**Id:** {{< copyable-code >}}terraform-aws-iam-user-with-access-to-console{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

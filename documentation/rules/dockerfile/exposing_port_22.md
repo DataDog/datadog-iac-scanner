@@ -3,7 +3,7 @@ title: "Exposing port 22 (SSH)"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/exposing_port_22"
-  id: "5907595b-5b6d-4142-b173-dbb0e73fbff8"
+  id: "dockerfile-exposing-port-22"
   display_name: "Exposing port 22 (SSH)"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5907595b-5b6d-4142-b173-dbb0e73fbff8`
+**Id:** {{< copyable-code >}}dockerfile-exposing-port-22{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

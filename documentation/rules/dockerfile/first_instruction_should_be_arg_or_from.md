@@ -3,7 +3,7 @@ title: "First instruction must be ARG or FROM"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/first_instruction_should_be_arg_or_from"
-  id: "52e2b1c6-56e4-5264-2fc6-523166b2c8f3"
+  id: "dockerfile-first-instruction-should-be-arg-or-from"
   display_name: "First instruction must be ARG or FROM"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `52e2b1c6-56e4-5264-2fc6-523166b2c8f3`
+**Id:** {{< copyable-code >}}dockerfile-first-instruction-should-be-arg-or-from{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

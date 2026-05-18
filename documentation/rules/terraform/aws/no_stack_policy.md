@@ -3,7 +3,7 @@ title: "No stack policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/no_stack_policy"
-  id: "2f01fb2d-828a-499d-b98e-b83747305052"
+  id: "terraform-aws-no-stack-policy"
   display_name: "No stack policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `2f01fb2d-828a-499d-b98e-b83747305052`
+**Id:** {{< copyable-code >}}terraform-aws-no-stack-policy{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

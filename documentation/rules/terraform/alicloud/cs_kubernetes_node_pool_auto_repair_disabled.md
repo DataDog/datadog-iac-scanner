@@ -3,7 +3,7 @@ title: "CS Kubernetes node pool auto repair disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/cs_kubernetes_node_pool_auto_repair_disabled"
-  id: "81ce9394-013d-4731-8fcc-9d229b474073"
+  id: "terraform-alicloud-cs-kubernetes-node-pool-auto-repair-disabled"
   display_name: "CS Kubernetes node pool auto repair disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `81ce9394-013d-4731-8fcc-9d229b474073`
+**Id:** {{< copyable-code >}}terraform-alicloud-cs-kubernetes-node-pool-auto-repair-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

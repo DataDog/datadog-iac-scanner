@@ -3,7 +3,7 @@ title: "S3 bucket allows authenticated users access"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/s3_bucket_allows_access_to_all_authenticated_users"
-  id: "d4e5f6g7-h8i9-0jkl-1234-mn567opq8901"
+  id: "terraform-aws-s3-bucket-allows-access-to-all-authenticated-users"
   display_name: "S3 bucket allows authenticated users access"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d4e5f6g7-h8i9-0jkl-1234-mn567opq8901`
+**Id:** {{< copyable-code >}}terraform-aws-s3-bucket-allows-access-to-all-authenticated-users{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Empty roles for ECS cluster task definitions"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/empty_roles_for_ecs_cluster_task_definitions"
-  id: "7f384a5f-b5a2-4d84-8ca3-ee0a5247becb"
+  id: "cloudformation-aws-empty-roles-for-ecs-cluster-task-definitions"
   display_name: "Empty roles for ECS cluster task definitions"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7f384a5f-b5a2-4d84-8ca3-ee0a5247becb`
+**Id:** {{< copyable-code >}}cloudformation-aws-empty-roles-for-ecs-cluster-task-definitions{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

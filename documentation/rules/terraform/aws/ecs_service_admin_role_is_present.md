@@ -3,7 +3,7 @@ title: "ECS service admin role is present"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/ecs_service_admin_role_is_present"
-  id: "3206240f-2e87-4e58-8d24-3e19e7c83d7c"
+  id: "terraform-aws-ecs-service-admin-role-is-present"
   display_name: "ECS service admin role is present"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3206240f-2e87-4e58-8d24-3e19e7c83d7c`
+**Id:** {{< copyable-code >}}terraform-aws-ecs-service-admin-role-is-present{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

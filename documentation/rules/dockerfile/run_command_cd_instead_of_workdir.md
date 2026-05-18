@@ -3,7 +3,7 @@ title: "RUN instruction using cd instead of WORKDIR"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/run_command_cd_instead_of_workdir"
-  id: "f4a6bcd3-e231-4acf-993c-aa027be50d2e"
+  id: "dockerfile-run-command-cd-instead-of-workdir"
   display_name: "RUN instruction using cd instead of WORKDIR"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f4a6bcd3-e231-4acf-993c-aa027be50d2e`
+**Id:** {{< copyable-code >}}dockerfile-run-command-cd-instead-of-workdir{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

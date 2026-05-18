@@ -3,7 +3,7 @@ title: "Launch template is not encrypted"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/launch_template_is_not_encrypted"
-  id: "1455cb21-1d48-46d6-8ae3-cef911b71fd5"
+  id: "terraform-alicloud-launch-template-is-not-encrypted"
   display_name: "Launch template is not encrypted"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `1455cb21-1d48-46d6-8ae3-cef911b71fd5`
+**Id:** {{< copyable-code >}}terraform-alicloud-launch-template-is-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

@@ -3,7 +3,7 @@ title: "MSSQL server public network access enabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/mssql_server_public_network_access_enabled"
-  id: "ade36cf4-329f-4830-a83d-9db72c800507"
+  id: "terraform-azure-mssql-server-public-network-access-enabled"
   display_name: "MSSQL server public network access enabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `ade36cf4-329f-4830-a83d-9db72c800507`
+**Id:** {{< copyable-code >}}terraform-azure-mssql-server-public-network-access-enabled{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

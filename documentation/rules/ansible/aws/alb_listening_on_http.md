@@ -3,7 +3,7 @@ title: "ALB listening on HTTP"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/alb_listening_on_http"
-  id: "f81d63d2-c5d7-43a4-a5b5-66717a41c895"
+  id: "ansible-aws-alb-listening-on-http"
   display_name: "ALB listening on HTTP"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f81d63d2-c5d7-43a4-a5b5-66717a41c895`
+**Id:** {{< copyable-code >}}ansible-aws-alb-listening-on-http{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "CodeBuild not encrypted"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/codebuild_not_encrypted"
-  id: "d7467bb6-3ed1-4c82-8095-5e7a818d0aad"
+  id: "cloudformation-aws-codebuild-not-encrypted"
   display_name: "CodeBuild not encrypted"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d7467bb6-3ed1-4c82-8095-5e7a818d0aad`
+**Id:** {{< copyable-code >}}cloudformation-aws-codebuild-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

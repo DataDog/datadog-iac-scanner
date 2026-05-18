@@ -3,7 +3,7 @@ title: "BigQuery dataset is public"
 group_id: "Terraform / GCP"
 meta:
   name: "gcp/bigquery_dataset_is_public"
-  id: "e576ce44-dd03-4022-a8c0-3906acca2ab4"
+  id: "terraform-gcp-bigquery-dataset-is-public"
   display_name: "BigQuery dataset is public"
   cloud_provider: "GCP"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `e576ce44-dd03-4022-a8c0-3906acca2ab4`
+**Id:** {{< copyable-code >}}terraform-gcp-bigquery-dataset-is-public{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

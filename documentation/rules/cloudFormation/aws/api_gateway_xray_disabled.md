@@ -3,7 +3,7 @@ title: "API Gateway X-Ray disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/api_gateway_xray_disabled"
-  id: "4ab10c48-bedb-4deb-8f3b-ff12783b61de"
+  id: "cloudformation-aws-api-gateway-xray-disabled"
   display_name: "API Gateway X-Ray disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4ab10c48-bedb-4deb-8f3b-ff12783b61de`
+**Id:** {{< copyable-code >}}cloudformation-aws-api-gateway-xray-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

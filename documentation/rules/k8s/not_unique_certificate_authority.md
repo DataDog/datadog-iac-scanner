@@ -3,7 +3,7 @@ title: "Certificate authority is not unique"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/not_unique_certificate_authority"
-  id: "cb7e695d-6a85-495c-b15f-23aed2519303"
+  id: "kubernetes-not-unique-certificate-authority"
   display_name: "Certificate authority is not unique"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cb7e695d-6a85-495c-b15f-23aed2519303`
+**Id:** {{< copyable-code >}}kubernetes-not-unique-certificate-authority{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

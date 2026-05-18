@@ -3,7 +3,7 @@ title: "apt-get install lists were not deleted"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/apt_get_install_lists_were_not_deleted"
-  id: "df746b39-6564-4fed-bf85-e9c44382303c"
+  id: "dockerfile-apt-get-install-lists-were-not-deleted"
   display_name: "apt-get install lists were not deleted"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `df746b39-6564-4fed-bf85-e9c44382303c`
+**Id:** {{< copyable-code >}}dockerfile-apt-get-install-lists-were-not-deleted{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

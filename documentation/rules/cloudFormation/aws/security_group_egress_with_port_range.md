@@ -3,7 +3,7 @@ title: "Security group egress with port range"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_group_egress_with_port_range"
-  id: "dae9c373-8287-462f-8746-6f93dad93610"
+  id: "cloudformation-aws-security-group-egress-with-port-range"
   display_name: "Security group egress with port range"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `dae9c373-8287-462f-8746-6f93dad93610`
+**Id:** {{< copyable-code >}}cloudformation-aws-security-group-egress-with-port-range{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "EKS cluster has public access"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/eks_cluster_has_public_access"
-  id: "42f4b905-3736-4213-bfe9-c0660518cda8"
+  id: "terraform-aws-eks-cluster-has-public-access"
   display_name: "EKS cluster has public access"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `42f4b905-3736-4213-bfe9-c0660518cda8`
+**Id:** {{< copyable-code >}}terraform-aws-eks-cluster-has-public-access{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

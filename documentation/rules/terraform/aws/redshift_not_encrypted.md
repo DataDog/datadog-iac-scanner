@@ -3,7 +3,7 @@ title: "Redshift not encrypted"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/redshift_not_encrypted"
-  id: "cfdcabb0-fc06-427c-865b-c59f13e898ce"
+  id: "terraform-aws-redshift-not-encrypted"
   display_name: "Redshift not encrypted"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `cfdcabb0-fc06-427c-865b-c59f13e898ce`
+**Id:** {{< copyable-code >}}terraform-aws-redshift-not-encrypted{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "IAM policies attached to user"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_policies_attached_to_user"
-  id: "b4378389-a9aa-44ee-91e7-ef183f11079e"
+  id: "terraform-aws-iam-policies-attached-to-user"
   display_name: "IAM policies attached to user"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `b4378389-a9aa-44ee-91e7-ef183f11079e`
+**Id:** {{< copyable-code >}}terraform-aws-iam-policies-attached-to-user{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

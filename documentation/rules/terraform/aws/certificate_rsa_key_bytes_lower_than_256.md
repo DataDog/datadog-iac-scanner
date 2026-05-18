@@ -3,7 +3,7 @@ title: "Certificate RSA key bytes lower than 256"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/certificate_rsa_key_bytes_lower_than_256"
-  id: "874d68a3-bfbe-4a4b-aaa0-9e74d7da634b"
+  id: "terraform-aws-certificate-rsa-key-bytes-lower-than-256"
   display_name: "Certificate RSA key bytes lower than 256"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `874d68a3-bfbe-4a4b-aaa0-9e74d7da634b`
+**Id:** {{< copyable-code >}}terraform-aws-certificate-rsa-key-bytes-lower-than-256{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

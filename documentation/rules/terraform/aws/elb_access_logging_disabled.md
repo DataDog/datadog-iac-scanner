@@ -3,7 +3,7 @@ title: "ELB access log disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elb_access_logging_disabled"
-  id: "20018359-6fd7-4d05-ab26-d4dffccbdf79"
+  id: "terraform-aws-elb-access-logging-disabled"
   display_name: "ELB access log disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `20018359-6fd7-4d05-ab26-d4dffccbdf79`
+**Id:** {{< copyable-code >}}terraform-aws-elb-access-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

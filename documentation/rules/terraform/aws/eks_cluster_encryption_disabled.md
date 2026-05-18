@@ -3,7 +3,7 @@ title: "EKS cluster encryption disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/eks_cluster_encryption_disabled"
-  id: "63ebcb19-2739-4d3f-aa5c-e8bbb9b85281"
+  id: "terraform-aws-eks-cluster-encryption-disabled"
   display_name: "EKS cluster encryption disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `63ebcb19-2739-4d3f-aa5c-e8bbb9b85281`
+**Id:** {{< copyable-code >}}terraform-aws-eks-cluster-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

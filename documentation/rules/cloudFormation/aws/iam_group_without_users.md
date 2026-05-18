@@ -3,7 +3,7 @@ title: "IAM group without users"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_group_without_users"
-  id: "8f957abd-9703-413d-87d3-c578950a753c"
+  id: "cloudformation-aws-iam-group-without-users"
   display_name: "IAM group without users"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8f957abd-9703-413d-87d3-c578950a753c`
+**Id:** {{< copyable-code >}}cloudformation-aws-iam-group-without-users{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

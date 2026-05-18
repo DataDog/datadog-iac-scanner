@@ -3,7 +3,7 @@ title: "Docker daemon socket is exposed to containers"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/docker_daemon_socket_is_exposed_to_containers"
-  id: "4e203a65-c8d8-49a2-b749-b124d43c9dc1"
+  id: "terraform-kubernetes-docker-daemon-socket-is-exposed-to-containers"
   display_name: "Docker daemon socket is exposed to containers"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4e203a65-c8d8-49a2-b749-b124d43c9dc1`
+**Id:** {{< copyable-code >}}terraform-kubernetes-docker-daemon-socket-is-exposed-to-containers{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

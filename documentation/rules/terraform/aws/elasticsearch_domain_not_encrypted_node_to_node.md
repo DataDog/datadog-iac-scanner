@@ -3,7 +3,7 @@ title: "Elasticsearch domain not encrypted node to node"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/elasticsearch_domain_not_encrypted_node_to_node"
-  id: "967eb3e6-26fc-497d-8895-6428beb6e8e2"
+  id: "terraform-aws-elasticsearch-domain-not-encrypted-node-to-node"
   display_name: "Elasticsearch domain not encrypted node to node"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `967eb3e6-26fc-497d-8895-6428beb6e8e2`
+**Id:** {{< copyable-code >}}terraform-aws-elasticsearch-domain-not-encrypted-node-to-node{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

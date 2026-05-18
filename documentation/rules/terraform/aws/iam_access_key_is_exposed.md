@@ -3,7 +3,7 @@ title: "IAM access key is exposed"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/iam_access_key_is_exposed"
-  id: "7081f85c-b94d-40fd-8b45-a4f1cac75e46"
+  id: "terraform-aws-iam-access-key-is-exposed"
   display_name: "IAM access key is exposed"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7081f85c-b94d-40fd-8b45-a4f1cac75e46`
+**Id:** {{< copyable-code >}}terraform-aws-iam-access-key-is-exposed{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

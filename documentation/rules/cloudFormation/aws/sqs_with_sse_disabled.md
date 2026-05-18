@@ -3,7 +3,7 @@ title: "SQS with SSE disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/sqs_with_sse_disabled"
-  id: "12726829-93ed-4d51-9cbe-13423f4299e1"
+  id: "cloudformation-aws-sqs-with-sse-disabled"
   display_name: "SQS with SSE disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `12726829-93ed-4d51-9cbe-13423f4299e1`
+**Id:** {{< copyable-code >}}cloudformation-aws-sqs-with-sse-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

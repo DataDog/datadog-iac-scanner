@@ -3,7 +3,7 @@ title: "VPC flow logs disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/vpc_flow_logs_disabled"
-  id: "d2731f3d-a992-44ed-812e-f4f1c2747d71"
+  id: "terraform-alicloud-vpc-flow-logs-disabled"
   display_name: "VPC flow logs disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d2731f3d-a992-44ed-812e-f4f1c2747d71`
+**Id:** {{< copyable-code >}}terraform-alicloud-vpc-flow-logs-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

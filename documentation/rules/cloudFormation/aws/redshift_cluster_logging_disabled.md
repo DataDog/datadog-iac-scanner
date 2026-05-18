@@ -3,7 +3,7 @@ title: "Redshift cluster logging disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/redshift_cluster_logging_disabled"
-  id: "3de2d4ff-fe53-4fc9-95d3-2f8a69bf90d6"
+  id: "cloudformation-aws-redshift-cluster-logging-disabled"
   display_name: "Redshift cluster logging disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3de2d4ff-fe53-4fc9-95d3-2f8a69bf90d6`
+**Id:** {{< copyable-code >}}cloudformation-aws-redshift-cluster-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

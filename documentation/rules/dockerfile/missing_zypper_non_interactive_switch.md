@@ -3,7 +3,7 @@ title: "Missing Zypper non-interactive switch"
 group_id: "Dockerfile / Dockerfile"
 meta:
   name: "dockerfile/missing_zypper_non_interactive_switch"
-  id: "45e1fca5-f90e-465d-825f-c2cb63fa3944"
+  id: "dockerfile-missing-zypper-non-interactive-switch"
   display_name: "Missing Zypper non-interactive switch"
   cloud_provider: "Dockerfile"
   platform: "Dockerfile"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `45e1fca5-f90e-465d-825f-c2cb63fa3944`
+**Id:** {{< copyable-code >}}dockerfile-missing-zypper-non-interactive-switch{{< /copyable-code >}}
 
 **Cloud Provider:** Dockerfile
 

@@ -3,7 +3,7 @@ title: "Redis publicly accessible"
 group_id: "Ansible / Azure"
 meta:
   name: "azure/redis_publicly_accessible"
-  id: "0632d0db-9190-450a-8bb3-c283bffea445"
+  id: "ansible-azure-redis-publicly-accessible"
   display_name: "Redis publicly accessible"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0632d0db-9190-450a-8bb3-c283bffea445`
+**Id:** {{< copyable-code >}}ansible-azure-redis-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

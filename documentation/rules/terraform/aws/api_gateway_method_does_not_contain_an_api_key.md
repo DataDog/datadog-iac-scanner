@@ -1,10 +1,10 @@
 ---
-title: "API Gateway method does not contains an API key"
+title: "API Gateway method does not contain an API key"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/api_gateway_method_does_not_contains_an_api_key"
-  id: "671211c5-5d2a-4e97-8867-30fc28b02216"
-  display_name: "API Gateway method does not contains an API key"
+  name: "aws/api_gateway_method_does_not_contain_an_api_key"
+  id: "terraform-aws-api-gateway-method-does-not-contain-an-api-key"
+  display_name: "API Gateway method does not contain an API key"
   cloud_provider: "AWS"
   platform: "Terraform"
   severity: "MEDIUM"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `671211c5-5d2a-4e97-8867-30fc28b02216`
+**Id:** {{< copyable-code >}}terraform-aws-api-gateway-method-does-not-contain-an-api-key{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -2,8 +2,8 @@
 title: "Unrestricted SQL Server access"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/unrestricted_sql_server_acess"
-  id: "3f23c96c-f9f5-488d-9b17-605b8da5842f"
+  name: "azure/unrestricted_sql_server_access"
+  id: "ansible-azure-unrestricted-sql-server-access"
   display_name: "Unrestricted SQL Server access"
   cloud_provider: "Azure"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3f23c96c-f9f5-488d-9b17-605b8da5842f`
+**Id:** {{< copyable-code >}}ansible-azure-unrestricted-sql-server-access{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

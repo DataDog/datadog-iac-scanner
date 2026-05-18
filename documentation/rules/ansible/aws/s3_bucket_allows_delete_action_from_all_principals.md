@@ -3,7 +3,7 @@ title: "S3 bucket allows delete action from all principals"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_allows_delete_action_from_all_principals"
-  id: "6fa44721-ef21-41c6-8665-330d59461163"
+  id: "ansible-aws-s3-bucket-allows-delete-action-from-all-principals"
   display_name: "S3 bucket allows delete action from all principals"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6fa44721-ef21-41c6-8665-330d59461163`
+**Id:** {{< copyable-code >}}ansible-aws-s3-bucket-allows-delete-action-from-all-principals{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

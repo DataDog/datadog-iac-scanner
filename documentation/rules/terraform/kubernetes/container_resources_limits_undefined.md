@@ -3,7 +3,7 @@ title: "Container resources limits undefined"
 group_id: "Terraform / Kubernetes"
 meta:
   name: "kubernetes/container_resources_limits_undefined"
-  id: "60af03ff-a421-45c8-b214-6741035476fa"
+  id: "terraform-kubernetes-container-resources-limits-undefined"
   display_name: "Container resources limits undefined"
   cloud_provider: "Kubernetes"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `60af03ff-a421-45c8-b214-6741035476fa`
+**Id:** {{< copyable-code >}}terraform-kubernetes-container-resources-limits-undefined{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

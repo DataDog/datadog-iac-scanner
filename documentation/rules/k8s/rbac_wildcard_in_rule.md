@@ -3,7 +3,7 @@ title: "RBAC wildcard in rule"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/rbac_wildcard_in_rule"
-  id: "6b896afb-ca07-467a-b256-1a0077a1c08e"
+  id: "kubernetes-rbac-wildcard-in-rule"
   display_name: "RBAC wildcard in rule"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6b896afb-ca07-467a-b256-1a0077a1c08e`
+**Id:** {{< copyable-code >}}kubernetes-rbac-wildcard-in-rule{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

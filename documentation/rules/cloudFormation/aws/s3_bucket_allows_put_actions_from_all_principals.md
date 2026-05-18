@@ -3,7 +3,7 @@ title: "S3 bucket allows put action from all principals"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_allows_put_actions_from_all_principals"
-  id: "f6397a20-4cf1-4540-a997-1d363c25ef58"
+  id: "cloudformation-aws-s3-bucket-allows-put-actions-from-all-principals"
   display_name: "S3 bucket allows put action from all principals"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `f6397a20-4cf1-4540-a997-1d363c25ef58`
+**Id:** {{< copyable-code >}}cloudformation-aws-s3-bucket-allows-put-actions-from-all-principals{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Unknown port exposed to internet"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/unknown_port_exposed_to_internet"
-  id: "590d878b-abdc-428f-895a-e2b68a0e1998"
+  id: "terraform-aws-unknown-port-exposed-to-internet"
   display_name: "Unknown port exposed to internet"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `590d878b-abdc-428f-895a-e2b68a0e1998`
+**Id:** {{< copyable-code >}}terraform-aws-unknown-port-exposed-to-internet{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

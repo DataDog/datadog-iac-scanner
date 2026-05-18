@@ -3,7 +3,7 @@ title: "Amazon MQ broker is publicly accessible"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/mq_broker_is_publicly_accessible"
-  id: "68b6a789-82f8-4cfd-85de-e95332fe6a61"
+  id: "cloudformation-aws-mq-broker-is-publicly-accessible"
   display_name: "Amazon MQ broker is publicly accessible"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `68b6a789-82f8-4cfd-85de-e95332fe6a61`
+**Id:** {{< copyable-code >}}cloudformation-aws-mq-broker-is-publicly-accessible{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

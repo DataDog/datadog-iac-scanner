@@ -3,7 +3,7 @@ title: "IAM managed policy applied to a user"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/iam_managed_policy_applied_to_a_user"
-  id: "0e5872b4-19a0-4165-8b2f-56d9e14b909f"
+  id: "cloudformation-aws-iam-managed-policy-applied-to-a-user"
   display_name: "IAM managed policy applied to a user"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0e5872b4-19a0-4165-8b2f-56d9e14b909f`
+**Id:** {{< copyable-code >}}cloudformation-aws-iam-managed-policy-applied-to-a-user{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

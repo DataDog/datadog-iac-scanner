@@ -3,7 +3,7 @@ title: "VM with full cloud access"
 group_id: "Ansible / GCP"
 meta:
   name: "gcp/vm_with_full_cloud_access"
-  id: "bc20bbc6-0697-4568-9a73-85af1dd97bdd"
+  id: "ansible-gcp-vm-with-full-cloud-access"
   display_name: "VM with full cloud access"
   cloud_provider: "GCP"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bc20bbc6-0697-4568-9a73-85af1dd97bdd`
+**Id:** {{< copyable-code >}}ansible-gcp-vm-with-full-cloud-access{{< /copyable-code >}}
 
 **Cloud Provider:** GCP
 

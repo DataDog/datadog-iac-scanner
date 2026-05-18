@@ -3,7 +3,7 @@ title: "Support has no role associated"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/support_has_no_role_associated"
-  id: "d71b5fd7-9020-4b2d-9ec8-b3839faa2744"
+  id: "cloudformation-aws-support-has-no-role-associated"
   display_name: "Support has no role associated"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `d71b5fd7-9020-4b2d-9ec8-b3839faa2744`
+**Id:** {{< copyable-code >}}cloudformation-aws-support-has-no-role-associated{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

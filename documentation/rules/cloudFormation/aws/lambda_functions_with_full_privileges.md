@@ -3,7 +3,7 @@ title: "Lambda functions with full privileges"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/lambda_functions_with_full_privileges"
-  id: "a0ae0a4e-712b-4115-8112-51b9eeed9d69"
+  id: "cloudformation-aws-lambda-functions-with-full-privileges"
   display_name: "Lambda functions with full privileges"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `a0ae0a4e-712b-4115-8112-51b9eeed9d69`
+**Id:** {{< copyable-code >}}cloudformation-aws-lambda-functions-with-full-privileges{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "RDS instance log connections disabled"
 group_id: "Terraform / Alicloud"
 meta:
   name: "alicloud/rds_instance_log_connections_disabled"
-  id: "140869ea-25f2-40d4-a595-0c0da135114e"
+  id: "terraform-alicloud-rds-instance-log-connections-disabled"
   display_name: "RDS instance log connections disabled"
   cloud_provider: "Alicloud"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `140869ea-25f2-40d4-a595-0c0da135114e`
+**Id:** {{< copyable-code >}}terraform-alicloud-rds-instance-log-connections-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Alicloud
 

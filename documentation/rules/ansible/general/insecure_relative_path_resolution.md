@@ -3,7 +3,7 @@ title: "Insecure relative path resolution"
 group_id: "Ansible / Common"
 meta:
   name: "general/insecure_relative_path_resolution"
-  id: "8d22ae91-6ac1-459f-95be-d37bd373f244"
+  id: "ansible-insecure-relative-path-resolution"
   display_name: "Insecure relative path resolution"
   cloud_provider: "Common"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `8d22ae91-6ac1-459f-95be-d37bd373f244`
+**Id:** {{< copyable-code >}}ansible-insecure-relative-path-resolution{{< /copyable-code >}}
 
 **Cloud Provider:** Common
 

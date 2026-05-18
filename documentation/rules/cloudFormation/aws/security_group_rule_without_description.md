@@ -3,7 +3,7 @@ title: "Security group rule without description"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/security_group_rule_without_description"
-  id: "5e6c9c68-8a82-408e-8749-ddad78cbb9c5"
+  id: "cloudformation-aws-security-group-rule-without-description"
   display_name: "Security group rule without description"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `5e6c9c68-8a82-408e-8749-ddad78cbb9c5`
+**Id:** {{< copyable-code >}}cloudformation-aws-security-group-rule-without-description{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "Neptune database cluster encryption disabled"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/neptune_database_cluster_encryption_disabled"
-  id: "98d59056-f745-4ef5-8613-32bca8d40b7e"
+  id: "terraform-aws-neptune-database-cluster-encryption-disabled"
   display_name: "Neptune database cluster encryption disabled"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `98d59056-f745-4ef5-8613-32bca8d40b7e`
+**Id:** {{< copyable-code >}}terraform-aws-neptune-database-cluster-encryption-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

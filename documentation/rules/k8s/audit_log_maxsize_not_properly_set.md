@@ -3,7 +3,7 @@ title: "Audit log maxsize not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/audit_log_maxsize_not_properly_set"
-  id: "35c0a471-f7c8-4993-aa2c-503a3c712a66"
+  id: "kubernetes-audit-log-maxsize-not-properly-set"
   display_name: "Audit log maxsize not properly set"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `35c0a471-f7c8-4993-aa2c-503a3c712a66`
+**Id:** {{< copyable-code >}}kubernetes-audit-log-maxsize-not-properly-set{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

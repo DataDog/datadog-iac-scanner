@@ -3,7 +3,7 @@ title: "EFS without KMS"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/efs_without_kms"
-  id: "bd77554e-f138-40c5-91b2-2a09f878608e"
+  id: "ansible-aws-efs-without-kms"
   display_name: "EFS without KMS"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `bd77554e-f138-40c5-91b2-2a09f878608e`
+**Id:** {{< copyable-code >}}ansible-aws-efs-without-kms{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "etcd client certificate file not defined"
 group_id: "Kubernetes / Kubernetes"
 meta:
   name: "k8s/etcd_client_certificate_file_not_defined"
-  id: "3f5ff8a7-5ad6-4d02-86f5-666307da1b20"
+  id: "kubernetes-etcd-client-certificate-file-not-defined"
   display_name: "etcd client certificate file not defined"
   cloud_provider: "Kubernetes"
   platform: "Kubernetes"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `3f5ff8a7-5ad6-4d02-86f5-666307da1b20`
+**Id:** {{< copyable-code >}}kubernetes-etcd-client-certificate-file-not-defined{{< /copyable-code >}}
 
 **Cloud Provider:** Kubernetes
 

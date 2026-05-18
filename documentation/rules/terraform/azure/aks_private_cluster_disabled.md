@@ -3,7 +3,7 @@ title: "AKS private cluster disabled"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/aks_private_cluster_disabled"
-  id: "599318f2-6653-4569-9e21-041d06c63a89"
+  id: "terraform-azure-aks-private-cluster-disabled"
   display_name: "AKS private cluster disabled"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `599318f2-6653-4569-9e21-041d06c63a89`
+**Id:** {{< copyable-code >}}terraform-azure-aks-private-cluster-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

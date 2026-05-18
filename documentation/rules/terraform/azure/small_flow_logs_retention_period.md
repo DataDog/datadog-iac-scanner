@@ -3,7 +3,7 @@ title: "Small flow logs retention period"
 group_id: "Terraform / Azure"
 meta:
   name: "azure/small_flow_logs_retention_period"
-  id: "7750fcca-dd03-4d38-b663-4b70289bcfd4"
+  id: "terraform-azure-small-flow-logs-retention-period"
   display_name: "Small flow logs retention period"
   cloud_provider: "Azure"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `7750fcca-dd03-4d38-b663-4b70289bcfd4`
+**Id:** {{< copyable-code >}}terraform-azure-small-flow-logs-retention-period{{< /copyable-code >}}
 
 **Cloud Provider:** Azure
 

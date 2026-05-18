@@ -3,7 +3,7 @@ title: "API Gateway without security policy"
 group_id: "Terraform / AWS"
 meta:
   name: "aws/api_gateway_without_security_policy"
-  id: "4e1cc5d3-2811-4fb2-861c-ee9b3cb7f90b"
+  id: "terraform-aws-api-gateway-without-security-policy"
   display_name: "API Gateway without security policy"
   cloud_provider: "AWS"
   platform: "Terraform"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `4e1cc5d3-2811-4fb2-861c-ee9b3cb7f90b`
+**Id:** {{< copyable-code >}}terraform-aws-api-gateway-without-security-policy{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

@@ -3,7 +3,7 @@ title: "S3 bucket with all permissions"
 group_id: "Ansible / AWS"
 meta:
   name: "aws/s3_bucket_with_all_permissions"
-  id: "6a6d7e56-c913-4549-b5c5-5221e624d2ec"
+  id: "ansible-aws-s3-bucket-with-all-permissions"
   display_name: "S3 bucket with all permissions"
   cloud_provider: "AWS"
   platform: "Ansible"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `6a6d7e56-c913-4549-b5c5-5221e624d2ec`
+**Id:** {{< copyable-code >}}ansible-aws-s3-bucket-with-all-permissions{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

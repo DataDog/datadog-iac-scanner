@@ -3,7 +3,7 @@ title: "CloudWatch logging disabled"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/cloudwatch_logging_disabled"
-  id: "0f0fb06b-0f2f-4374-8588-f2c7c348c7a0"
+  id: "cloudformation-aws-cloudwatch-logging-disabled"
   display_name: "CloudWatch logging disabled"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `0f0fb06b-0f2f-4374-8588-f2c7c348c7a0`
+**Id:** {{< copyable-code >}}cloudformation-aws-cloudwatch-logging-disabled{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 

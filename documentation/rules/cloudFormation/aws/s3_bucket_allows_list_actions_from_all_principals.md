@@ -3,7 +3,7 @@ title: "S3 bucket allows list action from all principals"
 group_id: "CloudFormation / AWS"
 meta:
   name: "aws/s3_bucket_allows_list_actions_from_all_principals"
-  id: "faa8fddf-c0aa-4b2d-84ff-e993e233ebe9"
+  id: "cloudformation-aws-s3-bucket-allows-list-actions-from-all-principals"
   display_name: "S3 bucket allows list action from all principals"
   cloud_provider: "AWS"
   platform: "CloudFormation"
@@ -12,7 +12,7 @@ meta:
 ---
 ## Metadata
 
-**Id:** `faa8fddf-c0aa-4b2d-84ff-e993e233ebe9`
+**Id:** {{< copyable-code >}}cloudformation-aws-s3-bucket-allows-list-actions-from-all-principals{{< /copyable-code >}}
 
 **Cloud Provider:** AWS
 
