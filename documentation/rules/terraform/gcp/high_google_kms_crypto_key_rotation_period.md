@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-gcp-high-google-kms-crypto-key-rotation-period{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Terraform
 

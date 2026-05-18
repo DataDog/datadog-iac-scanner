@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}cloudformation-aws-ecs-task-definition-invalid-cpu-or-memory{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** CloudFormation
 

@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-azure-network-interfaces-ip-forwarding-enabled{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Terraform
 

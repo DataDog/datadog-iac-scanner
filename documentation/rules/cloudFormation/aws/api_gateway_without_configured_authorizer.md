@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}cloudformation-aws-api-gateway-without-configured-authorizer{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** CloudFormation
 

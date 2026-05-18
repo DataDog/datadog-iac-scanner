@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-azure-role-assignment-not-limit-guest-users-permissions{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Terraform
 

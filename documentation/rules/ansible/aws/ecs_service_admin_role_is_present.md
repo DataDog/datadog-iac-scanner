@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-aws-ecs-service-admin-role-is-present{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Ansible
 

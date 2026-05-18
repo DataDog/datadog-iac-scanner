@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}cloudformation-aws-security-groups-with-unrestricted-access-to-ssh{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** CloudFormation
 

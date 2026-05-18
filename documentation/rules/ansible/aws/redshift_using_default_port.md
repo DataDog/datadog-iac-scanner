@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-aws-redshift-using-default-port{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Ansible
 

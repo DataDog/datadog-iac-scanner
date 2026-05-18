@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-gcp-ip-forwarding-enabled{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Terraform
 

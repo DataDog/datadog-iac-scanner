@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}cloudformation-aws-efs-not-encrypted{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** CloudFormation
 

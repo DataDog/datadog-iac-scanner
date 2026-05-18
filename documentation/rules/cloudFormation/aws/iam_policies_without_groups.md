@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}cloudformation-aws-iam-policies-without-groups{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** CloudFormation
 

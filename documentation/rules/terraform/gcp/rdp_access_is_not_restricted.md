@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-gcp-rdp-access-is-not-restricted{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Terraform
 

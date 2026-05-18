@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}kubernetes-hpa-targets-invalid-object{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

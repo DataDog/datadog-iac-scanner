@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-azure-small-msql-server-audit-retention{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Terraform
 

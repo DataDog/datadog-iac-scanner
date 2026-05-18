@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-aws-cloudwatch-changes-to-nacl-alarm-missing{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Terraform
 

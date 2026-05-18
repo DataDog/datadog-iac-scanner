@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}dockerfile-maintainer-instruction-being-used{{< /copyable-code >}}
 
-**Cloud Provider:** Dockerfile
+**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

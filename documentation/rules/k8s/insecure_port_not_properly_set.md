@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}kubernetes-insecure-port-not-properly-set{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

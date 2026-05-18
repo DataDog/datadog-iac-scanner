@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}cicd-github-run-block-injection{{< /copyable-code >}}
 
-**Cloud Provider:** GitHub
+**Provider:** GitHub
 
 **Platform:** CICD
 

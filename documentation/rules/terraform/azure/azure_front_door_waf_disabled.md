@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-azure-azure-front-door-waf-disabled{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Terraform
 

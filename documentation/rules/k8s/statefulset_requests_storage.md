@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}kubernetes-statefulset-requests-storage{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

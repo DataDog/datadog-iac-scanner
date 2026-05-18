@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-logging-of-sensitive-data-in-defaults{{< /copyable-code >}}
 
-**Cloud Provider:** Ansible Config
+**Provider:** Ansible Config
 
 **Platform:** Ansible
 

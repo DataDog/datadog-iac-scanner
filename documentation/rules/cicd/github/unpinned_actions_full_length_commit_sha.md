@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}cicd-github-unpinned-actions-full-length-commit-sha{{< /copyable-code >}}
 
-**Cloud Provider:** GitHub
+**Provider:** GitHub
 
 **Platform:** CICD
 

@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}kubernetes-privilege-escalation-allowed{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

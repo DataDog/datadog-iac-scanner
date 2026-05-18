@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-alicloud-ram-account-password-policy-max-password-age-unrecommended{{< /copyable-code >}}
 
-**Cloud Provider:** Alicloud
+**Provider:** Alicloud
 
 **Platform:** Terraform
 

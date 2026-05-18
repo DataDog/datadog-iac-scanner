@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-aws-rds-database-cluster-not-encrypted{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Terraform
 

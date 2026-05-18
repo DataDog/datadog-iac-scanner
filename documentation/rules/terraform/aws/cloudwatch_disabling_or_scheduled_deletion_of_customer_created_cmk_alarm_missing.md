@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-aws-cloudwatch-disabling-or-scheduled-deletion-of-customer-created-cmk-alarm-missing{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Terraform
 

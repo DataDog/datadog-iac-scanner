@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-aws-s3-bucket-allows-get-action-from-all-principals{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Ansible
 

@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-alicloud-ros-stack-without-template{{< /copyable-code >}}
 
-**Cloud Provider:** Alicloud
+**Provider:** Alicloud
 
 **Platform:** Terraform
 

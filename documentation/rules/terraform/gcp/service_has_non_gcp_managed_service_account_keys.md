@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-gcp-service-has-non-gcp-managed-service-account-keys{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Terraform
 

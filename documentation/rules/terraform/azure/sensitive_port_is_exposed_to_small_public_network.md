@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-azure-sensitive-port-is-exposed-to-small-public-network{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Terraform
 

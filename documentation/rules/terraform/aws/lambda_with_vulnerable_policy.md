@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-aws-lambda-with-vulnerable-policy{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Terraform
 

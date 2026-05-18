@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}dockerfile-avoid-chmod-777{{< /copyable-code >}}
 
-**Cloud Provider:** Dockerfile
+**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

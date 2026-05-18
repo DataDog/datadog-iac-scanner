@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-gcp-sql-db-instance-backup-disabled{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Ansible
 

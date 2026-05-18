@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}kubernetes-audit-policy-file-not-defined{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

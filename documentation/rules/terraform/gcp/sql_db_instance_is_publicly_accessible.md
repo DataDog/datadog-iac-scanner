@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-gcp-sql-db-instance-is-publicly-accessible{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Terraform
 

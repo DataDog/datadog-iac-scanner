@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-aws-certificate-rsa-key-bytes-lower-than-256{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Ansible
 

@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-gcp-using-default-service-account{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Ansible
 

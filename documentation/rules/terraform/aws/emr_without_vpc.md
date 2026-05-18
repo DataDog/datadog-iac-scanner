@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-aws-emr-without-vpc{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Terraform
 

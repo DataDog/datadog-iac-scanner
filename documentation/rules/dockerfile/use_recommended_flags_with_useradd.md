@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}dockerfile-use-recommended-flags-with-useradd{{< /copyable-code >}}
 
-**Cloud Provider:** Dockerfile
+**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

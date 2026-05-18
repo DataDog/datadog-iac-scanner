@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-kubernetes-image-pull-policy-of-container-is-not-always{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Terraform
 

@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-kubernetes-psp-allows-sharing-host-ipc{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Terraform
 

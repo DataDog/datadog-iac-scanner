@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}dockerfile-first-instruction-should-be-arg-or-from{{< /copyable-code >}}
 
-**Cloud Provider:** Dockerfile
+**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

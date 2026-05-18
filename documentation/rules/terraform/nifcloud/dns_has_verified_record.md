@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-nifcloud-dns-has-verified-record{{< /copyable-code >}}
 
-**Cloud Provider:** Nifcloud
+**Provider:** Nifcloud
 
 **Platform:** Terraform
 

@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}dockerfile-unix-ports-out-of-range{{< /copyable-code >}}
 
-**Cloud Provider:** Dockerfile
+**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

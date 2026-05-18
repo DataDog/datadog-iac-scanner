@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-alicloud-oss-bucket-versioning-disabled{{< /copyable-code >}}
 
-**Cloud Provider:** Alicloud
+**Provider:** Alicloud
 
 **Platform:** Terraform
 

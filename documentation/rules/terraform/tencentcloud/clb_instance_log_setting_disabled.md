@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-tencentcloud-clb-instance-log-setting-disabled{{< /copyable-code >}}
 
-**Cloud Provider:** TencentCloud
+**Provider:** TencentCloud
 
 **Platform:** Terraform
 

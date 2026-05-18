@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-aws-elasticache-without-vpc{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Ansible
 

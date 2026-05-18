@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-alicloud-public-security-group-rule-all-ports-or-protocols{{< /copyable-code >}}
 
-**Cloud Provider:** Alicloud
+**Provider:** Alicloud
 
 **Platform:** Terraform
 

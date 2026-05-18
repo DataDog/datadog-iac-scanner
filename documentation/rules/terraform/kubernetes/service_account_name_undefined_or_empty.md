@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-kubernetes-service-account-name-undefined-or-empty{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Terraform
 

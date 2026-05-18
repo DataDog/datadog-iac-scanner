@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}cicd-github-concurrency-limits{{< /copyable-code >}}
 
-**Cloud Provider:** GitHub
+**Provider:** GitHub
 
 **Platform:** CICD
 

@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-azure-waf-is-disabled-for-azure-application-gateway{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Ansible
 

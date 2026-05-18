@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-azure-unrestricted-sql-server-access{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Ansible
 

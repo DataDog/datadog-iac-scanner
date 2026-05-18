@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-nifcloud-computing-instance-has-common-private{{< /copyable-code >}}
 
-**Cloud Provider:** Nifcloud
+**Provider:** Nifcloud
 
 **Platform:** Terraform
 

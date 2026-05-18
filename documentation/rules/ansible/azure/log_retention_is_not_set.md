@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-azure-log-retention-is-not-set{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Ansible
 

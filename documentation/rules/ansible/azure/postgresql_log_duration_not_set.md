@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-azure-postgresql-log-duration-not-set{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Ansible
 

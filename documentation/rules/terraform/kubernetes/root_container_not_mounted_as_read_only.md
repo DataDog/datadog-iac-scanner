@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-kubernetes-root-container-not-mounted-as-read-only{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Terraform
 

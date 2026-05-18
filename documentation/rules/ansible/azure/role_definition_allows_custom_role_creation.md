@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-azure-role-definition-allows-custom-role-creation{{< /copyable-code >}}
 
-**Cloud Provider:** Azure
+**Provider:** Azure
 
 **Platform:** Ansible
 

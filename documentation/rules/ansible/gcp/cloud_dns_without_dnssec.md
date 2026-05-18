@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-gcp-cloud-dns-without-dnssec{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Ansible
 

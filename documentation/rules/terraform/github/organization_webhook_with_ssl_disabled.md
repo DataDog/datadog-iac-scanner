@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-github-organization-webhook-with-ssl-disabled{{< /copyable-code >}}
 
-**Cloud Provider:** GitHub
+**Provider:** GitHub
 
 **Platform:** Terraform
 

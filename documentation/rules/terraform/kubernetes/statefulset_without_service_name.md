@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-kubernetes-statefulset-without-service-name{{< /copyable-code >}}
 
-**Cloud Provider:** Kubernetes
+**Provider:** Kubernetes
 
 **Platform:** Terraform
 

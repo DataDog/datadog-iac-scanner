@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-gcp-cloud-storage-bucket-logging-not-enabled{{< /copyable-code >}}
 
-**Cloud Provider:** GCP
+**Provider:** GCP
 
 **Platform:** Ansible
 

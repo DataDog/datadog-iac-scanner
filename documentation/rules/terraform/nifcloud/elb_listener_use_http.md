@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-nifcloud-elb-listener-use-http{{< /copyable-code >}}
 
-**Cloud Provider:** Nifcloud
+**Provider:** Nifcloud
 
 **Platform:** Terraform
 

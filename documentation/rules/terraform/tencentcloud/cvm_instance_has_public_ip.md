@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-tencentcloud-cvm-instance-has-public-ip{{< /copyable-code >}}
 
-**Cloud Provider:** TencentCloud
+**Provider:** TencentCloud
 
 **Platform:** Terraform
 

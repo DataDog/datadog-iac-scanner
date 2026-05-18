@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-nifcloud-db-security-group-has-public-ingress-sgr{{< /copyable-code >}}
 
-**Cloud Provider:** Nifcloud
+**Provider:** Nifcloud
 
 **Platform:** Terraform
 

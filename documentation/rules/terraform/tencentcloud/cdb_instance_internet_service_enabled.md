@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-tencentcloud-cdb-instance-internet-service-enabled{{< /copyable-code >}}
 
-**Cloud Provider:** TencentCloud
+**Provider:** TencentCloud
 
 **Platform:** Terraform
 

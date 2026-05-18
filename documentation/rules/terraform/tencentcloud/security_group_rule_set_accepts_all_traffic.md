@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-tencentcloud-security-group-rule-set-accepts-all-traffic{{< /copyable-code >}}
 
-**Cloud Provider:** TencentCloud
+**Provider:** TencentCloud
 
 **Platform:** Terraform
 

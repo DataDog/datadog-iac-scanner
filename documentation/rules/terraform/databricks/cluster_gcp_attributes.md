@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-databricks-cluster-gcp-attributes{{< /copyable-code >}}
 
-**Cloud Provider:** Databricks
+**Provider:** Databricks
 
 **Platform:** Terraform
 

@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-nifcloud-db-does-not-have-long-backup-retention{{< /copyable-code >}}
 
-**Cloud Provider:** Nifcloud
+**Provider:** Nifcloud
 
 **Platform:** Terraform
 

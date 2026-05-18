@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-ansible-tower-exposed-to-internet{{< /copyable-code >}}
 
-**Cloud Provider:** Ansible Inventory
+**Provider:** Ansible Inventory
 
 **Platform:** Ansible
 

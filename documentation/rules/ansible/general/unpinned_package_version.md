@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-unpinned-package-version{{< /copyable-code >}}
 
-**Cloud Provider:** Common
+**Provider:** Common
 
 **Platform:** Ansible
 

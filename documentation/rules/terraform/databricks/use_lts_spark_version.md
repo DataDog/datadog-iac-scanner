@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-databricks-use-lts-spark-version{{< /copyable-code >}}
 
-**Cloud Provider:** Databricks
+**Provider:** Databricks
 
 **Platform:** Terraform
 

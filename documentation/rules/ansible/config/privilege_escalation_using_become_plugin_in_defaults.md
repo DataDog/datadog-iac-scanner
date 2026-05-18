@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-privilege-escalation-using-become-plugin-in-defaults{{< /copyable-code >}}
 
-**Cloud Provider:** Ansible Config
+**Provider:** Ansible Config
 
 **Platform:** Ansible
 

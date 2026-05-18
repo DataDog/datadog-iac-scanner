@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-databricks-databricks-permissions{{< /copyable-code >}}
 
-**Cloud Provider:** Databricks
+**Provider:** Databricks
 
 **Platform:** Terraform
 

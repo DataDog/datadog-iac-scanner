@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-risky-file-permissions{{< /copyable-code >}}
 
-**Cloud Provider:** Common
+**Provider:** Common
 
 **Platform:** Ansible
 

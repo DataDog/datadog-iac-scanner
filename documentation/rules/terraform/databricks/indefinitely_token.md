@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-databricks-indefinitely-token{{< /copyable-code >}}
 
-**Cloud Provider:** Databricks
+**Provider:** Databricks
 
 **Platform:** Terraform
 

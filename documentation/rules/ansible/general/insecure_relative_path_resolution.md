@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-insecure-relative-path-resolution{{< /copyable-code >}}
 
-**Cloud Provider:** Common
+**Provider:** Common
 
 **Platform:** Ansible
 

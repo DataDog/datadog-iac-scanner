@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-databricks-use-spark-submit-task{{< /copyable-code >}}
 
-**Cloud Provider:** Databricks
+**Provider:** Databricks
 
 **Platform:** Terraform
 

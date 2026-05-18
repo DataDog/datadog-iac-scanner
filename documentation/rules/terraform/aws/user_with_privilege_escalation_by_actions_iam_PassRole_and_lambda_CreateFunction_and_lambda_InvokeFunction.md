@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-aws-user-with-privilege-escalation-by-actions-iam-passrole-and-lambda-createfunction-and-lambda-invokefunction{{< /copyable-code >}}
 
-**Cloud Provider:** AWS
+**Provider:** AWS
 
 **Platform:** Terraform
 

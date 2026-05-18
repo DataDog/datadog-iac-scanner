@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-allow-unsafe-lookups-enabled-in-defaults{{< /copyable-code >}}
 
-**Cloud Provider:** Ansible Config
+**Provider:** Ansible Config
 
 **Platform:** Ansible
 

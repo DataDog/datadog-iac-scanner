@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-communication-over-http{{< /copyable-code >}}
 
-**Cloud Provider:** Common
+**Provider:** Common
 
 **Platform:** Ansible
 

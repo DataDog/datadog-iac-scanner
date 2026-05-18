@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-variable-without-description{{< /copyable-code >}}
 
-**Cloud Provider:** Common
+**Provider:** Common
 
 **Platform:** Terraform
 

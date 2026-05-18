@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-generic-git-module-without-revision{{< /copyable-code >}}
 
-**Cloud Provider:** Common
+**Provider:** Common
 
 **Platform:** Terraform
 

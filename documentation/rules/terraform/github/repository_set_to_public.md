@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-github-repository-set-to-public{{< /copyable-code >}}
 
-**Cloud Provider:** GitHub
+**Provider:** GitHub
 
 **Platform:** Terraform
 
