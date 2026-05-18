@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "The CIDR IP should not be a public interface",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/db_security_group_has_public_interface",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-db-security-group-has-public-interface",
   "platform": "Crossplane",
   "descriptionID": "c26de1ff",
   "cloudProvider": "aws",

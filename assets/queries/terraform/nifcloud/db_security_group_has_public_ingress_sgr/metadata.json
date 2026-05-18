@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "A `nifcloud_db_security_group` ingress security group rule allows traffic from `/0`. The rule parses `rule[].cidr_ip`, splitting on `/` and converting the suffix to a number; it flags when that numeric mask is less than 1, indicating a CIDR of `/0`. This represents an overly permissive `cidr` range that allows traffic from any IP address.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/db_security_group_has_public_ingress_sgr",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-db-security-group-has-public-ingress-sgr",
   "platform": "Terraform",
   "descriptionID": "05a9f362",
   "cloudProvider": "nifcloud",

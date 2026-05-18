@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Access Control",
   "descriptionText": "CVM instances (`tencentcloud_instance`) should not include the default security group. This rule inspects the `orderly_security_groups` and `security_groups` attributes for any occurrence of `default` and flags the resource if found. Relying on the default security group can result in overly permissive network access and should be avoided.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/cvm_instance_using_default_security_group",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-tencentcloud-cvm-instance-using-default-security-group",
   "platform": "Terraform",
   "descriptionID": "8b32294d",
   "cloudProvider": "tencentcloud",

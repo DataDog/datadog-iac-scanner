@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "The kubelet argument `--make-iptables-util-chains` should be set to `true`. This policy identifies kubelet invocations that explicitly include `--make-iptables-util-chains=false` (for example in `initContainers` or `containers` command arrays) or `KubeletConfiguration` resources where `makeIPTablesUtilChains` is set to `false`. Disabling this option prevents the kubelet from creating required iptables utility chains, which can disrupt network routing and kube-proxy behavior.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_not_managing_ip_tables",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-kubelet-not-managing-ip-tables",
   "platform": "Kubernetes",
   "descriptionID": "1bd198ea",
   "cwe": "924",

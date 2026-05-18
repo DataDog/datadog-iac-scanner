@@ -5,7 +5,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "A list of Pub/Sub Topic resources found. Cloud Pub/Sub is designed to provide reliable, many-to-many, asynchronous messaging between applications. Publisher applications can send messages to a 'topic' and other applications can subscribe to that topic to receive the messages.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp_bom/pst",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-gcp-pst",
   "platform": "Terraform",
   "descriptionID": "aa371a3b",
   "cloudProvider": "gcp",

@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "AWS Lambda permissions with wildcard actions (`lambda:*`) grant excessive privileges that violate the principle of least privilege, potentially allowing unauthorized operations on your Lambda functions. When wildcards are used, principals may execute unintended actions against your functions, leading to potential service disruption or data leakage. Instead of using wildcards like `action = \"lambda:*\"`, specify only the precise permissions needed, such as `action = \"lambda:InvokeFunction\"` to ensure proper access controls and reduce the attack surface of your Lambda resources.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/lambda_with_vulnerable_policy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-lambda-with-vulnerable-policy",
   "platform": "Terraform",
   "descriptionID": "5db376a3",
   "cloudProvider": "aws",

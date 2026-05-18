@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "Disks should have encryption enabled.\nThis rule checks `tencentcloud_cbs_storage` resources and flags when the `encrypt` attribute is missing or set to `false`.\nThe `encrypt` attribute must be set to `true` to ensure block storage volumes are encrypted.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/disk_encryption_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-tencentcloud-disk-encryption-disabled",
   "platform": "Terraform",
   "descriptionID": "1ee0f202",
   "cloudProvider": "tencentcloud",

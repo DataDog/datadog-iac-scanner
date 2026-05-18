@@ -5,7 +5,7 @@
   "severity": "INFO",
   "category": "Observability",
   "descriptionText": "AWS CloudWatch should have CloudWatch Logs enabled in order to monitor, store, and access log events",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/cloudwatch_without_retention_period_specified",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-cloudwatch-without-retention-period-specified",
   "platform": "Crossplane",
   "descriptionID": "9ce0c6f8",
   "cloudProvider": "aws",

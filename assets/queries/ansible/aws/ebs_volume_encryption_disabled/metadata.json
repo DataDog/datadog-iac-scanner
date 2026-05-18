@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "Encrypt EBS volumes to protect data at rest and ensure snapshots and backups are also encrypted. Unencrypted volumes and their snapshots risk exposure if storage media or backups are compromised. For Ansible, tasks using the `amazon.aws.ec2_vol` or legacy `ec2_vol` modules must define the `encrypted` property and set it to `true` (or `yes`). Tasks with `state` set to `absent` or `list` are ignored. Resources with `encrypted` set to `false` or missing the `encrypted` attribute are flagged.\n\nSecure Ansible example:\n\n```yaml\n- name: Create encrypted EBS volume\n  amazon.aws.ec2_vol:\n    volume_size: 10\n    region: us-east-1\n    encrypted: yes\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ebs_volume_encryption_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-ebs-volume-encryption-disabled",
   "platform": "Ansible",
   "descriptionID": "06f72385",
   "cloudProvider": "aws",

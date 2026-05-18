@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Client certificate authentication for the Kubernetes control plane ensures administrators authenticate with strong cryptographic credentials, reducing reliance on weaker or shared credentials that can lead to unauthorized control-plane access.\n\nFor Ansible GCP Container Cluster resources (`google.cloud.gcp_container_cluster` and `gcp_container_cluster`), the `master_auth` object must include `client_certificate_config` with `issue_client_certificate: true`. Resources that omit `master_auth`, omit `client_certificate_config`, or set `issue_client_certificate` to `false` are flagged. \n\nSecure configuration example for an Ansible task:\n\n```yaml\n- name: Create GKE cluster with client certificate enabled\n  google.cloud.gcp_container_cluster:\n    name: my-cluster\n    master_auth:\n      client_certificate_config:\n        issue_client_certificate: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/client_certificate_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-gcp-client-certificate-disabled",
   "platform": "Ansible",
   "descriptionID": "53a8ab26",
   "cloudProvider": "gcp",

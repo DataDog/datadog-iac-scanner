@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "This check determines whether Google Compute SSL policies enforce strong TLS versions by verifying that the `min_tls_version` attribute is set to `\"TLS_1_2\"`. Allowing lower TLS versions, such as `\"TLS_1_1\"`, exposes services to vulnerabilities associated with outdated cryptographic algorithms and weak cipher suites, increasing the risk of data breaches and interception. For example, the following secure configuration ensures strong encryption by setting `min_tls_version` to `\"TLS_1_2\"`:\n\n```\nresource \"google_compute_ssl_policy\" \"example\" {\n  name            = \"custom-ssl-policy\"\n  min_tls_version = \"TLS_1_2\"\n  profile         = \"CUSTOM\"\n  custom_features = [\"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384\", \"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384\"]\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/google_compute_ssl_policy_weak_cipher_in_use",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-gcp-google-compute-ssl-policy-weak-cipher-in-use",
   "platform": "Terraform",
   "descriptionID": "27c7da5e",
   "cloudProvider": "gcp",

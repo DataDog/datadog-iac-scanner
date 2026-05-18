@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "The `pull_request_target` and `workflow_run` triggers are dangerous because workflows using them run with the base repository's privileges and access to repository secrets. This allows untrusted pull requests or external workflow runs to exfiltrate secrets or modify repository contents.\n\nCheck GitHub Actions workflow definitions in `.github/workflows/*.yml` for the top-level `on` property containing `pull_request_target` or `workflow_run`. Any workflow that declares either trigger will be flagged.\n\nAvoid these triggers when possible. Prefer `pull_request` for pull-request checks or manual/controlled triggers like `workflow_dispatch`. Configure minimal `permissions` for `GITHUB_TOKEN` and avoid using repository secrets in workflows that handle untrusted events.\n\nIf you must use these triggers, restrict event filters (branches/types), enforce least-privilege `permissions`, never expose secrets to untrusted runs, and validate event origin before performing privileged actions.\n\nSecure alternatives example:\n\n```yaml\non: [pull_request]\n\npermissions:\n  contents: read\n  actions: read\n\n# avoid using secrets in jobs triggered by external contributions\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/dangerous_triggers",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd-github-dangerous-triggers",
   "platform": "CICD",
   "descriptionID": "a7b8c9d0",
   "cloudProvider": "github",

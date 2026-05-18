@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "CloudFront distributions that do not enforce a modern minimum TLS protocol version can allow legacy TLS/SSL versions, increasing the risk of downgrade attacks and interception of data in transit.\n\nFor Ansible CloudFront resources (modules `community.aws.cloudfront_distribution` and `cloudfront_distribution`), the `viewer_certificate.minimum_protocol_version` property must be defined and set to `TLSv1.1` or `TLSv1.2` (preferably `TLSv1.2`) when using a custom certificate (`viewer_certificate.cloudfront_default_certificate` set to `false`). Resources that omit `minimum_protocol_version` or specify any other value are flagged. \n\nSecure configuration example for Ansible:\n\n```yaml\n- name: Create CloudFront distribution with secure TLS\n  community.aws.cloudfront_distribution:\n    name: my-distribution\n    viewer_certificate:\n      cloudfront_default_certificate: false\n      acm_certificate_arn: arn:aws:acm:region:acct:certificate/your-cert-id\n      minimum_protocol_version: TLSv1.2\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/secure_ciphers_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-secure-ciphers-disabled",
   "platform": "Ansible",
   "descriptionID": "bc106b2e",
   "cloudProvider": "aws",

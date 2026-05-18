@@ -5,7 +5,7 @@
   "severity": "CRITICAL",
   "category": "Networking and Firewall",
   "descriptionText": "Cosmos DB accounts should have an IP range filter configured to restrict which client IP addresses can connect. Without one, the account may accept connections from unintended networks, increasing the risk of unauthorized data access.\n\nIn Ansible, the `azure.azcollection.azure_rm_cosmosdbaccount` (and legacy `azure_rm_cosmosdbaccount`) resource must include the `ip_range_filter` property set to the allowed IP addresses or CIDR ranges. Resources missing `ip_range_filter` or with it empty are flagged, as they indicate no network-level IP restrictions. Provide a comma-separated list of IPs/CIDRs to enforce access control.\n\nSecure example with IP restrictions:\n\n```yaml\n- name: Create Cosmos DB account with IP restrictions\n  azure.azcollection.azure_rm_cosmosdbaccount:\n    resource_group: my-rg\n    name: my-cosmosdb\n    location: eastus\n    offer_type: Standard\n    ip_range_filter: \"10.0.0.0/24,203.0.113.5\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/cosmosdb_account_ip_range_filter_not_set",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-azure-cosmosdb-account-ip-range-filter-not-set",
   "platform": "Ansible",
   "descriptionID": "7cb8bdbe",
   "cloudProvider": "azure",

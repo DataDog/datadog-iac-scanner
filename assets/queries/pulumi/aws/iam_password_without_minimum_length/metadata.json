@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "IAM password should have the required minimum length",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/iam_password_without_minimum_length",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-iam-password-without-minimum-length",
   "platform": "Pulumi",
   "descriptionID": "5e46720a",
   "cloudProvider": "aws",

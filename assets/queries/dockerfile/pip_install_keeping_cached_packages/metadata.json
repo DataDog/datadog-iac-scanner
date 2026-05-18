@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Dockerfile `RUN` instructions that invoke `pip` or `pip3` should include the `--no-cache-dir` flag to prevent pip from leaving downloaded package caches in image layers. This increases image size and can retain unnecessary artifacts that broaden the attack surface and complicate image hygiene.\n\nThis rule inspects Dockerfile `RUN` commands and flags any `RUN` that calls `pip` or `pip3` with an `install` subcommand but does not include `--no-cache-dir`. Both shell-form and exec-form `RUN` entries are checked. Resources missing the flag or using `pip`/`pip3 install` without `--no-cache-dir` will be reported.\n\nSecure example:\n\n```dockerfile\nRUN pip install --no-cache-dir -r requirements.txt\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/pip_install_keeping_cached_packages",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile-pip-install-keeping-cached-packages",
   "platform": "Dockerfile",
   "descriptionID": "a6eb5f34",
   "cwe": "459",

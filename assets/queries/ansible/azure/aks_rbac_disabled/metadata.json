@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "AKS clusters must have role-based access control (RBAC) enabled to restrict Kubernetes API operations to authorized principals and prevent privilege escalation or unauthorized cluster modifications.\n\nIn Ansible playbooks, tasks using the `azure.azcollection.azure_rm_aks` or `azure_rm_aks` modules must define the `enable_rbac` property and set it to a truthy value (for example `yes`/`true` or YAML true). Resources with `enable_rbac` missing or not set to a truthy value are flagged as insecure.\n\nSecure Ansible example:\n\n```yaml\n- name: Create AKS cluster with RBAC enabled\n  azure.azcollection.azure_rm_aks:\n    name: myAKS\n    resource_group: myRG\n    enable_rbac: yes\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/aks_rbac_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-azure-aks-rbac-disabled",
   "platform": "Ansible",
   "descriptionID": "16276251",
   "cloudProvider": "azure",

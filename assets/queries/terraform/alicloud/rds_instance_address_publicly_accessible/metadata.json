@@ -5,7 +5,7 @@
   "severity": "CRITICAL",
   "category": "Insecure Configurations",
   "descriptionText": "Replace `0.0.0.0/0` with a specific CIDR range for `address`, or remove the public access entry to restrict connectivity.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_address_publicly_accessible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-rds-instance-address-publicly-accessible",
   "platform": "Terraform",
   "descriptionID": "d23dc3f9",
   "cloudProvider": "alicloud",

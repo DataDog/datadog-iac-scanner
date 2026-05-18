@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Checks whether the Kubernetes 'capabilities.drop' setting is present to ensure container security context. The rule verifies that each container and init_container defines 'security_context', that 'capabilities' exists, and that 'capabilities.drop' is set. Missing or undefined attributes are reported as missing or incorrect values.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/no_drop_capabilities_for_containers",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-no-drop-capabilities-for-containers",
   "platform": "Terraform",
   "descriptionID": "f547f3d7",
   "cwe": "754",

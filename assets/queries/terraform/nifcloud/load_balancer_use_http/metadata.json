@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "The `nifcloud_load_balancer` is configured to use the HTTP port (`load_balancer_port` is set to `80`).\nIt should be switched to HTTPS to benefit from TLS security features.\nThe rule reports an `IncorrectValue` issue when `load_balancer_port` equals `80`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/load_balancer_use_http",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-load-balancer-use-http",
   "platform": "Terraform",
   "descriptionID": "fc3831f9",
   "cloudProvider": "nifcloud",

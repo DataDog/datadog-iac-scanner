@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Ingress controllers should not expose workloads, as this can create vulnerabilities and enable denial-of-service (DoS) attacks. This rule detects Ingress entries that route traffic to Services whose ports map directly to pod targetPorts, indicating direct exposure of workload ports. When such mappings are found, the rule flags the Ingress resource with an IncorrectValue issue identifying the resource and offending backend path.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/ingress_controller_exposes_workload",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-ingress-controller-exposes-workload",
   "platform": "Kubernetes",
   "descriptionID": "7db90ca7",
   "cwe": "779",

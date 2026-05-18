@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "OSS buckets should have logging enabled to improve visibility into resource and object access.  The `alicloud_oss_bucket` resource must include a `logging` block with `logging_isenable` set to `true`. If the `logging` block is missing or `logging_isenable` is `false`, access logging is not enabled. To remediate, add the block or update `logging_isenable` from `false` to `true`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_logging_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-oss-bucket-logging-disabled",
   "platform": "Terraform",
   "descriptionID": "c4a5fdbb",
   "cloudProvider": "alicloud",

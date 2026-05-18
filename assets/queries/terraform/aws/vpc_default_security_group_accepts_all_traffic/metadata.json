@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "Default security groups are automatically created when a VPC is created and allow all inbound traffic from resources assigned to the same security group, as well as all outbound traffic by default. This creates a significant security vulnerability as it allows unrestricted network access between resources, potentially enabling lateral movement during a breach. \n\nSecure implementation should not define open ingress/egress rules, as in the following example:\n```\nresource \"aws_default_security_group\" \"default2\" {\n  vpc_id = aws_vpc.mainvpc2.id\n}\n```\n\nAvoid explicitly configuring rules that allow all traffic, such as in the following example:\n```\ningress = [{\n  protocol  = -1\n  self      = true\n  from_port = 0\n  to_port   = 0\n}]\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/vpc_default_security_group_accepts_all_traffic",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-vpc-default-security-group-accepts-all-traffic",
   "platform": "Terraform",
   "descriptionID": "d79243b5",
   "cloudProvider": "aws",

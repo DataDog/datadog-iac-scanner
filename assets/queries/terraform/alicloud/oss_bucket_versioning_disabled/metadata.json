@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Backup",
   "descriptionText": "OSS bucket resources (`alicloud_oss_bucket`) should have `versioning.status` set to `Enabled`. This rule flags buckets where `versioning.status` is `Suspended`, or where the `versioning` block is missing. To remediate, add or update the `versioning` block so that `status = \"Enabled\"`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_versioning_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-oss-bucket-versioning-disabled",
   "platform": "Terraform",
   "descriptionID": "749f1287",
   "cloudProvider": "alicloud",

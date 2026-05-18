@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "All AWS CloudFront distributions should be integrated with the Web Application Firewall (AWS WAF) service",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/cloudfront_without_waf",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-cloudfront-without-waf",
   "platform": "Crossplane",
   "descriptionID": "c5493606",
   "cloudProvider": "aws",

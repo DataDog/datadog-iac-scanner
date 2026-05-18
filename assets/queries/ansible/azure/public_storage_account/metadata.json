@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "Storage accounts must not allow public network access. Broad network access or open IP ranges expose account endpoints and data to unauthorized access and exfiltration.\n\nFor Ansible `azure_rm_storageaccount` and `azure.azcollection.azure_rm_storageaccount` tasks, ensure `network_acls.default_action` is not set to `\"Allow\"` (use `\"Deny\"`). When `default_action` is `\"Deny\"`, the `network_acls.ip_rules` list must not contain the catch-all `\"0.0.0.0/0\"`. Resources missing these properties, with `default_action='Allow'`, or with `ip_rules` containing `0.0.0.0/0` are flagged. \n\nSecure example for an Ansible task:\n\n```yaml\n- name: Create storage account with restricted network access\n  azure.azcollection.azure_rm_storageaccount:\n    resource_group: my-rg\n    name: mystorageacct\n    location: eastus\n    network_acls:\n      default_action: Deny\n      ip_rules:\n        - value: 203.0.113.5/32\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/public_storage_account",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-azure-public-storage-account",
   "platform": "Ansible",
   "descriptionID": "78d2c5b3",
   "cloudProvider": "azure",

@@ -5,7 +5,7 @@
   "severity": "CRITICAL",
   "category": "Networking and Firewall",
   "descriptionText": "This vulnerability occurs when Azure SQL Server firewall rules allow access from a wide range of IP addresses or use the `0.0.0.0` address, potentially exposing the database to unauthorized access from the internet. Overly permissive firewall rules significantly increase the attack surface and risk of data breaches or unauthorized access to sensitive database information. To secure your SQL Server, define tight IP ranges in your firewall rules, as shown in the secure example below:\n\n```terraform\nresource \"azurerm_sql_firewall_rule\" \"secure_example\" {\n  name                = \"FirewallRule1\"\n  resource_group_name = azurerm_resource_group.example.name\n  server_name         = azurerm_sql_server.example.name\n  start_ip_address    = \"10.0.17.62\"\n  end_ip_address      = \"10.0.17.62\"\n}\n```\n\nAvoid wide IP ranges or using `0.0.0.0` as seen in insecure configurations.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/unrestricted_sql_server_access",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-azure-unrestricted-sql-server-access",
   "platform": "Terraform",
   "descriptionID": "837de8dd",
   "cloudProvider": "azure",

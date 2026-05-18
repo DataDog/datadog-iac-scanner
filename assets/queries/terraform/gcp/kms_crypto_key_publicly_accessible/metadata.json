@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "Google Cloud KMS CryptoKeys provide cryptographic functionality for encrypting and decrypting sensitive data in Google Cloud. When KMS CryptoKey IAM policies include `allUsers` or `allAuthenticatedUsers`, they become publicly accessible, creating a serious security vulnerability that could lead to unauthorized access to encryption capabilities, data breaches, or compromised encrypted information.\n\nInsecure configuration example:\n```\ndata \"google_iam_policy\" {\n  binding {\n    role = \"roles/cloudkms.cryptoKeyEncrypter\"\n    members = [\"allUsers\"]\n  }\n}\n```\n\nSecure configuration with specific user access:\n```\ndata \"google_iam_policy\" {\n  binding {\n    role = \"roles/cloudkms.cryptoKeyEncrypter\"\n    members = [\n      \"user:jane@example.com\",\n    ]\n  }\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/kms_crypto_key_publicly_accessible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-gcp-kms-crypto-key-publicly-accessible",
   "platform": "Terraform",
   "descriptionID": "b1146d1f",
   "cloudProvider": "gcp",

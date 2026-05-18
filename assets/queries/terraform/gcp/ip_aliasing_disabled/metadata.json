@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Kubernetes clusters on Google Kubernetes Engine (GKE) should be created with Alias IP ranges enabled by defining the `ip_allocation_policy` block and setting the `networking_mode` attribute to `\"VPC_NATIVE\"`. Without these settings, as shown in the example below, the cluster may fall back to legacy networking modes, which do not provide the same isolation or scalability benefits and increase the risk of network conflicts and unauthorized access:\n\n```\nresource \"google_container_cluster\" \"example\" {\n  name               = \"my-legacy-cluster\"\n  location           = \"us-central1-a\"\n  initial_node_count = 3\n  // Missing ip_allocation_policy and/or incorrect networking_mode\n}\n```\n\nA secure configuration should include both `ip_allocation_policy` and `networking_mode = \"VPC_NATIVE\"`, as shown here:\n\n```\nresource \"google_container_cluster\" \"example\" {\n  name               = \"my-secure-cluster\"\n  location           = \"us-central1-a\"\n  initial_node_count = 3\n  ip_allocation_policy {}\n  networking_mode = \"VPC_NATIVE\"\n}\n```\n\nFailure to enforce Alias IP allocation can reduce network segmentation and may expose pods and services to unintended network access.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/ip_aliasing_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-gcp-ip-aliasing-disabled",
   "platform": "Terraform",
   "descriptionID": "e7d9862a",
   "cloudProvider": "gcp",

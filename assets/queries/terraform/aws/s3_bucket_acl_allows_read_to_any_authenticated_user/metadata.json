@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "This check identifies S3 buckets that use the `authenticated-read` ACL, which grants read access to any authenticated AWS user, regardless of their account. This configuration creates a significant security risk as it exposes your data to all authenticated AWS users worldwide, potentially leading to unauthorized data access and information disclosure. \n\nSecure configuration example:\n```\nresource \"aws_s3_bucket\" \"example\" {\n  bucket = \"my-tf-test-bucket\"\n  acl    = \"private\"\n}\n```\n\nInsecure configuration example:\n```\nresource \"aws_s3_bucket\" \"example\" {\n  bucket = \"my-tf-test-bucket\"\n  acl    = \"authenticated-read\"\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/s3_bucket_acl_allows_read_to_any_authenticated_user",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-s3-bucket-acl-allows-read-to-any-authenticated-user",
   "platform": "Terraform",
   "descriptionID": "a63624e5",
   "cloudProvider": "aws",

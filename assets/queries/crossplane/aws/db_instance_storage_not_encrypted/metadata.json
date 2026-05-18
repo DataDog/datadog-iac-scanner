@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "RDS Instance should have its storage encrypted by setting the parameter to 'true'. The storageEncrypted default value is 'false'.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/db_instance_storage_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-db-instance-storage-not-encrypted",
   "platform": "Crossplane",
   "descriptionID": "e40c8a7e",
   "cloudProvider": "aws",

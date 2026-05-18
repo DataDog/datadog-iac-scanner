@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Resource Management",
   "descriptionText": "`resources.requests.cpu` should be set so the sum of CPU requests from scheduled containers does not exceed the node capacity. This rule validates `container` and `init_container` entries and flags missing `resources`, `resources.requests`, or `resources.requests.cpu` attributes. Ensuring `resources.requests.cpu` is present lets the scheduler make placement decisions and prevents node overcommit.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/cpu_requests_not_set",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-cpu-requests-not-set",
   "platform": "Terraform",
   "descriptionID": "957f09a7",
   "cwe": "400",

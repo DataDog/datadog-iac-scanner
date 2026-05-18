@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Repositories must be set to private. This requires the `visibility` attribute to be set to `private` and/or the `private` attribute to be `true`. If both are defined, `visibility` takes precedence over `private`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/github/repository_set_to_public",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-github-repository-set-to-public",
   "platform": "Terraform",
   "descriptionID": "4df8b842",
   "cwe": "668",

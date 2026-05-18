@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "CloudFormation stacks should publish notifications so operators are alerted to important stack events, such as failed deployments or unexpected stack changes. Without notifications, security incidents or configuration drift can go undetected and response times increase. In Ansible, tasks using the `amazon.aws.cloudformation` or legacy `cloudformation` module must define the `notification_arns` parameter and set it to one or more SNS topic ARNs. Resources missing `notification_arns` are flagged for remediation.\n\nSecure example:\n\n```yaml\n- name: Create or update CloudFormation stack with notifications\n  amazon.aws.cloudformation:\n    stack_name: my-stack\n    state: present\n    template_body: \"{{ lookup('file', 'template.yaml') }}\"\n    notification_arns:\n      - arn:aws:sns:us-east-1:123456789012:stack-notifications\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/stack_notifications_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-stack-notifications-disabled",
   "platform": "Ansible",
   "descriptionID": "59f8905d",
   "cloudProvider": "aws",

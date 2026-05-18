@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Defaults",
   "descriptionText": "The `databricks_token` resource is missing the `lifetime_seconds` attribute, resulting in a token with an indefinite lifetime.\nThis attribute defines the token's validity period and should be set to enforce expiration.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/indefinitely_token",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-databricks-indefinitely-token",
   "platform": "Terraform",
   "descriptionID": "79759163",
   "cloudProvider": "databricks",

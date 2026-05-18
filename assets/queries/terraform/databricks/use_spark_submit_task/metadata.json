@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Best Practices",
   "descriptionText": "This rule detects `databricks_job` resources with `task.spark_submit_task` and reports an `IncorrectValue` issue.\nUse of `spark_submit_task` in job tasks is not allowed.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/use_spark_submit_task",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-databricks-use-spark-submit-task",
   "platform": "Terraform",
   "descriptionID": "fcfdfbd3",
   "cloudProvider": "databricks",

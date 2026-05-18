@@ -5,7 +5,7 @@
   "severity": "INFO",
   "category": "Best Practices",
   "descriptionText": "It's considered a best practice to have point in time recovery enabled for DynamoDB Table",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/dynamodb_table_point_in_time_recovery_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-dynamodb-table-point-in-time-recovery-disabled",
   "platform": "Pulumi",
   "descriptionID": "6ff56c6e",
   "cloudProvider": "aws",

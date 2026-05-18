@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "API Gateway stages should be protected by an AWS WAF Web ACL to block common web threats (for example SQL injection, XSS, and malicious request patterns) before they reach backend services. Ensure your IaC defines a WAFv2 WebACLAssociation that links a Web ACL to the API Gateway stage. The association's `ResourceArn` (or Terraform `resource_arn`) must reference the API Gateway stage ARN (for REST APIs: arn:aws:apigateway:<region>::/restapis/<api-id>/stages/<stage-name>).\n\nThis rule checks Ansible API Gateway resources (modules `community.aws.api_gateway` or `api_gateway`) and expects a corresponding WAFv2 association (for example, `community.aws.wafv2_resources`/`wafv2_resources`) that targets the same stage. Resources missing a WebACLAssociation or where `ResourceArn` does not point to the stage are flagged.\n\nSecure CloudFormation example:\n\n```yaml\nWebACLAssociation:\n  Type: AWS::WAFv2::WebACLAssociation\n  Properties:\n    ResourceArn: !Sub \"arn:aws:apigateway:${AWS::Region}::/restapis/${ApiId}/stages/${StageName}\"\n    WebACLArn: !Ref MyWebACL\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/api_gateway_without_waf",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-api-gateway-without-waf",
   "platform": "Ansible",
   "descriptionID": "8e789062",
   "cloudProvider": "aws",

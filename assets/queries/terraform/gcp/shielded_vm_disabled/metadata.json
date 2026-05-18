@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Compute instances must be configured with Shielded VM enabled to provide enhanced security against rootkits and other persistent threats. This requires defining the `shielded_instance_config` block with all sub-attributes—`enable_secure_boot`, `enable_vtpm`, and `enable_integrity_monitoring`—set to `true`. Failure to enable these features, as shown below, can leave virtual machines vulnerable to unauthorized modifications, tampering, or attacks that compromise the integrity and confidentiality of the system.\n\n```\ndata \"google_compute_instance\" \"appserver\" {\n  name = \"primary-application-server\"\n  zone = \"us-central1-a\"\n  shielded_instance_config {\n      enable_secure_boot = true\n      enable_vtpm = true\n      enable_integrity_monitoring = true\n  }\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/shielded_vm_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-gcp-shielded-vm-disabled",
   "platform": "Terraform",
   "descriptionID": "3a0a17c4",
   "cloudProvider": "gcp",

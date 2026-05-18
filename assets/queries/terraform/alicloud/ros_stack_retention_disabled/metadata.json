@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Backup",
   "descriptionText": "The `retain_stacks` attribute should be enabled to preserve the stack when deleting a stack instance from a stack group.\nIf `retain_stacks` is undefined or set to `false`, the underlying `alicloud_ros_stack_instance` is deleted when the instance is removed. Set `retain_stacks = true` to retain the stack.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ros_stack_retention_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-ros-stack-retention-disabled",
   "platform": "Terraform",
   "descriptionID": "7d4885db",
   "cloudProvider": "alicloud",

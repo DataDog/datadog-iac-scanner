@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Secret Management",
   "descriptionText": "When a container runs `kube-apiserver`, the `--service-account-key-file` flag should be set to a PEM-encoded key file. This enables the API server to validate service account tokens presented to it. The rule flags `kube-apiserver` containers that do not include this flag.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/service_account_key_file_not_properly_set",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-service-account-key-file-not-properly-set",
   "platform": "Kubernetes",
   "descriptionID": "2f3224e8",
   "cwe": "522",

@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Missing `description` for `nifcloud_security_group` resources. The `description` attribute must be present to support auditing and to document the purpose and intent of the security group. Resources without a `description` hinder security reviews and operational tracing.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/computing_security_group_description_undefined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-computing-security-group-description-undefined",
   "platform": "Terraform",
   "descriptionID": "dedce967",
   "cloudProvider": "nifcloud",

@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Amazon Elasticsearch does not have encryption for its domains enabled. To prevent such a scenario, update the attribute 'EnforceHTTPS' to true.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/elasticsearch_with_https_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-elasticsearch-with-https-disabled",
   "platform": "Pulumi",
   "descriptionID": "831d28f3",
   "cloudProvider": "aws",

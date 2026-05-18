@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Backup",
   "descriptionText": "ElastiCache Redis cluster should have 'snapshotRetentionLimit' higher than 0",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/elasticache_redis_cluster_without_backup",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-elasticache-redis-cluster-without-backup",
   "platform": "Pulumi",
   "descriptionID": "ff8bf6c0",
   "cloudProvider": "aws",

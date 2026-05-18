@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Writing to the special GitHub Actions environment files `GITHUB_ENV` or `GITHUB_PATH` from workflow steps that handle untrusted input can inject environment variables or alter `PATH`, enabling attackers to escalate privileges or achieve arbitrary code execution.\n\nThis rule inspects GitHub Actions workflow steps with a `run:` body in workflows that use dangerous triggers such as `pull_request_target` or `workflow_run`, and flags occurrences that write to those files. It detects `>` and `>>` shell redirections, pipeline-to-tee patterns, PowerShell `Out-File`/`Add-Content`/`Set-Content`/`Tee-Object`, and Windows `cmd` echo/write patterns targeting `$GITHUB_ENV`, `$GITHUB_PATH`, `${env:GITHUB_ENV}`, `%GITHUB_ENV%`, and similar variants. The audit ignores trivially static `echo` statements with only literal text but will flag commands that include variable expansion, command substitution, multiple arguments, or unknown commands that may introduce attacker-controlled data.\n\nSecure alternative using step outputs instead of writing to `GITHUB_ENV`:\n\n```yaml\nsteps:\n  - id: set_val\n    run: |\n      echo \"value=foo\" >> $GITHUB_OUTPUT\n  - name: Use value\n    env:\n      FOO: ${{ steps.set_val.outputs.value }}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/github_env",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd-github-github-env",
   "platform": "CICD",
   "descriptionID": "e8f9a0b1",
   "cloudProvider": "github",

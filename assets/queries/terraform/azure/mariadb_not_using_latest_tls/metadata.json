@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "Using outdated TLS versions in Azure MariaDB servers exposes your database to known vulnerabilities and encryption weaknesses, potentially allowing attackers to intercept and decrypt sensitive data. Without proper SSL enforcement and TLS 1.2 (or higher) configuration, your database communications remain susceptible to man-in-the-middle attacks and other security exploits that have been addressed in newer TLS versions. \n\nTo secure your Azure MariaDB server, you must set both the `ssl_enforcement_enabled` flag to `true` and `ssl_minimal_tls_version_enforced` to `TLS1_2`, as shown in the following example:\n\n```terraform\nresource \"azurerm_mariadb_server\" \"good_example\" {\n  name                = \"good-mariadb-server\"\n  location            = \"East US\"\n  resource_group_name = \"example-rg\"\n\n  ssl_enforcement_enabled          = [\"true\"]\n  ssl_minimal_tls_version_enforced = [\"TLS1_2\"]\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/mariadb_not_using_latest_tls",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-azure-mariadb-not-using-latest-tls",
   "platform": "Terraform",
   "descriptionID": "8f0e6b2d",
   "cloudProvider": "azure",

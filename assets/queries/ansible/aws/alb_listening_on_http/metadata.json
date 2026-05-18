@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Application Load Balancers (ALB) must terminate TLS and use HTTPS listeners to protect traffic in transit and prevent interception or downgrade attacks. Serving application traffic over plain HTTP exposes credentials and sensitive data to eavesdropping.\n\nFor Ansible ALB resources (modules `amazon.aws.elb_application_lb` and `elb_application_lb`), ensure the `listeners[].Protocol` property is set to `\"HTTPS\"`. Resources missing the `Protocol` property or with `Protocol` set to any value other than `\"HTTPS\"` are flagged. When using HTTPS, also configure a valid TLS certificate (for example via `Certificates: - CertificateArn: ...`) or implement an HTTP listener only to perform redirects to HTTPS rather than serving plaintext.\n\nSecure configuration example:\n\n```yaml\n- name: Create ALB with HTTPS listener\n  amazon.aws.elb_application_lb:\n    name: my-alb\n    state: present\n    listeners:\n      - Protocol: HTTPS\n        Port: 443\n        Certificates:\n          - CertificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abcdef01-2345-6789-abcd-ef0123456789\n        DefaultActions:\n          - Type: forward\n            TargetGroupArn: arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/my-tg/abcdef0123456789\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/alb_listening_on_http",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-alb-listening-on-http",
   "platform": "Ansible",
   "descriptionID": "3a7576e5",
   "cloudProvider": "aws",

@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "SSL Client Certificate should be defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/api_gateway_without_ssl_certificate",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-api-gateway-without-ssl-certificate",
   "platform": "Pulumi",
   "descriptionID": "f7ced1f3",
   "cloudProvider": "aws",

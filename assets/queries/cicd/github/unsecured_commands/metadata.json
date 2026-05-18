@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Enabling the deprecated `set-env` and `add-path` commands by setting `ACTIONS_ALLOW_UNSECURE_COMMANDS=true` allows workflows or steps to modify the runner environment and `PATH`, which can be abused to run unintended or attacker-controlled commands and lead to arbitrary code execution. Check GitHub Actions workflow documents for the `ACTIONS_ALLOW_UNSECURE_COMMANDS` environment variable at the workflow top-level, per-job, and per-step scopes; the variable must be absent or set to `false`. Any occurrence of `ACTIONS_ALLOW_UNSECURE_COMMANDS=true` at workflow, job, or step level will be flagged; remediate by removing the variable or explicitly setting it to `false`.  \n\nSecure example (do not enable insecure commands):\n\n```yaml\nenv:\n  # No ACTIONS_ALLOW_UNSECURE_COMMANDS set here\n\njobs:\n  build:\n    env:\n      ACTIONS_ALLOW_UNSECURE_COMMANDS: \"false\"\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v3\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unsecured_commands",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd-github-unsecured-commands",
   "platform": "CICD",
   "descriptionID": "44751f79",
   "cloudProvider": "github",

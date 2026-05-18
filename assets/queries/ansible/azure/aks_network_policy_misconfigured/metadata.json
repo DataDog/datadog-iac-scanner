@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "AKS clusters must have a network policy configured to enforce pod-to-pod network isolation and the principle of least privilege. Without a network policy, pods can communicate freely, increasing the risk of lateral movement and unintended access to services.\n\nFor Ansible resources using `azure.azcollection.azure_rm_aks` or `azure_rm_aks`, the `network_profile.network_policy` property must be defined and set to either `calico` or `azure`. Tasks that omit `network_profile` or `network_profile.network_policy`, or that set the property to any value other than `calico` or `azure`, are flagged.\n\nSecure example Ansible task:\n\n```yaml\n- name: Create AKS cluster with network policy\n  azure.azcollection.azure_rm_aks:\n    name: my-aks-cluster\n    resource_group: my-rg\n    dns_prefix: myaks\n    network_profile:\n      network_policy: calico\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/aks_network_policy_misconfigured",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-azure-aks-network-policy-misconfigured",
   "platform": "Ansible",
   "descriptionID": "75bbf826",
   "cloudProvider": "azure",

@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Secret Management",
   "descriptionText": "When using `kube-apiserver`, the `--kubelet-certificate-authority` flag should be set. The rule checks `containers` and `initContainers` for commands that include `kube-apiserver` and reports when the `--kubelet-certificate-authority` flag is not present. Setting this flag ensures the API server uses the kubelet's certificate authority to validate kubelet TLS connections.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/kubelet_certificate_authority_not_set",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-kubelet-certificate-authority-not-set",
   "platform": "Kubernetes",
   "descriptionID": "ce08eb5d",
   "cwe": "295",

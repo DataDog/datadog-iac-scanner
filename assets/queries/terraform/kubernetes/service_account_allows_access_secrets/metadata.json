@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Secret Management",
   "descriptionText": "`kubernetes_role` and `kubernetes_cluster_role`, when bound, should not include the verbs `get`, `list`, `watch`, or `*` in rules that grant access to `secrets`.  \nThe rule inspects `kubernetes_role_binding` and `kubernetes_cluster_role_binding` entries that bind these roles to a `ServiceAccount` and checks the role's `rule.verbs` for any of the restricted verbs.  \nBoth single `rule` objects and arrays of `rule` entries are evaluated.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/service_account_allows_access_secrets",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-service-account-allows-access-secrets",
   "platform": "Terraform",
   "descriptionID": "93294320",
   "cwe": "522",

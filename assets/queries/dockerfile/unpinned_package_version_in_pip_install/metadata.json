@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Supply-Chain",
   "descriptionText": "Unpinned pip installs in Dockerfile `RUN` instructions allow dependency drift and unexpected upgrades, which can cause build non-determinism, breakages, or introduce vulnerable package versions. This rule examines Dockerfile `RUN` commands that invoke `pip` or `pip3` with the `install` subcommand and requires that each package specified directly on the command line include an explicit version specifier (for example, `package==1.2.3`).\n\nPackages installed via requirement or constraint files (using `-r` or `-c`) are not validated by this check because versions should be managed inside those files. Only direct package arguments that start with a letter are flagged when no version is present. \n\nSecure example:\n\n```dockerfile\nRUN pip3 install flask==2.0.3 requests==2.26.0\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/unpinned_package_version_in_pip_install",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile-unpinned-package-version-in-pip-install",
   "platform": "Dockerfile",
   "descriptionID": "37db3a53",
   "cwe": "1357",

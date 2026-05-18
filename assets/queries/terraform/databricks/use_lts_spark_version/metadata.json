@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Flags use of non-LTS Spark versions. This rule applies to:\n\n- `databricks_spark_version` resources not marked as `long_term_support`\n- `databricks_cluster` resources with a `spark_version` that is not an approved LTS version\n- Clusters whose `spark_version` does not reference a `data.databricks_spark_version` resource",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/databricks/use_lts_spark_version",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-databricks-use-lts-spark-version",
   "platform": "Terraform",
   "descriptionID": "fdaa059f",
   "cloudProvider": "databricks",

@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Best Practices",
   "descriptionText": "Defining a security contact email in the `azurerm_security_center_contact` resource is essential for ensuring that security alerts and notifications from Azure are sent to the correct personnel. If the `email` attribute is omitted, as shown below, important security incidents may go unnoticed, increasing the risk of delayed responses to threats:\n\n```\nresource \"azurerm_security_center_contact\" \"insecure\" {\n  phone = \"+1-555-555-5555\"\n  alert_notifications = true\n  alerts_to_admins    = true\n}\n```\n\nTo address this, always specify the `email` attribute to ensure security alerts reach a monitored mailbox:\n\n```\nresource \"azurerm_security_center_contact\" \"secure\" {\n  email = \"contact@example.com\"\n  phone = \"+1-555-555-5555\"\n  alert_notifications = true\n  alerts_to_admins    = true\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/security_contact_email",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-azure-security-contact-email",
   "platform": "Terraform",
   "descriptionID": "8632da7c",
   "cloudProvider": "azure",

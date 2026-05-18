@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Supply-Chain",
   "descriptionText": "Dockerfile `RUN` instructions that invoke `apt-get install` should disable installation of recommended packages to reduce the image attack surface. Avoiding unnecessary package bloat decreases maintenance burden and potential vulnerabilities.\n\nThis check looks at `RUN` commands (both shell/string form and exec/array form) that call `apt-get` with `install` and requires either the `--no-install-recommends` option or the APT configuration `apt::install-recommends` set to `false`. Resources where the install command does not include `--no-install-recommends` and does not set `apt::install-recommends` to `false` will be flagged. \n\nSecure examples:\n\n```dockerfile\n# shell form\nRUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*\n\n# exec/array form\nRUN [\"apt-get\", \"update\"]\nRUN [\"apt-get\", \"install\", \"-y\", \"--no-install-recommends\", \"ca-certificates\", \"curl\"]\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/apt_get_not_avoiding_additional_packages",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile-apt-get-not-avoiding-additional-packages",
   "platform": "Dockerfile",
   "descriptionID": "2e92d18c",
   "cwe": "710",

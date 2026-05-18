@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "`nifcloud_db_instance` is configured to use the common private LAN `net-COMMON_PRIVATE`. The resource's `network_id` should be a private LAN that isolates the private-side network from the shared network. This rule identifies `nifcloud_db_instance` resources that are using the common private network.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/db_instance_has_common_private",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-db-instance-has-common-private",
   "platform": "Terraform",
   "descriptionID": "89f1ff38",
   "cloudProvider": "nifcloud",

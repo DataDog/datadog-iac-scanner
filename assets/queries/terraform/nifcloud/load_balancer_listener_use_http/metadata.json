@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "The `nifcloud_load_balancer_listener` is configured to use the HTTP port: `load_balancer_port` is set to `80`, so the listener uses unencrypted HTTP rather than HTTPS. This configuration does not provide TLS encryption; the listener is expected to use HTTPS to benefit from TLS security features.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/load_balancer_listener_use_http",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-load-balancer-listener-use-http",
   "platform": "Terraform",
   "descriptionID": "c078c492",
   "cloudProvider": "nifcloud",

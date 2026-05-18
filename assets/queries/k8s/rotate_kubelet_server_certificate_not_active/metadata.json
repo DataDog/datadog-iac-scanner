@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Secret Management",
   "descriptionText": "The `RotateKubeletServerCertificate` feature gate must be set to `true`. It must be enabled either by including `RotateKubeletServerCertificate=true` in the `--feature-gates=` flag for kube components (for example `kubelet` or `kube-controller-manager`) or by setting `featureGates.RotateKubeletServerCertificate` to `true` in `KubeletConfiguration`. This rule reports an `IncorrectValue` when the feature gate is `false`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/rotate_kubelet_server_certificate_not_active",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-rotate-kubelet-server-certificate-not-active",
   "platform": "Kubernetes",
   "descriptionID": "a4f48785",
   "cwe": "295",

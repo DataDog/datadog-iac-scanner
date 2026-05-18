@@ -5,7 +5,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "A list of Dataflow resources found. Unified stream and batch data processing that's serverless, fast, and cost-effective.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp_bom/dataflow",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-gcp-dataflow",
   "platform": "Terraform",
   "descriptionID": "5d614ad5",
   "cloudProvider": "gcp",

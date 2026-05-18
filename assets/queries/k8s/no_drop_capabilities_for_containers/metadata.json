@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Containers and initContainers should configure drop capabilities in their `securityContext`. The rule requires that each container defines `securityContext.capabilities` with a `drop` attribute; missing `securityContext`, `capabilities`, or `drop` is reported. This enforces least-privilege by removing unnecessary Linux capabilities.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/no_drop_capabilities_for_containers",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-no-drop-capabilities-for-containers",
   "platform": "Kubernetes",
   "descriptionID": "9d3ca6db",
   "cwe": "754",

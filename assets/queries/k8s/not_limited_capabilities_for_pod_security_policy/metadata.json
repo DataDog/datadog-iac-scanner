@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "Limits capabilities for PodSecurityPolicy. This rule checks that PodSecurityPolicy resources define spec.requiredDropCapabilities, which specifies Linux capabilities that must be dropped to reduce container privileges. A MissingAttribute issue is reported if this field is not defined.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/not_limited_capabilities_for_pod_security_policy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-not-limited-capabilities-for-pod-security-policy",
   "platform": "Kubernetes",
   "descriptionID": "eaf6d4ba",
   "cwe": "770",

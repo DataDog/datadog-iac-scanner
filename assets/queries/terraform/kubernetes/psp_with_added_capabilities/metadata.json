@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Pod Security Policy should not include allowed capabilities.\n\nThis rule inspects `kubernetes_pod_security_policy` resources and flags any presence of `spec.allowed_capabilities`. When triggered, the rule returns `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue` to describe the finding. The `issueType` for these findings is `IncorrectValue`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/psp_with_added_capabilities",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-psp-with-added-capabilities",
   "platform": "Terraform",
   "descriptionID": "f3ad2d09",
   "cwe": "250",

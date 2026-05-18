@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Network Security Group flow logs capture critical information about IP traffic flowing in and out of network security groups, aiding in the detection of anomalies and potential security breaches. If the flow logs are not retained for at least 90 days—for example, using a Terraform configuration where `retention_policy { days = 3 }`—important forensic data could be lost, making it difficult to investigate incidents or compromise attempts. Ensuring the attribute is set as shown below helps maintain compliance and enables sufficient investigation time:\n\n```\nretention_policy {\n  enabled = true\n  days    = 90\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/small_flow_logs_retention_period",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-azure-small-flow-logs-retention-period",
   "platform": "Terraform",
   "descriptionID": "02e10365",
   "cloudProvider": "azure",

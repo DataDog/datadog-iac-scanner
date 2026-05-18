@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "EC2 instances and launch templates that automatically receive a public IPv4 address are exposed directly to the internet, increasing the attack surface and the risk of unauthorized access or exploitation.\n\nFor Ansible tasks, check the following module properties:\n\n- For `amazon.aws.ec2_launch_template` / `ec2_launch_template`: `network_interfaces.associate_public_ip_address`\n- For `amazon.aws.ec2_instance` / `ec2_instance`: `network.assign_public_ip`\n\nEach property must be explicitly set to `false` (or `'no'`) or omitted. The rule flags resources where the property is truthy (for example, `true`, `yes`) because there is no safe default. \n\nSecure examples:\n\n```yaml\n- name: Launch instance without public IP (ec2_instance)\n  amazon.aws.ec2_instance:\n    name: my-instance\n    network:\n      assign_public_ip: false\n\n- name: Create launch template without public IP\n  amazon.aws.ec2_launch_template:\n    name: my-template\n    network_interfaces:\n      - device_index: 0\n        associate_public_ip_address: false\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ec2_instance_has_public_ip",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-ec2-instance-has-public-ip",
   "platform": "Ansible",
   "descriptionID": "f32c5d88",
   "cloudProvider": "aws",

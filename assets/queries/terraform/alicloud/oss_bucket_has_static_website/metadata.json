@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Checks whether any static websites are hosted on OSS buckets by detecting the `website` attribute in `alicloud_oss_bucket` resources. Buckets with the `website` attribute are flagged, as static website hosting may lead to unintended public exposure or accidental content hosting. The rule reports an `IncorrectValue` when `website` is present. Be aware of any website configurations in use.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_has_static_website",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-oss-bucket-has-static-website",
   "platform": "Terraform",
   "descriptionID": "4c0903ce",
   "cloudProvider": "alicloud",

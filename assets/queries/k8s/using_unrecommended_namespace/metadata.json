@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Resources must include a non-null `metadata.namespace`. Namespaces such as `default`, `kube-system`, and `kube-public` must not be used; choose an appropriate non-system namespace instead.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/using_unrecommended_namespace",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-using-unrecommended-namespace",
   "platform": "Kubernetes",
   "descriptionID": "29549ea9",
   "cwe": "665",

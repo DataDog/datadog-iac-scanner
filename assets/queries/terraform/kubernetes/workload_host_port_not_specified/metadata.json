@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "Verifies whether a Kubernetes workload's container specifies a `host_port`. The rule checks `kubernetes_pod` and `kubernetes_deployment` resources, inspecting `spec.container` or `spec.template.spec.container` blocks. It reports an `IncorrectValue` issue when the `host_port` attribute is undefined or null.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/workload_host_port_not_specified",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-workload-host-port-not-specified",
   "platform": "Terraform",
   "descriptionID": "b7ddd063",
   "cwe": "665",

@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "S3 bucket policies must not allow list actions to all principals ('*'). Exposing bucket listings to everyone reveals object inventories and metadata, enabling data discovery and potential unauthorized access or exfiltration.\n\nFor Ansible resources using `amazon.aws.s3_bucket` or `s3_bucket`, inspect the bucket `policy` document. Ensure there are no policy statements with `Effect` set to `Allow`, `Principal` set to `\"*\"`, and `Action` that includes list operations such as `s3:ListBucket`.\n\nResources with a statement that combines `Effect: Allow`, `Principal: \"*\"`, and a list action are flagged. Instead, restrict access to explicit principals (account IDs, role or service ARNs), apply IAM policies, or use S3 Public Access Block settings to prevent public listing.\n\nSecure example policy that grants List only to a specific principal:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"AllowListToSpecificPrincipal\",\n      \"Effect\": \"Allow\",\n      \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:role/AllowedRole\" },\n      \"Action\": \"s3:ListBucket\",\n      \"Resource\": \"arn:aws:s3:::my-bucket\"\n    }\n  ]\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_allows_list_action_from_all_principals",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-s3-bucket-allows-list-action-from-all-principals",
   "platform": "Ansible",
   "descriptionID": "8232deb2",
   "cloudProvider": "aws",

@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "VPC resources should have Flow Log enabled.\n\nThis rule checks `tencentcloud_vpc_flow_log_config` resources and requires the `enable` attribute to be set to `true`. Resources with `enable` set to `false` are reported as `IncorrectValue`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/vpc_flow_log_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-tencentcloud-vpc-flow-log-disabled",
   "platform": "Terraform",
   "descriptionID": "46e139af",
   "cloudProvider": "tencentcloud",

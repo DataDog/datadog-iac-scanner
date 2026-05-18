@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Supply-Chain",
   "descriptionText": "Alpine package installs in Dockerfile `RUN` instructions must include the `--no-cache` flag to avoid persisting the package index and cache in image layers. Retaining this data increases image size and can preserve stale metadata that widens the attack surface with outdated or vulnerable package information.\n\nThis rule inspects Dockerfile `RUN` commands and flags any `apk add` invocation that does not include the `--no-cache` option. Fix by adding `--no-cache` to the `apk add` command or by ensuring the cache is removed in the same layer; using `--no-cache` is preferred to prevent the cache from being written at all. Resources with `apk add` and no `--no-cache` will be flagged.\n\nSecure example:\n\n```\nRUN apk add --no-cache curl git ca-certificates\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/apk_add_using_local_cache_path",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile-apk-add-using-local-cache-path",
   "platform": "Dockerfile",
   "descriptionID": "d44503b8",
   "cwe": "459",

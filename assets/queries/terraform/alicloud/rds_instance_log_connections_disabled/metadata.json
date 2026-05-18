@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "The `log_connections` parameter should be set to `ON` for RDS instances. This rule flags `alicloud_db_instance` resources when the `parameters` array does not include a `log_connections` entry or when `value = \"OFF\"`. Remediation is to add or replace the `parameters` entry with `name = \"log_connections\"` and `value = \"ON\"`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/rds_instance_log_connections_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-rds-instance-log-connections-disabled",
   "platform": "Terraform",
   "descriptionID": "0a96bec0",
   "cloudProvider": "alicloud",

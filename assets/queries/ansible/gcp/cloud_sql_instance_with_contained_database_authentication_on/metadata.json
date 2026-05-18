@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Cloud SQL for SQL Server instances must have Contained Database Authentication disabled. Contained database users authenticate at the database level, bypassing server-level authentication and centralized IAM controls. This increases the risk of unauthorized access and unmanaged credentials.\n\nFor Ansible `google.cloud.gcp_sql_instance` or `gcp_sql_instance` resources, ensure `settings.database_flags` includes an entry with `name: \"contained database authentication\"` and `value: \"off\"`. Resources that omit this flag or set it to any value other than `\"off\"` are flagged. The check evaluates the `settings.database_flags` entries.\n\nSecure configuration example:\n\n- name: Create Cloud SQL SQL Server instance\n  google.cloud.gcp_sql_instance:\n    name: my-sqlserver-instance\n    database_version: SQLSERVER_2019_STANDARD\n    settings:\n      database_flags:\n        - name: contained database authentication\n          value: \"off\"",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cloud_sql_instance_with_contained_database_authentication_on",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-gcp-cloud-sql-instance-with-contained-database-authentication-on",
   "platform": "Ansible",
   "descriptionID": "b1a5b8f0",
   "cloudProvider": "gcp",

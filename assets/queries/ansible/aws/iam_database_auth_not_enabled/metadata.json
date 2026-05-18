@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "IAM database authentication should be enabled to avoid reliance on static database passwords and centralize access control. This reduces the risk of credential leakage and makes rotation and auditing easier.\n\nFor Ansible RDS resources using the `amazon.aws.rds_instance` or `rds_instance` modules, the `enable_iam_database_authentication` property must be defined and set to `true`. This check only applies to engines, engine versions, and instance types that support IAM authentication. The policy validates `engine`, `engine_version`, and `instance_type`. Resources where the property is missing or set to `false` are flagged.\n\nSecure Ansible example:\n\n```yaml\n- name: Create RDS instance with IAM auth enabled\n  amazon.aws.rds_instance:\n    db_instance_identifier: mydb\n    engine: mysql\n    engine_version: \"8.0\"\n    instance_type: db.t3.medium\n    enable_iam_database_authentication: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/iam_database_auth_not_enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-iam-database-auth-not-enabled",
   "platform": "Ansible",
   "descriptionID": "952e08fc",
   "cloudProvider": "aws",

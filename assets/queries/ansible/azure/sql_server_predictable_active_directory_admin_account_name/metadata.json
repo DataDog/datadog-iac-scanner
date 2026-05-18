@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Active Directory administrator accounts for Azure SQL Server must not use predictable or common names such as \"admin\" or \"administrator.\" Predictable account names make privileged accounts easy to discover and enable targeted brute-force and credential-stuffing attacks.\n\nIn Ansible, verify the `azure.azcollection.azure_rm_adserviceprincipal` (or `azure_rm_adserviceprincipal`) task's `ad_user` property is defined, non-empty, and set to a non-predictable, unique name. This rule flags tasks where `ad_user` is missing or `null`, or where the value matches common predictable names (case-insensitive) such as `admin`, `administrator`, `sqladmin`, `root`, `user`, `azure_admin`, `azure_administrator`, or `guest`. Use a clear, non-guessable name for `ad_user`. For example:\n\n```yaml\n- name: Create AD service principal for Azure SQL admin\n  azure.azcollection.azure_rm_adserviceprincipal:\n    ad_user: \"sqlsvc-prod-01\"\n    password: \"{{ lookup('password', '/dev/null length=32') }}\"\n    state: present\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/sql_server_predictable_active_directory_admin_account_name",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-azure-sql-server-predictable-active-directory-admin-account-name",
   "platform": "Ansible",
   "descriptionID": "f9f40edb",
   "cloudProvider": "azure",

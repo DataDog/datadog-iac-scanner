@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Resource Management",
   "descriptionText": "Granting a service account excessive privileges such as `roles/admin`, `roles/editor`, `roles/owner`, or other write-level roles, can expose the environment to the risk of privilege escalation or unintended changes.  In Terraform, this misconfiguration appears when a binding like the following is used:\n\n```\nbinding {\n  role = \"roles/editor\"\n  members = [\n    \"serviceAccount:jane@example.com\",\n  ]\n}\n```\n\naThis allows the service account broad permissions across resources. To follow the principle of least privilege, grant only the specific roles required. For example:\n\n```\nbinding {\n  role = \"roles/apigee.runtimeAgent\"\n  members = [\n    \"user:jane@example.com\",\n  ]\n}\n```\n\nFailing to restrict service account privileges can enable attackers or compromised services to make unauthorized changes, potentially leading to data exposure or resource compromise.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp/service_account_with_improper_privileges",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-gcp-service-account-with-improper-privileges",
   "platform": "Terraform",
   "descriptionID": "1b2dbbea",
   "cloudProvider": "gcp",

@@ -5,7 +5,7 @@
   "severity": "CRITICAL",
   "category": "Access Control",
   "descriptionText": "Amazon DMS is publicly accessible, therefore exposing possible sensitive information. To prevent such a scenario, update the attribute 'PubliclyAccessible' to false.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/amazon_dms_replication_instance_is_publicly_accessible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-amazon-dms-replication-instance-is-publicly-accessible",
   "platform": "Pulumi",
   "descriptionID": "fdd6a212",
   "cloudProvider": "aws",

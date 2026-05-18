@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "AWS DynamoDB Tables should have serverSideEncryption enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/dynamodb_table_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-dynamodb-table-not-encrypted",
   "platform": "Pulumi",
   "descriptionID": "fb6a0c51",
   "cloudProvider": "aws",

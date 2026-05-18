@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "Elastic File System (EFS) must be encrypted",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/efs_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-efs-not-encrypted",
   "platform": "Crossplane",
   "descriptionID": "de7bf263",
   "cloudProvider": "aws",

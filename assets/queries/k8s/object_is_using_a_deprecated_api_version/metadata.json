@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Kubernetes APIs evolve over time and may be removed in newer releases. To prevent incompatibilities when upgrading Kubernetes, deprecated APIs should be replaced with newer, stable API versions. This rule checks a resource's apiVersion and kind against a mapping of deprecated apiVersions to their recommended replacements and flags resources that use deprecated APIs. The rule reports the expected API version for the resource kind and the actual (deprecated) apiVersion found, so maintainers can update manifests accordingly.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/object_is_using_a_deprecated_api_version",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-object-is-using-a-deprecated-api-version",
   "platform": "Kubernetes",
   "descriptionID": "d5c30c5b",
   "cwe": "665",

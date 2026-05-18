@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "S3 bucket policies must not grant Get actions to all principals (\"*\"). Allowing public read access exposes bucket objects to unauthorized disclosure and accidental data leaks. For Ansible S3 bucket resources (modules `amazon.aws.s3_bucket` and `s3_bucket`), inspect the `policy` property for any Statement with `Effect: \"Allow\"`, `Principal: \"*\"`, and an `Action` that includes Get operations (for example, `s3:GetObject` or any action name containing \"Get\"). Such statements are flagged.\n\nRestrict access by specifying explicit principals (AWS account IDs, roles, or ARNs), narrowing the allowed actions, or adding conditions (IP/VPC, MFA, or other constraints). If public access is required, use presigned URLs or a controlled distribution layer rather than a public bucket policy.\n\nSecure example with an explicit principal:\n\n```yaml\n- name: Create S3 bucket with restricted policy\n  amazon.aws.s3_bucket:\n    name: my-bucket\n    policy:\n      Version: \"2012-10-17\"\n      Statement:\n        - Sid: \"AllowSpecificAccountGet\"\n          Effect: \"Allow\"\n          Principal:\n            AWS: \"arn:aws:iam::123456789012:role/ReadOnlyRole\"\n          Action:\n            - \"s3:GetObject\"\n          Resource: \"arn:aws:s3:::my-bucket/*\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_allows_get_action_from_all_principals",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-s3-bucket-allows-get-action-from-all-principals",
   "platform": "Ansible",
   "descriptionID": "de0687eb",
   "cloudProvider": "aws",

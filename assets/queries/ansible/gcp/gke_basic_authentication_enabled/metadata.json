@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Disabling GKE basic authentication is required because an embedded cluster username and password can be leaked or abused to gain direct admin access to the Kubernetes API, bypassing IAM and RBAC protections.\n\nThe Ansible GKE resources `google.cloud.gcp_container_cluster` and `gcp_container_cluster` must include a `master_auth` block with both `username` and `password` set to empty strings to indicate basic auth is disabled. Resources that omit `master_auth`, omit either `username` or `password`, or provide non-empty values are flagged. \n\nSecure configuration example:\n\n```yaml\n- name: Create GKE cluster with basic auth disabled\n  google.cloud.gcp_container_cluster:\n    name: my-cluster\n    master_auth:\n      username: \"\"\n      password: \"\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/gke_basic_authentication_enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-gcp-gke-basic-authentication-enabled",
   "platform": "Ansible",
   "descriptionID": "d49df828",
   "cloudProvider": "gcp",

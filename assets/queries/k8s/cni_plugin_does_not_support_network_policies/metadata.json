@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Ensure the cluster uses a CNI plugin that supports NetworkPolicies. CNI plugins that do not support NetworkPolicies (for example, Flannel) cannot enforce pod- or namespace-level network restrictions, which may allow unrestricted cluster traffic and increase the attack surface.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/cni_plugin_does_not_support_network_policies",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-cni-plugin-does-not-support-network-policies",
   "platform": "Kubernetes",
   "descriptionID": "0e8d122c",
   "cwe": "923",

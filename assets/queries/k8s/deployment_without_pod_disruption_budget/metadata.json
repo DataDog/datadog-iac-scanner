@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Availability",
   "descriptionText": "Deployments with more than one replica should be targeted by a PodDisruptionBudget to ensure high availability during voluntary disruptions. This rule flags Deployment resources that have replicas > 1 but are not selected by any PodDisruptionBudget. A PodDisruptionBudget helps maintain the desired number of available pods during node drains or other disruptions.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/deployment_without_pod_disruption_budget",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-deployment-without-pod-disruption-budget",
   "platform": "Kubernetes",
   "descriptionID": "df941cb9",
   "cwe": "400",

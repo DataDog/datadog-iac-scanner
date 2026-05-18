@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Insecure Defaults",
   "descriptionText": "Using `contains()` with a string literal to validate a non-controllable value is unsafe because `contains()` performs substring matching. Crafted values such as `refs/heads/mai` or `ain` can satisfy the check and bypass intended restrictions.\n\nThe rule inspects job `if` expressions and flags calls of the form `contains(<string literal>, <Context>)`. Replace substring checks with explicit equality comparisons such as `github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'`, or use a JSON array with `fromJSON` and `contains`.\n\n```yaml\n# Explicit equality checks\nif: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'\n\n# Or use a JSON array for exact membership testing\nif: contains(fromJSON('[\"refs/heads/main\",\"refs/heads/develop\"]'), github.ref)\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unsound_contains_no_controllable_input",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd-github-unsound-contains-no-controllable-input",
   "platform": "CICD",
   "descriptionID": "e5f6a7b8",
   "cloudProvider": "github",

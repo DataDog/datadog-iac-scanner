@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "PostgreSQL servers must retain logs to support security incident investigation and satisfy audit and compliance requirements. Without log retention, attackers or misconfigurations may go undetected and forensic analysis is impeded.\n\nIn Ansible playbooks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` modules, the configuration entry with `name: log_retention` must have `value: on` (case-insensitive). Tasks missing the `log_retention` configuration or with `value` not equal to `on` are flagged as insecure.\n\nSecure Ansible example:\n\n```yaml\n- name: Ensure PostgreSQL log_retention is enabled\n  azure.azcollection.azure_rm_postgresqlconfiguration:\n    resource_group: my-resource-group\n    server_name: my-postgres-server\n    name: log_retention\n    value: on\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/log_retention_is_not_set",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-azure-log-retention-is-not-set",
   "platform": "Ansible",
   "descriptionID": "bf371036",
   "cloudProvider": "azure",

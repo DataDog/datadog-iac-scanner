@@ -5,7 +5,7 @@
   "severity": "CRITICAL",
   "category": "Access Control",
   "descriptionText": "S3 bucket policies must not grant all actions to all principals. A statement that sets `Effect`=`Allow` with both `Action`=`*` and `Principal`=`*` effectively makes the bucket publicly accessible and can enable data exfiltration or unauthorized modification/deletion.\n\nFor Ansible resources using the `amazon.aws.s3_bucket` or `s3_bucket` modules, inspect the resource `policy` document's `Statement` entries. Any statement where `Effect` is `Allow` and both `Action` and `Principal` contain the wildcard `*` (including arrays that include `*`) is flagged.\n\nRestrict `Principal` to explicit ARNs, account IDs, or service principals and scope `Action` to the minimum required permissions following least privilege.\n\nSecure example policy statement:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:root\" },\n      \"Action\": [ \"s3:GetObject\" ],\n      \"Resource\": \"arn:aws:s3:::example-bucket/*\"\n    }\n  ]\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_with_all_permissions",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-s3-bucket-with-all-permissions",
   "platform": "Ansible",
   "descriptionID": "21fc95f2",
   "cloudProvider": "aws",

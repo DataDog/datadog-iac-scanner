@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "ECS Cluster should enable container insights",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/ecs_cluster_with_container_insights_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-ecs-cluster-with-container-insights-disabled",
   "platform": "Crossplane",
   "descriptionID": "a6911ebd",
   "cloudProvider": "aws",

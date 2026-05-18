@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "All variables must include a valid `type` attribute.\nThe `type` must be defined, not null, and not an empty string after trimming whitespace.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/general/variable_without_type",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-variable-without-type",
   "platform": "Terraform",
   "descriptionID": "bba696eb",
   "cloudProvider": "",

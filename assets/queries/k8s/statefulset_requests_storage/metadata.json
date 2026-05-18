@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Build Process",
   "descriptionText": "StatefulSets should not define a storage request under `spec.volumeClaimTemplates[*].spec.resources.requests.storage`. This rule flags any StatefulSet that includes this field.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/statefulset_requests_storage",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-statefulset-requests-storage",
   "platform": "Kubernetes",
   "descriptionID": "6210afe6",
   "cwe": "665",

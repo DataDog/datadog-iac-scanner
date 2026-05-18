@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Active root access keys grant full, account-wide privileges. A leaked key could lead to immediate and complete compromise of the environment. This rule inspects Ansible tasks using the `amazon.aws.iam_access_key` or `iam_access_key` modules and flags entries where `user_name` contains \"root\", the `active` property is `true` (or absent, since `true` is the default), and `state` is not `absent`.\n\nThe `active` property must not be `true` for root account entries. Resources should either omit root access keys or set `active` to `false`. Any task with an active root access key is flagged. Remove or deactivate root access keys and use IAM users or roles with least privilege for automation and service access.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/root_account_has_active_access_keys",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-root-account-has-active-access-keys",
   "platform": "Ansible",
   "descriptionID": "6cd5514d",
   "cloudProvider": "aws",

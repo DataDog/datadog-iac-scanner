@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "S3 objects or buckets configured with the `authenticated-read` ACL allow any AWS authenticated user to read your data. This exposes content beyond your account boundary and increases the risk of unauthorized data access or leakage.\n\nIn Ansible, tasks using the `amazon.aws.s3_object` or `s3_object` modules must not set the `permission` parameter to `authenticated-read`. Prefer `permission: private` or enforce access via explicit bucket policies or IAM roles. This rule flags Ansible tasks where `permission` is exactly `authenticated-read`.\n\nSecure example:\n\n```yaml\n- name: Upload file to S3 with private ACL\n  amazon.aws.s3_object:\n    bucket: my-bucket\n    object: path/file.txt\n    src: /local/file.txt\n    permission: private\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_acl_allows_read_to_any_authenticated_user",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-s3-bucket-acl-allows-read-to-any-authenticated-user",
   "platform": "Ansible",
   "descriptionID": "e9e4ca47",
   "cloudProvider": "aws",

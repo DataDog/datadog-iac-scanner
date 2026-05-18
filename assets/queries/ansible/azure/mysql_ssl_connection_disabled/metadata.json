@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "MySQL servers must enforce SSL/TLS connections to protect data in transit and prevent interception or man-in-the-middle attacks. For Ansible tasks using the `azure.azcollection.azure_rm_mysqlserver` or `azure_rm_mysqlserver` modules, the `enforce_ssl` property must be defined and set to `true` so the server requires TLS for client connections.\n\nResources missing this property or with `enforce_ssl: false` (the default) are flagged. Use Ansible boolean values such as `true` or `yes` to enable this setting. The rule treats Ansible truthy values as valid.\n\n```yaml\n- name: Create Azure MySQL server with SSL enforced\n  azure.azcollection.azure_rm_mysqlserver:\n    name: my-mysql-server\n    resource_group: my-rg\n    location: eastus\n    sku: B_Gen5_1\n    version: \"5.7\"\n    administrator_login: adminuser\n    administrator_login_password: \"{{ mysql_password }}\"\n    enforce_ssl: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/mysql_ssl_connection_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-azure-mysql-ssl-connection-disabled",
   "platform": "Ansible",
   "descriptionID": "9709164b",
   "cloudProvider": "azure",

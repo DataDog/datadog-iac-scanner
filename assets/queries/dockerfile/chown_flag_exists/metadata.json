@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Setting file ownership to a non-root user in a Dockerfile using the `--chown` flag can leave executables or sensitive files writable by the runtime user. This can enable tampering, persistence of malicious artifacts, or privilege escalation.\n\nThis rule flags Dockerfile instructions (for example, `COPY` or `ADD`) that include the `--chown` flag; Dockerfile commands must not use `--chown`. To remediate, remove `--chown` from `COPY`/`ADD` and ensure files remain root-owned with restrictive permissions (for example, use `RUN chmod`), or perform any necessary, controlled ownership changes at container startup rather than using `--chown` in image build.\n\nSecure example:\n\n```dockerfile\n# Copy files without --chown so they remain owned by root in the image\nCOPY app/mybinary /usr/local/bin/mybinary\nRUN chmod 0555 /usr/local/bin/mybinary\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/chown_flag_exists",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile-chown-flag-exists",
   "platform": "Dockerfile",
   "descriptionID": "ba0a34dc",
   "cwe": "282",

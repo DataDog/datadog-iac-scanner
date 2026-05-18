@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Availability",
   "descriptionText": "The `HorizontalPodAutoscaler` must target a valid object. This rule verifies each entry in `spec.metrics` with `type: \"Object\"` includes the required fields: `object.metric`, `object.target`, and `object.describedObject` with `name`, `apiVersion`, and `kind`. If any of these fields are missing, the metric is considered invalid.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/hpa_targets_invalid_object",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-hpa-targets-invalid-object",
   "platform": "Kubernetes",
   "descriptionID": "450f7251",
   "cwe": "400",
