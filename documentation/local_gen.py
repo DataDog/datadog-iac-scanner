@@ -2,11 +2,9 @@
 
 import sys
 import json
-import glob
 import argparse
 import shutil
 import re
-import yaml
 from itertools import islice
 from pathlib import Path
 
@@ -228,8 +226,6 @@ def main():
     args = parse_args()
     input_dir = args.input_dir
     output_dir = Path(args.output_dir)
-    list_json_path = Path(args.list_json)
-    dict_yaml_path = Path(args.frontmatter_yaml)
     max_examples = args.max_examples
 
     if output_dir.exists():
@@ -243,8 +239,6 @@ def main():
         if not resource_path.is_dir():
             print(f"Warning: Missing resource path: {resource_path}")
             continue
-
-        resource_entry = {"name": resource_type, "providers": []}
 
         providers = providers if len(providers) > 0 else ["no-provider"]
         for provider in providers:
