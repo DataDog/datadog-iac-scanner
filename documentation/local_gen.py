@@ -144,7 +144,7 @@ meta:
 
 **Id:** {{{{< copyable-code >}}}}{rule_id}{{{{< /copyable-code >}}}}
 
-**Cloud Provider:** {clean_provider}
+**Provider:** {clean_provider}
 
 **Platform:** {platform}
 
