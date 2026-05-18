@@ -2,7 +2,7 @@
 title: "Use service account credentials not set to true"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/use_service_account_credentials_not_set_to_true"
+  name: "kubernetes/use_service_account_credentials_not_set_to_true"
   id: "kubernetes-use-service-account-credentials-not-set-to-true"
   display_name: "Use service account credentials not set to true"
   cloud_provider: "Kubernetes"

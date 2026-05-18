@@ -2,7 +2,7 @@
 title: "Encryption provider not properly configured"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/encryption_provider_not_properly_configured"
+  name: "kubernetes/encryption_provider_not_properly_configured"
   id: "kubernetes-encryption-provider-not-properly-configured"
   display_name: "Encryption provider not properly configured"
   cloud_provider: "Kubernetes"

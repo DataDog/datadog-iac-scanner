@@ -2,7 +2,7 @@
 title: "Container with unmasked /proc access"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/container_runs_unmasked"
+  name: "kubernetes/container_runs_unmasked"
   id: "kubernetes-container-runs-unmasked"
   display_name: "Container with unmasked /proc access"
   cloud_provider: "Kubernetes"

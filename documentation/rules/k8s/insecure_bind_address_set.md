@@ -2,7 +2,7 @@
 title: "Insecure bind address set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/insecure_bind_address_set"
+  name: "kubernetes/insecure_bind_address_set"
   id: "kubernetes-insecure-bind-address-set"
   display_name: "Insecure bind address set"
   cloud_provider: "Kubernetes"

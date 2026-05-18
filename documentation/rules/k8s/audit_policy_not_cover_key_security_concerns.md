@@ -2,7 +2,7 @@
 title: "Audit policy does not cover key security concerns"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/audit_policy_not_cover_key_security_concerns"
+  name: "kubernetes/audit_policy_not_cover_key_security_concerns"
   id: "kubernetes-audit-policy-not-cover-key-security-concerns"
   display_name: "Audit policy does not cover key security concerns"
   cloud_provider: "Kubernetes"

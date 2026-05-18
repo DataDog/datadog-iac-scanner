@@ -2,7 +2,7 @@
 title: "Service type is NodePort"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/service_type_is_nodeport"
+  name: "kubernetes/service_type_is_nodeport"
   id: "kubernetes-service-type-is-nodeport"
   display_name: "Service type is NodePort"
   cloud_provider: "Kubernetes"

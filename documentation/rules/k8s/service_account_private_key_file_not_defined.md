@@ -2,7 +2,7 @@
 title: "Service account private key file not defined"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/service_account_private_key_file_not_defined"
+  name: "kubernetes/service_account_private_key_file_not_defined"
   id: "kubernetes-service-account-private-key-file-not-defined"
   display_name: "Service account private key file not defined"
   cloud_provider: "Kubernetes"

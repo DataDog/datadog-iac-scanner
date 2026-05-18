@@ -2,7 +2,7 @@
 title: "Container running as root"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/containers_running_as_root"
+  name: "kubernetes/containers_running_as_root"
   id: "kubernetes-containers-running-as-root"
   display_name: "Container running as root"
   cloud_provider: "Kubernetes"

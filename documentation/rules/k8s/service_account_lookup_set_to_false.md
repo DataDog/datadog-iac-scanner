@@ -2,7 +2,7 @@
 title: "Service account lookup set to false"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/service_account_lookup_set_to_false"
+  name: "kubernetes/service_account_lookup_set_to_false"
   id: "kubernetes-service-account-lookup-set-to-false"
   display_name: "Service account lookup set to false"
   cloud_provider: "Kubernetes"

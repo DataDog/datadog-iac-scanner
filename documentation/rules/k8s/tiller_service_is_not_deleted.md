@@ -2,7 +2,7 @@
 title: "Tiller Service present"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/tiller_service_is_not_deleted"
+  name: "kubernetes/tiller_service_is_not_deleted"
   id: "kubernetes-tiller-service-is-not-deleted"
   display_name: "Tiller Service present"
   cloud_provider: "Kubernetes"

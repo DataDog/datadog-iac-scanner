@@ -2,7 +2,7 @@
 title: "Pod security policy admission control plugin not set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/pod_security_policy_admission_control_plugin_not_set"
+  name: "kubernetes/pod_security_policy_admission_control_plugin_not_set"
   id: "kubernetes-pod-security-policy-admission-control-plugin-not-set"
   display_name: "Pod security policy admission control plugin not set"
   cloud_provider: "Kubernetes"

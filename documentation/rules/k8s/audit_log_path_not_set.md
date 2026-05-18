@@ -2,7 +2,7 @@
 title: "Audit log path not set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/audit_log_path_not_set"
+  name: "kubernetes/audit_log_path_not_set"
   id: "kubernetes-audit-log-path-not-set"
   display_name: "Audit log path not set"
   cloud_provider: "Kubernetes"

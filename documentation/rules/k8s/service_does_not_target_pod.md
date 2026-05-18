@@ -2,7 +2,7 @@
 title: "Service does not target a Pod"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/service_does_not_target_pod"
+  name: "kubernetes/service_does_not_target_pod"
   id: "kubernetes-service-does-not-target-pod"
   display_name: "Service does not target a Pod"
   cloud_provider: "Kubernetes"

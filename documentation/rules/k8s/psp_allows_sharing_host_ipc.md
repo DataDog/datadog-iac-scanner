@@ -2,7 +2,7 @@
 title: "PSP allows sharing host IPC"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/psp_allows_sharing_host_ipc"
+  name: "kubernetes/psp_allows_sharing_host_ipc"
   id: "kubernetes-psp-allows-sharing-host-ipc"
   display_name: "PSP allows sharing host IPC"
   cloud_provider: "Kubernetes"

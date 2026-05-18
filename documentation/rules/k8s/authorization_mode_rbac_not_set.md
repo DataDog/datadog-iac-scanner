@@ -2,7 +2,7 @@
 title: "Authorization mode RBAC not set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/authorization_mode_rbac_not_set"
+  name: "kubernetes/authorization_mode_rbac_not_set"
   id: "kubernetes-authorization-mode-rbac-not-set"
   display_name: "Authorization mode RBAC not set"
   cloud_provider: "Kubernetes"

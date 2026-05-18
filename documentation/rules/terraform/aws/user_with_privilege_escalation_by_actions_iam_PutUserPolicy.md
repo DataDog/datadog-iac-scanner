@@ -2,7 +2,7 @@
 title: "User with privilege escalation by actions 'iam:PutUserPolicy'"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/user_with_privilege_escalation_by_actions_iam_PutUserPolicy"
+  name: "aws/user_with_privilege_escalation_by_actions_iam_putuserpolicy"
   id: "terraform-aws-user-with-privilege-escalation-by-actions-iam-putuserpolicy"
   display_name: "User with privilege escalation by actions 'iam:PutUserPolicy'"
   cloud_provider: "AWS"

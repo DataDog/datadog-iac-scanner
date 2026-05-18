@@ -2,7 +2,7 @@
 title: "Tiller Deployment accessible within cluster"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/tiller_deployment_is_accessible_from_within_the_cluster"
+  name: "kubernetes/tiller_deployment_is_accessible_from_within_the_cluster"
   id: "kubernetes-tiller-deployment-is-accessible-from-within-the-cluster"
   display_name: "Tiller Deployment accessible within cluster"
   cloud_provider: "Kubernetes"

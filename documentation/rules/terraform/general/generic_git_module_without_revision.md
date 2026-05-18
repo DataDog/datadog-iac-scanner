@@ -1,11 +1,11 @@
 ---
 title: "Generic Git module without revision"
-group_id: "Terraform / Common"
+group_id: "Terraform / Terraform"
 meta:
-  name: "general/generic_git_module_without_revision"
+  name: "terraform/generic_git_module_without_revision"
   id: "terraform-generic-git-module-without-revision"
   display_name: "Generic Git module without revision"
-  cloud_provider: "Common"
+  cloud_provider: "Terraform"
   platform: "Terraform"
   severity: "LOW"
   category: "Best Practices"
@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}terraform-generic-git-module-without-revision{{< /copyable-code >}}
 
-**Provider:** Common
+**Provider:** Terraform
 
 **Platform:** Terraform
 

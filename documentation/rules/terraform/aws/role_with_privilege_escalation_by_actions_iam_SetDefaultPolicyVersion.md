@@ -2,7 +2,7 @@
 title: "Role with privilege escalation by actions 'iam:SetDefaultPolicyVersion'"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/role_with_privilege_escalation_by_actions_iam_SetDefaultPolicyVersion"
+  name: "aws/role_with_privilege_escalation_by_actions_iam_setdefaultpolicyversion"
   id: "terraform-aws-role-with-privilege-escalation-by-actions-iam-setdefaultpolicyversion"
   display_name: "Role with privilege escalation by actions 'iam:SetDefaultPolicyVersion'"
   cloud_provider: "AWS"

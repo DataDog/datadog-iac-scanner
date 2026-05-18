@@ -2,7 +2,7 @@
 title: "PSP with unrestricted access to host path"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/psp_with_unrestricted_access_to_host_path"
+  name: "kubernetes/psp_with_unrestricted_access_to_host_path"
   id: "kubernetes-psp-with-unrestricted-access-to-host-path"
   display_name: "PSP with unrestricted access to host path"
   cloud_provider: "Kubernetes"

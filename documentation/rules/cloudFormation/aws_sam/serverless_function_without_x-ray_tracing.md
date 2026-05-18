@@ -2,7 +2,7 @@
 title: "Serverless function without X-Ray tracing"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws_sam/serverless_function_without_x-ray_tracing"
+  name: "aws/serverless_function_without_x-ray_tracing"
   id: "cloudformation-aws-serverless-function-without-x-ray-tracing"
   display_name: "Serverless function without X-Ray tracing"
   cloud_provider: "AWS"

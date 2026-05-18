@@ -2,7 +2,7 @@
 title: "Dashboard is enabled"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/dashboard_is_enabled"
+  name: "kubernetes/dashboard_is_enabled"
   id: "kubernetes-dashboard-is-enabled"
   display_name: "Dashboard is enabled"
   cloud_provider: "Kubernetes"

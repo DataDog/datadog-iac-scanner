@@ -2,7 +2,7 @@
 title: "Terminated pod garbage collector threshold not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/terminated_pod_garbage_collector_threshold_not_properly_set"
+  name: "kubernetes/terminated_pod_garbage_collector_threshold_not_properly_set"
   id: "kubernetes-terminated-pod-garbage-collector-threshold-not-properly-set"
   display_name: "Terminated pod garbage collector threshold not properly set"
   cloud_provider: "Kubernetes"

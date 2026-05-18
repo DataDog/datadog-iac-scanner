@@ -2,7 +2,7 @@
 title: "Privilege escalation allowed"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/privilege_escalation_allowed"
+  name: "kubernetes/privilege_escalation_allowed"
   id: "kubernetes-privilege-escalation-allowed"
   display_name: "Privilege escalation allowed"
   cloud_provider: "Kubernetes"

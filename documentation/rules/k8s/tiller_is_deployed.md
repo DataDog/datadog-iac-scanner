@@ -2,7 +2,7 @@
 title: "Tiller (Helm v2) deployed"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/tiller_is_deployed"
+  name: "kubernetes/tiller_is_deployed"
   id: "kubernetes-tiller-is-deployed"
   display_name: "Tiller (Helm v2) deployed"
   cloud_provider: "Kubernetes"

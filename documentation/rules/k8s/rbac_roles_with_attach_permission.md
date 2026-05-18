@@ -2,7 +2,7 @@
 title: "RBAC roles with attach permission"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/rbac_roles_with_attach_permission"
+  name: "kubernetes/rbac_roles_with_attach_permission"
   id: "kubernetes-rbac-roles-with-attach-permission"
   display_name: "RBAC roles with attach permission"
   cloud_provider: "Kubernetes"

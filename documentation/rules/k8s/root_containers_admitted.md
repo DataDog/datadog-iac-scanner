@@ -2,7 +2,7 @@
 title: "Root containers admitted"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/root_containers_admitted"
+  name: "kubernetes/root_containers_admitted"
   id: "kubernetes-root-containers-admitted"
   display_name: "Root containers admitted"
   cloud_provider: "Kubernetes"

@@ -2,7 +2,7 @@
 title: "Liveness probe is not defined"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/liveness_probe_is_not_defined"
+  name: "kubernetes/liveness_probe_is_not_defined"
   id: "kubernetes-liveness-probe-is-not-defined"
   display_name: "Liveness probe is not defined"
   cloud_provider: "Kubernetes"

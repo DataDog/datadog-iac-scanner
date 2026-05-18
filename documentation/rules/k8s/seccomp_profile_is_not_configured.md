@@ -2,7 +2,7 @@
 title: "Seccomp profile is not configured"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/seccomp_profile_is_not_configured"
+  name: "kubernetes/seccomp_profile_is_not_configured"
   id: "kubernetes-seccomp-profile-is-not-configured"
   display_name: "Seccomp profile is not configured"
   cloud_provider: "Kubernetes"

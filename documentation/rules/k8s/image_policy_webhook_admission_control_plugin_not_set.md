@@ -2,7 +2,7 @@
 title: "Image policy webhook admission control plugin not set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/image_policy_webhook_admission_control_plugin_not_set"
+  name: "kubernetes/image_policy_webhook_admission_control_plugin_not_set"
   id: "kubernetes-image-policy-webhook-admission-control-plugin-not-set"
   display_name: "Image policy webhook admission control plugin not set"
   cloud_provider: "Kubernetes"

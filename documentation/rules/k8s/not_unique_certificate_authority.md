@@ -2,7 +2,7 @@
 title: "Certificate authority is not unique"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/not_unique_certificate_authority"
+  name: "kubernetes/not_unique_certificate_authority"
   id: "kubernetes-not-unique-certificate-authority"
   display_name: "Certificate authority is not unique"
   cloud_provider: "Kubernetes"

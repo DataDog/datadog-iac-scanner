@@ -2,7 +2,7 @@
 title: "Using unrecommended namespace"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/using_unrecommended_namespace"
+  name: "kubernetes/using_unrecommended_namespace"
   id: "kubernetes-using-unrecommended-namespace"
   display_name: "Using unrecommended namespace"
   cloud_provider: "Kubernetes"

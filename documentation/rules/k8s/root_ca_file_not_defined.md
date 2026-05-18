@@ -2,7 +2,7 @@
 title: "Root CA file not defined"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/root_ca_file_not_defined"
+  name: "kubernetes/root_ca_file_not_defined"
   id: "kubernetes-root-ca-file-not-defined"
   display_name: "Root CA file not defined"
   cloud_provider: "Kubernetes"

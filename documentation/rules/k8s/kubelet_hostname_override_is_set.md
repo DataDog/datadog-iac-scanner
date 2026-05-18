@@ -2,7 +2,7 @@
 title: "Kubelet hostname override is set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/kubelet_hostname_override_is_set"
+  name: "kubernetes/kubelet_hostname_override_is_set"
   id: "kubernetes-kubelet-hostname-override-is-set"
   display_name: "Kubelet hostname override is set"
   cloud_provider: "Kubernetes"

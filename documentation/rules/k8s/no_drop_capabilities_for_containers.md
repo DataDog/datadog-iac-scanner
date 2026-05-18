@@ -2,7 +2,7 @@
 title: "Containers missing drop capabilities"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/no_drop_capabilities_for_containers"
+  name: "kubernetes/no_drop_capabilities_for_containers"
   id: "kubernetes-no-drop-capabilities-for-containers"
   display_name: "Containers missing drop capabilities"
   cloud_provider: "Kubernetes"

@@ -2,7 +2,7 @@
 title: "Container with low UID"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/containers_run_with_low_uid"
+  name: "kubernetes/containers_run_with_low_uid"
   id: "kubernetes-containers-run-with-low-uid"
   display_name: "Container with low UID"
   cloud_provider: "Kubernetes"

@@ -2,7 +2,7 @@
 title: "RBAC wildcard in rule"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/rbac_wildcard_in_rule"
+  name: "kubernetes/rbac_wildcard_in_rule"
   id: "kubernetes-rbac-wildcard-in-rule"
   display_name: "RBAC wildcard in rule"
   cloud_provider: "Kubernetes"

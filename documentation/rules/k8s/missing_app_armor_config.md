@@ -2,7 +2,7 @@
 title: "Missing AppArmor profile"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/missing_app_armor_config"
+  name: "kubernetes/missing_app_armor_config"
   id: "kubernetes-missing-app-armor-config"
   display_name: "Missing AppArmor profile"
   cloud_provider: "Kubernetes"

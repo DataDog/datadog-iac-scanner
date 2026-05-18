@@ -2,7 +2,7 @@
 title: "CNI plugin does not support network policies"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/cni_plugin_does_not_support_network_policies"
+  name: "kubernetes/cni_plugin_does_not_support_network_policies"
   id: "kubernetes-cni-plugin-does-not-support-network-policies"
   display_name: "CNI plugin does not support network policies"
   cloud_provider: "Kubernetes"

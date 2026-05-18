@@ -2,7 +2,7 @@
 title: "Unrestricted capabilities in PodSecurityPolicy"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/not_limited_capabilities_for_pod_security_policy"
+  name: "kubernetes/not_limited_capabilities_for_pod_security_policy"
   id: "kubernetes-not-limited-capabilities-for-pod-security-policy"
   display_name: "Unrestricted capabilities in PodSecurityPolicy"
   cloud_provider: "Kubernetes"

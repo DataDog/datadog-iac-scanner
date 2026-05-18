@@ -2,7 +2,7 @@
 title: "Secrets used as environment variables"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/secrets_as_environment_variables"
+  name: "kubernetes/secrets_as_environment_variables"
   id: "kubernetes-secrets-as-environment-variables"
   display_name: "Secrets used as environment variables"
   cloud_provider: "Kubernetes"

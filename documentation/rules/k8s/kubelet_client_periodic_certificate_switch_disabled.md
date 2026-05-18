@@ -2,7 +2,7 @@
 title: "Kubelet client periodic certificate switch disabled"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/kubelet_client_periodic_certificate_switch_disabled"
+  name: "kubernetes/kubelet_client_periodic_certificate_switch_disabled"
   id: "kubernetes-kubelet-client-periodic-certificate-switch-disabled"
   display_name: "Kubelet client periodic certificate switch disabled"
   cloud_provider: "Kubernetes"

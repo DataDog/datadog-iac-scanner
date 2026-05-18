@@ -2,7 +2,7 @@
 title: "Service account admission control plugin disabled"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/service_account_admission_control_plugin_disabled"
+  name: "kubernetes/service_account_admission_control_plugin_disabled"
   id: "kubernetes-service-account-admission-control-plugin-disabled"
   display_name: "Service account admission control plugin disabled"
   cloud_provider: "Kubernetes"

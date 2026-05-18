@@ -1,11 +1,11 @@
 ---
 title: "Privilege escalation using become plugin in defaults"
-group_id: "Ansible / Ansible Config"
+group_id: "Ansible / Ansible"
 meta:
-  name: "config/privilege_escalation_using_become_plugin_in_defaults"
+  name: "ansible/privilege_escalation_using_become_plugin_in_defaults"
   id: "ansible-privilege-escalation-using-become-plugin-in-defaults"
   display_name: "Privilege escalation using become plugin in defaults"
-  cloud_provider: "Ansible Config"
+  cloud_provider: "Ansible"
   platform: "Ansible"
   severity: "MEDIUM"
   category: "Access Control"
@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-privilege-escalation-using-become-plugin-in-defaults{{< /copyable-code >}}
 
-**Provider:** Ansible Config
+**Provider:** Ansible
 
 **Platform:** Ansible
 

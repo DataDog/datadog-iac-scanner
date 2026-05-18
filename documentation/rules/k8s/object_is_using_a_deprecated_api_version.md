@@ -2,7 +2,7 @@
 title: "Object is using a deprecated API version"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/object_is_using_a_deprecated_api_version"
+  name: "kubernetes/object_is_using_a_deprecated_api_version"
   id: "kubernetes-object-is-using-a-deprecated-api-version"
   display_name: "Object is using a deprecated API version"
   cloud_provider: "Kubernetes"

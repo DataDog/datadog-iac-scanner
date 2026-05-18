@@ -2,7 +2,7 @@
 title: "Ingress controller exposes workload"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/ingress_controller_exposes_workload"
+  name: "kubernetes/ingress_controller_exposes_workload"
   id: "kubernetes-ingress-controller-exposes-workload"
   display_name: "Ingress controller exposes workload"
   cloud_provider: "Kubernetes"

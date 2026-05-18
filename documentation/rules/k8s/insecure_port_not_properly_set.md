@@ -2,7 +2,7 @@
 title: "Insecure port not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/insecure_port_not_properly_set"
+  name: "kubernetes/insecure_port_not_properly_set"
   id: "kubernetes-insecure-port-not-properly-set"
   display_name: "Insecure port not properly set"
   cloud_provider: "Kubernetes"

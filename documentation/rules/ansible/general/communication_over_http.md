@@ -1,11 +1,11 @@
 ---
 title: "Communication over HTTP"
-group_id: "Ansible / Common"
+group_id: "Ansible / Ansible"
 meta:
-  name: "general/communication_over_http"
+  name: "ansible/communication_over_http"
   id: "ansible-communication-over-http"
   display_name: "Communication over HTTP"
-  cloud_provider: "Common"
+  cloud_provider: "Ansible"
   platform: "Ansible"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-communication-over-http{{< /copyable-code >}}
 
-**Provider:** Common
+**Provider:** Ansible
 
 **Platform:** Ansible
 

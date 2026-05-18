@@ -1,11 +1,11 @@
 ---
 title: "Risky file permissions"
-group_id: "Ansible / Common"
+group_id: "Ansible / Ansible"
 meta:
-  name: "general/risky_file_permissions"
+  name: "ansible/risky_file_permissions"
   id: "ansible-risky-file-permissions"
   display_name: "Risky file permissions"
-  cloud_provider: "Common"
+  cloud_provider: "Ansible"
   platform: "Ansible"
   severity: "LOW"
   category: "Supply-Chain"
@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-risky-file-permissions{{< /copyable-code >}}
 
-**Provider:** Common
+**Provider:** Ansible
 
 **Platform:** Ansible
 

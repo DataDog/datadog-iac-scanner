@@ -2,7 +2,7 @@
 title: "PSP set to privileged"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/psp_set_to_privileged"
+  name: "kubernetes/psp_set_to_privileged"
   id: "kubernetes-psp-set-to-privileged"
   display_name: "PSP set to privileged"
   cloud_provider: "Kubernetes"

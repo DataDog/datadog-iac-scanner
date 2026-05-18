@@ -2,7 +2,7 @@
 title: "Audit log maxsize not properly set"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/audit_log_maxsize_not_properly_set"
+  name: "kubernetes/audit_log_maxsize_not_properly_set"
   id: "kubernetes-audit-log-maxsize-not-properly-set"
   display_name: "Audit log maxsize not properly set"
   cloud_provider: "Kubernetes"

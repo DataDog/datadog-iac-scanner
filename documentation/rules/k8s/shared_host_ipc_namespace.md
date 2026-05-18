@@ -2,7 +2,7 @@
 title: "Shared host IPC namespace"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/shared_host_ipc_namespace"
+  name: "kubernetes/shared_host_ipc_namespace"
   id: "kubernetes-shared-host-ipc-namespace"
   display_name: "Shared host IPC namespace"
   cloud_provider: "Kubernetes"

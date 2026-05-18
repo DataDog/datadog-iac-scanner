@@ -1,11 +1,11 @@
 ---
 title: "Insecure relative path resolution"
-group_id: "Ansible / Common"
+group_id: "Ansible / Ansible"
 meta:
-  name: "general/insecure_relative_path_resolution"
+  name: "ansible/insecure_relative_path_resolution"
   id: "ansible-insecure-relative-path-resolution"
   display_name: "Insecure relative path resolution"
-  cloud_provider: "Common"
+  cloud_provider: "Ansible"
   platform: "Ansible"
   severity: "LOW"
   category: "Best Practices"
@@ -14,7 +14,7 @@ meta:
 
 **Id:** {{< copyable-code >}}ansible-insecure-relative-path-resolution{{< /copyable-code >}}
 
-**Provider:** Common
+**Provider:** Ansible
 
 **Platform:** Ansible
 

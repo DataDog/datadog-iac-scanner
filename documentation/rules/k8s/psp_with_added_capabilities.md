@@ -2,7 +2,7 @@
 title: "PSP with added capabilities"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/psp_with_added_capabilities"
+  name: "kubernetes/psp_with_added_capabilities"
   id: "kubernetes-psp-with-added-capabilities"
   display_name: "PSP with added capabilities"
   cloud_provider: "Kubernetes"

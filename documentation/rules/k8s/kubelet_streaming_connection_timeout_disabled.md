@@ -2,7 +2,7 @@
 title: "Kubelet streaming connection timeout disabled"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/kubelet_streaming_connection_timeout_disabled"
+  name: "kubernetes/kubelet_streaming_connection_timeout_disabled"
   id: "kubernetes-kubelet-streaming-connection-timeout-disabled"
   display_name: "Kubelet streaming connection timeout disabled"
   cloud_provider: "Kubernetes"

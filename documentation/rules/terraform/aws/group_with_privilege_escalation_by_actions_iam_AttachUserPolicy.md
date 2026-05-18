@@ -2,7 +2,7 @@
 title: "Group with privilege escalation by actions 'iam:AttachUserPolicy'"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/group_with_privilege_escalation_by_actions_iam_AttachUserPolicy"
+  name: "aws/group_with_privilege_escalation_by_actions_iam_attachuserpolicy"
   id: "terraform-aws-group-with-privilege-escalation-by-actions-iam-attachuserpolicy"
   display_name: "Group with privilege escalation by actions 'iam:AttachUserPolicy'"
   cloud_provider: "AWS"

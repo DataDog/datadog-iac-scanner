@@ -2,7 +2,7 @@
 title: "Secure port set to zero"
 group_id: "Kubernetes / Kubernetes"
 meta:
-  name: "k8s/secure_port_set_to_zero"
+  name: "kubernetes/secure_port_set_to_zero"
   id: "kubernetes-secure-port-set-to-zero"
   display_name: "Secure port set to zero"
   cloud_provider: "Kubernetes"
