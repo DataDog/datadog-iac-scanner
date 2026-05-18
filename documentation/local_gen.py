@@ -157,7 +157,7 @@ meta:
         markdown += "\n## Compliant Code Examples\n" + "\n\n".join(compliant)
     if non_compliant:
         markdown += "\n## Non-Compliant Code Examples\n" + "\n\n".join(non_compliant)
-    return markdown
+    return markdown, rule_id
 
 
 def load_list(path):
@@ -177,19 +177,13 @@ def process_provider(
 ):
     if provider != "no-provider":
         provider_path = input_dir / resource_type / provider
-
-        output_provider_path = output_dir / resource_type / provider
     else:
         provider = resource_type
         provider_path = provider_path = input_dir / resource_type
 
-        output_provider_path = output_dir / resource_type
-
     if not provider_path.is_dir():
         print(f"Warning: Missing provider path: {provider_path}")
         return 0
-
-    output_provider_path.mkdir(parents=True, exist_ok=True)
 
     provider_entry = {
         "name": provider,
@@ -222,13 +216,15 @@ def process_provider(
             {"name": rule_name, "short_description": rule_desc}
         )
 
-        output_file = output_provider_path / f"{rule_name}.md"
-        md_content = build_markdown(
+        md_content, id = build_markdown(
             rule_dir,
             metadata,
             resource_type,
             max_examples,
         )
+
+        output_file = output_dir / f"{id}.md"
+
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(md_content)
         print(f"Generated: {output_file}")
