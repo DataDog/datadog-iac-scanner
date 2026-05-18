@@ -21,7 +21,7 @@ CODE_SUFFIX = {
     "cfg": "ini",
     "ini": "ini",
 }
-CLOUD_PROVIDER = {
+PROVIDER = {
     "alicloud": "Alicloud",
     "aws": "AWS",
     "aws_sam": "AWS",
@@ -107,35 +107,33 @@ def get_code_snippets(test_dir, resource_type, max_examples):
     return compliant, non_compliant
 
 
-def build_markdown(
-    rule_path, metadata, cloud_provider, resource_type, provider_path, max_examples
-):
+def build_markdown(rule_path, metadata, resource_type, max_examples):
     rule_name = rule_path.name
     title = metadata.get("queryName", "Untitled Rule")
     rule_id = metadata.get("id", "unknown-id")
     display_name = metadata.get("queryName", "no-name")
     platform = metadata.get("platform", "unknown")
+    provider = PROVIDER.get(metadata.get("cloudProvider", platform), platform)
     severity = metadata.get("severity", "INFO").upper()
     category = metadata.get("category", "unknown")
     description = metadata.get("descriptionText", "No description provided.")
     provider_url = metadata.get("providerUrl", metadata.get("descriptionUrl", ""))
     test_path = (
         rule_path / "test"
-        if cloud_provider != "github" or platform != "CICD"
+        if provider != "GitHub" or platform != "CICD"
         else rule_path / "test" / ".github"
     )
     compliant, non_compliant = get_code_snippets(test_path, resource_type, max_examples)
-    meta_name = f"{cloud_provider}/{rule_name}"
-    clean_provider = CLOUD_PROVIDER[cloud_provider]
+    meta_name = f"{provider}/{rule_name}".lower()
 
     markdown = f"""---
 title: {json.dumps(title)}
-group_id: "{platform} / {clean_provider}"
+group_id: "{platform} / {provider}"
 meta:
   name: "{meta_name}"
   id: "{rule_id}"
   display_name: "{display_name}"
-  cloud_provider: "{clean_provider}"
+  cloud_provider: "{provider}"
   platform: "{platform}"
   severity: "{severity}"
   category: "{category}"
@@ -144,7 +142,7 @@ meta:
 
 **Id:** {{{{< copyable-code >}}}}{rule_id}{{{{< /copyable-code >}}}}
 
-**Provider:** {clean_provider}
+**Provider:** {provider}
 
 **Platform:** {platform}
 
@@ -237,9 +235,7 @@ def process_provider(
         md_content = build_markdown(
             rule_dir,
             metadata,
-            provider,
             resource_type,
-            output_provider_path,
             max_examples,
         )
         with open(output_file, "w", encoding="utf-8") as f:
