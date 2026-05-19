@@ -98,13 +98,16 @@ def get_code_snippets(test_dir, resource_type, max_examples):
     return compliant, non_compliant
 
 
-def build_markdown(rule_path, metadata, resource_type, max_examples):
+def build_markdown(
+    rule_path: Path, metadata: dict[str, str], resource_type: str, max_examples: int
+):
+    # Build the attributes that will be used in the markdown
     rule_name = rule_path.name
     title = metadata.get("queryName", "Untitled Rule")
     rule_id = metadata.get("id", "unknown-id")
     display_name = metadata.get("queryName", "no-name")
     platform = metadata.get("platform", "unknown")
-    provider = PROVIDER.get(metadata.get("cloudProvider", platform), platform)
+    provider = PROVIDER.get(metadata.get("cloudProvider", ""), "")
     severity = metadata.get("severity", "INFO").upper()
     category = metadata.get("category", "unknown")
     description = metadata.get("descriptionText", "No description provided.")
@@ -114,12 +117,22 @@ def build_markdown(rule_path, metadata, resource_type, max_examples):
         if provider != "GitHub" or platform != "CICD"
         else rule_path / "test" / ".github"
     )
+
+    # Build the markdown
+    if provider == "":
+        group_id = ""
+        provider_metadata = ""
+        meta_name = rule_name.lower()
+    group_id = f'"{platform} / {provider}"' if provider != "" else f'"{platform}"'
+    provider_metadata = f"\n\n**Provider:** {provider}" if provider != "" else ""
+    meta_name = (
+        f'"{provider}/{rule_name}"'.lower() if provider != "" else rule_name.lower()
+    )
     compliant, non_compliant = get_code_snippets(test_path, resource_type, max_examples)
-    meta_name = f"{provider}/{rule_name}".lower()
 
     markdown = f"""---
 title: {json.dumps(title)}
-group_id: "{platform} / {provider}"
+group_id: {group_id}
 meta:
   name: "{meta_name}"
   id: "{rule_id}"
@@ -131,9 +144,11 @@ meta:
 ---
 ## Metadata
 
-**Id:** {{{{< copyable-code >}}}}{rule_id}{{{{< /copyable-code >}}}}
+**Id:** {{{{< copyable-code >}}}}{rule_id}{{{{< /copyable-code >}}}}{
 
-**Provider:** {provider}
+provider_metadata
+
+}
 
 **Platform:** {platform}
 
