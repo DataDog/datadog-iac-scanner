@@ -2,7 +2,7 @@
 title: "Encryption on managed disk disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/encryption_on_managed_disk_disabled""
+  name: "azure/encryption_on_managed_disk_disabled"
   id: "terraform-azure-encryption-on-managed-disk-disabled"
   display_name: "Encryption on managed disk disabled"
   cloud_provider: "Azure"

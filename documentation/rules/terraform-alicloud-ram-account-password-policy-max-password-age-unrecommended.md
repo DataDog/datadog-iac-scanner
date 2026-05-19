@@ -2,7 +2,7 @@
 title: "RAM account password policy max password age not recommended"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/ram_account_password_policy_max_password_age_unrecommended""
+  name: "alicloud/ram_account_password_policy_max_password_age_unrecommended"
   id: "terraform-alicloud-ram-account-password-policy-max-password-age-unrecommended"
   display_name: "RAM account password policy max password age not recommended"
   cloud_provider: "Alicloud"

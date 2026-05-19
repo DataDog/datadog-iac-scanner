@@ -2,7 +2,7 @@
 title: "Cluster allows unsafe sysctls"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/cluster_allows_unsafe_sysctls""
+  name: "kubernetes/cluster_allows_unsafe_sysctls"
   id: "terraform-kubernetes-cluster-allows-unsafe-sysctls"
   display_name: "Cluster allows unsafe sysctls"
   cloud_provider: "Kubernetes"

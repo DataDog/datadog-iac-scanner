@@ -2,7 +2,7 @@
 title: "SES policy with allowed IAM actions"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/ses_policy_with_allowed_iam_actions""
+  name: "aws/ses_policy_with_allowed_iam_actions"
   id: "ansible-aws-ses-policy-with-allowed-iam-actions"
   display_name: "SES policy with allowed IAM actions"
   cloud_provider: "AWS"

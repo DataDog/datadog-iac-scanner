@@ -2,7 +2,7 @@
 title: "Workload host port not specified"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/workload_host_port_not_specified""
+  name: "kubernetes/workload_host_port_not_specified"
   id: "terraform-kubernetes-workload-host-port-not-specified"
   display_name: "Workload host port not specified"
   cloud_provider: "Kubernetes"

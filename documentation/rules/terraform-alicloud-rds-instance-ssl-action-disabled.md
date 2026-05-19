@@ -2,7 +2,7 @@
 title: "RDS instance SSL action disabled"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/rds_instance_ssl_action_disabled""
+  name: "alicloud/rds_instance_ssl_action_disabled"
   id: "terraform-alicloud-rds-instance-ssl-action-disabled"
   display_name: "RDS instance SSL action disabled"
   cloud_provider: "Alicloud"

@@ -2,7 +2,7 @@
 title: "Dependabot execution"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/dependabot_execution""
+  name: "github/dependabot_execution"
   id: "cicd-github-dependabot-execution"
   display_name: "Dependabot execution"
   cloud_provider: "GitHub"

@@ -2,7 +2,7 @@
 title: "TKE cluster encryption protection disabled"
 group_id: "Terraform / TencentCloud"
 meta:
-  name: ""tencentcloud/tke_cluster_encryption_protection_disabled""
+  name: "tencentcloud/tke_cluster_encryption_protection_disabled"
   id: "terraform-tencentcloud-tke-cluster-encryption-protection-disabled"
   display_name: "TKE cluster encryption protection disabled"
   cloud_provider: "TencentCloud"

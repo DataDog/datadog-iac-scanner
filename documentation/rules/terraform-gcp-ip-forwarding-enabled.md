@@ -2,7 +2,7 @@
 title: "IP forwarding enabled"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/ip_forwarding_enabled""
+  name: "gcp/ip_forwarding_enabled"
   id: "terraform-gcp-ip-forwarding-enabled"
   display_name: "IP forwarding enabled"
   cloud_provider: "GCP"

@@ -2,7 +2,7 @@
 title: "NIFCLOUD NAS undefined description to NAS security group"
 group_id: "Terraform / Nifcloud"
 meta:
-  name: ""nifcloud/nas_security_group_description_undefined""
+  name: "nifcloud/nas_security_group_description_undefined"
   id: "terraform-nifcloud-nas-security-group-description-undefined"
   display_name: "NIFCLOUD NAS undefined description to NAS security group"
   cloud_provider: "Nifcloud"

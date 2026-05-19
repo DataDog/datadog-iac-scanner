@@ -2,7 +2,7 @@
 title: "Storage table allows all ACL permissions"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/storage_table_allows_all_acl_permissions""
+  name: "azure/storage_table_allows_all_acl_permissions"
   id: "terraform-azure-storage-table-allows-all-acl-permissions"
   display_name: "Storage table allows all ACL permissions"
   cloud_provider: "Azure"

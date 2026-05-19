@@ -2,7 +2,7 @@
 title: "AMI not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/ami_not_encrypted""
+  name: "aws/ami_not_encrypted"
   id: "terraform-aws-ami-not-encrypted"
   display_name: "AMI not encrypted"
   cloud_provider: "AWS"

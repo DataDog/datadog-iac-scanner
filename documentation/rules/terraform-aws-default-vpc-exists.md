@@ -2,7 +2,7 @@
 title: "Default VPC exists"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/default_vpc_exists""
+  name: "aws/default_vpc_exists"
   id: "terraform-aws-default-vpc-exists"
   display_name: "Default VPC exists"
   cloud_provider: "AWS"

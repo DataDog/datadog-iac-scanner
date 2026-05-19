@@ -2,7 +2,7 @@
 title: "MariaDB server geo-redundant backup disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/mariadb_server_georedundant_backup_disabled""
+  name: "azure/mariadb_server_georedundant_backup_disabled"
   id: "terraform-azure-mariadb-server-georedundant-backup-disabled"
   display_name: "MariaDB server geo-redundant backup disabled"
   cloud_provider: "Azure"

@@ -2,7 +2,7 @@
 title: "Cluster master authentication disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: ""gcp/cluster_master_authentication_disabled""
+  name: "gcp/cluster_master_authentication_disabled"
   id: "ansible-gcp-cluster-master-authentication-disabled"
   display_name: "Cluster master authentication disabled"
   cloud_provider: "GCP"

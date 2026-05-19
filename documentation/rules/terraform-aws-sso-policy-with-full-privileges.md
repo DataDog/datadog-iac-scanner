@@ -2,7 +2,7 @@
 title: "SSO policy with full privileges"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/sso_policy_with_full_privileges""
+  name: "aws/sso_policy_with_full_privileges"
   id: "terraform-aws-sso-policy-with-full-privileges"
   display_name: "SSO policy with full privileges"
   cloud_provider: "AWS"

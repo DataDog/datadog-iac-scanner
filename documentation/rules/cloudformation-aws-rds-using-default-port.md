@@ -2,7 +2,7 @@
 title: "RDS using default port"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/rds_using_default_port""
+  name: "aws/rds_using_default_port"
   id: "cloudformation-aws-rds-using-default-port"
   display_name: "RDS using default port"
   cloud_provider: "AWS"

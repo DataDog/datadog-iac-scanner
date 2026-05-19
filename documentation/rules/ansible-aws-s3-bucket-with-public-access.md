@@ -2,7 +2,7 @@
 title: "S3 bucket with public access"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/s3_bucket_with_public_access""
+  name: "aws/s3_bucket_with_public_access"
   id: "ansible-aws-s3-bucket-with-public-access"
   display_name: "S3 bucket with public access"
   cloud_provider: "AWS"

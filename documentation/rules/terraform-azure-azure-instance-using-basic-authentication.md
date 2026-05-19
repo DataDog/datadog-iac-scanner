@@ -2,7 +2,7 @@
 title: "Azure instance using basic authentication"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/azure_instance_using_basic_authentication""
+  name: "azure/azure_instance_using_basic_authentication"
   id: "terraform-azure-azure-instance-using-basic-authentication"
   display_name: "Azure instance using basic authentication"
   cloud_provider: "Azure"

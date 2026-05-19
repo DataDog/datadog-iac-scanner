@@ -2,7 +2,7 @@
 title: "TKE cluster has public access"
 group_id: "Terraform / TencentCloud"
 meta:
-  name: ""tencentcloud/tke_cluster_has_public_access""
+  name: "tencentcloud/tke_cluster_has_public_access"
   id: "terraform-tencentcloud-tke-cluster-has-public-access"
   display_name: "TKE cluster has public access"
   cloud_provider: "TencentCloud"

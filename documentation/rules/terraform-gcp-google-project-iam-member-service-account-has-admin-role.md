@@ -2,7 +2,7 @@
 title: "Google project IAM member service account has admin role"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/google_project_iam_member_service_account_has_admin_role""
+  name: "gcp/google_project_iam_member_service_account_has_admin_role"
   id: "terraform-gcp-google-project-iam-member-service-account-has-admin-role"
   display_name: "Google project IAM member service account has admin role"
   cloud_provider: "GCP"

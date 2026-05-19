@@ -2,7 +2,7 @@
 title: "Amplify app access token exposed"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/amplify_app_access_token_exposed""
+  name: "aws/amplify_app_access_token_exposed"
   id: "cloudformation-aws-amplify-app-access-token-exposed"
   display_name: "Amplify app access token exposed"
   cloud_provider: "AWS"

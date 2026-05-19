@@ -2,7 +2,7 @@
 title: "Overprovisioned secrets"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/overprovisioned_secrets""
+  name: "github/overprovisioned_secrets"
   id: "cicd-github-overprovisioned-secrets"
   display_name: "Overprovisioned secrets"
   cloud_provider: "GitHub"

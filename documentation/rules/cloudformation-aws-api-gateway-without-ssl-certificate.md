@@ -2,7 +2,7 @@
 title: "API Gateway without SSL certificate"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/api_gateway_without_ssl_certificate""
+  name: "aws/api_gateway_without_ssl_certificate"
   id: "cloudformation-aws-api-gateway-without-ssl-certificate"
   display_name: "API Gateway without SSL certificate"
   cloud_provider: "AWS"

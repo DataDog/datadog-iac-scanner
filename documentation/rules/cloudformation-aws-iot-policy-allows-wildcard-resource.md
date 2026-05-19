@@ -2,7 +2,7 @@
 title: "IoT policy allows a wildcard resource"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/iot_policy_allows_wildcard_resource""
+  name: "aws/iot_policy_allows_wildcard_resource"
   id: "cloudformation-aws-iot-policy-allows-wildcard-resource"
   display_name: "IoT policy allows a wildcard resource"
   cloud_provider: "AWS"

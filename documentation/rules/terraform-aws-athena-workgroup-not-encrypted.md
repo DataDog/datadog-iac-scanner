@@ -2,7 +2,7 @@
 title: "Athena workgroup not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/athena_workgroup_not_encrypted""
+  name: "aws/athena_workgroup_not_encrypted"
   id: "terraform-aws-athena-workgroup-not-encrypted"
   display_name: "Athena workgroup not encrypted"
   cloud_provider: "AWS"

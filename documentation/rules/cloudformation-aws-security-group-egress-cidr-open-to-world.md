@@ -2,7 +2,7 @@
 title: "Security group egress CIDR open to world"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/security_group_egress_cidr_open_to_world""
+  name: "aws/security_group_egress_cidr_open_to_world"
   id: "cloudformation-aws-security-group-egress-cidr-open-to-world"
   display_name: "Security group egress CIDR open to world"
   cloud_provider: "AWS"

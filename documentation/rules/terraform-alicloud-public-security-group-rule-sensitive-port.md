@@ -2,7 +2,7 @@
 title: "Public security group rule sensitive port"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/public_security_group_rule_sensitive_port""
+  name: "alicloud/public_security_group_rule_sensitive_port"
   id: "terraform-alicloud-public-security-group-rule-sensitive-port"
   display_name: "Public security group rule sensitive port"
   cloud_provider: "Alicloud"

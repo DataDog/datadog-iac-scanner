@@ -2,7 +2,7 @@
 title: "Disk encryption disabled"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/disk_encryption_disabled""
+  name: "gcp/disk_encryption_disabled"
   id: "terraform-gcp-disk-encryption-disabled"
   display_name: "Disk encryption disabled"
   cloud_provider: "GCP"

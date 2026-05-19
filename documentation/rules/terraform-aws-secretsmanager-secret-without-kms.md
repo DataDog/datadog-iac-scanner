@@ -2,7 +2,7 @@
 title: "Secrets Manager secret without KMS"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/secretsmanager_secret_without_kms""
+  name: "aws/secretsmanager_secret_without_kms"
   id: "terraform-aws-secretsmanager-secret-without-kms"
   display_name: "Secrets Manager secret without KMS"
   cloud_provider: "AWS"

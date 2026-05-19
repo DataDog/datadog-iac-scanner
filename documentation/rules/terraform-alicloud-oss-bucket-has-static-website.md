@@ -2,7 +2,7 @@
 title: "OSS bucket has static website"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/oss_bucket_has_static_website""
+  name: "alicloud/oss_bucket_has_static_website"
   id: "terraform-alicloud-oss-bucket-has-static-website"
   display_name: "OSS bucket has static website"
   cloud_provider: "Alicloud"

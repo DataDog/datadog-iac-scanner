@@ -2,7 +2,7 @@
 title: "Private cluster disabled"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/private_cluster_disabled""
+  name: "gcp/private_cluster_disabled"
   id: "terraform-gcp-private-cluster-disabled"
   display_name: "Private cluster disabled"
   cloud_provider: "GCP"

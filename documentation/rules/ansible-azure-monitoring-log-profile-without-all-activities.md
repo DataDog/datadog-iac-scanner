@@ -2,7 +2,7 @@
 title: "Monitoring log profile without all activities"
 group_id: "Ansible / Azure"
 meta:
-  name: ""azure/monitoring_log_profile_without_all_activities""
+  name: "azure/monitoring_log_profile_without_all_activities"
   id: "ansible-azure-monitoring-log-profile-without-all-activities"
   display_name: "Monitoring log profile without all activities"
   cloud_provider: "Azure"

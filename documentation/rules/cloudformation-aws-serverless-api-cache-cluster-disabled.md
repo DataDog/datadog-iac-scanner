@@ -2,7 +2,7 @@
 title: "Serverless API cache cluster disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/serverless_api_cache_cluster_disabled""
+  name: "aws/serverless_api_cache_cluster_disabled"
   id: "cloudformation-aws-serverless-api-cache-cluster-disabled"
   display_name: "Serverless API cache cluster disabled"
   cloud_provider: "AWS"

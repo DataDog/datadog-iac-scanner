@@ -2,7 +2,7 @@
 title: "SageMaker notebook instance without KMS"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/sagemaker_notebook_instance_without_kms""
+  name: "aws/sagemaker_notebook_instance_without_kms"
   id: "terraform-aws-sagemaker-notebook-instance-without-kms"
   display_name: "SageMaker notebook instance without KMS"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "Amplify app basic auth config password exposed"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/amplify_app_basic_auth_config_password_exposed""
+  name: "aws/amplify_app_basic_auth_config_password_exposed"
   id: "cloudformation-aws-amplify-app-basic-auth-config-password-exposed"
   display_name: "Amplify app basic auth config password exposed"
   cloud_provider: "AWS"

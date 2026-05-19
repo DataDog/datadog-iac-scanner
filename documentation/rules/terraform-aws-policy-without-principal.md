@@ -2,7 +2,7 @@
 title: "Policy without principal"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/policy_without_principal""
+  name: "aws/policy_without_principal"
   id: "terraform-aws-policy-without-principal"
   display_name: "Policy without principal"
   cloud_provider: "AWS"

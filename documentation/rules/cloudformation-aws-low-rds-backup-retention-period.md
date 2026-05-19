@@ -2,7 +2,7 @@
 title: "Low RDS backup retention period"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/low_rds_backup_retention_period""
+  name: "aws/low_rds_backup_retention_period"
   id: "cloudformation-aws-low-rds-backup-retention-period"
   display_name: "Low RDS backup retention period"
   cloud_provider: "AWS"

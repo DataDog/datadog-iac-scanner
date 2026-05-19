@@ -2,7 +2,7 @@
 title: "CloudFront without minimum protocol TLS 1.2"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/cloudfront_without_minimum_protocol_tls_1.2""
+  name: "aws/cloudfront_without_minimum_protocol_tls_1.2"
   id: "ansible-aws-cloudfront-without-minimum-protocol-tls-1-2"
   display_name: "CloudFront without minimum protocol TLS 1.2"
   cloud_provider: "AWS"

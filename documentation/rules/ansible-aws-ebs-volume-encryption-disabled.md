@@ -2,7 +2,7 @@
 title: "EBS volume encryption disabled"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/ebs_volume_encryption_disabled""
+  name: "aws/ebs_volume_encryption_disabled"
   id: "ansible-aws-ebs-volume-encryption-disabled"
   display_name: "EBS volume encryption disabled"
   cloud_provider: "AWS"

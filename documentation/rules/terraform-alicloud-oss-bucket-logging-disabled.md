@@ -2,7 +2,7 @@
 title: "OSS bucket logging disabled"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/oss_bucket_logging_disabled""
+  name: "alicloud/oss_bucket_logging_disabled"
   id: "terraform-alicloud-oss-bucket-logging-disabled"
   display_name: "OSS bucket logging disabled"
   cloud_provider: "Alicloud"

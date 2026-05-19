@@ -2,7 +2,7 @@
 title: "IAM Access Analyzer not enabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/iam_access_analyzer_not_enabled""
+  name: "aws/iam_access_analyzer_not_enabled"
   id: "cloudformation-aws-iam-access-analyzer-not-enabled"
   display_name: "IAM Access Analyzer not enabled"
   cloud_provider: "AWS"

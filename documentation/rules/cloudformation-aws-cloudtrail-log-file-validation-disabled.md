@@ -2,7 +2,7 @@
 title: "CloudTrail log file validation disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/cloudtrail_log_file_validation_disabled""
+  name: "aws/cloudtrail_log_file_validation_disabled"
   id: "cloudformation-aws-cloudtrail-log-file-validation-disabled"
   display_name: "CloudTrail log file validation disabled"
   cloud_provider: "AWS"

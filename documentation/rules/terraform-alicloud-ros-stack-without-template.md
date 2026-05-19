@@ -2,7 +2,7 @@
 title: "ROS stack without template"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/ros_stack_without_template""
+  name: "alicloud/ros_stack_without_template"
   id: "terraform-alicloud-ros-stack-without-template"
   display_name: "ROS stack without template"
   cloud_provider: "Alicloud"

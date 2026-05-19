@@ -2,7 +2,7 @@
 title: "API Gateway endpoint config is not private"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/api_gateway_endpoint_config_is_not_private""
+  name: "aws/api_gateway_endpoint_config_is_not_private"
   id: "cloudformation-aws-api-gateway-endpoint-config-is-not-private"
   display_name: "API Gateway endpoint config is not private"
   cloud_provider: "AWS"

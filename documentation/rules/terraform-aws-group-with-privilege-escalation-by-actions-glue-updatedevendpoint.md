@@ -2,7 +2,7 @@
 title: "Group with privilege escalation by actions 'glue:UpdateDevEndpoint'"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/group_with_privilege_escalation_by_actions_glue_updatedevendpoint""
+  name: "aws/group_with_privilege_escalation_by_actions_glue_updatedevendpoint"
   id: "terraform-aws-group-with-privilege-escalation-by-actions-glue-updatedevendpoint"
   display_name: "Group with privilege escalation by actions 'glue:UpdateDevEndpoint'"
   cloud_provider: "AWS"

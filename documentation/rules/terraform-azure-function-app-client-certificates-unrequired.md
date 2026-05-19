@@ -2,7 +2,7 @@
 title: "Function App client certificates not required"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/function_app_client_certificates_unrequired""
+  name: "azure/function_app_client_certificates_unrequired"
   id: "terraform-azure-function-app-client-certificates-unrequired"
   display_name: "Function App client certificates not required"
   cloud_provider: "Azure"

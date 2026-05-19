@@ -2,7 +2,7 @@
 title: "SQL Server predictable Active Directory account name"
 group_id: "Ansible / Azure"
 meta:
-  name: ""azure/sql_server_predictable_active_directory_admin_account_name""
+  name: "azure/sql_server_predictable_active_directory_admin_account_name"
   id: "ansible-azure-sql-server-predictable-active-directory-admin-account-name"
   display_name: "SQL Server predictable Active Directory account name"
   cloud_provider: "Azure"

@@ -2,7 +2,7 @@
 title: "SQL server alert email disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/sql_server_alert_email_disabled""
+  name: "azure/sql_server_alert_email_disabled"
   id: "terraform-azure-sql-server-alert-email-disabled"
   display_name: "SQL server alert email disabled"
   cloud_provider: "Azure"

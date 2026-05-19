@@ -2,7 +2,7 @@
 title: "OSLogin is disabled for VM instance"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/os_login_is_disabled_for_vm_instance""
+  name: "gcp/os_login_is_disabled_for_vm_instance"
   id: "terraform-gcp-os-login-is-disabled-for-vm-instance"
   display_name: "OSLogin is disabled for VM instance"
   cloud_provider: "GCP"

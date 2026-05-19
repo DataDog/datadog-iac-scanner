@@ -2,7 +2,7 @@
 title: "Azure Front Door WAF disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/azure_front_door_waf_disabled""
+  name: "azure/azure_front_door_waf_disabled"
   id: "terraform-azure-azure-front-door-waf-disabled"
   display_name: "Azure Front Door WAF disabled"
   cloud_provider: "Azure"

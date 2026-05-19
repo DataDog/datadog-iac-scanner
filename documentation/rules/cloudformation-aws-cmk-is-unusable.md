@@ -2,7 +2,7 @@
 title: "CMK is unusable"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/cmk_is_unusable""
+  name: "aws/cmk_is_unusable"
   id: "cloudformation-aws-cmk-is-unusable"
   display_name: "CMK is unusable"
   cloud_provider: "AWS"

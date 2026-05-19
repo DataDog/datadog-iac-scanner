@@ -2,7 +2,7 @@
 title: "Unpinned images"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/unpinned_images""
+  name: "github/unpinned_images"
   id: "cicd-github-unpinned-images"
   display_name: "Unpinned images"
   cloud_provider: "GitHub"

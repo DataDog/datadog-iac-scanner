@@ -2,7 +2,7 @@
 title: "GitHub repository set to public"
 group_id: "Terraform / GitHub"
 meta:
-  name: ""github/repository_set_to_public""
+  name: "github/repository_set_to_public"
   id: "terraform-github-repository-set-to-public"
   display_name: "GitHub repository set to public"
   cloud_provider: "GitHub"

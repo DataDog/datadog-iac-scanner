@@ -2,7 +2,7 @@
 title: "Geo redundancy is disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/geo_redundancy_is_disabled""
+  name: "azure/geo_redundancy_is_disabled"
   id: "terraform-azure-geo-redundancy-is-disabled"
   display_name: "Geo redundancy is disabled"
   cloud_provider: "Azure"

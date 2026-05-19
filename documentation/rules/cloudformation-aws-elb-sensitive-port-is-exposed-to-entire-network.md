@@ -2,7 +2,7 @@
 title: "ELB sensitive port is exposed to entire network"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/elb_sensitive_port_is_exposed_to_entire_network""
+  name: "aws/elb_sensitive_port_is_exposed_to_entire_network"
   id: "cloudformation-aws-elb-sensitive-port-is-exposed-to-entire-network"
   display_name: "ELB sensitive port is exposed to entire network"
   cloud_provider: "AWS"

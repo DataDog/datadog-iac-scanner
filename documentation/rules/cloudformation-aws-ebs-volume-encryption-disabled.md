@@ -2,7 +2,7 @@
 title: "EBS volume encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/ebs_volume_encryption_disabled""
+  name: "aws/ebs_volume_encryption_disabled"
   id: "cloudformation-aws-ebs-volume-encryption-disabled"
   display_name: "EBS volume encryption disabled"
   cloud_provider: "AWS"

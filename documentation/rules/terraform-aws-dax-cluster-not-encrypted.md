@@ -2,7 +2,7 @@
 title: "DAX cluster not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/dax_cluster_not_encrypted""
+  name: "aws/dax_cluster_not_encrypted"
   id: "terraform-aws-dax-cluster-not-encrypted"
   display_name: "DAX cluster not encrypted"
   cloud_provider: "AWS"

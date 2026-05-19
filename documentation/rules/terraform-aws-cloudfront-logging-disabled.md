@@ -2,7 +2,7 @@
 title: "CloudFront logging disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/cloudfront_logging_disabled""
+  name: "aws/cloudfront_logging_disabled"
   id: "terraform-aws-cloudfront-logging-disabled"
   display_name: "CloudFront logging disabled"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "S3 bucket ACL grants WRITE_ACP permission"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/s3_bucket_acl_grants_write_acp_permission""
+  name: "aws/s3_bucket_acl_grants_write_acp_permission"
   id: "terraform-aws-s3-bucket-acl-grants-write-acp-permission"
   display_name: "S3 bucket ACL grants WRITE_ACP permission"
   cloud_provider: "AWS"

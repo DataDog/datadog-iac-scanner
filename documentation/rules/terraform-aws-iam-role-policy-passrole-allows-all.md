@@ -2,7 +2,7 @@
 title: "IAM role policy passrole allows all"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/iam_role_policy_passrole_allows_all""
+  name: "aws/iam_role_policy_passrole_allows_all"
   id: "terraform-aws-iam-role-policy-passrole-allows-all"
   display_name: "IAM role policy passrole allows all"
   cloud_provider: "AWS"

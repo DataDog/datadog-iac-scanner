@@ -2,7 +2,7 @@
 title: "No stack policy"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/no_stack_policy""
+  name: "aws/no_stack_policy"
   id: "ansible-aws-no-stack-policy"
   display_name: "No stack policy"
   cloud_provider: "AWS"

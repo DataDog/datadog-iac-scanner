@@ -2,7 +2,7 @@
 title: "Unsound contains with controllable input"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/unsound_contains_with_controllable_input""
+  name: "github/unsound_contains_with_controllable_input"
   id: "cicd-github-unsound-contains-with-controllable-input"
   display_name: "Unsound contains with controllable input"
   cloud_provider: "GitHub"

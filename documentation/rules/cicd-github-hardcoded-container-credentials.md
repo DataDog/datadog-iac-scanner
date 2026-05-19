@@ -2,7 +2,7 @@
 title: "Hardcoded container credentials"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/hardcoded_container_credentials""
+  name: "github/hardcoded_container_credentials"
   id: "cicd-github-hardcoded-container-credentials"
   display_name: "Hardcoded container credentials"
   cloud_provider: "GitHub"

@@ -2,7 +2,7 @@
 title: "Ensure SQL database instance has skip show database flag"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/sql_database_instance_does_not_have_skip_show_database""
+  name: "gcp/sql_database_instance_does_not_have_skip_show_database"
   id: "terraform-gcp-sql-database-instance-does-not-have-skip-show-database"
   display_name: "Ensure SQL database instance has skip show database flag"
   cloud_provider: "GCP"

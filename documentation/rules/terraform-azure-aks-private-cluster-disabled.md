@@ -2,7 +2,7 @@
 title: "AKS private cluster disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/aks_private_cluster_disabled""
+  name: "azure/aks_private_cluster_disabled"
   id: "terraform-azure-aks-private-cluster-disabled"
   display_name: "AKS private cluster disabled"
   cloud_provider: "Azure"

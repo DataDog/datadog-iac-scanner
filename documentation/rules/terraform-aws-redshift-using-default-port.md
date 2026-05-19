@@ -2,7 +2,7 @@
 title: "Redshift using default port"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/redshift_using_default_port""
+  name: "aws/redshift_using_default_port"
   id: "terraform-aws-redshift-using-default-port"
   display_name: "Redshift using default port"
   cloud_provider: "AWS"

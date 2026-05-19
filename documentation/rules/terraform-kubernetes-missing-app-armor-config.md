@@ -2,7 +2,7 @@
 title: "Missing AppArmor config"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/missing_app_armor_config""
+  name: "kubernetes/missing_app_armor_config"
   id: "terraform-kubernetes-missing-app-armor-config"
   display_name: "Missing AppArmor config"
   cloud_provider: "Kubernetes"

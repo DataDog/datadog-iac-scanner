@@ -2,7 +2,7 @@
 title: "BigQuery table is public"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/bigquery_table_is_public""
+  name: "gcp/bigquery_table_is_public"
   id: "terraform-gcp-bigquery-table-is-public"
   display_name: "BigQuery table is public"
   cloud_provider: "GCP"

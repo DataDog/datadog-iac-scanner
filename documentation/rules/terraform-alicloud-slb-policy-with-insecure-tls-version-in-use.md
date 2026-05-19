@@ -2,7 +2,7 @@
 title: "SLB policy with insecure TLS version in use"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/slb_policy_with_insecure_tls_version_in_use""
+  name: "alicloud/slb_policy_with_insecure_tls_version_in_use"
   id: "terraform-alicloud-slb-policy-with-insecure-tls-version-in-use"
   display_name: "SLB policy with insecure TLS version in use"
   cloud_provider: "Alicloud"

@@ -2,7 +2,7 @@
 title: "VPC default security group accepts all traffic"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/vpc_default_security_group_accepts_all_traffic""
+  name: "aws/vpc_default_security_group_accepts_all_traffic"
   id: "terraform-aws-vpc-default-security-group-accepts-all-traffic"
   display_name: "VPC default security group accepts all traffic"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "Serverless function without dead-letter queue"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/serverless_function_without_dead_letter_queue""
+  name: "aws/serverless_function_without_dead_letter_queue"
   id: "cloudformation-aws-serverless-function-without-dead-letter-queue"
   display_name: "Serverless function without dead-letter queue"
   cloud_provider: "AWS"

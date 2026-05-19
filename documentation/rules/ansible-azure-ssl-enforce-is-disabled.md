@@ -2,7 +2,7 @@
 title: "SSL enforce disabled"
 group_id: "Ansible / Azure"
 meta:
-  name: ""azure/ssl_enforce_is_disabled""
+  name: "azure/ssl_enforce_is_disabled"
   id: "ansible-azure-ssl-enforce-is-disabled"
   display_name: "SSL enforce disabled"
   cloud_provider: "Azure"

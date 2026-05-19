@@ -2,7 +2,7 @@
 title: "OSLogin is disabled in VM instance"
 group_id: "Ansible / GCP"
 meta:
-  name: ""gcp/oslogin_is_disabled_for_vm_instance""
+  name: "gcp/oslogin_is_disabled_for_vm_instance"
   id: "ansible-gcp-oslogin-is-disabled-for-vm-instance"
   display_name: "OSLogin is disabled in VM instance"
   cloud_provider: "GCP"

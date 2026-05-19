@@ -2,7 +2,7 @@
 title: "CloudTrail multi-region disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/cloudtrail_multi_region_disabled""
+  name: "aws/cloudtrail_multi_region_disabled"
   id: "cloudformation-aws-cloudtrail-multi-region-disabled"
   display_name: "CloudTrail multi-region disabled"
   cloud_provider: "AWS"

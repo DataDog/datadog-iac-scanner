@@ -2,7 +2,7 @@
 title: "CodeBuild project encrypted with AWS managed key"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/codebuild_project_encrypted_with_aws_managed_key""
+  name: "aws/codebuild_project_encrypted_with_aws_managed_key"
   id: "terraform-aws-codebuild-project-encrypted-with-aws-managed-key"
   display_name: "CodeBuild project encrypted with AWS managed key"
   cloud_provider: "AWS"

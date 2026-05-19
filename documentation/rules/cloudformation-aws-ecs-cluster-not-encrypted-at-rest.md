@@ -2,7 +2,7 @@
 title: "ECS cluster not encrypted at rest"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/ecs_cluster_not_encrypted_at_rest""
+  name: "aws/ecs_cluster_not_encrypted_at_rest"
   id: "cloudformation-aws-ecs-cluster-not-encrypted-at-rest"
   display_name: "ECS cluster not encrypted at rest"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "Public port with wide port range"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/public_port_wide""
+  name: "aws/public_port_wide"
   id: "ansible-aws-public-port-wide"
   display_name: "Public port with wide port range"
   cloud_provider: "AWS"

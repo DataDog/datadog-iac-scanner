@@ -2,7 +2,7 @@
 title: "Vault auditing disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/vault_auditing_disabled""
+  name: "azure/vault_auditing_disabled"
   id: "terraform-azure-vault-auditing-disabled"
   display_name: "Vault auditing disabled"
   cloud_provider: "Azure"

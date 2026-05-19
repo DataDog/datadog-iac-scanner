@@ -2,7 +2,7 @@
 title: "DMS endpoint MongoDB settings password exposed"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/dms_endpoint_mongo_db_settings_password_exposed""
+  name: "aws/dms_endpoint_mongo_db_settings_password_exposed"
   id: "cloudformation-aws-dms-endpoint-mongo-db-settings-password-exposed"
   display_name: "DMS endpoint MongoDB settings password exposed"
   cloud_provider: "AWS"

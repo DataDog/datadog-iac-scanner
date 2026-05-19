@@ -2,7 +2,7 @@
 title: "EBS volume snapshot not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/ebs_volume_snapshot_not_encrypted""
+  name: "aws/ebs_volume_snapshot_not_encrypted"
   id: "terraform-aws-ebs-volume-snapshot-not-encrypted"
   display_name: "EBS volume snapshot not encrypted"
   cloud_provider: "AWS"

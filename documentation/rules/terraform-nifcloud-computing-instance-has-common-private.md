@@ -2,7 +2,7 @@
 title: "NIFCLOUD computing has common private network"
 group_id: "Terraform / Nifcloud"
 meta:
-  name: ""nifcloud/computing_instance_has_common_private""
+  name: "nifcloud/computing_instance_has_common_private"
   id: "terraform-nifcloud-computing-instance-has-common-private"
   display_name: "NIFCLOUD computing has common private network"
   cloud_provider: "Nifcloud"

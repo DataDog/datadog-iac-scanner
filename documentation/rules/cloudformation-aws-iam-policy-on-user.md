@@ -2,7 +2,7 @@
 title: "IAM policy on user"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/iam_policy_on_user""
+  name: "aws/iam_policy_on_user"
   id: "cloudformation-aws-iam-policy-on-user"
   display_name: "IAM policy on user"
   cloud_provider: "AWS"

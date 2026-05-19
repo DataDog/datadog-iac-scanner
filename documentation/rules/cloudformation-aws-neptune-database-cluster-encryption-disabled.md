@@ -2,7 +2,7 @@
 title: "Neptune database cluster encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/neptune_database_cluster_encryption_disabled""
+  name: "aws/neptune_database_cluster_encryption_disabled"
   id: "cloudformation-aws-neptune-database-cluster-encryption-disabled"
   display_name: "Neptune database cluster encryption disabled"
   cloud_provider: "AWS"

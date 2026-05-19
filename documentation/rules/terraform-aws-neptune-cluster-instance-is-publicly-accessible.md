@@ -2,7 +2,7 @@
 title: "Neptune cluster instance is publicly accessible"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/neptune_cluster_instance_is_publicly_accessible""
+  name: "aws/neptune_cluster_instance_is_publicly_accessible"
   id: "terraform-aws-neptune-cluster-instance-is-publicly-accessible"
   display_name: "Neptune cluster instance is publicly accessible"
   cloud_provider: "AWS"

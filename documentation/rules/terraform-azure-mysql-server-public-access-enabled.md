@@ -2,7 +2,7 @@
 title: "MySQL server public access enabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/mysql_server_public_access_enabled""
+  name: "azure/mysql_server_public_access_enabled"
   id: "terraform-azure-mysql-server-public-access-enabled"
   display_name: "MySQL server public access enabled"
   cloud_provider: "Azure"

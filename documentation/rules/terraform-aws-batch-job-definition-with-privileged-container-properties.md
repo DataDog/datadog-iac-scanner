@@ -2,7 +2,7 @@
 title: "Batch job definition with privileged container properties"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/batch_job_definition_with_privileged_container_properties""
+  name: "aws/batch_job_definition_with_privileged_container_properties"
   id: "terraform-aws-batch-job-definition-with-privileged-container-properties"
   display_name: "Batch job definition with privileged container properties"
   cloud_provider: "AWS"

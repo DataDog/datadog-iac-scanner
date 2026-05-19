@@ -2,7 +2,7 @@
 title: "StatefulSet requests storage"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/statefulset_requests_storage""
+  name: "kubernetes/statefulset_requests_storage"
   id: "terraform-kubernetes-statefulset-requests-storage"
   display_name: "StatefulSet requests storage"
   cloud_provider: "Kubernetes"

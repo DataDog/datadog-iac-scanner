@@ -2,7 +2,7 @@
 title: "Remote desktop port open to internet"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/remote_desktop_port_open""
+  name: "aws/remote_desktop_port_open"
   id: "ansible-aws-remote-desktop-port-open"
   display_name: "Remote desktop port open to internet"
   cloud_provider: "AWS"

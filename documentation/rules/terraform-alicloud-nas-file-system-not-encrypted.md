@@ -2,7 +2,7 @@
 title: "NAS file system not encrypted"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/nas_file_system_not_encrypted""
+  name: "alicloud/nas_file_system_not_encrypted"
   id: "terraform-alicloud-nas-file-system-not-encrypted"
   display_name: "NAS file system not encrypted"
   cloud_provider: "Alicloud"

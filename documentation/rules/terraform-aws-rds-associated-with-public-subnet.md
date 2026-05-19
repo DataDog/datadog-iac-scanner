@@ -2,7 +2,7 @@
 title: "RDS associated with public subnet"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/rds_associated_with_public_subnet""
+  name: "aws/rds_associated_with_public_subnet"
   id: "terraform-aws-rds-associated-with-public-subnet"
   display_name: "RDS associated with public subnet"
   cloud_provider: "AWS"

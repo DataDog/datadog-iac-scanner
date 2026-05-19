@@ -2,7 +2,7 @@
 title: "Run block injection"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/run_block_injection""
+  name: "github/run_block_injection"
   id: "cicd-github-run-block-injection"
   display_name: "Run block injection"
   cloud_provider: "GitHub"

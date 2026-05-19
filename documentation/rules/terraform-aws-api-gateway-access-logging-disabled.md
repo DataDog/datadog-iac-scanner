@@ -2,7 +2,7 @@
 title: "API Gateway access logging disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/api_gateway_access_logging_disabled""
+  name: "aws/api_gateway_access_logging_disabled"
   id: "terraform-aws-api-gateway-access-logging-disabled"
   display_name: "API Gateway access logging disabled"
   cloud_provider: "AWS"

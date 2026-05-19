@@ -2,7 +2,7 @@
 title: "MSK cluster logging disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/msk_cluster_logging_disabled""
+  name: "aws/msk_cluster_logging_disabled"
   id: "terraform-aws-msk-cluster-logging-disabled"
   display_name: "MSK cluster logging disabled"
   cloud_provider: "AWS"

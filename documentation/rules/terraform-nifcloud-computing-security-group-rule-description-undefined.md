@@ -2,7 +2,7 @@
 title: "NIFCLOUD computing undefined description to security group rule"
 group_id: "Terraform / Nifcloud"
 meta:
-  name: ""nifcloud/computing_security_group_rule_description_undefined""
+  name: "nifcloud/computing_security_group_rule_description_undefined"
   id: "terraform-nifcloud-computing-security-group-rule-description-undefined"
   display_name: "NIFCLOUD computing undefined description to security group rule"
   cloud_provider: "Nifcloud"

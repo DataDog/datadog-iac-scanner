@@ -2,7 +2,7 @@
 title: "MSK cluster encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/msk_cluster_encryption_disabled""
+  name: "aws/msk_cluster_encryption_disabled"
   id: "cloudformation-aws-msk-cluster-encryption-disabled"
   display_name: "MSK cluster encryption disabled"
   cloud_provider: "AWS"

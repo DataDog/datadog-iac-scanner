@@ -2,7 +2,7 @@
 title: "RDS instance events not logged"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/rds_instance_events_not_logged""
+  name: "alicloud/rds_instance_events_not_logged"
   id: "terraform-alicloud-rds-instance-events-not-logged"
   display_name: "RDS instance events not logged"
   cloud_provider: "Alicloud"

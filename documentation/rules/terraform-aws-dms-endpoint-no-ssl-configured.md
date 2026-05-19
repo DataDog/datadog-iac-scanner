@@ -2,7 +2,7 @@
 title: "DMS endpoints without SSL"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/dms_endpoint_no_ssl_configured""
+  name: "aws/dms_endpoint_no_ssl_configured"
   id: "terraform-aws-dms-endpoint-no-ssl-configured"
   display_name: "DMS endpoints without SSL"
   cloud_provider: "AWS"

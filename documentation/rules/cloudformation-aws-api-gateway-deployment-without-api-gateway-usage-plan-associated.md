@@ -2,7 +2,7 @@
 title: "API Gateway deployment without usage plan associated"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/api_gateway_deployment_without_api_gateway_usage_plan_associated""
+  name: "aws/api_gateway_deployment_without_api_gateway_usage_plan_associated"
   id: "cloudformation-aws-api-gateway-deployment-without-api-gateway-usage-plan-associated"
   display_name: "API Gateway deployment without usage plan associated"
   cloud_provider: "AWS"

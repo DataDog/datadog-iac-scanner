@@ -2,7 +2,7 @@
 title: "REST API with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/rest_api_with_vulnerable_policy""
+  name: "aws/rest_api_with_vulnerable_policy"
   id: "terraform-aws-rest-api-with-vulnerable-policy"
   display_name: "REST API with vulnerable policy"
   cloud_provider: "AWS"

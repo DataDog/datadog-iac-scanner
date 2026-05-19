@@ -2,7 +2,7 @@
 title: "Security group rule without description"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/security_group_rule_without_description""
+  name: "aws/security_group_rule_without_description"
   id: "cloudformation-aws-security-group-rule-without-description"
   display_name: "Security group rule without description"
   cloud_provider: "AWS"

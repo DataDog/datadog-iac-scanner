@@ -2,7 +2,7 @@
 title: "No drop capabilities for containers"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/no_drop_capabilities_for_containers""
+  name: "kubernetes/no_drop_capabilities_for_containers"
   id: "terraform-kubernetes-no-drop-capabilities-for-containers"
   display_name: "No drop capabilities for containers"
   cloud_provider: "Kubernetes"

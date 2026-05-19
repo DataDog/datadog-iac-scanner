@@ -2,7 +2,7 @@
 title: "App Service HTTP2 disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/app_service_http2_disabled""
+  name: "azure/app_service_http2_disabled"
   id: "terraform-azure-app-service-http2-disabled"
   display_name: "App Service HTTP2 disabled"
   cloud_provider: "Azure"

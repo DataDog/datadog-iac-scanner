@@ -2,7 +2,7 @@
 title: "Global Accelerator flow logs disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/global_accelerator_flow_logs_disabled""
+  name: "aws/global_accelerator_flow_logs_disabled"
   id: "terraform-aws-global-accelerator-flow-logs-disabled"
   display_name: "Global Accelerator flow logs disabled"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "App Service authentication disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/app_service_authentication_disabled""
+  name: "azure/app_service_authentication_disabled"
   id: "terraform-azure-app-service-authentication-disabled"
   display_name: "App Service authentication disabled"
   cloud_provider: "Azure"

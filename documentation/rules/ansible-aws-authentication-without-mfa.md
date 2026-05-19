@@ -2,7 +2,7 @@
 title: "Authentication without MFA"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/authentication_without_mfa""
+  name: "aws/authentication_without_mfa"
   id: "ansible-aws-authentication-without-mfa"
   display_name: "Authentication without MFA"
   cloud_provider: "AWS"

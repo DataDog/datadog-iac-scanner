@@ -2,7 +2,7 @@
 title: "API Gateway X-Ray disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/api_gateway_xray_disabled""
+  name: "aws/api_gateway_xray_disabled"
   id: "terraform-aws-api-gateway-xray-disabled"
   display_name: "API Gateway X-Ray disabled"
   cloud_provider: "AWS"

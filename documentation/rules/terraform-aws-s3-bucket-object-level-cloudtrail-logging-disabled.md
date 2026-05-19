@@ -2,7 +2,7 @@
 title: "S3 bucket object-level CloudTrail logging disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/s3_bucket_object_level_cloudtrail_logging_disabled""
+  name: "aws/s3_bucket_object_level_cloudtrail_logging_disabled"
   id: "terraform-aws-s3-bucket-object-level-cloudtrail-logging-disabled"
   display_name: "S3 bucket object-level CloudTrail logging disabled"
   cloud_provider: "AWS"

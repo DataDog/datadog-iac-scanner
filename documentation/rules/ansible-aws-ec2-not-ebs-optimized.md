@@ -2,7 +2,7 @@
 title: "EC2 instance is not EBS optimized"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/ec2_not_ebs_optimized""
+  name: "aws/ec2_not_ebs_optimized"
   id: "ansible-aws-ec2-not-ebs-optimized"
   display_name: "EC2 instance is not EBS optimized"
   cloud_provider: "AWS"

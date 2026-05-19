@@ -2,7 +2,7 @@
 title: "Concurrency limits"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/concurrency_limits""
+  name: "github/concurrency_limits"
   id: "cicd-github-concurrency-limits"
   display_name: "Concurrency limits"
   cloud_provider: "GitHub"

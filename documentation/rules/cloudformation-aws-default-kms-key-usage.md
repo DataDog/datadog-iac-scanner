@@ -2,7 +2,7 @@
 title: "Default KMS key usage"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/default_kms_key_usage""
+  name: "aws/default_kms_key_usage"
   id: "cloudformation-aws-default-kms-key-usage"
   display_name: "Default KMS key usage"
   cloud_provider: "AWS"

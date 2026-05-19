@@ -2,7 +2,7 @@
 title: "Security groups with meta IP"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/security_groups_with_meta_ip""
+  name: "aws/security_groups_with_meta_ip"
   id: "cloudformation-aws-security-groups-with-meta-ip"
   display_name: "Security groups with meta IP"
   cloud_provider: "AWS"

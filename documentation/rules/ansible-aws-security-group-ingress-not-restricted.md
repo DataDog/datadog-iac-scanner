@@ -2,7 +2,7 @@
 title: "Security group ingress not restricted"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/security_group_ingress_not_restricted""
+  name: "aws/security_group_ingress_not_restricted"
   id: "ansible-aws-security-group-ingress-not-restricted"
   display_name: "Security group ingress not restricted"
   cloud_provider: "AWS"

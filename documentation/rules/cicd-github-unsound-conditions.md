@@ -2,7 +2,7 @@
 title: "Unsound condition"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/unsound_conditions""
+  name: "github/unsound_conditions"
   id: "cicd-github-unsound-conditions"
   display_name: "Unsound condition"
   cloud_provider: "GitHub"

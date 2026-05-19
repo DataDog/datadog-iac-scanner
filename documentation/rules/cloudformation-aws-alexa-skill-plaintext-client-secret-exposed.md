@@ -2,7 +2,7 @@
 title: "Alexa skill plaintext client secret exposed"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/alexa_skill_plaintext_client_secret_exposed""
+  name: "aws/alexa_skill_plaintext_client_secret_exposed"
   id: "cloudformation-aws-alexa-skill-plaintext-client-secret-exposed"
   display_name: "Alexa skill plaintext client secret exposed"
   cloud_provider: "AWS"

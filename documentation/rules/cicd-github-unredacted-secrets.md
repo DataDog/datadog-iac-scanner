@@ -2,7 +2,7 @@
 title: "Unredacted secrets"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/unredacted_secrets""
+  name: "github/unredacted_secrets"
   id: "cicd-github-unredacted-secrets"
   display_name: "Unredacted secrets"
   cloud_provider: "GitHub"

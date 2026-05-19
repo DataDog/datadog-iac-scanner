@@ -2,7 +2,7 @@
 title: "Group with privilege escalation by actions 'lambda:CreateFunction' and 'iam:PassRole' and 'lambda:InvokeFunction'"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/group_with_privilege_escalation_by_actions_iam_passrole_and_lambda_createfunction_and_lambda_invokefunction""
+  name: "aws/group_with_privilege_escalation_by_actions_iam_passrole_and_lambda_createfunction_and_lambda_invokefunction"
   id: "terraform-aws-group-with-privilege-escalation-by-actions-iam-passrole-and-lambda-createfunction-and-lambda-invokefunction"
   display_name: "Group with privilege escalation by actions 'lambda:CreateFunction' and 'iam:PassRole' and 'lambda:InvokeFunction'"
   cloud_provider: "AWS"

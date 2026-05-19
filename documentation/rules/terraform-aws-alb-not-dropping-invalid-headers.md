@@ -2,7 +2,7 @@
 title: "ALB not dropping invalid headers"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/alb_not_dropping_invalid_headers""
+  name: "aws/alb_not_dropping_invalid_headers"
   id: "terraform-aws-alb-not-dropping-invalid-headers"
   display_name: "ALB not dropping invalid headers"
   cloud_provider: "AWS"

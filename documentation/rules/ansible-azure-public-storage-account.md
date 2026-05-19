@@ -2,7 +2,7 @@
 title: "Public storage account"
 group_id: "Ansible / Azure"
 meta:
-  name: ""azure/public_storage_account""
+  name: "azure/public_storage_account"
   id: "ansible-azure-public-storage-account"
   display_name: "Public storage account"
   cloud_provider: "Azure"

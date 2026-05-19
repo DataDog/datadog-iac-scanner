@@ -2,7 +2,7 @@
 title: "EFS without KMS"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/efs_without_kms""
+  name: "aws/efs_without_kms"
   id: "cloudformation-aws-efs-without-kms"
   display_name: "EFS without KMS"
   cloud_provider: "AWS"

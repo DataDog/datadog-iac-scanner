@@ -2,7 +2,7 @@
 title: "SageMaker notebook internet access enabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/sagemaker_direct_internet_access_enabled""
+  name: "aws/sagemaker_direct_internet_access_enabled"
   id: "terraform-aws-sagemaker-direct-internet-access-enabled"
   display_name: "SageMaker notebook internet access enabled"
   cloud_provider: "AWS"

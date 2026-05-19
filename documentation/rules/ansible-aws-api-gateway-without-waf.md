@@ -2,7 +2,7 @@
 title: "API Gateway without WAF"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/api_gateway_without_waf""
+  name: "aws/api_gateway_without_waf"
   id: "ansible-aws-api-gateway-without-waf"
   display_name: "API Gateway without WAF"
   cloud_provider: "AWS"

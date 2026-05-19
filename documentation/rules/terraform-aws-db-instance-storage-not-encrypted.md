@@ -2,7 +2,7 @@
 title: "DB instance storage not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/db_instance_storage_not_encrypted""
+  name: "aws/db_instance_storage_not_encrypted"
   id: "terraform-aws-db-instance-storage-not-encrypted"
   display_name: "DB instance storage not encrypted"
   cloud_provider: "AWS"

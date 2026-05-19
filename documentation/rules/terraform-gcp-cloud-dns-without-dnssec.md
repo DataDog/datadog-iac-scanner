@@ -2,7 +2,7 @@
 title: "Cloud DNS without DNSSEC"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/cloud_dns_without_dnssec""
+  name: "gcp/cloud_dns_without_dnssec"
   id: "terraform-gcp-cloud-dns-without-dnssec"
   display_name: "Cloud DNS without DNSSEC"
   cloud_provider: "GCP"

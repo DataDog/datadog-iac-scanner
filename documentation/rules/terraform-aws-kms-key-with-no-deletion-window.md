@@ -2,7 +2,7 @@
 title: "KMS key with no deletion window"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/kms_key_with_no_deletion_window""
+  name: "aws/kms_key_with_no_deletion_window"
   id: "terraform-aws-kms-key-with-no-deletion-window"
   display_name: "KMS key with no deletion window"
   cloud_provider: "AWS"

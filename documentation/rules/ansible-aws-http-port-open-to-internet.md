@@ -2,7 +2,7 @@
 title: "HTTP port open to internet"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/http_port_open_to_internet""
+  name: "aws/http_port_open_to_internet"
   id: "ansible-aws-http-port-open-to-internet"
   display_name: "HTTP port open to internet"
   cloud_provider: "AWS"

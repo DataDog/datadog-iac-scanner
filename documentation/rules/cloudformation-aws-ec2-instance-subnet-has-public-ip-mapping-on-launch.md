@@ -2,7 +2,7 @@
 title: "EC2 instance subnet has public IP mapping on launch"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/ec2_instance_subnet_has_public_ip_mapping_on_launch""
+  name: "aws/ec2_instance_subnet_has_public_ip_mapping_on_launch"
   id: "cloudformation-aws-ec2-instance-subnet-has-public-ip-mapping-on-launch"
   display_name: "EC2 instance subnet has public IP mapping on launch"
   cloud_provider: "AWS"

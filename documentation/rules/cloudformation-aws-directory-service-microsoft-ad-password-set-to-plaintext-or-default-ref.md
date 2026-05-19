@@ -2,7 +2,7 @@
 title: "Directory service Microsoft AD password set to plaintext or default ref"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/directory_service_microsoft_ad_password_set_to_plaintext_or_default_ref""
+  name: "aws/directory_service_microsoft_ad_password_set_to_plaintext_or_default_ref"
   id: "cloudformation-aws-directory-service-microsoft-ad-password-set-to-plaintext-or-default-ref"
   display_name: "Directory service Microsoft AD password set to plaintext or default ref"
   cloud_provider: "AWS"

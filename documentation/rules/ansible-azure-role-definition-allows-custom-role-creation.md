@@ -2,7 +2,7 @@
 title: "Role definition allows custom role creation"
 group_id: "Ansible / Azure"
 meta:
-  name: ""azure/role_definition_allows_custom_role_creation""
+  name: "azure/role_definition_allows_custom_role_creation"
   id: "ansible-azure-role-definition-allows-custom-role-creation"
   display_name: "Role definition allows custom role creation"
   cloud_provider: "Azure"

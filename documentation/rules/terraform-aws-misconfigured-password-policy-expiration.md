@@ -2,7 +2,7 @@
 title: "Misconfigured password policy expiration"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/misconfigured_password_policy_expiration""
+  name: "aws/misconfigured_password_policy_expiration"
   id: "terraform-aws-misconfigured-password-policy-expiration"
   display_name: "Misconfigured password policy expiration"
   cloud_provider: "AWS"

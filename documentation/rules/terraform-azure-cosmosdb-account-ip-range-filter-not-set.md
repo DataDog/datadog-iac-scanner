@@ -2,7 +2,7 @@
 title: "CosmosDB account IP range filter not set"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/cosmosdb_account_ip_range_filter_not_set""
+  name: "azure/cosmosdb_account_ip_range_filter_not_set"
   id: "terraform-azure-cosmosdb-account-ip-range-filter-not-set"
   display_name: "CosmosDB account IP range filter not set"
   cloud_provider: "Azure"

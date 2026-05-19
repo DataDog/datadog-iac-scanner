@@ -2,7 +2,7 @@
 title: "NIFCLOUD computing undefined security group to instance"
 group_id: "Terraform / Nifcloud"
 meta:
-  name: ""nifcloud/computing_instance_security_group_undefined""
+  name: "nifcloud/computing_instance_security_group_undefined"
   id: "terraform-nifcloud-computing-instance-security-group-undefined"
   display_name: "NIFCLOUD computing undefined security group to instance"
   cloud_provider: "Nifcloud"

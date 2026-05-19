@@ -2,7 +2,7 @@
 title: "SQS policy with public access"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/sqs_policy_with_public_access""
+  name: "aws/sqs_policy_with_public_access"
   id: "ansible-aws-sqs-policy-with-public-access"
   display_name: "SQS policy with public access"
   cloud_provider: "AWS"

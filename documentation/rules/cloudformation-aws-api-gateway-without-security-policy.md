@@ -2,7 +2,7 @@
 title: "API Gateway without security policy"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/api_gateway_without_security_policy""
+  name: "aws/api_gateway_without_security_policy"
   id: "cloudformation-aws-api-gateway-without-security-policy"
   display_name: "API Gateway without security policy"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "Root containers admitted"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/root_containers_admitted""
+  name: "kubernetes/root_containers_admitted"
   id: "terraform-kubernetes-root-containers-admitted"
   display_name: "Root containers admitted"
   cloud_provider: "Kubernetes"

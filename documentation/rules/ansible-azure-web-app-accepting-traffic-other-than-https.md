@@ -2,7 +2,7 @@
 title: "Web app accepting traffic other than HTTPS"
 group_id: "Ansible / Azure"
 meta:
-  name: ""azure/web_app_accepting_traffic_other_than_https""
+  name: "azure/web_app_accepting_traffic_other_than_https"
   id: "ansible-azure-web-app-accepting-traffic-other-than-https"
   display_name: "Web app accepting traffic other than HTTPS"
   cloud_provider: "Azure"

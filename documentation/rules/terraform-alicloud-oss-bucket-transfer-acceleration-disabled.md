@@ -2,7 +2,7 @@
 title: "OSS bucket transfer acceleration disabled"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/oss_bucket_transfer_acceleration_disabled""
+  name: "alicloud/oss_bucket_transfer_acceleration_disabled"
   id: "terraform-alicloud-oss-bucket-transfer-acceleration-disabled"
   display_name: "OSS bucket transfer acceleration disabled"
   cloud_provider: "Alicloud"

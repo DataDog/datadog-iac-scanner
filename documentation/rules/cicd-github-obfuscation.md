@@ -2,7 +2,7 @@
 title: "Obfuscation"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/obfuscation""
+  name: "github/obfuscation"
   id: "cicd-github-obfuscation"
   display_name: "Obfuscation"
   cloud_provider: "GitHub"

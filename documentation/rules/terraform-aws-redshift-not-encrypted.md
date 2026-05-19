@@ -2,7 +2,7 @@
 title: "Redshift not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/redshift_not_encrypted""
+  name: "aws/redshift_not_encrypted"
   id: "terraform-aws-redshift-not-encrypted"
   display_name: "Redshift not encrypted"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "EC2 network ACL overlapping ports"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/ec2_network_acl_overlapping_ports""
+  name: "aws/ec2_network_acl_overlapping_ports"
   id: "cloudformation-aws-ec2-network-acl-overlapping-ports"
   display_name: "EC2 network ACL overlapping ports"
   cloud_provider: "AWS"

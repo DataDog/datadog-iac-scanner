@@ -2,7 +2,7 @@
 title: "AmazonMQ broker encryption disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/amazon_mq_broker_encryption_disabled""
+  name: "aws/amazon_mq_broker_encryption_disabled"
   id: "terraform-aws-amazon-mq-broker-encryption-disabled"
   display_name: "AmazonMQ broker encryption disabled"
   cloud_provider: "AWS"

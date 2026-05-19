@@ -2,7 +2,7 @@
 title: "PostgreSQL server without connection throttling"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/postgresql_server_without_connection_throttling""
+  name: "azure/postgresql_server_without_connection_throttling"
   id: "terraform-azure-postgresql-server-without-connection-throttling"
   display_name: "PostgreSQL server without connection throttling"
   cloud_provider: "Azure"

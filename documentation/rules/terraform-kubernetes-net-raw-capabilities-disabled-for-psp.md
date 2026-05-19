@@ -2,7 +2,7 @@
 title: "NET_RAW capabilities disabled for PSP"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/net_raw_capabilities_disabled_for_psp""
+  name: "kubernetes/net_raw_capabilities_disabled_for_psp"
   id: "terraform-kubernetes-net-raw-capabilities-disabled-for-psp"
   display_name: "NET_RAW capabilities disabled for PSP"
   cloud_provider: "Kubernetes"

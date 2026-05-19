@@ -2,7 +2,7 @@
 title: "ElastiCache without VPC"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/elasticache_without_vpc""
+  name: "aws/elasticache_without_vpc"
   id: "cloudformation-aws-elasticache-without-vpc"
   display_name: "ElastiCache without VPC"
   cloud_provider: "AWS"

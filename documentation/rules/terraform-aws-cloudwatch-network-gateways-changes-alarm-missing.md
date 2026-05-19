@@ -2,7 +2,7 @@
 title: "CloudWatch network gateways changes alarm missing"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/cloudwatch_network_gateways_changes_alarm_missing""
+  name: "aws/cloudwatch_network_gateways_changes_alarm_missing"
   id: "terraform-aws-cloudwatch-network-gateways-changes-alarm-missing"
   display_name: "CloudWatch network gateways changes alarm missing"
   cloud_provider: "AWS"

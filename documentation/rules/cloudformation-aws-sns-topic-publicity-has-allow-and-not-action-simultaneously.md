@@ -2,7 +2,7 @@
 title: "SNS topic publicity has Allow and NotAction simultaneously"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/sns_topic_publicity_has_allow_and_not_action_simultaneously""
+  name: "aws/sns_topic_publicity_has_allow_and_not_action_simultaneously"
   id: "cloudformation-aws-sns-topic-publicity-has-allow-and-not-action-simultaneously"
   display_name: "SNS topic publicity has Allow and NotAction simultaneously"
   cloud_provider: "AWS"

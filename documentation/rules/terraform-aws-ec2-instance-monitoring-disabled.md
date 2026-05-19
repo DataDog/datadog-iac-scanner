@@ -2,7 +2,7 @@
 title: "EC2 instance monitoring disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/ec2_instance_monitoring_disabled""
+  name: "aws/ec2_instance_monitoring_disabled"
   id: "terraform-aws-ec2-instance-monitoring-disabled"
   display_name: "EC2 instance monitoring disabled"
   cloud_provider: "AWS"

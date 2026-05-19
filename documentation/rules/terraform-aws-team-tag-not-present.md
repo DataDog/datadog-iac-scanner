@@ -2,7 +2,7 @@
 title: "Team tag missing on AWS resource"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/team_tag_not_present""
+  name: "aws/team_tag_not_present"
   id: "terraform-aws-team-tag-not-present"
   display_name: "Team tag missing on AWS resource"
   cloud_provider: "AWS"

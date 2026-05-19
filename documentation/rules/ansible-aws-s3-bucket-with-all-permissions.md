@@ -2,7 +2,7 @@
 title: "S3 bucket with all permissions"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/s3_bucket_with_all_permissions""
+  name: "aws/s3_bucket_with_all_permissions"
   id: "ansible-aws-s3-bucket-with-all-permissions"
   display_name: "S3 bucket with all permissions"
   cloud_provider: "AWS"

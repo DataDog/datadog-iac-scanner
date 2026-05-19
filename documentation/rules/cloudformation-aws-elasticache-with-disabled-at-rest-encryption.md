@@ -2,7 +2,7 @@
 title: "ElastiCache with disabled at-rest encryption"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/elasticache_with_disabled_at_rest_encryption""
+  name: "aws/elasticache_with_disabled_at_rest_encryption"
   id: "cloudformation-aws-elasticache-with-disabled-at-rest-encryption"
   display_name: "ElastiCache with disabled at-rest encryption"
   cloud_provider: "AWS"

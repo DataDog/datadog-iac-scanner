@@ -2,7 +2,7 @@
 title: "EKS cluster has public access CIDRs"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/eks_cluster_has_public_access_cidrs""
+  name: "aws/eks_cluster_has_public_access_cidrs"
   id: "terraform-aws-eks-cluster-has-public-access-cidrs"
   display_name: "EKS cluster has public access CIDRs"
   cloud_provider: "AWS"

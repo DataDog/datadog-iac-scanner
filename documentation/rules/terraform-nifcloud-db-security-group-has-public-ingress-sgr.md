@@ -2,7 +2,7 @@
 title: "NIFCLOUD RDB has public DB ingress security group rule"
 group_id: "Terraform / Nifcloud"
 meta:
-  name: ""nifcloud/db_security_group_has_public_ingress_sgr""
+  name: "nifcloud/db_security_group_has_public_ingress_sgr"
   id: "terraform-nifcloud-db-security-group-has-public-ingress-sgr"
   display_name: "NIFCLOUD RDB has public DB ingress security group rule"
   cloud_provider: "Nifcloud"

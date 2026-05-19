@@ -2,7 +2,7 @@
 title: "Vulnerable default SSL certificate"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/vulnerable_default_ssl_certificate""
+  name: "aws/vulnerable_default_ssl_certificate"
   id: "cloudformation-aws-vulnerable-default-ssl-certificate"
   display_name: "Vulnerable default SSL certificate"
   cloud_provider: "AWS"

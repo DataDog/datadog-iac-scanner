@@ -2,7 +2,7 @@
 title: "ECR image tag not immutable"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/ecr_image_tag_not_immutable""
+  name: "aws/ecr_image_tag_not_immutable"
   id: "ansible-aws-ecr-image-tag-not-immutable"
   display_name: "ECR image tag not immutable"
   cloud_provider: "AWS"

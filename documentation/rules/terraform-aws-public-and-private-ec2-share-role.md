@@ -2,7 +2,7 @@
 title: "Public and private EC2 share role"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/public_and_private_ec2_share_role""
+  name: "aws/public_and_private_ec2_share_role"
   id: "terraform-aws-public-and-private-ec2-share-role"
   display_name: "Public and private EC2 share role"
   cloud_provider: "AWS"

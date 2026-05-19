@@ -2,7 +2,7 @@
 title: "High KMS key rotation period"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/high_kms_key_rotation_period""
+  name: "alicloud/high_kms_key_rotation_period"
   id: "terraform-alicloud-high-kms-key-rotation-period"
   display_name: "High KMS key rotation period"
   cloud_provider: "Alicloud"

@@ -2,7 +2,7 @@
 title: "AD admin not configured for SQL server"
 group_id: "Ansible / Azure"
 meta:
-  name: ""azure/ad_admin_not_configured_for_sql_server""
+  name: "azure/ad_admin_not_configured_for_sql_server"
   id: "ansible-azure-ad-admin-not-configured-for-sql-server"
   display_name: "AD admin not configured for SQL server"
   cloud_provider: "Azure"

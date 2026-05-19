@@ -2,7 +2,7 @@
 title: "EC2 instance using default VPC"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/ec2_instance_using_default_vpc""
+  name: "aws/ec2_instance_using_default_vpc"
   id: "ansible-aws-ec2-instance-using-default-vpc"
   display_name: "EC2 instance using default VPC"
   cloud_provider: "AWS"

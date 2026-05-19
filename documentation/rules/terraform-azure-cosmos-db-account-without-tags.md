@@ -2,7 +2,7 @@
 title: "Cosmos DB account without tags"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/cosmos_db_account_without_tags""
+  name: "azure/cosmos_db_account_without_tags"
   id: "terraform-azure-cosmos-db-account-without-tags"
   display_name: "Cosmos DB account without tags"
   cloud_provider: "Azure"

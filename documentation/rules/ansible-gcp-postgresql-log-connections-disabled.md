@@ -2,7 +2,7 @@
 title: "PostgreSQL log connections disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: ""gcp/postgresql_log_connections_disabled""
+  name: "gcp/postgresql_log_connections_disabled"
   id: "ansible-gcp-postgresql-log-connections-disabled"
   display_name: "PostgreSQL log connections disabled"
   cloud_provider: "GCP"

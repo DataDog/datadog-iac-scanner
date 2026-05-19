@@ -2,7 +2,7 @@
 title: "CloudTrail SNS topic name undefined"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/cloudtrail_sns_topic_name_undefined""
+  name: "aws/cloudtrail_sns_topic_name_undefined"
   id: "cloudformation-aws-cloudtrail-sns-topic-name-undefined"
   display_name: "CloudTrail SNS topic name undefined"
   cloud_provider: "AWS"

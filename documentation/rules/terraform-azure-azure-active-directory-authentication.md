@@ -2,7 +2,7 @@
 title: "Azure Active Directory authentication"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/azure_active_directory_authentication""
+  name: "azure/azure_active_directory_authentication"
   id: "terraform-azure-azure-active-directory-authentication"
   display_name: "Azure Active Directory authentication"
   cloud_provider: "Azure"

@@ -2,7 +2,7 @@
 title: "Invalid image"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/invalid_image""
+  name: "kubernetes/invalid_image"
   id: "terraform-kubernetes-invalid-image"
   display_name: "Invalid image"
   cloud_provider: "Kubernetes"

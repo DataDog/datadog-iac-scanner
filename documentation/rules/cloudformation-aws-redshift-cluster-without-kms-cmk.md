@@ -2,7 +2,7 @@
 title: "Redshift cluster without a KMS CMK"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/redshift_cluster_without_kms_cmk""
+  name: "aws/redshift_cluster_without_kms_cmk"
   id: "cloudformation-aws-redshift-cluster-without-kms-cmk"
   display_name: "Redshift cluster without a KMS CMK"
   cloud_provider: "AWS"

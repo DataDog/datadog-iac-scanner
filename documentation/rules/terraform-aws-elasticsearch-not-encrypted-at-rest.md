@@ -2,7 +2,7 @@
 title: "Elasticsearch not encrypted at rest"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/elasticsearch_not_encrypted_at_rest""
+  name: "aws/elasticsearch_not_encrypted_at_rest"
   id: "terraform-aws-elasticsearch-not-encrypted-at-rest"
   display_name: "Elasticsearch not encrypted at rest"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "ROS stack notifications disabled"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/ros_stack_notifications_disabled""
+  name: "alicloud/ros_stack_notifications_disabled"
   id: "terraform-alicloud-ros-stack-notifications-disabled"
   display_name: "ROS stack notifications disabled"
   cloud_provider: "Alicloud"

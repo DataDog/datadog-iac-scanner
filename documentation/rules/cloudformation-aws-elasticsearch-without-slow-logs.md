@@ -2,7 +2,7 @@
 title: "Elasticsearch without slow logs"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/elasticsearch_without_slow_logs""
+  name: "aws/elasticsearch_without_slow_logs"
   id: "cloudformation-aws-elasticsearch-without-slow-logs"
   display_name: "Elasticsearch without slow logs"
   cloud_provider: "AWS"

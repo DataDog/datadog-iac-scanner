@@ -2,7 +2,7 @@
 title: "CloudWatch root account use missing"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/cloudwatch_root_account_use_alarm_missing""
+  name: "aws/cloudwatch_root_account_use_alarm_missing"
   id: "terraform-aws-cloudwatch-root-account-use-alarm-missing"
   display_name: "CloudWatch root account use missing"
   cloud_provider: "AWS"

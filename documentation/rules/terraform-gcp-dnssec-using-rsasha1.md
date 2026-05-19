@@ -2,7 +2,7 @@
 title: "DNSSEC using RSASHA1"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/dnssec_using_rsasha1""
+  name: "gcp/dnssec_using_rsasha1"
   id: "terraform-gcp-dnssec-using-rsasha1"
   display_name: "DNSSEC using RSASHA1"
   cloud_provider: "GCP"

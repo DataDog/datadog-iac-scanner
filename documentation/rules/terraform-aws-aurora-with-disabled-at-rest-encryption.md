@@ -2,7 +2,7 @@
 title: "Aurora with disabled at rest encryption"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/aurora_with_disabled_at_rest_encryption""
+  name: "aws/aurora_with_disabled_at_rest_encryption"
   id: "terraform-aws-aurora-with-disabled-at-rest-encryption"
   display_name: "Aurora with disabled at rest encryption"
   cloud_provider: "AWS"

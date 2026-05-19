@@ -2,7 +2,7 @@
 title: "CPU limits not set"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/cpu_limits_not_set""
+  name: "kubernetes/cpu_limits_not_set"
   id: "terraform-kubernetes-cpu-limits-not-set"
   display_name: "CPU limits not set"
   cloud_provider: "Kubernetes"

@@ -2,7 +2,7 @@
 title: "Route53 record undefined"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/route53_record_undefined""
+  name: "aws/route53_record_undefined"
   id: "terraform-aws-route53-record-undefined"
   display_name: "Route53 record undefined"
   cloud_provider: "AWS"

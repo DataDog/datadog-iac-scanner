@@ -2,7 +2,7 @@
 title: "User with privilege escalation by actions 'glue:UpdateDevEndpoint'"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/user_with_privilege_escalation_by_actions_glue_updatedevendpoint""
+  name: "aws/user_with_privilege_escalation_by_actions_glue_updatedevendpoint"
   id: "terraform-aws-user-with-privilege-escalation-by-actions-glue-updatedevendpoint"
   display_name: "User with privilege escalation by actions 'glue:UpdateDevEndpoint'"
   cloud_provider: "AWS"

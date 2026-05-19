@@ -2,7 +2,7 @@
 title: "Geo restriction disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/geo_restriction_disabled""
+  name: "aws/geo_restriction_disabled"
   id: "cloudformation-aws-geo-restriction-disabled"
   display_name: "Geo restriction disabled"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "VPC attached with too many gateways"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/vpc_attached_with_too_many_gateways""
+  name: "aws/vpc_attached_with_too_many_gateways"
   id: "cloudformation-aws-vpc-attached-with-too-many-gateways"
   display_name: "VPC attached with too many gateways"
   cloud_provider: "AWS"

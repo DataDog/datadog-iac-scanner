@@ -2,7 +2,7 @@
 title: "IAM user has too many access keys"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/iam_user_too_many_access_keys""
+  name: "aws/iam_user_too_many_access_keys"
   id: "cloudformation-aws-iam-user-too-many-access-keys"
   display_name: "IAM user has too many access keys"
   cloud_provider: "AWS"

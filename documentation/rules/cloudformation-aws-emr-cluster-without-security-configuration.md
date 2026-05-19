@@ -2,7 +2,7 @@
 title: "EMR cluster without security configuration"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/emr_cluster_without_security_configuration""
+  name: "aws/emr_cluster_without_security_configuration"
   id: "cloudformation-aws-emr-cluster-without-security-configuration"
   display_name: "EMR cluster without security configuration"
   cloud_provider: "AWS"

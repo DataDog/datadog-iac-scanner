@@ -2,7 +2,7 @@
 title: "SSL enforce disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/ssl_enforce_is_disabled""
+  name: "azure/ssl_enforce_is_disabled"
   id: "terraform-azure-ssl-enforce-is-disabled"
   display_name: "SSL enforce disabled"
   cloud_provider: "Azure"

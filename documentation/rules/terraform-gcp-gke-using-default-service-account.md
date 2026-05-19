@@ -2,7 +2,7 @@
 title: "GKE using default service account"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/gke_using_default_service_account""
+  name: "gcp/gke_using_default_service_account"
   id: "terraform-gcp-gke-using-default-service-account"
   display_name: "GKE using default service account"
   cloud_provider: "GCP"

@@ -2,7 +2,7 @@
 title: "DMS endpoint password exposed"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/dms_endpoint_password_exposed""
+  name: "aws/dms_endpoint_password_exposed"
   id: "cloudformation-aws-dms-endpoint-password-exposed"
   display_name: "DMS endpoint password exposed"
   cloud_provider: "AWS"

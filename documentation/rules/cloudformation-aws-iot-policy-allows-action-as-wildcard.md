@@ -2,7 +2,7 @@
 title: "IoT policy allows action as a wildcard"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/iot_policy_allows_action_as_wildcard""
+  name: "aws/iot_policy_allows_action_as_wildcard"
   id: "cloudformation-aws-iot-policy-allows-action-as-wildcard"
   display_name: "IoT policy allows action as a wildcard"
   cloud_provider: "AWS"

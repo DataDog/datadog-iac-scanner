@@ -2,7 +2,7 @@
 title: "Cloud storage bucket versioning disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: ""gcp/cloud_storage_bucket_versioning_disabled""
+  name: "gcp/cloud_storage_bucket_versioning_disabled"
   id: "ansible-gcp-cloud-storage-bucket-versioning-disabled"
   display_name: "Cloud storage bucket versioning disabled"
   cloud_provider: "GCP"

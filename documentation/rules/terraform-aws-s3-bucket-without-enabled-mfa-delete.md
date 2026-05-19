@@ -2,7 +2,7 @@
 title: "S3 bucket without enabled MFA delete"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/s3_bucket_without_enabled_mfa_delete""
+  name: "aws/s3_bucket_without_enabled_mfa_delete"
   id: "terraform-aws-s3-bucket-without-enabled-mfa-delete"
   display_name: "S3 bucket without enabled MFA delete"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "Dependabot cooldown"
 group_id: "CICD / GitHub"
 meta:
-  name: ""github/dependabot_cooldown""
+  name: "github/dependabot_cooldown"
   id: "cicd-github-dependabot-cooldown"
   display_name: "Dependabot cooldown"
   cloud_provider: "GitHub"

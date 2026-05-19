@@ -2,7 +2,7 @@
 title: "Shielded VM disabled"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/shielded_vm_disabled""
+  name: "gcp/shielded_vm_disabled"
   id: "terraform-gcp-shielded-vm-disabled"
   display_name: "Shielded VM disabled"
   cloud_provider: "GCP"

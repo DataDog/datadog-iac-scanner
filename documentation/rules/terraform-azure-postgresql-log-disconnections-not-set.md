@@ -2,7 +2,7 @@
 title: "PostgreSQL log disconnections not set"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/postgresql_log_disconnections_not_set""
+  name: "azure/postgresql_log_disconnections_not_set"
   id: "terraform-azure-postgresql-log-disconnections-not-set"
   display_name: "PostgreSQL log disconnections not set"
   cloud_provider: "Azure"

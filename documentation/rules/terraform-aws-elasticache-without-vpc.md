@@ -2,7 +2,7 @@
 title: "ElastiCache without VPC"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/elasticache_without_vpc""
+  name: "aws/elasticache_without_vpc"
   id: "terraform-aws-elasticache-without-vpc"
   display_name: "ElastiCache without VPC"
   cloud_provider: "AWS"

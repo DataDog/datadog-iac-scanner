@@ -2,7 +2,7 @@
 title: "Unscanned ECR image"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/unscanned_ecr_image""
+  name: "aws/unscanned_ecr_image"
   id: "terraform-aws-unscanned-ecr-image"
   display_name: "Unscanned ECR image"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "User with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole'"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/user_with_privilege_escalation_by_actions_iam_passrole_and_glue_createdevendpoint""
+  name: "aws/user_with_privilege_escalation_by_actions_iam_passrole_and_glue_createdevendpoint"
   id: "terraform-aws-user-with-privilege-escalation-by-actions-iam-passrole-and-glue-createdevendpoint"
   display_name: "User with privilege escalation by actions 'glue:CreateDevEndpoint' and 'iam:PassRole'"
   cloud_provider: "AWS"

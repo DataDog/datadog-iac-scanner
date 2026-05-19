@@ -2,7 +2,7 @@
 title: "DB security group open to large scope"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/db_security_group_open_to_large_scope""
+  name: "aws/db_security_group_open_to_large_scope"
   id: "terraform-aws-db-security-group-open-to-large-scope"
   display_name: "DB security group open to large scope"
   cloud_provider: "AWS"

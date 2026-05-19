@@ -2,7 +2,7 @@
 title: "Cloud storage anonymous or publicly accessible"
 group_id: "Ansible / GCP"
 meta:
-  name: ""gcp/cloud_storage_anonymous_or_publicly_accessible""
+  name: "gcp/cloud_storage_anonymous_or_publicly_accessible"
   id: "ansible-gcp-cloud-storage-anonymous-or-publicly-accessible"
   display_name: "Cloud storage anonymous or publicly accessible"
   cloud_provider: "GCP"

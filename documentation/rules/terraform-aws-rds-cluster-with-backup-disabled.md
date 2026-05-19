@@ -2,7 +2,7 @@
 title: "RDS cluster with backup disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/rds_cluster_with_backup_disabled""
+  name: "aws/rds_cluster_with_backup_disabled"
   id: "terraform-aws-rds-cluster-with-backup-disabled"
   display_name: "RDS cluster with backup disabled"
   cloud_provider: "AWS"

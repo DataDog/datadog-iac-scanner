@@ -2,7 +2,7 @@
 title: "DynamoDB table not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/dynamodb_table_not_encrypted""
+  name: "aws/dynamodb_table_not_encrypted"
   id: "terraform-aws-dynamodb-table-not-encrypted"
   display_name: "DynamoDB table not encrypted"
   cloud_provider: "AWS"

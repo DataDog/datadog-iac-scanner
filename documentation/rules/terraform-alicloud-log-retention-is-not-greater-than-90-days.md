@@ -2,7 +2,7 @@
 title: "Log retention is not greater than 90 days"
 group_id: "Terraform / Alicloud"
 meta:
-  name: ""alicloud/log_retention_is_not_greater_than_90_days""
+  name: "alicloud/log_retention_is_not_greater_than_90_days"
   id: "terraform-alicloud-log-retention-is-not-greater-than-90-days"
   display_name: "Log retention is not greater than 90 days"
   cloud_provider: "Alicloud"

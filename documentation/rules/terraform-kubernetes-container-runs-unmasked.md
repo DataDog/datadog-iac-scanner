@@ -2,7 +2,7 @@
 title: "Container runs unmasked"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/container_runs_unmasked""
+  name: "kubernetes/container_runs_unmasked"
   id: "terraform-kubernetes-container-runs-unmasked"
   display_name: "Container runs unmasked"
   cloud_provider: "Kubernetes"

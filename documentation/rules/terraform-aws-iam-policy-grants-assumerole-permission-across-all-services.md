@@ -2,7 +2,7 @@
 title: "IAM policy grants 'AssumeRole' permission across all services"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/iam_policy_grants_assumerole_permission_across_all_services""
+  name: "aws/iam_policy_grants_assumerole_permission_across_all_services"
   id: "terraform-aws-iam-policy-grants-assumerole-permission-across-all-services"
   display_name: "IAM policy grants 'AssumeRole' permission across all services"
   cloud_provider: "AWS"

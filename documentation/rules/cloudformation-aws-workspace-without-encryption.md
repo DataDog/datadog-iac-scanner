@@ -2,7 +2,7 @@
 title: "Workspace without encryption"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/workspace_without_encryption""
+  name: "aws/workspace_without_encryption"
   id: "cloudformation-aws-workspace-without-encryption"
   display_name: "Workspace without encryption"
   cloud_provider: "AWS"

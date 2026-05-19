@@ -2,7 +2,7 @@
 title: "EFS without tags"
 group_id: "Ansible / AWS"
 meta:
-  name: ""aws/efs_without_tags""
+  name: "aws/efs_without_tags"
   id: "ansible-aws-efs-without-tags"
   display_name: "EFS without tags"
   cloud_provider: "AWS"

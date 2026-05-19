@@ -2,7 +2,7 @@
 title: "IP aliasing disabled"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/ip_aliasing_disabled""
+  name: "gcp/ip_aliasing_disabled"
   id: "terraform-gcp-ip-aliasing-disabled"
   display_name: "IP aliasing disabled"
   cloud_provider: "GCP"

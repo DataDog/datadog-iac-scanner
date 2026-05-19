@@ -2,7 +2,7 @@
 title: "IAM role allows all principals to assume"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/iam_role_allows_all_principals_to_assume""
+  name: "aws/iam_role_allows_all_principals_to_assume"
   id: "terraform-aws-iam-role-allows-all-principals-to-assume"
   display_name: "IAM role allows all principals to assume"
   cloud_provider: "AWS"

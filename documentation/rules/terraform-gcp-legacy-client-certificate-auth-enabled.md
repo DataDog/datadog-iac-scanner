@@ -2,7 +2,7 @@
 title: "Legacy client certificate auth enabled"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/legacy_client_certificate_auth_enabled""
+  name: "gcp/legacy_client_certificate_auth_enabled"
   id: "terraform-gcp-legacy-client-certificate-auth-enabled"
   display_name: "Legacy client certificate auth enabled"
   cloud_provider: "GCP"

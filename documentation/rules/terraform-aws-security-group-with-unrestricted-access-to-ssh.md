@@ -2,7 +2,7 @@
 title: "Security group with unrestricted access to SSH"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/security_group_with_unrestricted_access_to_ssh""
+  name: "aws/security_group_with_unrestricted_access_to_ssh"
   id: "terraform-aws-security-group-with-unrestricted-access-to-ssh"
   display_name: "Security group with unrestricted access to SSH"
   cloud_provider: "AWS"

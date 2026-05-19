@@ -2,7 +2,7 @@
 title: "Virtual network with DDoS protection plan disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/virtual_network_with_ddos_protection_plan_disabled""
+  name: "azure/virtual_network_with_ddos_protection_plan_disabled"
   id: "terraform-azure-virtual-network-with-ddos-protection-plan-disabled"
   display_name: "Virtual network with DDoS protection plan disabled"
   cloud_provider: "Azure"

@@ -2,7 +2,7 @@
 title: "GKE control plane is public"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/gke_control_plane_is_public""
+  name: "gcp/gke_control_plane_is_public"
   id: "terraform-gcp-gke-control-plane-is-public"
   display_name: "GKE control plane is public"
   cloud_provider: "GCP"

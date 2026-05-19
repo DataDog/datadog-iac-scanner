@@ -2,7 +2,7 @@
 title: "CMK rotation disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/cmk_rotation_disabled""
+  name: "aws/cmk_rotation_disabled"
   id: "cloudformation-aws-cmk-rotation-disabled"
   display_name: "CMK rotation disabled"
   cloud_provider: "AWS"

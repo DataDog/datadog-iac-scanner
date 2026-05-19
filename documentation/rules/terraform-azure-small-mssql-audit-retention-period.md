@@ -2,7 +2,7 @@
 title: "Small MSSQL audit retention period"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/small_mssql_audit_retention_period""
+  name: "azure/small_mssql_audit_retention_period"
   id: "terraform-azure-small-mssql-audit-retention-period"
   display_name: "Small MSSQL audit retention period"
   cloud_provider: "Azure"

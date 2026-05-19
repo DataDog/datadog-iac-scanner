@@ -2,7 +2,7 @@
 title: "Service control policies disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/service_control_policies_disabled""
+  name: "aws/service_control_policies_disabled"
   id: "terraform-aws-service-control-policies-disabled"
   display_name: "Service control policies disabled"
   cloud_provider: "AWS"

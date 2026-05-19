@@ -2,7 +2,7 @@
 title: "Neptune logging is disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/neptune_logging_disabled""
+  name: "aws/neptune_logging_disabled"
   id: "terraform-aws-neptune-logging-disabled"
   display_name: "Neptune logging is disabled"
   cloud_provider: "AWS"

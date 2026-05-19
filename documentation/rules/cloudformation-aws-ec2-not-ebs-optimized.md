@@ -2,7 +2,7 @@
 title: "EC2 not EBS optimized"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/ec2_not_ebs_optimized""
+  name: "aws/ec2_not_ebs_optimized"
   id: "cloudformation-aws-ec2-not-ebs-optimized"
   display_name: "EC2 not EBS optimized"
   cloud_provider: "AWS"

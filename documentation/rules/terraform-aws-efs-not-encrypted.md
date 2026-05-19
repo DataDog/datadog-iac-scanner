@@ -2,7 +2,7 @@
 title: "EFS not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/efs_not_encrypted""
+  name: "aws/efs_not_encrypted"
   id: "terraform-aws-efs-not-encrypted"
   display_name: "EFS not encrypted"
   cloud_provider: "AWS"

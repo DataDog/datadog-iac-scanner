@@ -2,7 +2,7 @@
 title: "Redis not compliant"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/redis_not_compliant""
+  name: "aws/redis_not_compliant"
   id: "terraform-aws-redis-not-compliant"
   display_name: "Redis not compliant"
   cloud_provider: "AWS"

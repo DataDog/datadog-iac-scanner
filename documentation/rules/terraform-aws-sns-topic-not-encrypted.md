@@ -2,7 +2,7 @@
 title: "SNS topic not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/sns_topic_not_encrypted""
+  name: "aws/sns_topic_not_encrypted"
   id: "terraform-aws-sns-topic-not-encrypted"
   display_name: "SNS topic not encrypted"
   cloud_provider: "AWS"

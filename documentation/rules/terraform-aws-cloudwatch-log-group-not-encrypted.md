@@ -2,7 +2,7 @@
 title: "CloudWatch log group without KMS"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/cloudwatch_log_group_not_encrypted""
+  name: "aws/cloudwatch_log_group_not_encrypted"
   id: "terraform-aws-cloudwatch-log-group-not-encrypted"
   display_name: "CloudWatch log group without KMS"
   cloud_provider: "AWS"

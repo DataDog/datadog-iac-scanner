@@ -2,7 +2,7 @@
 title: "Role binding to default service account"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: ""kubernetes/role_binding_to_default_service_account""
+  name: "kubernetes/role_binding_to_default_service_account"
   id: "terraform-kubernetes-role-binding-to-default-service-account"
   display_name: "Role binding to default service account"
   cloud_provider: "Kubernetes"

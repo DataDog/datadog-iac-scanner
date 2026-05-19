@@ -2,7 +2,7 @@
 title: "Hardcoded AWS access key in Lambda"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/hardcoded_aws_access_key_in_lambda""
+  name: "aws/hardcoded_aws_access_key_in_lambda"
   id: "cloudformation-aws-hardcoded-aws-access-key-in-lambda"
   display_name: "Hardcoded AWS access key in Lambda"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "Group with privilege escalation by actions 'iam:UpdateLoginProfile'"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/group_with_privilege_escalation_by_actions_iam_updateloginprofile""
+  name: "aws/group_with_privilege_escalation_by_actions_iam_updateloginprofile"
   id: "terraform-aws-group-with-privilege-escalation-by-actions-iam-updateloginprofile"
   display_name: "Group with privilege escalation by actions 'iam:UpdateLoginProfile'"
   cloud_provider: "AWS"

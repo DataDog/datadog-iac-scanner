@@ -2,7 +2,7 @@
 title: "Ensure that PostgreSQL server disables public network access"
 group_id: "Terraform / Azure"
 meta:
-  name: ""azure/postgres_sql_server_enables_public_access""
+  name: "azure/postgres_sql_server_enables_public_access"
   id: "terraform-azure-postgres-sql-server-enables-public-access"
   display_name: "Ensure that PostgreSQL server disables public network access"
   cloud_provider: "Azure"

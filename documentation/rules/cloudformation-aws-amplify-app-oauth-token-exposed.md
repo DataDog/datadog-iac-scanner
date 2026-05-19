@@ -2,7 +2,7 @@
 title: "Amplify app OAuth token exposed"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/amplify_app_oauth_token_exposed""
+  name: "aws/amplify_app_oauth_token_exposed"
   id: "cloudformation-aws-amplify-app-oauth-token-exposed"
   display_name: "Amplify app OAuth token exposed"
   cloud_provider: "AWS"

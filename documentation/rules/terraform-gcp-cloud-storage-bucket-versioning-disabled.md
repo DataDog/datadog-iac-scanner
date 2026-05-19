@@ -2,7 +2,7 @@
 title: "Cloud Storage bucket versioning disabled"
 group_id: "Terraform / GCP"
 meta:
-  name: ""gcp/cloud_storage_bucket_versioning_disabled""
+  name: "gcp/cloud_storage_bucket_versioning_disabled"
   id: "terraform-gcp-cloud-storage-bucket-versioning-disabled"
   display_name: "Cloud Storage bucket versioning disabled"
   cloud_provider: "GCP"

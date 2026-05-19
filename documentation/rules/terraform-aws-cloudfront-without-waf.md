@@ -2,7 +2,7 @@
 title: "CloudFront without WAF"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/cloudfront_without_waf""
+  name: "aws/cloudfront_without_waf"
   id: "terraform-aws-cloudfront-without-waf"
   display_name: "CloudFront without WAF"
   cloud_provider: "AWS"

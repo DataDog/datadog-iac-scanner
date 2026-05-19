@@ -2,7 +2,7 @@
 title: "GameLift fleet EC2 inbound permissions with port range"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/gamelift_fleet_ec2_inbound_permissions_with_port_range""
+  name: "aws/gamelift_fleet_ec2_inbound_permissions_with_port_range"
   id: "cloudformation-aws-gamelift-fleet-ec2-inbound-permissions-with-port-range"
   display_name: "GameLift fleet EC2 inbound permissions with port range"
   cloud_provider: "AWS"

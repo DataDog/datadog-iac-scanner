@@ -2,7 +2,7 @@
 title: "CloudWatch management console auth failed alarm missing"
 group_id: "Terraform / AWS"
 meta:
-  name: ""aws/cloudwatch_management_console_auth_failed_alarm_missing""
+  name: "aws/cloudwatch_management_console_auth_failed_alarm_missing"
   id: "terraform-aws-cloudwatch-management-console-auth-failed-alarm-missing"
   display_name: "CloudWatch management console auth failed alarm missing"
   cloud_provider: "AWS"

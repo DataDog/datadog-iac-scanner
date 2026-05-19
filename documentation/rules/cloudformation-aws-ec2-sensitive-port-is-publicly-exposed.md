@@ -2,7 +2,7 @@
 title: "EC2 sensitive port is publicly exposed"
 group_id: "CloudFormation / AWS"
 meta:
-  name: ""aws/ec2_sensitive_port_is_publicly_exposed""
+  name: "aws/ec2_sensitive_port_is_publicly_exposed"
   id: "cloudformation-aws-ec2-sensitive-port-is-publicly-exposed"
   display_name: "EC2 sensitive port is publicly exposed"
   cloud_provider: "AWS"
