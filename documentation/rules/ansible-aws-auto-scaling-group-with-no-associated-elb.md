@@ -2,7 +2,7 @@
 title: "Auto Scaling Group with no associated ELB"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/auto_scaling_group_with_no_associated_elb"
+  name: ""aws/auto_scaling_group_with_no_associated_elb""
   id: "ansible-aws-auto-scaling-group-with-no-associated-elb"
   display_name: "Auto Scaling Group with no associated ELB"
   cloud_provider: "AWS"

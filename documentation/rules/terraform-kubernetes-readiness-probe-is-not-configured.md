@@ -2,7 +2,7 @@
 title: "Readiness probe is not configured"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/readiness_probe_is_not_configured"
+  name: ""kubernetes/readiness_probe_is_not_configured""
   id: "terraform-kubernetes-readiness-probe-is-not-configured"
   display_name: "Readiness probe is not configured"
   cloud_provider: "Kubernetes"

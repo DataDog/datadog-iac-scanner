@@ -1,11 +1,11 @@
 ---
 title: "Shared service account"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/shared_service_account"
+  name: "shared_service_account"
   id: "kubernetes-shared-service-account"
   display_name: "Shared service account"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Secret Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-shared-service-account{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

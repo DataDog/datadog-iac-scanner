@@ -1,11 +1,11 @@
 ---
 title: "Container with unmasked /proc access"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/container_runs_unmasked"
+  name: "container_runs_unmasked"
   id: "kubernetes-container-runs-unmasked"
   display_name: "Container with unmasked /proc access"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-container-runs-unmasked{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

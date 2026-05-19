@@ -1,11 +1,11 @@
 ---
 title: "Image without digest"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/image_without_digest"
+  name: "image_without_digest"
   id: "kubernetes-image-without-digest"
   display_name: "Image without digest"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-image-without-digest{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

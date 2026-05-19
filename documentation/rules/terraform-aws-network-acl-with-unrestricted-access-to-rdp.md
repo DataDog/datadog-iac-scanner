@@ -2,7 +2,7 @@
 title: "Network ACL with unrestricted access to RDP"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/network_acl_with_unrestricted_access_to_rdp"
+  name: ""aws/network_acl_with_unrestricted_access_to_rdp""
   id: "terraform-aws-network-acl-with-unrestricted-access-to-rdp"
   display_name: "Network ACL with unrestricted access to RDP"
   cloud_provider: "AWS"

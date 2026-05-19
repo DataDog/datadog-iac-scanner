@@ -2,7 +2,7 @@
 title: "RDS database cluster not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/rds_database_cluster_not_encrypted"
+  name: ""aws/rds_database_cluster_not_encrypted""
   id: "terraform-aws-rds-database-cluster-not-encrypted"
   display_name: "RDS database cluster not encrypted"
   cloud_provider: "AWS"

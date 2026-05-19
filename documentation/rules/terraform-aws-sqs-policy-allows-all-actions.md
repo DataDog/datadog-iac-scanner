@@ -2,7 +2,7 @@
 title: "SQS policy allows all actions"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/sqs_policy_allows_all_actions"
+  name: ""aws/sqs_policy_allows_all_actions""
   id: "terraform-aws-sqs-policy-allows-all-actions"
   display_name: "SQS policy allows all actions"
   cloud_provider: "AWS"

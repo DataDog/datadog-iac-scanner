@@ -2,7 +2,7 @@
 title: "Secure ciphers disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/secure_ciphers_disabled"
+  name: ""aws/secure_ciphers_disabled""
   id: "terraform-aws-secure-ciphers-disabled"
   display_name: "Secure ciphers disabled"
   cloud_provider: "AWS"

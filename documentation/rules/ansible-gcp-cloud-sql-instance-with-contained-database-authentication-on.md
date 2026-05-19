@@ -2,7 +2,7 @@
 title: "Cloud SQL instance with contained database authentication on"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/cloud_sql_instance_with_contained_database_authentication_on"
+  name: ""gcp/cloud_sql_instance_with_contained_database_authentication_on""
   id: "ansible-gcp-cloud-sql-instance-with-contained-database-authentication-on"
   display_name: "Cloud SQL instance with contained database authentication on"
   cloud_provider: "GCP"

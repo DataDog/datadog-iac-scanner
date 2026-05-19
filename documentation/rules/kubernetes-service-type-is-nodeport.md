@@ -1,11 +1,11 @@
 ---
 title: "Service type is NodePort"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/service_type_is_nodeport"
+  name: "service_type_is_nodeport"
   id: "kubernetes-service-type-is-nodeport"
   display_name: "Service type is NodePort"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-service-type-is-nodeport{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

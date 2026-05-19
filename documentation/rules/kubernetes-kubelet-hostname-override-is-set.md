@@ -1,11 +1,11 @@
 ---
 title: "Kubelet hostname override is set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/kubelet_hostname_override_is_set"
+  name: "kubelet_hostname_override_is_set"
   id: "kubernetes-kubelet-hostname-override-is-set"
   display_name: "Kubelet hostname override is set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-kubelet-hostname-override-is-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -1,11 +1,11 @@
 ---
 title: "Multiple RUN, ADD, COPY instructions listed"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/multiple_run_add_copy_instructions_listed"
+  name: "multiple_run_add_copy_instructions_listed"
   id: "dockerfile-multiple-run-add-copy-instructions-listed"
   display_name: "Multiple RUN, ADD, COPY instructions listed"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-multiple-run-add-copy-instructions-listed{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

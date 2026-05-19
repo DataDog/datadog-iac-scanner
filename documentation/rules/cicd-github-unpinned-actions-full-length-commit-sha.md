@@ -2,7 +2,7 @@
 title: "Unpinned actions full length commit SHA"
 group_id: "CICD / GitHub"
 meta:
-  name: "github/unpinned_actions_full_length_commit_sha"
+  name: ""github/unpinned_actions_full_length_commit_sha""
   id: "cicd-github-unpinned-actions-full-length-commit-sha"
   display_name: "Unpinned actions full length commit SHA"
   cloud_provider: "GitHub"

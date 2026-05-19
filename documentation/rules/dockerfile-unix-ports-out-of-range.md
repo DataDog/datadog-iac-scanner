@@ -1,11 +1,11 @@
 ---
 title: "UNIX ports out of range"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/unix_ports_out_of_range"
+  name: "unix_ports_out_of_range"
   id: "dockerfile-unix-ports-out-of-range"
   display_name: "UNIX ports out of range"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-unix-ports-out-of-range{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

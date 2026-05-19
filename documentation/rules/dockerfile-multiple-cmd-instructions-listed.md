@@ -1,11 +1,11 @@
 ---
 title: "Multiple CMD instructions listed"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/multiple_cmd_instructions_listed"
+  name: "multiple_cmd_instructions_listed"
   id: "dockerfile-multiple-cmd-instructions-listed"
   display_name: "Multiple CMD instructions listed"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Build Process"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-multiple-cmd-instructions-listed{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

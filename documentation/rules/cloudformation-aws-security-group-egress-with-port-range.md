@@ -2,7 +2,7 @@
 title: "Security group egress with port range"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/security_group_egress_with_port_range"
+  name: ""aws/security_group_egress_with_port_range""
   id: "cloudformation-aws-security-group-egress-with-port-range"
   display_name: "Security group egress with port range"
   cloud_provider: "AWS"

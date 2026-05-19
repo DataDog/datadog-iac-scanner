@@ -1,11 +1,11 @@
 ---
 title: "apt-get install pin version not defined"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/apt_get_install_pin_version_not_defined"
+  name: "apt_get_install_pin_version_not_defined"
   id: "dockerfile-apt-get-install-pin-version-not-defined"
   display_name: "apt-get install pin version not defined"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-apt-get-install-pin-version-not-defined{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

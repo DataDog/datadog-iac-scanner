@@ -1,11 +1,11 @@
 ---
 title: "Service account name undefined or empty"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/service_account_name_undefined_or_empty"
+  name: "service_account_name_undefined_or_empty"
   id: "kubernetes-service-account-name-undefined-or-empty"
   display_name: "Service account name undefined or empty"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Defaults"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-service-account-name-undefined-or-empty{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

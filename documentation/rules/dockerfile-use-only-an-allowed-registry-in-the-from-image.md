@@ -1,11 +1,11 @@
 ---
 title: "Use only allowed registry in FROM"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/use_only_an_allowed_registry_in_the_from_image"
+  name: "use_only_an_allowed_registry_in_the_from_image"
   id: "dockerfile-use-only-an-allowed-registry-in-the-from-image"
   display_name: "Use only allowed registry in FROM"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "HIGH"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-use-only-an-allowed-registry-in-the-from-image{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

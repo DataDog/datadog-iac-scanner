@@ -2,7 +2,7 @@
 title: "S3 bucket without versioning"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/s3_bucket_without_versioning"
+  name: ""aws/s3_bucket_without_versioning""
   id: "cloudformation-aws-s3-bucket-without-versioning"
   display_name: "S3 bucket without versioning"
   cloud_provider: "AWS"

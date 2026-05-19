@@ -1,11 +1,11 @@
 ---
 title: "Root containers admitted"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/root_containers_admitted"
+  name: "root_containers_admitted"
   id: "kubernetes-root-containers-admitted"
   display_name: "Root containers admitted"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-root-containers-admitted{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

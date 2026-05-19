@@ -2,7 +2,7 @@
 title: "Role with privilege escalation by actions 'ec2:RunInstances' and 'iam:PassRole'"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/role_with_privilege_escalation_by_actions_iam_passrole_and_ec2_runinstances"
+  name: ""aws/role_with_privilege_escalation_by_actions_iam_passrole_and_ec2_runinstances""
   id: "terraform-aws-role-with-privilege-escalation-by-actions-iam-passrole-and-ec2-runinstances"
   display_name: "Role with privilege escalation by actions 'ec2:RunInstances' and 'iam:PassRole'"
   cloud_provider: "AWS"

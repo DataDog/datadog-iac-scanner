@@ -1,11 +1,11 @@
 ---
 title: "Pod or container without LimitRange"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/pod_or_container_without_limit_range"
+  name: "pod_or_container_without_limit_range"
   id: "kubernetes-pod-or-container-without-limit-range"
   display_name: "Pod or container without LimitRange"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-pod-or-container-without-limit-range{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -2,7 +2,7 @@
 title: "ECS cluster with Container Insights disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/ecs_cluster_container_insights_disabled"
+  name: ""aws/ecs_cluster_container_insights_disabled""
   id: "cloudformation-aws-ecs-cluster-container-insights-disabled"
   display_name: "ECS cluster with Container Insights disabled"
   cloud_provider: "AWS"

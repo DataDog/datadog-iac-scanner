@@ -2,7 +2,7 @@
 title: "S3 bucket without restriction of public bucket"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/s3_bucket_without_restriction_of_public_bucket"
+  name: ""aws/s3_bucket_without_restriction_of_public_bucket""
   id: "cloudformation-aws-s3-bucket-without-restriction-of-public-bucket"
   display_name: "S3 bucket without restriction of public bucket"
   cloud_provider: "AWS"

@@ -1,11 +1,11 @@
 ---
 title: "apt-get not avoiding additional packages"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/apt_get_not_avoiding_additional_packages"
+  name: "apt_get_not_avoiding_additional_packages"
   id: "dockerfile-apt-get-not-avoiding-additional-packages"
   display_name: "apt-get not avoiding additional packages"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-apt-get-not-avoiding-additional-packages{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

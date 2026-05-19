@@ -2,7 +2,7 @@
 title: "RAM security preference does not enforce MFA login"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/ram_security_preference_not_enforce_mfa"
+  name: ""alicloud/ram_security_preference_not_enforce_mfa""
   id: "terraform-alicloud-ram-security-preference-not-enforce-mfa"
   display_name: "RAM security preference does not enforce MFA login"
   cloud_provider: "Alicloud"

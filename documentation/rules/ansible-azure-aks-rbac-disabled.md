@@ -2,7 +2,7 @@
 title: "AKS RBAC disabled"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/aks_rbac_disabled"
+  name: ""azure/aks_rbac_disabled""
   id: "ansible-azure-aks-rbac-disabled"
   display_name: "AKS RBAC disabled"
   cloud_provider: "Azure"

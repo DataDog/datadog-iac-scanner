@@ -1,11 +1,11 @@
 ---
 title: "Missing zypper clean"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/missing_zypper_clean"
+  name: "missing_zypper_clean"
   id: "dockerfile-missing-zypper-clean"
   display_name: "Missing zypper clean"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-missing-zypper-clean{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

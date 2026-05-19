@@ -1,11 +1,11 @@
 ---
 title: "Encryption provider config is not defined"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/encryption_provider_config_is_not_defined"
+  name: "encryption_provider_config_is_not_defined"
   id: "kubernetes-encryption-provider-config-is-not-defined"
   display_name: "Encryption provider config is not defined"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Encryption"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-encryption-provider-config-is-not-defined{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

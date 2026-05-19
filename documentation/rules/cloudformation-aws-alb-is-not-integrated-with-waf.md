@@ -2,7 +2,7 @@
 title: "ALB is not integrated with WAF"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/alb_is_not_integrated_with_waf"
+  name: ""aws/alb_is_not_integrated_with_waf""
   id: "cloudformation-aws-alb-is-not-integrated-with-waf"
   display_name: "ALB is not integrated with WAF"
   cloud_provider: "AWS"

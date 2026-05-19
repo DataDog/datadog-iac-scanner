@@ -1,11 +1,11 @@
 ---
 title: "Ingress controller exposes workload"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/ingress_controller_exposes_workload"
+  name: "ingress_controller_exposes_workload"
   id: "kubernetes-ingress-controller-exposes-workload"
   display_name: "Ingress controller exposes workload"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-ingress-controller-exposes-workload{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

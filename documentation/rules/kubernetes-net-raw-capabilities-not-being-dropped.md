@@ -1,11 +1,11 @@
 ---
 title: "NET_RAW capabilities not dropped"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/net_raw_capabilities_not_being_dropped"
+  name: "net_raw_capabilities_not_being_dropped"
   id: "kubernetes-net-raw-capabilities-not-being-dropped"
   display_name: "NET_RAW capabilities not dropped"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-net-raw-capabilities-not-being-dropped{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

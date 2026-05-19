@@ -2,7 +2,7 @@
 title: "Connection between CloudFront origin not encrypted"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/connection_between_cloudfront_origin_not_encrypted"
+  name: ""aws/connection_between_cloudfront_origin_not_encrypted""
   id: "cloudformation-aws-connection-between-cloudfront-origin-not-encrypted"
   display_name: "Connection between CloudFront origin not encrypted"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "Databricks cluster or job with no or insecure permissions"
 group_id: "Terraform / Databricks"
 meta:
-  name: "databricks/databricks_permissions"
+  name: ""databricks/databricks_permissions""
   id: "terraform-databricks-databricks-permissions"
   display_name: "Databricks cluster or job with no or insecure permissions"
   cloud_provider: "Databricks"

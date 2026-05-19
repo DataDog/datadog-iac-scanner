@@ -2,7 +2,7 @@
 title: "SNS topic without KmsMasterKeyId"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/sns_topic_without_kms_master_key_id"
+  name: ""aws/sns_topic_without_kms_master_key_id""
   id: "cloudformation-aws-sns-topic-without-kms-master-key-id"
   display_name: "SNS topic without KmsMasterKeyId"
   cloud_provider: "AWS"

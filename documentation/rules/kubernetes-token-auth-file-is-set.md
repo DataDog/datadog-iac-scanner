@@ -1,11 +1,11 @@
 ---
 title: "Token auth file is set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/token_auth_file_is_set"
+  name: "token_auth_file_is_set"
   id: "kubernetes-token-auth-file-is-set"
   display_name: "Token auth file is set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-token-auth-file-is-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

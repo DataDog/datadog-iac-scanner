@@ -1,11 +1,11 @@
 ---
 title: "Using unnamed build stages"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/using_unnamed_build_stages"
+  name: "using_unnamed_build_stages"
   id: "dockerfile-using-unnamed-build-stages"
   display_name: "Using unnamed build stages"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Build Process"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-using-unnamed-build-stages{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

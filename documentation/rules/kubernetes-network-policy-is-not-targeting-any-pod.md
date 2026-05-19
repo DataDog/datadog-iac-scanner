@@ -1,11 +1,11 @@
 ---
 title: "Network policy without Pod target"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/network_policy_is_not_targeting_any_pod"
+  name: "network_policy_is_not_targeting_any_pod"
   id: "kubernetes-network-policy-is-not-targeting-any-pod"
   display_name: "Network policy without Pod target"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-network-policy-is-not-targeting-any-pod{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

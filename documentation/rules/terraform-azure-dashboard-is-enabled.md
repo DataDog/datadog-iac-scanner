@@ -2,7 +2,7 @@
 title: "Dashboard is enabled"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/dashboard_is_enabled"
+  name: ""azure/dashboard_is_enabled""
   id: "terraform-azure-dashboard-is-enabled"
   display_name: "Dashboard is enabled"
   cloud_provider: "Azure"

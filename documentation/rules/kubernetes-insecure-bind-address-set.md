@@ -1,11 +1,11 @@
 ---
 title: "Insecure bind address set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/insecure_bind_address_set"
+  name: "insecure_bind_address_set"
   id: "kubernetes-insecure-bind-address-set"
   display_name: "Insecure bind address set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-insecure-bind-address-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

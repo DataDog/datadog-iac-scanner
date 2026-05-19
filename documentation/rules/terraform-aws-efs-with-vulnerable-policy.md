@@ -2,7 +2,7 @@
 title: "EFS with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/efs_with_vulnerable_policy"
+  name: ""aws/efs_with_vulnerable_policy""
   id: "terraform-aws-efs-with-vulnerable-policy"
   display_name: "EFS with vulnerable policy"
   cloud_provider: "AWS"

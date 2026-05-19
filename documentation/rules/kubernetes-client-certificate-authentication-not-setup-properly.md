@@ -1,11 +1,11 @@
 ---
 title: "Client certificate authentication not set up properly"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/client_certificate_authentication_not_setup_properly"
+  name: "client_certificate_authentication_not_setup_properly"
   id: "kubernetes-client-certificate-authentication-not-setup-properly"
   display_name: "Client certificate authentication not set up properly"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-client-certificate-authentication-not-setup-properly{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

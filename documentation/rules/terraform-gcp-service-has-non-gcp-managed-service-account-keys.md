@@ -2,7 +2,7 @@
 title: "There are non GCP-managed service account keys for a service account"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/service_has_non_gcp_managed_service_account_keys"
+  name: ""gcp/service_has_non_gcp_managed_service_account_keys""
   id: "terraform-gcp-service-has-non-gcp-managed-service-account-keys"
   display_name: "There are non GCP-managed service account keys for a service account"
   cloud_provider: "GCP"

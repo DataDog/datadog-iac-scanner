@@ -2,7 +2,7 @@
 title: "Launch configuration is not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/launch_configuration_is_not_encrypted"
+  name: ""aws/launch_configuration_is_not_encrypted""
   id: "terraform-aws-launch-configuration-is-not-encrypted"
   display_name: "Launch configuration is not encrypted"
   cloud_provider: "AWS"

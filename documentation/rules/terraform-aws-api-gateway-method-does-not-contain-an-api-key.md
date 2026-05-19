@@ -2,7 +2,7 @@
 title: "API Gateway method does not contain an API key"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/api_gateway_method_does_not_contain_an_api_key"
+  name: ""aws/api_gateway_method_does_not_contain_an_api_key""
   id: "terraform-aws-api-gateway-method-does-not-contain-an-api-key"
   display_name: "API Gateway method does not contain an API key"
   cloud_provider: "AWS"

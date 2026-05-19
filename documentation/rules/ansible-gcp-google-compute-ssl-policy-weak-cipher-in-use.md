@@ -2,7 +2,7 @@
 title: "Google Compute SSL policy weak cipher in use"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/google_compute_ssl_policy_weak_cipher_in_use"
+  name: ""gcp/google_compute_ssl_policy_weak_cipher_in_use""
   id: "ansible-gcp-google-compute-ssl-policy-weak-cipher-in-use"
   display_name: "Google Compute SSL policy weak cipher in use"
   cloud_provider: "GCP"

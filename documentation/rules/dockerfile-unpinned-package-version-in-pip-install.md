@@ -1,11 +1,11 @@
 ---
 title: "Unpinned package version in pip install"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/unpinned_package_version_in_pip_install"
+  name: "unpinned_package_version_in_pip_install"
   id: "dockerfile-unpinned-package-version-in-pip-install"
   display_name: "Unpinned package version in pip install"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-unpinned-package-version-in-pip-install{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

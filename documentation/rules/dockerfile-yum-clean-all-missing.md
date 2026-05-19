@@ -1,11 +1,11 @@
 ---
 title: "yum clean all missing"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/yum_clean_all_missing"
+  name: "yum_clean_all_missing"
   id: "dockerfile-yum-clean-all-missing"
   display_name: "yum clean all missing"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-yum-clean-all-missing{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

@@ -1,11 +1,11 @@
 ---
 title: "HPA targets invalid object"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/hpa_targets_invalid_object"
+  name: "hpa_targets_invalid_object"
   id: "kubernetes-hpa-targets-invalid-object"
   display_name: "HPA targets invalid object"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Availability"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-hpa-targets-invalid-object{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

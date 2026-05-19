@@ -2,7 +2,7 @@
 title: "S3 bucket access to any principal"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/s3_bucket_access_to_any_principal"
+  name: ""aws/s3_bucket_access_to_any_principal""
   id: "cloudformation-aws-s3-bucket-access-to-any-principal"
   display_name: "S3 bucket access to any principal"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "PostgreSQL Server threat detection policy disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/postgresql_server_threat_detection_policy_disabled"
+  name: ""azure/postgresql_server_threat_detection_policy_disabled""
   id: "terraform-azure-postgresql-server-threat-detection-policy-disabled"
   display_name: "PostgreSQL Server threat detection policy disabled"
   cloud_provider: "Azure"

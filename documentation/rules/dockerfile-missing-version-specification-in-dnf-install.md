@@ -1,11 +1,11 @@
 ---
 title: "Missing version specification in dnf install"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/missing_version_specification_in_dnf_install"
+  name: "missing_version_specification_in_dnf_install"
   id: "dockerfile-missing-version-specification-in-dnf-install"
   display_name: "Missing version specification in dnf install"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-missing-version-specification-in-dnf-install{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

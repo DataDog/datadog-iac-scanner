@@ -1,11 +1,11 @@
 ---
 title: "Logging of sensitive data"
-group_id: "Ansible / Ansible"
+group_id: "Ansible"
 meta:
-  name: "ansible/logging_of_sensitive_data"
+  name: "logging_of_sensitive_data"
   id: "ansible-logging-of-sensitive-data"
   display_name: "Logging of sensitive data"
-  cloud_provider: "Ansible"
+  cloud_provider: ""
   platform: "Ansible"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}ansible-logging-of-sensitive-data{{< /copyable-code >}}
-
-**Provider:** Ansible
 
 **Platform:** Ansible
 

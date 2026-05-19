@@ -1,11 +1,11 @@
 ---
 title: "Rotate Kubelet server certificate not active"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/rotate_kubelet_server_certificate_not_active"
+  name: "rotate_kubelet_server_certificate_not_active"
   id: "kubernetes-rotate-kubelet-server-certificate-not-active"
   display_name: "Rotate Kubelet server certificate not active"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Secret Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-rotate-kubelet-server-certificate-not-active{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

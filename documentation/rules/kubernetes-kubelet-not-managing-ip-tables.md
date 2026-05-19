@@ -1,11 +1,11 @@
 ---
 title: "Kubelet not managing IP tables"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/kubelet_not_managing_ip_tables"
+  name: "kubelet_not_managing_ip_tables"
   id: "kubernetes-kubelet-not-managing-ip-tables"
   display_name: "Kubelet not managing IP tables"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-kubelet-not-managing-ip-tables{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

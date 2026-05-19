@@ -1,11 +1,11 @@
 ---
 title: "RBAC roles with impersonate permission"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/rbac_roles_with_impersonate_permission"
+  name: "rbac_roles_with_impersonate_permission"
   id: "kubernetes-rbac-roles-with-impersonate-permission"
   display_name: "RBAC roles with impersonate permission"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-rbac-roles-with-impersonate-permission{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

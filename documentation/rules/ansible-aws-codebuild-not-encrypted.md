@@ -2,7 +2,7 @@
 title: "CodeBuild project is not encrypted"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/codebuild_not_encrypted"
+  name: ""aws/codebuild_not_encrypted""
   id: "ansible-aws-codebuild-not-encrypted"
   display_name: "CodeBuild project is not encrypted"
   cloud_provider: "AWS"

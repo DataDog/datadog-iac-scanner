@@ -2,7 +2,7 @@
 title: "RDS instance TDE status disabled"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/rds_instance_tde_status_disabled"
+  name: ""alicloud/rds_instance_tde_status_disabled""
   id: "terraform-alicloud-rds-instance-tde-status-disabled"
   display_name: "RDS instance TDE status disabled"
   cloud_provider: "Alicloud"

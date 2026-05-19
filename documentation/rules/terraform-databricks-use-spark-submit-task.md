@@ -2,7 +2,7 @@
 title: "Job's task is legacy (spark_submit_task)"
 group_id: "Terraform / Databricks"
 meta:
-  name: "databricks/use_spark_submit_task"
+  name: ""databricks/use_spark_submit_task""
   id: "terraform-databricks-use-spark-submit-task"
   display_name: "Job's task is legacy (spark_submit_task)"
   cloud_provider: "Databricks"

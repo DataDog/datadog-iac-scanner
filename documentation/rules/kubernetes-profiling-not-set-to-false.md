@@ -1,11 +1,11 @@
 ---
 title: "Profiling not set to false"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/profiling_not_set_to_false"
+  name: "profiling_not_set_to_false"
   id: "kubernetes-profiling-not-set-to-false"
   display_name: "Profiling not set to false"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Observability"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-profiling-not-set-to-false{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

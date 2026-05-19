@@ -2,7 +2,7 @@
 title: "WAF is disabled for Azure Application Gateway"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/waf_is_disabled_for_azure_application_gateway"
+  name: ""azure/waf_is_disabled_for_azure_application_gateway""
   id: "ansible-azure-waf-is-disabled-for-azure-application-gateway"
   display_name: "WAF is disabled for Azure Application Gateway"
   cloud_provider: "Azure"

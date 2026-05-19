@@ -1,11 +1,11 @@
 ---
 title: "Run utilities and POSIX commands"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/run_utilities_and_posix_commands"
+  name: "run_utilities_and_posix_commands"
   id: "dockerfile-run-utilities-and-posix-commands"
   display_name: "Run utilities and POSIX commands"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-run-utilities-and-posix-commands{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

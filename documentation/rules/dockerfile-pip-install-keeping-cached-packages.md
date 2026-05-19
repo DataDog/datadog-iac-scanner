@@ -1,11 +1,11 @@
 ---
 title: "pip install keeping cached packages"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/pip_install_keeping_cached_packages"
+  name: "pip_install_keeping_cached_packages"
   id: "dockerfile-pip-install-keeping-cached-packages"
   display_name: "pip install keeping cached packages"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-pip-install-keeping-cached-packages{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

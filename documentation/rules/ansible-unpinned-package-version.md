@@ -1,11 +1,11 @@
 ---
 title: "Unpinned package version"
-group_id: "Ansible / Ansible"
+group_id: "Ansible"
 meta:
-  name: "ansible/unpinned_package_version"
+  name: "unpinned_package_version"
   id: "ansible-unpinned-package-version"
   display_name: "Unpinned package version"
-  cloud_provider: "Ansible"
+  cloud_provider: ""
   platform: "Ansible"
   severity: "LOW"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}ansible-unpinned-package-version{{< /copyable-code >}}
-
-**Provider:** Ansible
 
 **Platform:** Ansible
 

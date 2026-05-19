@@ -1,11 +1,11 @@
 ---
 title: "Missing Zypper non-interactive switch"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/missing_zypper_non_interactive_switch"
+  name: "missing_zypper_non_interactive_switch"
   id: "dockerfile-missing-zypper-non-interactive-switch"
   display_name: "Missing Zypper non-interactive switch"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-missing-zypper-non-interactive-switch{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

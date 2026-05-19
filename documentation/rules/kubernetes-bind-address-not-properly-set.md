@@ -1,11 +1,11 @@
 ---
 title: "Bind address not properly set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/bind_address_not_properly_set"
+  name: "bind_address_not_properly_set"
   id: "kubernetes-bind-address-not-properly-set"
   display_name: "Bind address not properly set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-bind-address-not-properly-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

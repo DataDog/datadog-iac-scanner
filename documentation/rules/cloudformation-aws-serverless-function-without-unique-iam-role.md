@@ -2,7 +2,7 @@
 title: "Serverless function without unique IAM role"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/serverless_function_without_unique_iam_role"
+  name: ""aws/serverless_function_without_unique_iam_role""
   id: "cloudformation-aws-serverless-function-without-unique-iam-role"
   display_name: "Serverless function without unique IAM role"
   cloud_provider: "AWS"

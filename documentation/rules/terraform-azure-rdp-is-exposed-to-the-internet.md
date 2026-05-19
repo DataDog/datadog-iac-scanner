@@ -2,7 +2,7 @@
 title: "RDP is exposed to the internet"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/rdp_is_exposed_to_the_internet"
+  name: ""azure/rdp_is_exposed_to_the_internet""
   id: "terraform-azure-rdp-is-exposed-to-the-internet"
   display_name: "RDP is exposed to the internet"
   cloud_provider: "Azure"

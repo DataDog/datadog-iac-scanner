@@ -1,11 +1,11 @@
 ---
 title: "PSP with added capabilities"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/psp_with_added_capabilities"
+  name: "psp_with_added_capabilities"
   id: "kubernetes-psp-with-added-capabilities"
   display_name: "PSP with added capabilities"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-psp-with-added-capabilities{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

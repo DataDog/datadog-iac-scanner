@@ -1,11 +1,11 @@
 ---
 title: "NET_RAW capabilities disabled for PSP"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/net_raw_capabilities_disabled_for_psp"
+  name: "net_raw_capabilities_disabled_for_psp"
   id: "kubernetes-net-raw-capabilities-disabled-for-psp"
   display_name: "NET_RAW capabilities disabled for PSP"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-net-raw-capabilities-disabled-for-psp{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -2,7 +2,7 @@
 title: "ELB using weak ciphers"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/elb_using_weak_ciphers"
+  name: ""aws/elb_using_weak_ciphers""
   id: "ansible-aws-elb-using-weak-ciphers"
   display_name: "ELB using weak ciphers"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "CMK rotation disabled"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/cmk_rotation_disabled"
+  name: ""aws/cmk_rotation_disabled""
   id: "ansible-aws-cmk-rotation-disabled"
   display_name: "CMK rotation disabled"
   cloud_provider: "AWS"

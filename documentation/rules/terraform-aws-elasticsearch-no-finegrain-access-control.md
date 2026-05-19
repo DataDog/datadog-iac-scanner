@@ -2,7 +2,7 @@
 title: "Fine-grained access control disabled for OpenSearch/Elasticsearch"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/elasticsearch_no_finegrain_access_control"
+  name: ""aws/elasticsearch_no_finegrain_access_control""
   id: "terraform-aws-elasticsearch-no-finegrain-access-control"
   display_name: "Fine-grained access control disabled for OpenSearch/Elasticsearch"
   cloud_provider: "AWS"

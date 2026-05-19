@@ -1,11 +1,11 @@
 ---
 title: "Kubelet read-only port is not set to zero"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/kubelet_read_only_port_is_not_set_to_zero"
+  name: "kubelet_read_only_port_is_not_set_to_zero"
   id: "kubernetes-kubelet-read-only-port-is-not-set-to-zero"
   display_name: "Kubelet read-only port is not set to zero"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-kubelet-read-only-port-is-not-set-to-zero{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

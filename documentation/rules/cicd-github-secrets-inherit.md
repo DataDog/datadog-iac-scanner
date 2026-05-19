@@ -2,7 +2,7 @@
 title: "Secrets inherit"
 group_id: "CICD / GitHub"
 meta:
-  name: "github/secrets_inherit"
+  name: ""github/secrets_inherit""
   id: "cicd-github-secrets-inherit"
   display_name: "Secrets inherit"
   cloud_provider: "GitHub"

@@ -2,7 +2,7 @@
 title: "SSO identity user unsafe creation"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/sso_identity_user_unsafe_creation"
+  name: ""aws/sso_identity_user_unsafe_creation""
   id: "terraform-aws-sso-identity-user-unsafe-creation"
   display_name: "SSO identity user unsafe creation"
   cloud_provider: "AWS"

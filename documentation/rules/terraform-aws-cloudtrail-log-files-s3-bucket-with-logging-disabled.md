@@ -2,7 +2,7 @@
 title: "CloudTrail log files S3 bucket with logging disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/cloudtrail_log_files_s3_bucket_with_logging_disabled"
+  name: ""aws/cloudtrail_log_files_s3_bucket_with_logging_disabled""
   id: "terraform-aws-cloudtrail-log-files-s3-bucket-with-logging-disabled"
   display_name: "CloudTrail log files S3 bucket with logging disabled"
   cloud_provider: "AWS"

@@ -1,11 +1,11 @@
 ---
 title: "Image version not explicit"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/image_version_not_explicit"
+  name: "image_version_not_explicit"
   id: "dockerfile-image-version-not-explicit"
   display_name: "Image version not explicit"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-image-version-not-explicit{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

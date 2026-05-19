@@ -2,7 +2,7 @@
 title: "Redis publicly accessible"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/redis_publicly_accessible"
+  name: ""azure/redis_publicly_accessible""
   id: "ansible-azure-redis-publicly-accessible"
   display_name: "Redis publicly accessible"
   cloud_provider: "Azure"

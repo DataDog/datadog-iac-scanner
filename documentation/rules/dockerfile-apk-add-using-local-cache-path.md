@@ -1,11 +1,11 @@
 ---
 title: "apk add using local cache path"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/apk_add_using_local_cache_path"
+  name: "apk_add_using_local_cache_path"
   id: "dockerfile-apk-add-using-local-cache-path"
   display_name: "apk add using local cache path"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-apk-add-using-local-cache-path{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

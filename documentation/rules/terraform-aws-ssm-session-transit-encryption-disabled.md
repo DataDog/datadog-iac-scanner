@@ -2,7 +2,7 @@
 title: "SSM session transit encryption disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/ssm_session_transit_encryption_disabled"
+  name: ""aws/ssm_session_transit_encryption_disabled""
   id: "terraform-aws-ssm-session-transit-encryption-disabled"
   display_name: "SSM session transit encryption disabled"
   cloud_provider: "AWS"

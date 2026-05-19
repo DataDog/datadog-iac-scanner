@@ -1,11 +1,11 @@
 ---
 title: "Shared host PID namespace"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/shared_host_pid_namespace"
+  name: "shared_host_pid_namespace"
   id: "kubernetes-shared-host-pid-namespace"
   display_name: "Shared host PID namespace"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-shared-host-pid-namespace{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

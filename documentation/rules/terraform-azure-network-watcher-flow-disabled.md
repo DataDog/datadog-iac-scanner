@@ -2,7 +2,7 @@
 title: "Network watcher flow disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/network_watcher_flow_disabled"
+  name: ""azure/network_watcher_flow_disabled""
   id: "terraform-azure-network-watcher-flow-disabled"
   display_name: "Network watcher flow disabled"
   cloud_provider: "Azure"

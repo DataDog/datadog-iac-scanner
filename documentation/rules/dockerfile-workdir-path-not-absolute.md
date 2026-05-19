@@ -1,11 +1,11 @@
 ---
 title: "WORKDIR path not absolute"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/workdir_path_not_absolute"
+  name: "workdir_path_not_absolute"
   id: "dockerfile-workdir-path-not-absolute"
   display_name: "WORKDIR path not absolute"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Build Process"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-workdir-path-not-absolute{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

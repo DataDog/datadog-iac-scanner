@@ -1,11 +1,11 @@
 ---
 title: "PSP allows sharing host PID"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/psp_allows_sharing_host_pid"
+  name: "psp_allows_sharing_host_pid"
   id: "kubernetes-psp-allows-sharing-host-pid"
   display_name: "PSP allows sharing host PID"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-psp-allows-sharing-host-pid{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -1,11 +1,11 @@
 ---
 title: "Allow unsafe lookups enabled in defaults"
-group_id: "Ansible / Ansible"
+group_id: "Ansible"
 meta:
-  name: "ansible/allow_unsafe_lookups_enabled_in_defaults"
+  name: "allow_unsafe_lookups_enabled_in_defaults"
   id: "ansible-allow-unsafe-lookups-enabled-in-defaults"
   display_name: "Allow unsafe lookups enabled in defaults"
-  cloud_provider: "Ansible"
+  cloud_provider: ""
   platform: "Ansible"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}ansible-allow-unsafe-lookups-enabled-in-defaults{{< /copyable-code >}}
-
-**Provider:** Ansible
 
 **Platform:** Ansible
 

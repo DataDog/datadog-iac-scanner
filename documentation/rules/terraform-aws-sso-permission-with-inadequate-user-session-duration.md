@@ -2,7 +2,7 @@
 title: "SSO permission with inadequate user session duration"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/sso_permission_with_inadequate_user_session_duration"
+  name: ""aws/sso_permission_with_inadequate_user_session_duration""
   id: "terraform-aws-sso-permission-with-inadequate-user-session-duration"
   display_name: "SSO permission with inadequate user session duration"
   cloud_provider: "AWS"

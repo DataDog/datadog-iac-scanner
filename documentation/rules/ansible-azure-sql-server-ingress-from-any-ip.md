@@ -2,7 +2,7 @@
 title: "SQLServer ingress from any IP"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/sql_server_ingress_from_any_ip"
+  name: ""azure/sql_server_ingress_from_any_ip""
   id: "ansible-azure-sql-server-ingress-from-any-ip"
   display_name: "SQLServer ingress from any IP"
   cloud_provider: "Azure"

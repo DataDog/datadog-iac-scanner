@@ -2,7 +2,7 @@
 title: "PostgreSQL misconfigured logging duration flag"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/postgresql_misconfigured_logging_duration_flag"
+  name: ""gcp/postgresql_misconfigured_logging_duration_flag""
   id: "ansible-gcp-postgresql-misconfigured-logging-duration-flag"
   display_name: "PostgreSQL misconfigured logging duration flag"
   cloud_provider: "GCP"

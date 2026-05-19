@@ -2,7 +2,7 @@
 title: "PostgreSQL log duration not set"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/postgresql_log_duration_not_set"
+  name: ""azure/postgresql_log_duration_not_set""
   id: "terraform-azure-postgresql-log-duration-not-set"
   display_name: "PostgreSQL log duration not set"
   cloud_provider: "Azure"

@@ -1,11 +1,11 @@
 ---
 title: "RBAC wildcard in rule"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/rbac_wildcard_in_rule"
+  name: "rbac_wildcard_in_rule"
   id: "kubernetes-rbac-wildcard-in-rule"
   display_name: "RBAC wildcard in rule"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-rbac-wildcard-in-rule{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

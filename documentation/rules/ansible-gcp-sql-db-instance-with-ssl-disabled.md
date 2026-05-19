@@ -2,7 +2,7 @@
 title: "SQL DB instance with SSL disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/sql_db_instance_with_ssl_disabled"
+  name: ""gcp/sql_db_instance_with_ssl_disabled""
   id: "ansible-gcp-sql-db-instance-with-ssl-disabled"
   display_name: "SQL DB instance with SSL disabled"
   cloud_provider: "GCP"

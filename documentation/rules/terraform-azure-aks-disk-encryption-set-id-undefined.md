@@ -2,7 +2,7 @@
 title: "AKS disk encryption set ID undefined"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/aks_disk_encryption_set_id_undefined"
+  name: ""azure/aks_disk_encryption_set_id_undefined""
   id: "terraform-azure-aks-disk-encryption-set-id-undefined"
   display_name: "AKS disk encryption set ID undefined"
   cloud_provider: "Azure"

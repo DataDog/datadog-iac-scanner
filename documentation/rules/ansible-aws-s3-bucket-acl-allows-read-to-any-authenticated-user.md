@@ -2,7 +2,7 @@
 title: "S3 bucket ACL allows read access to any authenticated user"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/s3_bucket_acl_allows_read_to_any_authenticated_user"
+  name: ""aws/s3_bucket_acl_allows_read_to_any_authenticated_user""
   id: "ansible-aws-s3-bucket-acl-allows-read-to-any-authenticated-user"
   display_name: "S3 bucket ACL allows read access to any authenticated user"
   cloud_provider: "AWS"

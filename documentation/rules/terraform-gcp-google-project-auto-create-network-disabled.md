@@ -2,7 +2,7 @@
 title: "Google project auto create network disabled"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/google_project_auto_create_network_disabled"
+  name: ""gcp/google_project_auto_create_network_disabled""
   id: "terraform-gcp-google-project-auto-create-network-disabled"
   display_name: "Google project auto create network disabled"
   cloud_provider: "GCP"

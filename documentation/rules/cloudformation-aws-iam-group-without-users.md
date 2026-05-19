@@ -2,7 +2,7 @@
 title: "IAM group without users"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/iam_group_without_users"
+  name: ""aws/iam_group_without_users""
   id: "cloudformation-aws-iam-group-without-users"
   display_name: "IAM group without users"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "SQS with SSE disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/sqs_with_sse_disabled"
+  name: ""aws/sqs_with_sse_disabled""
   id: "terraform-aws-sqs-with-sse-disabled"
   display_name: "SQS with SSE disabled"
   cloud_provider: "AWS"

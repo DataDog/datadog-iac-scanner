@@ -2,7 +2,7 @@
 title: "MSK broker is publicly accessible"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/msk_broker_is_publicly_accessible"
+  name: ""aws/msk_broker_is_publicly_accessible""
   id: "terraform-aws-msk-broker-is-publicly-accessible"
   display_name: "MSK broker is publicly accessible"
   cloud_provider: "AWS"

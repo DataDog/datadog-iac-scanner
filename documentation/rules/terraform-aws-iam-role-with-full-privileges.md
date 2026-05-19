@@ -2,7 +2,7 @@
 title: "IAM role with full privileges"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/iam_role_with_full_privileges"
+  name: ""aws/iam_role_with_full_privileges""
   id: "terraform-aws-iam-role-with-full-privileges"
   display_name: "IAM role with full privileges"
   cloud_provider: "AWS"

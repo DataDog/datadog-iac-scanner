@@ -2,7 +2,7 @@
 title: "ELB using insecure protocols"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/elb_using_insecure_protocols"
+  name: ""aws/elb_using_insecure_protocols""
   id: "terraform-aws-elb-using-insecure-protocols"
   display_name: "ELB using insecure protocols"
   cloud_provider: "AWS"

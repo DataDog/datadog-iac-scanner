@@ -1,11 +1,11 @@
 ---
 title: "curl or wget instead of ADD"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/curl_or_wget_instead_of_add"
+  name: "curl_or_wget_instead_of_add"
   id: "dockerfile-curl-or-wget-instead-of-add"
   display_name: "curl or wget instead of ADD"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-curl-or-wget-instead-of-add{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

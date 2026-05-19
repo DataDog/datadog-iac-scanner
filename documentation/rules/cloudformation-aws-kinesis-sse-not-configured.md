@@ -2,7 +2,7 @@
 title: "Kinesis SSE not configured"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/kinesis_sse_not_configured"
+  name: ""aws/kinesis_sse_not_configured""
   id: "cloudformation-aws-kinesis-sse-not-configured"
   display_name: "Kinesis SSE not configured"
   cloud_provider: "AWS"

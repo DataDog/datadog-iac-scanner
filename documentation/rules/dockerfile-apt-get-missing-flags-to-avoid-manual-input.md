@@ -1,11 +1,11 @@
 ---
 title: "apt-get missing flags to avoid manual input"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/apt_get_missing_flags_to_avoid_manual_input"
+  name: "apt_get_missing_flags_to_avoid_manual_input"
   id: "dockerfile-apt-get-missing-flags-to-avoid-manual-input"
   display_name: "apt-get missing flags to avoid manual input"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-apt-get-missing-flags-to-avoid-manual-input{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

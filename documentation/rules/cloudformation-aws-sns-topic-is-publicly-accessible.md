@@ -2,7 +2,7 @@
 title: "SNS topic is publicly accessible"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/sns_topic_is_publicly_accessible"
+  name: ""aws/sns_topic_is_publicly_accessible""
   id: "cloudformation-aws-sns-topic-is-publicly-accessible"
   display_name: "SNS topic is publicly accessible"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "DocumentDB cluster encrypted with AWS managed key"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/docdb_cluster_encrypted_with_aws_managed_key"
+  name: ""aws/docdb_cluster_encrypted_with_aws_managed_key""
   id: "terraform-aws-docdb-cluster-encrypted-with-aws-managed-key"
   display_name: "DocumentDB cluster encrypted with AWS managed key"
   cloud_provider: "AWS"

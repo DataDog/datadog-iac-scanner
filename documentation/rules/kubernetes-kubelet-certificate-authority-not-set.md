@@ -1,11 +1,11 @@
 ---
 title: "Kubelet certificate authority not set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/kubelet_certificate_authority_not_set"
+  name: "kubelet_certificate_authority_not_set"
   id: "kubernetes-kubelet-certificate-authority-not-set"
   display_name: "Kubelet certificate authority not set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Secret Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-kubelet-certificate-authority-not-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

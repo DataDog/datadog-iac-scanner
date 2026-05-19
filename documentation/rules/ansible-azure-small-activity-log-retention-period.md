@@ -2,7 +2,7 @@
 title: "Small activity log retention period"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/small_activity_log_retention_period"
+  name: ""azure/small_activity_log_retention_period""
   id: "ansible-azure-small-activity-log-retention-period"
   display_name: "Small activity log retention period"
   cloud_provider: "Azure"

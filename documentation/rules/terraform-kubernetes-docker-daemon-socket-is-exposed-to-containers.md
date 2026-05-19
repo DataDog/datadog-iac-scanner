@@ -2,7 +2,7 @@
 title: "Docker daemon socket is exposed to containers"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/docker_daemon_socket_is_exposed_to_containers"
+  name: ""kubernetes/docker_daemon_socket_is_exposed_to_containers""
   id: "terraform-kubernetes-docker-daemon-socket-is-exposed-to-containers"
   display_name: "Docker daemon socket is exposed to containers"
   cloud_provider: "Kubernetes"

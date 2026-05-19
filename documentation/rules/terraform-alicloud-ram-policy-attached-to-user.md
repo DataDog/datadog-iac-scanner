@@ -2,7 +2,7 @@
 title: "RAM policy attached to user"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/ram_policy_attached_to_user"
+  name: ""alicloud/ram_policy_attached_to_user""
   id: "terraform-alicloud-ram-policy-attached-to-user"
   display_name: "RAM policy attached to user"
   cloud_provider: "Alicloud"

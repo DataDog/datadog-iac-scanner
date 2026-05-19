@@ -1,11 +1,11 @@
 ---
 title: "Basic auth file is set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/basic_auth_file_is_set"
+  name: "basic_auth_file_is_set"
   id: "kubernetes-basic-auth-file-is-set"
   display_name: "Basic auth file is set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-basic-auth-file-is-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

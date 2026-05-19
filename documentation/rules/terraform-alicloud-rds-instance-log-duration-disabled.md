@@ -2,7 +2,7 @@
 title: "RDS instance log duration disabled"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/rds_instance_log_duration_disabled"
+  name: ""alicloud/rds_instance_log_duration_disabled""
   id: "terraform-alicloud-rds-instance-log-duration-disabled"
   display_name: "RDS instance log duration disabled"
   cloud_provider: "Alicloud"

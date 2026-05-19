@@ -2,7 +2,7 @@
 title: "DB snapshot is public"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/db_snapshot_public"
+  name: ""aws/db_snapshot_public""
   id: "terraform-aws-db-snapshot-public"
   display_name: "DB snapshot is public"
   cloud_provider: "AWS"

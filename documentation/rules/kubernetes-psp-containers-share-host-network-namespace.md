@@ -1,11 +1,11 @@
 ---
 title: "PodSecurityPolicy allows host network sharing"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/psp_containers_share_host_network_namespace"
+  name: "psp_containers_share_host_network_namespace"
   id: "kubernetes-psp-containers-share-host-network-namespace"
   display_name: "PodSecurityPolicy allows host network sharing"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-psp-containers-share-host-network-namespace{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

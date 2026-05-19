@@ -1,11 +1,11 @@
 ---
 title: "chown flag exists"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/chown_flag_exists"
+  name: "chown_flag_exists"
   id: "dockerfile-chown-flag-exists"
   display_name: "chown flag exists"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-chown-flag-exists{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

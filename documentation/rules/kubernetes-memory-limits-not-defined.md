@@ -1,11 +1,11 @@
 ---
 title: "Memory limits not defined"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/memory_limits_not_defined"
+  name: "memory_limits_not_defined"
   id: "kubernetes-memory-limits-not-defined"
   display_name: "Memory limits not defined"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Resource Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-memory-limits-not-defined{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

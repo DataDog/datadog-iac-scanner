@@ -2,7 +2,7 @@
 title: "SageMaker data encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/sagemaker_data_encryption_disabled"
+  name: ""aws/sagemaker_data_encryption_disabled""
   id: "cloudformation-aws-sagemaker-data-encryption-disabled"
   display_name: "SageMaker data encryption disabled"
   cloud_provider: "AWS"

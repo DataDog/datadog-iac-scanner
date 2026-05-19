@@ -1,11 +1,11 @@
 ---
 title: "Anonymous auth is not set to false"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/anonymous_auth_is_not_set_to_false"
+  name: "anonymous_auth_is_not_set_to_false"
   id: "kubernetes-anonymous-auth-is-not-set-to-false"
   display_name: "Anonymous auth is not set to false"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-anonymous-auth-is-not-set-to-false{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

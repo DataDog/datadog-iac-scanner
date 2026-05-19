@@ -2,7 +2,7 @@
 title: "Secrets as environment variables"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/secrets_as_environment_variables"
+  name: ""kubernetes/secrets_as_environment_variables""
   id: "terraform-kubernetes-secrets-as-environment-variables"
   display_name: "Secrets as environment variables"
   cloud_provider: "Kubernetes"

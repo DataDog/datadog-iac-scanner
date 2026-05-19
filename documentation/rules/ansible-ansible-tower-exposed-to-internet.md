@@ -1,11 +1,11 @@
 ---
 title: "Ansible Tower exposed to the internet"
-group_id: "Ansible / Ansible"
+group_id: "Ansible"
 meta:
-  name: "ansible/ansible_tower_exposed_to_internet"
+  name: "ansible_tower_exposed_to_internet"
   id: "ansible-ansible-tower-exposed-to-internet"
   display_name: "Ansible Tower exposed to the internet"
-  cloud_provider: "Ansible"
+  cloud_provider: ""
   platform: "Ansible"
   severity: "MEDIUM"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}ansible-ansible-tower-exposed-to-internet{{< /copyable-code >}}
-
-**Provider:** Ansible
 
 **Platform:** Ansible
 

@@ -2,7 +2,7 @@
 title: "SQL server predictable admin account name"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/sql_server_predictable_admin_account_name"
+  name: ""azure/sql_server_predictable_admin_account_name""
   id: "terraform-azure-sql-server-predictable-admin-account-name"
   display_name: "SQL server predictable admin account name"
   cloud_provider: "Azure"

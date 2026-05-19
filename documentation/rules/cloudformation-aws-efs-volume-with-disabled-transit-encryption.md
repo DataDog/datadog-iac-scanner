@@ -2,7 +2,7 @@
 title: "EFS volume with disabled transit encryption"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/efs_volume_with_disabled_transit_encryption"
+  name: ""aws/efs_volume_with_disabled_transit_encryption""
   id: "cloudformation-aws-efs-volume-with-disabled-transit-encryption"
   display_name: "EFS volume with disabled transit encryption"
   cloud_provider: "AWS"

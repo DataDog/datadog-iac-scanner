@@ -1,11 +1,11 @@
 ---
 title: "CPU requests not set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/cpu_requests_not_set"
+  name: "cpu_requests_not_set"
   id: "kubernetes-cpu-requests-not-set"
   display_name: "CPU requests not set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Resource Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-cpu-requests-not-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

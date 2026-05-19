@@ -2,7 +2,7 @@
 title: "Public Lambda function via API Gateway"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/public_lambda_via_api_gateway"
+  name: ""aws/public_lambda_via_api_gateway""
   id: "cloudformation-aws-public-lambda-via-api-gateway"
   display_name: "Public Lambda function via API Gateway"
   cloud_provider: "AWS"

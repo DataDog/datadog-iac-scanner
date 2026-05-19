@@ -2,7 +2,7 @@
 title: "ECS task definition invalid CPU or memory"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/ecs_task_definition_invalid_cpu_or_memory"
+  name: ""aws/ecs_task_definition_invalid_cpu_or_memory""
   id: "cloudformation-aws-ecs-task-definition-invalid-cpu-or-memory"
   display_name: "ECS task definition invalid CPU or memory"
   cloud_provider: "AWS"

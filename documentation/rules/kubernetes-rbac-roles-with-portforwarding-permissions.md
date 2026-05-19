@@ -1,11 +1,11 @@
 ---
 title: "RBAC roles with port-forwarding permission"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/rbac_roles_with_portforwarding_permissions"
+  name: "rbac_roles_with_portforwarding_permissions"
   id: "kubernetes-rbac-roles-with-portforwarding-permissions"
   display_name: "RBAC roles with port-forwarding permission"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-rbac-roles-with-portforwarding-permissions{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -1,11 +1,11 @@
 ---
 title: "Containers with added capabilities"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/containers_with_added_capabilities"
+  name: "containers_with_added_capabilities"
   id: "kubernetes-containers-with-added-capabilities"
   display_name: "Containers with added capabilities"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-containers-with-added-capabilities{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -1,11 +1,11 @@
 ---
 title: "Dockerfile should specify base image"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/should_specify_base_image"
+  name: "should_specify_base_image"
   id: "dockerfile-should-specify-base-image"
   display_name: "Dockerfile should specify base image"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-should-specify-base-image{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

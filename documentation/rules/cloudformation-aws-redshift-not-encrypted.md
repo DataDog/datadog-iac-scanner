@@ -2,7 +2,7 @@
 title: "Redshift not encrypted"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/redshift_not_encrypted"
+  name: ""aws/redshift_not_encrypted""
   id: "cloudformation-aws-redshift-not-encrypted"
   display_name: "Redshift not encrypted"
   cloud_provider: "AWS"

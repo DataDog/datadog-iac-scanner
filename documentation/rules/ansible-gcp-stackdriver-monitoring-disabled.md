@@ -2,7 +2,7 @@
 title: "Stackdriver monitoring disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/stackdriver_monitoring_disabled"
+  name: ""gcp/stackdriver_monitoring_disabled""
   id: "ansible-gcp-stackdriver-monitoring-disabled"
   display_name: "Stackdriver monitoring disabled"
   cloud_provider: "GCP"

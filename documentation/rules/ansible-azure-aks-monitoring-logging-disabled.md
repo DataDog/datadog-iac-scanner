@@ -2,7 +2,7 @@
 title: "AKS monitoring logging disabled"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/aks_monitoring_logging_disabled"
+  name: ""azure/aks_monitoring_logging_disabled""
   id: "ansible-azure-aks-monitoring-logging-disabled"
   display_name: "AKS monitoring logging disabled"
   cloud_provider: "Azure"

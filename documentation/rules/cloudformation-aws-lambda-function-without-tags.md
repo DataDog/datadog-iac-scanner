@@ -2,7 +2,7 @@
 title: "Lambda function without tags"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/lambda_function_without_tags"
+  name: ""aws/lambda_function_without_tags""
   id: "cloudformation-aws-lambda-function-without-tags"
   display_name: "Lambda function without tags"
   cloud_provider: "AWS"

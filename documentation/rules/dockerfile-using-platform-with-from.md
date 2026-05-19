@@ -1,11 +1,11 @@
 ---
 title: "Using --platform flag with FROM command"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/using_platform_with_from"
+  name: "using_platform_with_from"
   id: "dockerfile-using-platform-with-from"
   display_name: "Using --platform flag with FROM command"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-using-platform-with-from{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

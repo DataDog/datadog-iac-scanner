@@ -1,11 +1,11 @@
 ---
 title: "TLS connection certificate not set up"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/tls_connection_certificate_not_setup"
+  name: "tls_connection_certificate_not_setup"
   id: "kubernetes-tls-connection-certificate-not-setup"
   display_name: "TLS connection certificate not set up"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-tls-connection-certificate-not-setup{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

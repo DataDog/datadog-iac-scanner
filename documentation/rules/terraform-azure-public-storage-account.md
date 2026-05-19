@@ -2,7 +2,7 @@
 title: "Public storage account"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/public_storage_account"
+  name: ""azure/public_storage_account""
   id: "terraform-azure-public-storage-account"
   display_name: "Public storage account"
   cloud_provider: "Azure"

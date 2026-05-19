@@ -1,11 +1,11 @@
 ---
 title: "Readiness probe is not configured"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/readiness_probe_is_not_configured"
+  name: "readiness_probe_is_not_configured"
   id: "kubernetes-readiness-probe-is-not-configured"
   display_name: "Readiness probe is not configured"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Availability"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-readiness-probe-is-not-configured{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

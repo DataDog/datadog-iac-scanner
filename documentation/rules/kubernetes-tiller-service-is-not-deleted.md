@@ -1,11 +1,11 @@
 ---
 title: "Tiller Service present"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/tiller_service_is_not_deleted"
+  name: "tiller_service_is_not_deleted"
   id: "kubernetes-tiller-service-is-not-deleted"
   display_name: "Tiller Service present"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-tiller-service-is-not-deleted{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

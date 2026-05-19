@@ -2,7 +2,7 @@
 title: "Sensitive port is exposed to entire network"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/sensitive_port_is_exposed_to_entire_network"
+  name: ""azure/sensitive_port_is_exposed_to_entire_network""
   id: "ansible-azure-sensitive-port-is-exposed-to-entire-network"
   display_name: "Sensitive port is exposed to entire network"
   cloud_provider: "Azure"

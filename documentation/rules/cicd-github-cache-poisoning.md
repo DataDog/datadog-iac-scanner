@@ -2,7 +2,7 @@
 title: "Cache poisoning"
 group_id: "CICD / GitHub"
 meta:
-  name: "github/cache_poisoning"
+  name: ""github/cache_poisoning""
   id: "cicd-github-cache-poisoning"
   display_name: "Cache poisoning"
   cloud_provider: "GitHub"

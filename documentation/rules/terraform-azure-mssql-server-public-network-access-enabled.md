@@ -2,7 +2,7 @@
 title: "MSSQL server public network access enabled"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/mssql_server_public_network_access_enabled"
+  name: ""azure/mssql_server_public_network_access_enabled""
   id: "terraform-azure-mssql-server-public-network-access-enabled"
   display_name: "MSSQL server public network access enabled"
   cloud_provider: "Azure"

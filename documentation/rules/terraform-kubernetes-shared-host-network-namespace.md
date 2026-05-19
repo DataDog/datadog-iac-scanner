@@ -2,7 +2,7 @@
 title: "Shared host network namespace"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/shared_host_network_namespace"
+  name: ""kubernetes/shared_host_network_namespace""
   id: "terraform-kubernetes-shared-host-network-namespace"
   display_name: "Shared host network namespace"
   cloud_provider: "Kubernetes"

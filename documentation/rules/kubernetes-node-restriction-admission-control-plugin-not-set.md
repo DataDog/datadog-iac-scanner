@@ -1,11 +1,11 @@
 ---
 title: "Node restriction admission control plugin not set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/node_restriction_admission_control_plugin_not_set"
+  name: "node_restriction_admission_control_plugin_not_set"
   id: "kubernetes-node-restriction-admission-control-plugin-not-set"
   display_name: "Node restriction admission control plugin not set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-node-restriction-admission-control-plugin-not-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

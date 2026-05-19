@@ -1,11 +1,11 @@
 ---
 title: "Event rate limit admission control plugin not set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/event_rate_limit_admission_control_plugin_not_set"
+  name: "event_rate_limit_admission_control_plugin_not_set"
   id: "kubernetes-event-rate-limit-admission-control-plugin-not-set"
   display_name: "Event rate limit admission control plugin not set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Availability"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-event-rate-limit-admission-control-plugin-not-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

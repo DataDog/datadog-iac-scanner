@@ -2,7 +2,7 @@
 title: "Google Compute subnetwork with private Google access disabled"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/google_compute_subnetwork_with_private_google_access_disabled"
+  name: ""gcp/google_compute_subnetwork_with_private_google_access_disabled""
   id: "terraform-gcp-google-compute-subnetwork-with-private-google-access-disabled"
   display_name: "Google Compute subnetwork with private Google access disabled"
   cloud_provider: "GCP"

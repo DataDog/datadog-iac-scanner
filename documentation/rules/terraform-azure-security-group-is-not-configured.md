@@ -2,7 +2,7 @@
 title: "Security group is not configured"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/security_group_is_not_configured"
+  name: ""azure/security_group_is_not_configured""
   id: "terraform-azure-security-group-is-not-configured"
   display_name: "Security group is not configured"
   cloud_provider: "Azure"

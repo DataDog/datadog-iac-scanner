@@ -2,7 +2,7 @@
 title: "ECS no load balancer attached"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/ecs_no_load_balancer_attached"
+  name: ""aws/ecs_no_load_balancer_attached""
   id: "cloudformation-aws-ecs-no-load-balancer-attached"
   display_name: "ECS no load balancer attached"
   cloud_provider: "AWS"

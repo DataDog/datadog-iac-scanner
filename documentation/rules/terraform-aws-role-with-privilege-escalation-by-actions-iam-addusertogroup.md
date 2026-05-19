@@ -2,7 +2,7 @@
 title: "Role with privilege escalation by actions 'iam:AddUserToGroup'"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/role_with_privilege_escalation_by_actions_iam_addusertogroup"
+  name: ""aws/role_with_privilege_escalation_by_actions_iam_addusertogroup""
   id: "terraform-aws-role-with-privilege-escalation-by-actions-iam-addusertogroup"
   display_name: "Role with privilege escalation by actions 'iam:AddUserToGroup'"
   cloud_provider: "AWS"

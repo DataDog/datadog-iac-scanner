@@ -1,11 +1,11 @@
 ---
 title: "Audit policy file not defined"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/audit_policy_file_not_defined"
+  name: "audit_policy_file_not_defined"
   id: "kubernetes-audit-policy-file-not-defined"
   display_name: "Audit policy file not defined"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Observability"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-audit-policy-file-not-defined{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -2,7 +2,7 @@
 title: "Cloudwatch CloudTrail configuration changes alarm missing"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/cloudwatch_cloudtrail_configuration_changes_alarm_missing"
+  name: ""aws/cloudwatch_cloudtrail_configuration_changes_alarm_missing""
   id: "terraform-aws-cloudwatch-cloudtrail-configuration-changes-alarm-missing"
   display_name: "Cloudwatch CloudTrail configuration changes alarm missing"
   cloud_provider: "AWS"

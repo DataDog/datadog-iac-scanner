@@ -2,7 +2,7 @@
 title: "CloudTrail logging disabled"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/cloudtrail_logging_disabled"
+  name: ""aws/cloudtrail_logging_disabled""
   id: "ansible-aws-cloudtrail-logging-disabled"
   display_name: "CloudTrail logging disabled"
   cloud_provider: "AWS"

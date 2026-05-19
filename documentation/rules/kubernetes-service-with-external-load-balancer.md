@@ -1,11 +1,11 @@
 ---
 title: "Service with external load balancer"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/service_with_external_load_balancer"
+  name: "service_with_external_load_balancer"
   id: "kubernetes-service-with-external-load-balancer"
   display_name: "Service with external load balancer"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-service-with-external-load-balancer{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

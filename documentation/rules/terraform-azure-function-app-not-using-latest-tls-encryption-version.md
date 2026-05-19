@@ -2,7 +2,7 @@
 title: "Function App not using latest TLS encryption version"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/function_app_not_using_latest_tls_encryption_version"
+  name: ""azure/function_app_not_using_latest_tls_encryption_version""
   id: "terraform-azure-function-app-not-using-latest-tls-encryption-version"
   display_name: "Function App not using latest TLS encryption version"
   cloud_provider: "Azure"

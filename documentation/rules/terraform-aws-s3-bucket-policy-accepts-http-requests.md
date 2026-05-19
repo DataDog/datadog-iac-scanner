@@ -2,7 +2,7 @@
 title: "S3 bucket policy accepts HTTP requests"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/s3_bucket_policy_accepts_http_requests"
+  name: ""aws/s3_bucket_policy_accepts_http_requests""
   id: "terraform-aws-s3-bucket-policy-accepts-http-requests"
   display_name: "S3 bucket policy accepts HTTP requests"
   cloud_provider: "AWS"

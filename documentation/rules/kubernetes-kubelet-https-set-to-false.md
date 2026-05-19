@@ -1,11 +1,11 @@
 ---
 title: "Kubelet HTTPS set to false"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/kubelet_https_set_to_false"
+  name: "kubelet_https_set_to_false"
   id: "kubernetes-kubelet-https-set-to-false"
   display_name: "Kubelet HTTPS set to false"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-kubelet-https-set-to-false{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

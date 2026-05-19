@@ -1,11 +1,11 @@
 ---
 title: "Non kube-system pod with host mount"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/non_kube_system_pod_with_host_mount"
+  name: "non_kube_system_pod_with_host_mount"
   id: "kubernetes-non-kube-system-pod-with-host-mount"
   display_name: "Non kube-system pod with host mount"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-non-kube-system-pod-with-host-mount{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

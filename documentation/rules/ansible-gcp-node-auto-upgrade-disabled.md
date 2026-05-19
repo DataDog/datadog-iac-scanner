@@ -2,7 +2,7 @@
 title: "Node auto-upgrade disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/node_auto_upgrade_disabled"
+  name: ""gcp/node_auto_upgrade_disabled""
   id: "ansible-gcp-node-auto-upgrade-disabled"
   display_name: "Node auto-upgrade disabled"
   cloud_provider: "GCP"

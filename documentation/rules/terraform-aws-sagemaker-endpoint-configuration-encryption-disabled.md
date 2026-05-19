@@ -2,7 +2,7 @@
 title: "SageMaker endpoint configuration encryption disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/sagemaker_endpoint_configuration_encryption_disabled"
+  name: ""aws/sagemaker_endpoint_configuration_encryption_disabled""
   id: "terraform-aws-sagemaker-endpoint-configuration-encryption-disabled"
   display_name: "SageMaker endpoint configuration encryption disabled"
   cloud_provider: "AWS"

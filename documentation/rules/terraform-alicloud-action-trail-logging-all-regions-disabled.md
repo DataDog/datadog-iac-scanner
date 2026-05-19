@@ -2,7 +2,7 @@
 title: "Action trail logging for all regions disabled"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/action_trail_logging_all_regions_disabled"
+  name: ""alicloud/action_trail_logging_all_regions_disabled""
   id: "terraform-alicloud-action-trail-logging-all-regions-disabled"
   display_name: "Action trail logging for all regions disabled"
   cloud_provider: "Alicloud"

@@ -2,7 +2,7 @@
 title: "Google Compute network using default firewall rule"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/google_compute_network_using_default_firewall_rule"
+  name: ""gcp/google_compute_network_using_default_firewall_rule""
   id: "ansible-gcp-google-compute-network-using-default-firewall-rule"
   display_name: "Google Compute network using default firewall rule"
   cloud_provider: "GCP"

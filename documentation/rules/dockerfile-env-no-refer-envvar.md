@@ -1,11 +1,11 @@
 ---
 title: "ENV refers to itself"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/env_no_refer_envvar"
+  name: "env_no_refer_envvar"
   id: "dockerfile-env-no-refer-envvar"
   display_name: "ENV refers to itself"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-env-no-refer-envvar{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

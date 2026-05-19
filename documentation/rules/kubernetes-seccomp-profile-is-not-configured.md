@@ -1,11 +1,11 @@
 ---
 title: "Seccomp profile is not configured"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/seccomp_profile_is_not_configured"
+  name: "seccomp_profile_is_not_configured"
   id: "kubernetes-seccomp-profile-is-not-configured"
   display_name: "Seccomp profile is not configured"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-seccomp-profile-is-not-configured{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

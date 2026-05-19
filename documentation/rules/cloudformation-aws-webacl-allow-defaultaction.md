@@ -2,7 +2,7 @@
 title: "Permissive Web ACL default action"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/webacl_allow_defaultaction"
+  name: ""aws/webacl_allow_defaultaction""
   id: "cloudformation-aws-webacl-allow-defaultaction"
   display_name: "Permissive Web ACL default action"
   cloud_provider: "AWS"

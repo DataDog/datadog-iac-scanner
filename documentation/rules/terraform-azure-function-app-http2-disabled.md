@@ -2,7 +2,7 @@
 title: "Function App HTTP2 disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/function_app_http2_disabled"
+  name: ""azure/function_app_http2_disabled""
   id: "terraform-azure-function-app-http2-disabled"
   display_name: "Function App HTTP2 disabled"
   cloud_provider: "Azure"

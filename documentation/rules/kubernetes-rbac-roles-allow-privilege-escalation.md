@@ -1,11 +1,11 @@
 ---
 title: "RBAC roles allow privilege escalation"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/rbac_roles_allow_privilege_escalation"
+  name: "rbac_roles_allow_privilege_escalation"
   id: "kubernetes-rbac-roles-allow-privilege-escalation"
   display_name: "RBAC roles allow privilege escalation"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-rbac-roles-allow-privilege-escalation{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

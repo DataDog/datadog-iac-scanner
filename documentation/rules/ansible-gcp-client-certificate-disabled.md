@@ -2,7 +2,7 @@
 title: "Client certificate disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/client_certificate_disabled"
+  name: ""gcp/client_certificate_disabled""
   id: "ansible-gcp-client-certificate-disabled"
   display_name: "Client certificate disabled"
   cloud_provider: "GCP"

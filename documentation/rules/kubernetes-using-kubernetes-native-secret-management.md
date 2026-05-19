@@ -1,11 +1,11 @@
 ---
 title: "Using Kubernetes native secret management"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/using_kubernetes_native_secret_management"
+  name: "using_kubernetes_native_secret_management"
   id: "kubernetes-using-kubernetes-native-secret-management"
   display_name: "Using Kubernetes native secret management"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Secret Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-using-kubernetes-native-secret-management{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -2,7 +2,7 @@
 title: "SQS queue exposed"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/sqs_queue_exposed"
+  name: ""aws/sqs_queue_exposed""
   id: "ansible-aws-sqs-queue-exposed"
   display_name: "SQS queue exposed"
   cloud_provider: "AWS"

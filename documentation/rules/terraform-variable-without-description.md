@@ -1,11 +1,11 @@
 ---
 title: "Variable without description"
-group_id: "Terraform / Terraform"
+group_id: "Terraform"
 meta:
-  name: "terraform/variable_without_description"
+  name: "variable_without_description"
   id: "terraform-variable-without-description"
   display_name: "Variable without description"
-  cloud_provider: "Terraform"
+  cloud_provider: ""
   platform: "Terraform"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}terraform-variable-without-description{{< /copyable-code >}}
-
-**Provider:** Terraform
 
 **Platform:** Terraform
 

@@ -2,7 +2,7 @@
 title: "IAM database auth not enabled"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/iam_database_auth_not_enabled"
+  name: ""aws/iam_database_auth_not_enabled""
   id: "terraform-aws-iam-database-auth-not-enabled"
   display_name: "IAM database auth not enabled"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "AMI shared with multiple accounts"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/ami_shared_with_multiple_accounts"
+  name: ""aws/ami_shared_with_multiple_accounts""
   id: "terraform-aws-ami-shared-with-multiple-accounts"
   display_name: "AMI shared with multiple accounts"
   cloud_provider: "AWS"

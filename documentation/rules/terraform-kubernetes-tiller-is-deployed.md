@@ -2,7 +2,7 @@
 title: "Tiller (Helm v2) is deployed"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/tiller_is_deployed"
+  name: ""kubernetes/tiller_is_deployed""
   id: "terraform-kubernetes-tiller-is-deployed"
   display_name: "Tiller (Helm v2) is deployed"
   cloud_provider: "Kubernetes"

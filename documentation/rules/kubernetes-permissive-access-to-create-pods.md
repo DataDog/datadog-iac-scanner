@@ -1,11 +1,11 @@
 ---
 title: "Permissive access to create pods"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/permissive_access_to_create_pods"
+  name: "permissive_access_to_create_pods"
   id: "kubernetes-permissive-access-to-create-pods"
   display_name: "Permissive access to create pods"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-permissive-access-to-create-pods{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

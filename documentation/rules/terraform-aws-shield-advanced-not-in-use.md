@@ -2,7 +2,7 @@
 title: "Shield Advanced not in use"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/shield_advanced_not_in_use"
+  name: ""aws/shield_advanced_not_in_use""
   id: "terraform-aws-shield-advanced-not-in-use"
   display_name: "Shield Advanced not in use"
   cloud_provider: "AWS"

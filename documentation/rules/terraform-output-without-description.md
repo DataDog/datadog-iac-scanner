@@ -1,11 +1,11 @@
 ---
 title: "Output without description"
-group_id: "Terraform / Terraform"
+group_id: "Terraform"
 meta:
-  name: "terraform/output_without_description"
+  name: "output_without_description"
   id: "terraform-output-without-description"
   display_name: "Output without description"
-  cloud_provider: "Terraform"
+  cloud_provider: ""
   platform: "Terraform"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}terraform-output-without-description{{< /copyable-code >}}
-
-**Provider:** Terraform
 
 **Platform:** Terraform
 

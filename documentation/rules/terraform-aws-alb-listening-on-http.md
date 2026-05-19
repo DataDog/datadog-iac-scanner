@@ -2,7 +2,7 @@
 title: "ALB listening on HTTP"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/alb_listening_on_http"
+  name: ""aws/alb_listening_on_http""
   id: "terraform-aws-alb-listening-on-http"
   display_name: "ALB listening on HTTP"
   cloud_provider: "AWS"

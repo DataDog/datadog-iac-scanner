@@ -2,7 +2,7 @@
 title: "EC2 instance using API keys"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/ec2_instance_using_api_keys"
+  name: ""aws/ec2_instance_using_api_keys""
   id: "terraform-aws-ec2-instance-using-api-keys"
   display_name: "EC2 instance using API keys"
   cloud_provider: "AWS"

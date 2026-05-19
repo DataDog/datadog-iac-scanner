@@ -2,7 +2,7 @@
 title: "TKE cluster log agent is not enabled"
 group_id: "Terraform / TencentCloud"
 meta:
-  name: "tencentcloud/tke_cluster_log_disabled"
+  name: ""tencentcloud/tke_cluster_log_disabled""
   id: "terraform-tencentcloud-tke-cluster-log-disabled"
   display_name: "TKE cluster log agent is not enabled"
   cloud_provider: "TencentCloud"

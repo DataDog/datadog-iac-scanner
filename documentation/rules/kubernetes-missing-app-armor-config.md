@@ -1,11 +1,11 @@
 ---
 title: "Missing AppArmor profile"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/missing_app_armor_config"
+  name: "missing_app_armor_config"
   id: "kubernetes-missing-app-armor-config"
   display_name: "Missing AppArmor profile"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-missing-app-armor-config{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

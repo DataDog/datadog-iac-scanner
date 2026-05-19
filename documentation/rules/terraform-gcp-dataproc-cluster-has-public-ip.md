@@ -2,7 +2,7 @@
 title: "Dataproc clusters has public IPs"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/dataproc_cluster_has_public_ip"
+  name: ""gcp/dataproc_cluster_has_public_ip""
   id: "terraform-gcp-dataproc-cluster-has-public-ip"
   display_name: "Dataproc clusters has public IPs"
   cloud_provider: "GCP"

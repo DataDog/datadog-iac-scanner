@@ -2,7 +2,7 @@
 title: "ECS service without running tasks"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/ecs_service_without_running_tasks"
+  name: ""aws/ecs_service_without_running_tasks""
   id: "cloudformation-aws-ecs-service-without-running-tasks"
   display_name: "ECS service without running tasks"
   cloud_provider: "AWS"

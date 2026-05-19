@@ -2,7 +2,7 @@
 title: "Check Databricks cluster Azure attribute best practices"
 group_id: "Terraform / Databricks"
 meta:
-  name: "databricks/cluster_azure_attributes"
+  name: ""databricks/cluster_azure_attributes""
   id: "terraform-databricks-cluster-azure-attributes"
   display_name: "Check Databricks cluster Azure attribute best practices"
   cloud_provider: "Databricks"

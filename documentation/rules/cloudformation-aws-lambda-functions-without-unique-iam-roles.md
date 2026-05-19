@@ -2,7 +2,7 @@
 title: "Lambda functions without unique IAM roles"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/lambda_functions_without_unique_iam_roles"
+  name: ""aws/lambda_functions_without_unique_iam_roles""
   id: "cloudformation-aws-lambda-functions-without-unique-iam-roles"
   display_name: "Lambda functions without unique IAM roles"
   cloud_provider: "AWS"

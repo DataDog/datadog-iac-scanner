@@ -2,7 +2,7 @@
 title: "EKS node group remote access"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/eks_node_group_remote_access"
+  name: ""aws/eks_node_group_remote_access""
   id: "cloudformation-aws-eks-node-group-remote-access"
   display_name: "EKS node group remote access"
   cloud_provider: "AWS"

@@ -1,11 +1,11 @@
 ---
 title: "Last user is root"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/last_user_is_root"
+  name: "last_user_is_root"
   id: "dockerfile-last-user-is-root"
   display_name: "Last user is root"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "HIGH"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-last-user-is-root{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

@@ -2,7 +2,7 @@
 title: "Key Vault secrets content type undefined"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/key_vault_secrets_content_type_undefined"
+  name: ""azure/key_vault_secrets_content_type_undefined""
   id: "terraform-azure-key-vault-secrets-content-type-undefined"
   display_name: "Key Vault secrets content type undefined"
   cloud_provider: "Azure"

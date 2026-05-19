@@ -2,7 +2,7 @@
 title: "Container resources limits undefined"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/container_resources_limits_undefined"
+  name: ""kubernetes/container_resources_limits_undefined""
   id: "terraform-kubernetes-container-resources-limits-undefined"
   display_name: "Container resources limits undefined"
   cloud_provider: "Kubernetes"

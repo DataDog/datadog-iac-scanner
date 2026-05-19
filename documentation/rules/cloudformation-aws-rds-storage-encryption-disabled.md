@@ -2,7 +2,7 @@
 title: "RDS storage encryption disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/rds_storage_encryption_disabled"
+  name: ""aws/rds_storage_encryption_disabled""
   id: "cloudformation-aws-rds-storage-encryption-disabled"
   display_name: "RDS storage encryption disabled"
   cloud_provider: "AWS"

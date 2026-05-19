@@ -2,7 +2,7 @@
 title: "S3 bucket CloudTrail logging disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/s3_bucket_cloudtrail_logging_disabled"
+  name: ""aws/s3_bucket_cloudtrail_logging_disabled""
   id: "cloudformation-aws-s3-bucket-cloudtrail-logging-disabled"
   display_name: "S3 bucket CloudTrail logging disabled"
   cloud_provider: "AWS"

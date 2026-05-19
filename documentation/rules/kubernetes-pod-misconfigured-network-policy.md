@@ -1,11 +1,11 @@
 ---
 title: "Pod misconfigured network policy"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/pod_misconfigured_network_policy"
+  name: "pod_misconfigured_network_policy"
   id: "kubernetes-pod-misconfigured-network-policy"
   display_name: "Pod misconfigured network policy"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-pod-misconfigured-network-policy{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

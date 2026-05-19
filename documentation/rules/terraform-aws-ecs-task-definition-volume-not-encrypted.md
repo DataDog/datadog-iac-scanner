@@ -2,7 +2,7 @@
 title: "ECS task definition volume not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/ecs_task_definition_volume_not_encrypted"
+  name: ""aws/ecs_task_definition_volume_not_encrypted""
   id: "terraform-aws-ecs-task-definition-volume-not-encrypted"
   display_name: "ECS task definition volume not encrypted"
   cloud_provider: "AWS"

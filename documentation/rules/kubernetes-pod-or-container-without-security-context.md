@@ -1,11 +1,11 @@
 ---
 title: "Pod or container without security context"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/pod_or_container_without_security_context"
+  name: "pod_or_container_without_security_context"
   id: "kubernetes-pod-or-container-without-security-context"
   display_name: "Pod or container without security context"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-pod-or-container-without-security-context{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

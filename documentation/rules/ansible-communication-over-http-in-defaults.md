@@ -1,11 +1,11 @@
 ---
 title: "Communication over HTTP in defaults"
-group_id: "Ansible / Ansible"
+group_id: "Ansible"
 meta:
-  name: "ansible/communication_over_http_in_defaults"
+  name: "communication_over_http_in_defaults"
   id: "ansible-communication-over-http-in-defaults"
   display_name: "Communication over HTTP in defaults"
-  cloud_provider: "Ansible"
+  cloud_provider: ""
   platform: "Ansible"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}ansible-communication-over-http-in-defaults{{< /copyable-code >}}
-
-**Provider:** Ansible
 
 **Platform:** Ansible
 

@@ -2,7 +2,7 @@
 title: "Remote Desktop port open to internet"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/remote_desktop_port_open_to_internet"
+  name: ""aws/remote_desktop_port_open_to_internet""
   id: "terraform-aws-remote-desktop-port-open-to-internet"
   display_name: "Remote Desktop port open to internet"
   cloud_provider: "AWS"

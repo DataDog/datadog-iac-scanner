@@ -2,7 +2,7 @@
 title: "RDS Multi-AZ deployment disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/rds_multi_az_deployment_disabled"
+  name: ""aws/rds_multi_az_deployment_disabled""
   id: "cloudformation-aws-rds-multi-az-deployment-disabled"
   display_name: "RDS Multi-AZ deployment disabled"
   cloud_provider: "AWS"

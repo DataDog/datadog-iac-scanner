@@ -1,11 +1,11 @@
 ---
 title: "Peer auto TLS set to true"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/peer_auto_tls_set_to_true"
+  name: "peer_auto_tls_set_to_true"
   id: "kubernetes-peer-auto-tls-set-to-true"
   display_name: "Peer auto TLS set to true"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-peer-auto-tls-set-to-true{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

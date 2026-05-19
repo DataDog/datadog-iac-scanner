@@ -2,7 +2,7 @@
 title: "Certificate RSA key bytes lower than 256"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/certificate_rsa_key_bytes_lower_than_256"
+  name: ""aws/certificate_rsa_key_bytes_lower_than_256""
   id: "ansible-aws-certificate-rsa-key-bytes-lower-than-256"
   display_name: "Certificate RSA key bytes lower than 256"
   cloud_provider: "AWS"

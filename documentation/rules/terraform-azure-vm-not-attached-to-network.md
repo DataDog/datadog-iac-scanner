@@ -2,7 +2,7 @@
 title: "VM not attached to network"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/vm_not_attached_to_network"
+  name: ""azure/vm_not_attached_to_network""
   id: "terraform-azure-vm-not-attached-to-network"
   display_name: "VM not attached to network"
   cloud_provider: "Azure"

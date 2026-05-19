@@ -2,7 +2,7 @@
 title: "Network policy disabled"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/network_policy_disabled"
+  name: ""gcp/network_policy_disabled""
   id: "terraform-gcp-network-policy-disabled"
   display_name: "Network policy disabled"
   cloud_provider: "GCP"

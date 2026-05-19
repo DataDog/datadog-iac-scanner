@@ -1,11 +1,11 @@
 ---
 title: "Insecure port not properly set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/insecure_port_not_properly_set"
+  name: "insecure_port_not_properly_set"
   id: "kubernetes-insecure-port-not-properly-set"
   display_name: "Insecure port not properly set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-insecure-port-not-properly-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

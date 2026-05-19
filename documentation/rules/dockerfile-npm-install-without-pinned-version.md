@@ -1,11 +1,11 @@
 ---
 title: "npm install command without pinned version"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/npm_install_without_pinned_version"
+  name: "npm_install_without_pinned_version"
   id: "dockerfile-npm-install-without-pinned-version"
   display_name: "npm install command without pinned version"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-npm-install-without-pinned-version{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

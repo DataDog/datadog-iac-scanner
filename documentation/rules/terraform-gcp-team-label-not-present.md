@@ -2,7 +2,7 @@
 title: "Team label missing on GCP resource"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/team_label_not_present"
+  name: ""gcp/team_label_not_present""
   id: "terraform-gcp-team-label-not-present"
   display_name: "Team label missing on GCP resource"
   cloud_provider: "GCP"

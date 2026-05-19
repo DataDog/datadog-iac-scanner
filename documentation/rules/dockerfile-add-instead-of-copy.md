@@ -1,11 +1,11 @@
 ---
 title: "ADD instead of COPY"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/add_instead_of_copy"
+  name: "add_instead_of_copy"
   id: "dockerfile-add-instead-of-copy"
   display_name: "ADD instead of COPY"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-add-instead-of-copy{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

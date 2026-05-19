@@ -1,11 +1,11 @@
 ---
 title: "CronJob deadline not configured"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/cronjob_deadline_not_configured"
+  name: "cronjob_deadline_not_configured"
   id: "kubernetes-cronjob-deadline-not-configured"
   display_name: "CronJob deadline not configured"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Resource Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-cronjob-deadline-not-configured{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

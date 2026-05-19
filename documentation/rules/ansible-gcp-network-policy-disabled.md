@@ -2,7 +2,7 @@
 title: "Network policy disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/network_policy_disabled"
+  name: ""gcp/network_policy_disabled""
   id: "ansible-gcp-network-policy-disabled"
   display_name: "Network policy disabled"
   cloud_provider: "GCP"

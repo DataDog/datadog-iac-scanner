@@ -2,7 +2,7 @@
 title: "Instance with no VPC"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/instance_with_no_vpc"
+  name: ""aws/instance_with_no_vpc""
   id: "terraform-aws-instance-with-no-vpc"
   display_name: "Instance with no VPC"
   cloud_provider: "AWS"

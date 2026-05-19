@@ -2,7 +2,7 @@
 title: "Cloud Run service is public"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/cloud_run_service_is_public"
+  name: ""gcp/cloud_run_service_is_public""
   id: "terraform-gcp-cloud-run-service-is-public"
   display_name: "Cloud Run service is public"
   cloud_provider: "GCP"

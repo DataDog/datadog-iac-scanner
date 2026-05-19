@@ -2,7 +2,7 @@
 title: "App Service not using latest TLS encryption version"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/app_service_not_using_latest_tls_encryption_version"
+  name: ""azure/app_service_not_using_latest_tls_encryption_version""
   id: "terraform-azure-app-service-not-using-latest-tls-encryption-version"
   display_name: "App Service not using latest TLS encryption version"
   cloud_provider: "Azure"

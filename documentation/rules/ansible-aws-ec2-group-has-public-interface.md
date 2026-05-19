@@ -2,7 +2,7 @@
 title: "EC2 security group allows public access"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/ec2_group_has_public_interface"
+  name: ""aws/ec2_group_has_public_interface""
   id: "ansible-aws-ec2-group-has-public-interface"
   display_name: "EC2 security group allows public access"
   cloud_provider: "AWS"

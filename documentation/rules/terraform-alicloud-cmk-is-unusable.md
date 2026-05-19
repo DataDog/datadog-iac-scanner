@@ -2,7 +2,7 @@
 title: "CMK is unusable"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/cmk_is_unusable"
+  name: ""alicloud/cmk_is_unusable""
   id: "terraform-alicloud-cmk-is-unusable"
   display_name: "CMK is unusable"
   cloud_provider: "Alicloud"

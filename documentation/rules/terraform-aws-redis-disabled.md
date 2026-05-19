@@ -2,7 +2,7 @@
 title: "Redis disabled"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/redis_disabled"
+  name: ""aws/redis_disabled""
   id: "terraform-aws-redis-disabled"
   display_name: "Redis disabled"
   cloud_provider: "AWS"

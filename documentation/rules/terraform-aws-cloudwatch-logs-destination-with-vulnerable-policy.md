@@ -2,7 +2,7 @@
 title: "CloudWatch logs destination with vulnerable policy"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/cloudwatch_logs_destination_with_vulnerable_policy"
+  name: ""aws/cloudwatch_logs_destination_with_vulnerable_policy""
   id: "terraform-aws-cloudwatch-logs-destination-with-vulnerable-policy"
   display_name: "CloudWatch logs destination with vulnerable policy"
   cloud_provider: "AWS"

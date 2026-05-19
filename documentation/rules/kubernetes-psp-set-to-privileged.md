@@ -1,11 +1,11 @@
 ---
 title: "PSP set to privileged"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/psp_set_to_privileged"
+  name: "psp_set_to_privileged"
   id: "kubernetes-psp-set-to-privileged"
   display_name: "PSP set to privileged"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-psp-set-to-privileged{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

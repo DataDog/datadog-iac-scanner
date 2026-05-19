@@ -2,7 +2,7 @@
 title: "Redis entirely accessible"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/redis_entirely_accessible"
+  name: ""azure/redis_entirely_accessible""
   id: "terraform-azure-redis-entirely-accessible"
   display_name: "Redis entirely accessible"
   cloud_provider: "Azure"

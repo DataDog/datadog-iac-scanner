@@ -2,7 +2,7 @@
 title: "ActionTrail trail OSS bucket is publicly accessible"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/actiontrail_trail_oss_bucket_is_publicly_accessible"
+  name: ""alicloud/actiontrail_trail_oss_bucket_is_publicly_accessible""
   id: "terraform-alicloud-actiontrail-trail-oss-bucket-is-publicly-accessible"
   display_name: "ActionTrail trail OSS bucket is publicly accessible"
   cloud_provider: "Alicloud"

@@ -2,7 +2,7 @@
 title: "Password without reuse prevention"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/password_without_reuse_prevention"
+  name: ""aws/password_without_reuse_prevention""
   id: "ansible-aws-password-without-reuse-prevention"
   display_name: "Password without reuse prevention"
   cloud_provider: "AWS"

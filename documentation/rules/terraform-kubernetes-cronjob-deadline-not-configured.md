@@ -2,7 +2,7 @@
 title: "CronJob deadline not configured"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/cronjob_deadline_not_configured"
+  name: ""kubernetes/cronjob_deadline_not_configured""
   id: "terraform-kubernetes-cronjob-deadline-not-configured"
   display_name: "CronJob deadline not configured"
   cloud_provider: "Kubernetes"

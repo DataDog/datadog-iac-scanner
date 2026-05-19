@@ -1,11 +1,11 @@
 ---
 title: "Service does not target a Pod"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/service_does_not_target_pod"
+  name: "service_does_not_target_pod"
   id: "kubernetes-service-does-not-target-pod"
   display_name: "Service does not target a Pod"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-service-does-not-target-pod{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

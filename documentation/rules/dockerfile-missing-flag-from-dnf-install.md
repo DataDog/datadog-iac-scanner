@@ -1,11 +1,11 @@
 ---
 title: "Missing flag from dnf install"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/missing_flag_from_dnf_install"
+  name: "missing_flag_from_dnf_install"
   id: "dockerfile-missing-flag-from-dnf-install"
   display_name: "Missing flag from dnf install"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-missing-flag-from-dnf-install{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

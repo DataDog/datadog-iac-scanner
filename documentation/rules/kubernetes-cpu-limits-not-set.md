@@ -1,11 +1,11 @@
 ---
 title: "CPU limits not set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/cpu_limits_not_set"
+  name: "cpu_limits_not_set"
   id: "kubernetes-cpu-limits-not-set"
   display_name: "CPU limits not set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Resource Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-cpu-limits-not-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

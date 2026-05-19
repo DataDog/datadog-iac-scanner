@@ -2,7 +2,7 @@
 title: "Service account name undefined or empty"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/service_account_name_undefined_or_empty"
+  name: ""kubernetes/service_account_name_undefined_or_empty""
   id: "terraform-kubernetes-service-account-name-undefined-or-empty"
   display_name: "Service account name undefined or empty"
   cloud_provider: "Kubernetes"

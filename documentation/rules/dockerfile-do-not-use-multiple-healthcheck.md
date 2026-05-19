@@ -1,11 +1,11 @@
 ---
 title: "Multiple HEALTHCHECK instructions"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/do_not_use_multiple_healthcheck"
+  name: "do_not_use_multiple_healthcheck"
   id: "dockerfile-do-not-use-multiple-healthcheck"
   display_name: "Multiple HEALTHCHECK instructions"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-do-not-use-multiple-healthcheck{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

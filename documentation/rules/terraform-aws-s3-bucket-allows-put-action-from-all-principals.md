@@ -2,7 +2,7 @@
 title: "S3 bucket allows put action from all principals"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/s3_bucket_allows_put_action_from_all_principals"
+  name: ""aws/s3_bucket_allows_put_action_from_all_principals""
   id: "terraform-aws-s3-bucket-allows-put-action-from-all-principals"
   display_name: "S3 bucket allows put action from all principals"
   cloud_provider: "AWS"

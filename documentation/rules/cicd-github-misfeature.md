@@ -2,7 +2,7 @@
 title: "Misfeature"
 group_id: "CICD / GitHub"
 meta:
-  name: "github/misfeature"
+  name: ""github/misfeature""
   id: "cicd-github-misfeature"
   display_name: "Misfeature"
   cloud_provider: "GitHub"

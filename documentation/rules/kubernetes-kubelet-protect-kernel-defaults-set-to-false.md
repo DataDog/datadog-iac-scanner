@@ -1,11 +1,11 @@
 ---
 title: "Kubelet protect-kernel-defaults set to false"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/kubelet_protect_kernel_defaults_set_to_false"
+  name: "kubelet_protect_kernel_defaults_set_to_false"
   id: "kubernetes-kubelet-protect-kernel-defaults-set-to-false"
   display_name: "Kubelet protect-kernel-defaults set to false"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-kubelet-protect-kernel-defaults-set-to-false{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -2,7 +2,7 @@
 title: "Default Azure storage account network access is too permissive"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/default_azure_storage_account_network_access_is_too_permissive"
+  name: ""azure/default_azure_storage_account_network_access_is_too_permissive""
   id: "terraform-azure-default-azure-storage-account-network-access-is-too-permissive"
   display_name: "Default Azure storage account network access is too permissive"
   cloud_provider: "Azure"

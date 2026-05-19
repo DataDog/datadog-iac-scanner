@@ -2,7 +2,7 @@
 title: "Volume mount with OS directory write permissions"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/volume_mount_with_os_directory_write_permissions"
+  name: ""kubernetes/volume_mount_with_os_directory_write_permissions""
   id: "terraform-kubernetes-volume-mount-with-os-directory-write-permissions"
   display_name: "Volume mount with OS directory write permissions"
   cloud_provider: "Kubernetes"

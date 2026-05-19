@@ -1,11 +1,11 @@
 ---
 title: "Shell running a pipe without the pipefail flag"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/shell_running_a_pipe_without_pipefail_flag"
+  name: "shell_running_a_pipe_without_pipefail_flag"
   id: "dockerfile-shell-running-a-pipe-without-pipefail-flag"
   display_name: "Shell running a pipe without the pipefail flag"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Insecure Defaults"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-shell-running-a-pipe-without-pipefail-flag{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

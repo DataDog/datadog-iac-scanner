@@ -2,7 +2,7 @@
 title: "Security contact email"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/security_contact_email"
+  name: ""azure/security_contact_email""
   id: "terraform-azure-security-contact-email"
   display_name: "Security contact email"
   cloud_provider: "Azure"

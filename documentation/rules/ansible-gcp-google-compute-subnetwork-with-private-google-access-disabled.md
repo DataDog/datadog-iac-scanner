@@ -2,7 +2,7 @@
 title: "Google Compute subnetwork with Private Google Access disabled"
 group_id: "Ansible / GCP"
 meta:
-  name: "gcp/google_compute_subnetwork_with_private_google_access_disabled"
+  name: ""gcp/google_compute_subnetwork_with_private_google_access_disabled""
   id: "ansible-gcp-google-compute-subnetwork-with-private-google-access-disabled"
   display_name: "Google Compute subnetwork with Private Google Access disabled"
   cloud_provider: "GCP"

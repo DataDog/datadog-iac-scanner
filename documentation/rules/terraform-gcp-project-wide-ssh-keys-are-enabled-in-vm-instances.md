@@ -2,7 +2,7 @@
 title: "Project-wide SSH keys are enabled in VM instances"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/project_wide_ssh_keys_are_enabled_in_vm_instances"
+  name: ""gcp/project_wide_ssh_keys_are_enabled_in_vm_instances""
   id: "terraform-gcp-project-wide-ssh-keys-are-enabled-in-vm-instances"
   display_name: "Project-wide SSH keys are enabled in VM instances"
   cloud_provider: "GCP"

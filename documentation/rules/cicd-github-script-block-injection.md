@@ -2,7 +2,7 @@
 title: "Script block injection"
 group_id: "CICD / GitHub"
 meta:
-  name: "github/script_block_injection"
+  name: ""github/script_block_injection""
   id: "cicd-github-script-block-injection"
   display_name: "Script block injection"
   cloud_provider: "GitHub"

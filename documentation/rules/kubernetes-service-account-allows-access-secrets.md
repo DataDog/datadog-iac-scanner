@@ -1,11 +1,11 @@
 ---
 title: "ServiceAccount allows access to secrets"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/service_account_allows_access_secrets"
+  name: "service_account_allows_access_secrets"
   id: "kubernetes-service-account-allows-access-secrets"
   display_name: "ServiceAccount allows access to secrets"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Secret Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-service-account-allows-access-secrets{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

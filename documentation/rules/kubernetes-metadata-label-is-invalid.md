@@ -1,11 +1,11 @@
 ---
 title: "Invalid metadata label"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/metadata_label_is_invalid"
+  name: "metadata_label_is_invalid"
   id: "kubernetes-metadata-label-is-invalid"
   display_name: "Invalid metadata label"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-metadata-label-is-invalid{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

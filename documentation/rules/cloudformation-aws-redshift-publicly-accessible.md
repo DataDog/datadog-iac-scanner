@@ -2,7 +2,7 @@
 title: "Redshift publicly accessible"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/redshift_publicly_accessible"
+  name: ""aws/redshift_publicly_accessible""
   id: "cloudformation-aws-redshift-publicly-accessible"
   display_name: "Redshift publicly accessible"
   cloud_provider: "AWS"

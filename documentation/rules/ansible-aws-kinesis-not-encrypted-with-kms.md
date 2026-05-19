@@ -2,7 +2,7 @@
 title: "Kinesis not encrypted with KMS"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/kinesis_not_encrypted_with_kms"
+  name: ""aws/kinesis_not_encrypted_with_kms""
   id: "ansible-aws-kinesis-not-encrypted-with-kms"
   display_name: "Kinesis not encrypted with KMS"
   cloud_provider: "AWS"

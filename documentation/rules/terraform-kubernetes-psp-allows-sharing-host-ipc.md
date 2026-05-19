@@ -2,7 +2,7 @@
 title: "PSP allows sharing host IPC"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/psp_allows_sharing_host_ipc"
+  name: ""kubernetes/psp_allows_sharing_host_ipc""
   id: "terraform-kubernetes-psp-allows-sharing-host-ipc"
   display_name: "PSP allows sharing host IPC"
   cloud_provider: "Kubernetes"

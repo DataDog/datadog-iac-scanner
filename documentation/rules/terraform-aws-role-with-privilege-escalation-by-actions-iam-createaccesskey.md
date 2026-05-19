@@ -2,7 +2,7 @@
 title: "Role with privilege escalation by actions 'iam:CreateAccessKey'"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/role_with_privilege_escalation_by_actions_iam_createaccesskey"
+  name: ""aws/role_with_privilege_escalation_by_actions_iam_createaccesskey""
   id: "terraform-aws-role-with-privilege-escalation-by-actions-iam-createaccesskey"
   display_name: "Role with privilege escalation by actions 'iam:CreateAccessKey'"
   cloud_provider: "AWS"

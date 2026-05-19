@@ -2,7 +2,7 @@
 title: "Key Vault soft delete is disabled"
 group_id: "Ansible / Azure"
 meta:
-  name: "azure/key_vault_soft_delete_is_disabled"
+  name: ""azure/key_vault_soft_delete_is_disabled""
   id: "ansible-azure-key-vault-soft-delete-is-disabled"
   display_name: "Key Vault soft delete is disabled"
   cloud_provider: "Azure"

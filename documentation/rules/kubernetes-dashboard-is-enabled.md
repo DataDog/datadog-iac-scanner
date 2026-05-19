@@ -1,11 +1,11 @@
 ---
 title: "Dashboard is enabled"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/dashboard_is_enabled"
+  name: "dashboard_is_enabled"
   id: "kubernetes-dashboard-is-enabled"
   display_name: "Dashboard is enabled"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-dashboard-is-enabled{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

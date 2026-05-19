@@ -2,7 +2,7 @@
 title: "Service type is NodePort"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/service_type_is_nodeport"
+  name: ""kubernetes/service_type_is_nodeport""
   id: "terraform-kubernetes-service-type-is-nodeport"
   display_name: "Service type is NodePort"
   cloud_provider: "Kubernetes"

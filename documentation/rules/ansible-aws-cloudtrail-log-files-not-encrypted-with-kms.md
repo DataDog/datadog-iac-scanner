@@ -2,7 +2,7 @@
 title: "CloudTrail log files not encrypted with KMS"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/cloudtrail_log_files_not_encrypted_with_kms"
+  name: ""aws/cloudtrail_log_files_not_encrypted_with_kms""
   id: "ansible-aws-cloudtrail-log-files-not-encrypted-with-kms"
   display_name: "CloudTrail log files not encrypted with KMS"
   cloud_provider: "AWS"

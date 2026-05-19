@@ -2,7 +2,7 @@
 title: "Lambda permission misconfigured"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/lambda_permission_misconfigured"
+  name: ""aws/lambda_permission_misconfigured""
   id: "ansible-aws-lambda-permission-misconfigured"
   display_name: "Lambda permission misconfigured"
   cloud_provider: "AWS"

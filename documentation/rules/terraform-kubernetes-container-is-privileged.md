@@ -2,7 +2,7 @@
 title: "Container is privileged"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/container_is_privileged"
+  name: ""kubernetes/container_is_privileged""
   id: "terraform-kubernetes-container-is-privileged"
   display_name: "Container is privileged"
   cloud_provider: "Kubernetes"

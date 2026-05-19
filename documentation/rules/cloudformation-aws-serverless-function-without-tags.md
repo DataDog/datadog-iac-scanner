@@ -2,7 +2,7 @@
 title: "Serverless function without tags"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/serverless_function_without_tags"
+  name: ""aws/serverless_function_without_tags""
   id: "cloudformation-aws-serverless-function-without-tags"
   display_name: "Serverless function without tags"
   cloud_provider: "AWS"

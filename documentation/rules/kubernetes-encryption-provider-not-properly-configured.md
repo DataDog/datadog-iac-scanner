@@ -1,11 +1,11 @@
 ---
 title: "Encryption provider not properly configured"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/encryption_provider_not_properly_configured"
+  name: "encryption_provider_not_properly_configured"
   id: "kubernetes-encryption-provider-not-properly-configured"
   display_name: "Encryption provider not properly configured"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Encryption"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-encryption-provider-not-properly-configured{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

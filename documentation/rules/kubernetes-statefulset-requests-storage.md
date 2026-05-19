@@ -1,11 +1,11 @@
 ---
 title: "StatefulSet requests storage"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/statefulset_requests_storage"
+  name: "statefulset_requests_storage"
   id: "kubernetes-statefulset-requests-storage"
   display_name: "StatefulSet requests storage"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Build Process"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-statefulset-requests-storage{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

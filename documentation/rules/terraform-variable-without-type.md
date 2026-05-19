@@ -1,11 +1,11 @@
 ---
 title: "Variable without type"
-group_id: "Terraform / Terraform"
+group_id: "Terraform"
 meta:
-  name: "terraform/variable_without_type"
+  name: "variable_without_type"
   id: "terraform-variable-without-type"
   display_name: "Variable without type"
-  cloud_provider: "Terraform"
+  cloud_provider: ""
   platform: "Terraform"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}terraform-variable-without-type{{< /copyable-code >}}
-
-**Provider:** Terraform
 
 **Platform:** Terraform
 

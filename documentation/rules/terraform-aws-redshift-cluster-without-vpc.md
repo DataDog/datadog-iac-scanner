@@ -2,7 +2,7 @@
 title: "Redshift cluster without VPC"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/redshift_cluster_without_vpc"
+  name: ""aws/redshift_cluster_without_vpc""
   id: "terraform-aws-redshift-cluster-without-vpc"
   display_name: "Redshift cluster without VPC"
   cloud_provider: "AWS"

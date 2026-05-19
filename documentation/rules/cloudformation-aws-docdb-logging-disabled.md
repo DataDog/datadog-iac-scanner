@@ -2,7 +2,7 @@
 title: "DocDB logging is disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/docdb_logging_disabled"
+  name: ""aws/docdb_logging_disabled""
   id: "cloudformation-aws-docdb-logging-disabled"
   display_name: "DocDB logging is disabled"
   cloud_provider: "AWS"

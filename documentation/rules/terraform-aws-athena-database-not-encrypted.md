@@ -2,7 +2,7 @@
 title: "Athena database not encrypted"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/athena_database_not_encrypted"
+  name: ""aws/athena_database_not_encrypted""
   id: "terraform-aws-athena-database-not-encrypted"
   display_name: "Athena database not encrypted"
   cloud_provider: "AWS"

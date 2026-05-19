@@ -2,7 +2,7 @@
 title: "RAM account password policy without reuse prevention"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/ram_account_password_policy_without_reuse_prevention"
+  name: ""alicloud/ram_account_password_policy_without_reuse_prevention""
   id: "terraform-alicloud-ram-account-password-policy-without-reuse-prevention"
   display_name: "RAM account password policy without reuse prevention"
   cloud_provider: "Alicloud"

@@ -2,7 +2,7 @@
 title: "API Gateway with open access"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/api_gateway_with_open_access"
+  name: ""aws/api_gateway_with_open_access""
   id: "cloudformation-aws-api-gateway-with-open-access"
   display_name: "API Gateway with open access"
   cloud_provider: "AWS"

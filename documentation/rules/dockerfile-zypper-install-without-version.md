@@ -1,11 +1,11 @@
 ---
 title: "Zypper install without explicit package version"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/zypper_install_without_version"
+  name: "zypper_install_without_version"
   id: "dockerfile-zypper-install-without-version"
   display_name: "Zypper install without explicit package version"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Supply-Chain"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-zypper-install-without-version{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

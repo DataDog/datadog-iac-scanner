@@ -2,7 +2,7 @@
 title: "Network interfaces with public IP"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/network_interfaces_with_public_ip"
+  name: ""azure/network_interfaces_with_public_ip""
   id: "terraform-azure-network-interfaces-with-public-ip"
   display_name: "Network interfaces with public IP"
   cloud_provider: "Azure"

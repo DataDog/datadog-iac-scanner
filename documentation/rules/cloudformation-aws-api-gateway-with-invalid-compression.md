@@ -2,7 +2,7 @@
 title: "API Gateway with invalid compression"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/api_gateway_with_invalid_compression"
+  name: ""aws/api_gateway_with_invalid_compression""
   id: "cloudformation-aws-api-gateway-with-invalid-compression"
   display_name: "API Gateway with invalid compression"
   cloud_provider: "AWS"

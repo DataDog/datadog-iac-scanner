@@ -2,7 +2,7 @@
 title: "RAM account password policy does not require symbols"
 group_id: "Terraform / Alicloud"
 meta:
-  name: "alicloud/ram_account_password_policy_not_required_symbols"
+  name: ""alicloud/ram_account_password_policy_not_required_symbols""
   id: "terraform-alicloud-ram-account-password-policy-not-required-symbols"
   display_name: "RAM account password policy does not require symbols"
   cloud_provider: "Alicloud"

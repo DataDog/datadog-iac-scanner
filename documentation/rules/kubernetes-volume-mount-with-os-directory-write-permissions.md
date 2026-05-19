@@ -1,11 +1,11 @@
 ---
 title: "Volume mount with OS directory write permissions"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/volume_mount_with_os_directory_write_permissions"
+  name: "volume_mount_with_os_directory_write_permissions"
   id: "kubernetes-volume-mount-with-os-directory-write-permissions"
   display_name: "Volume mount with OS directory write permissions"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Resource Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-volume-mount-with-os-directory-write-permissions{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

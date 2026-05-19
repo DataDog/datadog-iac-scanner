@@ -1,11 +1,11 @@
 ---
 title: "Role binding to default service account"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/role_binding_to_default_service_account"
+  name: "role_binding_to_default_service_account"
   id: "kubernetes-role-binding-to-default-service-account"
   display_name: "Role binding to default service account"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Defaults"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-role-binding-to-default-service-account{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

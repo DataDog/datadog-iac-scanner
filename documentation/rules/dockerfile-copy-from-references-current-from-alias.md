@@ -1,11 +1,11 @@
 ---
 title: "COPY --from references current FROM alias"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/copy_from_references_current_from_alias"
+  name: "copy_from_references_current_from_alias"
   id: "dockerfile-copy-from-references-current-from-alias"
   display_name: "COPY --from references current FROM alias"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Build Process"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-copy-from-references-current-from-alias{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

@@ -2,7 +2,7 @@
 title: "Config rule for encrypted volumes disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/config_rule_for_encryption_volumes_disabled"
+  name: ""aws/config_rule_for_encryption_volumes_disabled""
   id: "cloudformation-aws-config-rule-for-encryption-volumes-disabled"
   display_name: "Config rule for encrypted volumes disabled"
   cloud_provider: "AWS"

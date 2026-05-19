@@ -2,7 +2,7 @@
 title: "Github organization webhook with SSL disabled"
 group_id: "Terraform / GitHub"
 meta:
-  name: "github/organization_webhook_with_ssl_disabled"
+  name: ""github/organization_webhook_with_ssl_disabled""
   id: "terraform-github-organization-webhook-with-ssl-disabled"
   display_name: "Github organization webhook with SSL disabled"
   cloud_provider: "GitHub"

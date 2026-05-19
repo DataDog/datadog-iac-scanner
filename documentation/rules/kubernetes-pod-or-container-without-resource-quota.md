@@ -1,11 +1,11 @@
 ---
 title: "Pod or container without ResourceQuota"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/pod_or_container_without_resource_quota"
+  name: "pod_or_container_without_resource_quota"
   id: "kubernetes-pod-or-container-without-resource-quota"
   display_name: "Pod or container without ResourceQuota"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-pod-or-container-without-resource-quota{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

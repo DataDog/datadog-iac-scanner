@@ -1,11 +1,11 @@
 ---
 title: "Package update without install in same RUN"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/update_instruction_alone"
+  name: "update_instruction_alone"
   id: "dockerfile-update-instruction-alone"
   display_name: "Package update without install in same RUN"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Build Process"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-update-instruction-alone{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

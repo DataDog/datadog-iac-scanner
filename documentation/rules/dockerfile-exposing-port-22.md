@@ -1,11 +1,11 @@
 ---
 title: "Exposing port 22 (SSH)"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/exposing_port_22"
+  name: "exposing_port_22"
   id: "dockerfile-exposing-port-22"
   display_name: "Exposing port 22 (SSH)"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "LOW"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-exposing-port-22{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

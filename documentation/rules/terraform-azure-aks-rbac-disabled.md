@@ -2,7 +2,7 @@
 title: "AKS RBAC disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/aks_rbac_disabled"
+  name: ""azure/aks_rbac_disabled""
   id: "terraform-azure-aks-rbac-disabled"
   display_name: "AKS RBAC disabled"
   cloud_provider: "Azure"

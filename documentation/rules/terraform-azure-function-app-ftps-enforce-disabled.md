@@ -2,7 +2,7 @@
 title: "Function App FTPS enforce disabled"
 group_id: "Terraform / Azure"
 meta:
-  name: "azure/function_app_ftps_enforce_disabled"
+  name: ""azure/function_app_ftps_enforce_disabled""
   id: "terraform-azure-function-app-ftps-enforce-disabled"
   display_name: "Function App FTPS enforce disabled"
   cloud_provider: "Azure"

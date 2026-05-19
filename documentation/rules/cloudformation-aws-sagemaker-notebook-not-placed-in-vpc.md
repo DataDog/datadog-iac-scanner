@@ -2,7 +2,7 @@
 title: "SageMaker notebook not placed in VPC"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/sagemaker_notebook_not_placed_in_vpc"
+  name: ""aws/sagemaker_notebook_not_placed_in_vpc""
   id: "cloudformation-aws-sagemaker-notebook-not-placed-in-vpc"
   display_name: "SageMaker notebook not placed in VPC"
   cloud_provider: "AWS"

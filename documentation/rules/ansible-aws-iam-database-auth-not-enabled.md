@@ -2,7 +2,7 @@
 title: "IAM database authentication is not enabled"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/iam_database_auth_not_enabled"
+  name: ""aws/iam_database_auth_not_enabled""
   id: "ansible-aws-iam-database-auth-not-enabled"
   display_name: "IAM database authentication is not enabled"
   cloud_provider: "AWS"

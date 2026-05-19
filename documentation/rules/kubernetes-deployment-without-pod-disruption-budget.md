@@ -1,11 +1,11 @@
 ---
 title: "Deployment without PodDisruptionBudget"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/deployment_without_pod_disruption_budget"
+  name: "deployment_without_pod_disruption_budget"
   id: "kubernetes-deployment-without-pod-disruption-budget"
   display_name: "Deployment without PodDisruptionBudget"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Availability"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-deployment-without-pod-disruption-budget{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

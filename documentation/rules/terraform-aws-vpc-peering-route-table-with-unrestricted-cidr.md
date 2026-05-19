@@ -2,7 +2,7 @@
 title: "VPC peering route table with unrestricted CIDR"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/vpc_peering_route_table_with_unrestricted_cidr"
+  name: ""aws/vpc_peering_route_table_with_unrestricted_cidr""
   id: "terraform-aws-vpc-peering-route-table-with-unrestricted-cidr"
   display_name: "VPC peering route table with unrestricted CIDR"
   cloud_provider: "AWS"

@@ -1,11 +1,11 @@
 ---
 title: "Run yarn clean after yarn install"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/run_yarn_clean_after_yarn_install"
+  name: "run_yarn_clean_after_yarn_install"
   id: "dockerfile-run-yarn-clean-after-yarn-install"
   display_name: "Run yarn clean after yarn install"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-run-yarn-clean-after-yarn-install{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

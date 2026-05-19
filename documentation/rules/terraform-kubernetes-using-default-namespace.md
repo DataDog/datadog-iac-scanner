@@ -2,7 +2,7 @@
 title: "Using default namespace"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/using_default_namespace"
+  name: ""kubernetes/using_default_namespace""
   id: "terraform-kubernetes-using-default-namespace"
   display_name: "Using default namespace"
   cloud_provider: "Kubernetes"

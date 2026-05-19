@@ -2,7 +2,7 @@
 title: "Sensitive port is exposed to small public network"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/sensitive_port_is_exposed_to_small_public_network"
+  name: ""aws/sensitive_port_is_exposed_to_small_public_network""
   id: "terraform-aws-sensitive-port-is-exposed-to-small-public-network"
   display_name: "Sensitive port is exposed to small public network"
   cloud_provider: "AWS"

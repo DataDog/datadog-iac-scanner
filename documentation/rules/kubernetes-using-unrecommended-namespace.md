@@ -1,11 +1,11 @@
 ---
 title: "Using unrecommended namespace"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/using_unrecommended_namespace"
+  name: "using_unrecommended_namespace"
   id: "kubernetes-using-unrecommended-namespace"
   display_name: "Using unrecommended namespace"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-using-unrecommended-namespace{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

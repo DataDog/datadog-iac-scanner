@@ -2,7 +2,7 @@
 title: "Default security groups with unrestricted traffic"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/default_security_groups_with_unrestricted_traffic"
+  name: ""aws/default_security_groups_with_unrestricted_traffic""
   id: "cloudformation-aws-default-security-groups-with-unrestricted-traffic"
   display_name: "Default security groups with unrestricted traffic"
   cloud_provider: "AWS"

@@ -1,11 +1,11 @@
 ---
 title: "Privilege escalation using become plugin"
-group_id: "Ansible / Ansible"
+group_id: "Ansible"
 meta:
-  name: "ansible/privilege_escalation_using_become_plugin"
+  name: "privilege_escalation_using_become_plugin"
   id: "ansible-privilege-escalation-using-become-plugin"
   display_name: "Privilege escalation using become plugin"
-  cloud_provider: "Ansible"
+  cloud_provider: ""
   platform: "Ansible"
   severity: "MEDIUM"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}ansible-privilege-escalation-using-become-plugin{{< /copyable-code >}}
-
-**Provider:** Ansible
 
 **Platform:** Ansible
 

@@ -1,11 +1,11 @@
 ---
 title: "etcd peer TLS certificate files not properly set"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/etcd_peer_tls_certificate_files_not_properly_set"
+  name: "etcd_peer_tls_certificate_files_not_properly_set"
   id: "kubernetes-etcd-peer-tls-certificate-files-not-properly-set"
   display_name: "etcd peer TLS certificate files not properly set"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-etcd-peer-tls-certificate-files-not-properly-set{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

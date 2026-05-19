@@ -1,11 +1,11 @@
 ---
 title: "Certificate authority is not unique"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/not_unique_certificate_authority"
+  name: "not_unique_certificate_authority"
   id: "kubernetes-not-unique-certificate-authority"
   display_name: "Certificate authority is not unique"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Secret Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-not-unique-certificate-authority{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

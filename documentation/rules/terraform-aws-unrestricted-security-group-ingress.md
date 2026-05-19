@@ -2,7 +2,7 @@
 title: "Unrestricted security group ingress"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/unrestricted_security_group_ingress"
+  name: ""aws/unrestricted_security_group_ingress""
   id: "terraform-aws-unrestricted-security-group-ingress"
   display_name: "Unrestricted security group ingress"
   cloud_provider: "AWS"

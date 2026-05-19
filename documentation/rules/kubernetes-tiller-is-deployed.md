@@ -1,11 +1,11 @@
 ---
 title: "Tiller (Helm v2) deployed"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/tiller_is_deployed"
+  name: "tiller_is_deployed"
   id: "kubernetes-tiller-is-deployed"
   display_name: "Tiller (Helm v2) deployed"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-tiller-is-deployed{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

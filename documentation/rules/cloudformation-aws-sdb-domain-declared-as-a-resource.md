@@ -2,7 +2,7 @@
 title: "SDB domain declared as a resource"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/sdb_domain_declared_as_a_resource"
+  name: ""aws/sdb_domain_declared_as_a_resource""
   id: "cloudformation-aws-sdb-domain-declared-as-a-resource"
   display_name: "SDB domain declared as a resource"
   cloud_provider: "AWS"

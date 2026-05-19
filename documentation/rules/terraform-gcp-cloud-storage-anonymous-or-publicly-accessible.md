@@ -2,7 +2,7 @@
 title: "Cloud Storage is anonymous or publicly accessible"
 group_id: "Terraform / GCP"
 meta:
-  name: "gcp/cloud_storage_anonymous_or_publicly_accessible"
+  name: ""gcp/cloud_storage_anonymous_or_publicly_accessible""
   id: "terraform-gcp-cloud-storage-anonymous-or-publicly-accessible"
   display_name: "Cloud Storage is anonymous or publicly accessible"
   cloud_provider: "GCP"

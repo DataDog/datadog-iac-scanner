@@ -2,7 +2,7 @@
 title: "DynamoDB with AWS-owned CMK"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/dynamodb_with_aws_owned_cmk"
+  name: ""aws/dynamodb_with_aws_owned_cmk""
   id: "cloudformation-aws-dynamodb-with-aws-owned-cmk"
   display_name: "DynamoDB with AWS-owned CMK"
   cloud_provider: "AWS"

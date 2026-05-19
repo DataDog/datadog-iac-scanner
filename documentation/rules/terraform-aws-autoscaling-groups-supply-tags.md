@@ -2,7 +2,7 @@
 title: "Autoscaling groups supply tags"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/autoscaling_groups_supply_tags"
+  name: ""aws/autoscaling_groups_supply_tags""
   id: "terraform-aws-autoscaling-groups-supply-tags"
   display_name: "Autoscaling groups supply tags"
   cloud_provider: "AWS"

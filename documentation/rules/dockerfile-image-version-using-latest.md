@@ -1,11 +1,11 @@
 ---
 title: "Image version using latest"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/image_version_using_latest"
+  name: "image_version_using_latest"
   id: "dockerfile-image-version-using-latest"
   display_name: "Image version using latest"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "MEDIUM"
   category: "Best Practices"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-image-version-using-latest{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 

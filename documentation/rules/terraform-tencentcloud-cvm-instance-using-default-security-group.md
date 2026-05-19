@@ -2,7 +2,7 @@
 title: "CVM instance using default security group"
 group_id: "Terraform / TencentCloud"
 meta:
-  name: "tencentcloud/cvm_instance_using_default_security_group"
+  name: ""tencentcloud/cvm_instance_using_default_security_group""
   id: "terraform-tencentcloud-cvm-instance-using-default-security-group"
   display_name: "CVM instance using default security group"
   cloud_provider: "TencentCloud"

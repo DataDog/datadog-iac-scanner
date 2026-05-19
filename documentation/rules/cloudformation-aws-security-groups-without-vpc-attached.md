@@ -2,7 +2,7 @@
 title: "Security groups without VPC attached"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/security_groups_without_vpc_attached"
+  name: ""aws/security_groups_without_vpc_attached""
   id: "cloudformation-aws-security-groups-without-vpc-attached"
   display_name: "Security groups without VPC attached"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "S3 bucket should have bucket policy"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/s3_bucket_should_have_bucket_policy"
+  name: ""aws/s3_bucket_should_have_bucket_policy""
   id: "cloudformation-aws-s3-bucket-should-have-bucket-policy"
   display_name: "S3 bucket should have bucket policy"
   cloud_provider: "AWS"

@@ -1,11 +1,11 @@
 ---
 title: "StatefulSet without service name"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/statefulset_without_service_name"
+  name: "statefulset_without_service_name"
   id: "kubernetes-statefulset-without-service-name"
   display_name: "StatefulSet without service name"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Availability"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-statefulset-without-service-name{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

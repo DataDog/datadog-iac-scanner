@@ -2,7 +2,7 @@
 title: "RDS with backup disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/rds_with_backup_disabled"
+  name: ""aws/rds_with_backup_disabled""
   id: "cloudformation-aws-rds-with-backup-disabled"
   display_name: "RDS with backup disabled"
   cloud_provider: "AWS"

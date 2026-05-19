@@ -1,11 +1,11 @@
 ---
 title: "Workload mounting with sensitive OS directory"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/workload_mounting_with_sensitive_os_directory"
+  name: "workload_mounting_with_sensitive_os_directory"
   id: "kubernetes-workload-mounting-with-sensitive-os-directory"
   display_name: "Workload mounting with sensitive OS directory"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "HIGH"
   category: "Insecure Configurations"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-workload-mounting-with-sensitive-os-directory{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

@@ -1,11 +1,11 @@
 ---
 title: "Namespace lifecycle admission control plugin disabled"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/namespace_lifecycle_admission_control_plugin_disabled"
+  name: "namespace_lifecycle_admission_control_plugin_disabled"
   id: "kubernetes-namespace-lifecycle-admission-control-plugin-disabled"
   display_name: "Namespace lifecycle admission control plugin disabled"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "LOW"
   category: "Build Process"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-namespace-lifecycle-admission-control-plugin-disabled{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

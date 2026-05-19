@@ -2,7 +2,7 @@
 title: "Privilege escalation allowed"
 group_id: "Terraform / Kubernetes"
 meta:
-  name: "kubernetes/privilege_escalation_allowed"
+  name: ""kubernetes/privilege_escalation_allowed""
   id: "terraform-kubernetes-privilege-escalation-allowed"
   display_name: "Privilege escalation allowed"
   cloud_provider: "Kubernetes"

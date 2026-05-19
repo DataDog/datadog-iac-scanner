@@ -2,7 +2,7 @@
 title: "S3 bucket without ignore public ACL"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/s3_bucket_without_ignore_public_acl"
+  name: ""aws/s3_bucket_without_ignore_public_acl""
   id: "cloudformation-aws-s3-bucket-without-ignore-public-acl"
   display_name: "S3 bucket without ignore public ACL"
   cloud_provider: "AWS"

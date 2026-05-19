@@ -2,7 +2,7 @@
 title: "Inline policies are attached to an ECS service"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/inline_policies_are_attached_to_ecs_service"
+  name: ""aws/inline_policies_are_attached_to_ecs_service""
   id: "cloudformation-aws-inline-policies-are-attached-to-ecs-service"
   display_name: "Inline policies are attached to an ECS service"
   cloud_provider: "AWS"

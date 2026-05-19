@@ -2,7 +2,7 @@
 title: "Anonymous definition"
 group_id: "CICD / GitHub"
 meta:
-  name: "github/anonymous_definition"
+  name: ""github/anonymous_definition""
   id: "cicd-github-anonymous-definition"
   display_name: "Anonymous definition"
   cloud_provider: "GitHub"

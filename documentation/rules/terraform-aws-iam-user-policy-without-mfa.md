@@ -2,7 +2,7 @@
 title: "IAM user policy without MFA"
 group_id: "Terraform / AWS"
 meta:
-  name: "aws/iam_user_policy_without_mfa"
+  name: ""aws/iam_user_policy_without_mfa""
   id: "terraform-aws-iam-user-policy-without-mfa"
   display_name: "IAM user policy without MFA"
   cloud_provider: "AWS"

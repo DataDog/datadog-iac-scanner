@@ -1,11 +1,11 @@
 ---
 title: "etcd TLS certificate not properly configured"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/etcd_tls_certificate_not_properly_configured"
+  name: "etcd_tls_certificate_not_properly_configured"
   id: "kubernetes-etcd-tls-certificate-not-properly-configured"
   display_name: "etcd TLS certificate not properly configured"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Networking and Firewall"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-etcd-tls-certificate-not-properly-configured{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

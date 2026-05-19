@@ -2,7 +2,7 @@
 title: "Elasticsearch logs disabled"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/elasticsearch_logs_disabled"
+  name: ""aws/elasticsearch_logs_disabled""
   id: "cloudformation-aws-elasticsearch-logs-disabled"
   display_name: "Elasticsearch logs disabled"
   cloud_provider: "AWS"

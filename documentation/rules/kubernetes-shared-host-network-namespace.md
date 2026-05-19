@@ -1,11 +1,11 @@
 ---
 title: "Shared host network namespace"
-group_id: "Kubernetes / Kubernetes"
+group_id: "Kubernetes"
 meta:
-  name: "kubernetes/shared_host_network_namespace"
+  name: "shared_host_network_namespace"
   id: "kubernetes-shared-host-network-namespace"
   display_name: "Shared host network namespace"
-  cloud_provider: "Kubernetes"
+  cloud_provider: ""
   platform: "Kubernetes"
   severity: "MEDIUM"
   category: "Resource Management"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}kubernetes-shared-host-network-namespace{{< /copyable-code >}}
-
-**Provider:** Kubernetes
 
 **Platform:** Kubernetes
 

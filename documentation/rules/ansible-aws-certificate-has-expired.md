@@ -2,7 +2,7 @@
 title: "Certificate has expired"
 group_id: "Ansible / AWS"
 meta:
-  name: "aws/certificate_has_expired"
+  name: ""aws/certificate_has_expired""
   id: "ansible-aws-certificate-has-expired"
   display_name: "Certificate has expired"
   cloud_provider: "AWS"

@@ -2,7 +2,7 @@
 title: "ELB with security group without inbound rules"
 group_id: "CloudFormation / AWS"
 meta:
-  name: "aws/elb_with_security_group_without_inbound_rules"
+  name: ""aws/elb_with_security_group_without_inbound_rules""
   id: "cloudformation-aws-elb-with-security-group-without-inbound-rules"
   display_name: "ELB with security group without inbound rules"
   cloud_provider: "AWS"

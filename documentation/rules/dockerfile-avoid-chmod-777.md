@@ -1,11 +1,11 @@
 ---
 title: "Avoid chmod 777"
-group_id: "Dockerfile / Dockerfile"
+group_id: "Dockerfile"
 meta:
-  name: "dockerfile/avoid_chmod_777"
+  name: "avoid_chmod_777"
   id: "dockerfile-avoid-chmod-777"
   display_name: "Avoid chmod 777"
-  cloud_provider: "Dockerfile"
+  cloud_provider: ""
   platform: "Dockerfile"
   severity: "HIGH"
   category: "Access Control"
@@ -13,8 +13,6 @@ meta:
 ## Metadata
 
 **Id:** {{< copyable-code >}}dockerfile-avoid-chmod-777{{< /copyable-code >}}
-
-**Provider:** Dockerfile
 
 **Platform:** Dockerfile
 
