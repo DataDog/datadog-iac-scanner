@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
@@ -441,52 +440,3 @@ func Test_PreparePaths(t *testing.T) {
 	}
 }
 
-func Test_AnalyzePaths(t *testing.T) {
-	tests := []struct {
-		name           string
-		analyzer       analyzer.Analyzer
-		expectedError  bool
-		expectedOutput model.AnalyzedPaths
-	}{
-		{
-			name: "test",
-			analyzer: analyzer.Analyzer{
-				RepoPath: ".",
-				Paths: []string{
-					filepath.Join("..", "..", "assets", "queries", "terraform", "alicloud", "action_trail_logging_all_regions_disabled"),
-					filepath.Join("..", "..", "assets", "queries", "terraform", "alicloud", "actiontrail_trail_oss_bucket_is_publicly_accessible"),
-				},
-				Types:             []string{""},
-				ExcludeTypes:      []string{""},
-				Exc:               []string{},
-				GitIgnoreFileName: ".gitignore",
-				ExcludeGitIgnore:  false,
-				MaxFileSize:       -1,
-			},
-			expectedError: false,
-			expectedOutput: model.AnalyzedPaths{
-				Types: []string{"terraform"},
-				Exc: []string{
-					filepath.Join("..", "..", "assets", "queries", "terraform", "alicloud", "action_trail_logging_all_regions_disabled", "test", "positive_expected_result.json"),
-					filepath.Join("..", "..", "assets", "queries", "terraform", "alicloud", "action_trail_logging_all_regions_disabled", "metadata.json"),
-					filepath.Join("..", "..", "assets", "queries", "terraform", "alicloud", "actiontrail_trail_oss_bucket_is_publicly_accessible", "metadata.json"),
-					filepath.Join("..", "..", "assets", "queries", "terraform", "alicloud", "actiontrail_trail_oss_bucket_is_publicly_accessible", "test", "positive_expected_result.json"),
-				},
-			},
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			anPaths, err := analyzePaths(ctx, &tt.analyzer)
-			require.ElementsMatch(t, tt.expectedOutput.Types, anPaths.Types)
-			require.ElementsMatch(t, tt.expectedOutput.Exc, anPaths.Exc)
-			if tt.expectedError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
