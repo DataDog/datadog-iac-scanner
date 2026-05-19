@@ -123,16 +123,16 @@ def build_markdown(
         group_id = ""
         provider_metadata = ""
         meta_name = rule_name.lower()
-    group_id = f'"{platform} / {provider}"' if provider != "" else f'"{platform}"'
+    group_id = f"{platform} / {provider}" if provider != "" else platform
     provider_metadata = f"\n\n**Provider:** {provider}" if provider != "" else ""
     meta_name = (
-        f'"{provider}/{rule_name}"'.lower() if provider != "" else rule_name.lower()
+        f"{provider}/{rule_name}".lower() if provider != "" else rule_name.lower()
     )
     compliant, non_compliant = get_code_snippets(test_path, resource_type, max_examples)
 
     markdown = f"""---
 title: {json.dumps(title)}
-group_id: {group_id}
+group_id: "{group_id}"
 meta:
   name: "{meta_name}"
   id: "{rule_id}"
