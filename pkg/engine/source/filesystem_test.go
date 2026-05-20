@@ -358,6 +358,7 @@ func TestSource_getLibraryInDir(t *testing.T) {
 	}
 }
 
+// Template for TestDatadogSource_GetQueriesWithIncludeFilter when FilesystemSource is retired.
 func TestFilesystemSource_GetQueriesWithIncludeFilter(t *testing.T) {
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
