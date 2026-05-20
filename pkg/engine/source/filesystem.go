@@ -283,32 +283,31 @@ func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]any,
 	return false
 }
 
-// GetQueries walks a given filesource path returns all queries found in an array of
-// QueryMetadata struct
+// GetQueries returns all queries found under the source paths registered in s.Source.
+// Rules are no longer embedded in the binary; provide local rule directories via s.Source.
 func (s *FilesystemSource) GetQueries(ctx context.Context, queryParameters *QueryInspectorParameters) ([]model.QueryMetadata, error) {
-	contextLogger := logger.FromContext(ctx)
-	contextLogger.Info().Msg("iterateEmbeddedQuerySources()")
-	dirs, err := s.iterateEmbeddedQuerySources(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+	dirs := s.localQueryDirs(ctx)
 	queries := s.iterateQueryDirs(ctx, dirs, queryParameters)
-
 	return queries, nil
 }
 
-// iterate over the embedded query directory and read the respective queries
-func (s *FilesystemSource) iterateEmbeddedQuerySources(ctx context.Context) ([]string, error) {
+// localQueryDirs collects one-level-deep sub-directories from each path in s.Source.
+func (s *FilesystemSource) localQueryDirs(ctx context.Context) []string {
 	contextLogger := logger.FromContext(ctx)
-	contextLogger.Info().Msg("getAllDirs()")
-
-	queryDirs, err := assets.GetEmbeddedQueryDirs(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get query sources")
+	var dirs []string
+	for _, src := range s.Source {
+		entries, err := os.ReadDir(src)
+		if err != nil {
+			contextLogger.Debug().Msgf("localQueryDirs: skipping %s: %v", src, err)
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				dirs = append(dirs, filepath.Join(src, e.Name()))
+			}
+		}
 	}
-
-	return queryDirs, nil
+	return dirs
 }
 
 // iterateQueryDirs iterates all query directories and reads the respective queries
@@ -317,7 +316,7 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 	queries := make([]model.QueryMetadata, 0, len(queryDirs))
 
 	for _, queryDir := range queryDirs {
-		query, errRQ := ReadEmbeddedQuery(ctx, queryDir)
+		query, errRQ := ReadQueryFile(ctx, queryDir)
 		if errRQ != nil {
 			continue
 		}
@@ -358,19 +357,6 @@ func validateMetadata(metadata map[string]any) (exist bool, field string) {
 	return
 }
 
-// ReadEmbeddedQuery reads embedded query files for a given path and returns a QueryMetadata struct with its content
-func ReadEmbeddedQuery(ctx context.Context, queryDir string) (model.QueryMetadata, error) {
-	queryName := filepath.Base(queryDir)
-	queryFile, err := assets.GetEmbeddedQueryFile(ctx, filepath.Clean(filepath.Join(queryDir, QueryFileName)))
-	if err != nil {
-		return model.QueryMetadata{}, fmt.Errorf("failed to read query %s: %w", queryName, err)
-	}
-	metadataFile, err := assets.GetEmbeddedQueryFile(ctx, filepath.Clean(filepath.Join(queryDir, MetadataFileName)))
-	if err != nil {
-		return model.QueryMetadata{}, fmt.Errorf("failed to read query %s: %w", queryName, err)
-	}
-	return parseQuery(ctx, queryName, queryFile, metadataFile)
-}
 
 // ReadQueryFile reads query files in the local filesystem for a given path and returns a QueryMetadata struct with its
 // content
