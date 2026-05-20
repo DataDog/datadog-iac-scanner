@@ -1,5 +1,0 @@
-- name: example
-  amazon.aws.cloudtrail:
-    state: present
-    name: default
-    enable_logging: true

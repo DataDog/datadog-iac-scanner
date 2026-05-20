@@ -1,5 +1,0 @@
-resources:
-  - name: bigquery
-    type: bigquery.v2.dataset
-    properties:
-      description: my-bigquery

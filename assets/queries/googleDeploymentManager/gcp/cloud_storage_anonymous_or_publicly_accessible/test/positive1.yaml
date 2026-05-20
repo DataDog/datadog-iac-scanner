@@ -1,5 +1,0 @@
-resources:
-  - name: storage-bucket
-    type: storage.v1.bucket
-    properties:
-      name: my-bucket

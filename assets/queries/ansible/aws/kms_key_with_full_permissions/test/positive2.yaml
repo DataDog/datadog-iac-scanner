@@ -1,5 +1,0 @@
----
-- name: Update IAM policy on an existing KMS key2
-  amazon.aws.kms_key:
-    alias: my-kms-key
-    state: present

@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "WORKDIR path not absolute",
-    "severity": "LOW",
-    "line": 5
-  }
-]

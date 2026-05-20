@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "GKE Legacy Authorization Enabled",
-    "severity": "HIGH",
-    "line": 7,
-    "filename": "positive1.yaml"
-  }
-]

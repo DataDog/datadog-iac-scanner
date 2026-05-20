@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "COPY --from references current FROM alias",
-    "severity": "LOW",
-    "line": 2
-  }
-]

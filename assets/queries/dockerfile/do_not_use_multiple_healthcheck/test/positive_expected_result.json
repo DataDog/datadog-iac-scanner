@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "Multiple HEALTHCHECK instructions",
-    "severity": "LOW",
-    "line": 51
-  }
-]

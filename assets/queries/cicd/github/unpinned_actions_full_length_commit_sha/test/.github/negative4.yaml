@@ -1,7 +1,0 @@
-name: Composite action with pinned third-party action
-description: Composite action that pins a third-party action to a full SHA
-runs:
-  using: composite
-  steps:
-    - name: PR comment
-      uses: thollander/actions-comment-pull-request@b07c7f86be67002023e6cb13f57df3f21cdd3411

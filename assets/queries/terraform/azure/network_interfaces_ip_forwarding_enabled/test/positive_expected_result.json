@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Network interfaces IP forwarding enabled",
-    "severity": "MEDIUM",
-    "line": 12,
-    "fileName": "positive.tf"
-  }
-]

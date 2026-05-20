@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "User data contains encoded private key",
-    "severity": "HIGH",
-    "line": 9
-  }
-]

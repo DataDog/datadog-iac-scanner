@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Cluster Labels Disabled",
-    "severity": "LOW",
-    "line": 4,
-    "filename": "positive1.yaml"
-  }
-]

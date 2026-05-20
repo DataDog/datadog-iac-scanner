@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Sensitive port is exposed to entire network",
-    "severity": "HIGH",
-    "line": 33,
-    "filename": "positive.json"
-  }
-]

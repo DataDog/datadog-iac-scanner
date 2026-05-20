@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "RDS instance associated with a public subnet",
-    "severity": "CRITICAL",
-    "line": 9,
-    "fileName": "positive.yaml"
-  }
-]

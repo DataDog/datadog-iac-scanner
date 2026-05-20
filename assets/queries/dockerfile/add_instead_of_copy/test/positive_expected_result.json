@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "ADD instead of COPY",
-    "severity": "MEDIUM",
-    "line": 8
-  }
-]

@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Using unnamed build stages",
-    "severity": "LOW",
-    "line": 10,
-    "filename": "positive1.dockerfile"
-  }
-]

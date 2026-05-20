@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "Certificate RSA key bytes lower than 256",
-    "severity": "MEDIUM",
-    "line": 3
-  }
-]

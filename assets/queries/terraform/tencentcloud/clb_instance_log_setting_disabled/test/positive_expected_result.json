@@ -1,8 +1,0 @@
-[
-	{
-		"queryName": "CLB instance log setting disabled",
-		"severity": "MEDIUM",
-		"line": 19,
-		"fileName": "positive1.tf"
-	}
-]

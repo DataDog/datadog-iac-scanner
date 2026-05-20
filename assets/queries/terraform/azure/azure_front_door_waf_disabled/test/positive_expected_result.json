@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Azure Front Door WAF disabled",
-    "severity": "LOW",
-    "line": 38,
-    "fileName": "positive.tf"
-  }
-]

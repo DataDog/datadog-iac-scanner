@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "RDS instance with backup disabled",
-    "severity": "MEDIUM",
-    "line": 10
-  }
-]

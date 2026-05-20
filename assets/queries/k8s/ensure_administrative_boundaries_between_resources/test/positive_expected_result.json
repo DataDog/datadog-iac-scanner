@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Ensure administrative boundaries between resources",
-    "severity": "LOW",
-    "line": 5,
-    "fileName": "positive.yaml"
-  }
-]

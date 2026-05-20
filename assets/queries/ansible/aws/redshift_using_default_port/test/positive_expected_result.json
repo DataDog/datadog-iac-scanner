@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Redshift using default port",
-    "severity": "LOW",
-    "line": 8,
-    "fileName": "positive.yaml"
-  }
-]

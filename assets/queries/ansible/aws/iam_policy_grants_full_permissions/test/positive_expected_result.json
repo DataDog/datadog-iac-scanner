@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "IAM policy grants full permissions",
-    "severity": "HIGH",
-    "line": 5,
-    "fileName": "positive.yaml"
-  }
-]

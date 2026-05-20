@@ -1,5 +1,0 @@
-#this code is a correct code for which the query should not find any result
-- name: Create root access key but inactive
-  amazon.aws.iam_access_key:
-    user_name: root
-    active: false

@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "Azure Container Registry with no locks",
-    "severity": "HIGH",
-    "line": 1
-  }
-]

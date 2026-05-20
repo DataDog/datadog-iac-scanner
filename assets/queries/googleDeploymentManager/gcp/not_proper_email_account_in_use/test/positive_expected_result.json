@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Not Proper Email Account In Use",
-    "severity": "LOW",
-    "line": 9,
-    "filename": "positive1.yaml"
-  }
-]

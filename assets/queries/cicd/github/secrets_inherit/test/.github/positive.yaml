@@ -1,8 +1,0 @@
-name: Insecure Reusable Workflow Call
-on: push
-
-jobs:
-  call-workflow:
-    uses: ./.github/workflows/reusable.yml
-    secrets: inherit
-    steps: "none"

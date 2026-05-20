@@ -1,5 +1,0 @@
-Resources:
-  MyDynamoDBTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      PointInTimeRecoverySpecification: {}

@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Lambda function publicly accessible",
-    "severity": "HIGH",
-    "line": 5,
-    "filename": "positive.tf"
-  }
-]

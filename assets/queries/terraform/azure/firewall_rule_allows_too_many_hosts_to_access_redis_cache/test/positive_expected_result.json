@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "Firewall rule allows too many hosts to access Redis Cache",
-    "severity": "MEDIUM",
-    "line": 5
-  }
-]

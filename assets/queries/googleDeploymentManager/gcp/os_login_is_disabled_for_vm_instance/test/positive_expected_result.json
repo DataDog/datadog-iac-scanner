@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "OSLogin Is Disabled In VM Instance",
-    "severity": "MEDIUM",
-    "line": 10,
-    "filename": "positive1.yaml"
-  }
-]
