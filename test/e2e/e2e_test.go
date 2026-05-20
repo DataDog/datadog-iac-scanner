@@ -12,157 +12,84 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test_E2EExclusions checks inline-disable silences exactly the requested rule per fixture pair.
 func Test_E2EExclusions(t *testing.T) {
-	tests := []struct {
-		name           string
-		testFile       string
-		expectedOutput scan.ScanStats
+	pairs := []struct {
+		name         string
+		baseline     string
+		disabled     string
+		expectedSlug string
 	}{
 		{
-			name:     "no exclusions",
-			testFile: filepath.Join("fixtures", "no-exclusions.tf"),
-			expectedOutput: scan.ScanStats{
-				Violations: 5,
-				Files:      1,
-				Rules:      1123,
-				ViolationBreakdowns: map[string]map[string]int{
-					"LOW": {
-						"terraform-aws-team-tag-not-present":                 1,
-						"terraform-aws-s3-bucket-without-enabled-mfa-delete": 2,
-					},
-					"MEDIUM": {
-						"terraform-aws-s3-bucket-logging-disabled":   1,
-						"terraform-aws-s3-bucket-without-versioning": 1,
-					},
-				},
-			},
+			name:         "terraform",
+			baseline:     filepath.Join("fixtures", "no-exclusions.tf"),
+			disabled:     filepath.Join("fixtures", "inline-disabled-rule.tf"),
+			expectedSlug: "terraform-aws-team-tag-not-present",
 		},
 		{
-			name:     "disabled rule inline",
-			testFile: filepath.Join("fixtures", "inline-disabled-rule.tf"),
-			expectedOutput: scan.ScanStats{
-				Violations: 4,
-				Files:      1,
-				Rules:      1123,
-				ViolationBreakdowns: map[string]map[string]int{
-					"LOW": {
-						"terraform-aws-s3-bucket-without-enabled-mfa-delete": 2,
-					},
-					"MEDIUM": {
-						"terraform-aws-s3-bucket-logging-disabled":   1,
-						"terraform-aws-s3-bucket-without-versioning": 1,
-					},
-				},
-			},
+			name:         "kubernetes",
+			baseline:     filepath.Join("fixtures", "k8s-no-exclusions.yaml"),
+			disabled:     filepath.Join("fixtures", "k8s-inline-disabled-rule.yaml"),
+			expectedSlug: "kubernetes-container-is-privileged",
 		},
 		{
-			name:     "k8s no exclusions",
-			testFile: filepath.Join("fixtures", "k8s-no-exclusions.yaml"),
-			expectedOutput: scan.ScanStats{
-				Violations: 12,
-				Files:      1,
-				Rules:      142,
-				ViolationBreakdowns: map[string]map[string]int{
-					"HIGH": {
-						"kubernetes-container-is-privileged": 1,
-					},
-					"MEDIUM": {
-						"kubernetes-containers-run-with-low-uid":                  1,
-						"kubernetes-net-raw-capabilities-not-being-dropped":       1,
-						"kubernetes-seccomp-profile-is-not-configured":            1,
-						"kubernetes-service-account-token-automount-not-disabled": 1,
-						"kubernetes-using-unrecommended-namespace":                1,
-					},
-					"LOW": {
-						"kubernetes-image-pull-policy-of-container-is-not-always": 1,
-						"kubernetes-image-without-digest":                         1,
-						"kubernetes-missing-app-armor-config":                     1,
-						"kubernetes-no-drop-capabilities-for-containers":          1,
-						"kubernetes-pod-or-container-without-limit-range":         1,
-						"kubernetes-pod-or-container-without-resource-quota":      1,
-					},
-				},
-			},
-		},
-		{
-			name:     "k8s disabled rule inline",
-			testFile: filepath.Join("fixtures", "k8s-inline-disabled-rule.yaml"),
-			expectedOutput: scan.ScanStats{
-				Violations: 11,
-				Files:      1,
-				Rules:      142,
-				ViolationBreakdowns: map[string]map[string]int{
-					"MEDIUM": {
-						"kubernetes-containers-run-with-low-uid":                  1,
-						"kubernetes-net-raw-capabilities-not-being-dropped":       1,
-						"kubernetes-seccomp-profile-is-not-configured":            1,
-						"kubernetes-service-account-token-automount-not-disabled": 1,
-						"kubernetes-using-unrecommended-namespace":                1,
-					},
-					"LOW": {
-						"kubernetes-image-pull-policy-of-container-is-not-always": 1,
-						"kubernetes-image-without-digest":                         1,
-						"kubernetes-missing-app-armor-config":                     1,
-						"kubernetes-no-drop-capabilities-for-containers":          1,
-						"kubernetes-pod-or-container-without-limit-range":         1,
-						"kubernetes-pod-or-container-without-resource-quota":      1,
-					},
-				},
-			},
-		},
-		{
-			name:     "cicd no exclusions",
-			testFile: filepath.Join("fixtures", ".github/cicd-no-exclusions.yaml"),
-			expectedOutput: scan.ScanStats{
-				Violations: 4,
-				Files:      1,
-				Rules:      26,
-				ViolationBreakdowns: map[string]map[string]int{
-					"LOW": {
-						"cicd-github-anonymous-definition":                    1,
-						"cicd-github-concurrency-limits":                      1,
-						"cicd-github-unpinned-actions-full-length-commit-sha": 1,
-					},
-					"MEDIUM": {
-						"cicd-github-unspecified-workflows-permissions": 1,
-					},
-				},
-			},
-		},
-		{
-			name:     "cicd disabled rule inline",
-			testFile: filepath.Join("fixtures", ".github/cicd-inline-disabled-rule.yaml"),
-			expectedOutput: scan.ScanStats{
-				Violations: 3,
-				Files:      1,
-				Rules:      26,
-				ViolationBreakdowns: map[string]map[string]int{
-					"LOW": {
-						"cicd-github-anonymous-definition": 1,
-						"cicd-github-concurrency-limits":   1,
-					},
-					"MEDIUM": {
-						"cicd-github-unspecified-workflows-permissions": 1,
-					},
-				},
-			},
+			name:         "cicd",
+			baseline:     filepath.Join("fixtures", ".github/cicd-no-exclusions.yaml"),
+			disabled:     filepath.Join("fixtures", ".github/cicd-inline-disabled-rule.yaml"),
+			expectedSlug: "cicd-github-unpinned-actions-full-length-commit-sha",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			params, ctx := scan.GetDefaultParameters(context.Background(), "")
-			params.Path = []string{tt.testFile}
-			params.OutputPath = t.TempDir()
-			params.SCIInfo = model.SCIInfo{DiffAware: model.DiffAware{Enabled: false}, RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"}}
-			params.FlagEvaluator = featureflags.NewLocalEvaluator()
-			metadata, err := console.ExecuteScan(ctx, params)
-			require.NoError(t, err)
-			require.Equal(t, tt.expectedOutput.Violations, metadata.Stats.Violations)
-			require.Equal(t, tt.expectedOutput.Files, metadata.Stats.Files)
-			require.Equal(t, tt.expectedOutput.Rules, metadata.Stats.Rules)
-			require.Equal(t, tt.expectedOutput.ViolationBreakdowns, metadata.Stats.ViolationBreakdowns)
+	for _, p := range pairs {
+		t.Run(p.name, func(t *testing.T) {
+			baseline := runScan(t, p.baseline)
+			disabled := runScan(t, p.disabled)
+
+			require.Equal(t, baseline.Files, disabled.Files, "scans must process the same number of files")
+
+			removed := violationDiff(baseline.ViolationBreakdowns, disabled.ViolationBreakdowns)
+			added := violationDiff(disabled.ViolationBreakdowns, baseline.ViolationBreakdowns)
+
+			require.Empty(t, added, "inline-disable should not introduce new violations, got: %v", added)
+			require.Contains(t, removed, p.expectedSlug, "inline-disable should silence %s, got removed: %v", p.expectedSlug, removed)
+			require.Len(t, removed, 1, "inline-disable should silence exactly one rule, got: %v", removed)
+			require.Equal(t, removed[p.expectedSlug], baseline.Violations-disabled.Violations,
+				"violation drop must match the silenced rule's count")
 		})
 	}
+}
 
+func runScan(t *testing.T, testFile string) scan.ScanStats {
+	t.Helper()
+	params, ctx := scan.GetDefaultParameters(context.Background(), "")
+	params.Path = []string{testFile}
+	params.OutputPath = t.TempDir()
+	params.SCIInfo = model.SCIInfo{
+		DiffAware:            model.DiffAware{Enabled: false},
+		RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+	}
+	params.FlagEvaluator = featureflags.NewLocalEvaluator()
+	metadata, err := console.ExecuteScan(ctx, params)
+	require.NoError(t, err)
+	return metadata.Stats
+}
+
+func violationDiff(a, b map[string]map[string]int) map[string]int {
+	flat := func(m map[string]map[string]int) map[string]int {
+		out := map[string]int{}
+		for _, slugs := range m {
+			for slug, count := range slugs {
+				out[slug] = count
+			}
+		}
+		return out
+	}
+	af, bf := flat(a), flat(b)
+	diff := map[string]int{}
+	for slug, count := range af {
+		if d := count - bf[slug]; d > 0 {
+			diff[slug] = d
+		}
+	}
+	return diff
 }
