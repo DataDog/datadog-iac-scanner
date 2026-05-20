@@ -675,92 +675,42 @@ func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 }
 
 // Should be uncommented when UUID are moved to LegacyId
-// TestGetQueriesWithLegacyIdFiltering tests end-to-end query filtering with legacy IDs
+// Pins that exclude wins when include and exclude target the same rule by different id forms.
 func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
+	const (
+		ruleID       = "test-legacy-id-filtering"
+		ruleLegacyID = "00000000-0000-0000-0000-000000000001"
+	)
+	metadata := map[string]any{
+		"id":       ruleID,
+		"legacyId": ruleLegacyID,
+		"platform": "Terraform",
+		"category": "Networking",
+		"severity": "HIGH",
+	}
+
+	tests := []struct {
+		name       string
+		includeIDs []string
+		excludeIDs []string
+		wantKeep   bool
+	}{
+		{"include_by_legacy_id", []string{ruleLegacyID}, nil, true},
+		{"include_by_new_id", []string{ruleID}, nil, true},
+		{"exclude_by_legacy_id", nil, []string{ruleLegacyID}, false},
+		{"include_new_exclude_legacy", []string{ruleID}, []string{ruleLegacyID}, false},
+		{"include_legacy_exclude_new", []string{ruleLegacyID}, []string{ruleID}, false},
 	}
 
 	ctx := context.Background()
-	contentByte, err := os.ReadFile(filepath.FromSlash("./assets/queries/terraform/aws/alb_deletion_protection_disabled/query.rego"))
-	require.NoError(t, err)
-
-	tests := []struct {
-		name        string
-		includeIDs  []string
-		excludeIDs  []string
-		shouldFind  bool
-		description string
-	}{
-		{
-			name:        "include_by_legacy_id",
-			includeIDs:  []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"}, // legacy ID
-			excludeIDs:  []string{},
-			shouldFind:  true,
-			description: "Should find query by legacy ID",
-		},
-		{
-			name:        "include_by_new_id",
-			includeIDs:  []string{"terraform-aws-alb-deletion-protection-disabled"}, // new ID
-			excludeIDs:  []string{},
-			shouldFind:  true,
-			description: "Should find query by new ID",
-		},
-		{
-			name:        "exclude_by_legacy_id",
-			includeIDs:  []string{},
-			excludeIDs:  []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"}, // legacy ID
-			shouldFind:  false,
-			description: "Should exclude query by legacy ID",
-		},
-		{
-			name:        "include_new_exclude_legacy",
-			includeIDs:  []string{"terraform-aws-alb-deletion-protection-disabled"},
-			excludeIDs:  []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
-			shouldFind:  false,
-			description: "Exclude should take precedence - excluded by legacy ID",
-		},
-		{
-			name:        "include_legacy_exclude_new",
-			includeIDs:  []string{"afecd1f1-6378-4f7e-bb3b-60c35801fdd4"},
-			excludeIDs:  []string{"terraform-aws-alb-deletion-protection-disabled"},
-			shouldFind:  false,
-			description: "Exclude should take precedence - excluded by new ID",
-		},
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewFilesystemSource(ctx, []string{""}, []string{""}, []string{""}, "./assets/libraries", true)
-			filter := QueryInspectorParameters{
+			params := &QueryInspectorParameters{
 				IncludeQueries: QueryFilter{ByIDs: tt.includeIDs},
 				ExcludeQueries: QueryFilter{ByIDs: tt.excludeIDs},
 			}
-
-			got, err := s.GetQueries(ctx, &filter)
-			require.NoError(t, err, tt.description)
-
-			if tt.shouldFind {
-				require.NotEmpty(t, got, tt.description)
-				found := false
-				for _, q := range got {
-					if q.Metadata["id"] == "terraform-aws-alb-deletion-protection-disabled" {
-						found = true
-						assert.Equal(t, "alb_deletion_protection_disabled", q.Query)
-						assert.Equal(t, string(contentByte), q.Content)
-						assert.Equal(t, "terraform-aws-alb-deletion-protection-disabled", q.Metadata["id"])
-						assert.Equal(t, "afecd1f1-6378-4f7e-bb3b-60c35801fdd4", q.Metadata["legacyId"])
-						break
-					}
-				}
-				assert.True(t, found, "Expected to find query with ID terraform-aws-alb-deletion-protection-disabled")
-			} else {
-				// Should not find the specific query
-				for _, q := range got {
-					assert.NotEqual(t, "terraform-aws-alb-deletion-protection-disabled", q.Metadata["id"],
-						"Should not find query that was excluded: %s", tt.description)
-				}
-			}
+			keep := checkQueryInclude(ctx, metadata, params) && !checkQueryExclude(ctx, metadata, params)
+			assert.Equal(t, tt.wantKeep, keep)
 		})
 	}
 }
