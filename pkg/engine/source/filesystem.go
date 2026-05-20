@@ -357,7 +357,6 @@ func validateMetadata(metadata map[string]any) (exist bool, field string) {
 	return
 }
 
-
 // ReadQueryFile reads query files in the local filesystem for a given path and returns a QueryMetadata struct with its
 // content
 func ReadQueryFile(ctx context.Context, queryDir string) (model.QueryMetadata, error) {
