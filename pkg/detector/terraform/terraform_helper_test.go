@@ -380,7 +380,7 @@ func TestGetArrayElementLine(t *testing.T) {
 }
 
 func TestResolveListIndexStatementInJsonencodeThirdElement(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "assets", "queries", "terraform", "aws", "s3_bucket_access_to_any_principal", "test", "positive3.tf"))
+	data, err := os.ReadFile(filepath.Join("test", "jsonencode_third_element.tf"))
 	require.NoError(t, err)
 	linesPtr := utils.SplitLines(string(data))
 	lines := *linesPtr

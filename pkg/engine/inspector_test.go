@@ -9,31 +9,114 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/DataDog/datadog-iac-scanner/assets"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/open-policy-agent/opa/cover"
 )
+
+// stubQueriesSource is an in-memory [source.QueriesSource] that returns a
+// fixed slice of query metadata and a trivial rego library for any platform.
+type stubQueriesSource struct {
+	queries []model.QueryMetadata
+}
+
+func (s *stubQueriesSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
+	return s.queries, nil
+}
+
+func (s *stubQueriesSource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
+	return source.RegoLibraries{
+		LibraryCode:      "package generic." + platform + "\n",
+		LibraryInputData: "{}",
+	}, nil
+}
+
+// inspectorOpts configures [newTestInspector]; zero values yield an inspector
+// with no rules. Set `querySource` to plug in a custom QueriesSource (e.g. a
+// gomock) instead of the default in-memory stub backed by `queries`.
+type inspectorOpts struct {
+	queries             []model.QueryMetadata
+	querySource         source.QueriesSource
+	queryParameters     *source.QueryInspectorParameters
+	excludeResults      map[string]bool
+	repoPath            string
+	queryTimeout        int
+	useOldSeverities    bool
+	needsLog            bool
+	numWorkers          int
+	kicsComputeNewSimID bool
+	vb                  VulnerabilityBuilder
+	tracker             Tracker
+}
+
+// newTestInspector runs the real [NewInspector] against a configurable
+// [source.QueriesSource] so callers get the production constructor wiring
+// without loading any rules from disk.
+func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
+	t.Helper()
+
+	if opts.querySource == nil {
+		opts.querySource = &stubQueriesSource{queries: opts.queries}
+	}
+	if opts.queryParameters == nil {
+		opts.queryParameters = &source.QueryInspectorParameters{}
+	}
+	if opts.excludeResults == nil {
+		opts.excludeResults = map[string]bool{}
+	}
+	if opts.repoPath == "" {
+		opts.repoPath = "."
+	}
+	if opts.queryTimeout == 0 {
+		opts.queryTimeout = 60
+	}
+	if opts.numWorkers == 0 {
+		opts.numWorkers = 1
+	}
+	if opts.vb == nil {
+		opts.vb = func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
+			_ *detector.DetectLine, _ bool, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			return &model.Vulnerability{}, nil
+		}
+	}
+	if opts.tracker == nil {
+		opts.tracker = &tracker.CITracker{}
+	}
+
+	ins, err := NewInspector(
+		context.Background(),
+		opts.querySource,
+		opts.vb,
+		opts.tracker,
+		opts.queryParameters,
+		opts.excludeResults,
+		opts.repoPath,
+		opts.queryTimeout,
+		opts.useOldSeverities,
+		opts.needsLog,
+		opts.numWorkers,
+		opts.kicsComputeNewSimID,
+		featureflags.NewLocalEvaluator(),
+	)
+	require.NoError(t, err)
+	return ins
+}
 
 // TestInspector_EnableCoverageReport tests the functions [EnableCoverageReport()] and all the methods called by them
 func TestInspector_EnableCoverageReport(t *testing.T) {
@@ -127,139 +210,42 @@ func TestInspector_GetCoverageReport(t *testing.T) {
 	}
 }
 
-// TestNewInspector tests the functions [NewInspector()] and all the methods called by them
-func TestNewInspector(t *testing.T) { //nolint
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
-	}
-	contentByte, err := os.ReadFile(filepath.FromSlash("./test/fixtures/get_queries_test/content_get_queries.rego"))
-	require.NoError(t, err)
-	contentByte2, err2 := os.ReadFile(filepath.FromSlash("./test/fixtures/get_queries_test/common_query.rego"))
-	require.NoError(t, err2)
-
+// TestNewInspector smoke-tests the [NewInspector] wiring: vb, tracker, and
+// the queries returned by the source must flow through to the resulting
+// inspector unchanged.
+func TestNewInspector(t *testing.T) {
 	track := &tracker.CITracker{}
-	sources := &mockSource{
-		Source: []string{
-			filepath.FromSlash("./test/fixtures/all_auth_users_get_read_access"),
-			filepath.FromSlash("./test/fixtures/common_query_test"),
-		},
-		Types: []string{""},
-	}
-	vbs := DefaultVulnerabilityBuilder
-	opaQueries := make([]model.QueryMetadata, 0, 1)
-	opaQueries = append(opaQueries, model.QueryMetadata{
-		Query:     "all_auth_users_get_read_access",
-		Content:   string(contentByte),
-		InputData: "{}",
-		Platform:  "terraform",
-		Metadata: map[string]interface{}{
-			"id":              "57b9893d-33b1-4419-bcea-b828fb87e318",
-			"queryName":       "All Auth Users Get Read Access",
-			"severity":        model.SeverityHigh,
-			"category":        "Access Control",
-			"descriptionText": "Misconfigured S3 buckets can leak private information to the entire internet or allow unauthorized data tampering / deletion", //nolint
-			"descriptionUrl":  "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket#acl",
-			"platform":        "Terraform",
-		},
-		Aggregation: 1,
-	})
-
-	opaQueries = append(opaQueries, model.QueryMetadata{
-		Query:     "common_query_test",
-		Content:   string(contentByte2),
-		InputData: "{}",
-		Platform:  "common",
-		Metadata: map[string]interface{}{
-			"id":              "4a3aa2b5-9c87-452c-a3ea-f3e9e3573874",
-			"queryName":       "Common Query Test",
-			"severity":        model.SeverityHigh,
-			"category":        "Best Practices",
-			"descriptionText": "",
-			"descriptionUrl":  "",
-			"platform":        "Common",
-		},
-		Aggregation: 1,
-	})
-	type args struct {
-		ctx                 context.Context
-		source              source.QueriesSource
-		vb                  VulnerabilityBuilder
-		tracker             Tracker
-		queryFilter         source.QueryInspectorParameters
-		excludeResults      map[string]bool
-		queryExecTimeout    int
-		needsLog            bool
-		useOldSeverities    bool
-		numWorkers          int
-		kicsComputeNewSimID bool
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    *Inspector
-		wantErr bool
-	}{
+	queries := []model.QueryMetadata{
 		{
-			name: "test_new_inspector",
-			args: args{
-				ctx:                 context.Background(),
-				vb:                  vbs,
-				tracker:             track,
-				source:              sources,
-				queryFilter:         source.QueryInspectorParameters{},
-				excludeResults:      map[string]bool{},
-				queryExecTimeout:    60,
-				needsLog:            true,
-				numWorkers:          1,
-				kicsComputeNewSimID: true,
-			},
-			want: &Inspector{
-				vb:      vbs,
-				tracker: track,
-				QueryLoader: &QueryLoader{
-					QueriesMetadata: opaQueries,
-				},
-			},
-			wantErr: false,
+			Query:       "stub_terraform_rule",
+			Content:     "package stub_terraform_rule\n",
+			InputData:   "{}",
+			Platform:    "terraform",
+			Metadata:    map[string]interface{}{"id": "stub-terraform"},
+			Aggregation: 1,
+		},
+		{
+			Query:       "stub_common_rule",
+			Content:     "package stub_common_rule\n",
+			InputData:   "{}",
+			Platform:    "common",
+			Metadata:    map[string]interface{}{"id": "stub-common"},
+			Aggregation: 1,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewInspector(tt.args.ctx,
-				tt.args.source,
-				tt.args.vb,
-				tt.args.tracker,
-				&tt.args.queryFilter,
-				tt.args.excludeResults,
-				".",
-				tt.args.queryExecTimeout,
-				tt.args.useOldSeverities,
-				tt.args.needsLog,
-				tt.args.numWorkers,
-				tt.args.kicsComputeNewSimID,
-				featureflags.NewLocalEvaluator(),
-			)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewInspector() error: got = %v,\n wantErr = %v", err, tt.wantErr)
-				return
-			}
+	ins := newTestInspector(t, inspectorOpts{
+		queries:             queries,
+		tracker:             track,
+		needsLog:            true,
+		kicsComputeNewSimID: true,
+	})
 
-			// Note: The test fixture defines dummy queries for setting up test expectations,
-			// but the actual implementation loads all 800+ embedded queries
-			// Here we verify that queries were loaded, not those specific test queries exist.
-			require.Greater(t, len(got.QueryLoader.QueriesMetadata), 0, "Expected queries to be loaded")
-
-			gotStrTracker, err := test.StringifyStruct(got.tracker)
-			require.Nil(t, err)
-			wantStrTracker, err := test.StringifyStruct(tt.want.tracker)
-			require.Nil(t, err)
-			if !reflect.DeepEqual(got.tracker, tt.want.tracker) {
-				t.Errorf("NewInspector() tracker: got = %v,\n want = %v", gotStrTracker, wantStrTracker)
-			}
-			require.NotNil(t, got.vb)
-		})
-	}
+	require.NotNil(t, ins.vb, "vulnerability builder should be wired")
+	require.Same(t, track, ins.tracker, "tracker should be the one we passed in")
+	require.NotNil(t, ins.QueryLoader, "query loader should be initialized")
+	require.Equal(t, queries, ins.QueryLoader.QueriesMetadata,
+		"queries supplied by the source should flow through to QueryLoader")
 }
 
 func TestEngine_contains(t *testing.T) {
@@ -315,86 +301,26 @@ func TestEngine_contains(t *testing.T) {
 }
 
 func TestEngine_LenQueriesByPlat(t *testing.T) {
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
+	queries := []model.QueryMetadata{
+		{Query: "tf_rule_a", Content: "package tf_rule_a\n", InputData: "{}", Platform: "terraform", Aggregation: 1},
+		{Query: "tf_rule_b", Content: "package tf_rule_b\n", InputData: "{}", Platform: "terraform", Aggregation: 1},
+		{Query: "k8s_rule", Content: "package k8s_rule\n", InputData: "{}", Platform: "kubernetes", Aggregation: 1},
 	}
+	ins := newTestInspector(t, inspectorOpts{queries: queries, kicsComputeNewSimID: true})
 
-	type args struct {
-		queriesPath         []string
-		platform            []string
-		kicsComputeNewSimID bool
-	}
-	tests := []struct {
-		name string
-		args args
-		min  int
-	}{
-		{
-			name: "test_len_queries_plat",
-			args: args{
-				queriesPath:         []string{filepath.FromSlash("./test/fixtures")},
-				platform:            []string{"terraform"},
-				kicsComputeNewSimID: true,
-			},
-			min: 1,
-		},
-		{
-			name: "test_len_queries_plat_with_multiple_queries_path",
-			args: args{
-				queriesPath: []string{
-					filepath.FromSlash("./assets/queries/terraform/aws/alb_deletion_protection_disabled"),
-					filepath.FromSlash("./assets/queries/terraform/aws/alb_is_not_integrated_with_waf"),
-				},
-				platform:            []string{"terraform"},
-				kicsComputeNewSimID: true,
-			},
-			min: 2,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ins := newInspectorInstance(t, tt.args.queriesPath, tt.args.kicsComputeNewSimID)
-			got := ins.LenQueriesByPlat(tt.args.platform)
-			require.True(t, got >= tt.min)
-		})
-	}
+	require.Equal(t, 2, ins.LenQueriesByPlat([]string{"terraform"}))
+	require.Equal(t, 1, ins.LenQueriesByPlat([]string{"kubernetes"}))
+	require.Equal(t, 3, ins.LenQueriesByPlat([]string{"terraform", "kubernetes"}))
+	require.Equal(t, 0, ins.LenQueriesByPlat([]string{"cloudformation"}))
 }
 
 func TestEngine_GetFailedQueries(t *testing.T) {
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
+	ins := newTestInspector(t, inspectorOpts{kicsComputeNewSimID: true})
+	const nrFailedQueries = 5
+	for idx := 0; idx < nrFailedQueries; idx++ {
+		ins.failedQueries[fmt.Sprint(idx)] = nil
 	}
-	type args struct {
-		queriesPath         []string
-		nrFailedQueries     int
-		kicsComputeNewSimID bool
-	}
-	tests := []struct {
-		name string
-		args args
-	}{
-		{
-			name: "test_get_failed_queries",
-			args: args{
-				queriesPath:         []string{filepath.FromSlash("./test/fixtures")},
-				nrFailedQueries:     5,
-				kicsComputeNewSimID: true,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ins := newInspectorInstance(t, tt.args.queriesPath, tt.args.kicsComputeNewSimID)
-			fail := make([]string, tt.args.nrFailedQueries)
-			for idx := range fail {
-				ins.failedQueries[fmt.Sprint(idx)] = nil
-			}
-			got := ins.GetFailedQueries()
-			require.Equal(t, tt.args.nrFailedQueries, len(got))
-		})
-	}
+	require.Equal(t, nrFailedQueries, len(ins.GetFailedQueries()))
 }
 
 func TestShouldSkipFile(t *testing.T) {
@@ -493,46 +419,18 @@ func TestShouldSkipFile(t *testing.T) {
 }
 
 func TestInspector_DecodeQueryResults(t *testing.T) {
-
-	//context
-	contextToUse := context.Background()
-
-	//build inspector
-	c := newInspectorInstance(t, []string{}, true)
-
-	type args struct {
-		queryContext QueryContext
-		regoResult   rego.ResultSet
-		timeDuration string
-	}
-	tests := []struct {
-		name     string
-		args     args
-		expected int
-	}{
-		{
-			name: "should_not_fail_when_timeout",
-			args: args{
-				queryContext: newQueryContext(contextToUse),
-				regoResult:   newResultset(),
-				timeDuration: "0s",
-			},
-			expected: 0,
-		},
-	}
-
 	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			//create a context with 0 second to timeout
-			timeoutDuration, _ := time.ParseDuration(tt.args.timeDuration)
-			myCtxTimeOut, cancel := context.WithTimeout(contextToUse, timeoutDuration)
-			defer cancel()
-			result, err := c.DecodeQueryResults(ctx, &tt.args.queryContext, myCtxTimeOut, tt.args.regoResult, 57)
-			assert.Nil(t, err, "Error not as expected")
-			assert.Equal(t, 0, len(result), "Array size is not as expected")
-		})
-	}
+	c := newTestInspector(t, inspectorOpts{kicsComputeNewSimID: true})
+
+	queryContext := newQueryContext(ctx)
+
+	// Pass a context that is already expired so DecodeQueryResults must short-circuit
+	// on its cancellation branch and return no results.
+	expiredCtx, cancel := context.WithTimeout(ctx, 0)
+	defer cancel()
+	result, err := c.DecodeQueryResults(ctx, &queryContext, expiredCtx, newResultset(), 57)
+	assert.Nil(t, err, "Error not as expected")
+	assert.Equal(t, 0, len(result), "Array size is not as expected")
 }
 
 func newResultset() rego.ResultSet {
@@ -567,61 +465,6 @@ func newQueryContext(ctx context.Context) QueryContext {
 		Query: &myQuery,
 	}
 	return queryContext
-}
-
-func newInspectorInstance(t *testing.T, queryPath []string, kicsComputeNewSimID bool) *Inspector {
-	ctx := context.Background()
-	querySource := source.NewFilesystemSource(ctx, queryPath, []string{""}, []string{""}, filepath.FromSlash("./assets/libraries"), true)
-	var vb = func(ctx context.Context, qCtx *QueryContext, tracker Tracker, v interface{},
-		detector *detector.DetectLine, useOldSeverity bool, kicsComputeNewSimID bool, queryDuration time.Duration) (*model.Vulnerability, error) {
-		return &model.Vulnerability{}, nil
-	}
-	ins, err := NewInspector(
-		context.Background(),
-		querySource,
-		vb,
-		&tracker.CITracker{},
-		&source.QueryInspectorParameters{},
-		map[string]bool{}, ".", 60,
-		false, true, 1,
-		kicsComputeNewSimID,
-		featureflags.NewLocalEvaluator(),
-	)
-	require.NoError(t, err)
-	return ins
-}
-
-type mockSource struct {
-	Source []string
-	Types  []string
-}
-
-func (m *mockSource) GetQueries(ctx context.Context, queryFilter *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
-	sources := source.NewFilesystemSource(ctx, m.Source, []string{""}, []string{""}, filepath.FromSlash("./assets/libraries"), true)
-
-	return sources.GetQueries(ctx, queryFilter)
-}
-
-func (m *mockSource) GetQueryLibrary(ctx context.Context, platform string) (source.RegoLibraries, error) {
-	library := source.GetPathToCustomLibrary(ctx, platform, "./assets/libraries")
-
-	if library != "default" {
-		content, err := os.ReadFile(library)
-		return source.RegoLibraries{
-			LibraryCode:      string(content),
-			LibraryInputData: "{}",
-		}, err
-	}
-
-	log.Debug().Msgf("Custom library not provided. Loading embedded library instead")
-
-	// getting embedded library
-	embeddedLibrary, errGettingEmbeddedLibrary := assets.GetEmbeddedLibrary(strings.ToLower(platform))
-
-	return source.RegoLibraries{
-		LibraryCode:      embeddedLibrary,
-		LibraryInputData: "{}",
-	}, errGettingEmbeddedLibrary
 }
 
 func TestExpressionToAST_RelativeTraversalExpr(t *testing.T) {
