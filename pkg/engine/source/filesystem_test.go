@@ -675,8 +675,8 @@ func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 	}
 }
 
-// Should be uncommented when UUID are moved to LegacyId
-// Pins that exclude wins when include and exclude target the same rule by different id forms.
+// TestGetQueriesWithLegacyIdFiltering pins that exclude wins when include and exclude
+// target the same rule by different id forms (the predicate iterateQueryDirs applies).
 func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
 	const (
 		ruleID       = "test-legacy-id-filtering"
@@ -696,11 +696,36 @@ func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
 		excludeIDs []string
 		wantKeep   bool
 	}{
-		{"include_by_legacy_id", []string{ruleLegacyID}, nil, true},
-		{"include_by_new_id", []string{ruleID}, nil, true},
-		{"exclude_by_legacy_id", nil, []string{ruleLegacyID}, false},
-		{"include_new_exclude_legacy", []string{ruleID}, []string{ruleLegacyID}, false},
-		{"include_legacy_exclude_new", []string{ruleLegacyID}, []string{ruleID}, false},
+		{
+			name:       "include_by_legacy_id",
+			includeIDs: []string{ruleLegacyID},
+			excludeIDs: nil,
+			wantKeep:   true,
+		},
+		{
+			name:       "include_by_new_id",
+			includeIDs: []string{ruleID},
+			excludeIDs: nil,
+			wantKeep:   true,
+		},
+		{
+			name:       "exclude_by_legacy_id",
+			includeIDs: nil,
+			excludeIDs: []string{ruleLegacyID},
+			wantKeep:   false,
+		},
+		{
+			name:       "include_new_exclude_legacy",
+			includeIDs: []string{ruleID},
+			excludeIDs: []string{ruleLegacyID},
+			wantKeep:   false,
+		},
+		{
+			name:       "include_legacy_exclude_new",
+			includeIDs: []string{ruleLegacyID},
+			excludeIDs: []string{ruleID},
+			wantKeep:   false,
+		},
 	}
 
 	ctx := context.Background()
