@@ -174,6 +174,7 @@ func extractBlockSource(lines []string, start, end int) string {
 	return strings.Join(lines[start-1:end], "\n") + "\n"
 }
 
+// nolint:gocyclo
 func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (insertionLine, col int) {
 	name, nestedStart, nestedEnd, isAttr := findContainingStructure(block, line)
 

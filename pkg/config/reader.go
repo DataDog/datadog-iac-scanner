@@ -72,7 +72,7 @@ func hasIacSectionForSupportedVersion(b []byte) (bool, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(b))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&doc); err != nil {
-		return false, newInvalidLocalConfigError(fmt.Errorf("could not parse configuration file: %w", err))
+		return false, newInvalidLocalConfigError(fmt.Errorf("could not parse configuration file: %w", rewriteDecodeErrors(err)))
 	}
 	version, err := parseSchemaVersion(doc.SchemaVersion)
 	if err != nil {
@@ -81,7 +81,7 @@ func hasIacSectionForSupportedVersion(b []byte) (bool, error) {
 	if version.compare(minUnsupportedVersion) >= 0 {
 		return false, newInvalidLocalConfigError(fmt.Errorf("configuration schema version %s is not supported", version))
 	}
-	if version.compare(minIacVersion) < 0 {
+	if version.compare(minRequiredVersion) < 0 {
 		return false, nil
 	}
 	return doc.Iac != nil, nil

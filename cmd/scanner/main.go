@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	cli "github.com/urfave/cli/v3"
@@ -57,16 +56,15 @@ func main() {
 	}
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		var exitCode *normalExitCode
-		if errors.As(err, &exitCode) {
-			if exitCode.code == constants.InvalidConfigErrorCode {
-				log.Error().Err(err).Msg("invalid IaC configuration")
-			}
-			os.Exit(exitCode.code)
+		code := defaultFailCode
+		if exitCode := (*withExitCodeError)(nil); errors.As(err, &exitCode) {
+			code = exitCode.code
+			err = exitCode.err
 		}
-
-		fmt.Printf("Program failed: %v\n", err)
-		os.Exit(defaultFailCode)
+		if err != nil {
+			fmt.Printf("Program failed: %v\n", err)
+		}
+		os.Exit(code)
 	}
 }
 
@@ -83,16 +81,28 @@ func applyGlobalOptions(ctx context.Context, c *cli.Command) (context.Context, e
 }
 
 func exitCode(code int) error {
-	return &normalExitCode{
+	return &withExitCodeError{
 		code: code,
+		err:  nil,
 	}
 }
 
-type normalExitCode struct {
-	code int
+func errorWithExitCode(err error, code int) error {
+	return &withExitCodeError{
+		code: code,
+		err:  err,
+	}
 }
 
-func (e *normalExitCode) Error() string {
+type withExitCodeError struct {
+	code int
+	err  error
+}
+
+func (e *withExitCodeError) Error() string {
+	if e.err != nil {
+		return e.err.Error()
+	}
 	return fmt.Sprintf("exit code %d", e.code)
 }
 

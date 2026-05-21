@@ -27,17 +27,17 @@ iac:
       - path3
       - path4
     ignore-severities:
-      - sev1
-      - sev2
+      - critical
+      - high
     only-severities:
-      - sev3
-      - sev4
+      - medium
+      - info
     ignore-categories:
-      - cat1
-      - cat2
+      - Access Control
+      - Availability
     only-categories:
-      - cat3
-      - cat4
+      - Backup
+      - Best Practices
 `
 
 var parsedCfgFile = IacConfig{
@@ -45,24 +45,24 @@ var parsedCfgFile = IacConfig{
 	OnlyRules:        []string{"query3", "query4"},
 	IgnorePaths:      []string{"path1", "path2"},
 	OnlyPaths:        []string{"path3", "path4"},
-	IgnoreSeverities: []string{"sev1", "sev2"},
-	OnlySeverities:   []string{"sev3", "sev4"},
-	IgnoreCategories: []string{"cat1", "cat2"},
-	OnlyCategories:   []string{"cat3", "cat4"},
+	IgnoreSeverities: []string{"critical", "high"},
+	OnlySeverities:   []string{"medium", "info"},
+	IgnoreCategories: []string{"Access Control", "Availability"},
+	OnlyCategories:   []string{"Backup", "Best Practices"},
 }
 
-const legacyCfg = `exclude-categories: [cat1, cat2]
+const legacyCfg = `exclude-categories: [Access Control, Availability]
 exclude-paths: [path1, path2]
 exclude-queries: [query1, query2]
 exclude-results: [res1, res2]
-exclude-severities: [sev1, sev2]
+exclude-severities: [critical, high]
 `
 
 var parsedLegacyCfg = IacConfig{
 	IgnoreRules:          []string{"query1", "query2"},
 	IgnorePaths:          []string{"path1", "path2"},
-	IgnoreSeverities:     []string{"sev1", "sev2"},
-	IgnoreCategories:     []string{"cat1", "cat2"},
+	IgnoreSeverities:     []string{"critical", "high"},
+	IgnoreCategories:     []string{"Access Control", "Availability"},
 	LegacyExcludeResults: []string{"res1", "res2"},
 }
 
@@ -76,11 +76,11 @@ iac:
       - path1
       - path2
     ignore-severities:
-      - sev1
-      - sev2
+      - critical
+      - high
     ignore-categories:
-      - cat1
-      - cat2
+      - Access Control
+      - Availability
 `
 
 const excludeSuffix = `# These settings have been applied, but they cannot be expressed in the new configuration format:
@@ -91,12 +91,6 @@ const emptyCfgFile = `
 schema-version: v1.2
 sast:
   use-rulesets: [foo]
-`
-
-const oldCfgFile = `
-schema-version: v1.1
-iac:
-  use-rules: [foo]
 `
 
 func TestNoConfig(t *testing.T) {
@@ -185,28 +179,13 @@ func TestUnsupportedSchemaVersionIgnoresLegacy(t *testing.T) {
 }
 
 func TestIgnoredConfigFile(t *testing.T) {
-	for _, tc := range []struct {
-		name, cfg string
-	}{
-		{
-			name: "empty IaC config",
-			cfg:  emptyCfgFile,
-		},
-		{
-			name: "old schema version",
-			cfg:  oldCfgFile,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			tmp := t.TempDir()
-			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(emptyCfgFile), 0644))
 
-			cfg, b, err := ReadConfiguration(t.Context(), tmp)
-			assert.NoError(t, err)
-			assert.Empty(t, b)
-			assert.Equal(t, IacConfig{}, *cfg)
-		})
-	}
+	cfg, b, err := ReadConfiguration(t.Context(), tmp)
+	assert.NoError(t, err)
+	assert.Empty(t, b)
+	assert.Equal(t, IacConfig{}, *cfg)
 }
 
 func TestReadLegacyOnly(t *testing.T) {
@@ -245,30 +224,15 @@ func TestConfigFilePrecedence(t *testing.T) {
 }
 
 func TestConfigFilePrecedenceWithIgnoredConfigFile(t *testing.T) {
-	for _, tc := range []struct {
-		name, cfg string
-	}{
-		{
-			name: "empty IaC config",
-			cfg:  emptyCfgFile,
-		},
-		{
-			name: "old schema version",
-			cfg:  oldCfgFile,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			tmp := t.TempDir()
-			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(tc.cfg), 0644))
-			require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(emptyCfgFile), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(legacyCfg), 0644))
 
-			// New config file has no iac section, so legacy takes over.
-			cfg, b, err := ReadConfiguration(t.Context(), tmp)
-			assert.NoError(t, err)
-			assert.Equal(t, convertedLegacyCfg+excludeSuffix, string(b))
-			assert.Equal(t, parsedLegacyCfg, *cfg)
-		})
-	}
+	// New config file has no iac section, so legacy takes over.
+	cfg, b, err := ReadConfiguration(t.Context(), tmp)
+	assert.NoError(t, err)
+	assert.Equal(t, convertedLegacyCfg+excludeSuffix, string(b))
+	assert.Equal(t, parsedLegacyCfg, *cfg)
 }
 
 func TestNoConfigWithDatadog(t *testing.T) {
