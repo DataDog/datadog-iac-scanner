@@ -154,7 +154,7 @@ func createContext(ctx context.Context, timeout time.Duration) testContext {
 	}
 }
 
-// TODO: fix those tests see K9VULN-8520
+// TODO: re-enable concurrent scan tests once shared scan state is race-free.
 //func TestScanner_ConcurrentScans(t *testing.T) {
 //	ctx := context.Background()
 //

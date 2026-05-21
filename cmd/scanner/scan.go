@@ -375,7 +375,7 @@ func getFeatureFlagEvaluator(_ *cli.Command) featureflags.FlagEvaluator {
 	overrides := map[string]bool{}
 	// Parallel parsing disabled: triggers race conditions in concurrent
 	// query workers causing non-deterministic violation counts.
-	// overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
+	// overrides[featureflags.IacEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }
 
