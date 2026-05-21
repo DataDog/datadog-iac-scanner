@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Allowing ingress on all ports (0-65535) greatly increases attack surface by exposing every service port to network scanning and exploitation. This can lead to unauthorized access, lateral movement, and easier compromise of instances.\n\nThis rule flags Ansible tasks using the `google.cloud.gcp_compute_firewall` or `gcp_compute_firewall` module where the rule is ingress and the `allowed` entry contains `ports: [\"0-65535\"]` for a firewall associated with a compute network referenced by a preceding `google.cloud.gcp_compute_network`/`gcp_compute_network` task.\n\nThe `allowed.ports` property must not include `\"0-65535\"`. Instead, specify explicit ports or narrow ranges (for example `\"80\"`, `\"443\"`, or `\"1024-2048\"`) and restrict access with appropriate `sourceRanges` or other selectors. \n\nSecure example (allow only HTTP/HTTPS from a limited source range):\n\n```yaml\n- name: Allow HTTP and HTTPS from internal range\n  google.cloud.gcp_compute_firewall:\n    name: allow-web\n    network: \"{{ my_network }}\"\n    direction: INGRESS\n    allowed:\n      - IPProtocol: tcp\n        ports: [\"80\", \"443\"]\n    sourceRanges: [\"10.0.0.0/8\"]\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/google_compute_network_using_firewall_rule_allows_all_ports",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-gcp-google-compute-network-using-firewall-rule-allows-all-ports",
   "platform": "Ansible",
   "descriptionID": "da7c0346",
   "cloudProvider": "gcp",

@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Supply-Chain",
   "descriptionText": "The image tag must be provided and must not be empty or `latest`. Image digests (using `@`, e.g., `image@sha256:...`) are preferred and will satisfy this rule. Omitting a tag or using the `latest` tag is considered invalid.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/invalid_image",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-invalid-image",
   "platform": "Kubernetes",
   "descriptionID": "30154626",
   "cwe": "665",

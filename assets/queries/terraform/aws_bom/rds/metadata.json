@@ -5,7 +5,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "A list of RDS resources found. Amazon Relational Database Service (Amazon RDS) is a collection of managed services that makes it simple to set up, operate, and scale databases in the cloud.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws_bom/rds",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-rds",
   "platform": "Terraform",
   "descriptionID": "b621abbb",
   "cloudProvider": "aws",

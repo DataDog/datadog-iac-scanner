@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Observability",
   "descriptionText": "CVM instances should have detailed monitoring enabled. The `tencentcloud_instance` resource must not set `disable_monitor_service` to `true`. To ensure detailed monitoring is enabled, `disable_monitor_service` should be set to `false`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/tencentcloud/cvm_instance_disable_monitor_service",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-tencentcloud-cvm-instance-disable-monitor-service",
   "platform": "Terraform",
   "descriptionID": "e689820e",
   "cloudProvider": "tencentcloud",

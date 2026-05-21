@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Best Practices",
   "descriptionText": "To ensure containers do not run with root privileges:\n- Set `privileged`, `allowPrivilegeEscalation`, and `readOnlyRootFilesystem` to `false`.\n- Set `runAsUser.rule` to `MustRunAsNonRoot`.\n- Configure `fsGroup` and `supplementalGroups` with `MustRunAs`, ensuring the root range (GID 0) and root group are not permitted.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/root_containers_admitted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-root-containers-admitted",
   "platform": "Kubernetes",
   "descriptionID": "2fe54446",
   "cwe": "732",

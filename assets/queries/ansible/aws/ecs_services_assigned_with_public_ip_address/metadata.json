@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Amazon ECS services should not be assigned public IP addresses. Attaching public IPs exposes tasks directly to the internet, increasing the attack surface and the risk of unauthorized access.\n\nFor Ansible tasks using the `community.aws.ecs_service` or `ecs_service` modules, the `network_configuration.assign_public_ip` property must be defined and set to `false`. Tasks with `assign_public_ip: true` are flagged. If services require outbound internet access, use private subnets with a NAT Gateway or expose services via a load balancer instead of assigning public IPs.\n\nSecure configuration example:\n\n```yaml\n- name: Create ECS service with no public IP\n  community.aws.ecs_service:\n    name: my-service\n    cluster: my-cluster\n    task_definition: my-task:1\n    network_configuration:\n      subnets:\n        - subnet-0123456789abcdef0\n      security_groups:\n        - sg-0123456789abcdef0\n      assign_public_ip: false\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ecs_services_assigned_with_public_ip_address",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-ecs-services-assigned-with-public-ip-address",
   "platform": "Ansible",
   "providerUrl": "https://docs.ansible.com/ansible/latest/collections/community/aws/ecs_service_module.html",
   "descriptionID": "560f256b",

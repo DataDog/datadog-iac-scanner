@@ -5,7 +5,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "A list of DynamoDB resources found. Amazon DynamoDB is a fully managed, serverless, key-value NoSQL database designed to run high-performance applications at any scale.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws_bom/dynamo",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-dynamo",
   "platform": "Terraform",
   "descriptionID": "c9007e7c",
   "cloudProvider": "aws",

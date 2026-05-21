@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "The `lb` uses an insecure TLS policy. The `nifcloud_load_balancer` resource either omits the `ssl_policy_name` attribute or sets it to an outdated SSL policy. Configure `ssl_policy_name` to use a modern TLS policy (TLS v1.2 or newer) and avoid legacy SSL policies.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/load_balancer_use_insecure_tls_policy_name",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-load-balancer-use-insecure-tls-policy-name",
   "platform": "Terraform",
   "descriptionID": "be14dafb",
   "cloudProvider": "nifcloud",

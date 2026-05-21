@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Containers should not have full (unmasked) access to the host's `/proc` filesystem, as this can expose sensitive information and allow kernel parameter changes. A PodSecurityPolicy's `spec.allowedProcMountTypes` must not include the value \"Unmasked\" and should include \"Default\" to restrict proc mount behavior. Allowing \"Unmasked\" increases the risk of information disclosure and potential host compromise.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/container_runs_unmasked",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-container-runs-unmasked",
   "platform": "Kubernetes",
   "descriptionID": "50caf90a",
   "cloudProvider": "",

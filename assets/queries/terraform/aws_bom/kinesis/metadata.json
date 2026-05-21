@@ -5,7 +5,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "A list of Kinesis resources found. Amazon Kinesis is a real-time streaming service that provides collection, processing, and analysis of video and data streams in real-time",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws_bom/kinesis",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-kinesis",
   "platform": "Terraform",
   "descriptionID": "45271dee",
   "cloudProvider": "aws",

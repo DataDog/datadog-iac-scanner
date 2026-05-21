@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "AWS Lambda permissions with a principal value of `*` allow any AWS account or user to invoke the function, making it publicly accessible. This creates a significant security risk as unauthorized parties can trigger your Lambda function, potentially accessing sensitive data or consuming your AWS resources. To secure Lambda functions, specify the exact AWS account ARN in the `principal` field, as shown below, rather than using the wildcard `*`. \n```\nprincipal = \"arn:aws:iam::123456789012:root\"\n```\nThe following is an example of an insecure configuration:\n```\nprincipal = \"*\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/lambda_function_publicly_accessible",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-lambda-function-publicly-accessible",
   "platform": "Terraform",
   "descriptionID": "1btsf2f9",
   "cloudProvider": "aws",

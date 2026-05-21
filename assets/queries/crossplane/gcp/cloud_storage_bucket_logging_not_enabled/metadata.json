@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "Cloud storage bucket should have logging enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/gcp/cloud_storage_bucket_logging_not_enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-gcp-cloud-storage-bucket-logging-not-enabled",
   "platform": "Crossplane",
   "descriptionID": "49295adb",
   "cloudProvider": "gcp",

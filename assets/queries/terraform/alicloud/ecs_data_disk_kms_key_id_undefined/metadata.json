@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "ECS data disks must have the `kms_key_id` attribute set. This rule flags any `alicloud_disk` resource missing the `kms_key_id` attribute.\nSetting this ensures disks are encrypted using a KMS key and avoids unencrypted storage.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ecs_data_disk_kms_key_id_undefined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-ecs-data-disk-kms-key-id-undefined",
   "platform": "Terraform",
   "descriptionID": "04c57e20",
   "cloudProvider": "alicloud",

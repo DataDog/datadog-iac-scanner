@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "Hardcoded container registry passwords in GitHub Actions workflows expose credentials to anyone with repository read access and embed secrets in version control history. This increases the risk of credential theft and unauthorized access to private images. Container credentials must be supplied via expressions that reference GitHub Secrets, such as `${{ secrets.DOCKER_PASSWORD }}`, rather than literal string values.\n\nThis check validates job-level container credentials `jobs[].container.credentials.password` and service container credentials `jobs[].services[].credentials.password` and will flag passwords that are plain literals instead of expression references. Values that parse as a GitHub Actions expression (curly-brace form) are allowed. Any password not written as an expression should be moved to a repository or organization secret and referenced from the workflow.\n\nSecure configuration examples:\n\n```yaml\njobs:\n  build:\n    container:\n      image: my-registry/my-image:latest\n      credentials:\n        username: my-registry-user\n        password: ${{ secrets.DOCKER_PASSWORD }}\n\n    services:\n      redis:\n        image: redis:6\n        credentials:\n          username: redis-user\n          password: ${{ secrets.REDIS_PASSWORD }}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/hardcoded_container_credentials",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd-github-hardcoded-container-credentials",
   "platform": "CICD",
   "descriptionID": "d0e1f2a3",
   "cloudProvider": "github",

@@ -20,6 +20,10 @@ import re
 import sys
 from typing import List, Dict, Tuple
 
+expected_prefix = (
+    "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/"
+)
+
 
 def find_metadata_files(base_path: str, include_tests: bool = False) -> List[str]:
     """
@@ -44,35 +48,6 @@ def find_metadata_files(base_path: str, include_tests: bool = False) -> List[str
     return all_files
 
 
-def extract_rule_path_from_file(file_path: str, base_path: str) -> str:
-    """
-    Extract the rule path from the file path.
-
-    For example:
-    /path/to/assets/queries/cloudFormation/aws/api_gateway_with_open_access/metadata.json
-    -> cloudformation/aws/api_gateway_with_open_access
-
-    Args:
-        file_path: Full path to the metadata.json file
-        base_path: Base path of the repository
-
-    Returns:
-        The rule path in lowercase
-    """
-    # Get relative path from base
-    rel_path = os.path.relpath(file_path, base_path)
-
-    # Extract the part after assets/queries/
-    if "assets/queries/" in rel_path:
-        parts = rel_path.split("assets/queries/")[1]
-        # Remove /metadata.json from the end
-        parts = parts.replace("/metadata.json", "")
-        # Convert to lowercase
-        return parts.lower()
-
-    return ""
-
-
 def validate_description_url(
     description_url: str, expected_path: str
 ) -> Tuple[bool, str]:
@@ -86,9 +61,6 @@ def validate_description_url(
     Returns:
         Tuple of (is_valid, error_message)
     """
-    expected_prefix = (
-        "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/"
-    )
 
     if not description_url:
         return False, "descriptionUrl is empty or missing"
@@ -150,18 +122,18 @@ def validate_metadata_file(
 
     if has_provider_url:
         # If providerUrl exists, descriptionUrl MUST match the pattern
-        expected_path = extract_rule_path_from_file(file_path, base_path)
+        id = metadata.get("id", "")
 
-        if not expected_path:
+        if id == "":
             errors.append("Could not extract rule path from file location")
             return False, errors
 
-        is_valid, error_msg = validate_description_url(description_url, expected_path)
+        is_valid, error_msg = validate_description_url(description_url, id)
 
         if not is_valid:
             errors.append(f"Has providerUrl but descriptionUrl is invalid: {error_msg}")
             errors.append(
-                f"  Expected: https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/{expected_path}"
+                f"  Expected: https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/{id}"
             )
             errors.append(f"  Got: {description_url}")
             return False, errors

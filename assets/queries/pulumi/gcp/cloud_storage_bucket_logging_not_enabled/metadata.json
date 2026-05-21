@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "Cloud storage bucket should have logging enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/gcp/cloud_storage_bucket_logging_not_enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-gcp-cloud-storage-bucket-logging-not-enabled",
   "platform": "Pulumi",
   "descriptionID": "cc15c4d8",
   "cloudProvider": "gcp",

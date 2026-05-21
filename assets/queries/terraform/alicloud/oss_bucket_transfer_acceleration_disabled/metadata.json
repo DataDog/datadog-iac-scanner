@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Availability",
   "descriptionText": "An OSS bucket should have `transfer_acceleration.enabled` set to `true`. This rule inspects `alicloud_oss_bucket` resources and reports when the `transfer_acceleration` block is missing or when `transfer_acceleration.enabled` is `false`. It recommends adding a `transfer_acceleration` block with `enabled = true` or updating the existing value to `true`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_transfer_acceleration_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-oss-bucket-transfer-acceleration-disabled",
   "platform": "Terraform",
   "descriptionID": "19899aaa",
   "cloudProvider": "alicloud",

@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Build Process",
   "descriptionText": "The root container filesystem should be mounted as read-only. This rule checks both `containers` and `initContainers` and expects `securityContext.readOnlyRootFilesystem` to be set to `true` for each container. It reports `IncorrectValue` when the field is present and `false`, and `MissingAttribute` when the field is undefined.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/root_container_not_mounted_as_read_only",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-root-container-not-mounted-as-read-only",
   "platform": "Kubernetes",
   "descriptionID": "0d2df1e5",
   "cwe": "668",

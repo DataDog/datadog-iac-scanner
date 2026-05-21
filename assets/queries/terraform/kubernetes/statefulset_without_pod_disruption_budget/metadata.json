@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Availability",
   "descriptionText": "StatefulSets should be assigned a PodDisruptionBudget to ensure high availability. A PodDisruptionBudget protects StatefulSet pods from simultaneous voluntary evictions, preserving quorum and minimizing downtime during maintenance or cluster changes. Ensure the StatefulSet's .spec.selector.match_labels are targeted by a corresponding PodDisruptionBudget selector.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/statefulset_without_pod_disruption_budget",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-statefulset-without-pod-disruption-budget",
   "platform": "Terraform",
   "descriptionID": "efa415db",
   "cwe": "754",

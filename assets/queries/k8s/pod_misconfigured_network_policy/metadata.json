@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Each Pod should be targeted by a NetworkPolicy that includes both ingress and egress rules.\nFor Pods in the same namespace, a matching NetworkPolicy is determined by namespace. For Pods in a different namespace, the NetworkPolicy must explicitly select the Pod via `spec.podSelector.matchLabels`.\nA NetworkPolicy satisfies ingress or egress if it lists the respective type in `spec.policyTypes`. When `spec.policyTypes` is omitted, ingress is treated as present, while egress is considered present only if `spec.egress` is non-empty.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/pod_misconfigured_network_policy",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-pod-misconfigured-network-policy",
   "platform": "Kubernetes",
   "descriptionID": "20500552",
   "cwe": "665",

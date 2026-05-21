@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Redis Cache resource should not allow non-SSL connections.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/azure/redis_cache_allows_non_ssl_connections",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-azure-redis-cache-allows-non-ssl-connections",
   "platform": "Pulumi",
   "descriptionID": "64acf7a6",
   "cloudProvider": "azure",

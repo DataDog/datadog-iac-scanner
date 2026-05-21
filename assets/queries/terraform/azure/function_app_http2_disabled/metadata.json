@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Enabling HTTP/2 for Azure Function Apps improves security and performance by providing better encryption and more efficient use of network resources compared to HTTP/1.1. If the `http2_enabled` attribute is not set to `true` in the `site_config` block, as shown below, the Function App defaults to HTTP/1.1, exposing it to potential vulnerabilities such as protocol downgrade attacks and inefficient data transfer:\n\n```\nsite_config {\n  http2_enabled = true\n}\n```\n\nLeaving HTTP/2 disabled can result in degraded application security and responsiveness, making services more vulnerable to exploitation and less performant for end users.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/function_app_http2_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-azure-function-app-http2-disabled",
   "platform": "Terraform",
   "descriptionID": "7c364a67",
   "cloudProvider": "azure",

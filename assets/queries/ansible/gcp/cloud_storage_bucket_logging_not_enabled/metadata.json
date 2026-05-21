@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "Cloud Storage buckets must have access logging enabled to provide audit trails for object access and modifications. This is critical for detecting and investigating unauthorized access, data exfiltration, and operational incidents.\n\nFor Ansible tasks using the `google.cloud.gcp_storage_bucket` or `gcp_storage_bucket` modules, the `logging` property must be defined. It should specify a `logBucket` (the destination bucket for logs) and may include `logObjectPrefix` to organize log objects.\n\nResources missing the `logging` property are flagged. Ensure the designated log bucket exists and has the necessary IAM permissions so logs can be written and retained according to your retention and compliance requirements.\n\nSecure example (Ansible task):\n\n```yaml\n- name: Create GCS bucket with access logging enabled\n  google.cloud.gcp_storage_bucket:\n    name: my-data-bucket\n    logging:\n      logBucket: my-logs-bucket\n      logObjectPrefix: access-logs/\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cloud_storage_bucket_logging_not_enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-gcp-cloud-storage-bucket-logging-not-enabled",
   "platform": "Ansible",
   "descriptionID": "ba5af65f",
   "cloudProvider": "gcp",

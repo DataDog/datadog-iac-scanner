@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Availability",
   "descriptionText": "KMS Customer Master Keys (CMKs) must be usable, as disabled or scheduled-for-deletion keys cannot decrypt data and may cause service outages or data inaccessibility.\n\nIn Ansible `amazon.aws.kms_key` tasks, ensure `enabled` is defined and set to `true`, and that `pending_window` is not defined. Tasks with `enabled` set to `false` or with `enabled` undefined are flagged. Any task that sets `pending_window` (scheduling the key for deletion) is also flagged because it renders the key unusable after the pending window expires.\n\nSecure example for Ansible:\n\n```yaml\n- name: create KMS key\n  amazon.aws.kms_key:\n    name: my-key\n    description: \"Key for encrypting secrets\"\n    state: present\n    enabled: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/cmk_is_unusable",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-cmk-is-unusable",
   "platform": "Ansible",
   "descriptionID": "cb70e349",
   "cloudProvider": "aws",

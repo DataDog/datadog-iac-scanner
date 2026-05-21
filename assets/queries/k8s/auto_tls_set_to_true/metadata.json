@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "When a container runs `etcd`, the `--auto-tls` flag should be set to `false` or omitted. Enabling `--auto-tls=true` enables automatic certificate management and can introduce security risks. This rule checks `containers` and `initContainers` for commands that invoke `etcd` and reports when `--auto-tls` is present and set to `true`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/auto_tls_set_to_true",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-auto-tls-set-to-true",
   "platform": "Kubernetes",
   "descriptionID": "81883f01",
   "cwe": "311",

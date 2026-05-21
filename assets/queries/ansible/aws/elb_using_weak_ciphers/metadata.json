@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "ELB listeners must specify a strong SSL/TLS policy because weak cipher suites can enable protocol downgrade, interception, or decryption of traffic between clients and the load balancer. For Ansible ELB Application and Network load balancer modules (`amazon.aws.elb_application_lb`, `elb_application_lb`, `community.aws.elb_network_lb`, `elb_network_lb`), the `listeners` list must be defined and each listener must include the `SslPolicy` property set to a non-weak policy.\n\nResources missing `listeners` or listener entries missing `SslPolicy` are flagged. Any `SslPolicy` that matches a known weak policy in your baseline should be replaced with an AWS-managed strong policy (for example, a TLS 1.2+ policy) or a custom policy that excludes weak ciphers.\n\nSecure configuration example:\n\n```yaml\n- name: Create ALB with strong TLS policy\n  amazon.aws.elb_application_lb:\n    name: my-alb\n    listeners:\n      - Protocol: HTTPS\n        Port: 443\n        SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01\n        CertificateArn: arn:aws:acm:us-west-2:123456789012:certificate/abcd-1234\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/elb_using_weak_ciphers",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-elb-using-weak-ciphers",
   "platform": "Ansible",
   "descriptionID": "ab5b4a0b",
   "cloudProvider": "aws",

@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Backup",
   "descriptionText": "The RDB backup retention period is below 7 days. The `nifcloud_db_instance` resource must include the `backup_retention_period` attribute set to at least 7 (days). Resources missing this attribute or with a value less than 7 will be reported as `MissingAttribute` or `IncorrectValue`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/db_does_not_have_long_backup_retention",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-db-does-not-have-long-backup-retention",
   "platform": "Terraform",
   "descriptionID": "5fadf94a",
   "cloudProvider": "nifcloud",

@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Encryption",
   "descriptionText": "Amazon Elastic Filesystem should have filesystem encryption enabled using KMS CMK customer-managed keys instead of AWS managed-keys",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/efs_without_kms",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-efs-without-kms",
   "platform": "Crossplane",
   "descriptionID": "2643a873",
   "cloudProvider": "aws",

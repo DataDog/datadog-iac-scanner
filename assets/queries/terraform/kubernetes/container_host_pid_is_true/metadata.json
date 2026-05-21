@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Minimize the admission of containers that request sharing the host process ID namespace. Containers with `host_pid` enabled can access host processes, increasing the risk of privilege escalation and lateral movement. This rule flags resources where `spec.host_pid` is set to `true`. The expected value is `false` or undefined.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/container_host_pid_is_true",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-container-host-pid-is-true",
   "platform": "Terraform",
   "descriptionID": "74aa164e",
   "cwe": "250",

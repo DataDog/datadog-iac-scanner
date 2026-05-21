@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "Checks whether any label in the resource metadata is invalid. The rule validates each label key against the regular expression `^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$`; when a label key does not match, the rule returns a result containing `documentId`, `resourceType`, `resourceName`, `searchKey`, `issueType`, `keyExpectedValue`, and `keyActualValue`. The `issueType` is `IncorrectValue` and `searchKey` points to the labels location (for example, `<resourceType>[<name>].metadata.labels`).",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/metadata_label_is_invalid",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-metadata-label-is-invalid",
   "platform": "Terraform",
   "descriptionID": "5448851e",
   "cwe": "710",

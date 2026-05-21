@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "OpenSearch domain endpoints must enforce HTTPS to ensure client connections use TLS and prevent interception or tampering of sensitive data such as queries and credentials. In Ansible tasks using the `community.aws.opensearch` or `opensearch` modules, the `domain_endpoint_options.enforce_https` property must be set to `true`. Tasks that omit `domain_endpoint_options` or `enforce_https`, or that set `enforce_https: false`, are flagged.\n\nSecure Ansible task example:\n\n```yaml\n- name: create opensearch domain with HTTPS enforced\n  community.aws.opensearch:\n    domain_name: my-domain\n    domain_endpoint_options:\n      enforce_https: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/elasticsearch_with_https_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-elasticsearch-with-https-disabled",
   "platform": "Ansible",
   "descriptionID": "4beff10d",
   "cloudProvider": "aws",

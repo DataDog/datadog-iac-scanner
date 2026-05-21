@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Insecure Configurations",
   "descriptionText": "The workload mounts a volume using a hostPath that points to a sensitive host OS directory. Mounting sensitive directories (for example /etc, /var, /proc) via hostPath grants the pod access to the host filesystem and can compromise host security. This check also flags PersistentVolumes that use hostPath to mount sensitive OS directories.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/workload_mounting_with_sensitive_os_directory",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-workload-mounting-with-sensitive-os-directory",
   "platform": "Kubernetes",
   "descriptionID": "73339cde",
   "cwe": "200",

@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Availability",
   "descriptionText": "AWS Auto Scaling Groups (ASGs) should have associated Elastic Load Balancers (ELBs) to ensure high availability and efficient distribution of incoming traffic. Without specifying the `load_balancers` attribute, as shown in the example below, instances launched by the ASG may become inaccessible or experience uneven traffic distribution, leading to reduced reliability and performance:\n\n```\nresource \"aws_autoscaling_group\" \"bar\" {\n  ...\n  // missing `load_balancers`\n}\n```\n\nTo remediate this, the `load_balancers` attribute should be defined, as in the secure example below:\n\n```\nresource \"aws_autoscaling_group\" \"bar3\" {\n  ...\n  load_balancers = [\"elb_1\"]\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/auto_scaling_group_with_no_associated_elb",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-auto-scaling-group-with-no-associated-elb",
   "platform": "Terraform",
   "descriptionID": "268307dd",
   "cloudProvider": "aws",

@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "DocDB logging should be enabled",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/docdb_logging_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-docdb-logging-disabled",
   "platform": "Crossplane",
   "descriptionID": "60b6794e",
   "cloudProvider": "aws",

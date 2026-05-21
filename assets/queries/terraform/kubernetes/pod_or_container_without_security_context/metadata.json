@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "A `security_context` defines privileges and access control settings for a `Pod` or `Container`.  \nThis rule ensures the `security_context` attribute is present on `kubernetes_pod` resources and on `init_container` and `container` entries within the pod `spec`.  \nIf `security_context` is missing, the rule reports a `MissingAttribute` issue that includes the resource details and the expected versus actual values.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/pod_or_container_without_security_context",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-pod-or-container-without-security-context",
   "platform": "Terraform",
   "descriptionID": "a465ab52",
   "cwe": "285",

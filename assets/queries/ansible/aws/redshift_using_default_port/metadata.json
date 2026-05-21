@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "Using the default Amazon Redshift port (5439) increases exposure because well-known ports are easy to discover and target with automated scanning and brute-force attempts.\n\nIn Ansible playbooks that use the `redshift` or `community.aws.redshift` modules, the `port` property must not be set to `5439`. Tasks with `port: 5439` are flagged. Choose a non-default port and restrict access using VPC private subnets and security group rules to limit which IPs or subnets can reach the cluster.\n\nSecure example with a non-default port:\n\n```yaml\n- name: Create Redshift cluster with non-default port\n  community.aws.redshift:\n    cluster_identifier: my-redshift-cluster\n    node_type: dc2.large\n    master_username: masteruser\n    master_user_password: secretpassword\n    db_name: mydb\n    port: 15432\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/redshift_using_default_port",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-redshift-using-default-port",
   "platform": "Ansible",
   "descriptionID": "64fe28a7",
   "cloudProvider": "aws",

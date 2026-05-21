@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "API Gateway deployments should have `access_log_settings` defined for each connected API Gateway Stage to ensure proper logging of API requests and responses. Without these settings, as shown below, critical API activity may go unlogged, making it difficult to track access patterns, detect malicious requests, or troubleshoot operational issues:\n\n```\nresource \"aws_api_gateway_stage\" \"example\" {\n  ...\n  access_log_settings {\n    destination_arn = \"arn:aws:logs:region:account-id:log-group:log-group-name\"\n    format          = \"format\"\n  }\n}\n```\n\nLeaving this misconfiguration unaddressed can hinder security monitoring and auditing, potentially exposing the environment to undetected abuse or data exfiltration.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/api_gateway_deployment_without_access_log_setting",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-api-gateway-deployment-without-access-log-setting",
   "platform": "Terraform",
   "descriptionID": "e28c5797",
   "cloudProvider": "aws",

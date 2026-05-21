@@ -5,7 +5,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "A list of Filestore Instance resources found. Filestore instances are fully managed file servers on Google Cloud that can be connected to Compute Engine VMs, GKE clusters, and your on-premises machines. Once provisioned, you can scale the capacity of your instances according to need without any downtime.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/gcp_bom/fi",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-gcp-fi",
   "platform": "Terraform",
   "descriptionID": "4a45b126",
   "cloudProvider": "gcp",

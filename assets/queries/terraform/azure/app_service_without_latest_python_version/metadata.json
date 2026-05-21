@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "It is recommended to specify the latest supported Python version for the `python_version` attribute in the `site_config` block of the `azurerm_app_service` resource. Using outdated Python versions, such as `\"python_version = \\\"2.7\\\"\"`, exposes your application to known security vulnerabilities and prevents access to important features and security updates available in newer releases. To reduce risk, configure the resource with an up-to-date version. For example:\n\n```\nsite_config {\n  python_version = \"3.10\"\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/azure/app_service_without_latest_python_version",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-azure-app-service-without-latest-python-version",
   "platform": "Terraform",
   "descriptionID": "848bf695",
   "cloudProvider": "azure",

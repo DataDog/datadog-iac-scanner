@@ -5,7 +5,7 @@
   "severity": "TRACE",
   "category": "Bill Of Materials",
   "descriptionText": "A list of EBS resources found. Amazon Elastic Block Store (Amazon EBS) is an easy-to-use, scalable, high-performance block-storage service designed for Amazon Elastic Compute Cloud (Amazon EC2).",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws_bom/ebs",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-ebs",
   "platform": "Terraform",
   "descriptionID": "fd141699",
   "cloudProvider": "aws",

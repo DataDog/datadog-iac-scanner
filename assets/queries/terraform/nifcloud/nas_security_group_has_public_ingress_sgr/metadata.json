@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "An ingress `nifcloud_nas_security_group` rule allows traffic from `/0`. This permits access from the entire Internet and is overly permissive. Use a more restrictive CIDR range to limit allowed sources.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/nas_security_group_has_public_ingress_sgr",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-nas-security-group-has-public-ingress-sgr",
   "platform": "Terraform",
   "descriptionID": "5cf1f2e2",
   "cloudProvider": "nifcloud",

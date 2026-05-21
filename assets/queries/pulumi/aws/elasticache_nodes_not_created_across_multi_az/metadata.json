@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Availability",
   "descriptionText": "ElastiCache Nodes should be created across multi az, which means 'AZMode' should be set to 'cross-az' in multi nodes cluster",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/elasticache_nodes_not_created_across_multi_az",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-elasticache-nodes-not-created-across-multi-az",
   "platform": "Pulumi",
   "descriptionID": "149de780",
   "cloudProvider": "aws",

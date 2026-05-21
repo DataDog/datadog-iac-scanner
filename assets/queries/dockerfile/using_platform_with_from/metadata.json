@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Best Practices",
   "descriptionText": "`FROM` instructions in Dockerfiles must not include the `--platform` flag. Overriding the target platform in the Dockerfile can cause builds to pull different, potentially unvetted or incompatible image variants, undermining image provenance, scanning, and supply-chain controls.\n\nThis rule checks `FROM` instructions and flags any use of the `--platform` flag. `FROM` lines should reference the intended image and tag without the `--platform` option. If a specific architecture is required, configure the build environment or manifest resolution outside the Dockerfile instead of embedding `--platform` in the instruction.\n\nSecure example:\n\n```dockerfile\nFROM ubuntu:20.04\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/using_platform_with_from",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile-using-platform-with-from",
   "platform": "Dockerfile",
   "descriptionID": "5bd0baab",
   "cloudProvider": "",

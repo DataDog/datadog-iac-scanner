@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "OSS buckets should have public access disabled. This rule flags `alicloud_oss_bucket` resources where `acl` is set to `public-read` or `public-read-write`. To restrict access, set `acl = \"private\"` or remove the `acl` attribute.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/oss_bucket_public_access_enabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-oss-bucket-public-access-enabled",
   "platform": "Terraform",
   "descriptionID": "d8096622",
   "cloudProvider": "alicloud",

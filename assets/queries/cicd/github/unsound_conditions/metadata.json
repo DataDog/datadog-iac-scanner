@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Build Process",
   "descriptionText": "Conditions that mix fenced GitHub Actions expressions (`${{ ... }}`) with YAML multiline block scalars (`|` or `>`) can evaluate incorrectly. The block scalar often adds trailing newlines, turning the expanded value into a non-empty string that GitHub Actions treats as truthy. This can cause conditions that should be false to always pass, allowing jobs or steps to run unintentionally. This check inspects the `if` property on jobs, steps, and reusable workflow calls. It flags cases where the `if` value contains a fenced expression and the overall scalar includes extra leading or trailing content, indicating that block style added whitespace or newlines. Remediate by using stripped block scalar styles (`|-` or `>-`) to remove trailing newlines, or by using a plain inline expression such as `if: ${{ ... }}`, so the fenced expression is evaluated as an expression rather than as a non-empty string.\n\nSecure examples:\n\n```yaml\n# Stripped literal block scalar removes trailing newline\nif: |-\n  ${{ github.event_name == 'push' }}\n```\n\n```yaml\n# Inline fenced expression (single line)\nif: ${{ github.event_name == 'push' }}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/unsound_conditions",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd-github-unsound-conditions",
   "platform": "CICD",
   "descriptionID": "d4e5f6a7",
   "cloudProvider": "github",

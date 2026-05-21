@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Networking and Firewall",
   "descriptionText": "Allowing HTTP (TCP port 80) from 0.0.0.0/0 in a Security Group exposes services to unauthenticated public access and subjects unencrypted traffic to eavesdropping and automated scanning. In Ansible tasks using `amazon.aws.ec2_group` or `ec2_group`, this rule flags `rules` entries where `cidr_ip` is `0.0.0.0/0` and the entry opens port 80.\n\nResources with such `rules` are flagged. To remediate, restrict `cidr_ip` to explicit trusted CIDR ranges or remove the public HTTP rule. Alternatively, serve traffic over HTTPS (port 443) terminated at a load balancer or proxy with appropriate access controls.\n\nSecure example showing HTTP restricted to a trusted CIDR:\n\n```yaml\n- name: create security group with restricted HTTP\n  amazon.aws.ec2_group:\n    name: my-sg\n    description: \"example\"\n    rules:\n      - proto: tcp\n        from_port: 80\n        to_port: 80\n        cidr_ip: 10.0.0.0/16\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/http_port_open_to_internet",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-http-port-open-to-internet",
   "platform": "Ansible",
   "descriptionID": "8c6031b8",
   "cloudProvider": "aws",

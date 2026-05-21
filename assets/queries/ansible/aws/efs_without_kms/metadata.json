@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Encryption",
   "descriptionText": "EFS filesystems should be encrypted with a customer-managed AWS KMS CMK to protect data at rest and maintain control over key rotation, access policies, and audit logging.\n\nIn Ansible, the `kms_key_id` option on the `community.aws.efs` (or legacy `efs`) module must be defined and set to a customer-managed key identifier (KMS key ID, key ARN, or alias) rather than relying on the AWS-managed key. Tasks that omit `kms_key_id` or leave it undefined default to an AWS-managed key and are flagged by this rule.\n\nSecure configuration example:\n\n```yaml\n- name: Create encrypted EFS filesystem\n  community.aws.efs:\n    name: my-efs\n    performance_mode: generalPurpose\n    kms_key_id: arn:aws:kms:us-east-1:123456789012:key/abcdef12-3456-7890-abcd-ef1234567890\n    state: present\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/efs_without_kms",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-efs-without-kms",
   "platform": "Ansible",
   "descriptionID": "a01870d5",
   "cloudProvider": "aws",

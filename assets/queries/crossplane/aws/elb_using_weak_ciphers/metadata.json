@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "ELB Predefined or Custom Security Policies must not use weak ciphers, to reduce the risk of the SSL connection between the client and the load balancer being exploited. That means the 'sslPolicy' of 'Listener' must not coincide with any of a predefined list of weak ciphers.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane/aws/elb_using_weak_ciphers",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/crossplane-aws-elb-using-weak-ciphers",
   "platform": "Crossplane",
   "descriptionID": "53318133",
   "cloudProvider": "aws",

@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "PostgreSQL servers must have the server parameter `log_connections` set to `ON` so connection events are recorded for auditing and intrusion detection. Without this logging, connection attempts and session activity can go unnoticed, hampering incident investigation and compliance.\n\nIn Ansible, tasks using the `azure.azcollection.azure_rm_postgresqlconfiguration` or `azure_rm_postgresqlconfiguration` modules must set the `name` property to `log_connections` and the `value` property to `ON`. This rule flags tasks where `name` equals `log_connections` (case-insensitive) and `value` is missing or not `ON` (case-insensitive). Secure configuration example:\n\n```yaml\n- name: Enable PostgreSQL connection logging\n  azure.azcollection.azure_rm_postgresqlconfiguration:\n    resource_group: my-rg\n    server_name: my-pg-server\n    name: log_connections\n    value: \"ON\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/azure/postgresql_log_connections_not_set",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-azure-postgresql-log-connections-not-set",
   "platform": "Ansible",
   "descriptionID": "774a65e4",
   "cloudProvider": "azure",

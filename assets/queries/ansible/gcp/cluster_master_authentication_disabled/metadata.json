@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Kubernetes Engine clusters must have master authentication credentials defined so control plane access is not left unauthenticated or ambiguous. This ensures administrative access is explicit and auditable.\n\nFor Ansible GKE cluster resources using the `google.cloud.gcp_container_cluster` or `gcp_container_cluster` modules, the `master_auth` property must be present and its `username` and `password` subproperties must be defined and non-empty strings. This rule flags resources where `master_auth` is undefined or null, or where `master_auth.username` or `master_auth.password` are undefined, null, or empty. If you use alternative authentication mechanisms, ensure they are explicitly configured. Otherwise, provide non-empty credentials so the cluster admin account is not left unspecified.\n\nSecure configuration example for an Ansible task:\n\n```yaml\n- name: Create GKE cluster with master auth\n  google.cloud.gcp_container_cluster:\n    name: my-cluster\n    zone: us-central1\n    master_auth:\n      username: admin\n      password: \"{{ gke_admin_password }}\"\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/gcp/cluster_master_authentication_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-gcp-cluster-master-authentication-disabled",
   "platform": "Ansible",
   "descriptionID": "6452ea1e",
   "cloudProvider": "gcp",

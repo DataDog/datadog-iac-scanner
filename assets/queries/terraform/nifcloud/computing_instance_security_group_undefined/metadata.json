@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "Missing `security_group` on `nifcloud_instance` resources.\nThe `nifcloud_instance` resource should include a `security_group` to enforce network-level access controls.\nInstances that do not set a `security_group` are flagged as `MissingAttribute`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/computing_instance_security_group_undefined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-computing-instance-security-group-undefined",
   "platform": "Terraform",
   "descriptionID": "157ebbeb",
   "cloudProvider": "nifcloud",

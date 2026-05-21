@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Allowing API Gateway to invoke a Lambda using a wildcard source ARN like `/*/*` grants any API, stage, or method the ability to invoke the function. This can result in unintended public or cross-account invocation and increase the risk of unauthorized execution.\n\nIn Ansible tasks using the `amazon.aws.lambda_policy` or `lambda_policy` modules, the `source_arn` property must not be set to `/*/*`. Instead, specify the full execute-api ARN (for example `arn:aws:execute-api:<region>:<account-id>:<api-id>/<stage>/<HTTP-VERB>/<resource>`).\n\nThis rule flags policies where `action` is `lambda:InvokeFunction` or `lambda:*` and `principal` is `apigateway.amazonaws.com` or `*` while `source_arn` matches `/*/*`. Avoid using a wildcard principal and prefer the explicit `apigateway.amazonaws.com` principal with a narrowed `source_arn`. \n\nSecure configuration example:\n\n```yaml\n- name: Allow specific API Gateway to invoke Lambda\n  amazon.aws.lambda_policy:\n    function_name: my-function\n    action: lambda:InvokeFunction\n    principal: apigateway.amazonaws.com\n    source_arn: arn:aws:execute-api:us-east-1:123456789012:abcd1234/prod/POST/myresource\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/public_lambda_via_api_gateway",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-public-lambda-via-api-gateway",
   "platform": "Ansible",
   "descriptionID": "50e0d3f5",
   "cloudProvider": "aws",

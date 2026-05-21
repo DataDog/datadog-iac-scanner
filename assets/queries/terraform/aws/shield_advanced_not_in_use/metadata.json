@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Networking and Firewall",
   "descriptionText": "AWS Shield Advanced provides enhanced protection against distributed denial-of-service (DDoS) attacks for critical AWS resources, such as Amazon Route 53 hosted zones, AWS Global Accelerator accelerators, Elastic IP addresses, Elastic Load Balancers, and Amazon CloudFront distributions. Without Shield Advanced enabled, these resources are vulnerable to large-scale DDoS attacks, which can lead to downtime, degraded performance, and increased mitigation costs. To secure these resources in Terraform, use the `aws_shield_protection` resource with the correct `resource_arn`. For example:\n\n```\nresource \"aws_shield_protection\" \"example\" {\n  name         = \"example\"\n  resource_arn = \"arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:eip-allocation/${aws_eip.example.id}\"\n\n  tags = {\n    Environment = \"Prod\"\n  }\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/shield_advanced_not_in_use",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-shield-advanced-not-in-use",
   "platform": "Terraform",
   "descriptionID": "e09b31c7",
   "cloudProvider": "aws",

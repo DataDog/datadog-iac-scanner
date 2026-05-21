@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "Using `secrets: inherit` in reusable workflow calls passes all secrets from the calling workflow to the called workflow. This violates the principle of least privilege and can lead to broad secret exposure if the reusable workflow is compromised or contains vulnerabilities.\n\nThe `secrets` property on a job that invokes a reusable workflow (a job with `uses: <owner>/<repo>/.github/workflows/<file>@<ref>`) must not be set to `inherit`. Jobs with `secrets: inherit` will be flagged. Instead, explicitly map only the specific secrets the reusable workflow requires using the secrets mapping syntax, or omit the `secrets` property if none are needed.\n\nSecure example with explicit secret mapping:\n\n```yaml\njobs:\n  call-reusable:\n    uses: org/repo/.github/workflows/reusable.yml@v1\n    secrets:\n      API_TOKEN: ${{ secrets.API_TOKEN }}\n      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd/github/secrets_inherit",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/cicd-github-secrets-inherit",
   "platform": "CICD",
   "descriptionID": "e1f2a3b4",
   "cloudProvider": "github",

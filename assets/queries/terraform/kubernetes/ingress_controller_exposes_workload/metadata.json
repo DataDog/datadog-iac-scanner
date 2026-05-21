@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Configurations",
   "descriptionText": "Ingress controllers should not directly expose workload targets. Exposing service backends that map to a workload's target_port can increase the risk of vulnerabilities and denial-of-service attacks. This rule flags Ingress rules whose backend service name and port match a Kubernetes Service's spec.port.target_port, indicating the Ingress is exposing the workload.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/ingress_controller_exposes_workload",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-ingress-controller-exposes-workload",
   "platform": "Terraform",
   "descriptionID": "88c1dfb2",
   "cwe": "779",

@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Build Process",
   "descriptionText": "Using a relative `WORKDIR` in a Dockerfile can create build-time and runtime ambiguity that leads to unpredictable behavior, accidental file writes or executions in the wrong location, and difficulty enforcing consistent file permissions and access boundaries.\n\nCheck Dockerfile `WORKDIR` instructions and require the argument to be an absolute path. Acceptable forms include Unix-style paths starting with `/`, Windows drive-letter paths like `C:\\path`, or environment-variable-based paths such as `$APP_HOME` or `${APP_HOME}`. `WORKDIR` values that are relative (for example, `./app`, `../app`, or bare names) will be flagged. \n\nSecure examples:\n\n```\nWORKDIR /app\n```\n\n```\nENV APP_HOME=/srv/app\nWORKDIR ${APP_HOME}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile/workdir_path_not_absolute",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/dockerfile-workdir-path-not-absolute",
   "platform": "Dockerfile",
   "descriptionID": "bfe0be8b",
   "cwe": "665",

@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Availability",
   "descriptionText": "StatefulSets should reference an existing headless Service via `spec.serviceName`. The referenced Service must be headless (`spec.clusterIP` set to \"None\") and located in the same namespace. All selector labels defined on the Service must be present on the StatefulSet pod template labels so the Service can target the StatefulSet's pods.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/statefulset_without_service_name",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-statefulset-without-service-name",
   "platform": "Kubernetes",
   "descriptionID": "2ce554f2",
   "cwe": "665",

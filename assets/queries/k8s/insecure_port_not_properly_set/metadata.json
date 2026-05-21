@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "When a container runs `kube-apiserver`, the `--insecure-port` flag should be set to `0`. If the flag is missing, the rule reports a MissingAttribute; if present but not set to `0`, the rule reports an IncorrectValue. This check applies to `containers` and `initContainers` within the resource spec.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/k8s/insecure_port_not_properly_set",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/kubernetes-insecure-port-not-properly-set",
   "platform": "Kubernetes",
   "descriptionID": "d9e178b1",
   "cwe": "665",

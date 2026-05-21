@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Networking and Firewall",
   "descriptionText": "VPN gateway is missing `security_group`. `nifcloud_vpn_gateway` resources should include a `security_group` attribute for security purposes. This rule detects `nifcloud_vpn_gateway` resources that do not include a `security_group`, which can leave the VPN gateway exposed or indicate an incomplete configuration.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/nifcloud/vpn_gateway_security_group_undefined",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-nifcloud-vpn-gateway-security-group-undefined",
   "platform": "Terraform",
   "descriptionID": "ba50cd20",
   "cloudProvider": "nifcloud",

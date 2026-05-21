@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Observability",
   "descriptionText": "API Gateway should have Access Log Settings defined",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi/aws/api_gateway_access_logging_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/pulumi-aws-api-gateway-access-logging-disabled",
   "platform": "Pulumi",
   "descriptionID": "5feb747f",
   "cloudProvider": "aws",

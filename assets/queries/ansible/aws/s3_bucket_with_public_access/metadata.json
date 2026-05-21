@@ -5,7 +5,7 @@
   "severity": "CRITICAL",
   "category": "Access Control",
   "descriptionText": "Ansible tasks that set S3 `permission` to `public` create publicly accessible buckets or objects, risking data exposure and regulatory non‑compliance. For the `amazon.aws.s3_object` and `s3_object` modules, the `permission` property must be defined and must not contain the value `public`. Use `private` or other restricted values (for example, `authenticated-read`) as appropriate.\n\nThis rule flags tasks where `permission` contains `public`. Tasks missing an explicit `permission` should be reviewed and set to a non‑public value.\n\nSecure example:\n\n```yaml\n- name: Create private S3 bucket\n  amazon.aws.s3_object:\n    bucket: my-bucket\n    permission: private\n    mode: create\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/s3_bucket_with_public_access",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-s3-bucket-with-public-access",
   "platform": "Ansible",
   "descriptionID": "d7a19b7e",
   "cloudProvider": "aws",

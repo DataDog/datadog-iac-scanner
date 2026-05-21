@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Secret Management",
   "descriptionText": "The `alicloud_ram_account_password_policy` attribute `max_password_age` must be greater than `0` and less than `91`. A missing `max_password_age`, a value of `0`, or any value greater than `90` is noncompliant. Recommended remediation: set `max_password_age` to `12`.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/ram_account_password_policy_max_password_age_unrecommended",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-ram-account-password-policy-max-password-age-unrecommended",
   "platform": "Terraform",
   "descriptionID": "6056f5ca",
   "cloudProvider": "alicloud",

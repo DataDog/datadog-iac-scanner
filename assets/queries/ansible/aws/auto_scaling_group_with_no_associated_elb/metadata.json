@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Availability",
   "descriptionText": "Auto Scaling Groups must be associated with a load balancer so new instances receive traffic and health checks can detect and replace unhealthy instances. Without a load balancer, instances may not serve requests, and application availability and scaling behavior can be impacted.\n\nFor Ansible `autoscaling_group` tasks (modules `amazon.aws.autoscaling_group` and `autoscaling_group`), the `load_balancers` property must be defined and set to a non-empty list of Classic ELB names. Tasks missing the `load_balancers` property or with `load_balancers: []` are flagged. If you use Application Load Balancers with target groups instead of Classic ELBs, configure `target_group_arns` accordingly—this rule only validates the `load_balancers` attribute.\n\nSecure example:\n\n```yaml\n- name: Create Auto Scaling Group with ELB\n  amazon.aws.autoscaling_group:\n    name: my-asg\n    launch_template: my-launch-template\n    min_size: 2\n    max_size: 5\n    load_balancers:\n      - my-classic-elb\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/auto_scaling_group_with_no_associated_elb",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-auto-scaling-group-with-no-associated-elb",
   "platform": "Ansible",
   "descriptionID": "57b5fbca",
   "cloudProvider": "aws",

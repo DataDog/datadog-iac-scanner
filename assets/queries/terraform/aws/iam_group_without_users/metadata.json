@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Access Control",
   "descriptionText": "IAM Groups should have at least one user associated with them to ensure that group permissions are assigned with clear intent and are being utilized for access control. Leaving an IAM group without users—such as configuring `users = []` in an `aws_iam_group_membership` resource—can create ambiguity in access management, leaving unused privilege sets within the environment that may go unnoticed or be misused if users are later added without proper oversight. To address this, always specify one or more users in the `users` attribute, as shown below:\n\n```\nresource \"aws_iam_group_membership\" \"team\" {\n  name = \"tf-testing-group-membership\"\n\n  users = [\n    aws_iam_user.user_one.name,\n    aws_iam_user.user_two.name,\n  ]\n\n  group = aws_iam_group.group.name\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/iam_group_without_users",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-iam-group-without-users",
   "platform": "Terraform",
   "descriptionID": "c5730db9",
   "cloudProvider": "aws",

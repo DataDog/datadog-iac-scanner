@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "NAS file systems must be encrypted. The `alicloud_nas_file_system` resource must include the `encrypt_type` attribute, and it must not be set to `0`. To remediate, set `encrypt_type` to `\"2\"` to enable user-managed KMS encryption.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/alicloud/nas_file_system_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-alicloud-nas-file-system-not-encrypted",
   "platform": "Terraform",
   "descriptionID": "fb3675d5",
   "cloudProvider": "alicloud",

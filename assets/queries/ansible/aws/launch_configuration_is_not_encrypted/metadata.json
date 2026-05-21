@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "Block device volumes in EC2 launch configurations must be encrypted to protect data at rest and prevent exposure of snapshots or AMIs if storage media is compromised.\n\nFor Ansible tasks using the `community.aws.autoscaling_launch_config` or `autoscaling_launch_config` modules, ensure the `volumes` list is defined and each volume entry sets `encrypted: true` (Ansible `yes` is also acceptable) under `ec2_lc.volumes`. Ephemeral (instance-store) volumes do not support encryption and are excluded. This rule flags launch configurations missing the `volumes` property, any volume entries without an `encrypted` property, or volumes where `encrypted` is explicitly false.\n\nExample secure configuration for an Ansible `autoscaling_launch_config` task:\n\n```yaml\n- name: Create launch configuration with encrypted volumes\n  community.aws.autoscaling_launch_config:\n    name: my-launch-config\n    image_id: ami-0123456789abcdef0\n    instance_type: t3.medium\n    volumes:\n      - device_name: /dev/xvda\n        volume_size: 50\n        volume_type: gp2\n        encrypted: true\n        delete_on_termination: yes\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/launch_configuration_is_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-launch-configuration-is-not-encrypted",
   "platform": "Ansible",
   "descriptionID": "57b9aee0",
   "cloudProvider": "aws",

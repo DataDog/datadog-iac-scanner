@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Access Control",
   "descriptionText": "ECS services must not be assigned administrative IAM roles. Admin-level privileges grant containers broad account-wide access and increase the risk of privilege escalation and lateral movement if the service is compromised. In Ansible tasks using `community.aws.ecs_service` or `ecs_service`, the `role` property must reference a least-privilege IAM role or ARN and must not contain the substring \"admin\" (case-insensitive). This rule flags tasks where `role` is a string that includes \"admin\". Roles omitted or defined via non-string constructs may not be detected and should be reviewed to ensure they do not attach the `AdministratorAccess` policy.\n\nSecure example referencing a non-admin role:\n\n```yaml\n- name: my-ecs-service\n  community.aws.ecs_service:\n    name: my-service\n    cluster: my-cluster\n    task_definition: my-task:1\n    role: arn:aws:iam::123456789012:role/ecsTaskRole\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ecs_service_admin_role_is_present",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-ecs-service-admin-role-is-present",
   "platform": "Ansible",
   "descriptionID": "32e74c18",
   "cloudProvider": "aws",

@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Insecure Defaults",
   "descriptionText": "No `RoleBinding` or `ClusterRoleBinding` should bind to the default `ServiceAccount`.\nThe rule detects `resource.kubernetes_role_binding` entries where `subject[].kind` is `ServiceAccount` and `subject[].name` is `default`.\nBindings to the default `ServiceAccount` can grant unintended privileges; prefer distinct service accounts to limit access.",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/kubernetes/role_binding_to_default_service_account",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-kubernetes-role-binding-to-default-service-account",
   "platform": "Terraform",
   "descriptionID": "a90a96ca",
   "cwe": "665",

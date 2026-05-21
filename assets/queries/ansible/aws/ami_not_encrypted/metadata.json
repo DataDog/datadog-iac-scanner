@@ -5,7 +5,7 @@
   "severity": "MEDIUM",
   "category": "Encryption",
   "descriptionText": "AMIs must have their block device mappings encrypted to protect data at rest and prevent sensitive information from being exposed if snapshots are copied, shared, or recovered on different storage.\n\nFor Ansible tasks using the `amazon.aws.ec2_ami` or `ec2_ami` modules, each entry in the `device_mapping` must include `encrypted: true`. Resources missing the `encrypted` attribute or with `encrypted: false` are flagged. Ensure every device mapping explicitly sets `encrypted: true` so AMI snapshots and derived volumes remain encrypted.\n\nSecure configuration example:\n\n```yaml\n- name: Create AMI with encrypted device mapping\n  amazon.aws.ec2_ami:\n    name: my-encrypted-ami\n    device_mapping:\n      - device_name: /dev/sda1\n        encrypted: true\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/ami_not_encrypted",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-ami-not-encrypted",
   "platform": "Ansible",
   "descriptionID": "a4342f08",
   "cloudProvider": "aws",

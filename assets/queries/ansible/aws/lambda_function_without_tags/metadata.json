@@ -5,7 +5,7 @@
   "severity": "LOW",
   "category": "Insecure Configurations",
   "descriptionText": "AWS Lambda functions should be tagged so resources can be reliably inventoried and assigned ownership. Tags also enable tag-based access controls and automated security or operational workflows.\n\nIn Ansible playbooks, tasks using the `amazon.aws.lambda` or legacy `lambda` module must define the `tags` property as a mapping/dictionary. Resources where `tags` is undefined are flagged. Ensure `tags` is present on the module invocation and contains at least the necessary keys for your organization (for example, `Owner`, `Environment`, or `Project`).\n\nSecure example:\n\n```yaml\n- name: create application lambda\n  amazon.aws.lambda:\n    name: my-function\n    state: present\n    runtime: python3.9\n    role: arn:aws:iam::123456789012:role/lambda-exec\n    handler: app.handler\n    tags:\n      Owner: team-foo\n      Environment: production\n      Project: billing\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible/aws/lambda_function_without_tags",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/ansible-aws-lambda-function-without-tags",
   "platform": "Ansible",
   "descriptionID": "45d5ac61",
   "cloudProvider": "aws",

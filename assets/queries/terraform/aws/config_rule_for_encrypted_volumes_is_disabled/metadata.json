@@ -5,7 +5,7 @@
   "severity": "HIGH",
   "category": "Encryption",
   "descriptionText": "This check verifies if AWS Config rules include the `ENCRYPTED_VOLUMES` source identifier, which monitors whether EBS volumes that are attached to EC2 instances are encrypted. Without this rule in place, organizations may unknowingly deploy unencrypted EBS volumes, potentially exposing sensitive data to unauthorized access in case of data breaches or improper access controls. \n\nTo address this vulnerability, ensure at least one AWS Config rule uses `ENCRYPTED_VOLUMES` as the source identifier, as shown below:\n\n```terraform\nresource \"aws_config_config_rule\" \"encrypted_volumes\" {\n  name = \"encrypted_vols_rule\"\n\n  source {\n    owner             = \"AWS\"\n    source_identifier = \"ENCRYPTED_VOLUMES\"\n  }\n}\n```",
-  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/config_rule_for_encrypted_volumes_is_disabled",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform-aws-config-rule-for-encrypted-volumes-is-disabled",
   "platform": "Terraform",
   "descriptionID": "fb93ace4",
   "cloudProvider": "aws",
