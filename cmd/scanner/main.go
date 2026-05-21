@@ -50,7 +50,7 @@ func main() {
 				Name:   "x-downloadqueriesfromdatadog",
 				Hidden: true,
 				Usage:  "(experimental, will be removed soon) download query data from Datadog",
-				Value:  false,
+				Value:  true,
 			},
 		},
 		Before: applyGlobalOptions,
