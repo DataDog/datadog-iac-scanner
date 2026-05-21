@@ -212,6 +212,9 @@ func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (
 				break
 			}
 		}
+		if insertionLine < block.TypeRange.Start.Line {
+			insertionLine = block.TypeRange.Start.Line
+		}
 		caseType = strBlockStart
 	} else {
 		insertionLine = line
