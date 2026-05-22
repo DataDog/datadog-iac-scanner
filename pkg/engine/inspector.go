@@ -593,36 +593,37 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
 		contextLogger.Debug().Msgf("Suppressing vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)
-		markSuppressed(vulnerability, model.SuppressionJustificationDisableInFile)
+		markSuppressed(vulnerability, model.SuppressionKindInSource, model.SuppressionJustificationDisableInFile)
 	}
 
-	if vulnerability.Line == UndetectedVulnerabilityLine {
+	// Detect-line failures should not be reported (or drop the finding) once
+	// a suppression decision has already been taken; the SARIF entry is
+	// still useful even without an exact line.
+	if vulnerability.Line == UndetectedVulnerabilityLine && !vulnerability.IsSuppressed {
 		return nil, true
 	}
 
 	if _, ok := c.excludeResults[vulnerability.SimilarityID]; ok {
 		contextLogger.Debug().
 			Msgf("Suppressing result by SimilarityID: %s", vulnerability.SimilarityID)
-		markSuppressed(vulnerability, model.SuppressionJustificationExcludeResults)
+		markSuppressed(vulnerability, model.SuppressionKindExternal, model.SuppressionJustificationExcludeResults)
 	} else if checkComment(vulnerability.Line, file.LinesIgnore) {
 		contextLogger.Debug().
 			Msgf("Suppressing result by Comment: %s", vulnerability.SimilarityID)
-		markSuppressed(vulnerability, model.SuppressionJustificationIgnoreLine)
+		markSuppressed(vulnerability, model.SuppressionKindInSource, model.SuppressionJustificationIgnoreComment)
 	}
 
 	return vulnerability, false
 }
 
-// markSuppressed tags a vulnerability as suppressed without losing the
-// originating justification. Findings that hit multiple suppression gates
-// keep the first justification recorded; later gates are ignored so the
-// SARIF output remains stable for a given input.
-func markSuppressed(vulnerability *model.Vulnerability, justification string) {
+// markSuppressed records the first suppression decision; later gates are
+// no-ops so SARIF output stays stable.
+func markSuppressed(vulnerability *model.Vulnerability, kind, justification string) {
 	if vulnerability.IsSuppressed {
 		return
 	}
 	vulnerability.IsSuppressed = true
-	vulnerability.SuppressionKind = model.SuppressionKindInSource
+	vulnerability.SuppressionKind = kind
 	vulnerability.SuppressionJustification = justification
 }
 

@@ -48,15 +48,9 @@ type VulnerableFile struct {
 	ResourceSource        string           `json:"resource_source,omitempty"`
 	FileSource            []string         `json:"file_source,omitempty"`
 	BlockLocation         ResourceLocation `json:"block_location,omitempty"`
-	// IsSuppressed mirrors Vulnerability.IsSuppressed. Suppressed entries are
-	// still listed so the SARIF report can attach a `suppressions` entry, but
-	// they are excluded from the severity counters in SeveritySummary.
-	IsSuppressed bool `json:"is_suppressed,omitempty"`
-	// SuppressionKind mirrors the SARIF `suppressions[].kind` value when
-	// IsSuppressed is true.
-	SuppressionKind string `json:"suppression_kind,omitempty"`
-	// SuppressionJustification records which directive suppressed the
-	// finding (for example "dd-iac-scan ignore-line").
+	// Suppression metadata; see Vulnerability.IsSuppressed.
+	IsSuppressed             bool   `json:"is_suppressed,omitempty"`
+	SuppressionKind          string `json:"suppression_kind,omitempty"`
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
 }
 
@@ -135,8 +129,7 @@ var (
 
 const authGroupPosition = 3
 
-// countNotSuppressed returns how many files in the slice were not suppressed
-// by an in-source directive or by an explicit exclusion.
+// countNotSuppressed returns the number of non-suppressed files.
 func countNotSuppressed(files []VulnerableFile) int {
 	count := 0
 	for i := range files {
@@ -145,6 +138,45 @@ func countNotSuppressed(files []VulnerableFile) int {
 		}
 	}
 	return count
+}
+
+// WithoutSuppressed returns a shallow copy of the Summary with suppressed
+// VulnerableFile entries removed from Queries and Bom; QueryResult entries
+// whose Files become empty after filtering are dropped entirely.
+//
+// SARIF reporting must continue to use the original Summary so suppressed
+// findings can be emitted under the SARIF `suppressions` array. Every other
+// report format (json, csv, gitlab_sast, sonarqube, asff, junit, pdf, html,
+// cyclonedx, code_climate) has no notion of suppressions and would otherwise
+// expose ignored findings that the CLI counters already filtered out.
+func (s *Summary) WithoutSuppressed() *Summary {
+	out := *s
+	out.Queries = filterSuppressedQueries(s.Queries)
+	out.Bom = filterSuppressedQueries(s.Bom)
+	return &out
+}
+
+func filterSuppressedQueries(qs QueryResultSlice) QueryResultSlice {
+	if len(qs) == 0 {
+		return qs
+	}
+	out := make(QueryResultSlice, 0, len(qs))
+	for i := range qs {
+		active := make([]VulnerableFile, 0, len(qs[i].Files))
+		for j := range qs[i].Files {
+			if qs[i].Files[j].IsSuppressed {
+				continue
+			}
+			active = append(active, qs[i].Files[j])
+		}
+		if len(active) == 0 {
+			continue
+		}
+		q := qs[i]
+		q.Files = active
+		out = append(out, q)
+	}
+	return out
 }
 
 func getRelativePath(basePath, filePath string) string {
@@ -280,11 +312,8 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 	queries := make([]QueryResult, 0, len(q))
 	sevs := map[Severity]int{SeverityTrace: 0, SeverityInfo: 0, SeverityLow: 0, SeverityMedium: 0, SeverityHigh: 0, SeverityCritical: 0}
 	for idx := range q {
-		// Suppressed files are intentionally kept in the QueryResult slice so
-		// they can be emitted as SARIF `suppressions` entries, but they must
-		// not contribute to severity counters or the global total. This
-		// mirrors the SAST behavior introduced when suppressed findings
-		// started flowing through the pipeline.
+		// Suppressed files stay in the query result for SARIF, but they
+		// must not inflate severity counters or CLI exit-code thresholds.
 		activeCount := countNotSuppressed(q[idx].Files)
 		sevs[q[idx].Severity] += activeCount
 

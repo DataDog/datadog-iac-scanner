@@ -419,7 +419,7 @@ func TestBuildSarifIssue_Suppressions(t *testing.T) {
 		},
 		IsSuppressed:             true,
 		SuppressionKind:          model.SuppressionKindInSource,
-		SuppressionJustification: model.SuppressionJustificationIgnoreLine,
+		SuppressionJustification: model.SuppressionJustificationIgnoreComment,
 	}
 
 	issue := model.QueryResult{
@@ -458,7 +458,7 @@ func TestBuildSarifIssue_Suppressions(t *testing.T) {
 	require.Len(t, suppressedResult.Suppressions, 1)
 	require.Equal(t, model.SuppressionKindInSource, suppressedResult.Suppressions[0].Kind)
 	require.Equal(t, sarifSuppressionStatusAccepted, suppressedResult.Suppressions[0].Status)
-	require.Equal(t, model.SuppressionJustificationIgnoreLine, suppressedResult.Suppressions[0].Justification)
+	require.Equal(t, model.SuppressionJustificationIgnoreComment, suppressedResult.Suppressions[0].Justification)
 }
 
 // TestCreateSummary_SuppressedExcludedFromCounters verifies that suppressed
@@ -492,7 +492,7 @@ func TestCreateSummary_SuppressedExcludedFromCounters(t *testing.T) {
 			Line:                     5,
 			IsSuppressed:             true,
 			SuppressionKind:          model.SuppressionKindInSource,
-			SuppressionJustification: model.SuppressionJustificationIgnoreLine,
+			SuppressionJustification: model.SuppressionJustificationIgnoreComment,
 			ResourceType:             "aws_s3_bucket",
 			ResourceName:             "suppressed-bucket",
 			VulnerabilityLocation: model.ResourceLocation{

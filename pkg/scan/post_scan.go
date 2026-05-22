@@ -163,15 +163,21 @@ func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.
 }
 
 func (c *Client) generateStats(scanResults *Results, scanDuration time.Duration) ScanStats {
-	// iterate through scanResults and create a map of severity to count
 	violationBreakdowns := make(map[string]map[string]int)
 	severitySet := make(map[model.Severity]bool)
 	for _, sev := range model.AllSeverities {
 		severitySet[sev] = true
 	}
 
+	violations := 0
 	// nolint:gocritic
 	for _, vuln := range scanResults.Results {
+		// Suppressed vulnerabilities are kept in scanResults so they can be
+		// emitted as SARIF `suppressions`, but they must not count toward
+		// metadata stats or per-rule breakdowns that feed CLI exit codes.
+		if vuln.IsSuppressed {
+			continue
+		}
 		if !severitySet[vuln.Severity] {
 			continue
 		}
@@ -181,10 +187,11 @@ func (c *Client) generateStats(scanResults *Results, scanDuration time.Duration)
 		}
 
 		violationBreakdowns[string(vuln.Severity)][vuln.QueryID]++
+		violations++
 	}
 
 	return ScanStats{
-		Violations:          len(scanResults.Results),
+		Violations:          violations,
 		Files:               c.Tracker.FoundFiles,
 		Rules:               c.Tracker.ExecutedQueries,
 		Duration:            scanDuration,

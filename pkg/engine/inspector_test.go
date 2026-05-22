@@ -418,11 +418,9 @@ func TestShouldSkipFile(t *testing.T) {
 	}
 }
 
-// TestGetVulnerabilitiesFromQuery_SuppressionPaths verifies that the three
-// in-source suppression gates (`disable:<queryID>`, `ignore-line`, and the
-// explicit similarity-id exclusion) tag the vulnerability with the matching
-// suppression metadata instead of dropping it. The non-suppressed baseline
-// is also covered so regressions show up immediately.
+// TestGetVulnerabilitiesFromQuery_SuppressionPaths covers the three
+// suppression gates (`disable:<queryID>`, `ignore-line`, similarity-id
+// exclusion) plus the non-suppressed baseline.
 func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 	const (
 		fileID        = "file-1"
@@ -476,7 +474,7 @@ func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 			expectJustification:   model.SuppressionJustificationDisableInFile,
 		},
 		{
-			name: "ignore_line_directive",
+			name: "ignore_comment_directive",
 			file: func() *model.FileMetadata {
 				file := baseFile()
 				file.LinesIgnore = []int{matchingLine}
@@ -484,14 +482,14 @@ func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 			}(),
 			expectSuppressed:      true,
 			expectSuppressionKind: model.SuppressionKindInSource,
-			expectJustification:   model.SuppressionJustificationIgnoreLine,
+			expectJustification:   model.SuppressionJustificationIgnoreComment,
 		},
 		{
 			name:                  "excluded_by_similarity_id",
 			file:                  baseFile(),
 			excludeResults:        map[string]bool{similarityID: true},
 			expectSuppressed:      true,
-			expectSuppressionKind: model.SuppressionKindInSource,
+			expectSuppressionKind: model.SuppressionKindExternal,
 			expectJustification:   model.SuppressionJustificationExcludeResults,
 		},
 	}
@@ -521,6 +519,48 @@ func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 			require.Equal(t, tc.expectJustification, got.SuppressionJustification)
 		})
 	}
+}
+
+// TestGetVulnerabilitiesFromQuery_SuppressedSurvivesUndetectedLine guards
+// against a regression where the detect-line failure branch would drop a
+// vulnerability already marked as suppressed.
+func TestGetVulnerabilitiesFromQuery_SuppressedSurvivesUndetectedLine(t *testing.T) {
+	const (
+		fileID  = "file-1"
+		queryID = "platform-provider-rule"
+	)
+
+	file := &model.FileMetadata{
+		ID:       fileID,
+		FilePath: "main.tf",
+		Commands: model.CommentsCommands{"disable": queryID},
+	}
+
+	built := &model.Vulnerability{
+		FileID:    fileID,
+		QueryID:   queryID,
+		QueryName: "rule",
+		Line:      UndetectedVulnerabilityLine,
+	}
+
+	ins := newTestInspector(t, inspectorOpts{
+		vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
+			_ *detector.DetectLine, _ bool, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			return built, nil
+		},
+	})
+
+	queryCtx := &QueryContext{
+		Ctx:   context.Background(),
+		Files: map[string]*model.FileMetadata{fileID: file},
+		Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}},
+	}
+
+	got, failedDetect := getVulnerabilitiesFromQuery(context.Background(), queryCtx, ins, nil, 0)
+	require.NotNil(t, got, "suppressed vulnerability must not be dropped when the line is undetected")
+	require.False(t, failedDetect, "detect-line failure should not be reported for suppressed findings")
+	require.True(t, got.IsSuppressed)
+	require.Equal(t, model.SuppressionJustificationDisableInFile, got.SuppressionJustification)
 }
 
 // TestGetVulnerabilitiesFromQuery_FirstJustificationWins covers the edge case
