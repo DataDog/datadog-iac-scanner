@@ -48,6 +48,16 @@ type VulnerableFile struct {
 	ResourceSource        string           `json:"resource_source,omitempty"`
 	FileSource            []string         `json:"file_source,omitempty"`
 	BlockLocation         ResourceLocation `json:"block_location,omitempty"`
+	// IsSuppressed mirrors Vulnerability.IsSuppressed. Suppressed entries are
+	// still listed so the SARIF report can attach a `suppressions` entry, but
+	// they are excluded from the severity counters in SeveritySummary.
+	IsSuppressed bool `json:"is_suppressed,omitempty"`
+	// SuppressionKind mirrors the SARIF `suppressions[].kind` value when
+	// IsSuppressed is true.
+	SuppressionKind string `json:"suppression_kind,omitempty"`
+	// SuppressionJustification records which directive suppressed the
+	// finding (for example "dd-iac-scan ignore-line").
+	SuppressionJustification string `json:"suppression_justification,omitempty"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -124,6 +134,18 @@ var (
 )
 
 const authGroupPosition = 3
+
+// countNotSuppressed returns how many files in the slice were not suppressed
+// by an in-source directive or by an explicit exclusion.
+func countNotSuppressed(files []VulnerableFile) int {
+	count := 0
+	for i := range files {
+		if !files[i].IsSuppressed {
+			count++
+		}
+	}
+	return count
+}
 
 func getRelativePath(basePath, filePath string) string {
 	var returnPath string
@@ -223,28 +245,31 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 
 		qItem := q[item.QueryID]
 		qItem.Files = append(qItem.Files, VulnerableFile{
-			FileName:              resolvedPath,
-			SimilarityID:          item.SimilarityID,
-			OldSimilarityID:       item.OldSimilarityID,
-			Line:                  item.Line,
-			VulnLines:             item.VulnLines,
-			ResourceType:          item.ResourceType,
-			ResourceName:          item.ResourceName,
-			IssueType:             item.IssueType,
-			SearchKey:             item.SearchKey,
-			SearchValue:           item.SearchValue,
-			SearchLine:            item.SearchLine,
-			KeyExpectedValue:      item.KeyExpectedValue,
-			KeyActualValue:        item.KeyActualValue,
-			Value:                 item.Value,
-			Remediation:           item.Remediation,
-			RemediationType:       item.RemediationType,
-			ResourceLocation:      item.VulnerabilityLocation,
-			LineWithVulnerability: item.LineWithVulnerability,
-			RemediationLocation:   item.RemediationLocation,
-			ResourceSource:        item.ResourceSource,
-			FileSource:            item.FileSource,
-			BlockLocation:         item.BlockLocation,
+			FileName:                 resolvedPath,
+			SimilarityID:             item.SimilarityID,
+			OldSimilarityID:          item.OldSimilarityID,
+			Line:                     item.Line,
+			VulnLines:                item.VulnLines,
+			ResourceType:             item.ResourceType,
+			ResourceName:             item.ResourceName,
+			IssueType:                item.IssueType,
+			SearchKey:                item.SearchKey,
+			SearchValue:              item.SearchValue,
+			SearchLine:               item.SearchLine,
+			KeyExpectedValue:         item.KeyExpectedValue,
+			KeyActualValue:           item.KeyActualValue,
+			Value:                    item.Value,
+			Remediation:              item.Remediation,
+			RemediationType:          item.RemediationType,
+			ResourceLocation:         item.VulnerabilityLocation,
+			LineWithVulnerability:    item.LineWithVulnerability,
+			RemediationLocation:      item.RemediationLocation,
+			ResourceSource:           item.ResourceSource,
+			FileSource:               item.FileSource,
+			BlockLocation:            item.BlockLocation,
+			IsSuppressed:             item.IsSuppressed,
+			SuppressionKind:          item.SuppressionKind,
+			SuppressionJustification: item.SuppressionJustification,
 		})
 
 		filePaths[resolvedPath] = item.FileName
@@ -255,14 +280,20 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 	queries := make([]QueryResult, 0, len(q))
 	sevs := map[Severity]int{SeverityTrace: 0, SeverityInfo: 0, SeverityLow: 0, SeverityMedium: 0, SeverityHigh: 0, SeverityCritical: 0}
 	for idx := range q {
-		sevs[q[idx].Severity] += len(q[idx].Files)
+		// Suppressed files are intentionally kept in the QueryResult slice so
+		// they can be emitted as SARIF `suppressions` entries, but they must
+		// not contribute to severity counters or the global total. This
+		// mirrors the SAST behavior introduced when suppressed findings
+		// started flowing through the pipeline.
+		activeCount := countNotSuppressed(q[idx].Files)
+		sevs[q[idx].Severity] += activeCount
 
 		if q[idx].Severity == SeverityTrace {
 			continue
 		}
 		queries = append(queries, q[idx])
 
-		severitySummary.TotalCounter += len(q[idx].Files)
+		severitySummary.TotalCounter += activeCount
 	}
 
 	severityOrder := map[Severity]int{
@@ -284,7 +315,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 	for idx := range q {
 		if q[idx].Severity == SeverityTrace {
 			materials = append(materials, q[idx])
-			severitySummary.TotalBOMResources += len(q[idx].Files)
+			severitySummary.TotalBOMResources += countNotSuppressed(q[idx].Files)
 		}
 	}
 

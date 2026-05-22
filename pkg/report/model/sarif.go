@@ -140,7 +140,30 @@ type sarifResult struct {
 	ResultLevel         string                   `json:"level"`
 	ResultProperties    sarifProperties          `json:"properties,omitempty"`
 	ResultFixes         []model.SarifFix         `json:"fixes,omitempty"`
+	// Suppressions follows the SARIF 2.1.0 result.suppressions shape so
+	// downstream consumers (for example ci-sarif-processor) can mark the
+	// finding as suppressed instead of dropping it. The slice is omitted
+	// from JSON when empty to keep non-suppressed results byte-for-byte
+	// identical to the previous output.
+	Suppressions []sarifSuppression `json:"suppressions,omitempty"`
 }
+
+// sarifSuppression mirrors the SARIF 2.1.0 suppression object. Only the
+// fields that the scanner populates are declared; optional fields like
+// `guid` and `location` are left out so the encoder never emits `null`
+// values for them.
+type sarifSuppression struct {
+	Kind          string `json:"kind"`
+	Status        string `json:"status,omitempty"`
+	Justification string `json:"justification,omitempty"`
+}
+
+const (
+	// sarifSuppressionStatusAccepted is the only suppression status this
+	// scanner emits today. Suppression directives are user-authored and
+	// therefore always accepted by definition.
+	sarifSuppressionStatusAccepted = "accepted"
+)
 
 type SarifPartialFingerprints struct {
 	Sha                string `json:"SHA,omitempty"`
@@ -579,6 +602,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 						vulnerability.LineWithVulnerability,
 					),
 				},
+				Suppressions: buildSarifSuppressions(&vulnerability),
 			}
 			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" {
 				sarifFix, err := remediationsHelper.TransformToSarifFix(
@@ -600,6 +624,27 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 		return issue.CWE, nil
 	}
 	return "", nil
+}
+
+// buildSarifSuppressions returns the SARIF `suppressions` array for a single
+// vulnerable file, or nil when the file was not suppressed. The function
+// defaults missing metadata to in-source / accepted because every existing
+// suppression path in this scanner originates from a user-authored directive.
+func buildSarifSuppressions(file *model.VulnerableFile) []sarifSuppression {
+	if file == nil || !file.IsSuppressed {
+		return nil
+	}
+	kind := file.SuppressionKind
+	if kind == "" {
+		kind = model.SuppressionKindInSource
+	}
+	return []sarifSuppression{
+		{
+			Kind:          kind,
+			Status:        sarifSuppressionStatusAccepted,
+			Justification: file.SuppressionJustification,
+		},
+	}
 }
 
 func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diffAware *model.DiffAware) error {

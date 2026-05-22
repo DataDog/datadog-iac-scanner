@@ -395,3 +395,118 @@ func TestSarifOutputWithNoFindings(t *testing.T) {
 		require.NotEmpty(t, driver.Properties.Tags)
 	})
 }
+
+// TestBuildSarifIssue_Suppressions verifies that suppressed vulnerable files
+// produce a SARIF `suppressions` entry with kind `inSource` and status
+// `accepted`, while non-suppressed files omit the field entirely.
+func TestBuildSarifIssue_Suppressions(t *testing.T) {
+	ctx := context.Background()
+
+	activeFile := model.VulnerableFile{
+		FileName: "active.tf",
+		Line:     3,
+		ResourceLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 3, Col: 1},
+			End:   model.ResourceLine{Line: 5, Col: 1},
+		},
+	}
+	suppressedFile := model.VulnerableFile{
+		FileName: "suppressed.tf",
+		Line:     7,
+		ResourceLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 7, Col: 1},
+			End:   model.ResourceLine{Line: 9, Col: 1},
+		},
+		IsSuppressed:             true,
+		SuppressionKind:          model.SuppressionKindInSource,
+		SuppressionJustification: model.SuppressionJustificationIgnoreLine,
+	}
+
+	issue := model.QueryResult{
+		QueryName:     "Test Suppression Rule",
+		QueryID:       "test-suppression-rule",
+		Description:   "Rule used to validate SARIF suppressions output",
+		Severity:      model.SeverityHigh,
+		Category:      "Security",
+		Platform:      "Terraform",
+		CloudProvider: "AWS",
+		Files:         []model.VulnerableFile{activeFile, suppressedFile},
+	}
+
+	report := NewSarifReport()
+	_, err := report.BuildSarifIssue(ctx, &issue, model.SCIInfo{})
+	require.NoError(t, err)
+
+	sarif := report.(*sarifReport)
+	require.Len(t, sarif.Runs[0].Results, 2)
+
+	var activeResult, suppressedResult *sarifResult
+	for i := range sarif.Runs[0].Results {
+		result := &sarif.Runs[0].Results[i]
+		switch result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI {
+		case "active.tf":
+			activeResult = result
+		case "suppressed.tf":
+			suppressedResult = result
+		}
+	}
+
+	require.NotNil(t, activeResult, "active finding must be present in SARIF results")
+	require.NotNil(t, suppressedResult, "suppressed finding must be present in SARIF results")
+	require.Empty(t, activeResult.Suppressions,
+		"non-suppressed results must not carry a suppressions array")
+	require.Len(t, suppressedResult.Suppressions, 1)
+	require.Equal(t, model.SuppressionKindInSource, suppressedResult.Suppressions[0].Kind)
+	require.Equal(t, sarifSuppressionStatusAccepted, suppressedResult.Suppressions[0].Status)
+	require.Equal(t, model.SuppressionJustificationIgnoreLine, suppressedResult.Suppressions[0].Justification)
+}
+
+// TestCreateSummary_SuppressedExcludedFromCounters verifies that suppressed
+// files are still listed in the query result but do not inflate severity
+// counters, keeping CLI exit-code semantics unchanged.
+func TestCreateSummary_SuppressedExcludedFromCounters(t *testing.T) {
+	ctx := context.Background()
+
+	vulnerabilities := []model.Vulnerability{
+		{
+			QueryID:       "rule-a",
+			QueryName:     "Rule A",
+			Severity:      model.SeverityHigh,
+			FileName:      "active.tf",
+			SimilarityID:  "sim-active",
+			Line:          1,
+			IsSuppressed:  false,
+			ResourceType:  "aws_s3_bucket",
+			ResourceName:  "active-bucket",
+			VulnerabilityLocation: model.ResourceLocation{
+				Start: model.ResourceLine{Line: 1, Col: 1},
+				End:   model.ResourceLine{Line: 3, Col: 1},
+			},
+		},
+		{
+			QueryID:                  "rule-a",
+			QueryName:                "Rule A",
+			Severity:                 model.SeverityHigh,
+			FileName:                 "suppressed.tf",
+			SimilarityID:             "sim-suppressed",
+			Line:                     5,
+			IsSuppressed:             true,
+			SuppressionKind:          model.SuppressionKindInSource,
+			SuppressionJustification: model.SuppressionJustificationIgnoreLine,
+			ResourceType:             "aws_s3_bucket",
+			ResourceName:             "suppressed-bucket",
+			VulnerabilityLocation: model.ResourceLocation{
+				Start: model.ResourceLine{Line: 5, Col: 1},
+				End:   model.ResourceLine{Line: 7, Col: 1},
+			},
+		},
+	}
+
+	summary := model.CreateSummary(ctx, model.Counters{}, vulnerabilities, "scan-1", nil, ".")
+	require.Len(t, summary.Queries, 1)
+	require.Len(t, summary.Queries[0].Files, 2,
+		"both active and suppressed files must remain in the query result for SARIF emission")
+	require.Equal(t, 1, summary.SeveritySummary.TotalCounter,
+		"only the non-suppressed file must count toward the total")
+	require.Equal(t, 1, summary.SeveritySummary.SeverityCounters[model.SeverityHigh])
+}

@@ -38,6 +38,23 @@ const (
 	IgnoreComment CommentCommand = "ignore-comment"
 )
 
+// SuppressionKind values describe where a finding suppression originates from.
+// They match the kind values defined by SARIF 2.1.0 for the `suppressions` array.
+const (
+	SuppressionKindInSource = "inSource"
+	SuppressionKindExternal = "external"
+)
+
+// SuppressionJustification* values describe the in-source directive (or external
+// configuration) that suppressed a finding. They are surfaced verbatim in SARIF
+// suppression entries so downstream consumers can attribute the decision.
+const (
+	SuppressionJustificationIgnoreLine     = "dd-iac-scan ignore-line"
+	SuppressionJustificationIgnoreBlock    = "dd-iac-scan ignore-block"
+	SuppressionJustificationDisableInFile  = "dd-iac-scan disable"
+	SuppressionJustificationExcludeResults = "excluded by similarity id"
+)
+
 // Constants to describe vulnerability's severity
 const (
 	SeverityCritical = "CRITICAL"
@@ -210,6 +227,19 @@ type Vulnerability struct {
 	FileSource            []string         `json:"fileSource"`
 	BlockLocation         ResourceLocation `json:"blockLocation"`
 	Frameworks            []Framework      `json:"frameworks,omitempty"`
+	// IsSuppressed reports whether the finding was matched by an in-source
+	// suppression directive or by an explicit exclusion. Suppressed findings
+	// are still emitted in SARIF (with a `suppressions` entry) so downstream
+	// consumers can preserve an audit trail, but they are excluded from
+	// severity counters so CLI exit codes are unchanged.
+	IsSuppressed bool `json:"isSuppressed,omitempty"`
+	// SuppressionKind mirrors the SARIF `suppressions[].kind` value. It is
+	// only meaningful when IsSuppressed is true.
+	SuppressionKind string `json:"suppressionKind,omitempty"`
+	// SuppressionJustification records which directive suppressed the
+	// finding (for example "dd-iac-scan ignore-line"). It is surfaced in the
+	// SARIF `suppressions[].justification` field.
+	SuppressionJustification string `json:"suppressionJustification,omitempty"`
 }
 
 // Framework represents a framework mapping for a query

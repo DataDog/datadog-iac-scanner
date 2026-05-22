@@ -418,6 +418,159 @@ func TestShouldSkipFile(t *testing.T) {
 	}
 }
 
+// TestGetVulnerabilitiesFromQuery_SuppressionPaths verifies that the three
+// in-source suppression gates (`disable:<queryID>`, `ignore-line`, and the
+// explicit similarity-id exclusion) tag the vulnerability with the matching
+// suppression metadata instead of dropping it. The non-suppressed baseline
+// is also covered so regressions show up immediately.
+func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
+	const (
+		fileID        = "file-1"
+		queryID       = "platform-provider-rule"
+		legacyQueryID = "legacy-id"
+		similarityID  = "sim-1"
+		matchingLine  = 7
+	)
+
+	baseFile := func() *model.FileMetadata {
+		return &model.FileMetadata{
+			ID:       fileID,
+			FilePath: "main.tf",
+			Commands: model.CommentsCommands{},
+		}
+	}
+
+	buildVulnerability := func() *model.Vulnerability {
+		return &model.Vulnerability{
+			FileID:        fileID,
+			QueryID:       queryID,
+			LegacyQueryID: legacyQueryID,
+			QueryName:     "rule",
+			SimilarityID:  similarityID,
+			Line:          matchingLine,
+		}
+	}
+
+	cases := []struct {
+		name                  string
+		file                  *model.FileMetadata
+		excludeResults        map[string]bool
+		expectSuppressed      bool
+		expectSuppressionKind string
+		expectJustification   string
+	}{
+		{
+			name:             "not_suppressed",
+			file:             baseFile(),
+			expectSuppressed: false,
+		},
+		{
+			name: "disable_directive_in_file",
+			file: func() *model.FileMetadata {
+				file := baseFile()
+				file.Commands = model.CommentsCommands{"disable": queryID}
+				return file
+			}(),
+			expectSuppressed:      true,
+			expectSuppressionKind: model.SuppressionKindInSource,
+			expectJustification:   model.SuppressionJustificationDisableInFile,
+		},
+		{
+			name: "ignore_line_directive",
+			file: func() *model.FileMetadata {
+				file := baseFile()
+				file.LinesIgnore = []int{matchingLine}
+				return file
+			}(),
+			expectSuppressed:      true,
+			expectSuppressionKind: model.SuppressionKindInSource,
+			expectJustification:   model.SuppressionJustificationIgnoreLine,
+		},
+		{
+			name:                  "excluded_by_similarity_id",
+			file:                  baseFile(),
+			excludeResults:        map[string]bool{similarityID: true},
+			expectSuppressed:      true,
+			expectSuppressionKind: model.SuppressionKindInSource,
+			expectJustification:   model.SuppressionJustificationExcludeResults,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			built := buildVulnerability()
+			ins := newTestInspector(t, inspectorOpts{
+				excludeResults: tc.excludeResults,
+				vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
+					_ *detector.DetectLine, _ bool, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+					return built, nil
+				},
+			})
+
+			queryCtx := &QueryContext{
+				Ctx:   context.Background(),
+				Files: map[string]*model.FileMetadata{fileID: tc.file},
+				Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}},
+			}
+
+			got, retry := getVulnerabilitiesFromQuery(context.Background(), queryCtx, ins, nil, 0)
+			require.NotNil(t, got, "suppressed vulnerabilities must still flow through; got nil")
+			require.False(t, retry, "retry flag should never be set for suppression paths")
+			require.Equal(t, tc.expectSuppressed, got.IsSuppressed)
+			require.Equal(t, tc.expectSuppressionKind, got.SuppressionKind)
+			require.Equal(t, tc.expectJustification, got.SuppressionJustification)
+		})
+	}
+}
+
+// TestGetVulnerabilitiesFromQuery_FirstJustificationWins covers the edge case
+// where multiple suppression gates match the same vulnerability. The first
+// gate to fire must own the justification so the SARIF output stays stable
+// for a given input.
+func TestGetVulnerabilitiesFromQuery_FirstJustificationWins(t *testing.T) {
+	const (
+		fileID       = "file-1"
+		queryID      = "platform-provider-rule"
+		similarityID = "sim-1"
+		matchingLine = 11
+	)
+
+	file := &model.FileMetadata{
+		ID:          fileID,
+		FilePath:    "main.tf",
+		Commands:    model.CommentsCommands{"disable": queryID},
+		LinesIgnore: []int{matchingLine},
+	}
+
+	built := &model.Vulnerability{
+		FileID:       fileID,
+		QueryID:      queryID,
+		QueryName:    "rule",
+		SimilarityID: similarityID,
+		Line:         matchingLine,
+	}
+
+	ins := newTestInspector(t, inspectorOpts{
+		excludeResults: map[string]bool{similarityID: true},
+		vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
+			_ *detector.DetectLine, _ bool, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			return built, nil
+		},
+	})
+
+	queryCtx := &QueryContext{
+		Ctx:   context.Background(),
+		Files: map[string]*model.FileMetadata{fileID: file},
+		Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}},
+	}
+
+	got, _ := getVulnerabilitiesFromQuery(context.Background(), queryCtx, ins, nil, 0)
+	require.NotNil(t, got)
+	require.True(t, got.IsSuppressed)
+	require.Equal(t, model.SuppressionJustificationDisableInFile, got.SuppressionJustification,
+		"the disable-in-file gate runs first and must own the SARIF justification")
+}
+
 func TestInspector_DecodeQueryResults(t *testing.T) {
 	ctx := context.Background()
 	c := newTestInspector(t, inspectorOpts{kicsComputeNewSimID: true})
