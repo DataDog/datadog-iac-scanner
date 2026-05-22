@@ -592,7 +592,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 						vulnerability.LineWithVulnerability,
 					),
 				},
-				Suppressions: buildSarifSuppressions(&vulnerability),
+				Suppressions: buildSarifSuppressions(ctx, &vulnerability),
 			}
 			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" {
 				sarifFix, err := remediationsHelper.TransformToSarifFix(
@@ -617,15 +617,21 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 }
 
 // buildSarifSuppressions returns the SARIF `suppressions` array for a
-// suppressed file, or nil otherwise. Missing kind defaults to `inSource`
-// because every current suppression path either matches that exactly or
-// sets the kind explicitly.
-func buildSarifSuppressions(file *model.VulnerableFile) []sarifSuppression {
+// suppressed file, or nil otherwise. The SARIF 2.1.0 spec only allows
+// `inSource` or `external` for `suppression.kind`, so if a caller ever
+// forgets to set it we keep emitting valid SARIF by defaulting to
+// `inSource` and log a warning to make the regression visible.
+func buildSarifSuppressions(ctx context.Context, file *model.VulnerableFile) []sarifSuppression {
 	if file == nil || !file.IsSuppressed {
 		return nil
 	}
 	kind := file.SuppressionKind
 	if kind == "" {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Warn().
+			Str("file", file.FileName).
+			Int("line", file.Line).
+			Msg("suppressed VulnerableFile has empty SuppressionKind; defaulting to inSource")
 		kind = model.SuppressionKindInSource
 	}
 	return []sarifSuppression{

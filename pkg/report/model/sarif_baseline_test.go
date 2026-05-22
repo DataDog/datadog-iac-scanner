@@ -461,6 +461,43 @@ func TestBuildSarifIssue_Suppressions(t *testing.T) {
 	require.Equal(t, model.SuppressionJustificationIgnoreComment, suppressedResult.Suppressions[0].Justification)
 }
 
+// TestBuildSarifSuppressions_EmptyKindDefaultsToInSource locks in the
+// defensive fallback: if a suppressed VulnerableFile ever reaches the SARIF
+// builder without a SuppressionKind set, we still emit valid SARIF
+// (`inSource`) instead of a schema-invalid empty string. The runtime warning
+// log makes the regression visible without breaking downstream consumers.
+func TestBuildSarifSuppressions_EmptyKindDefaultsToInSource(t *testing.T) {
+	file := &model.VulnerableFile{
+		FileName:                 "no-kind.tf",
+		Line:                     4,
+		IsSuppressed:             true,
+		SuppressionJustification: model.SuppressionJustificationIgnoreComment,
+	}
+
+	suppressions := buildSarifSuppressions(context.Background(), file)
+
+	require.Len(t, suppressions, 1)
+	require.Equal(t, model.SuppressionKindInSource, suppressions[0].Kind)
+	require.Equal(t, sarifSuppressionStatusAccepted, suppressions[0].Status)
+	require.Equal(t, model.SuppressionJustificationIgnoreComment, suppressions[0].Justification)
+}
+
+// TestBuildSarifSuppressions_NonSuppressedReturnsNil ensures that we never
+// attach a `suppressions[]` array to an active finding, regardless of whether
+// stale suppression metadata is set on the VulnerableFile.
+func TestBuildSarifSuppressions_NonSuppressedReturnsNil(t *testing.T) {
+	file := &model.VulnerableFile{
+		FileName:                 "active.tf",
+		Line:                     2,
+		IsSuppressed:             false,
+		SuppressionKind:          model.SuppressionKindInSource,
+		SuppressionJustification: model.SuppressionJustificationIgnoreComment,
+	}
+
+	require.Nil(t, buildSarifSuppressions(context.Background(), file))
+	require.Nil(t, buildSarifSuppressions(context.Background(), nil))
+}
+
 // TestCreateSummary_SuppressedExcludedFromCounters verifies that suppressed
 // files are still listed in the query result but do not inflate severity
 // counters, keeping CLI exit-code semantics unchanged.
