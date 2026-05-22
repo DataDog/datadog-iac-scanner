@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -362,8 +363,6 @@ func processResult(ctx context.Context, result *QueryResult,
 	queries []model.QueryMetadata, c *Inspector) {
 	contextLogger := logger.FromContext(ctx)
 	if result.err != nil {
-		fmt.Println()
-
 		c.failedQueries[queries[result.queryID].Query] = result.err
 		return
 	}
@@ -428,8 +427,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	defer func() {
 		if r := recover(); r != nil {
 			errMessage := fmt.Sprintf("Recovered from panic during query '%s' run. ", qCtx.Query.Metadata.Query)
-			err = fmt.Errorf("panic: %v", r)
-			fmt.Println()
+			err = fmt.Errorf("panic: %v\n%s", r, string(debug.Stack()))
 			contextLogger.Err(err).Msg(errMessage)
 		}
 	}()
@@ -557,7 +555,6 @@ func (c *Inspector) DecodeQueryResults(
 	}
 
 	if timeOut {
-		fmt.Println()
 		contextLogger.Err(ctxTimeout.Err()).Msgf(
 			"Timeout processing the results of the query: %s %s",
 			qCtx.Query.Metadata.Platform,

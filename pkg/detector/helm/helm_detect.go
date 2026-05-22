@@ -112,7 +112,7 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	}
 
 	var filePathSplit = strings.Split(file.FilePath, "/")
-	contextLogger.Warn().Msgf("Failed to detect line associated with identified result in file %s\n", filePathSplit[len(filePathSplit)-1])
+	contextLogger.Warn().Msgf("Failed to detect line associated with identified result in file %s", filePathSplit[len(filePathSplit)-1])
 
 	return model.VulnerabilityLines{
 		Line:         undetectedVulnerabilityLine,

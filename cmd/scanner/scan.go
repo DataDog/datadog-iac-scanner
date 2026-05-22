@@ -131,20 +131,20 @@ func runScan(ctx context.Context, c *cli.Command) error {
 
 	cfg, _, err := config.ReadConfiguration(ctx, repoDir, config.WithDatadog(datadog.NewDatadogClient(), repoInfo.RepositoryUrl))
 	if err != nil {
-		var localCfgErr *config.InvalidLocalConfigError
-		if errors.As(err, &localCfgErr) {
-			return fmt.Errorf("error reading the configuration (%w): %w", exitCode(constants.InvalidConfigErrorCode), err)
+		outErr := fmt.Errorf("error reading the configuration: %w", err)
+		if te := (*config.InvalidLocalConfigError)(nil); errors.As(err, &te) {
+			outErr = errorWithExitCode(outErr, constants.InvalidConfigErrorCode)
 		}
-		return fmt.Errorf("error reading the configuration: %w", err)
+		return outErr
 	}
 	excludePaths, err := getRepoRelativePaths(repoDir, cfg.IgnorePaths)
 	if err != nil {
-		return fmt.Errorf("invalid path in IaC configuration (%w): %w", exitCode(constants.InvalidConfigErrorCode), err)
+		return errorWithExitCode(fmt.Errorf("invalid path in IaC configuration: %w", err), constants.InvalidConfigErrorCode)
 	}
 	cfg.IgnorePaths = excludePaths
 	onlyPaths, err := getRepoRelativePaths(repoDir, cfg.OnlyPaths)
 	if err != nil {
-		return fmt.Errorf("invalid path in IaC configuration (%w): %w", exitCode(constants.InvalidConfigErrorCode), err)
+		return errorWithExitCode(fmt.Errorf("invalid path in IaC configuration: %w", err), constants.InvalidConfigErrorCode)
 	}
 	cfg.OnlyPaths = onlyPaths
 	cfg.IgnoreRules = append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...)

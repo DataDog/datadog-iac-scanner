@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,12 +28,12 @@ type iacConfig struct {
 }
 
 type iacGlobalConfig struct {
-	IgnorePaths      []string `yaml:"ignore-paths,omitempty"`
-	OnlyPaths        []string `yaml:"only-paths,omitempty"`
-	IgnoreSeverities []string `yaml:"ignore-severities,omitempty"`
-	OnlySeverities   []string `yaml:"only-severities,omitempty"`
-	IgnoreCategories []string `yaml:"ignore-categories,omitempty"`
-	OnlyCategories   []string `yaml:"only-categories,omitempty"`
+	IgnorePaths      []string      `yaml:"ignore-paths,omitempty"`
+	OnlyPaths        []string      `yaml:"only-paths,omitempty"`
+	IgnoreSeverities []iacSeverity `yaml:"ignore-severities,omitempty"`
+	OnlySeverities   []iacSeverity `yaml:"only-severities,omitempty"`
+	IgnoreCategories []iacCategory `yaml:"ignore-categories,omitempty"`
+	OnlyCategories   []iacCategory `yaml:"only-categories,omitempty"`
 }
 
 // ParseConfig turns a YAML configuration file into a parsed configuration
@@ -45,14 +46,14 @@ func ParseConfig(cfgBytes []byte) (*IacConfig, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(cfgBytes))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
-		return nil, fmt.Errorf("could not decode configuration file: %w", err)
+		return nil, rewriteDecodeErrors(err)
 	}
 
 	version, err := parseSchemaVersion(cfg.SchemaVersion)
 	if err != nil {
 		return nil, err
 	}
-	if version.compare(minIacVersion) < 0 {
+	if version.compare(minRequiredVersion) < 0 {
 		return nil, nil
 	}
 	if version.compare(minUnsupportedVersion) >= 0 {
@@ -63,15 +64,20 @@ func ParseConfig(cfgBytes []byte) (*IacConfig, error) {
 		return nil, nil
 	}
 
+	if version.compare(minIacVersion) < 0 {
+		log.Warn().Msgf("Your configuration file has version %s but the `iac` section was defined in version %s. "+
+			"Please update your configuration file to avoid issues.", version, minIacVersion)
+	}
+
 	out := &IacConfig{
 		IgnoreRules:      cfg.Iac.IgnoreRules,
 		OnlyRules:        cfg.Iac.UseRules,
 		IgnorePaths:      cfg.Iac.GlobalConfig.IgnorePaths,
 		OnlyPaths:        cfg.Iac.GlobalConfig.OnlyPaths,
-		IgnoreSeverities: cfg.Iac.GlobalConfig.IgnoreSeverities,
-		OnlySeverities:   cfg.Iac.GlobalConfig.OnlySeverities,
-		IgnoreCategories: cfg.Iac.GlobalConfig.IgnoreCategories,
-		OnlyCategories:   cfg.Iac.GlobalConfig.OnlyCategories,
+		IgnoreSeverities: mapSlice[string](cfg.Iac.GlobalConfig.IgnoreSeverities),
+		OnlySeverities:   mapSlice[string](cfg.Iac.GlobalConfig.OnlySeverities),
+		IgnoreCategories: mapSlice[string](cfg.Iac.GlobalConfig.IgnoreCategories),
+		OnlyCategories:   mapSlice[string](cfg.Iac.GlobalConfig.OnlyCategories),
 	}
 	return out, nil
 }
@@ -90,10 +96,10 @@ func UnparseConfig(cfg *IacConfig) ([]byte, error) {
 		GlobalConfig: iacGlobalConfig{
 			IgnorePaths:      cfg.IgnorePaths,
 			OnlyPaths:        cfg.OnlyPaths,
-			IgnoreSeverities: cfg.IgnoreSeverities,
-			OnlySeverities:   cfg.OnlySeverities,
-			IgnoreCategories: cfg.IgnoreCategories,
-			OnlyCategories:   cfg.OnlyCategories,
+			IgnoreSeverities: mapSlice[iacSeverity](cfg.IgnoreSeverities),
+			OnlySeverities:   mapSlice[iacSeverity](cfg.OnlySeverities),
+			IgnoreCategories: mapSlice[iacCategory](cfg.IgnoreCategories),
+			OnlyCategories:   mapSlice[iacCategory](cfg.OnlyCategories),
 		},
 	}
 
@@ -102,7 +108,7 @@ func UnparseConfig(cfg *IacConfig) ([]byte, error) {
 	}
 
 	outCfg := cfgFileYaml{
-		SchemaVersion: "v1.2",
+		SchemaVersion: minIacVersion.String(),
 		Iac:           &iac,
 	}
 
@@ -144,6 +150,11 @@ type schemaVersion struct {
 var (
 	// minIacVersion is the minimum schema version supporting the iac: configuration section.
 	minIacVersion = schemaVersion{1, 2}
+	// minRequiredVersion is the minimum schema version supported by this scanner.
+	// It's different from minIacVersion for user-friendliness in case people add an `iac`
+	// section to an old configuration file and forget to upgrade the version number.
+	// The configuration will be accepted but a warning message will be displayed.
+	minRequiredVersion = schemaVersion{1, 0}
 	// minUnsupportedVersion is the minimum schema version not supported by this scanner.
 	minUnsupportedVersion = schemaVersion{2, 0}
 )
@@ -159,4 +170,12 @@ func (v schemaVersion) compare(other schemaVersion) int {
 
 func (v schemaVersion) String() string {
 	return fmt.Sprintf("v%d.%d", v.major, v.minor)
+}
+
+func mapSlice[T, F ~string](orig []F) []T {
+	var out []T
+	for _, e := range orig {
+		out = append(out, T(e))
+	}
+	return out
 }

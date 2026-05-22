@@ -174,6 +174,7 @@ func extractBlockSource(lines []string, start, end int) string {
 	return strings.Join(lines[start-1:end], "\n") + "\n"
 }
 
+// nolint:gocyclo
 func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (insertionLine, col int) {
 	name, nestedStart, nestedEnd, isAttr := findContainingStructure(block, line)
 
@@ -211,6 +212,9 @@ func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (
 			} else {
 				break
 			}
+		}
+		if insertionLine < block.TypeRange.Start.Line {
+			insertionLine = block.TypeRange.Start.Line
 		}
 		caseType = strBlockStart
 	} else {

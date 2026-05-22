@@ -22,12 +22,12 @@ func TestParseSchemaVersion(t *testing.T) {
 	_, err = ParseConfig([]byte("schema-version: 1.1\niac: {ignore-rules: [\"abc\"]}"))
 	assert.Error(t, err, "Invalid schema-version was expected to be rejected")
 
-	cfg, err := ParseConfig([]byte("schema-version: v1.0\niac: {ignore-rules: [\"abc\"]}"))
-	assert.Nil(t, cfg, "Too low schema-version should result in empty IaC config")
+	cfg, err := ParseConfig([]byte("schema-version: v1.2\niac: {ignore-rules: [\"abc\"]}"))
+	assert.NotNil(t, cfg, "The current schema-version should result in parsed IaC config")
 	assert.NoError(t, err)
 
-	cfg, err = ParseConfig([]byte("schema-version: v1.2\niac: {ignore-rules: [\"abc\"]}"))
-	assert.NotNil(t, cfg, "The current schema-version should result in parsed IaC config")
+	cfg, err = ParseConfig([]byte("schema-version: v1.0\niac: {ignore-rules: [\"abc\"]}"))
+	assert.NotNil(t, cfg, "An old v1.x schema-version should also result in parsed IaC config")
 	assert.NoError(t, err)
 
 	_, err = ParseConfig([]byte("schema-version: v1.3\niac: {ignore-rules: [\"abc\"]}"))

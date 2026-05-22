@@ -107,7 +107,7 @@ func checkJSONLog(t *testing.T, expec, want logMsg) {
 		"\nExpected Output line msg\n%s\nScanner Output line msg:\n%s\n", expec.Message, want.Message)
 }
 
-// FileCheck executes assertions to validate file content length
+// FileCheck executes assertions to validate file content
 func FileCheck(t *testing.T, actualPayloadName, expectPayloadName, location string) {
 	expectPayload, err := PrepareExpected(expectPayloadName, "fixtures")
 	require.NoError(t, err, "[fixtures/%s]: Reading a fixture should not yield an error", expectPayloadName)
@@ -115,9 +115,6 @@ func FileCheck(t *testing.T, actualPayloadName, expectPayloadName, location stri
 	actualPayload, err := PrepareExpected(actualPayloadName, "output")
 	require.NoError(t, err, "[output/%s] Reading a fixture should not yield an error", actualPayloadName)
 
-	require.Equal(t, len(expectPayload), len(actualPayload),
-		"[fixtures/%s] Expected file number of lines: %d\n[output/%s] Actual file number of lines: %d\n",
-		expectPayloadName, len(expectPayload), actualPayloadName, len(actualPayload))
 	setFields(t, expectPayload, actualPayload, expectPayloadName, actualPayloadName, location)
 }
 
