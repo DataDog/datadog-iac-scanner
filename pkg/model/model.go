@@ -38,6 +38,22 @@ const (
 	IgnoreComment CommentCommand = "ignore-comment"
 )
 
+// Suppression kinds map to SARIF 2.1.0 `suppressions[].kind`.
+const (
+	SuppressionKindInSource = "inSource"
+	SuppressionKindExternal = "external"
+)
+
+// Suppression justifications surfaced in SARIF `suppressions[].justification`.
+// `IgnoreComment` covers both `ignore-line` and `ignore-block` because
+// `LinesIgnore` flattens block directives to individual line numbers, so the
+// originating directive is no longer recoverable at suppression time.
+const (
+	SuppressionJustificationIgnoreComment  = "dd-iac-scan ignore"
+	SuppressionJustificationDisableInFile  = "dd-iac-scan disable"
+	SuppressionJustificationExcludeResults = "excluded by similarity id"
+)
+
 // Constants to describe vulnerability's severity
 const (
 	SeverityCritical = "CRITICAL"
@@ -210,6 +226,12 @@ type Vulnerability struct {
 	FileSource            []string         `json:"fileSource"`
 	BlockLocation         ResourceLocation `json:"blockLocation"`
 	Frameworks            []Framework      `json:"frameworks,omitempty"`
+	// IsSuppressed marks a finding as kept-for-SARIF but excluded from
+	// severity counters; the kind/justification map directly to SARIF
+	// `suppressions[]`.
+	IsSuppressed             bool   `json:"isSuppressed,omitempty"`
+	SuppressionKind          string `json:"suppressionKind,omitempty"`
+	SuppressionJustification string `json:"suppressionJustification,omitempty"`
 }
 
 // Framework represents a framework mapping for a query

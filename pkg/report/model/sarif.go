@@ -140,7 +140,20 @@ type sarifResult struct {
 	ResultLevel         string                   `json:"level"`
 	ResultProperties    sarifProperties          `json:"properties,omitempty"`
 	ResultFixes         []model.SarifFix         `json:"fixes,omitempty"`
+	// Suppressions follows SARIF 2.1.0 `result.suppressions`; omitted when empty.
+	Suppressions []sarifSuppression `json:"suppressions,omitempty"`
 }
+
+// sarifSuppression is the SARIF 2.1.0 suppression object trimmed to the
+// fields this scanner sets; optional `guid` and `location` are skipped
+// to avoid emitting JSON `null` values.
+type sarifSuppression struct {
+	Kind          string `json:"kind"`
+	Status        string `json:"status,omitempty"`
+	Justification string `json:"justification,omitempty"`
+}
+
+const sarifSuppressionStatusAccepted = "accepted"
 
 type SarifPartialFingerprints struct {
 	Sha                string `json:"SHA,omitempty"`
@@ -579,6 +592,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 						vulnerability.LineWithVulnerability,
 					),
 				},
+				Suppressions: buildSarifSuppressions(ctx, &vulnerability),
 			}
 			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" {
 				sarifFix, err := remediationsHelper.TransformToSarifFix(
@@ -600,6 +614,33 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 		return issue.CWE, nil
 	}
 	return "", nil
+}
+
+// buildSarifSuppressions returns the SARIF `suppressions` array for a
+// suppressed file, or nil otherwise. The SARIF 2.1.0 spec only allows
+// `inSource` or `external` for `suppression.kind`, so if a caller ever
+// forgets to set it we keep emitting valid SARIF by defaulting to
+// `inSource` and log a warning to make the regression visible.
+func buildSarifSuppressions(ctx context.Context, file *model.VulnerableFile) []sarifSuppression {
+	if file == nil || !file.IsSuppressed {
+		return nil
+	}
+	kind := file.SuppressionKind
+	if kind == "" {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Warn().
+			Str("file", file.FileName).
+			Int("line", file.Line).
+			Msg("suppressed VulnerableFile has empty SuppressionKind; defaulting to inSource")
+		kind = model.SuppressionKindInSource
+	}
+	return []sarifSuppression{
+		{
+			Kind:          kind,
+			Status:        sarifSuppressionStatusAccepted,
+			Justification: file.SuppressionJustification,
+		},
+	}
 }
 
 func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diffAware *model.DiffAware) error {

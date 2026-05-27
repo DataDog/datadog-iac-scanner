@@ -223,6 +223,63 @@ func TestRemoveURLCredentials(t *testing.T) {
 	}
 }
 
+// TestSummary_WithoutSuppressed verifies that the filtered copy used by
+// non-SARIF reports drops every suppressed VulnerableFile, prunes queries that
+// become empty, and leaves the original Summary untouched so SARIF reporting
+// can still surface them under `suppressions[]`.
+func TestSummary_WithoutSuppressed(t *testing.T) {
+	original := &Summary{
+		Queries: QueryResultSlice{
+			{
+				QueryID: "mixed",
+				Files: []VulnerableFile{
+					{FileName: "active.tf", Line: 10},
+					{FileName: "suppressed.tf", Line: 20, IsSuppressed: true},
+				},
+			},
+			{
+				QueryID: "all-suppressed",
+				Files: []VulnerableFile{
+					{FileName: "suppressed.tf", Line: 30, IsSuppressed: true},
+				},
+			},
+			{
+				QueryID: "all-active",
+				Files: []VulnerableFile{
+					{FileName: "active.tf", Line: 40},
+				},
+			},
+		},
+		Bom: QueryResultSlice{
+			{
+				QueryID: "bom",
+				Files: []VulnerableFile{
+					{FileName: "bom-active.tf", Line: 1},
+					{FileName: "bom-suppressed.tf", Line: 2, IsSuppressed: true},
+				},
+			},
+		},
+	}
+
+	filtered := original.WithoutSuppressed()
+
+	require.Len(t, filtered.Queries, 2)
+	require.Equal(t, "mixed", filtered.Queries[0].QueryID)
+	require.Len(t, filtered.Queries[0].Files, 1)
+	require.Equal(t, "active.tf", filtered.Queries[0].Files[0].FileName)
+	require.Equal(t, "all-active", filtered.Queries[1].QueryID)
+
+	require.Len(t, filtered.Bom, 1)
+	require.Len(t, filtered.Bom[0].Files, 1)
+	require.Equal(t, "bom-active.tf", filtered.Bom[0].Files[0].FileName)
+
+	// Original is untouched so SARIF can still emit suppressions.
+	require.Len(t, original.Queries, 3)
+	require.Len(t, original.Queries[0].Files, 2)
+	require.True(t, original.Queries[0].Files[1].IsSuppressed)
+	require.Len(t, original.Bom[0].Files, 2)
+}
+
 func TestRemoveAllURLCredentials(t *testing.T) {
 	input := []struct {
 		pathExtractionMap map[string]ExtractedPathObject

@@ -7,9 +7,11 @@ package helpers
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -187,6 +189,77 @@ func TestHelpers_GenerateReport(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHelpers_GenerateReport_FiltersSuppressedForNonSarif ensures that
+// suppressed VulnerableFile entries do not leak into non-SARIF report formats
+// (json, csv, gitlab_sast, etc.), while SARIF still receives them so it can
+// emit the `suppressions[]` array expected by the downstream pipeline.
+func TestHelpers_GenerateReport_FiltersSuppressedForNonSarif(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	loc := model.ResourceLocation{
+		Start: model.ResourceLine{Line: 1, Col: 1},
+		End:   model.ResourceLine{Line: 1, Col: 1},
+	}
+	summary := &model.Summary{
+		Queries: model.QueryResultSlice{
+			{
+				QueryID:   "active-rule",
+				QueryName: "active-rule",
+				Severity:  model.SeverityMedium,
+				Files: []model.VulnerableFile{
+					{FileName: "active.tf", Line: 10, ResourceLocation: loc},
+				},
+			},
+			{
+				QueryID:   "suppressed-rule",
+				QueryName: "suppressed-rule",
+				Severity:  model.SeverityHigh,
+				Files: []model.VulnerableFile{
+					{
+						FileName:                 "suppressed.tf",
+						Line:                     20,
+						ResourceLocation:         loc,
+						IsSuppressed:             true,
+						SuppressionKind:          model.SuppressionKindInSource,
+						SuppressionJustification: model.SuppressionJustificationIgnoreComment,
+					},
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	require.NoError(t, GenerateReport(ctx, tmpDir, "result", summary, []string{"json", "sarif"}, &model.SCIInfo{}))
+
+	jsonBytes, err := os.ReadFile(filepath.Join(tmpDir, "result.json"))
+	require.NoError(t, err)
+
+	var parsed model.Summary
+	require.NoError(t, json.Unmarshal(jsonBytes, &parsed))
+
+	for _, q := range parsed.Queries {
+		require.NotEqual(t, "suppressed-rule", q.QueryID,
+			"non-SARIF reports must not contain suppressed rules; got query: %+v", q)
+		for _, f := range q.Files {
+			require.False(t, f.IsSuppressed,
+				"non-SARIF reports must not contain suppressed files; got file: %+v", f)
+		}
+	}
+
+	sarifBytes, err := os.ReadFile(filepath.Join(tmpDir, "result.sarif"))
+	require.NoError(t, err)
+	require.Contains(t, string(sarifBytes), "suppressions",
+		"SARIF must still emit the suppressions array for ignored findings")
+	require.Contains(t, strings.ToLower(string(sarifBytes)), "suppressed-rule",
+		"SARIF must still include the suppressed rule's result")
+
+	// Caller's Summary must not be mutated by GenerateReport so downstream code
+	// (e.g. exit codes, additional sinks) keeps seeing the suppressed entry.
+	require.Len(t, summary.Queries, 2)
+	require.Len(t, summary.Queries[1].Files, 1)
+	require.True(t, summary.Queries[1].Files[0].IsSuppressed)
 }
 
 func TestHelpers_GetDefaultQueryPath(t *testing.T) {

@@ -588,26 +588,40 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		return nil, false
 	}
 	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
-		contextLogger.Debug().Msgf("Skipping vulnerability in file %s for query '%s':%s",
+		contextLogger.Debug().Msgf("Suppressing vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)
-		return nil, false
+		markSuppressed(vulnerability, model.SuppressionKindInSource, model.SuppressionJustificationDisableInFile)
 	}
 
-	if vulnerability.Line == UndetectedVulnerabilityLine {
+	// Detect-line failures should not be reported (or drop the finding) once
+	// a suppression decision has already been taken; the SARIF entry is
+	// still useful even without an exact line.
+	if vulnerability.Line == UndetectedVulnerabilityLine && !vulnerability.IsSuppressed {
 		return nil, true
 	}
 
 	if _, ok := c.excludeResults[vulnerability.SimilarityID]; ok {
 		contextLogger.Debug().
-			Msgf("Excluding result SimilarityID: %s", vulnerability.SimilarityID)
-		return nil, false
+			Msgf("Suppressing result by SimilarityID: %s", vulnerability.SimilarityID)
+		markSuppressed(vulnerability, model.SuppressionKindExternal, model.SuppressionJustificationExcludeResults)
 	} else if checkComment(vulnerability.Line, file.LinesIgnore) {
 		contextLogger.Debug().
-			Msgf("Excluding result Comment: %s", vulnerability.SimilarityID)
-		return nil, false
+			Msgf("Suppressing result by Comment: %s", vulnerability.SimilarityID)
+		markSuppressed(vulnerability, model.SuppressionKindInSource, model.SuppressionJustificationIgnoreComment)
 	}
 
 	return vulnerability, false
+}
+
+// markSuppressed records the first suppression decision; later gates are
+// no-ops so SARIF output stays stable.
+func markSuppressed(vulnerability *model.Vulnerability, kind, justification string) {
+	if vulnerability.IsSuppressed {
+		return
+	}
+	vulnerability.IsSuppressed = true
+	vulnerability.SuppressionKind = kind
+	vulnerability.SuppressionJustification = justification
 }
 
 // checkComment checks if the vulnerability should be skipped from comment

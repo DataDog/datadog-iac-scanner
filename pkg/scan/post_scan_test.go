@@ -382,6 +382,63 @@ func Test_GetScanMetadata(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Suppressed findings must be carried in the SARIF output but must
+			// not inflate Violations or ViolationBreakdowns (those drive CLI
+			// exit codes and downstream metadata).
+			name: "suppressed vulnerabilities are excluded from stats",
+			tracker: tracker.CITracker{
+				FoundFiles:       1,
+				ExecutedQueries:  1,
+				ExecutingQueries: 1,
+				LoadedQueries:    1,
+			},
+			results: &Results{
+				Files: model.FileMetadatas{
+					&model.FileMetadata{
+						ScanID:            "test",
+						ID:                "test",
+						Kind:              model.KindTerraform,
+						OriginalData:      "",
+						LinesOriginalData: utils.SplitLines(""),
+					},
+				},
+				Results: []model.Vulnerability{
+					{
+						ScanID:    "console",
+						QueryID:   "q-active",
+						QueryName: "Active",
+						Severity:  model.SeverityMedium,
+					},
+					{
+						ScanID:                   "console",
+						QueryID:                  "q-suppressed",
+						QueryName:                "Suppressed",
+						Severity:                 model.SeverityHigh,
+						IsSuppressed:             true,
+						SuppressionKind:          model.SuppressionKindInSource,
+						SuppressionJustification: model.SuppressionJustificationIgnoreComment,
+					},
+				},
+			},
+			scanStartTime: time.Time{},
+			endTime:       time.Time{}.Add(time.Minute),
+			expectedMetadata: ScanMetadata{
+				StartTime:      time.Time{},
+				EndTime:        time.Time{}.Add(time.Minute),
+				CoresAvailable: 1,
+				DiffAware:      false,
+				Stats: ScanStats{
+					Violations: 1,
+					Files:      1,
+					Rules:      1,
+					Duration:   time.Minute,
+					ViolationBreakdowns: map[string]map[string]int{
+						string(model.SeverityMedium): {"q-active": 1},
+					},
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()

@@ -73,15 +73,28 @@ func FileAnalyzer(path string) (string, error) {
 	return "", errors.New("invalid configuration file format")
 }
 
-// GenerateReport execute each report function to generate report
+// GenerateReport execute each report function to generate report.
+//
+// Suppressed findings are kept in the Summary so SARIF can emit them under
+// `suppressions[]`; every other report format gets a filtered copy that drops
+// them, matching the CLI counters and avoiding leaks into json/csv/gitlab/etc.
 func GenerateReport(ctx context.Context, path, filename string, body interface{}, formats []string, sciInfo *model.SCIInfo) error {
 	log.Debug().Msgf("helpers.GenerateReport()")
+
+	nonSarifBody := body
+	if summary, ok := body.(*model.Summary); ok {
+		nonSarifBody = summary.WithoutSuppressed()
+	}
 
 	var err error = nil
 
 	for _, format := range formats {
 		format = strings.ToLower(format)
-		if err = reportGenerators[format](ctx, path, filename, body, sciInfo); err != nil {
+		target := nonSarifBody
+		if format == "sarif" {
+			target = body
+		}
+		if err = reportGenerators[format](ctx, path, filename, target, sciInfo); err != nil {
 			log.Error().Msgf("Failed to generate %s report", format)
 			break
 		}
