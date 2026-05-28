@@ -18,48 +18,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/test"
 )
 
-// BenchmarkFilesystemSource_GetQueries benchmarks getQueries to see improvements
-func BenchmarkFilesystemSource_GetQueries(b *testing.B) {
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		b.Fatal(err)
-	}
-	type fields struct {
-		Source              []string
-		Types               []string
-		CloudProviders      []string
-		Library             string
-		ExperimentalQueries bool
-	}
-	tests := []struct {
-		name   string
-		fields fields
-	}{
-		{
-			name: "testing_all_paths",
-			fields: fields{
-				Source:              []string{""},
-				Types:               []string{""},
-				CloudProviders:      []string{""},
-				Library:             "./assets/libraries",
-				ExperimentalQueries: true,
-			},
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		b.Run(tt.name, func(b *testing.B) {
-			s := NewFilesystemSource(ctx, tt.fields.Source, tt.fields.Types, tt.fields.CloudProviders, tt.fields.Library, tt.fields.ExperimentalQueries)
-			for n := 0; n < b.N; n++ {
-				filter := QueryInspectorParameters{}
-				if _, err := s.GetQueries(ctx, &filter); err != nil {
-					b.Errorf("Error: %s", err)
-				}
-			}
-		})
-	}
-}
-
 // TestFilesystemSource_GetQueryLibrary tests the functions [GetQueryLibrary()] and all the methods called by them
 func TestFilesystemSource_GetQueryLibrary(t *testing.T) { //nolint
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
@@ -382,7 +340,6 @@ func TestFilesystemSource_ReadLocalFile(t *testing.T) {
 	assert.Equal(t, query.Metadata["id"], "wonderful-query")
 }
 
-// Should be uncommented when UUID are moved to LegacyId
 // TestCheckQueryExcludeWithLegacyId tests the checkQueryExclude function with both new ID and legacy ID
 func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
 	ctx := context.Background()
@@ -493,7 +450,6 @@ func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
 	}
 }
 
-// Should be uncommented when UUID are moved to LegacyId
 // TestCheckQueryIncludeWithLegacyId tests the checkQueryInclude function with both new ID and legacy ID
 func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 	ctx := context.Background()

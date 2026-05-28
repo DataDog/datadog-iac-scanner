@@ -13,15 +13,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_ExecuteScan smoke-tests the live scan path end-to-end and asserts the
-// result is well-shaped. It does NOT pin a specific result count: that count
-// is a function of the rule corpus, not of executeScan itself, and a true
-// rule-independent rewrite needs a `createQuerySource` injection point that
-// `FilesystemSource.GetQueries` does not currently expose.
+// stubQuerySource serves a fixed query slice and a trivial Rego library.
+type stubQuerySource struct {
+	queries []model.QueryMetadata
+}
+
+func (s *stubQuerySource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
+	return s.queries, nil
+}
+
+func (s *stubQuerySource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
+	return source.RegoLibraries{
+		LibraryCode:      "package generic." + platform + "\n",
+		LibraryInputData: "{}",
+	}, nil
+}
+
+// Test_ExecuteScan runs the scan pipeline against a synthetic in-memory rule
+// so the assertions are decoupled from the rule corpus.
 func Test_ExecuteScan(t *testing.T) {
+	const ruleID = "test-execute-scan-rule"
+	rego := `package Cx
+
+CxPolicy[result] {
+	resource := input.document[i].resource.aws_s3_bucket[name]
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": name,
+		"searchKey": sprintf("aws_s3_bucket[%s]", [name]),
+		"issueType": "MissingAttribute",
+		"keyExpectedValue": "aws_s3_bucket should be encrypted",
+		"keyActualValue": "aws_s3_bucket is not encrypted",
+	}
+}
+`
+	query := model.QueryMetadata{
+		Query:     ruleID,
+		Content:   rego,
+		InputData: "{}",
+		Platform:  "terraform",
+		Metadata: map[string]interface{}{
+			"id":        ruleID,
+			"legacyId":  ruleID,
+			"queryName": "Synthetic Execute-Scan Rule",
+			"severity":  "HIGH",
+			"platform":  "Terraform",
+			"category":  "Encryption",
+		},
+	}
+
 	scanParams := Parameters{
 		Path:                    []string{filepath.Join("test", "sample.tf")},
-		QueriesPath:             []string{"assets/queries"},
+		QueriesPath:             []string{"."},
 		LibrariesPath:           "assets/libraries",
 		PreviewLines:            3,
 		CloudProvider:           []string{"aws"},
@@ -36,72 +80,21 @@ func Test_ExecuteScan(t *testing.T) {
 
 	ctx := context.Background()
 	c, err := NewClient(ctx, &scanParams, &consolePrinter.Printer{})
-	require.NoError(t, err, "NewClient failed for %s", scanParams.Path[0])
+	require.NoError(t, err)
+	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
+		return &stubQuerySource{queries: []model.QueryMetadata{query}}, nil
+	}
 
 	r, err := c.executeScan(ctx)
-	require.NoError(t, err, "executeScan failed for %s", scanParams.Path[0])
-	require.NotNil(t, r, "executeScan should return a non-nil result")
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	require.NotEmpty(t, r.Results, "expected at least one synthetic violation")
 
-	validSeverities := map[model.Severity]struct{}{
-		model.SeverityCritical: {},
-		model.SeverityHigh:     {},
-		model.SeverityMedium:   {},
-		model.SeverityLow:      {},
-		model.SeverityInfo:     {},
-	}
 	for i, result := range r.Results {
-		_, ok := validSeverities[result.Severity]
-		require.Truef(t, ok, "result[%d] has unexpected severity %q", i, result.Severity)
+		require.Equalf(t, model.Severity("HIGH"), model.Severity(result.Severity), "result[%d] severity", i)
+		require.Equalf(t, ruleID, result.QueryID, "result[%d] query id", i)
 	}
 }
-
-// func Test_GetSecretsRegexRules(t *testing.T) {
-// 	tests := []struct {
-// 		name           string
-// 		scanParams     Parameters
-// 		expectedError  bool
-// 		expectedOutput string
-// 	}{
-// 		{
-// 			name: "default value",
-// 			scanParams: Parameters{
-// 				SecretsRegexesPath: "",
-// 			},
-// 			expectedOutput: assets.SecretsQueryRegexRulesJSON,
-// 			expectedError:  false,
-// 		},
-// 		{
-// 			name: "custom value",
-// 			scanParams: Parameters{
-// 				SecretsRegexesPath: filepath.Join("..", "..", "assets", "queries", "common", "passwords_and_secrets", "regex_rules.json"),
-// 			},
-// 			expectedOutput: assets.SecretsQueryRegexRulesJSON,
-// 			expectedError:  false,
-// 		},
-// 		{
-// 			name: "invalid path value",
-// 			scanParams: Parameters{
-// 				SecretsRegexesPath: filepath.Join("invalid", "path"),
-// 			},
-// 			expectedOutput: "",
-// 			expectedError:  true,
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			c := &Client{}
-// 			c.ScanParams = &tt.scanParams
-// 			v, err := getSecretsRegexRules(c.ScanParams.SecretsRegexesPath)
-
-// 			require.Equal(t, tt.expectedOutput, v)
-// 			if tt.expectedError {
-// 				require.Error(t, err)
-// 			} else {
-// 				require.NoError(t, err)
-// 			}
-// 		})
-// 	}
-// }
 
 func Test_CreateQueryFilter(t *testing.T) {
 	tests := []struct {

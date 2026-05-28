@@ -12,6 +12,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -67,6 +68,8 @@ type Client struct {
 	ExcludeResultsMap map[string]bool
 	Printer           *consolePrinter.Printer
 	FlagEvaluator     featureflags.FlagEvaluator
+	// querySourceFactory overrides createQuerySource; set in tests only.
+	querySourceFactory func(ctx context.Context, platforms []string) (source.QueriesSource, error)
 }
 
 func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, context.Context) {

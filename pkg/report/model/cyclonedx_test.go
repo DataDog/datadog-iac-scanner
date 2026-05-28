@@ -194,8 +194,8 @@ func TestBuildCycloneDxReport(t *testing.T) {
 	// paths. Keyed on slash form because that's what filepath.ToSlash returns
 	// on both Windows and Unix.
 	mapping := map[string]string{
-		filepath.ToSlash(filepath.Join("assets", "queries", "terraform", "aws", "guardduty_detector_disabled", "test", "positive.tf")): positivePath,
-		filepath.ToSlash(filepath.Join("assets", "queries", "terraform", "aws", "guardduty_detector_disabled", "test", "negative.tf")): negativePath,
+		filepath.ToSlash(filepath.Join("testdata", "guardduty_detector_disabled", "positive.tf")): positivePath,
+		filepath.ToSlash(filepath.Join("testdata", "guardduty_detector_disabled", "negative.tf")): negativePath,
 		filepath.ToSlash(filepath.Join("test", "fixtures", "test_critical_custom_queries", "amazon_mq_broker_encryption_disabled", "test", "positive1.yaml")): criticalPath,
 	}
 

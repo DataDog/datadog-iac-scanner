@@ -273,14 +273,11 @@ func TestHelpers_GetDefaultQueryPath(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			name:        "test_get_default_query_path",
-			queriesPath: filepath.FromSlash("assets/queries"),
+			name:        "test_get_default_query_path_existing_dir",
+			queriesPath: filepath.FromSlash("assets/libraries"),
 			wantErr:     false,
 		},
 		{
-			// GetDefaultQueryPath should NOT fail for non-existent paths because
-			// queries are embedded in the binary and loaded via assets.GetEmbeddedQueryDirs().
-			// The path is only used for logging/display purposes.
 			name:        "test_get_default_query_path_nonexistent",
 			queriesPath: filepath.FromSlash("nonexistent/path"),
 			wantErr:     false,
