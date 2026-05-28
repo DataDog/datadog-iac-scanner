@@ -9,6 +9,7 @@ import (
 	"context"
 	json "encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -78,6 +79,7 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 	ctx = withCloudFormation(ctx, isCloudFormationDocument(value))
 	dpc := unmarshal(ctx, value, ignore)
 	if mapDcp, ok := dpc.(map[string]interface{}); ok {
+		expandCloudFormationForEach(mapDcp)
 		// set line information for root level objects
 		mapDcp["_kics_lines"] = getLines(value, 0)
 
@@ -87,6 +89,205 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 		return nil
 	}
 	return errors.New("failed to parse yaml content")
+}
+
+func expandCloudFormationForEach(doc map[string]interface{}) {
+	if !hasLanguageExtensionsTransform(doc) {
+		return
+	}
+	resourcesRaw, ok := doc["Resources"]
+	if !ok {
+		return
+	}
+	resources, ok := resourcesRaw.(map[string]interface{})
+	if !ok {
+		return
+	}
+	parameters, _ := doc["Parameters"].(map[string]interface{})
+
+	for {
+		forEachKeys := collectForEachKeys(resources)
+		if len(forEachKeys) == 0 {
+			break
+		}
+
+		anyExpanded := false
+		for _, key := range forEachKeys {
+			spec, ok := resources[key].([]interface{})
+			if !ok || len(spec) != 3 {
+				continue
+			}
+			varName, ok := spec[0].(string)
+			if !ok || varName == "" {
+				continue
+			}
+			collection, ok := resolveForEachCollection(spec[1], parameters)
+			if !ok || len(collection) == 0 {
+				continue
+			}
+			templateMap, ok := spec[2].(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			for _, item := range collection {
+				bindings := map[string]string{varName: item}
+				for logicalID, resourceValue := range templateMap {
+					resolvedLogicalID := replaceForEachVars(logicalID, bindings)
+					if _, exists := resources[resolvedLogicalID]; !exists {
+						resources[resolvedLogicalID] = substituteForEachBindings(resourceValue, bindings)
+						copyForEachLineInfo(resources, key, resolvedLogicalID)
+					}
+				}
+			}
+			delete(resources, key)
+			removeForEachLineInfo(resources, key)
+			anyExpanded = true
+		}
+
+		if !anyExpanded {
+			break
+		}
+	}
+}
+
+func collectForEachKeys(resources map[string]interface{}) []string {
+	keys := []string{}
+	for key := range resources {
+		if strings.HasPrefix(key, "Fn::ForEach::") {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+// hasLanguageExtensionsTransform reports whether the document declares the
+// AWS::LanguageExtensions transform, which is required for Fn::ForEach to be
+// valid CloudFormation syntax.
+func hasLanguageExtensionsTransform(doc map[string]interface{}) bool {
+	const ext = "AWS::LanguageExtensions"
+	switch t := doc["Transform"].(type) {
+	case string:
+		return t == ext
+	case []interface{}:
+		for _, v := range t {
+			if s, ok := v.(string); ok && s == ext {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func resolveForEachCollection(expr interface{}, parameters map[string]interface{}) ([]string, bool) {
+	switch v := expr.(type) {
+	case []interface{}:
+		return normalizeForEachDefault(v), true
+	case map[string]interface{}:
+		refName, ok := v["Ref"].(string)
+		if !ok || refName == "" {
+			return nil, false
+		}
+		param, ok := parameters[refName].(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		defaultValue, ok := param["Default"]
+		if !ok {
+			return nil, false
+		}
+		return normalizeForEachDefault(defaultValue), true
+	default:
+		return nil, false
+	}
+}
+
+func normalizeForEachDefault(v interface{}) []string {
+	switch t := v.(type) {
+	case []interface{}:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			out = append(out, fmt.Sprintf("%v", item))
+		}
+		return out
+	case string:
+		parts := strings.Split(t, ",")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			out = append(out, trimmed)
+		}
+		return out
+	default:
+		return []string{fmt.Sprintf("%v", t)}
+	}
+}
+
+func substituteForEachBindings(v interface{}, bindings map[string]string) interface{} {
+	switch t := v.(type) {
+	case string:
+		return replaceForEachVars(t, bindings)
+	case []interface{}:
+		out := make([]interface{}, len(t))
+		for i := range t {
+			out[i] = substituteForEachBindings(t[i], bindings)
+		}
+		return out
+	case map[string]interface{}:
+		if ref, ok := t["Ref"].(string); ok && isPureRefNode(t) {
+			if resolved, exists := bindings[ref]; exists {
+				return resolved
+			}
+		}
+		out := make(map[string]interface{}, len(t))
+		for key, val := range t {
+			out[replaceForEachVars(key, bindings)] = substituteForEachBindings(val, bindings)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func isPureRefNode(m map[string]interface{}) bool {
+	for k := range m {
+		if k != "Ref" && k != "_kics_lines" {
+			return false
+		}
+	}
+	return true
+}
+
+func replaceForEachVars(template string, bindings map[string]string) string {
+	resolved := template
+	for name, value := range bindings {
+		resolved = strings.ReplaceAll(resolved, "${"+name+"}", value)
+		resolved = strings.ReplaceAll(resolved, "&{"+name+"}", value)
+	}
+	return resolved
+}
+
+func copyForEachLineInfo(resources map[string]interface{}, foreachKey, resourceKey string) {
+	lines, ok := resources["_kics_lines"].(map[string]*LineObject)
+	if !ok {
+		return
+	}
+	source, ok := lines["_kics_"+foreachKey]
+	if !ok {
+		return
+	}
+	lines["_kics_"+resourceKey] = source
+}
+
+func removeForEachLineInfo(resources map[string]interface{}, foreachKey string) {
+	lines, ok := resources["_kics_lines"].(map[string]*LineObject)
+	if !ok {
+		return
+	}
+	delete(lines, "_kics_"+foreachKey)
 }
 
 /*
