@@ -115,6 +115,9 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 }
 
 func (c *Client) createQuerySource(ctx context.Context, paramsPlatforms []string) (source.QueriesSource, error) {
+	if c.querySourceFactory != nil {
+		return c.querySourceFactory(ctx, paramsPlatforms)
+	}
 	fss := source.NewFilesystemSource(
 		ctx,
 		c.ScanParams.QueriesPath,
