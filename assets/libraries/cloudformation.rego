@@ -262,6 +262,27 @@ get_resource_name(resource, resourceDefinitionName) = name {
 	fieldValue != ""
 	name := fieldValue[_]
 } else = name {
+	field := resourceFieldName[resource.Type]
+	template := resource.Properties[field]["Fn::Sub"]
+	is_string(template)
+	params := input.document[_].Parameters
+	replacements := {old: new |
+		some param_name
+		param := params[param_name]
+		is_string(param.Default)
+		old := sprintf("${%s}", [param_name])
+		new := param.Default
+	}
+	resolved := strings.replace_n(replacements, template)
+	not contains(resolved, "${")
+	resolved != ""
+	name := resolved
+} else = name {
+	field := resourceFieldName[resource.Type]
+	ref_name := resource.Properties[field].Ref
+	name := input.document[_].Parameters[ref_name].Default
+	name != ""
+} else = name {
 	name := common_lib.get_tag_name_if_exists(resource)
 } else = name {
 	name := resourceDefinitionName

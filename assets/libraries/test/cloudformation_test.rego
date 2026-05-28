@@ -387,6 +387,56 @@ test_has_secret_manager_missing_resource {
 	not hasSecretManager(str, document)
 }
 
+# Test get_resource_name: Fn::Sub resolved against parameter defaults
+test_get_resource_name_fn_sub_single_param {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "my-app-${Env}"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"Env": {"Default": "prod"}}}]
+	result == "my-app-prod"
+}
+
+test_get_resource_name_fn_sub_multiple_params {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "${AppName}-${Env}-bucket"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {
+		"AppName": {"Default": "myapp"},
+		"Env": {"Default": "prod"},
+	}}]
+	result == "myapp-prod-bucket"
+}
+
+test_get_resource_name_fn_sub_unresolvable_falls_back {
+	# ${AWS::Region} has no parameter default — falls back to logical id
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "my-bucket-${AWS::Region}"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "MyBucket"
+}
+
+test_get_resource_name_ref_param_default {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Ref": "BucketNameParam"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"BucketNameParam": {"Default": "my-ref-bucket"}}}]
+	result == "my-ref-bucket"
+}
+
+test_get_resource_name_ref_no_default_falls_back {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Ref": "BucketNameParam"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"BucketNameParam": {"Type": "String"}}}]
+	result == "MyBucket"
+}
+
 # Test get_resource_accessibility function (basic scenarios)
 test_get_resource_accessibility_unknown {
 	# When no matching policy is found, accessibility should be unknown
