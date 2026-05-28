@@ -409,11 +409,44 @@ test_get_resource_name_fn_sub_multiple_params {
 	result == "myapp-prod-bucket"
 }
 
-test_get_resource_name_fn_sub_unresolvable_falls_back {
-	# ${AWS::Region} has no parameter default — falls back to logical id
+test_get_resource_name_fn_sub_sequence_form {
 	resource := {
 		"Type": "AWS::S3::Bucket",
-		"Properties": {"BucketName": {"Fn::Sub": "my-bucket-${AWS::Region}"}},
+		"Properties": {"BucketName": {"Fn::Sub": [
+			"${AppName}-${Env}-bucket",
+			{"AppName": "myapp", "Env": "prod"},
+		]}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "myapp-prod-bucket"
+}
+
+test_get_resource_name_fn_sub_sequence_ref_var {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": [
+			"${AppName}-${Env}-bucket",
+			{"AppName": "myapp", "Env": {"Ref": "EnvironmentParam"}},
+		]}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"EnvironmentParam": {"Default": "prod"}}}]
+	result == "myapp-prod-bucket"
+}
+
+test_get_resource_name_fn_sub_with_pseudo_parameters {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "my-bucket-${AWS::Region}-${AWS::AccountId}"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "my-bucket-aws-region-aws-account-id"
+}
+
+test_get_resource_name_fn_sub_unresolvable_falls_back {
+	# ${UnknownVar} cannot be resolved — falls back to logical id
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "my-bucket-${UnknownVar}"}},
 	}
 	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
 	result == "MyBucket"
@@ -435,6 +468,15 @@ test_get_resource_name_ref_no_default_falls_back {
 	}
 	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"BucketNameParam": {"Type": "String"}}}]
 	result == "MyBucket"
+}
+
+test_get_resource_name_ref_pseudo_parameter {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Ref": "AWS::Region"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "aws-region"
 }
 
 # Test get_resource_accessibility function (basic scenarios)
