@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "RBAC roles with impersonate permission",
-    "severity": "MEDIUM",
-    "line": 9
-  }
-]

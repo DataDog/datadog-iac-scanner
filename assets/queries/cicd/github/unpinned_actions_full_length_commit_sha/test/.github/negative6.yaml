@@ -1,9 +1,0 @@
-name: test-negative6
-on:
-  pull_request:
-    types: [opened, synchronize, edited, reopened]
-    branches:
-      - master
-jobs:
-  test-negative4:
-    uses: my-org/shared-github-actions/.github/workflows/pr-comment-thollander.yml@b07c7f86be67002023e6cb13f57df3f21cdd3411

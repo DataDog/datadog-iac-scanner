@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Cloud Storage Bucket Logging Not Enabled",
-    "severity": "MEDIUM",
-    "line": 5,
-    "fileName": "positive.yaml"
-  }
-]

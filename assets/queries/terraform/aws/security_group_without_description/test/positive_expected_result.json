@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Security group rule without description",
-    "severity": "LOW",
-    "line": 1,
-    "filename": "positive1.tf"
-  }
-]

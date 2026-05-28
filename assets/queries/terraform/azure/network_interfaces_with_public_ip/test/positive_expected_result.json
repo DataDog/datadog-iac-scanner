@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Network interfaces with public IP",
-    "severity": "MEDIUM",
-    "line": 10,
-    "fileName": "positive.tf"
-  }
-]

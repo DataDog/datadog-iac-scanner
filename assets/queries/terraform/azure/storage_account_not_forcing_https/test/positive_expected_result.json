@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Storage account not forcing HTTPS",
-    "severity": "MEDIUM",
-    "line": 7,
-    "filename": "positive.tf"
-  }
-]

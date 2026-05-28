@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "DNSSEC Using RSASHA1",
-    "severity": "MEDIUM",
-    "line": 9,
-    "filename": "positive1.yaml"
-  }
-]

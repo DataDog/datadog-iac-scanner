@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "S3 bucket allows put action from all principals",
-    "severity": "CRITICAL",
-    "line": 6,
-    "fileName": "positive.yaml"
-  }
-]

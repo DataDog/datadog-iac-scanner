@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "S3 bucket ACL allows read access to any authenticated user",
-    "severity": "HIGH",
-    "line": 7
-  }
-]

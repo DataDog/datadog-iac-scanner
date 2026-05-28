@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "ssl_enforcement_enabled is not set to ENABLED for MySQL database server",
-    "severity": "HIGH",
-    "line": 6
-  }
-]

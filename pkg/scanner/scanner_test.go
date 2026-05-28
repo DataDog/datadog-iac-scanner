@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
@@ -22,19 +21,12 @@ import (
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 )
 
-var sourcePath = []string{filepath.FromSlash("../../assets/queries")}
-
-// TestScanner_StartScan checks StartScan returns DeadlineExceeded on an expired ctx.
+// TestScanner_StartScan checks StartScan returns nil on an uncancelled ctx when rules are served by the backend.
 func TestScanner_StartScan(t *testing.T) {
-	services, _, err := createServices([]string{""}, []string{""})
+	services, store, err := createServices([]string{""}, []string{""})
 	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
-	defer cancel()
-	time.Sleep(10 * time.Millisecond)
-
-	err = StartScan(ctx, "console", services)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.NoError(t, StartScan(context.Background(), "console", services))
+	require.NotEmpty(t, &store)
 }
 
 func createServices(types, cloudProviders []string) (serviceSlice, *storage.MemoryStorage, error) {
@@ -48,7 +40,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 	if err != nil {
 		return nil, nil, err
 	}
-	querySource := source.NewFilesystemSource(ctx, sourcePath, types, cloudProviders, filepath.FromSlash("../../assets/libraries"), true)
+	querySource := source.NewFilesystemSource(ctx, []string{}, types, cloudProviders, filepath.FromSlash("../../assets/libraries"), true)
 
 	inspector, err := engine.NewInspector(context.Background(),
 		querySource, engine.DefaultVulnerabilityBuilder,

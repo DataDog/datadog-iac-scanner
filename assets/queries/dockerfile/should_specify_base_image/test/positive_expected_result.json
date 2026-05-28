@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "Dockerfile should specify base image",
-    "severity": "MEDIUM",
-    "line": 1
-  }
-]

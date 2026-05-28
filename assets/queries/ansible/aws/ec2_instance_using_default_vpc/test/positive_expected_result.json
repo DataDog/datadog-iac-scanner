@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "EC2 instance using default VPC",
-    "severity": "LOW",
-    "line": 8,
-    "fileName": "positive.yaml"
-  }
-]

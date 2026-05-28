@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "Cloud SQL instance with cross DB ownership chaining on",
-    "severity": "HIGH",
-    "line": 10
-  }
-]

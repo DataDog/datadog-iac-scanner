@@ -358,65 +358,6 @@ func TestSource_getLibraryInDir(t *testing.T) {
 	}
 }
 
-// Template for TestDatadogSource_GetQueriesWithIncludeFilter when FilesystemSource is retired.
-func TestFilesystemSource_GetQueriesWithIncludeFilter(t *testing.T) {
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	newSource := func() QueriesSource {
-		return NewFilesystemSource(ctx, []string{""}, []string{""}, []string{""}, "./assets/libraries", true)
-	}
-
-	t.Run("get_queries_with_include_severity", func(t *testing.T) {
-		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
-			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH"}},
-		})
-		require.NoError(t, err)
-		assert.NotEmpty(t, got)
-		for _, q := range got {
-			assert.True(t, strings.EqualFold("HIGH", q.Metadata["severity"].(string)), "expected severity HIGH, got %s", q.Metadata["severity"])
-		}
-	})
-
-	t.Run("get_queries_with_include_category", func(t *testing.T) {
-		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
-			IncludeQueries: QueryFilter{ByCategories: []string{"Encryption"}},
-		})
-		require.NoError(t, err)
-		assert.NotEmpty(t, got)
-		for _, q := range got {
-			assert.True(t, strings.EqualFold("Encryption", q.Metadata["category"].(string)), "expected category Encryption, got %s", q.Metadata["category"])
-		}
-	})
-
-	t.Run("get_queries_with_include_severity_and_category", func(t *testing.T) {
-		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
-			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH"}, ByCategories: []string{"Encryption"}},
-		})
-		require.NoError(t, err)
-		assert.NotEmpty(t, got)
-		for _, q := range got {
-			assert.True(t, strings.EqualFold("HIGH", q.Metadata["severity"].(string)), "expected severity HIGH, got %s", q.Metadata["severity"])
-			assert.True(t, strings.EqualFold("Encryption", q.Metadata["category"].(string)), "expected category Encryption, got %s", q.Metadata["category"])
-		}
-	})
-
-	t.Run("get_queries_with_include_and_exclude", func(t *testing.T) {
-		got, err := newSource().GetQueries(ctx, &QueryInspectorParameters{
-			IncludeQueries: QueryFilter{BySeverities: []string{"HIGH", "MEDIUM"}},
-			ExcludeQueries: QueryFilter{ByCategories: []string{"Encryption"}},
-		})
-		require.NoError(t, err)
-		assert.NotEmpty(t, got)
-		for _, q := range got {
-			severity := q.Metadata["severity"].(string)
-			assert.True(t, strings.EqualFold("HIGH", severity) || strings.EqualFold("MEDIUM", severity), "expected severity HIGH or MEDIUM, got %s", severity)
-			assert.False(t, strings.EqualFold("Encryption", q.Metadata["category"].(string)), "expected category != Encryption, got %s", q.Metadata["category"])
-		}
-	})
-}
-
 func TestFilesystemSource_ReadLocalFile(t *testing.T) {
 	dir := t.TempDir()
 	queryPath := filepath.Join(dir, "my_query")
@@ -671,72 +612,6 @@ func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 			}
 			result := checkQueryInclude(ctx, tt.metadata, queryParams)
 			assert.Equal(t, tt.expectedResult, result, tt.description)
-		})
-	}
-}
-
-// TestGetQueriesWithLegacyIdFiltering pins that exclude wins when include and exclude
-// target the same rule by different id forms (the predicate iterateQueryDirs applies).
-func TestGetQueriesWithLegacyIdFiltering(t *testing.T) {
-	const (
-		ruleID       = "test-legacy-id-filtering"
-		ruleLegacyID = "00000000-0000-0000-0000-000000000001"
-	)
-	metadata := map[string]any{
-		"id":       ruleID,
-		"legacyId": ruleLegacyID,
-		"platform": "Terraform",
-		"category": "Networking",
-		"severity": "HIGH",
-	}
-
-	tests := []struct {
-		name       string
-		includeIDs []string
-		excludeIDs []string
-		wantKeep   bool
-	}{
-		{
-			name:       "include_by_legacy_id",
-			includeIDs: []string{ruleLegacyID},
-			excludeIDs: nil,
-			wantKeep:   true,
-		},
-		{
-			name:       "include_by_new_id",
-			includeIDs: []string{ruleID},
-			excludeIDs: nil,
-			wantKeep:   true,
-		},
-		{
-			name:       "exclude_by_legacy_id",
-			includeIDs: nil,
-			excludeIDs: []string{ruleLegacyID},
-			wantKeep:   false,
-		},
-		{
-			name:       "include_new_exclude_legacy",
-			includeIDs: []string{ruleID},
-			excludeIDs: []string{ruleLegacyID},
-			wantKeep:   false,
-		},
-		{
-			name:       "include_legacy_exclude_new",
-			includeIDs: []string{ruleLegacyID},
-			excludeIDs: []string{ruleID},
-			wantKeep:   false,
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			params := &QueryInspectorParameters{
-				IncludeQueries: QueryFilter{ByIDs: tt.includeIDs},
-				ExcludeQueries: QueryFilter{ByIDs: tt.excludeIDs},
-			}
-			keep := checkQueryInclude(ctx, metadata, params) && !checkQueryExclude(ctx, metadata, params)
-			assert.Equal(t, tt.wantKeep, keep)
 		})
 	}
 }

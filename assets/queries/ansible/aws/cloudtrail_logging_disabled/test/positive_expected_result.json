@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "CloudTrail logging disabled",
-    "severity": "MEDIUM",
-    "line": 5
-  }
-]

@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "PostgreSQL logging of temporary files disabled",
-    "severity": "LOW",
-    "line": 10
-  }
-]

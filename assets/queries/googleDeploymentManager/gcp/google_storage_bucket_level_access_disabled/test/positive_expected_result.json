@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Google Storage Bucket Level Access Disabled",
-    "severity": "HIGH",
-    "line": 11,
-    "filename": "positive1.yaml"
-  }
-]

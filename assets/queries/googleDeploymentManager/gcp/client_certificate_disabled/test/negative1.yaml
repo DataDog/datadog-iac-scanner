@@ -1,8 +1,0 @@
-resources:
-  - name: cluster
-    type: container.v1.cluster
-    properties:
-      name: my-cluster
-      masterAuth:
-        clientCertificateConfig:
-          issueClientCertificate: true

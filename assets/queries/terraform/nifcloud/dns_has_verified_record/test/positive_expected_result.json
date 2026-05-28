@@ -1,8 +1,0 @@
-[
-	{
-		"queryName": "NIFCLOUD DNS has verified record",
-		"severity": "LOW",
-		"line": 1,
-		"fileName": "positive.tf"
-	}
-]

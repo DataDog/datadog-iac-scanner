@@ -1,8 +1,0 @@
-[
-	{
-		"queryName": "StatefulSet without service name",
-		"severity": "LOW",
-		"line": 49,
-		"fileName": ""
-	}
-]

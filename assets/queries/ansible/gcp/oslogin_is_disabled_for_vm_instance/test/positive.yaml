@@ -1,7 +1,0 @@
-- name: oslogin-disabled
-  google.cloud.gcp_compute_instance:
-    name: oslogin-disabled-instance
-    metadata:
-      enable-oslogin: no
-    zone: us-central1-a
-    auth_kind: serviceaccount

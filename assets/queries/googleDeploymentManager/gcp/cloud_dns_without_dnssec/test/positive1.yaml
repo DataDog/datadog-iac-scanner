@@ -1,5 +1,0 @@
-resources:
-- name: dns
-  type: dns.v1.managedZone
-  properties:
-    name: my-zone

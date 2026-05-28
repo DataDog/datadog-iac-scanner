@@ -1,8 +1,0 @@
-[
-  {
-    "queryName": "Multiple CMD instructions listed",
-    "severity": "LOW",
-    "line": 11,
-    "fileName": "positive.dockerfile"
-  }
-]

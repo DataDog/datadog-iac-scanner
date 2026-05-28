@@ -12,39 +12,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func mustAbs(t *testing.T, p string) string {
+	t.Helper()
+	abs, err := filepath.Abs(p)
+	require.NoError(t, err)
+	return abs
+}
+
 // Test_E2EExclusions checks inline-disable silences exactly the requested rule per fixture pair.
+// Rules are loaded from testdata/rules/ rather than the embedded corpus (assets/queries/ removed).
 func Test_E2EExclusions(t *testing.T) {
 	pairs := []struct {
 		name         string
 		baseline     string
 		disabled     string
 		expectedSlug string
+		queriesPaths []string
 	}{
 		{
 			name:         "terraform",
 			baseline:     filepath.Join("fixtures", "no-exclusions.tf"),
 			disabled:     filepath.Join("fixtures", "inline-disabled-rule.tf"),
 			expectedSlug: "terraform-aws-team-tag-not-present",
+			queriesPaths: []string{filepath.Join("testdata", "rules", "terraform")},
 		},
 		{
 			name:         "kubernetes",
 			baseline:     filepath.Join("fixtures", "k8s-no-exclusions.yaml"),
 			disabled:     filepath.Join("fixtures", "k8s-inline-disabled-rule.yaml"),
 			expectedSlug: "kubernetes-container-is-privileged",
+			queriesPaths: []string{filepath.Join("testdata", "rules", "k8s")},
 		},
 		{
 			name:         "cicd",
 			baseline:     filepath.Join("fixtures", ".github/cicd-no-exclusions.yaml"),
 			disabled:     filepath.Join("fixtures", ".github/cicd-inline-disabled-rule.yaml"),
 			expectedSlug: "cicd-github-unpinned-actions-full-length-commit-sha",
+			queriesPaths: []string{filepath.Join("testdata", "rules", "cicd")},
 		},
 	}
 
 	for _, p := range pairs {
 		t.Run(p.name, func(t *testing.T) {
-			baseline := runScan(t, p.baseline)
-			disabled := runScan(t, p.disabled)
+			absQueriesPaths := make([]string, len(p.queriesPaths))
+			for i, qp := range p.queriesPaths {
+				absQueriesPaths[i] = mustAbs(t, qp)
+			}
+			baseline := runScan(t, p.baseline, absQueriesPaths)
+			disabled := runScan(t, p.disabled, absQueriesPaths)
 
+			require.NotEmpty(t, baseline.ViolationBreakdowns, "no violations in baseline: check queriesPaths")
 			require.Equal(t, baseline.Files, disabled.Files, "scans must process the same number of files")
 
 			removed := violationDiff(baseline.ViolationBreakdowns, disabled.ViolationBreakdowns)
@@ -59,11 +76,13 @@ func Test_E2EExclusions(t *testing.T) {
 	}
 }
 
-func runScan(t *testing.T, testFile string) scan.ScanStats {
+func runScan(t *testing.T, testFile string, queriesPaths []string) scan.ScanStats {
 	t.Helper()
 	params, ctx := scan.GetDefaultParameters(context.Background(), "")
 	params.Path = []string{testFile}
 	params.OutputPath = t.TempDir()
+	params.QueriesPath = queriesPaths
+	params.ChangedDefaultQueryPath = true
 	params.SCIInfo = model.SCIInfo{
 		DiffAware:            model.DiffAware{Enabled: false},
 		RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},

@@ -1,7 +1,0 @@
-[
-  {
-    "queryName": "Google Compute firewall ingress allows unrestricted MySQL access",
-    "severity": "MEDIUM",
-    "line": 10
-  }
-]

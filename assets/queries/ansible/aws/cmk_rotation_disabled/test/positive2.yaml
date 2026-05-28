@@ -1,7 +1,0 @@
-- name: Update IAM policy on an existing KMS key2
-  amazon.aws.kms_key:
-    alias: my-kms-key
-    policy: '{"Version": "2012-10-17", "Id": "my-kms-key-permissions", "Statement": [ { <SOME STATEMENT> } ]}'
-    state: present
-    enabled: true
-    enable_key_rotation: false
