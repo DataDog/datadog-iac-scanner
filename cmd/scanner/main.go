@@ -45,12 +45,6 @@ func main() {
 				Usage: "minimum log level to display (trace, debug, info, warn, error, fatal, panic, disable)",
 				Value: "error",
 			},
-			&cli.BoolFlag{
-				Name:   "x-downloadqueriesfromdatadog",
-				Hidden: true,
-				Usage:  "(experimental, will be removed soon) download query data from Datadog",
-				Value:  true,
-			},
 		},
 		Before: applyGlobalOptions,
 	}

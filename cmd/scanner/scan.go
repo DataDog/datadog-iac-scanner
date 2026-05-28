@@ -169,7 +169,6 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		SCIInfo:                    model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:              getFeatureFlagEvaluator(c),
 		Config:                     *cfg,
-		DownloadQueriesFromDatadog: c.Bool("x-downloadqueriesfromdatadog"),
 	}
 
 	metadata, err := console.ExecuteScan(ctx, params)

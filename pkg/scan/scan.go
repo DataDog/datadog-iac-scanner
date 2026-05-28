@@ -115,21 +115,18 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 }
 
 func (c *Client) createQuerySource(ctx context.Context, paramsPlatforms []string) (source.QueriesSource, error) {
-	fss := source.NewFilesystemSource(
+	librarySource := source.NewFilesystemSource(
 		ctx,
 		c.ScanParams.QueriesPath,
 		paramsPlatforms,
 		c.ScanParams.CloudProvider,
 		c.ScanParams.LibrariesPath,
 		c.ScanParams.ExperimentalQueries)
-	if !c.ScanParams.DownloadQueriesFromDatadog {
-		return fss, nil
-	}
 	return source.NewDatadogSource(
 		datadog.NewDatadogClient(),
 		source.WithWantedPlatforms(paramsPlatforms),
 		source.WithWantedCloudProviders(c.ScanParams.CloudProvider),
-		source.WithLibrarySource(fss),
+		source.WithLibrarySource(librarySource),
 	)
 }
 
