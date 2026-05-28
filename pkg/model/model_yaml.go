@@ -9,11 +9,36 @@ import (
 	"context"
 	json "encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"gopkg.in/yaml.v3"
 )
+
+// cfnShortFormTags maps CloudFormation short-form intrinsic tags to long-form keys.
+var cfnShortFormTags = map[string]string{
+	"!Ref":          "Ref",
+	"!Sub":          "Fn::Sub",
+	"!GetAtt":       "Fn::GetAtt",
+	"!Join":         "Fn::Join",
+	"!Select":       "Fn::Select",
+	"!Split":        "Fn::Split",
+	"!FindInMap":    "Fn::FindInMap",
+	"!ImportValue":  "Fn::ImportValue",
+	"!Base64":       "Fn::Base64",
+	"!Cidr":         "Fn::Cidr",
+	"!GetAZs":       "Fn::GetAZs",
+	"!If":           "Fn::If",
+	"!And":          "Fn::And",
+	"!Or":           "Fn::Or",
+	"!Not":          "Fn::Not",
+	"!Equals":       "Fn::Equals",
+	"!Condition":    "Condition",
+	"!Transform":    "Fn::Transform",
+	"!Length":       "Fn::Length",
+	"!ToJsonString": "Fn::ToJsonString",
+}
 
 // UnmarshalYAML is a custom yaml parser that places line information in the payload
 func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *Ignore) error {
@@ -71,6 +96,10 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 		// iterate two by two, since first iteration is the key and the second is the value
 		for i := 0; i < len(val.Content); i += 2 {
 			if val.Content[i].Kind == yaml.ScalarNode {
+				if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val.Content[i+1], visited, ignore); ok {
+					tmp[val.Content[i].Value] = rewritten
+					continue
+				}
 				switch val.Content[i+1].Kind {
 				case yaml.ScalarNode:
 					tmp[val.Content[i].Value] = scalarNodeResolver(ctx, val.Content[i+1])
@@ -173,6 +202,9 @@ func getSeqLines(val *yaml.Node, def int) map[string]*LineObject {
 
 // scalarNodeResolver transforms a ScalarNode value in its correct type
 func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
+	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, nil, nil); ok {
+		return rewritten
+	}
 	contextLogger := logger.FromContext(ctx)
 	var resolved interface{}
 	if err := val.Decode(&resolved); err != nil {
@@ -180,4 +212,68 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 		return val.Value
 	}
 	return resolved
+}
+
+// rewriteCFNShortFormIntrinsic converts a short-form CFN intrinsic to its long-form map.
+func rewriteCFNShortFormIntrinsic(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, ignore *Ignore) (interface{}, bool) {
+	if val == nil {
+		return nil, false
+	}
+	longForm, ok := cfnShortFormTags[val.Tag]
+	if !ok {
+		return nil, false
+	}
+
+	switch val.Kind {
+	case yaml.ScalarNode:
+		var payload interface{} = val.Value
+		if longForm == "Fn::GetAtt" {
+			parts := strings.SplitN(val.Value, ".", 2)
+			converted := make([]interface{}, 0, len(parts))
+			for _, p := range parts {
+				converted = append(converted, p)
+			}
+			payload = converted
+		}
+		return map[string]interface{}{longForm: payload}, true
+	case yaml.SequenceNode:
+		seq := make([]interface{}, 0, len(val.Content))
+		for _, child := range val.Content {
+			seq = append(seq, decodeIntrinsicChild(ctx, child, visited, ignore))
+		}
+		return map[string]interface{}{longForm: seq}, true
+	case yaml.MappingNode:
+		v := visited
+		if v == nil {
+			v = make(map[*yaml.Node]bool)
+		}
+		return map[string]interface{}{longForm: unmarshalWithDepth(ctx, val, v, ignore)}, true
+	}
+	return nil, false
+}
+
+func decodeIntrinsicChild(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, ignore *Ignore) interface{} {
+	if val == nil {
+		return nil
+	}
+	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, visited, ignore); ok {
+		return rewritten
+	}
+	v := visited
+	if v == nil {
+		v = make(map[*yaml.Node]bool)
+	}
+	switch val.Kind {
+	case yaml.ScalarNode:
+		return scalarNodeResolver(ctx, val)
+	case yaml.MappingNode:
+		return unmarshalWithDepth(ctx, val, v, ignore)
+	case yaml.SequenceNode:
+		seq := make([]interface{}, 0, len(val.Content))
+		for _, child := range val.Content {
+			seq = append(seq, decodeIntrinsicChild(ctx, child, v, ignore))
+		}
+		return seq
+	}
+	return nil
 }
