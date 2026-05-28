@@ -125,7 +125,7 @@ func (c *Client) createQuerySource(ctx context.Context, paramsPlatforms []string
 		c.ScanParams.CloudProvider,
 		c.ScanParams.LibrariesPath,
 		c.ScanParams.ExperimentalQueries)
-	if !c.ScanParams.DownloadQueriesFromDatadog {
+	if c.ScanParams.ChangedDefaultQueryPath {
 		return fss, nil
 	}
 	return source.NewDatadogSource(

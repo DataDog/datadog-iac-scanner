@@ -55,20 +55,17 @@ func listQueries(ctx context.Context, c *cli.Command) error {
 	return nil
 }
 
-func getQuerySource(ctx context.Context, c *cli.Command) (source.QueriesSource, error) {
-	fss := source.NewFilesystemSource(
+func getQuerySource(ctx context.Context, _ *cli.Command) (source.QueriesSource, error) {
+	librarySource := source.NewFilesystemSource(
 		ctx,
-		[]string{"./assets/queries"},
+		nil,
 		GetSupportedPlatforms(),
 		[]string{""},
 		"./assets/libraries",
 		false)
-	if !c.Bool("x-downloadqueriesfromdatadog") {
-		return fss, nil
-	}
 	return source.NewDatadogSource(
 		datadog.NewDatadogClient(),
 		source.WithWantedPlatforms(GetSupportedPlatforms()),
-		source.WithLibrarySource(fss),
+		source.WithLibrarySource(librarySource),
 	)
 }

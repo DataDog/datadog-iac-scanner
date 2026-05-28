@@ -56,7 +56,6 @@ type Parameters struct {
 	SCIInfo                     model.SCIInfo
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
-	DownloadQueriesFromDatadog  bool
 }
 
 // Client represents a scan client
