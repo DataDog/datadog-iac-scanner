@@ -737,6 +737,38 @@ func TestDocument_UnmarshalYAML_CloudFormationShortFormIntrinsics(t *testing.T) 
 	}
 }
 
+// TestDocument_UnmarshalYAML_CFNIntrinsicLineMetadata verifies that rewritten
+// short-form intrinsics carry _kics_lines metadata on the wrapper map,
+// matching what long-form mapping values produce.
+func TestDocument_UnmarshalYAML_CFNIntrinsicLineMetadata(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub my-app-${Env}
+`)
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Equal(t, yaml.DocumentNode, root.Kind)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	// Walk to BucketName without stripping _kics_lines
+	bucketName := parsed["Resources"].(map[string]interface{})["MyBucket"].(map[string]interface{})["Properties"].(map[string]interface{})["BucketName"]
+	m, ok := bucketName.(map[string]interface{})
+	require.True(t, ok, "BucketName should be a map after rewrite")
+	require.Contains(t, m, "Fn::Sub", "rewritten map should have Fn::Sub key")
+	require.Contains(t, m, "_kics_lines", "rewritten map should carry _kics_lines")
+}
+
 func walkJSONPath(t *testing.T, root interface{}, path []string) interface{} {
 	t.Helper()
 	cur := root

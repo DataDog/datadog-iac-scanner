@@ -97,6 +97,9 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 		for i := 0; i < len(val.Content); i += 2 {
 			if val.Content[i].Kind == yaml.ScalarNode {
 				if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val.Content[i+1], visited, ignore); ok {
+					if m, ok := rewritten.(map[string]interface{}); ok {
+						m["_kics_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
+					}
 					tmp[val.Content[i].Value] = rewritten
 					continue
 				}
