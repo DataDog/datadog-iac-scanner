@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
@@ -85,6 +87,7 @@ type Inspector struct {
 	tracker        Tracker
 	failedQueries  map[string]error
 	excludeResults map[string]bool
+	ruleConfigs    map[string]config.IacRuleConfig
 	detector       *detector.DetectLine
 
 	repoPath             string
@@ -124,6 +127,7 @@ func NewInspector(
 	tracker Tracker,
 	queryParameters *source.QueryInspectorParameters,
 	excludeResults map[string]bool,
+	ruleConfigs map[string]config.IacRuleConfig,
 	repoPath string,
 	queryTimeout int,
 	useOldSeverities bool,
@@ -174,6 +178,7 @@ func NewInspector(
 		tracker:             tracker,
 		failedQueries:       failedQueries,
 		excludeResults:      excludeResults,
+		ruleConfigs:         ruleConfigs,
 		detector:            lineDetector,
 		repoPath:            repoPath,
 		queryExecTimeout:    queryExecTimeout,
@@ -587,6 +592,18 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if !ok || file == nil {
 		return nil, false
 	}
+
+	if rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID); found {
+		if rc.Severity != nil {
+			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
+		}
+		if rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
+				file.FilePath, vulnerability.QueryID)
+			return nil, false
+		}
+	}
+
 	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
 		contextLogger.Debug().Msgf("Suppressing vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)
@@ -611,6 +628,41 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	}
 
 	return vulnerability, false
+}
+
+// lookupRuleConfig returns the first matching rule config for the given queryID or legacyQueryID.
+func lookupRuleConfig(ruleConfigs map[string]config.IacRuleConfig, queryID, legacyQueryID string) (config.IacRuleConfig, bool) {
+	if len(ruleConfigs) == 0 {
+		return config.IacRuleConfig{}, false
+	}
+	if rc, ok := ruleConfigs[queryID]; ok {
+		return rc, true
+	}
+	if legacyQueryID != "" {
+		if rc, ok := ruleConfigs[legacyQueryID]; ok {
+			return rc, true
+		}
+	}
+	return config.IacRuleConfig{}, false
+}
+
+// rulePathExcluded returns true if the file should be dropped for a given rule
+// based on its ignore-paths and only-paths lists.
+func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
+	for _, pattern := range ignorePaths {
+		if pathutil.MatchesPath(pattern, filePath) {
+			return true
+		}
+	}
+	if len(onlyPaths) == 0 {
+		return false
+	}
+	for _, pattern := range onlyPaths {
+		if pathutil.MatchesPath(pattern, filePath) {
+			return false
+		}
+	}
+	return true
 }
 
 // markSuppressed records the first suppression decision; later gates are

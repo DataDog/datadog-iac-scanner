@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseHappyPath(t *testing.T) {
@@ -61,4 +62,65 @@ func TestUnparseConfig(t *testing.T) {
 	b, err := UnparseConfig(&parsedCfgFile)
 	assert.NoError(t, err)
 	assert.Equal(t, cfgFile, string(b))
+}
+
+func TestUnparseConfigV13Fields(t *testing.T) {
+	t.Run("config with only-platforms serializes field", func(t *testing.T) {
+		cfg := parsedCfgFile
+		cfg.OnlyPlatforms = []string{"Terraform"}
+		b, err := UnparseConfig(&cfg)
+		require.NoError(t, err)
+		assert.Contains(t, string(b), "schema-version: v1.3")
+		assert.Contains(t, string(b), "only-platforms:")
+	})
+
+	t.Run("config with ignore-platforms serializes field", func(t *testing.T) {
+		cfg := parsedCfgFile
+		cfg.IgnorePlatforms = []string{"Dockerfile"}
+		b, err := UnparseConfig(&cfg)
+		require.NoError(t, err)
+		assert.Contains(t, string(b), "ignore-platforms:")
+	})
+
+	t.Run("config with rule-configs serializes fields", func(t *testing.T) {
+		sev := "low"
+		cfg := parsedCfgFile
+		cfg.RuleConfigs = map[string]IacRuleConfig{
+			"my-rule": {IgnorePaths: []string{"test/"}, Severity: &sev},
+		}
+		b, err := UnparseConfig(&cfg)
+		require.NoError(t, err)
+		assert.Contains(t, string(b), "rule-configs:")
+		assert.Contains(t, string(b), "my-rule:")
+	})
+}
+
+func TestParseUnparseRoundTripV13(t *testing.T) {
+	input := `schema-version: v1.3
+iac:
+  ignore-rules:
+    - query1
+  global-config:
+    only-platforms:
+      - Terraform
+      - Kubernetes
+    ignore-platforms:
+      - Dockerfile
+  rule-configs:
+    terraform-aws-s3-unencrypted:
+      ignore-paths:
+        - test/
+      severity: low
+`
+	cfg, err := ParseConfig([]byte(input))
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	assert.Equal(t, []string{"Terraform", "Kubernetes"}, cfg.OnlyPlatforms)
+	assert.Equal(t, []string{"Dockerfile"}, cfg.IgnorePlatforms)
+	require.Len(t, cfg.RuleConfigs, 1)
+	rc := cfg.RuleConfigs["terraform-aws-s3-unencrypted"]
+	assert.Equal(t, []string{"test/"}, rc.IgnorePaths)
+	require.NotNil(t, rc.Severity)
+	assert.Equal(t, "low", *rc.Severity)
 }

@@ -99,7 +99,3 @@ func (e *withExitCodeError) Error() string {
 	}
 	return fmt.Sprintf("exit code %d", e.code)
 }
-
-func GetSupportedPlatforms() []string {
-	return []string{"Ansible", "CICD", "Terraform", "Kubernetes", "CloudFormation", "Dockerfile"}
-}

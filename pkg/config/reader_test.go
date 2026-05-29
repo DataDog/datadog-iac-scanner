@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const cfgFile = `schema-version: v1.2
+const cfgFile = `schema-version: v1.3
 iac:
   ignore-rules:
     - query1
@@ -66,7 +66,7 @@ var parsedLegacyCfg = IacConfig{
 	LegacyExcludeResults: []string{"res1", "res2"},
 }
 
-const convertedLegacyCfg = `schema-version: v1.2
+const convertedLegacyCfg = `schema-version: v1.3
 iac:
   ignore-rules:
     - query1
@@ -201,7 +201,7 @@ func TestReadLegacyOnly(t *testing.T) {
 func TestReadLegacyWithIncludeRulesOnly(t *testing.T) {
 	tmp := t.TempDir()
 	myCfgFile := legacyCfg + "include-queries: [query3, query4]\n"
-	includeOnly := "schema-version: v1.2\niac:\n  use-rules:\n    - query3\n    - query4\n"
+	includeOnly := "schema-version: v1.3\niac:\n  use-rules:\n    - query3\n    - query4\n"
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, LegacyConfigFileName), []byte(myCfgFile), 0644))
 
 	cfg, b, err := ReadConfiguration(t.Context(), tmp)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -14,7 +15,7 @@ var listPlatformsAction = &cli.Command{
 }
 
 func listPlatforms(ctx context.Context, c *cli.Command) error {
-	for _, platform := range GetSupportedPlatforms() {
+	for _, platform := range platforms.Supported {
 		fmt.Println(platform)
 	}
 	return nil

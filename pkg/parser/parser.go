@@ -176,6 +176,9 @@ func (c *Parser) SupportedExtensions() model.Extensions {
 }
 
 func contains(types []string, supportedTypes map[string]bool) bool {
+	if len(types) == 0 {
+		return false
+	}
 	if types[0] == "" {
 		return true
 	}

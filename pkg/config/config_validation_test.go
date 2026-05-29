@@ -95,6 +95,115 @@ func TestParseCategoryValues(t *testing.T) {
 	}
 }
 
+func TestParsePlatformValues(t *testing.T) {
+	happy := []struct {
+		name, input, expected string
+	}{
+		{"exact", "Terraform", "Terraform"},
+		{"lowercase", "terraform", "Terraform"},
+		{"uppercase", "KUBERNETES", "Kubernetes"},
+		{"mixed case", "cloudFormation", "CloudFormation"},
+		{"ansible", "ansible", "Ansible"},
+		{"cicd", "cicd", "CICD"},
+		{"dockerfile", "Dockerfile", "Dockerfile"},
+	}
+	invalid := []struct {
+		name, input, errFragment string
+	}{
+		{"unknown platform", "bogus", `invalid platform: "bogus"`},
+		{"unreleased platform", "pulumi", `invalid platform: "pulumi"`},
+	}
+
+	for _, field := range []string{"only-platforms", "ignore-platforms"} {
+		for _, tc := range happy {
+			t.Run(field+"/happy/"+tc.name, func(t *testing.T) {
+				yamlStr := fmt.Sprintf("schema-version: v1.3\niac:\n  global-config:\n    %s:\n      - %s\n", field, tc.input)
+				cfg, err := ParseConfig([]byte(yamlStr))
+				require.NoError(t, err)
+				require.NotNil(t, cfg)
+				got := cfg.OnlyPlatforms
+				if field == "ignore-platforms" {
+					got = cfg.IgnorePlatforms
+				}
+				assert.Equal(t, []string{tc.expected}, got)
+			})
+		}
+		for _, tc := range invalid {
+			t.Run(field+"/invalid/"+tc.name, func(t *testing.T) {
+				yamlStr := fmt.Sprintf("schema-version: v1.3\niac:\n  global-config:\n    %s:\n      - %s\n", field, tc.input)
+				_, err := ParseConfig([]byte(yamlStr))
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.errFragment)
+			})
+		}
+	}
+}
+
+func TestParseRuleConfigs(t *testing.T) {
+	t.Run("full rule config", func(t *testing.T) {
+		input := `schema-version: v1.3
+iac:
+  rule-configs:
+    terraform-aws-s3-unencrypted:
+      ignore-paths:
+        - test/
+      only-paths:
+        - src/
+      severity: low
+`
+		cfg, err := ParseConfig([]byte(input))
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		require.Len(t, cfg.RuleConfigs, 1)
+		rc := cfg.RuleConfigs["terraform-aws-s3-unencrypted"]
+		assert.Equal(t, []string{"test/"}, rc.IgnorePaths)
+		assert.Equal(t, []string{"src/"}, rc.OnlyPaths)
+		require.NotNil(t, rc.Severity)
+		assert.Equal(t, "low", *rc.Severity)
+	})
+
+	t.Run("severity override only", func(t *testing.T) {
+		input := `schema-version: v1.3
+iac:
+  rule-configs:
+    some-rule:
+      severity: high
+`
+		cfg, err := ParseConfig([]byte(input))
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		rc := cfg.RuleConfigs["some-rule"]
+		require.NotNil(t, rc.Severity)
+		assert.Equal(t, "high", *rc.Severity)
+		assert.Nil(t, rc.IgnorePaths)
+		assert.Nil(t, rc.OnlyPaths)
+	})
+
+	t.Run("invalid severity in rule-config", func(t *testing.T) {
+		input := `schema-version: v1.3
+iac:
+  rule-configs:
+    some-rule:
+      severity: bogus
+`
+		_, err := ParseConfig([]byte(input))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `invalid severity: "bogus"`)
+	})
+
+	t.Run("unknown field in rule-config", func(t *testing.T) {
+		input := `schema-version: v1.3
+iac:
+  rule-configs:
+    some-rule:
+      xinvalid: foo
+`
+		_, err := ParseConfig([]byte(input))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "iac.rule-configs.<rule-id>")
+	})
+}
+
 func TestRewriteDecodeErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name, input, expectedFragment string

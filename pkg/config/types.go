@@ -11,4 +11,16 @@ type IacConfig struct {
 	OnlyCategories   []string
 
 	LegacyExcludeResults []string
+
+	RuleConfigs     map[string]IacRuleConfig
+	IgnorePlatforms []string
+	OnlyPlatforms   []string
+}
+
+// IacRuleConfig holds per-rule overrides: path scoping and severity override.
+// nil slices mean "no restriction". A nil Severity means "no override".
+type IacRuleConfig struct {
+	IgnorePaths []string
+	OnlyPaths   []string
+	Severity    *string
 }

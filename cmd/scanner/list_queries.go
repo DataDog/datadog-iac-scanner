@@ -7,6 +7,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -59,13 +60,13 @@ func getQuerySource(ctx context.Context, _ *cli.Command) (source.QueriesSource, 
 	librarySource := source.NewFilesystemSource(
 		ctx,
 		nil,
-		GetSupportedPlatforms(),
+		platforms.Supported,
 		[]string{""},
 		"./assets/libraries",
 		false)
 	return source.NewDatadogSource(
 		datadog.NewDatadogClient(),
-		source.WithWantedPlatforms(GetSupportedPlatforms()),
+		source.WithWantedPlatforms(platforms.Supported),
 		source.WithLibrarySource(librarySource),
 	)
 }

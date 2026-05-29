@@ -106,6 +106,7 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.tracker,
 		opts.queryParameters,
 		opts.excludeResults,
+		nil,
 		opts.repoPath,
 		opts.queryTimeout,
 		opts.useOldSeverities,
@@ -1017,6 +1018,64 @@ func TestInspector_checkComment(t *testing.T) {
 			if got := checkComment(tt.line, tt.lines); got != tt.want {
 				t.Errorf("checkComment() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestRulePathExcluded(t *testing.T) {
+	tests := []struct {
+		name        string
+		filePath    string
+		ignorePaths []string
+		onlyPaths   []string
+		want        bool
+	}{
+		{
+			name:        "no filters",
+			filePath:    "/repo/src/main.tf",
+			ignorePaths: nil,
+			onlyPaths:   nil,
+			want:        false,
+		},
+		{
+			name:        "ignored by ignore-paths",
+			filePath:    "/repo/test/fixture.tf",
+			ignorePaths: []string{"/repo/test"},
+			onlyPaths:   nil,
+			want:        true,
+		},
+		{
+			name:        "not ignored",
+			filePath:    "/repo/src/main.tf",
+			ignorePaths: []string{"/repo/test"},
+			onlyPaths:   nil,
+			want:        false,
+		},
+		{
+			name:        "only-paths match",
+			filePath:    "/repo/src/main.tf",
+			ignorePaths: nil,
+			onlyPaths:   []string{"/repo/src"},
+			want:        false,
+		},
+		{
+			name:        "only-paths no match",
+			filePath:    "/repo/test/fixture.tf",
+			ignorePaths: nil,
+			onlyPaths:   []string{"/repo/src"},
+			want:        true,
+		},
+		{
+			name:        "ignore-paths takes precedence over only-paths",
+			filePath:    "/repo/src/main.tf",
+			ignorePaths: []string{"/repo/src"},
+			onlyPaths:   []string{"/repo/src"},
+			want:        true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, rulePathExcluded(tt.filePath, tt.ignorePaths, tt.onlyPaths))
 		})
 	}
 }

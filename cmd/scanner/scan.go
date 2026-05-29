@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	iacplatforms "github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	git "github.com/go-git/go-git/v5"
 	cli "github.com/urfave/cli/v3"
@@ -74,7 +75,7 @@ var scanAction = &cli.Command{
 			Name:    "type",
 			Aliases: []string{"t"},
 			Usage:   "a list of platform types to scan",
-			Value:   GetSupportedPlatforms(),
+			Value:   iacplatforms.Supported,
 		},
 		// NOTE: --x-parallelparsing flag disabled due to pre-existing race conditions
 		// in concurrent query workers (SetupLogs shared state write, docker detector
@@ -148,6 +149,23 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	}
 	cfg.OnlyPaths = onlyPaths
 	cfg.IgnoreRules = append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...)
+
+	activePlatforms := scan.ApplyPlatformFilters(c.StringSlice("type"), cfg.OnlyPlatforms, cfg.IgnorePlatforms)
+
+	for ruleID, rc := range cfg.RuleConfigs {
+		resolvedIgnore, pathErr := getRepoRelativePaths(repoDir, rc.IgnorePaths)
+		if pathErr != nil {
+			return errorWithExitCode(fmt.Errorf("invalid ignore-path in rule-config %q: %w", ruleID, pathErr), constants.InvalidConfigErrorCode)
+		}
+		resolvedOnly, pathErr := getRepoRelativePaths(repoDir, rc.OnlyPaths)
+		if pathErr != nil {
+			return errorWithExitCode(fmt.Errorf("invalid only-path in rule-config %q: %w", ruleID, pathErr), constants.InvalidConfigErrorCode)
+		}
+		rc.IgnorePaths = resolvedIgnore
+		rc.OnlyPaths = resolvedOnly
+		cfg.RuleConfigs[ruleID] = rc
+	}
+
 	params := &scan.Parameters{
 		CloudProvider:    []string{""},
 		OutputPath:       outputPath,
@@ -158,7 +176,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		QueriesPath:      []string{"./assets/queries"},
 		LibrariesPath:    "./assets/libraries",
 		ReportFormats:    []string{"sarif"},
-		Platform:         selectPlatforms(c.StringSlice("type")),
+		Platform:         selectPlatforms(activePlatforms),
 		QueryExecTimeout: c.Int("timeout"),
 		DisableSecrets:   true,
 		ScanID:           "console",
@@ -173,7 +191,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 
 	metadata, err := console.ExecuteScan(ctx, params)
 	if err != nil {
-		return fmt.Errorf("error during IaC scan: %w", err)
+		return errorWithExitCode(fmt.Errorf("error during IaC scan: %w", err), constants.EngineErrorCode)
 	}
 
 	reportResult(repoDir, params.OutputPath, params.OutputName, &metadata)
@@ -362,7 +380,7 @@ func selectPlatforms(platforms []string) []string {
 		set[strings.ToLower(p)] = struct{}{}
 	}
 	var out []string
-	for _, p := range GetSupportedPlatforms() {
+	for _, p := range iacplatforms.Supported {
 		if _, found := set[strings.ToLower(p)]; found {
 			out = append(out, p)
 		}

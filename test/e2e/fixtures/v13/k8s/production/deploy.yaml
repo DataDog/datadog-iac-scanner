@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prod-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: prod }
+  template:
+    metadata:
+      labels: { app: prod }
+    spec:
+      containers:
+      - name: app
+        image: nginx:latest
+        securityContext:
+          privileged: true

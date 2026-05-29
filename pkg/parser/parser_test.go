@@ -119,14 +119,24 @@ func TestParser_Contains(t *testing.T) {
 		{
 			name: "test contains",
 			args: args{
-				types: []string{
-					"cloudformation",
-				},
-				supportedTypes: map[string]bool{
-					"cloudformation": true,
-					"terraform":      true,
-					"ansible":        true,
-				},
+				types:          []string{"cloudformation"},
+				supportedTypes: map[string]bool{"cloudformation": true, "terraform": true},
+			},
+			want: true,
+		},
+		{
+			name: "empty types returns false (no platform selected)",
+			args: args{
+				types:          []string{},
+				supportedTypes: map[string]bool{"terraform": true},
+			},
+			want: false,
+		},
+		{
+			name: "single empty string returns true (no filter)",
+			args: args{
+				types:          []string{""},
+				supportedTypes: map[string]bool{"terraform": true},
 			},
 			want: true,
 		},
