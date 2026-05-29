@@ -10,12 +10,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	pathpkg "path"
+	"path/filepath"
 	"reflect"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
@@ -85,6 +88,7 @@ type Inspector struct {
 	tracker        Tracker
 	failedQueries  map[string]error
 	excludeResults map[string]bool
+	ruleConfigs    map[string]config.IacRuleConfig
 	detector       *detector.DetectLine
 
 	repoPath             string
@@ -124,6 +128,7 @@ func NewInspector(
 	tracker Tracker,
 	queryParameters *source.QueryInspectorParameters,
 	excludeResults map[string]bool,
+	ruleConfigs map[string]config.IacRuleConfig,
 	repoPath string,
 	queryTimeout int,
 	useOldSeverities bool,
@@ -174,6 +179,7 @@ func NewInspector(
 		tracker:             tracker,
 		failedQueries:       failedQueries,
 		excludeResults:      excludeResults,
+		ruleConfigs:         ruleConfigs,
 		detector:            lineDetector,
 		repoPath:            repoPath,
 		queryExecTimeout:    queryExecTimeout,
@@ -587,6 +593,18 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if !ok || file == nil {
 		return nil, false
 	}
+
+	if rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID); found {
+		if rc.Severity != "" {
+			vulnerability.Severity = model.Severity(strings.ToUpper(rc.Severity))
+		}
+		if rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
+				file.FilePath, vulnerability.QueryID)
+			return nil, false
+		}
+	}
+
 	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
 		contextLogger.Debug().Msgf("Suppressing vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)
@@ -611,6 +629,96 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	}
 
 	return vulnerability, false
+}
+
+// lookupRuleConfig returns the first matching rule config for the given queryID or legacyQueryID.
+func lookupRuleConfig(ruleConfigs map[string]config.IacRuleConfig, queryID, legacyQueryID string) (config.IacRuleConfig, bool) {
+	if len(ruleConfigs) == 0 {
+		return config.IacRuleConfig{}, false
+	}
+	if rc, ok := ruleConfigs[queryID]; ok {
+		return rc, true
+	}
+	if legacyQueryID != "" {
+		if rc, ok := ruleConfigs[legacyQueryID]; ok {
+			return rc, true
+		}
+	}
+	return config.IacRuleConfig{}, false
+}
+
+// rulePathExcluded returns true if the file should be dropped for a given rule
+// based on its ignore-paths and only-paths lists.
+func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
+	for _, pattern := range ignorePaths {
+		if matchesPath(pattern, filePath) {
+			return true
+		}
+	}
+	if len(onlyPaths) > 0 {
+		for _, pattern := range onlyPaths {
+			if matchesPath(pattern, filePath) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// matchesPath reports whether filePath is covered by pattern.
+// pattern may be a literal path, a directory prefix, a single-star glob (*, ?, [...]),
+// or a double-star glob (**) where ** matches zero or more path segments.
+// Both arguments are normalized to forward slashes for OS-independent behavior.
+func matchesPath(pattern, filePath string) bool {
+	pattern = filepath.ToSlash(pattern)
+	filePath = filepath.ToSlash(filePath)
+
+	// Exact match.
+	if pattern == filePath {
+		return true
+	}
+	// Directory prefix: any file under pattern/ matches.
+	if strings.HasPrefix(filePath, strings.TrimSuffix(pattern, "/")+"/") {
+		return true
+	}
+	// Double-star glob (**): segment-aware recursive match.
+	if strings.Contains(pattern, "**") {
+		return matchDoublestar(strings.Split(pattern, "/"), strings.Split(filePath, "/"))
+	}
+	// Single-level glob (*, ?, [...]): use path.Match with forward-slash semantics.
+	if matched, err := pathpkg.Match(pattern, filePath); err == nil && matched {
+		return true
+	}
+	return false
+}
+
+// matchDoublestar matches a pre-split path against a pre-split pattern where
+// "**" matches zero or more path segments.
+func matchDoublestar(pat, path []string) bool {
+	for len(pat) > 0 {
+		if pat[0] == "**" {
+			// ** matches zero remaining segments → try skipping the **
+			if matchDoublestar(pat[1:], path) {
+				return true
+			}
+			// ** matches one or more segments → consume one path segment and retry
+			if len(path) == 0 {
+				return false
+			}
+			return matchDoublestar(pat, path[1:])
+		}
+		if len(path) == 0 {
+			return false
+		}
+		ok, err := pathpkg.Match(pat[0], path[0])
+		if err != nil || !ok {
+			return false
+		}
+		pat = pat[1:]
+		path = path[1:]
+	}
+	return len(path) == 0
 }
 
 // markSuppressed records the first suppression decision; later gates are

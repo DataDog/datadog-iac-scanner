@@ -11,6 +11,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// iacPlatform is a custom type for case-insensitive matching against the supported platform list.
+type iacPlatform string
+
+func (i *iacPlatform) UnmarshalYAML(value *yaml.Node) error {
+	var str string
+	if err := value.Decode(&str); err != nil {
+		return err
+	}
+	candidate := strings.TrimSpace(str)
+	for _, p := range constants.SupportedPlatforms {
+		if strings.EqualFold(candidate, p) {
+			*i = iacPlatform(p)
+			return nil
+		}
+	}
+	return makeUnmarshalError(value, "invalid platform: %q (must be one of %s)",
+		str, strings.Join(constants.SupportedPlatforms, ", "))
+}
+
 // iacSeverity is a custom type to ensure case-insensitive matching of one of the valid severities
 type iacSeverity string
 
@@ -120,6 +139,8 @@ func rewriteLocation(where string) string {
 		return "the `iac` section"
 	case "config.iacGlobalConfig":
 		return "the `iac.global-config` section"
+	case "config.iacRuleConfigYaml":
+		return "the `iac.rule-configs.<rule-id>` section"
 	case "config.knownRootsCfgFile", "config.cfgFileYaml":
 		return "the top-level configuration"
 	}
@@ -143,6 +164,5 @@ func isSastConfigField(name string) bool {
 	return name == "use-default-rulesets" ||
 		name == "use-rulesets" ||
 		name == "ignore-rulesets" ||
-		name == "ruleset-configs" ||
-		name == "rule-configs"
+		name == "ruleset-configs"
 }

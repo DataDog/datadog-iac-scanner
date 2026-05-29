@@ -21,7 +21,8 @@ import (
 	"github.com/google/uuid"
 )
 
-var severityLevelEquivalence = map[model.Severity]string{
+// SeverityLevelEquivalence maps a finding severity to its SARIF result level.
+var SeverityLevelEquivalence = map[model.Severity]string{
 	"INFO":     "none",
 	"LOW":      "none",
 	"MEDIUM":   "note",
@@ -392,7 +393,7 @@ func (sr *sarifReport) buildSarifRule(queryMetadata *ruleMetadata, cisMetadata r
 			RuleName:             queryMetadata.queryName,
 			RuleShortDescription: sarifMessage{Text: queryMetadata.queryName},
 			RuleFullDescription:  sarifMessage{Text: queryMetadata.queryDescription},
-			DefaultConfiguration: sarifConfiguration{Level: severityLevelEquivalence[queryMetadata.severity]},
+			DefaultConfiguration: sarifConfiguration{Level: SeverityLevelEquivalence[queryMetadata.severity]},
 			// Relationships:        relationships,
 			HelpURI: helpURI,
 			RuleProperties: sarifProperties{
@@ -561,7 +562,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 			result := sarifResult{
 				ResultRuleID:    issue.QueryName,
 				ResultRuleIndex: ruleIndex,
-				ResultLevel:     severityLevelEquivalence[issue.Severity],
+				ResultLevel:     SeverityLevelEquivalence[issue.Severity],
 				ResultMessage: sarifMessage{
 					Text: issue.QueryName,
 				},

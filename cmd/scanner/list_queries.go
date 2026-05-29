@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
@@ -59,13 +60,13 @@ func getQuerySource(ctx context.Context, _ *cli.Command) (source.QueriesSource, 
 	librarySource := source.NewFilesystemSource(
 		ctx,
 		nil,
-		GetSupportedPlatforms(),
+		constants.SupportedPlatforms,
 		[]string{""},
 		"./assets/libraries",
 		false)
 	return source.NewDatadogSource(
 		datadog.NewDatadogClient(),
-		source.WithWantedPlatforms(GetSupportedPlatforms()),
+		source.WithWantedPlatforms(constants.SupportedPlatforms),
 		source.WithLibrarySource(librarySource),
 	)
 }

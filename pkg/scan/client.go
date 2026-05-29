@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -91,7 +92,7 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		QueriesPath:                 []string{"./assets/queries"},
 		LibrariesPath:               "./assets/libraries",
 		ReportFormats:               []string{"sarif"},
-		Platform:                    []string{"CICD", "Terraform", "Kubernetes", "CloudFormation", "Dockerfile"},
+		Platform:                    ApplyPlatformFilters(constants.SupportedPlatforms, configParams.OnlyPlatforms, configParams.IgnorePlatforms),
 		TerraformVarsPath:           "",
 		QueryExecTimeout:            60,
 		LineInfoPayload:             false,

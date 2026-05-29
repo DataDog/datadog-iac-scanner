@@ -49,6 +49,10 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	if len(allPaths.Path) == 0 {
 		return provider.ExtractedPath{}, nil
 	}
+	if len(c.ScanParams.Platform) == 0 {
+		return provider.ExtractedPath{}, nil
+	}
+
 	contextLogger.Info().Msgf("Total files in the project: %d", getTotalFiles(ctx, allPaths.Path))
 
 	a := &analyzer.Analyzer{
