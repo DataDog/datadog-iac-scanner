@@ -479,6 +479,34 @@ test_get_resource_name_ref_pseudo_parameter {
 	result == "aws-region"
 }
 
+# Explicit sequence-form variables take precedence over a same-named parameter
+# default, matching CloudFormation Fn::Sub semantics.
+test_get_resource_name_fn_sub_sequence_overrides_param_default {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": [
+			"${Env}-bucket",
+			{"Env": "dev"},
+		]}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"Env": {"Default": "prod"}}}]
+	result == "dev-bucket"
+}
+
+# A non-string Fn::Sub template head (here a nested Fn::If) cannot be resolved,
+# so resolution fails and get_resource_name falls back to the logical id.
+test_get_resource_name_fn_sub_complex_head_falls_back {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": [
+			{"Fn::If": ["UseProd", "prod-bucket", "dev-bucket"]},
+			{"AppName": "myapp", "Env": "prod"},
+		]}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "MyBucket"
+}
+
 # Test get_resource_accessibility function (basic scenarios)
 test_get_resource_accessibility_unknown {
 	# When no matching policy is found, accessibility should be unknown

@@ -40,8 +40,42 @@ var cfnShortFormTags = map[string]string{
 	"!ToJsonString": "Fn::ToJsonString",
 }
 
+// cfnContextKey marks a parsing context as belonging to a CloudFormation
+// template, gating short-form intrinsic rewriting to that platform only.
+type cfnContextKey struct{}
+
+func withCloudFormation(ctx context.Context, isCFN bool) context.Context {
+	return context.WithValue(ctx, cfnContextKey{}, isCFN)
+}
+
+func isCloudFormationContext(ctx context.Context) bool {
+	isCFN, _ := ctx.Value(cfnContextKey{}).(bool)
+	return isCFN
+}
+
+// isCloudFormationDocument reports whether the root YAML mapping node looks like
+// a CloudFormation template. Short-form intrinsic tags (!Ref, !Sub, ...) are
+// CloudFormation-specific, so rewriting must never run on Kubernetes, Ansible,
+// or other YAML that happens to use a custom tag.
+func isCloudFormationDocument(value *yaml.Node) bool {
+	if value == nil || value.Kind != yaml.MappingNode {
+		return false
+	}
+	hasResources := false
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		switch value.Content[i].Value {
+		case "AWSTemplateFormatVersion", "Transform":
+			return true
+		case "Resources":
+			hasResources = true
+		}
+	}
+	return hasResources
+}
+
 // UnmarshalYAML is a custom yaml parser that places line information in the payload
 func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *Ignore) error {
+	ctx = withCloudFormation(ctx, isCloudFormationDocument(value))
 	dpc := unmarshal(ctx, value, ignore)
 	if mapDcp, ok := dpc.(map[string]interface{}); ok {
 		// set line information for root level objects
@@ -218,8 +252,9 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 }
 
 // rewriteCFNShortFormIntrinsic converts a short-form CFN intrinsic to its long-form map.
+// It is a no-op for documents that are not CloudFormation templates.
 func rewriteCFNShortFormIntrinsic(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, ignore *Ignore) (interface{}, bool) {
-	if val == nil {
+	if val == nil || !isCloudFormationContext(ctx) {
 		return nil, false
 	}
 	longForm, ok := cfnShortFormTags[val.Tag]

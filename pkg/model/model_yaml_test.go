@@ -769,6 +769,68 @@ func TestDocument_UnmarshalYAML_CFNIntrinsicLineMetadata(t *testing.T) {
 	require.Contains(t, m, "_kics_lines", "rewritten map should carry _kics_lines")
 }
 
+// TestDocument_UnmarshalYAML_ShortFormIntrinsicNonCloudFormation verifies that
+// short-form intrinsic rewriting only applies to CloudFormation templates. A
+// document without CloudFormation markers (no Resources / Transform /
+// AWSTemplateFormatVersion) must keep custom-tagged scalars untouched.
+func TestDocument_UnmarshalYAML_ShortFormIntrinsicNonCloudFormation(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-config
+data:
+  value: !Ref SomeKey
+`)
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Equal(t, yaml.DocumentNode, root.Kind)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	value := parsed["data"].(map[string]interface{})["value"]
+	_, isMap := value.(map[string]interface{})
+	require.False(t, isMap, "non-CloudFormation document must not rewrite !Ref into a map")
+}
+
+// TestDocument_UnmarshalYAML_ShortFormIntrinsicDetectedByTransform verifies that
+// a template identified only by a Transform declaration still gets short-form
+// intrinsic rewriting.
+func TestDocument_UnmarshalYAML_ShortFormIntrinsicDetectedByTransform(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`Transform: AWS::Serverless-2016-10-31
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref OwnerParameter
+`)
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Equal(t, yaml.DocumentNode, root.Kind)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	bucketName := parsed["Resources"].(map[string]interface{})["Bucket"].(map[string]interface{})["Properties"].(map[string]interface{})["BucketName"]
+	m, ok := bucketName.(map[string]interface{})
+	require.True(t, ok, "CloudFormation document should rewrite !Ref into a map")
+	require.Equal(t, "OwnerParameter", m["Ref"])
+}
+
 func walkJSONPath(t *testing.T, root interface{}, path []string) interface{} {
 	t.Helper()
 	cur := root

@@ -273,6 +273,14 @@ parameter_default_replacements = replacements {
 	replacements := {}
 }
 
+# sub_template extracts the template string from an Fn::Sub value.
+# Fn::Sub has two shapes:
+#   - string form:   "my-app-${Env}"
+#   - sequence form: ["my-app-${Env}", {"Env": "prod"}]
+# In the sequence form the first element is the template and the second is a map
+# of explicit variable bindings. When the template head is itself an intrinsic
+# (e.g. {"Fn::If": [...]}) it is not a string, so no template is produced and
+# callers fall back to the logical id.
 sub_template(sub_expr) = template {
 	is_string(sub_expr)
 	template := sub_expr
@@ -295,8 +303,9 @@ intrinsic_value_to_string(v) = stringified {
 } else = stringified {
 	common_lib.valid_key(v, "Ref")
 	ref_name := v.Ref
-	stringified := input.document[_].Parameters[ref_name].Default
-	stringified != null
+	default_val := input.document[_].Parameters[ref_name].Default
+	default_val != null
+	stringified := sprintf("%v", [default_val])
 } else = stringified {
 	common_lib.valid_key(v, "Ref")
 	ref_name := v.Ref
@@ -304,6 +313,10 @@ intrinsic_value_to_string(v) = stringified {
 	stringified := pseudo_parameter_default_replacements[old]
 }
 
+# sequence_sub_replacements builds the {"${Var}": "value"} replacement map from
+# the explicit variable bindings of a sequence-form Fn::Sub, i.e. the second
+# element of ["template", {"Var": value}]. Values may be literals or a Ref to a
+# parameter/pseudo-parameter, resolved via intrinsic_value_to_string.
 sequence_sub_replacements(sub_expr) = replacements {
 	is_array(sub_expr)
 	count(sub_expr) > 1
@@ -319,11 +332,16 @@ sequence_sub_replacements(sub_expr) = replacements {
 	replacements := {}
 }
 
+# resolve_sub_name resolves an Fn::Sub expression to a concrete name.
+# Replacement precedence matches CloudFormation: explicit variable bindings from
+# the sequence form win over template Parameters, which win over pseudo
+# parameters. If any placeholder remains unresolved the rule fails so callers
+# fall back to the logical id rather than leaking a "${...}" string.
 resolve_sub_name(sub_expr) = resolved {
 	template := sub_template(sub_expr)
-	step1 := strings.replace_n(parameter_default_replacements, template)
-	step2 := strings.replace_n(pseudo_parameter_default_replacements, step1)
-	resolved := strings.replace_n(sequence_sub_replacements(sub_expr), step2)
+	step1 := strings.replace_n(sequence_sub_replacements(sub_expr), template)
+	step2 := strings.replace_n(parameter_default_replacements, step1)
+	resolved := strings.replace_n(pseudo_parameter_default_replacements, step2)
 	not contains(resolved, "${")
 	resolved != ""
 }
