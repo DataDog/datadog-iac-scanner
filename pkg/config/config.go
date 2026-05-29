@@ -35,15 +35,15 @@ type iacGlobalConfig struct {
 	OnlySeverities   []iacSeverity `yaml:"only-severities,omitempty"`
 	IgnoreCategories []iacCategory `yaml:"ignore-categories,omitempty"`
 	OnlyCategories   []iacCategory `yaml:"only-categories,omitempty"`
-	OnlyPlatforms    []iacPlatform `yaml:"only-platforms,omitempty"`
 	IgnorePlatforms  []iacPlatform `yaml:"ignore-platforms,omitempty"`
+	OnlyPlatforms    []iacPlatform `yaml:"only-platforms,omitempty"`
 }
 
 // iacRuleConfigYaml is the YAML representation of a per-rule override block.
 type iacRuleConfigYaml struct {
-	IgnorePaths []string    `yaml:"ignore-paths,omitempty"`
-	OnlyPaths   []string    `yaml:"only-paths,omitempty"`
-	Severity    iacSeverity `yaml:"severity,omitempty"`
+	IgnorePaths []string     `yaml:"ignore-paths,omitempty"`
+	OnlyPaths   []string     `yaml:"only-paths,omitempty"`
+	Severity    *iacSeverity `yaml:"severity,omitempty"`
 }
 
 // ParseConfig turns a YAML configuration file into a parsed configuration
@@ -101,10 +101,15 @@ func parseRuleConfigs(in map[string]iacRuleConfigYaml) map[string]IacRuleConfig 
 	}
 	out := make(map[string]IacRuleConfig, len(in))
 	for ruleID, rc := range in {
+		var sev *string
+		if rc.Severity != nil {
+			s := string(*rc.Severity)
+			sev = &s
+		}
 		out[ruleID] = IacRuleConfig{
 			IgnorePaths: rc.IgnorePaths,
 			OnlyPaths:   rc.OnlyPaths,
-			Severity:    string(rc.Severity),
+			Severity:    sev,
 		}
 	}
 	return out
@@ -116,10 +121,15 @@ func unparseRuleConfigs(in map[string]IacRuleConfig) map[string]iacRuleConfigYam
 	}
 	out := make(map[string]iacRuleConfigYaml, len(in))
 	for ruleID, rc := range in {
+		var sev *iacSeverity
+		if rc.Severity != nil {
+			s := iacSeverity(*rc.Severity)
+			sev = &s
+		}
 		out[ruleID] = iacRuleConfigYaml{
 			IgnorePaths: rc.IgnorePaths,
 			OnlyPaths:   rc.OnlyPaths,
-			Severity:    iacSeverity(rc.Severity),
+			Severity:    sev,
 		}
 	}
 	return out
@@ -153,12 +163,8 @@ func UnparseConfig(cfg *IacConfig) ([]byte, error) {
 		return []byte{}, nil
 	}
 
-	schemaVer := minIacVersion.String()
-	if len(cfg.RuleConfigs) > 0 || len(cfg.OnlyPlatforms) > 0 || len(cfg.IgnorePlatforms) > 0 {
-		schemaVer = minV13Version.String()
-	}
 	outCfg := cfgFileYaml{
-		SchemaVersion: schemaVer,
+		SchemaVersion: currentVersion.String(),
 		Iac:           &iac,
 	}
 
@@ -200,8 +206,8 @@ type schemaVersion struct {
 var (
 	// minIacVersion is the minimum schema version supporting the iac: configuration section.
 	minIacVersion = schemaVersion{1, 2}
-	// minV13Version is the schema version that introduced per-rule configs and platform filters.
-	minV13Version = schemaVersion{1, 3}
+	// currentVersion is the current schema version emitted by UnparseConfig.
+	currentVersion = schemaVersion{1, 3}
 	// minRequiredVersion is the minimum schema version supported by this scanner.
 	// It's different from minIacVersion for user-friendliness in case people add an `iac`
 	// section to an old configuration file and forget to upgrade the version number.

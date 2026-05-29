@@ -36,6 +36,8 @@ const (
 // inside the engine stays relative and matches the filter patterns in RuleConfigs.
 const fixtureV13 = "fixtures/v13"
 
+func strPtr(s string) *string { return &s }
+
 // allQueriesPaths covers all three platforms under test.
 var allQueriesPaths = []string{
 	filepath.Join("testdata", "rules", "terraform"),
@@ -435,7 +437,7 @@ func TestV13_RuleConfig_SeverityOverride_DefaultIsHigh(t *testing.T) {
 func TestV13_RuleConfig_SeverityOverride_ToLow(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
-			rulePrivileged: {Severity: "low"},
+			rulePrivileged: {Severity: strPtr("low")},
 		},
 	}
 	res := runV13Scan(t, cfg, relFixture("k8s"))
@@ -451,7 +453,7 @@ func TestV13_RuleConfig_SeverityOverride_AllLevels(t *testing.T) {
 		t.Run(level, func(t *testing.T) {
 			cfg := config.IacConfig{
 				RuleConfigs: map[string]config.IacRuleConfig{
-					ruleTeamTag: {Severity: level},
+					ruleTeamTag: {Severity: strPtr(level)},
 				},
 			}
 			res := runV13Scan(t, cfg, relFixture("terraform"))
@@ -468,7 +470,7 @@ func TestV13_RuleConfig_SeverityOverride_DoesNotChangeCount(t *testing.T) {
 
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
-			ruleTeamTag: {Severity: "medium"},
+			ruleTeamTag: {Severity: strPtr("medium")},
 		},
 	}
 	res := runV13Scan(t, cfg, relFixture("terraform"))
@@ -479,7 +481,7 @@ func TestV13_RuleConfig_SeverityOverride_DoesNotChangeCount(t *testing.T) {
 func TestV13_RuleConfig_SeverityOverride_DoesNotAffectOtherRules(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
-			ruleTeamTag: {Severity: "critical"},
+			ruleTeamTag: {Severity: strPtr("critical")},
 		},
 	}
 	res := runV13Scan(t, cfg, relFixture("terraform"), relFixture("k8s"))
@@ -498,7 +500,7 @@ func TestV13_RuleConfig_SeverityOverride_SARIFLevel(t *testing.T) {
 		t.Run(string(sev), func(t *testing.T) {
 			cfg := config.IacConfig{
 				RuleConfigs: map[string]config.IacRuleConfig{
-					rulePrivileged: {Severity: strings.ToLower(string(sev))},
+					rulePrivileged: {Severity: strPtr(strings.ToLower(string(sev)))},
 				},
 			}
 			res := runV13Scan(t, cfg, relFixture("k8s"))
@@ -518,7 +520,7 @@ func TestV13_RuleConfig_SeverityAndIgnorePaths_Combined(t *testing.T) {
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {
 				IgnorePaths: []string{relFixture("terraform/prod")},
-				Severity:    "info",
+				Severity:    strPtr("info"),
 			},
 		},
 	}
@@ -615,7 +617,7 @@ func TestV13_PlatformFilter_And_RuleConfig_Combined(t *testing.T) {
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {
 				IgnorePaths: []string{relFixture("terraform/prod")},
-				Severity:    "medium",
+				Severity:    strPtr("medium"),
 			},
 		},
 	}
@@ -710,7 +712,7 @@ func TestV13_RuleConfig_UnknownRuleID_NoEffect(t *testing.T) {
 		RuleConfigs: map[string]config.IacRuleConfig{
 			"this-rule-does-not-exist": {
 				IgnorePaths: []string{relFixture("terraform/prod")},
-				Severity:    "critical",
+				Severity:    strPtr("critical"),
 			},
 		},
 	}

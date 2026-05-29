@@ -64,14 +64,8 @@ func TestUnparseConfig(t *testing.T) {
 	assert.Equal(t, cfgFile, string(b))
 }
 
-func TestUnparseConfigV13SchemaVersion(t *testing.T) {
-	t.Run("v1.2 config keeps v1.2 schema version", func(t *testing.T) {
-		b, err := UnparseConfig(&parsedCfgFile)
-		require.NoError(t, err)
-		assert.Contains(t, string(b), "schema-version: v1.2")
-	})
-
-	t.Run("config with only-platforms emits v1.3", func(t *testing.T) {
+func TestUnparseConfigV13Fields(t *testing.T) {
+	t.Run("config with only-platforms serializes field", func(t *testing.T) {
 		cfg := parsedCfgFile
 		cfg.OnlyPlatforms = []string{"Terraform"}
 		b, err := UnparseConfig(&cfg)
@@ -80,22 +74,22 @@ func TestUnparseConfigV13SchemaVersion(t *testing.T) {
 		assert.Contains(t, string(b), "only-platforms:")
 	})
 
-	t.Run("config with ignore-platforms emits v1.3", func(t *testing.T) {
+	t.Run("config with ignore-platforms serializes field", func(t *testing.T) {
 		cfg := parsedCfgFile
 		cfg.IgnorePlatforms = []string{"Dockerfile"}
 		b, err := UnparseConfig(&cfg)
 		require.NoError(t, err)
-		assert.Contains(t, string(b), "schema-version: v1.3")
+		assert.Contains(t, string(b), "ignore-platforms:")
 	})
 
-	t.Run("config with rule-configs emits v1.3", func(t *testing.T) {
+	t.Run("config with rule-configs serializes fields", func(t *testing.T) {
+		sev := "low"
 		cfg := parsedCfgFile
 		cfg.RuleConfigs = map[string]IacRuleConfig{
-			"my-rule": {IgnorePaths: []string{"test/"}, Severity: "low"},
+			"my-rule": {IgnorePaths: []string{"test/"}, Severity: &sev},
 		}
 		b, err := UnparseConfig(&cfg)
 		require.NoError(t, err)
-		assert.Contains(t, string(b), "schema-version: v1.3")
 		assert.Contains(t, string(b), "rule-configs:")
 		assert.Contains(t, string(b), "my-rule:")
 	})
@@ -127,5 +121,6 @@ iac:
 	require.Len(t, cfg.RuleConfigs, 1)
 	rc := cfg.RuleConfigs["terraform-aws-s3-unencrypted"]
 	assert.Equal(t, []string{"test/"}, rc.IgnorePaths)
-	assert.Equal(t, "low", rc.Severity)
+	require.NotNil(t, rc.Severity)
+	assert.Equal(t, "low", *rc.Severity)
 }

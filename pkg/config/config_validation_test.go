@@ -158,7 +158,8 @@ iac:
 		rc := cfg.RuleConfigs["terraform-aws-s3-unencrypted"]
 		assert.Equal(t, []string{"test/"}, rc.IgnorePaths)
 		assert.Equal(t, []string{"src/"}, rc.OnlyPaths)
-		assert.Equal(t, "low", rc.Severity)
+		require.NotNil(t, rc.Severity)
+		assert.Equal(t, "low", *rc.Severity)
 	})
 
 	t.Run("severity override only", func(t *testing.T) {
@@ -172,7 +173,8 @@ iac:
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		rc := cfg.RuleConfigs["some-rule"]
-		assert.Equal(t, "high", rc.Severity)
+		require.NotNil(t, rc.Severity)
+		assert.Equal(t, "high", *rc.Severity)
 		assert.Nil(t, rc.IgnorePaths)
 		assert.Nil(t, rc.OnlyPaths)
 	})

@@ -18,6 +18,7 @@ import (
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
@@ -1049,7 +1050,7 @@ func TestMatchesPath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, matchesPath(tt.pattern, tt.file))
+			assert.Equal(t, tt.want, pathutil.MatchesPath(tt.pattern, tt.file))
 		})
 	}
 }
