@@ -229,13 +229,10 @@ func runV13Scan(t *testing.T, cfg config.IacConfig, scanDirs ...string) scanResu
 	params.OutputName = "result"
 	params.QueriesPath = absQueryPaths
 	params.ChangedDefaultQueryPath = true
-	params.Platform = scan.ApplyPlatformFilters(
-		[]string{"Terraform", "Kubernetes", "CICD"},
-		cfg.OnlyPlatforms, cfg.IgnorePlatforms,
-	)
+	params.Platform = []string{"Terraform", "Kubernetes", "CICD"}
 	params.Config = cfg
 	params.SCIInfo = model.SCIInfo{
-		DiffAware:            model.DiffAware{Enabled: false},
+		DiffAware: model.DiffAware{Enabled: false},
 		RepositoryCommitInfo: model.RepositoryCommitInfo{
 			RepositoryUrl: "test/url",
 			CommitSHA:     "deadbeef",
