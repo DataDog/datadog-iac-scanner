@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,14 +21,14 @@ func (i *iacPlatform) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 	candidate := strings.TrimSpace(str)
-	for _, p := range constants.SupportedPlatforms {
+	for _, p := range platforms.Supported {
 		if strings.EqualFold(candidate, p) {
 			*i = iacPlatform(p)
 			return nil
 		}
 	}
 	return makeUnmarshalError(value, "invalid platform: %q (must be one of %s)",
-		str, strings.Join(constants.SupportedPlatforms, ", "))
+		str, strings.Join(platforms.Supported, ", "))
 }
 
 // iacSeverity is a custom type to ensure case-insensitive matching of one of the valid severities

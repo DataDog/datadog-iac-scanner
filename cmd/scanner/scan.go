@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	iacplatforms "github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	git "github.com/go-git/go-git/v5"
 	cli "github.com/urfave/cli/v3"
@@ -74,7 +75,7 @@ var scanAction = &cli.Command{
 			Name:    "type",
 			Aliases: []string{"t"},
 			Usage:   "a list of platform types to scan",
-			Value:   constants.SupportedPlatforms,
+			Value:   iacplatforms.Supported,
 		},
 		// NOTE: --x-parallelparsing flag disabled due to pre-existing race conditions
 		// in concurrent query workers (SetupLogs shared state write, docker detector
@@ -379,7 +380,7 @@ func selectPlatforms(platforms []string) []string {
 		set[strings.ToLower(p)] = struct{}{}
 	}
 	var out []string
-	for _, p := range constants.SupportedPlatforms {
+	for _, p := range iacplatforms.Supported {
 		if _, found := set[strings.ToLower(p)]; found {
 			out = append(out, p)
 		}

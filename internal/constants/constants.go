@@ -61,10 +61,6 @@ var (
 		"ServerlessFW":            "serverlessFW",
 	}
 
-	// SupportedPlatforms - Platforms with published rules, available to customers.
-	// Keep in sync with the default --platforms flag in datadog-iac-scanner-default-rules.
-	SupportedPlatforms = []string{"Ansible", "CICD", "CloudFormation", "Dockerfile", "Kubernetes", "Terraform"}
-
 	// AvailableSeverities - All severities available
 	AvailableSeverities = []string{
 		"critical",

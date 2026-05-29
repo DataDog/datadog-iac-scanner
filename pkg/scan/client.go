@@ -9,7 +9,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -17,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/rs/zerolog/log"
 )
@@ -92,7 +92,7 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		QueriesPath:                 []string{"./assets/queries"},
 		LibrariesPath:               "./assets/libraries",
 		ReportFormats:               []string{"sarif"},
-		Platform:                    ApplyPlatformFilters(constants.SupportedPlatforms, configParams.OnlyPlatforms, configParams.IgnorePlatforms),
+		Platform:                    ApplyPlatformFilters(platforms.Supported, configParams.OnlyPlatforms, configParams.IgnorePlatforms),
 		TerraformVarsPath:           "",
 		QueryExecTimeout:            60,
 		LineInfoPayload:             false,
