@@ -152,9 +152,8 @@ type regexSlice struct {
 }
 
 type analyzerInfo struct {
-	typesFlag        []string
-	excludeTypesFlag []string
-	filePath         string
+	typesFlag []string
+	filePath  string
 }
 
 // Analyzer keeps all the relevant info for the function Analyze
@@ -162,7 +161,6 @@ type Analyzer struct {
 	RepoPath          string
 	Paths             []string
 	Types             []string
-	ExcludeTypes      []string
 	Exc               []string
 	Only              []string
 	GitIgnoreFileName string
@@ -364,7 +362,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	// unwanted is the channel shared by the workers that contains the unwanted files that the parser will ignore
 	unwanted := make(chan string, len(files))
 
-	a.Types, a.ExcludeTypes = typeLower(a.Types, a.ExcludeTypes)
+	typesFlag := typesLower(a.Types)
 
 	// Use a worker pool to limit concurrent file analysis
 	numWorkers := utils.AdjustNumWorkers(a.NumWorkers)
@@ -385,9 +383,8 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				}
 
 				analyzerInfo := &analyzerInfo{
-					typesFlag:        a.Types,
-					excludeTypesFlag: a.ExcludeTypes,
-					filePath:         filePath,
+					typesFlag: typesFlag,
+					filePath:  filePath,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
 			}
@@ -519,7 +516,6 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<- string, locCount chan<- int, linesCount int, ext string) {
 	contextLogger := logger.FromContext(ctx)
 	typesFlag := a.typesFlag
-	excludeTypesFlag := a.excludeTypesFlag
 	// get file content
 	content, err := os.ReadFile(a.filePath)
 	if err != nil {
@@ -537,8 +533,6 @@ func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<
 
 	if typesFlag[0] != "" {
 		keys = getKeysFromTypesFlag(typesFlag)
-	} else if excludeTypesFlag[0] != "" {
-		keys = getKeysFromExcludeTypesFlag(excludeTypesFlag)
 	}
 
 	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
@@ -777,19 +771,6 @@ func getKeysFromTypesFlag(typesFlag []string) []string {
 	return ks
 }
 
-// getKeysFromExcludeTypesFlag gets all the regexes keys related to the excluding unwanted types from flag
-func getKeysFromExcludeTypesFlag(excludeTypesFlag []string) []string {
-	ks := make([]string, 0, len(types))
-	for k := range supportedRegexes {
-		if !utils.Contains(k, excludeTypesFlag) {
-			if regexes, ok := supportedRegexes[k]; ok {
-				ks = append(ks, regexes...)
-			}
-		}
-	}
-	return ks
-}
-
 // expandPaths expands a slice of path expressions (which may include globs) into concrete paths.
 //
 // The nil/empty distinction in the return value is intentional and meaningful:
@@ -893,17 +874,11 @@ func multiPlatformTypeCheck(typesSelected *[]string) {
 
 func (a *analyzerInfo) isAvailableType(typeName string) bool {
 	// no flag is set
-	if len(a.typesFlag) == 1 && a.typesFlag[0] == "" && len(a.excludeTypesFlag) == 1 && a.excludeTypesFlag[0] == "" {
+	if len(a.typesFlag) == 1 && a.typesFlag[0] == "" {
 		return true
-	} else if len(a.typesFlag) > 1 || a.typesFlag[0] != "" {
-		// type flag is set
-		return utils.Contains(typeName, a.typesFlag)
-	} else if len(a.excludeTypesFlag) > 1 || a.excludeTypesFlag[0] != "" {
-		// exclude type flag is set
-		return !utils.Contains(typeName, a.excludeTypesFlag)
 	}
-	// no valid behavior detected
-	return false
+	// type flag is set
+	return utils.Contains(typeName, a.typesFlag)
 }
 
 func (a *Analyzer) checkIgnore(ctx context.Context, fileSize int64, hasGitIgnoreFile bool,
@@ -923,14 +898,10 @@ func (a *Analyzer) checkIgnore(ctx context.Context, fileSize int64, hasGitIgnore
 	return ignoreFiles
 }
 
-func typeLower(types, exclTypes []string) (typesRes, exclTypesRes []string) {
+func typesLower(types []string) []string {
+	out := make([]string, len(types))
 	for i := range types {
-		types[i] = strings.ToLower(types[i])
+		out[i] = strings.ToLower(types[i])
 	}
-
-	for i := range exclTypes {
-		exclTypes[i] = strings.ToLower(exclTypes[i])
-	}
-
-	return types, exclTypes
+	return out
 }

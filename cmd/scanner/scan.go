@@ -180,7 +180,6 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		ScanID:           "console",
 		MaxFileSizeFlag:  c.Int("max-file-size"),
 		MaxResolverDepth: c.Int("max-resolver-depth"),
-		ExcludePlatform:  []string{""},
 		PayloadPath:      payloadPath,
 		SCIInfo:          model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:    getFeatureFlagEvaluator(c),

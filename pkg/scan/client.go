@@ -36,7 +36,6 @@ type Parameters struct {
 	LibrariesPath               string
 	ReportFormats               []string
 	Platform                    []string
-	ExcludePlatform             []string
 	TerraformVarsPath           string
 	QueryExecTimeout            int
 	LineInfoPayload             bool
@@ -112,7 +111,6 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxFileSizeFlag:             5,
 		UseOldSeverities:            false,
 		MaxResolverDepth:            15,
-		ExcludePlatform:             []string{""},
 	}, logCtx
 }
 
