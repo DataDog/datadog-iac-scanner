@@ -249,6 +249,103 @@ resourceFieldName = {
 	"AWS::Serverless::Function": "FunctionName",
 }
 
+pseudo_parameter_default_replacements = {
+	"${AWS::AccountId}":   "aws-account-id",
+	"${AWS::NotificationARNs}": "aws-notification-arns",
+	"${AWS::NoValue}":     "aws-no-value",
+	"${AWS::Partition}":   "aws",
+	"${AWS::Region}":      "aws-region",
+	"${AWS::StackId}":     "aws-stack-id",
+	"${AWS::StackName}":   "aws-stack-name",
+	"${AWS::URLSuffix}":   "amazonaws.com",
+}
+
+parameter_default_replacements = replacements {
+	params := input.document[_].Parameters
+	replacements := {old: new |
+		some param_name
+		param := params[param_name]
+		param.Default != null
+		old := sprintf("${%s}", [param_name])
+		new := sprintf("%v", [param.Default])
+	}
+} else = replacements {
+	replacements := {}
+}
+
+# sub_template extracts the template string from an Fn::Sub value.
+# Fn::Sub has two shapes:
+#   - string form:   "my-app-${Env}"
+#   - sequence form: ["my-app-${Env}", {"Env": "prod"}]
+# In the sequence form the first element is the template and the second is a map
+# of explicit variable bindings. When the template head is itself an intrinsic
+# (e.g. {"Fn::If": [...]}) it is not a string, so no template is produced and
+# callers fall back to the logical id.
+sub_template(sub_expr) = template {
+	is_string(sub_expr)
+	template := sub_expr
+} else = template {
+	is_array(sub_expr)
+	count(sub_expr) > 0
+	is_string(sub_expr[0])
+	template := sub_expr[0]
+}
+
+intrinsic_value_to_string(v) = stringified {
+	is_string(v)
+	stringified := v
+} else = stringified {
+	is_number(v)
+	stringified := sprintf("%v", [v])
+} else = stringified {
+	is_boolean(v)
+	stringified := sprintf("%v", [v])
+} else = stringified {
+	common_lib.valid_key(v, "Ref")
+	ref_name := v.Ref
+	default_val := input.document[_].Parameters[ref_name].Default
+	default_val != null
+	stringified := sprintf("%v", [default_val])
+} else = stringified {
+	common_lib.valid_key(v, "Ref")
+	ref_name := v.Ref
+	old := sprintf("${%s}", [ref_name])
+	stringified := pseudo_parameter_default_replacements[old]
+}
+
+# sequence_sub_replacements builds the {"${Var}": "value"} replacement map from
+# the explicit variable bindings of a sequence-form Fn::Sub, i.e. the second
+# element of ["template", {"Var": value}]. Values may be literals or a Ref to a
+# parameter/pseudo-parameter, resolved via intrinsic_value_to_string.
+sequence_sub_replacements(sub_expr) = replacements {
+	is_array(sub_expr)
+	count(sub_expr) > 1
+	vars := sub_expr[1]
+	is_object(vars)
+	replacements := {old: new |
+		some var_name
+		raw := vars[var_name]
+		new := intrinsic_value_to_string(raw)
+		old := sprintf("${%s}", [var_name])
+	}
+} else = replacements {
+	replacements := {}
+}
+
+# resolve_sub_name resolves an Fn::Sub expression to a concrete name.
+# Replacement precedence matches CloudFormation: explicit variable bindings from
+# the sequence form win over template Parameters, which win over pseudo
+# parameters. If any placeholder remains unresolved the rule fails so callers
+# fall back to the logical id rather than leaking a "${...}" string.
+resolve_sub_name(sub_expr) = resolved {
+	template := sub_template(sub_expr)
+	step1 := strings.replace_n(sequence_sub_replacements(sub_expr), template)
+	step2 := strings.replace_n(parameter_default_replacements, step1)
+	resolved := strings.replace_n(pseudo_parameter_default_replacements, step2)
+	not contains(resolved, "${")
+	resolved != ""
+}
+
 get_resource_name(resource, resourceDefinitionName) = name {
 	field := resourceFieldName[resource.Type]
 	fieldValue := resource.Properties[field]
@@ -261,6 +358,21 @@ get_resource_name(resource, resourceDefinitionName) = name {
 	is_string(fieldValue)
 	fieldValue != ""
 	name := fieldValue[_]
+} else = name {
+	field := resourceFieldName[resource.Type]
+	sub_expr := resource.Properties[field]["Fn::Sub"]
+	name := resolve_sub_name(sub_expr)
+} else = name {
+	field := resourceFieldName[resource.Type]
+	ref_name := resource.Properties[field].Ref
+	name := input.document[_].Parameters[ref_name].Default
+	name != null
+	name != ""
+} else = name {
+	field := resourceFieldName[resource.Type]
+	ref_name := resource.Properties[field].Ref
+	old := sprintf("${%s}", [ref_name])
+	name := pseudo_parameter_default_replacements[old]
 } else = name {
 	name := common_lib.get_tag_name_if_exists(resource)
 } else = name {

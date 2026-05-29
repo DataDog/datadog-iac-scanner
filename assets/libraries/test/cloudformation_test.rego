@@ -387,6 +387,126 @@ test_has_secret_manager_missing_resource {
 	not hasSecretManager(str, document)
 }
 
+# Test get_resource_name: Fn::Sub resolved against parameter defaults
+test_get_resource_name_fn_sub_single_param {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "my-app-${Env}"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"Env": {"Default": "prod"}}}]
+	result == "my-app-prod"
+}
+
+test_get_resource_name_fn_sub_multiple_params {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "${AppName}-${Env}-bucket"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {
+		"AppName": {"Default": "myapp"},
+		"Env": {"Default": "prod"},
+	}}]
+	result == "myapp-prod-bucket"
+}
+
+test_get_resource_name_fn_sub_sequence_form {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": [
+			"${AppName}-${Env}-bucket",
+			{"AppName": "myapp", "Env": "prod"},
+		]}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "myapp-prod-bucket"
+}
+
+test_get_resource_name_fn_sub_sequence_ref_var {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": [
+			"${AppName}-${Env}-bucket",
+			{"AppName": "myapp", "Env": {"Ref": "EnvironmentParam"}},
+		]}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"EnvironmentParam": {"Default": "prod"}}}]
+	result == "myapp-prod-bucket"
+}
+
+test_get_resource_name_fn_sub_with_pseudo_parameters {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "my-bucket-${AWS::Region}-${AWS::AccountId}"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "my-bucket-aws-region-aws-account-id"
+}
+
+test_get_resource_name_fn_sub_unresolvable_falls_back {
+	# ${UnknownVar} cannot be resolved — falls back to logical id
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": "my-bucket-${UnknownVar}"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "MyBucket"
+}
+
+test_get_resource_name_ref_param_default {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Ref": "BucketNameParam"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"BucketNameParam": {"Default": "my-ref-bucket"}}}]
+	result == "my-ref-bucket"
+}
+
+test_get_resource_name_ref_no_default_falls_back {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Ref": "BucketNameParam"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"BucketNameParam": {"Type": "String"}}}]
+	result == "MyBucket"
+}
+
+test_get_resource_name_ref_pseudo_parameter {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Ref": "AWS::Region"}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "aws-region"
+}
+
+# Explicit sequence-form variables take precedence over a same-named parameter
+# default, matching CloudFormation Fn::Sub semantics.
+test_get_resource_name_fn_sub_sequence_overrides_param_default {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": [
+			"${Env}-bucket",
+			{"Env": "dev"},
+		]}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {"Env": {"Default": "prod"}}}]
+	result == "dev-bucket"
+}
+
+# A non-string Fn::Sub template head (here a nested Fn::If) cannot be resolved,
+# so resolution fails and get_resource_name falls back to the logical id.
+test_get_resource_name_fn_sub_complex_head_falls_back {
+	resource := {
+		"Type": "AWS::S3::Bucket",
+		"Properties": {"BucketName": {"Fn::Sub": [
+			{"Fn::If": ["UseProd", "prod-bucket", "dev-bucket"]},
+			{"AppName": "myapp", "Env": "prod"},
+		]}},
+	}
+	result := get_resource_name(resource, "MyBucket") with input.document as [{"Parameters": {}}]
+	result == "MyBucket"
+}
+
 # Test get_resource_accessibility function (basic scenarios)
 test_get_resource_accessibility_unknown {
 	# When no matching policy is found, accessibility should be unknown

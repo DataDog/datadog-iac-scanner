@@ -622,6 +622,258 @@ func TestDocument_UnmarshalYAML_CircularReference(t *testing.T) {
 	})
 }
 
+func TestDocument_UnmarshalYAML_CloudFormationShortFormIntrinsics(t *testing.T) {
+	ctx := context.Background()
+
+	type cfnCase struct {
+		name     string
+		yaml     string
+		jsonPath []string
+		want     interface{}
+	}
+
+	cases := []cfnCase{
+		{
+			name: "scalar !Sub",
+			yaml: `Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub my-app-bucket-${Owner}
+`,
+			jsonPath: []string{"Resources", "S3Bucket", "Properties", "BucketName"},
+			want:     map[string]interface{}{"Fn::Sub": "my-app-bucket-${Owner}"},
+		},
+		{
+			name: "scalar !Ref",
+			yaml: `Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref OwnerParameter
+`,
+			jsonPath: []string{"Resources", "S3Bucket", "Properties", "BucketName"},
+			want:     map[string]interface{}{"Ref": "OwnerParameter"},
+		},
+		{
+			name: "dotted scalar !GetAtt",
+			yaml: `Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !GetAtt OtherBucket.Arn
+`,
+			jsonPath: []string{"Resources", "Bucket", "Properties", "BucketName"},
+			want:     map[string]interface{}{"Fn::GetAtt": []interface{}{"OtherBucket", "Arn"}},
+		},
+		{
+			name: "sequence !Sub with map of variables",
+			yaml: `Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub
+        - "my-app-bucket-${Env}"
+        - Env: "prod"
+`,
+			jsonPath: []string{"Resources", "Bucket", "Properties", "BucketName"},
+			want: map[string]interface{}{"Fn::Sub": []interface{}{
+				"my-app-bucket-${Env}",
+				map[string]interface{}{"Env": "prod"},
+			}},
+		},
+		{
+			name: "sequence !Join",
+			yaml: `Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join ["-", ["my-app", "prod"]]
+`,
+			jsonPath: []string{"Resources", "Bucket", "Properties", "BucketName"},
+			want: map[string]interface{}{"Fn::Join": []interface{}{
+				"-",
+				[]interface{}{"my-app", "prod"},
+			}},
+		},
+		{
+			name: "scalar in sequence keeps short-form rewrite",
+			yaml: `Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      Tags:
+        - Key: Owner
+          Value: !Ref OwnerParameter
+`,
+			jsonPath: []string{"Resources", "Bucket", "Properties", "Tags"},
+			want: []interface{}{
+				map[string]interface{}{
+					"Key":   "Owner",
+					"Value": map[string]interface{}{"Ref": "OwnerParameter"},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var root yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), &root))
+			require.Equal(t, yaml.DocumentNode, root.Kind)
+			require.Len(t, root.Content, 1)
+
+			doc := &Document{}
+			require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+			raw, err := json.Marshal(doc)
+			require.NoError(t, err)
+			var parsed map[string]interface{}
+			require.NoError(t, json.Unmarshal(raw, &parsed))
+
+			got := walkJSONPath(t, parsed, tc.jsonPath)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestDocument_UnmarshalYAML_CFNIntrinsicLineMetadata verifies that rewritten
+// short-form intrinsics carry _kics_lines metadata on the wrapper map,
+// matching what long-form mapping values produce.
+func TestDocument_UnmarshalYAML_CFNIntrinsicLineMetadata(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub my-app-${Env}
+`)
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Equal(t, yaml.DocumentNode, root.Kind)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	// Walk to BucketName without stripping _kics_lines
+	bucketName := parsed["Resources"].(map[string]interface{})["MyBucket"].(map[string]interface{})["Properties"].(map[string]interface{})["BucketName"]
+	m, ok := bucketName.(map[string]interface{})
+	require.True(t, ok, "BucketName should be a map after rewrite")
+	require.Contains(t, m, "Fn::Sub", "rewritten map should have Fn::Sub key")
+	require.Contains(t, m, "_kics_lines", "rewritten map should carry _kics_lines")
+}
+
+// TestDocument_UnmarshalYAML_ShortFormIntrinsicNonCloudFormation verifies that
+// short-form intrinsic rewriting only applies to CloudFormation templates. A
+// document without CloudFormation markers (no Resources / Transform /
+// AWSTemplateFormatVersion) must keep custom-tagged scalars untouched.
+func TestDocument_UnmarshalYAML_ShortFormIntrinsicNonCloudFormation(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-config
+data:
+  value: !Ref SomeKey
+`)
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Equal(t, yaml.DocumentNode, root.Kind)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	value := parsed["data"].(map[string]interface{})["value"]
+	_, isMap := value.(map[string]interface{})
+	require.False(t, isMap, "non-CloudFormation document must not rewrite !Ref into a map")
+}
+
+// TestDocument_UnmarshalYAML_ShortFormIntrinsicDetectedByTransform verifies that
+// a template identified only by a Transform declaration still gets short-form
+// intrinsic rewriting.
+func TestDocument_UnmarshalYAML_ShortFormIntrinsicDetectedByTransform(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`Transform: AWS::Serverless-2016-10-31
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref OwnerParameter
+`)
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Equal(t, yaml.DocumentNode, root.Kind)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	bucketName := parsed["Resources"].(map[string]interface{})["Bucket"].(map[string]interface{})["Properties"].(map[string]interface{})["BucketName"]
+	m, ok := bucketName.(map[string]interface{})
+	require.True(t, ok, "CloudFormation document should rewrite !Ref into a map")
+	require.Equal(t, "OwnerParameter", m["Ref"])
+}
+
+func walkJSONPath(t *testing.T, root interface{}, path []string) interface{} {
+	t.Helper()
+	cur := root
+	for _, key := range path {
+		m, ok := cur.(map[string]interface{})
+		require.Truef(t, ok, "expected map at path segment %q, got %T", key, cur)
+		next, exists := m[key]
+		require.Truef(t, exists, "missing key %q at path; available keys: %v", key, keysOf(m))
+		cur = next
+	}
+	return stripKicsLines(cur)
+}
+
+func keysOf(m map[string]interface{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func stripKicsLines(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(t))
+		for k, val := range t {
+			if k == "_kics_lines" {
+				continue
+			}
+			out[k] = stripKicsLines(val)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(t))
+		for i, val := range t {
+			out[i] = stripKicsLines(val)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
 // TestDocument_UnmarshalYAML_FromBytes verifies that parsing real YAML bytes (hex, octal, etc.)
 // produces the correct numeric values via the full node pipeline (decoder sets Tag/Value, then we resolve).
 func TestDocument_UnmarshalYAML_FromBytes(t *testing.T) {
