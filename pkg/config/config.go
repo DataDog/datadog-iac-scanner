@@ -101,15 +101,10 @@ func parseRuleConfigs(in map[string]iacRuleConfigYaml) map[string]IacRuleConfig 
 	}
 	out := make(map[string]IacRuleConfig, len(in))
 	for ruleID, rc := range in {
-		var sev *string
-		if rc.Severity != nil {
-			s := string(*rc.Severity)
-			sev = &s
-		}
 		out[ruleID] = IacRuleConfig{
 			IgnorePaths: rc.IgnorePaths,
 			OnlyPaths:   rc.OnlyPaths,
-			Severity:    sev,
+			Severity:    (*string)(rc.Severity),
 		}
 	}
 	return out
@@ -121,15 +116,10 @@ func unparseRuleConfigs(in map[string]IacRuleConfig) map[string]iacRuleConfigYam
 	}
 	out := make(map[string]iacRuleConfigYaml, len(in))
 	for ruleID, rc := range in {
-		var sev *iacSeverity
-		if rc.Severity != nil {
-			s := iacSeverity(*rc.Severity)
-			sev = &s
-		}
 		out[ruleID] = iacRuleConfigYaml{
 			IgnorePaths: rc.IgnorePaths,
 			OnlyPaths:   rc.OnlyPaths,
-			Severity:    sev,
+			Severity:    (*iacSeverity)(rc.Severity),
 		}
 	}
 	return out
