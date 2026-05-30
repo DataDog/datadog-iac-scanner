@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
@@ -43,6 +44,12 @@ func (s *Service) resolverSink(
 		if err != nil {
 			if documents.Kind == "break" {
 				return []string{}, nil
+			}
+			// A Helm template may render to only comments when all range iterations are
+			// conditionally skipped (e.g. a service disabled in prod). That's expected;
+			// skip silently rather than logging a spurious error.
+			if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
+				continue
 			}
 			contextLogger.Error().Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
 			return []string{}, nil
@@ -103,6 +110,17 @@ func (s *Service) resolverSink(
 		}
 	}
 	return resFiles.Excluded, nil
+}
+
+// isCommentOnlyContent returns true when every non-blank line in content starts
+// with '#', meaning the Helm renderer produced no real YAML document.
+func isCommentOnlyContent(content []byte) bool {
+	for _, line := range strings.Split(string(content), "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
