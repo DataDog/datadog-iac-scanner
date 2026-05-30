@@ -595,16 +595,26 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 	return returnType
 }
 
+// checkHelm reports whether the file belongs to a Helm chart by looking for a
+// Chart.yaml in any ancestor directory, since templates can be nested below the
+// chart root (e.g. templates/sub/ or charts/<subchart>/templates/).
 func checkHelm(ctx context.Context, path string) bool {
 	contextLogger := logger.FromContext(ctx)
-	_, err := os.Stat(filepath.Join(filepath.Dir(path), "Chart.yaml"))
-	if errors.Is(err, os.ErrNotExist) {
-		return false
-	} else if err != nil {
-		contextLogger.Error().Msgf("failed to check helm: %s", err)
+	dir := filepath.Dir(path)
+	for {
+		_, err := os.Stat(filepath.Join(dir, "Chart.yaml"))
+		if err == nil {
+			return true
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			contextLogger.Error().Msgf("failed to check helm: %s", err)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
 	}
-
-	return true
 }
 
 func checkYamlPlatform(ctx context.Context, content []byte, path string) string {

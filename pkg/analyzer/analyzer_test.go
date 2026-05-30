@@ -466,6 +466,43 @@ func Test_checkYamlPlatform_emptyFile(t *testing.T) {
 	}
 }
 
+func Test_checkHelm(t *testing.T) {
+	helm := filepath.FromSlash("../../test/fixtures/analyzer_test/helm")
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{
+			name: "template one level below chart root",
+			path: filepath.Join(helm, "templates", "service.yaml"),
+			want: true,
+		},
+		{
+			name: "template nested several levels below chart root",
+			path: filepath.Join(helm, "templates", "sub", "deep", "service.yaml"),
+			want: true,
+		},
+		{
+			name: "chart root file",
+			path: filepath.Join(helm, "values.yaml"),
+			want: true,
+		},
+		{
+			name: "file outside any chart",
+			path: filepath.FromSlash("../../test/fixtures/analyzer_test/k8s.yaml"),
+			want: false,
+		},
+	}
+
+	ctx := context.Background()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, checkHelm(ctx, tt.path))
+		})
+	}
+}
+
 func Test_isInsideAnsibleTemplatesDir(t *testing.T) {
 	tests := []struct {
 		path string
