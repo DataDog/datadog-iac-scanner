@@ -226,7 +226,6 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 // collectFiles walks the directory tree and collects file paths without processing them, except Helm files
 func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
 	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
-	contextLogger := logger.FromContext(ctx)
 	var resolvedChartPaths []string
 
 	err = filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
@@ -240,17 +239,7 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 
 		// ------------------ Helm resolver --------------------------------
 		if info.IsDir() {
-			excluded, errRes := resolverSink(ctx, strings.ReplaceAll(path, "\\", "/"))
-			if errRes != nil {
-				return nil
-			}
-			s.mu.Lock()
-			if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
-				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
-			}
-			s.mu.Unlock()
-			resolvedChartPaths = append(resolvedChartPaths, path)
-			return nil
+			return s.resolveChartDir(ctx, path, resolverSink, &resolvedChartPaths)
 		}
 		// -----------------------------------------------------------------
 
@@ -368,7 +357,6 @@ func (s *FileSystemSourceProvider) feedFilesToWorkers(ctx context.Context, files
 
 func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 	sink Sink, resolverSink ResolverSink, extensions model.Extensions) error {
-	contextLogger := logger.FromContext(ctx)
 	var resolvedChartPaths []string
 	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -381,17 +369,7 @@ func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 
 		// ------------------ Helm resolver --------------------------------
 		if info.IsDir() {
-			excluded, errRes := resolverSink(ctx, strings.ReplaceAll(path, "\\", "/"))
-			if errRes != nil {
-				return nil
-			}
-			s.mu.Lock()
-			if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
-				contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", info.Name())
-			}
-			s.mu.Unlock()
-			resolvedChartPaths = append(resolvedChartPaths, path)
-			return nil
+			return s.resolveChartDir(ctx, path, resolverSink, &resolvedChartPaths)
 		}
 		// -----------------------------------------------------------------
 
@@ -473,6 +451,31 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 		return true, nil
 	}
 	return false, nil
+}
+
+// resolveChartDir renders a Helm chart directory through the resolver. On success
+// it returns filepath.SkipDir so the chart subtree is not walked again as raw,
+// unrendered templates (which would yield bogus names like name: {{ .Release.Revision }}).
+// On failure it returns nil to fall back to scanning the raw files.
+func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path string,
+	resolverSink ResolverSink, resolvedChartPaths *[]string) error {
+	contextLogger := logger.FromContext(ctx)
+	excluded, errRes := resolverSink(ctx, strings.ReplaceAll(path, "\\", "/"))
+	if errRes != nil {
+		// resolverSink returns an error only for actual chart directories (with Chart.yaml).
+		// For non-chart directories it returns nil/[] and we should not log.
+		if _, statErr := os.Stat(filepath.Join(path, "Chart.yaml")); statErr == nil {
+			contextLogger.Warn().Msgf("Failed to render Helm chart '%s'; scanning its raw files as a fallback", path)
+		}
+		return nil
+	}
+	s.mu.Lock()
+	if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
+		contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", filepath.Base(path))
+	}
+	s.mu.Unlock()
+	*resolvedChartPaths = append(*resolvedChartPaths, path)
+	return filepath.SkipDir
 }
 
 func isUnderResolvedChart(path string, resolvedChartPaths []string) bool {

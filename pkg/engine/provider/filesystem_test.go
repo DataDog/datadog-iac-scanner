@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -711,4 +712,61 @@ func TestGetSources_multipleHelmCharts(t *testing.T) {
 
 	require.ElementsMatch(t, []string{"chart-a", "chart-b"}, resolvedDirs,
 		"both sibling Helm charts must be sent to the resolver, not just the first one")
+}
+
+// TestGetSources_helmChartSkipsRawTemplates ensures that once a Helm chart is
+// rendered by the resolver, its raw template files are not also scanned as plain YAML.
+func TestGetSources_helmChartSkipsRawTemplates(t *testing.T) {
+	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
+		t.Fatalf("failed to change dir: %s", err)
+	}
+
+	ctx := context.Background()
+	const chartDir = "test/fixtures/test_helm"
+
+	var mu sync.Mutex
+	var sinkedFiles, resolvedDirs []string
+
+	recordingSink := func(_ context.Context, filename string, _ io.ReadCloser) error {
+		mu.Lock()
+		sinkedFiles = append(sinkedFiles, filepath.ToSlash(filename))
+		mu.Unlock()
+		return nil
+	}
+	recordingResolverSink := func(_ context.Context, filename string) ([]string, error) {
+		if _, chartErr := os.Stat(filepath.Join(filename, "Chart.yaml")); chartErr == nil {
+			mu.Lock()
+			resolvedDirs = append(resolvedDirs, filepath.ToSlash(filename))
+			mu.Unlock()
+		}
+		return []string{}, nil
+	}
+
+	run := func(t *testing.T, scan func(*FileSystemSourceProvider) error) {
+		t.Helper()
+		mu.Lock()
+		sinkedFiles, resolvedDirs = nil, nil
+		mu.Unlock()
+
+		fs, err := NewFileSystemSourceProvider(ctx, []string{filepath.FromSlash(chartDir)}, []string{}, []string{})
+		require.NoError(t, err)
+		require.NoError(t, scan(fs))
+
+		require.Contains(t, resolvedDirs, chartDir, "the Helm chart directory must be sent to the resolver")
+		for _, f := range sinkedFiles {
+			require.NotContains(t, f, chartDir+"/",
+				"raw files under a resolved Helm chart must not be scanned as plain YAML, got %q", f)
+		}
+	}
+
+	t.Run("sequential", func(t *testing.T) {
+		run(t, func(fs *FileSystemSourceProvider) error {
+			return fs.GetSources(ctx, model.Extensions{".yaml": {}}, recordingSink, recordingResolverSink)
+		})
+	})
+	t.Run("parallel", func(t *testing.T) {
+		run(t, func(fs *FileSystemSourceProvider) error {
+			return fs.GetParallelSources(ctx, model.Extensions{".yaml": {}}, recordingSink, recordingResolverSink)
+		})
+	})
 }
