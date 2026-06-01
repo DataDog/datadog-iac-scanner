@@ -79,7 +79,9 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 	ctx = withCloudFormation(ctx, isCloudFormationDocument(value))
 	dpc := unmarshal(ctx, value, ignore)
 	if mapDcp, ok := dpc.(map[string]interface{}); ok {
-		expandCloudFormationForEach(mapDcp)
+		if isCloudFormationContext(ctx) {
+			expandCloudFormationForEach(mapDcp)
+		}
 		// set line information for root level objects
 		mapDcp["_kics_lines"] = getLines(value, 0)
 
@@ -92,63 +94,85 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 }
 
 func expandCloudFormationForEach(doc map[string]interface{}) {
-	if !hasLanguageExtensionsTransform(doc) {
+	resources, parameters := forEachExpansionContext(doc)
+	if resources == nil {
 		return
 	}
-	resourcesRaw, ok := doc["Resources"]
-	if !ok {
-		return
-	}
-	resources, ok := resourcesRaw.(map[string]interface{})
-	if !ok {
-		return
-	}
-	parameters, _ := doc["Parameters"].(map[string]interface{})
-
 	for {
 		forEachKeys := collectForEachKeys(resources)
 		if len(forEachKeys) == 0 {
 			break
 		}
-
 		anyExpanded := false
 		for _, key := range forEachKeys {
-			spec, ok := resources[key].([]interface{})
-			if !ok || len(spec) != 3 {
-				continue
+			if expandForEachEntry(resources, key, parameters) {
+				anyExpanded = true
 			}
-			varName, ok := spec[0].(string)
-			if !ok || varName == "" {
-				continue
-			}
-			collection, ok := resolveForEachCollection(spec[1], parameters)
-			if !ok || len(collection) == 0 {
-				continue
-			}
-			templateMap, ok := spec[2].(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			for _, item := range collection {
-				bindings := map[string]string{varName: item}
-				for logicalID, resourceValue := range templateMap {
-					resolvedLogicalID := replaceForEachVars(logicalID, bindings)
-					if _, exists := resources[resolvedLogicalID]; !exists {
-						resources[resolvedLogicalID] = substituteForEachBindings(resourceValue, bindings)
-						copyForEachLineInfo(resources, key, resolvedLogicalID)
-					}
-				}
-			}
-			delete(resources, key)
-			removeForEachLineInfo(resources, key)
-			anyExpanded = true
 		}
-
 		if !anyExpanded {
 			break
 		}
 	}
+}
+
+func forEachExpansionContext(doc map[string]interface{}) (resources, parameters map[string]interface{}) {
+	if !hasLanguageExtensionsTransform(doc) {
+		return nil, nil
+	}
+	resourcesRaw, ok := doc["Resources"]
+	if !ok {
+		return nil, nil
+	}
+	resources, ok = resourcesRaw.(map[string]interface{})
+	if !ok {
+		return nil, nil
+	}
+	parameters, _ = doc["Parameters"].(map[string]interface{})
+	return resources, parameters
+}
+
+func expandForEachEntry(resources map[string]interface{}, key string, parameters map[string]interface{}) bool {
+	varName, collection, templateMap, ok := parseForEachSpec(resources[key], parameters)
+	if !ok {
+		return false
+	}
+	for _, item := range collection {
+		bindings := map[string]string{varName: item}
+		for logicalID, resourceValue := range templateMap {
+			resolvedLogicalID := replaceForEachVars(logicalID, bindings)
+			if _, exists := resources[resolvedLogicalID]; !exists {
+				resources[resolvedLogicalID] = substituteForEachBindings(resourceValue, bindings)
+				copyForEachLineInfo(resources, key, resolvedLogicalID)
+			}
+		}
+	}
+	delete(resources, key)
+	removeForEachLineInfo(resources, key)
+	return true
+}
+
+func parseForEachSpec(
+	raw interface{},
+	parameters map[string]interface{},
+) (varName string, collection []string, templateMap map[string]interface{}, ok bool) {
+	// spec is [loopVarName string, collection expr, templateMap]
+	spec, ok := raw.([]interface{})
+	if !ok || len(spec) != 3 {
+		return "", nil, nil, false
+	}
+	varName, ok = spec[0].(string)
+	if !ok || varName == "" {
+		return "", nil, nil, false
+	}
+	collection, ok = resolveForEachCollection(spec[1], parameters)
+	if !ok || len(collection) == 0 {
+		return "", nil, nil, false
+	}
+	templateMap, ok = spec[2].(map[string]interface{})
+	if !ok {
+		return "", nil, nil, false
+	}
+	return varName, collection, templateMap, true
 }
 
 func collectForEachKeys(resources map[string]interface{}) []string {
