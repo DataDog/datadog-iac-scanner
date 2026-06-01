@@ -60,7 +60,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		return nil, nil
 	}
 
-	paramsPlatforms := c.ScanParams.Platform
+	paramsPlatforms := c.ScanParams.GetEffectivePlatforms()
 	useDifferentPlatformQueries(&paramsPlatforms)
 	querySource, err := c.createQuerySource(ctx, paramsPlatforms)
 	if err != nil {

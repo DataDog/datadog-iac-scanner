@@ -12,7 +12,7 @@ func ApplyPlatformFilters(cliPlatforms, onlyPlatforms, ignorePlatforms []string)
 		for _, p := range onlyPlatforms {
 			allowed[strings.ToLower(p)] = struct{}{}
 		}
-		filtered := active[:0:0]
+		var filtered []string
 		for _, p := range active {
 			if _, ok := allowed[strings.ToLower(p)]; ok {
 				filtered = append(filtered, p)
@@ -26,7 +26,7 @@ func ApplyPlatformFilters(cliPlatforms, onlyPlatforms, ignorePlatforms []string)
 		for _, p := range ignorePlatforms {
 			ignored[strings.ToLower(p)] = struct{}{}
 		}
-		filtered := active[:0:0]
+		var filtered []string
 		for _, p := range active {
 			if _, ok := ignored[strings.ToLower(p)]; !ok {
 				filtered = append(filtered, p)

@@ -59,6 +59,10 @@ type Parameters struct {
 	Config                      config.IacConfig
 }
 
+func (p *Parameters) GetEffectivePlatforms() []string {
+	return ApplyPlatformFilters(p.Platform, p.Config.OnlyPlatforms, p.Config.IgnorePlatforms)
+}
+
 // Client represents a scan client
 type Client struct {
 	ScanParams        *Parameters
@@ -92,7 +96,7 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		QueriesPath:                 []string{"./assets/queries"},
 		LibrariesPath:               "./assets/libraries",
 		ReportFormats:               []string{"sarif"},
-		Platform:                    ApplyPlatformFilters(platforms.Supported, configParams.OnlyPlatforms, configParams.IgnorePlatforms),
+		Platform:                    platforms.Supported,
 		TerraformVarsPath:           "",
 		QueryExecTimeout:            60,
 		LineInfoPayload:             false,

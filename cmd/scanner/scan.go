@@ -150,8 +150,6 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	cfg.OnlyPaths = onlyPaths
 	cfg.IgnoreRules = append(c.StringSlice("exclude-queries"), cfg.IgnoreRules...)
 
-	activePlatforms := scan.ApplyPlatformFilters(c.StringSlice("type"), cfg.OnlyPlatforms, cfg.IgnorePlatforms)
-
 	for ruleID, rc := range cfg.RuleConfigs {
 		resolvedIgnore, pathErr := getRepoRelativePaths(repoDir, rc.IgnorePaths)
 		if pathErr != nil {
@@ -176,7 +174,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		QueriesPath:      []string{"./assets/queries"},
 		LibrariesPath:    "./assets/libraries",
 		ReportFormats:    []string{"sarif"},
-		Platform:         selectPlatforms(activePlatforms),
+		Platform:         selectPlatforms(c.StringSlice("type")),
 		QueryExecTimeout: c.Int("timeout"),
 		DisableSecrets:   true,
 		ScanID:           "console",

@@ -49,7 +49,8 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	if len(allPaths.Path) == 0 {
 		return provider.ExtractedPath{}, nil
 	}
-	if len(c.ScanParams.Platform) == 0 {
+	platforms := c.ScanParams.GetEffectivePlatforms()
+	if len(platforms) == 0 {
 		return provider.ExtractedPath{}, nil
 	}
 
@@ -58,7 +59,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	a := &analyzer.Analyzer{
 		RepoPath:          c.ScanParams.RepoPath,
 		Paths:             allPaths.Path,
-		Types:             c.ScanParams.Platform,
+		Types:             platforms,
 		ExcludeTypes:      c.ScanParams.ExcludePlatform,
 		Exc:               c.ScanParams.Config.IgnorePaths,
 		Only:              c.ScanParams.Config.OnlyPaths,
