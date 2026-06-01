@@ -8,6 +8,7 @@ package model
 import (
 	"context"
 	json "encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -829,6 +830,267 @@ Resources:
 	m, ok := bucketName.(map[string]interface{})
 	require.True(t, ok, "CloudFormation document should rewrite !Ref into a map")
 	require.Equal(t, "OwnerParameter", m["Ref"])
+}
+
+func TestDocument_UnmarshalYAML_CloudFormationForEachExpansion(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`Transform: AWS::LanguageExtensions
+Parameters:
+  Instances:
+    Type: List<Number>
+    Default: "0,1"
+Resources:
+  Fn::ForEach::RDSInstances:
+    - Identifier
+    - !Ref Instances
+    - RDSInstance${Identifier}:
+        Type: AWS::RDS::DBInstance
+        Properties:
+          DBName: !Sub app_${Identifier}
+          Tags:
+            - Key: logical
+              Value: !Ref Identifier
+`)
+
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Equal(t, yaml.DocumentNode, root.Kind)
+	require.Len(t, root.Content, 1)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	resources := parsed["Resources"].(map[string]interface{})
+	require.Contains(t, resources, "RDSInstance0")
+	require.Contains(t, resources, "RDSInstance1")
+	require.NotContains(t, resources, "Fn::ForEach::RDSInstances")
+
+	rds0 := resources["RDSInstance0"].(map[string]interface{})
+	props0 := rds0["Properties"].(map[string]interface{})
+	require.Equal(t, map[string]interface{}{"Fn::Sub": "app_0"}, stripKicsLines(props0["DBName"]))
+	tags0 := props0["Tags"].([]interface{})
+	require.Equal(t, map[string]interface{}{
+		"Key":   "logical",
+		"Value": "0",
+	}, stripKicsLines(tags0[0]))
+
+	rds1 := resources["RDSInstance1"].(map[string]interface{})
+	props1 := rds1["Properties"].(map[string]interface{})
+	require.Equal(t, map[string]interface{}{"Fn::Sub": "app_1"}, stripKicsLines(props1["DBName"]))
+	tags1 := props1["Tags"].([]interface{})
+	require.Equal(t, map[string]interface{}{
+		"Key":   "logical",
+		"Value": "1",
+	}, stripKicsLines(tags1[0]))
+}
+
+func TestDocument_UnmarshalYAML_CloudFormationForEachNoTransform(t *testing.T) {
+	ctx := context.Background()
+
+	// Without Transform: AWS::LanguageExtensions, Fn::ForEach keys must not be expanded.
+	src := []byte(`Resources:
+  Fn::ForEach::RDSInstances:
+    - Identifier
+    - ["0"]
+    - RDSInstance${Identifier}:
+        Type: AWS::RDS::DBInstance
+`)
+
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Len(t, root.Content, 1)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	resources := parsed["Resources"].(map[string]interface{})
+	require.Contains(t, resources, "Fn::ForEach::RDSInstances")
+	require.NotContains(t, resources, "RDSInstance0")
+}
+
+func TestDocument_UnmarshalYAML_CloudFormationForEachLineMetadata(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`Transform: AWS::LanguageExtensions
+Parameters:
+  Instances:
+    Type: CommaDelimitedList
+    Default: "0"
+Resources:
+  Fn::ForEach::RDSInstances:
+    - Identifier
+    - !Ref Instances
+    - RDSInstance${Identifier}:
+        Type: AWS::RDS::DBInstance
+`)
+
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Len(t, root.Content, 1)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	resources := parsed["Resources"].(map[string]interface{})
+	resourceLines := resources["_kics_lines"].(map[string]interface{})
+
+	// Expanded resource inherits line info from the ForEach key.
+	require.Contains(t, resourceLines, "_kics_RDSInstance0")
+	// Stale ForEach entry is removed.
+	require.NotContains(t, resourceLines, "_kics_Fn::ForEach::RDSInstances")
+}
+
+func TestDocument_UnmarshalYAML_CloudFormationForEachDuplicateID(t *testing.T) {
+	ctx := context.Background()
+
+	// Duplicate collection items ("0,0") must not silently overwrite an already-expanded resource.
+	src := []byte(`Transform: AWS::LanguageExtensions
+Parameters:
+  Instances:
+    Type: CommaDelimitedList
+    Default: "0,0"
+Resources:
+  Fn::ForEach::RDSInstances:
+    - Identifier
+    - !Ref Instances
+    - RDSInstance${Identifier}:
+        Type: AWS::RDS::DBInstance
+        Properties:
+          DBName: instance-${Identifier}
+`)
+
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Len(t, root.Content, 1)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	resources := parsed["Resources"].(map[string]interface{})
+	require.Contains(t, resources, "RDSInstance0")
+	// Only one entry for the duplicate ID — no data loss from overwrite.
+	count := 0
+	for k := range resources {
+		if k == "RDSInstance0" {
+			count++
+		}
+	}
+	require.Equal(t, 1, count)
+}
+
+func TestDocument_UnmarshalYAML_CloudFormationForEachAmpersandPlaceholder(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`Transform: AWS::LanguageExtensions
+Parameters:
+  Envs:
+    Type: CommaDelimitedList
+    Default: "prod,staging"
+Resources:
+  Fn::ForEach::Queues:
+    - Env
+    - !Ref Envs
+    - Queue&{Env}:
+        Type: AWS::SQS::Queue
+        Properties:
+          QueueName: queue-&{Env}
+`)
+
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Len(t, root.Content, 1)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	resources := parsed["Resources"].(map[string]interface{})
+	require.Contains(t, resources, "Queueprod")
+	require.Contains(t, resources, "Queuestaging")
+	require.NotContains(t, resources, "Fn::ForEach::Queues")
+
+	prodProps := resources["Queueprod"].(map[string]interface{})["Properties"].(map[string]interface{})
+	require.Equal(t, "queue-prod", stripKicsLines(prodProps["QueueName"]))
+
+	stagingProps := resources["Queuestaging"].(map[string]interface{})["Properties"].(map[string]interface{})
+	require.Equal(t, "queue-staging", stripKicsLines(stagingProps["QueueName"]))
+}
+
+func TestDocument_UnmarshalYAML_CloudFormationForEachNestedLoops(t *testing.T) {
+	ctx := context.Background()
+
+	src := []byte(`Transform: AWS::LanguageExtensions
+Parameters:
+  Regions:
+    Type: CommaDelimitedList
+    Default: "us,eu"
+  Tiers:
+    Type: CommaDelimitedList
+    Default: "web,api"
+Resources:
+  Fn::ForEach::Regions:
+    - Region
+    - !Ref Regions
+    - Fn::ForEach::Tiers${Region}:
+        - Tier
+        - !Ref Tiers
+        - Bucket${Region}${Tier}:
+            Type: AWS::S3::Bucket
+            Properties:
+              BucketName: bucket-${Region}-${Tier}
+`)
+
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(src, &root))
+	require.Len(t, root.Content, 1)
+
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	resources := parsed["Resources"].(map[string]interface{})
+
+	for _, region := range []string{"us", "eu"} {
+		for _, tier := range []string{"web", "api"} {
+			key := "Bucket" + region + tier
+			require.Contains(t, resources, key)
+			props := resources[key].(map[string]interface{})["Properties"].(map[string]interface{})
+			require.Equal(t, "bucket-"+region+"-"+tier, stripKicsLines(props["BucketName"]))
+		}
+	}
+
+	for k := range resources {
+		require.False(t, strings.HasPrefix(k, "Fn::ForEach::"), "unexpected ForEach key: %s", k)
+	}
 }
 
 func walkJSONPath(t *testing.T, root interface{}, path []string) interface{} {
