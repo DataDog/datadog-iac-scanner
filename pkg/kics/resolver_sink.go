@@ -64,6 +64,12 @@ func (s *Service) resolverSink(
 
 				// Need to ignore #KICS_HELM_ID Line
 				documents.CountLines = bytes.Count(rfile.OriginalData, []byte{'\n'})
+			} else {
+				// Parsing the original template failed (e.g. unstrippable {{ }} expressions),
+				// so IgnoreLines came from the rendered YAML. Strip scanner-injected header
+				// lines (# Source: / # KICS_HELM_ID_N:) that would otherwise cause false
+				// suppression when the Helm detector resolves vulnerability.Line to them.
+				documents.IgnoreLines = filterHelmGeneratedLines(rfile.Content, documents.IgnoreLines)
 			}
 		} else {
 			documents.CountLines = bytes.Count(rfile.OriginalData, []byte{'\n'}) + 1
@@ -135,4 +141,25 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 		ignoreLines = documentsOriginal.IgnoreLines
 	}
 	return
+}
+
+// filterHelmGeneratedLines drops entries from ignoreLines whose corresponding
+// line in content is a scanner-injected Helm header ("# Source: …" or
+// "# KICS_HELM_ID_N:"). These headers are picked up by the YAML parser as
+// regular head comments and can coincide with vulnerability.Line, causing false
+// suppression. User-authored suppression comments are unaffected.
+func filterHelmGeneratedLines(content []byte, ignoreLines []int) []int {
+	lines := strings.Split(string(content), "\n")
+	out := make([]int, 0, len(ignoreLines))
+	for _, n := range ignoreLines {
+		if n >= 1 && n <= len(lines) {
+			trimmed := strings.TrimSpace(lines[n-1])
+			if strings.HasPrefix(trimmed, "# Source:") ||
+				strings.HasPrefix(trimmed, "# KICS_HELM_ID_") {
+				continue
+			}
+		}
+		out = append(out, n)
+	}
+	return out
 }
