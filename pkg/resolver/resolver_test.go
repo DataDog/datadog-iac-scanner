@@ -26,11 +26,24 @@ func TestGetType(t *testing.T) {
 		args args
 		want model.FileKind
 	}{
-
 		{
 			name: "get_no_type",
 			args: args{
 				filepath: filepath.FromSlash("../../test/fixtures/all_auth_users_get_read_access"),
+			},
+			want: model.KindCOMMON,
+		},
+		{
+			name: "application_helm_chart_returns_helm_kind",
+			args: args{
+				filepath: filepath.FromSlash("../../test/fixtures/test_helm"),
+			},
+			want: model.KindHELM,
+		},
+		{
+			name: "library_helm_chart_returns_common_kind",
+			args: args{
+				filepath: filepath.FromSlash("../../test/fixtures/test_helm_library"),
 			},
 			want: model.KindCOMMON,
 		},

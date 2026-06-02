@@ -1,0 +1,5 @@
+apiVersion: v2
+name: test_helm_library
+description: A Helm library chart (shared helpers, not deployable)
+type: library
+version: 0.1.0

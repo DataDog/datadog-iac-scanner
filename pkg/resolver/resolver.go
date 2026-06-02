@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"gopkg.in/yaml.v3"
 )
 
 // kindResolver is a type of resolver interface (ex: helm resolver)
@@ -79,9 +80,27 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string, kind model.File
 
 // GetType will analyze the filepath to determine which resolver to use
 func (r *Resolver) GetType(filePath string) model.FileKind {
-	_, err := os.Stat(filepath.Join(filePath, "Chart.yaml"))
-	if err == nil {
-		return model.KindHELM
+	chartYAML := filepath.Join(filePath, "Chart.yaml")
+	if _, err := os.Stat(chartYAML); err == nil {
+		if !isLibraryChart(chartYAML) {
+			return model.KindHELM
+		}
 	}
 	return model.KindCOMMON
+}
+
+// isLibraryChart returns true if the Chart.yaml at the given path declares type: library.
+// Library charts are not installable and should not be processed by the Helm renderer.
+func isLibraryChart(chartYAMLPath string) bool {
+	data, err := os.ReadFile(chartYAMLPath)
+	if err != nil {
+		return false
+	}
+	var meta struct {
+		Type string `yaml:"type"`
+	}
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return false
+	}
+	return meta.Type == "library"
 }
