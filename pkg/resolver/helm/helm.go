@@ -7,7 +7,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/pkg/errors"
@@ -23,9 +25,72 @@ import (
 
 // credit: https://github.com/helm/helm
 
+// Fixed dry-run cluster version for Helm scan rendering.
+const defaultDryRunKubeVersion = "v1.30.0"
+
+// Search bounds when the default does not satisfy a chart's kubeVersion.
+const (
+	maxCandidateMinor = 40
+	minCandidateMinor = 0
+	maxCandidatePatch = 30
+)
+
 var (
 	settings = cli.New()
+
+	kubeVersionOnce   sync.Once
+	cachedKubeVersion *chartutil.KubeVersion
 )
+
+func dryRunKubeVersion() *chartutil.KubeVersion {
+	kubeVersionOnce.Do(func() {
+		cachedKubeVersion, _ = chartutil.ParseKubeVersion(defaultDryRunKubeVersion)
+	})
+	return cachedKubeVersion
+}
+
+// resolveChartKubeVersion returns a version satisfying constraint; true means
+// nothing in range satisfies it (caller should drop the constraint).
+func resolveChartKubeVersion(constraint string) (*chartutil.KubeVersion, bool) {
+	def := dryRunKubeVersion()
+	if constraint == "" || chartutil.IsCompatibleRange(constraint, def.Version) {
+		return def, false
+	}
+	defMinor, _ := strconv.Atoi(def.Minor)
+	// Walk minors outward from the default, probing all patch levels per minor.
+	for d := 0; d <= maxCandidateMinor; d++ {
+		var minors []int
+		if d == 0 {
+			minors = []int{defMinor}
+		} else {
+			minors = []int{defMinor - d, defMinor + d}
+		}
+		for _, minor := range minors {
+			if minor < minCandidateMinor || minor > maxCandidateMinor {
+				continue
+			}
+			for patch := 0; patch <= maxCandidatePatch; patch++ {
+				candidate := fmt.Sprintf("v1.%d.%d", minor, patch)
+				if candidate == def.Version {
+					continue // already checked at the top
+				}
+				if chartutil.IsCompatibleRange(constraint, candidate) {
+					if kv, err := chartutil.ParseKubeVersion(candidate); err == nil {
+						return kv, false
+					}
+				}
+			}
+		}
+	}
+	return def, true
+}
+
+func chartKubeVersionConstraint(ch *chart.Chart) string {
+	if ch == nil || ch.Metadata == nil {
+		return ""
+	}
+	return ch.Metadata.KubeVersion
+}
 
 func runInstall(ctx context.Context, args []string, client *action.Install,
 	valueOpts *values.Options) (*release.Release, []string, error) {
@@ -69,6 +134,13 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	if err != nil {
 		contextLogger.Error().Msgf("failed to load chart from '%s': %s", cp, err)
 		return nil, []string{}, err
+	}
+
+	// Set KubeVersion; clear the constraint only when unsatisfiable.
+	kubeVersion, dropConstraint := resolveChartKubeVersion(chartKubeVersionConstraint(chartRequested))
+	client.KubeVersion = kubeVersion
+	if dropConstraint && chartRequested.Metadata != nil {
+		chartRequested.Metadata.KubeVersion = ""
 	}
 
 	excluded := getExcluded(ctx, chartRequested, cp)
