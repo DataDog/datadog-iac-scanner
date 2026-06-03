@@ -1,4 +1,4 @@
-package kics
+package runner
 
 import "regexp"
 

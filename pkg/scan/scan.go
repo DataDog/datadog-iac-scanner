@@ -15,7 +15,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
-	"github.com/DataDog/datadog-iac-scanner/pkg/kics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
@@ -30,6 +29,7 @@ import (
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scanner"
 )
 
@@ -42,7 +42,7 @@ type Results struct {
 }
 
 type executeScanParameters struct {
-	services       []*kics.Service
+	services       []*runner.Service
 	inspector      *engine.Inspector
 	extractedPaths provider.ExtractedPath
 }
@@ -242,11 +242,11 @@ func (c *Client) createService(
 	ctx context.Context,
 	inspector *engine.Inspector,
 	paths []string,
-	t kics.Tracker,
-	store kics.Storage,
+	t runner.Tracker,
+	store runner.Storage,
 	types []string,
 	cloudProviders []string,
-	flagEvaluator featureflags.FlagEvaluator) ([]*kics.Service, error) {
+	flagEvaluator featureflags.FlagEvaluator) ([]*runner.Service, error) {
 	filesSource, err := c.getFileSystemSourceProvider(ctx, paths)
 	if err != nil {
 		return nil, err
@@ -278,12 +278,12 @@ func (c *Client) createService(
 		return nil, err
 	}
 
-	services := make([]*kics.Service, 0, len(combinedParser))
+	services := make([]*runner.Service, 0, len(combinedParser))
 
 	for _, p := range combinedParser {
 		services = append(
 			services,
-			&kics.Service{
+			&runner.Service{
 				SourceProvider: filesSource,
 				Storage:        store,
 				Parser:         p,

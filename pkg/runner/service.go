@@ -3,7 +3,7 @@
  *
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
-package kics
+package runner
 
 import (
 	"bytes"
@@ -53,7 +53,7 @@ type Tracker interface {
 }
 
 // Service is a struct that contains a SourceProvider to receive sources, a storage to save and retrieve scanning informations
-// a parser to parse and provide files in format that KICS understand, a inspector that runs the scanning and a tracker to
+// a parser to parse and provide files in format the scanner understands, an inspector that runs the scanning and a tracker to
 // update scanning numbers
 type Service struct {
 	SourceProvider provider.SourceProvider
@@ -209,7 +209,7 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	}
 }
 
-// PrepareScanDocument removes _kics_lines from payload and parses json filters
+// PrepareScanDocument removes _dd_lines from payload and parses json filters
 func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind model.FileKind) map[string]interface{} {
 	contextLogger := logger.FromContext(ctx)
 	var bodyMap map[string]interface{}

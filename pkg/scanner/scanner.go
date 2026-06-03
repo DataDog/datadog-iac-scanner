@@ -10,11 +10,11 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
-	"github.com/DataDog/datadog-iac-scanner/pkg/kics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 )
 
-type serviceSlice []*kics.Service
+type serviceSlice []*runner.Service
 
 func PrepareAndScan(
 	ctx context.Context,

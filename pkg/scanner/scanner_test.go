@@ -11,9 +11,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
-	"github.com/DataDog/datadog-iac-scanner/pkg/kics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
+	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	"github.com/stretchr/testify/require"
 
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
@@ -68,10 +68,10 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 
 	store := storage.NewMemoryStorage()
 
-	services := make([]*kics.Service, 0, len(combinedParser))
+	services := make([]*runner.Service, 0, len(combinedParser))
 
 	for _, parser := range combinedParser {
-		services = append(services, &kics.Service{
+		services = append(services, &runner.Service{
 			SourceProvider: filesSource,
 			Storage:        store,
 			Parser:         parser,
