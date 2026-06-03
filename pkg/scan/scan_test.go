@@ -33,9 +33,9 @@ func (s *stubQuerySource) GetQueryLibrary(_ context.Context, platform string) (s
 // so the assertions are decoupled from the rule corpus.
 func Test_ExecuteScan(t *testing.T) {
 	const ruleID = "test-execute-scan-rule"
-	rego := `package Cx
+	rego := `package datadog
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	resource := input.document[i].resource.aws_s3_bucket[name]
 	result := {
 		"documentId": input.document[i].id,

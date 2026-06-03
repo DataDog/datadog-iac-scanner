@@ -1,8 +1,8 @@
-package Cx
+package datadog
 
 import data.generic.common as common_lib
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["pull_request_target"]
 	run := input.document[i].jobs[j].steps[k].run
@@ -31,7 +31,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["issues"]
 	run := input.document[i].jobs[j].steps[k].run
@@ -54,7 +54,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["issue_comment"]
 	run := input.document[i].jobs[j].steps[k].run
@@ -78,7 +78,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["discussion"]
 	run := input.document[i].jobs[j].steps[k].run
@@ -101,7 +101,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["discussion_comment"]
 	run := input.document[i].jobs[j].steps[k].run
@@ -125,7 +125,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["workflow_run"]
 	run := input.document[i].jobs[j].steps[k].run
@@ -152,7 +152,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["author"]
 	run := input.document[i].jobs[j].steps[k].run

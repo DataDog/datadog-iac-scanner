@@ -1,10 +1,10 @@
-package Cx
+package datadog
 
 import data.generic.k8s as k8sLib
 
 types := {"initContainers", "containers"}
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	document := input.document[i]
 	metadata := document.metadata
 

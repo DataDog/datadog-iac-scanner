@@ -775,6 +775,7 @@ func (q QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 			rego.Module("Common", q.commonLibrary.LibraryCode),
 			rego.Module("Generic", platformGeneralQuery.LibraryCode),
 			rego.Module(query.Query, query.Content),
+			rego.Module("dd_iac_compat.rego", utils.RegoCompatShim),
 			rego.Store(store),
 			rego.UnsafeBuiltins(unsafeRegoFunctions),
 		).PrepareForEval(ctx)

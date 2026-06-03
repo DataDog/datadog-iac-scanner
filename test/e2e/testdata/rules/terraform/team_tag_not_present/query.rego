@@ -1,4 +1,4 @@
-package Cx
+package datadog
 
 import data.generic.common as common_lib
 import data.generic.terraform as tf_lib
@@ -7,7 +7,7 @@ import data.generic.terraform as tf_lib
 required_tags := {"Team"}
 
 # Case where "tags" block exists but required tags are missing (including merge({...}, {...}))
-CxPolicy[result] {
+DatadogPolicy[result] {
     startswith(resource_name, "aws_")
     tf_lib.check_aws_resource_supports_tags(resource_name)
 
@@ -41,7 +41,7 @@ CxPolicy[result] {
 }
 
 # Case where "tags" block is completely missing
-CxPolicy[result] {
+DatadogPolicy[result] {
     # Only consider resources whose type begins with "aws_"
     startswith(resource_type, "aws_")
 

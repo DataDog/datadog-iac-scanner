@@ -1,6 +1,6 @@
-package Cx
+package datadog
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	resource := input.document[i].resource.aws_elasticache_cluster[name]
 	resource.engine != "redis"
 
