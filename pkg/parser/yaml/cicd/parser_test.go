@@ -99,21 +99,21 @@ resources:
 		{
 			want: `[
 			{
-			  "_kics_lines": {
-				"_kics__default": {
-				  "_kics_line": 0
+			  "_dd_lines": {
+				"_dd__default": {
+				  "_dd_line": 0
 				},
-				"_kics_martin": {
-				  "_kics_line": 3
+				"_dd_martin": {
+				  "_dd_line": 3
 				}
 			  },
 			  "martin": {
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 3
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 3
 				  },
-				  "_kics_name": {
-					"_kics_line": 4
+				  "_dd_name": {
+					"_dd_line": 4
 				  }
 				},
 				"name": "test"
@@ -121,21 +121,21 @@ resources:
 			  "_path":"test.yaml"
 			},
 			{
-			  "_kics_lines": {
-				"_kics__default": {
-				  "_kics_line": 0
+			  "_dd_lines": {
+				"_dd__default": {
+				  "_dd_line": 0
 				},
-				"_kics_martin2": {
-				  "_kics_line": 6
+				"_dd_martin2": {
+				  "_dd_line": 6
 				}
 			  },
 			  "martin2": {
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 6
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 6
 				  },
-				  "_kics_name": {
-					"_kics_line": 7
+				  "_dd_name": {
+					"_dd_line": 7
 				  }
 				},
 				"name": "test2"
@@ -150,39 +150,39 @@ resources:
 		{
 			want: `[
 			{
-			  "_kics_lines": {
-				"_kics__default": {
-				  "_kics_arr": [
+			  "_dd_lines": {
+				"_dd__default": {
+				  "_dd_arr": [
 					{
-					  "_kics__default": {
-						"_kics_line": 4
+					  "_dd__default": {
+						"_dd_line": 4
 					  },
-					  "_kics_amazon.aws.aws_s3": {
-						"_kics_line": 5
+					  "_dd_amazon.aws.aws_s3": {
+						"_dd_line": 5
 					  },
-					  "_kics_name": {
-						"_kics_line": 4
+					  "_dd_name": {
+						"_dd_line": 4
 					  }
 					}
 				  ],
-				  "_kics_line": 0
+				  "_dd_line": 0
 				}
 			  },
 			  "playbooks": [
 				{
 				  "amazon.aws.aws_s3": {
-					"_kics_lines": {
-					  "_kics__default": {
-						"_kics_line": 5
+					"_dd_lines": {
+					  "_dd__default": {
+						"_dd_line": 5
 					  },
-					  "_kics_bucket": {
-						"_kics_line": 6
+					  "_dd_bucket": {
+						"_dd_line": 6
 					  },
-					  "_kics_mode": {
-						"_kics_line": 7
+					  "_dd_mode": {
+						"_dd_line": 7
 					  },
-					  "_kics_permission": {
-						"_kics_line": 8
+					  "_dd_permission": {
+						"_dd_line": 8
 					  }
 					},
 					"bucket": "mybucket",
@@ -202,36 +202,36 @@ resources:
 		{
 			want: `[
 			{
-			  "_kics_lines": {
-				"_kics__default": {
-				  "_kics_line": 0
+			  "_dd_lines": {
+				"_dd__default": {
+				  "_dd_line": 0
 				},
-				"_kics_test": {
-				  "_kics_arr": [
+				"_dd_test": {
+				  "_dd_arr": [
 					{
-					  "_kics__default": {
-						"_kics_line": 4
+					  "_dd__default": {
+						"_dd_line": 4
 					  },
-					  "_kics_group": {
-						"_kics_line": 4
+					  "_dd_group": {
+						"_dd_line": 4
 					  }
 					}
 				  ],
-				  "_kics_line": 2
+				  "_dd_line": 2
 				},
-				"_kics_test_2": {
-				  "_kics_line": 7
+				"_dd_test_2": {
+				  "_dd_line": 7
 				}
 			  },
 			  "test": [
 				{
 				  "group": {
-					"_kics_lines": {
-					  "_kics__default": {
-						"_kics_line": 4
+					"_dd_lines": {
+					  "_dd__default": {
+						"_dd_line": 4
 					  },
-					  "_kics_name": {
-						"_kics_line": 6
+					  "_dd_name": {
+						"_dd_line": 6
 					  }
 					},
 					"name": "cx"
@@ -239,38 +239,38 @@ resources:
 				}
 			  ],
 			  "test_2": {
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 7
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 7
 				  },
-				  "_kics_perm": {
-					"_kics_arr": [
+				  "_dd_perm": {
+					"_dd_arr": [
 					  {
-						"_kics_<<": {
-						  "_kics_line": 9
+						"_dd_<<": {
+						  "_dd_line": 9
 						},
-						"_kics__default": {
-						  "_kics_line": 9
+						"_dd__default": {
+						  "_dd_line": 9
 						}
 					  }
 					],
-					"_kics_line": 8
+					"_dd_line": 8
 				  }
 				},
 				"perm": [
 					{
-						"_kics_lines": {
-							"_kics__default": {
-								"_kics_line": 9
+						"_dd_lines": {
+							"_dd__default": {
+								"_dd_line": 9
 							}
 						},
 						"group": {
-							"_kics_lines": {
-								"_kics__default": {
-									"_kics_line": 4
+							"_dd_lines": {
+								"_dd__default": {
+									"_dd_line": 4
 								},
-								"_kics_name": {
-									"_kics_line": 6
+								"_dd_name": {
+									"_dd_line": 6
 								}
 							},
 							"name": "cx"
@@ -293,39 +293,39 @@ resources:
 		{
 			want: `[
 				{
-					"_kics_lines": {
-						"_kics__default": {
-							"_kics_line": 0
+					"_dd_lines": {
+						"_dd__default": {
+							"_dd_line": 0
 						},
-						"_kics_resources": {
-							"_kics_arr": [
+						"_dd_resources": {
+							"_dd_arr": [
 								{
-									"_kics__default": {
-										"_kics_line": 3
+									"_dd__default": {
+										"_dd_line": 3
 									},
-									"_kics_name": {
-										"_kics_line": 3
+									"_dd_name": {
+										"_dd_line": 3
 									},
-									"_kics_type": {
-										"_kics_line": 4
+									"_dd_type": {
+										"_dd_line": 4
 									}
 								},
 								{
-									"_kics__default": {
-										"_kics_line": 5
+									"_dd__default": {
+										"_dd_line": 5
 									},
-									"_kics_name": {
-										"_kics_line": 5
+									"_dd_name": {
+										"_dd_line": 5
 									},
-									"_kics_properties": {
-										"_kics_line": 7
+									"_dd_properties": {
+										"_dd_line": 7
 									},
-									"_kics_type": {
-										"_kics_line": 6
+									"_dd_type": {
+										"_dd_line": 6
 									}
 								}
 							],
-							"_kics_line": 2
+							"_dd_line": 2
 						}
 					},
 					"resources": [
@@ -336,12 +336,12 @@ resources:
 						{
 							"name": "my-vm",
 							"properties": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 7
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 7
 									},
-									"_kics_serviceAccountId": {
-										"_kics_line": 8
+									"_dd_serviceAccountId": {
+										"_dd_line": 8
 									}
 								},
 								"serviceAccountId": "my-vm-access"

@@ -33,7 +33,8 @@ type Command struct {
 	Cmd       string
 	Original  string
 	Value     string
-	StartLine int `json:"_kics_line"`
+	StartLine int `json:"_dd_line"`
+	KicsLine  int `json:"_kics_line"` // legacy field kept for backward compat; drop once all rules use _dd_line
 	EndLine   int
 }
 
@@ -146,6 +147,7 @@ func (i *Info) getStmtInfo(ctx context.Context, stmt *syntax.Stmt, args []*synta
 				Cmd:       cmd,
 				Original:  fullCmd,
 				StartLine: start,
+				KicsLine:  start,
 				EndLine:   end,
 				Value:     strings.TrimSpace(value),
 			}

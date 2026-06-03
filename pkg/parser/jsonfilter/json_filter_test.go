@@ -707,9 +707,9 @@ func TestJSONFilterExpressions(t *testing.T) {
 				visitor := parser.NewJSONFilterPrinterVisitor()
 				got := visitor.VisitAll(tree)
 
-				if !reflect.DeepEqual(tc.expected, got) {
-					t.Errorf("test[%s]:\ninput    %v\nexpected %v\ngot      %v", tc.name, tc.input, tc.expected, got)
-				}
+			if !reflect.DeepEqual(tc.expected.FilterExpression, got.FilterExpression) {
+				t.Errorf("test[%s]:\ninput    %v\nexpected %v\ngot      %v", tc.name, tc.input, tc.expected.FilterExpression, got.FilterExpression)
+			}
 			} else {
 				require.True(t, errorListener.HasErrors(), "test[%s] Expected error but got none", tc.name)
 			}
@@ -726,19 +726,19 @@ func TestMarshallJSONFilterExpressions(t *testing.T) {
 		{
 			name:  "expr_single_selector",
 			input: `{$.eventName = CreateDeliveryChannel}`,
-			want: `{"_kics_filter_expr":{"_selector":"$.eventName","_op":"=","_value":"CreateDeliveryChannel"}}
+			want: `{"_dd_filter_expr":{"_selector":"$.eventName","_op":"=","_value":"CreateDeliveryChannel"}}
 `,
 		},
 		{
 			name:  "expr_two_selectors_and_with_parenthesis_unquoted_quoted_strings",
 			input: `{ ($.eventName = ConsoleLogin) && ($.errorMessage = "Failed authentication") }`,
-			want: `{"_kics_filter_expr":{"_op":"&&","_left":{"_selector":"$.eventName","_op":"=","_value":"ConsoleLogin"},"_right":{"_selector":"$.errorMessage","_op":"=","_value":"\"Failed authentication\""}}}
+			want: `{"_dd_filter_expr":{"_op":"&&","_left":{"_selector":"$.eventName","_op":"=","_value":"ConsoleLogin"},"_right":{"_selector":"$.errorMessage","_op":"=","_value":"\"Failed authentication\""}}}
 `,
 		},
 		{
 			name:  "expr_three_selectors_and_without_parenthesis",
 			input: `{ $.userIdentity.type = "Root" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != "AwsServiceEvent" }`,
-			want: `{"_kics_filter_expr":{"_op":"&&","_left":{"_op":"&&","_left":{"_selector":"$.userIdentity.type","_op":"=","_value":"\"Root\""},"_right":{"_selector":"$.userIdentity.invokedBy","_op":"NOT","_value":"EXISTS"}},"_right":{"_selector":"$.eventType","_op":"!=","_value":"\"AwsServiceEvent\""}}}
+			want: `{"_dd_filter_expr":{"_op":"&&","_left":{"_op":"&&","_left":{"_selector":"$.userIdentity.type","_op":"=","_value":"\"Root\""},"_right":{"_selector":"$.userIdentity.invokedBy","_op":"NOT","_value":"EXISTS"}},"_right":{"_selector":"$.eventType","_op":"!=","_value":"\"AwsServiceEvent\""}}}
 `,
 		},
 		{
@@ -746,7 +746,7 @@ func TestMarshallJSONFilterExpressions(t *testing.T) {
 			input: `{ ($.eventName = AuthorizeSecurityGroupIngress) || ($.eventName = AuthorizeSecurityGroupEgress) ||` +
 				`($.eventName = RevokeSecurityGroupIngress) || ($.eventName = RevokeSecurityGroupEgress) ||` +
 				`($.eventName = CreateSecurityGroup) || ($.eventName = DeleteSecurityGroup)}`,
-			want: `{"_kics_filter_expr":{"_op":"||","_left":{"_op":"||","_left":{"_op":"||","_left":{"_op":"||","_left":{"_op":"||","_left":{"_selector":"$.eventName","_op":"=","_value":"AuthorizeSecurityGroupIngress"},"_right":{"_selector":"$.eventName","_op":"=","_value":"AuthorizeSecurityGroupEgress"}},"_right":{"_selector":"$.eventName","_op":"=","_value":"RevokeSecurityGroupIngress"}},"_right":{"_selector":"$.eventName","_op":"=","_value":"RevokeSecurityGroupEgress"}},"_right":{"_selector":"$.eventName","_op":"=","_value":"CreateSecurityGroup"}},"_right":{"_selector":"$.eventName","_op":"=","_value":"DeleteSecurityGroup"}}}
+			want: `{"_dd_filter_expr":{"_op":"||","_left":{"_op":"||","_left":{"_op":"||","_left":{"_op":"||","_left":{"_op":"||","_left":{"_selector":"$.eventName","_op":"=","_value":"AuthorizeSecurityGroupIngress"},"_right":{"_selector":"$.eventName","_op":"=","_value":"AuthorizeSecurityGroupEgress"}},"_right":{"_selector":"$.eventName","_op":"=","_value":"RevokeSecurityGroupIngress"}},"_right":{"_selector":"$.eventName","_op":"=","_value":"RevokeSecurityGroupEgress"}},"_right":{"_selector":"$.eventName","_op":"=","_value":"CreateSecurityGroup"}},"_right":{"_selector":"$.eventName","_op":"=","_value":"DeleteSecurityGroup"}}}
 `,
 		},
 	}
@@ -767,10 +767,16 @@ func TestMarshallJSONFilterExpressions(t *testing.T) {
 		visitor := parser.NewJSONFilterPrinterVisitor()
 		expTree := visitor.VisitAll(tree)
 
+		// Marshal only the canonical FilterExpression field so the test is
+		// independent of legacy _kics_filter_expr being present alongside it.
+		wrapper := struct {
+			FilterExpression any `json:"_dd_filter_expr"`
+		}{FilterExpression: expTree.FilterExpression}
+
 		buf := new(bytes.Buffer)
 		encoder := json.NewEncoder(buf)
 		encoder.SetEscapeHTML(false)
-		err := encoder.Encode(expTree)
+		err := encoder.Encode(wrapper)
 		require.NoError(t, err)
 
 		got := buf.String()

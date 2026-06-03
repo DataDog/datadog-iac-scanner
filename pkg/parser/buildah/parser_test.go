@@ -47,14 +47,16 @@ func TestParser_Parse(t *testing.T) {
 								"EndLine": 2,
 								"Original": "buildah from fedora",
 								"Value": "fedora",
-								"_kics_line": 2
+								"_dd_line": 2,
+						"_kics_line": 2
 							},
 							{
 								"Cmd": "buildah config",
 								"EndLine": 3,
 								"Original": "buildah config --env GOPATH=/root/buildah $ctr",
 								"Value": "--env GOPATH=/root/buildah $ctr",
-								"_kics_line": 3
+								"_dd_line": 3,
+						"_kics_line": 3
 							}
 						]
 					}
@@ -83,14 +85,16 @@ func TestParser_Parse(t *testing.T) {
 								"EndLine": 2,
 								"Original": "buildah from fedora",
 								"Value": "fedora",
-								"_kics_line": 2
+								"_dd_line": 2,
+						"_kics_line": 2
 							},
 							{
 								"Cmd": "buildah commit",
 								"EndLine": 4,
 								"Original": "buildah commit $ctr buildahupstream",
 								"Value": "$ctr buildahupstream",
-								"_kics_line": 4
+								"_dd_line": 4,
+						"_kics_line": 4
 							}
 						]
 					}
@@ -121,21 +125,24 @@ func TestParser_Parse(t *testing.T) {
 								"EndLine": 2,
 								"Original": "buildah from fedora",
 								"Value": "fedora",
-								"_kics_line": 2
+								"_dd_line": 2,
+						"_kics_line": 2
 							},
 							{
 								"Cmd": "buildah config",
 								"EndLine": 4,
 								"Original": "buildah config --env GOPATH=/root/buildah $ctr",
 								"Value": "--env GOPATH=/root/buildah $ctr",
-								"_kics_line": 4
+								"_dd_line": 4,
+						"_kics_line": 4
 							},
 							{
 								"Cmd": "buildah commit",
 								"EndLine": 5,
 								"Original": "buildah commit $ctr buildahupstream",
 								"Value": "$ctr buildahupstream",
-								"_kics_line": 5
+								"_dd_line": 5,
+						"_kics_line": 5
 							}
 						]
 					}
@@ -166,14 +173,16 @@ func TestParser_Parse(t *testing.T) {
 								"EndLine": 3,
 								"Original": "buildah from fedora",
 								"Value": "fedora",
-								"_kics_line": 3
+								"_dd_line": 3,
+						"_kics_line": 3
 							},
 							{
 								"Cmd": "buildah run",
 								"EndLine": 4,
 								"Original": "buildah run ${ctr} git clone https://github.com/DataDog/datadog-iac-scanner.git",
 								"Value": "${ctr} git clone https://github.com/DataDog/datadog-iac-scanner.git",
-								"_kics_line": 4
+								"_dd_line": 4,
+						"_kics_line": 4
 							}
 						],
 						"fedora2": [
@@ -182,14 +191,16 @@ func TestParser_Parse(t *testing.T) {
 								"EndLine": 5,
 								"Original": "buildah from fedora2",
 								"Value": "fedora2",
-								"_kics_line": 5
+								"_dd_line": 5,
+						"_kics_line": 5
 							},
 							{
 								"Cmd": "buildah run",
 								"EndLine": 6,
 								"Original": "buildah run ${ctr2} git clone https://github.com/DataDog/datadog-iac-scanner.git",
 								"Value": "${ctr2} git clone https://github.com/DataDog/datadog-iac-scanner.git",
-								"_kics_line": 6
+								"_dd_line": 6,
+						"_kics_line": 6
 							}
 						]
 					}
@@ -218,14 +229,16 @@ func TestParser_Parse(t *testing.T) {
 								"EndLine": 2,
 								"Original": "buildah from fedora",
 								"Value": "fedora",
-								"_kics_line": 2
+								"_dd_line": 2,
+						"_kics_line": 2
 							},
 							{
 								"Cmd": "buildah run",
 								"EndLine": 5,
 								"Original": "buildah run $ctr /bin/sh -c 'git clone https://github.com/DataDog/datadog-iac-scanner.git; make'",
 								"Value": "$ctr /bin/sh -c 'git clone https://github.com/DataDog/datadog-iac-scanner.git; make'",
-								"_kics_line": 4
+								"_dd_line": 4,
+						"_kics_line": 4
 							}
 						]
 					}

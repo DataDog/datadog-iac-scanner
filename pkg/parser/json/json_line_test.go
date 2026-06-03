@@ -20,7 +20,7 @@ var testsinitiateJSONLine = []struct {
 	name         string
 	args         args
 	want         string
-	wantKicsLine string
+	wantLine string
 }{
 	{
 		name: "test array of ints",
@@ -84,44 +84,44 @@ var testsinitiateJSONLine = []struct {
 				}
 			  }
 			  `,
-		wantKicsLine: `{
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 0
+		wantLine: `{
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 0
 				  },
-				  "_kics_father": {
-					"_kics_line": 2
+				  "_dd_father": {
+					"_dd_line": 2
 				  }
 				},
 				"father": {
-				  "_kics_lines": {
-					"_kics__default": {
-					  "_kics_line": 2
+				  "_dd_lines": {
+					"_dd__default": {
+					  "_dd_line": 2
 					},
-					"_kics_son": {
-					  "_kics_arr": [
+					"_dd_son": {
+					  "_dd_arr": [
 						{
-						  "_kics__default": {
-							"_kics_line": 4
+						  "_dd__default": {
+							"_dd_line": 4
 						  }
 						},
 						{
-						  "_kics__default": {
-							"_kics_line": 5
+						  "_dd__default": {
+							"_dd_line": 5
 						  }
 						},
 						{
-						  "_kics__default": {
-							"_kics_line": 6
+						  "_dd__default": {
+							"_dd_line": 6
 						  }
 						},
 						{
-						  "_kics__default": {
-							"_kics_line": 7
+						  "_dd__default": {
+							"_dd_line": 7
 						  }
 						}
 					  ],
-					  "_kics_line": 3
+					  "_dd_line": 3
 					}
 				  },
 				  "son": [
@@ -145,24 +145,24 @@ var testsinitiateJSONLine = []struct {
 				}
 				`),
 		},
-		wantKicsLine: `
+		wantLine: `
 			{
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 0
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 0
 				  },
-				  "_kics_father": {
-					"_kics_arr": [
+				  "_dd_father": {
+					"_dd_arr": [
 					  {
-						"_kics__default": {
-						  "_kics_line": 4
+						"_dd__default": {
+						  "_dd_line": 4
 						},
-						"_kics_key": {
-						  "_kics_line": 4
+						"_dd_key": {
+						  "_dd_line": 4
 						}
 					  }
 					],
-					"_kics_line": 2
+					"_dd_line": 2
 				  }
 				},
 				"father": [
@@ -208,14 +208,14 @@ var testsinitiateJSONLine = []struct {
 				}
 				`),
 		},
-		wantKicsLine: `
+		wantLine: `
 			{
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 0
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 0
 					},
-					"_kics_parameters": {
-						"_kics_line": 2
+					"_dd_parameters": {
+						"_dd_line": 2
 					}
 				},
 				"parameters":"simple test"
@@ -253,30 +253,30 @@ var testsinitiateJSONLine = []struct {
 				}
 				`),
 		},
-		wantKicsLine: `
+		wantLine: `
 			{
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 0
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 0
 				  },
-				  "_kics_father": {
-					"_kics_line": 2
+				  "_dd_father": {
+					"_dd_line": 2
 				  }
 				},
 				"father": {
-				  "_kics_lines": {
-					"_kics__default": {
-					  "_kics_line": 2
+				  "_dd_lines": {
+					"_dd__default": {
+					  "_dd_line": 2
 					},
-					"_kics_close": {
-					  "_kics_arr": [
+					"_dd_close": {
+					  "_dd_arr": [
 						{
-						  "_kics__default": {
-							"_kics_line": 4
+						  "_dd__default": {
+							"_dd_line": 4
 						  }
 						}
 					  ],
-					  "_kics_line": 3
+					  "_dd_line": 3
 					}
 				  },
 				  "close": [
@@ -326,36 +326,36 @@ var testsinitiateJSONLine = []struct {
 				}
 				`),
 		},
-		wantKicsLine: `{
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 0
+		wantLine: `{
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 0
 				  },
-				  "_kics_father1": {
-					"_kics_line": 2
+				  "_dd_father1": {
+					"_dd_line": 2
 				  },
-				  "_kics_father2": {
-					"_kics_line": 5
+				  "_dd_father2": {
+					"_dd_line": 5
 				  }
 				},
 				"father1": {
-				  "_kics_lines": {
-					"_kics__default": {
-					  "_kics_line": 2
+				  "_dd_lines": {
+					"_dd__default": {
+					  "_dd_line": 2
 					},
-					"_kics_key": {
-					  "_kics_line": 3
+					"_dd_key": {
+					  "_dd_line": 3
 					}
 				  },
 				  "key": "value"
 				},
 				"father2": {
-				  "_kics_lines": {
-					"_kics__default": {
-					  "_kics_line": 5
+				  "_dd_lines": {
+					"_dd__default": {
+					  "_dd_line": 5
 					},
-					"_kics_key": {
-					  "_kics_line": 6
+					"_dd_key": {
+					  "_dd_line": 6
 					}
 				  },
 				  "key": "value"
@@ -415,23 +415,23 @@ var testsinitiateJSONLine = []struct {
 			}
 			`),
 		},
-		wantKicsLine: `
+		wantLine: `
 			{
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 0
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 0
 					},
-					"_kics_father":{
-						"_kics_line": 2
+					"_dd_father":{
+						"_dd_line": 2
 					}
 				},
 				"father": {
-					"_kics_lines": {
-						"_kics__default": {
-							"_kics_line": 2
+					"_dd_lines": {
+						"_dd__default": {
+							"_dd_line": 2
 						},
-						"_kics_son": {
-							"_kics_line": 3
+						"_dd_son": {
+							"_dd_line": 3
 						}
 					},
 					"son": "this is a son"
@@ -475,26 +475,26 @@ var testsinitiateJSONLine = []struct {
 				}
 				`),
 		},
-		wantKicsLine: `
+		wantLine: `
 			{
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 0
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 0
 					},
-					"_kics_father": {
-						"_kics_arr": [
+					"_dd_father": {
+						"_dd_arr": [
 							{
-								"_kics__default": {
-									"_kics_line": 3
+								"_dd__default": {
+									"_dd_line": 3
 								}
 							},
 							{
-								"_kics__default": {
-									"_kics_line": 4
+								"_dd__default": {
+									"_dd_line": 4
 								}
 							}
 						],
-						"_kics_line":2
+						"_dd_line":2
 					}
 				},
 				"father": [
@@ -541,26 +541,26 @@ var testsinitiateJSONLine = []struct {
 				}
 				`),
 		},
-		wantKicsLine: `
+		wantLine: `
 			{
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 0
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 0
 					},
-					"_kics_father": {
-						"_kics_arr":[
+					"_dd_father": {
+						"_dd_arr":[
 							{
-								"_kics__default": {
-									"_kics_line": 3
+								"_dd__default": {
+									"_dd_line": 3
 								}
 							},
 							{
-								"_kics__default": {
-									"_kics_line": 4
+								"_dd__default": {
+									"_dd_line": 4
 								}
 							}
 						],
-						"_kics_line": 2
+						"_dd_line": 2
 					}
 				},
 				"father":[
@@ -609,29 +609,29 @@ var testsinitiateJSONLine = []struct {
 			}
 			`),
 		},
-		wantKicsLine: `
+		wantLine: `
 			{
-				"_kics_lines":{
-					"_kics__default":{
-						"_kics_line":0
+				"_dd_lines":{
+					"_dd__default":{
+						"_dd_line":0
 					},
-					"_kics_resources":{
-						"_kics_line":2,
-					"_kics_arr":[
+					"_dd_resources":{
+						"_dd_line":2,
+					"_dd_arr":[
 						{
-							"_kics__default":{
-								"_kics_line":4
+							"_dd__default":{
+								"_dd_line":4
 							},
-							"_kics_properties":{
-								"_kics_line":4
+							"_dd_properties":{
+								"_dd_line":4
 							}
 						},
 						{
-							"_kics__default":{
-								"_kics_line":9
+							"_dd__default":{
+								"_dd_line":9
 							},
-							"_kics_properties":{
-								"_kics_line":9
+							"_dd_properties":{
+								"_dd_line":9
 							}
 						}
 					]
@@ -640,12 +640,12 @@ var testsinitiateJSONLine = []struct {
 			"resources":[
 				{
 					"properties":{
-						"_kics_lines":{
-							"_kics__default":{
-								"_kics_line":4
+						"_dd_lines":{
+							"_dd__default":{
+								"_dd_line":4
 							},
-							"_kics_httpsOnly":{
-								"_kics_line":5
+							"_dd_httpsOnly":{
+								"_dd_line":5
 							}
 						},
 						"httpsOnly":false
@@ -653,12 +653,12 @@ var testsinitiateJSONLine = []struct {
 				},
 				{
 					"properties":{
-						"_kics_lines":{
-							"_kics__default":{
-								"_kics_line":9
+						"_dd_lines":{
+							"_dd__default":{
+								"_dd_line":9
 							},
-							"_kics_httpsOnly":{
-								"_kics_line":10
+							"_dd_httpsOnly":{
+								"_dd_line":10
 							}
 						},
 						"httpsOnly":false
@@ -729,7 +729,7 @@ func Test_jsonLine_setLineInfo(t *testing.T) {
 		require.NoError(t, err)
 		j := initializeJSONLine(tt.args.doc)
 		got := j.setLineInfo(unmarshaledJSON)
-		compareJSONLine(t, got, tt.wantKicsLine)
+		compareJSONLine(t, got, tt.wantLine)
 		//})
 	}
 }

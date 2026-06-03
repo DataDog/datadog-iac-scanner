@@ -51,7 +51,7 @@ type converter struct {
 }
 
 const (
-	kicsLinesKey          = "_kics_"
+	ddLinesKey            = "_dd_"
 	ctyFriendlyNameString = "string"
 )
 
@@ -87,17 +87,17 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	}
 
 	out := make(model.Document)
-	kicsS := make(map[string]model.LineObject)
-	// set kics line for the body
-	kicsS["_kics__default"] = model.LineObject{
+	ddLines := make(map[string]model.LineObject)
+	// set line info for the body
+	ddLines["_dd__default"] = model.LineObject{
 		Line: defLine,
 	}
 
 	if body.Attributes != nil {
 		for key, value := range body.Attributes {
 			out[key], err = c.convertExpression(value.Expr)
-			// set kics line for the body value
-			kicsS[kicsLinesKey+key] = model.LineObject{
+			// set line info for the body value
+			ddLines["_dd_"+key] = model.LineObject{
 				Line: value.SrcRange.Start.Line,
 				Arr:  c.getArrLines(value.Expr),
 			}
@@ -108,8 +108,8 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	}
 
 	for _, block := range body.Blocks {
-		// set kics line for block
-		kicsS[kicsLinesKey+block.Type] = model.LineObject{
+		// set line info for block
+		ddLines["_dd_"+block.Type] = model.LineObject{
 			Line: block.TypeRange.Start.Line,
 		}
 		err = c.convertBlock(ctx, block, out, block.TypeRange.Start.Line)
@@ -118,7 +118,7 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 		}
 	}
 
-	out["_kics_lines"] = kicsS
+	out["_dd_lines"] = ddLines
 
 	return out, nil
 }
@@ -130,12 +130,12 @@ func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.L
 		for _, ex := range v.Exprs {
 			arrEx := make(map[string]*model.LineObject)
 			// set default line of array
-			arrEx["_kics__default"] = &model.LineObject{
+			arrEx["_dd__default"] = &model.LineObject{
 				Line: ex.Range().Start.Line,
 			}
 			switch valType := ex.(type) {
 			case *hclsyntax.ObjectConsExpr:
-				arrEx["_kics__default"] = &model.LineObject{
+				arrEx["_dd__default"] = &model.LineObject{
 					Line: ex.Range().Start.Line + 1,
 				}
 				// set lines for array elements
@@ -144,13 +144,13 @@ func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.L
 					if err != nil {
 						return nil
 					}
-					arrEx[kicsLinesKey+key] = &model.LineObject{
+					arrEx["_dd_"+key] = &model.LineObject{
 						Line: item.KeyExpr.Range().Start.Line,
 					}
 				}
 			case *hclsyntax.TupleConsExpr:
 				// set lines for array elements if type is different than array, map/object
-				arrEx["_kics__default"] = &model.LineObject{
+				arrEx["_dd__default"] = &model.LineObject{
 					Arr: c.getArrLines(valType),
 				}
 			}

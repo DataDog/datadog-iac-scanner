@@ -169,55 +169,55 @@ var tests = []struct {
 		m:       &Document{},
 		wantErr: false,
 		want: `{
-			"_kics_lines": {
-			  "_kics__default": {
-				"_kics_line": 0
+			"_dd_lines": {
+			  "_dd__default": {
+				"_dd_line": 0
 			  },
-			  "_kics_key": {
-				"_kics_line": 1
+			  "_dd_key": {
+				"_dd_line": 1
 			  },
-			  "_kics_key_object": {
-				"_kics_line": 2
+			  "_dd_key_object": {
+				"_dd_line": 2
 			  }
 			},
 			"key": false,
 			"key_object": {
-			  "_kics_lines": {
-				"_kics__default": {
-				  "_kics_line": 2
+			  "_dd_lines": {
+				"_dd__default": {
+				  "_dd_line": 2
 				},
-				"_kics_int_object": {
-				  "_kics_line": 4
+				"_dd_int_object": {
+				  "_dd_line": 4
 				},
-				"_kics_null_object": {
-				  "_kics_line": 3
+				"_dd_null_object": {
+				  "_dd_line": 3
 				},
-				"_kics_seq_object": {
-				  "_kics_arr": [
+				"_dd_seq_object": {
+				  "_dd_arr": [
 					{
-					  "_kics__default": {
-						"_kics_line": 6
+					  "_dd__default": {
+						"_dd_line": 6
 					  },
-					  "_kics_key_seq": {
-						"_kics_line": 6
+					  "_dd_key_seq": {
+						"_dd_line": 6
 					  },
-					  "_kics_key_seq_2": {
-						"_kics_line": 7
+					  "_dd_key_seq_2": {
+						"_dd_line": 7
 					  }
 					},
 					{
-					  "_kics__default": {
-						"_kics_line": 8
+					  "_dd__default": {
+						"_dd_line": 8
 					  },
-					  "_kics_second_key": {
-						"_kics_line": 8
+					  "_dd_second_key": {
+						"_dd_line": 8
 					  },
-					  "_kics_second_key_2": {
-						"_kics_line": 9
+					  "_dd_second_key_2": {
+						"_dd_line": 9
 					  }
 					}
 				  ],
-				  "_kics_line": 5
+				  "_dd_line": 5
 				}
 			  },
 			  "int_object": 24,
@@ -314,44 +314,44 @@ var tests = []struct {
 		},
 		wantErr: false,
 		want: `{
-			"_kics_lines": {
-			  "_kics__default": {
-				"_kics_arr": [
+			"_dd_lines": {
+			  "_dd__default": {
+				"_dd_arr": [
 				  {
-					"_kics__default": {
-					  "_kics_line": 0
+					"_dd__default": {
+					  "_dd_line": 0
 					},
-					"_kics_ansible_object": {
-					  "_kics_line": 2
+					"_dd_ansible_object": {
+					  "_dd_line": 2
 					},
-					"_kics_name": {
-					  "_kics_line": 1
+					"_dd_name": {
+					  "_dd_line": 1
 					}
 				  },
 				  {
-					"_kics__default": {
-					  "_kics_line": 0
+					"_dd__default": {
+					  "_dd_line": 0
 					},
-					"_kics_ansible_object_2": {
-					  "_kics_line": 5
+					"_dd_ansible_object_2": {
+					  "_dd_line": 5
 					},
-					"_kics_name": {
-					  "_kics_line": 4
+					"_dd_name": {
+					  "_dd_line": 4
 					}
 				  }
 				],
-				"_kics_line": 0
+				"_dd_line": 0
 			  }
 			},
 			"playbooks": [
 			  {
 				"ansible_object": {
-				  "_kics_lines": {
-					"_kics__default": {
-					  "_kics_line": 2
+				  "_dd_lines": {
+					"_dd__default": {
+					  "_dd_line": 2
 					},
-					"_kics_name": {
-					  "_kics_line": 3
+					"_dd_name": {
+					  "_dd_line": 3
 					}
 				  },
 				  "name": "object"
@@ -360,12 +360,12 @@ var tests = []struct {
 			  },
 			  {
 				"ansible_object_2": {
-				  "_kics_lines": {
-					"_kics__default": {
-					  "_kics_line": 5
+				  "_dd_lines": {
+					"_dd__default": {
+					  "_dd_line": 5
 					},
-					"_kics_name": {
-					  "_kics_line": 6
+					"_dd_name": {
+					  "_dd_line": 6
 					}
 				  },
 				  "name": "object_2"
@@ -416,29 +416,29 @@ var tests = []struct {
 			},
 		},
 		want: `{
-			"_kics_lines": {
-			  "_kics__default": {
-				"_kics_line": 0
+			"_dd_lines": {
+			  "_dd__default": {
+				"_dd_line": 0
 			  },
-			  "_kics_array": {
-				"_kics_arr": [
+			  "_dd_array": {
+				"_dd_arr": [
 				  {
-					"_kics__default": {
-					  "_kics_line": 2
+					"_dd__default": {
+					  "_dd_line": 2
 					}
 				  },
 				  {
-					"_kics__default": {
-					  "_kics_line": 3
+					"_dd__default": {
+					  "_dd_line": 3
 					}
 				  },
 				  {
-					"_kics__default": {
-					  "_kics_line": 4
+					"_dd__default": {
+					  "_dd_line": 4
 					}
 				  }
 				],
-				"_kics_line": 1
+				"_dd_line": 1
 			  }
 			},
 			"array": [
@@ -469,12 +469,12 @@ var tests = []struct {
 			},
 		},
 		want: `{
-			"_kics_lines": {
-			  "_kics__default": {"_kics_line": 0},
-			  "_kics_hex_int": {"_kics_line": 1},
-			  "_kics_octal_int": {"_kics_line": 2},
-			  "_kics_binary_int": {"_kics_line": 3},
-			  "_kics_underscored_int": {"_kics_line": 4}
+			"_dd_lines": {
+			  "_dd__default": {"_dd_line": 0},
+			  "_dd_hex_int": {"_dd_line": 1},
+			  "_dd_octal_int": {"_dd_line": 2},
+			  "_dd_binary_int": {"_dd_line": 3},
+			  "_dd_underscored_int": {"_dd_line": 4}
 			},
 			"hex_int": 26,
 			"octal_int": 493,
@@ -498,10 +498,10 @@ var tests = []struct {
 			},
 		},
 		want: `{
-			"_kics_lines": {
-			  "_kics__default": {"_kics_line": 0},
-			  "_kics_ratio": {"_kics_line": 1},
-			  "_kics_count": {"_kics_line": 2}
+			"_dd_lines": {
+			  "_dd__default": {"_dd_line": 0},
+			  "_dd_ratio": {"_dd_line": 1},
+			  "_dd_count": {"_dd_line": 2}
 			},
 			"ratio": 3.14,
 			"count": 42
@@ -525,11 +525,11 @@ var tests = []struct {
 			},
 		},
 		want: `{
-			"_kics_lines": {
-			  "_kics__default": {"_kics_line": 0},
-			  "_kics_enabled": {"_kics_line": 1},
-			  "_kics_disabled": {"_kics_line": 2},
-			  "_kics_empty": {"_kics_line": 3}
+			"_dd_lines": {
+			  "_dd__default": {"_dd_line": 0},
+			  "_dd_enabled": {"_dd_line": 1},
+			  "_dd_disabled": {"_dd_line": 2},
+			  "_dd_empty": {"_dd_line": 3}
 			},
 			"enabled": true,
 			"disabled": false,
@@ -739,7 +739,7 @@ func TestDocument_UnmarshalYAML_CloudFormationShortFormIntrinsics(t *testing.T) 
 }
 
 // TestDocument_UnmarshalYAML_CFNIntrinsicLineMetadata verifies that rewritten
-// short-form intrinsics carry _kics_lines metadata on the wrapper map,
+// short-form intrinsics carry _dd_lines metadata on the wrapper map,
 // matching what long-form mapping values produce.
 func TestDocument_UnmarshalYAML_CFNIntrinsicLineMetadata(t *testing.T) {
 	ctx := context.Background()
@@ -762,12 +762,12 @@ func TestDocument_UnmarshalYAML_CFNIntrinsicLineMetadata(t *testing.T) {
 	var parsed map[string]interface{}
 	require.NoError(t, json.Unmarshal(raw, &parsed))
 
-	// Walk to BucketName without stripping _kics_lines
+	// Walk to BucketName without stripping _dd_lines
 	bucketName := parsed["Resources"].(map[string]interface{})["MyBucket"].(map[string]interface{})["Properties"].(map[string]interface{})["BucketName"]
 	m, ok := bucketName.(map[string]interface{})
 	require.True(t, ok, "BucketName should be a map after rewrite")
 	require.Contains(t, m, "Fn::Sub", "rewritten map should have Fn::Sub key")
-	require.Contains(t, m, "_kics_lines", "rewritten map should carry _kics_lines")
+	require.Contains(t, m, "_dd_lines", "rewritten map should carry _dd_lines")
 }
 
 // TestDocument_UnmarshalYAML_ShortFormIntrinsicNonCloudFormation verifies that
@@ -873,21 +873,21 @@ Resources:
 
 	rds0 := resources["RDSInstance0"].(map[string]interface{})
 	props0 := rds0["Properties"].(map[string]interface{})
-	require.Equal(t, map[string]interface{}{"Fn::Sub": "app_0"}, stripKicsLines(props0["DBName"]))
+	require.Equal(t, map[string]interface{}{"Fn::Sub": "app_0"}, stripDDLines(props0["DBName"]))
 	tags0 := props0["Tags"].([]interface{})
 	require.Equal(t, map[string]interface{}{
 		"Key":   "logical",
 		"Value": "0",
-	}, stripKicsLines(tags0[0]))
+	}, stripDDLines(tags0[0]))
 
 	rds1 := resources["RDSInstance1"].(map[string]interface{})
 	props1 := rds1["Properties"].(map[string]interface{})
-	require.Equal(t, map[string]interface{}{"Fn::Sub": "app_1"}, stripKicsLines(props1["DBName"]))
+	require.Equal(t, map[string]interface{}{"Fn::Sub": "app_1"}, stripDDLines(props1["DBName"]))
 	tags1 := props1["Tags"].([]interface{})
 	require.Equal(t, map[string]interface{}{
 		"Key":   "logical",
 		"Value": "1",
-	}, stripKicsLines(tags1[0]))
+	}, stripDDLines(tags1[0]))
 }
 
 func TestDocument_UnmarshalYAML_CloudFormationForEachNoTransform(t *testing.T) {
@@ -948,12 +948,12 @@ Resources:
 	require.NoError(t, json.Unmarshal(raw, &parsed))
 
 	resources := parsed["Resources"].(map[string]interface{})
-	resourceLines := resources["_kics_lines"].(map[string]interface{})
+	resourceLines := resources["_dd_lines"].(map[string]interface{})
 
 	// Expanded resource inherits line info from the ForEach key.
-	require.Contains(t, resourceLines, "_kics_RDSInstance0")
+	require.Contains(t, resourceLines, "_dd_RDSInstance0")
 	// Stale ForEach entry is removed.
-	require.NotContains(t, resourceLines, "_kics_Fn::ForEach::RDSInstances")
+	require.NotContains(t, resourceLines, "_dd_Fn::ForEach::RDSInstances")
 }
 
 func TestDocument_UnmarshalYAML_CloudFormationForEachDuplicateID(t *testing.T) {
@@ -1035,10 +1035,10 @@ Resources:
 	require.NotContains(t, resources, "Fn::ForEach::Queues")
 
 	prodProps := resources["Queueprod"].(map[string]interface{})["Properties"].(map[string]interface{})
-	require.Equal(t, "queue-prod", stripKicsLines(prodProps["QueueName"]))
+	require.Equal(t, "queue-prod", stripDDLines(prodProps["QueueName"]))
 
 	stagingProps := resources["Queuestaging"].(map[string]interface{})["Properties"].(map[string]interface{})
-	require.Equal(t, "queue-staging", stripKicsLines(stagingProps["QueueName"]))
+	require.Equal(t, "queue-staging", stripDDLines(stagingProps["QueueName"]))
 }
 
 func TestDocument_UnmarshalYAML_CloudFormationForEachNestedLoops(t *testing.T) {
@@ -1084,7 +1084,7 @@ Resources:
 			key := "Bucket" + region + tier
 			require.Contains(t, resources, key)
 			props := resources[key].(map[string]interface{})["Properties"].(map[string]interface{})
-			require.Equal(t, "bucket-"+region+"-"+tier, stripKicsLines(props["BucketName"]))
+			require.Equal(t, "bucket-"+region+"-"+tier, stripDDLines(props["BucketName"]))
 		}
 	}
 
@@ -1103,7 +1103,7 @@ func walkJSONPath(t *testing.T, root interface{}, path []string) interface{} {
 		require.Truef(t, exists, "missing key %q at path; available keys: %v", key, keysOf(m))
 		cur = next
 	}
-	return stripKicsLines(cur)
+	return stripDDLines(cur)
 }
 
 func keysOf(m map[string]interface{}) []string {
@@ -1114,21 +1114,21 @@ func keysOf(m map[string]interface{}) []string {
 	return out
 }
 
-func stripKicsLines(v interface{}) interface{} {
+func stripDDLines(v interface{}) interface{} {
 	switch t := v.(type) {
 	case map[string]interface{}:
 		out := make(map[string]interface{}, len(t))
 		for k, val := range t {
-			if k == "_kics_lines" {
+			if k == "_dd_lines" {
 				continue
 			}
-			out[k] = stripKicsLines(val)
+			out[k] = stripDDLines(val)
 		}
 		return out
 	case []interface{}:
 		out := make([]interface{}, len(t))
 		for i, val := range t {
-			out[i] = stripKicsLines(val)
+			out[i] = stripDDLines(val)
 		}
 		return out
 	default:

@@ -83,7 +83,7 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 			expandCloudFormationForEach(mapDcp)
 		}
 		// set line information for root level objects
-		mapDcp["_kics_lines"] = getLines(value, 0)
+		mapDcp["_dd_lines"] = getLines(value, 0)
 
 		// place the payload in the Document struct
 		tmp, _ := json.Marshal(mapDcp)
@@ -278,7 +278,7 @@ func substituteForEachBindings(v interface{}, bindings map[string]string) interf
 
 func isPureRefNode(m map[string]interface{}) bool {
 	for k := range m {
-		if k != "Ref" && k != "_kics_lines" {
+		if k != "Ref" && k != "_dd_lines" {
 			return false
 		}
 	}
@@ -295,23 +295,23 @@ func replaceForEachVars(template string, bindings map[string]string) string {
 }
 
 func copyForEachLineInfo(resources map[string]interface{}, foreachKey, resourceKey string) {
-	lines, ok := resources["_kics_lines"].(map[string]*LineObject)
+	lines, ok := resources["_dd_lines"].(map[string]*LineObject)
 	if !ok {
 		return
 	}
-	source, ok := lines["_kics_"+foreachKey]
+	source, ok := lines["_dd_"+foreachKey]
 	if !ok {
 		return
 	}
-	lines["_kics_"+resourceKey] = source
+	lines["_dd_"+resourceKey] = source
 }
 
 func removeForEachLineInfo(resources map[string]interface{}, foreachKey string) {
-	lines, ok := resources["_kics_lines"].(map[string]*LineObject)
+	lines, ok := resources["_dd_lines"].(map[string]*LineObject)
 	if !ok {
 		return
 	}
-	delete(lines, "_kics_"+foreachKey)
+	delete(lines, "_dd_"+foreachKey)
 }
 
 /*
@@ -357,7 +357,7 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 			if val.Content[i].Kind == yaml.ScalarNode {
 				if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val.Content[i+1], visited, ignore); ok {
 					if m, ok := rewritten.(map[string]interface{}); ok {
-						m["_kics_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
+						m["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
 					}
 					tmp[val.Content[i].Value] = rewritten
 					continue
@@ -370,7 +370,7 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 					// unmarshall map value and get its line information
 					result := unmarshalWithDepth(ctx, val.Content[i+1], visited, ignore)
 					if tt, ok := result.(map[string]interface{}); ok {
-						tt["_kics_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
+						tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
 						tmp[val.Content[i].Value] = tt
 					} else {
 						tmp[val.Content[i].Value] = result
@@ -387,7 +387,7 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 					if val.Content[i+1].Alias != nil {
 						result := unmarshalWithDepth(ctx, val.Content[i+1].Alias, visited, ignore)
 						if tt, ok := result.(map[string]interface{}); ok {
-							tt["_kics_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
+							tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
 							utils.MergeMaps(tmp, tt)
 						}
 						if v, ok := result.(string); ok {
@@ -402,12 +402,12 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 }
 
 // getLines creates the map containing the line information for the yaml Node
-// def is the line to be used as "_kics__default"
+// def is the line to be used as "_dd__default"
 func getLines(val *yaml.Node, def int) map[string]*LineObject {
 	lineMap := make(map[string]*LineObject)
 
 	// line information map
-	lineMap["_kics__default"] = &LineObject{
+	lineMap["_dd__default"] = &LineObject{
 		Line: def,
 		Arr:  []map[string]*LineObject{},
 	}
@@ -434,7 +434,7 @@ func getLines(val *yaml.Node, def int) map[string]*LineObject {
 		}
 
 		// line information map of each key of the yaml Node
-		lineMap["_kics_"+val.Content[i].Value] = &LineObject{
+		lineMap["_dd_"+val.Content[i].Value] = &LineObject{
 			Line: val.Content[i].Line,
 			Arr:  lineArr,
 		}
@@ -455,7 +455,7 @@ func getSeqLines(val *yaml.Node, def int) map[string]*LineObject {
 	}
 
 	// create line information of array with its line and elements line information
-	lineMap["_kics__default"] = &LineObject{
+	lineMap["_dd__default"] = &LineObject{
 		Line: def,
 		Arr:  lineArr,
 	}

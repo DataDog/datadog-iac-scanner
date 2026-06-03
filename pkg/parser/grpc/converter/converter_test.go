@@ -63,24 +63,24 @@ func TestConvert(t *testing.T) {
 				"syntax": "proto3",
 				"package": "",
 				"messages": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"enum": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"services": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"imports": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"options": [],
-				"_kics_lines": {
-					"kics__default": {
-						"_kics_line":0
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line":0
 					},
-					"_kics_syntax": {
-						"_kics_line":2
+					"_dd_syntax": {
+						"_dd_line":2
 					}
 				}
 			}`,
@@ -104,57 +104,57 @@ func TestConvert(t *testing.T) {
 			`),
 			wantIgnoreLines: []int{3, 4, 6, 7, 9, 10, 11, 12},
 			want: `{
-				"_kics_lines": {
-					"_kics_syntax": {
-						"_kics_line": 2
+				"_dd_lines": {
+					"_dd_syntax": {
+						"_dd_line": 2
 					},
-					"kics__default": {
-						"_kics_line": 0
+					"_dd__default": {
+						"_dd_line": 0
 					}
 				},
 				"enum": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"imports": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"messages": {
-					"_kics_lines": {
-						"_kics_test": {
-							"_kics_line": 4
+					"_dd_lines": {
+						"_dd_test": {
+							"_dd_line": 4
 						}
 					},
 					"test": {
-						"_kics_lines": {
-							"_kics_Testing": {
-								"_kics_line": 5
+						"_dd_lines": {
+							"_dd_Testing": {
+								"_dd_line": 5
 							},
-							"_kics__default": {
-								"_kics_line": 4
+							"_dd__default": {
+								"_dd_line": 4
 							},
-							"_kics_payload": {
-								"_kics_line": 10
+							"_dd_payload": {
+								"_dd_line": 10
 							}
 						},
 						"enum": {
 							"Testing": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_arr": [
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_arr": [
 											{
 												"Reserved": {
-													"_kics_line": 7
+													"_dd_line": 7
 												}
 											}
 										],
-										"_kics_line": 5
+										"_dd_line": 5
 									}
 								},
 								"reserved": [
 									{
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 7
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 7
 											}
 										},
 										"fieldNames": [
@@ -167,31 +167,31 @@ func TestConvert(t *testing.T) {
 						},
 						"oneof": {
 							"payload": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 10
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 10
 									},
-									"_kics_json_payload": {
-										"_kics_line": 12
+									"_dd_json_payload": {
+										"_dd_line": 12
 									},
-									"_kics_protobuf_payload": {
-										"_kics_line": 11
+									"_dd_protobuf_payload": {
+										"_dd_line": 11
 									}
 								},
 								"fields": {
 									"json_payload": {
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 12
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 12
 											}
 										},
 										"sequence": 2,
 										"type": "string"
 									},
 									"protobuf_payload": {
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 11
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 11
 											}
 										},
 										"sequence": 1,
@@ -205,7 +205,7 @@ func TestConvert(t *testing.T) {
 				"options": [],
 				"package": "",
 				"services": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"syntax": "proto3"
 			}`,
@@ -220,44 +220,44 @@ func TestConvert(t *testing.T) {
 			`),
 			wantIgnoreLines: []int(nil),
 			want: `{
-				"_kics_lines": {
-					"_kics_syntax": {
-						"_kics_line": 2
+				"_dd_lines": {
+					"_dd_syntax": {
+						"_dd_line": 2
 					},
-					"kics__default": {
-						"_kics_line": 0
+					"_dd__default": {
+						"_dd_line": 0
 					}
 				},
 				"enum": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"imports": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"messages": {
-					"_kics_lines": {
-						"_kics_reserved": {
-							"_kics_line": 3
+					"_dd_lines": {
+						"_dd_reserved": {
+							"_dd_line": 3
 						}
 					},
 					"reserved": {
-						"_kics_lines": {
-							"_kics__default": {
-								"_kics_arr": [
+						"_dd_lines": {
+							"_dd__default": {
+								"_dd_arr": [
 									{
 										"Reserved": {
-											"_kics_line": 4
+											"_dd_line": 4
 										}
 									}
 								],
-								"_kics_line": 3
+								"_dd_line": 3
 							}
 						},
 						"reserved": [
 							{
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 4
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 4
 									}
 								},
 								"fieldNames": [
@@ -271,7 +271,7 @@ func TestConvert(t *testing.T) {
 				"options": [],
 				"package": "",
 				"services": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"syntax": "proto3"
 			}`,
@@ -305,27 +305,27 @@ func TestConvert(t *testing.T) {
 			}`),
 			wantIgnoreLines: []int(nil),
 			want: `{
-				"_kics_lines": {
-					"_kics_package": {
-						"_kics_line": 7
+				"_dd_lines": {
+					"_dd_package": {
+						"_dd_line": 7
 					},
-					"_kics_syntax": {
-						"_kics_line": 1
+					"_dd_syntax": {
+						"_dd_line": 1
 					},
-					"kics__default": {
-						"_kics_line": 0
+					"_dd__default": {
+						"_dd_line": 0
 					}
 				},
 				"enum": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"imports": {
-					"_kics_lines": {
-						"_kics_envoyproxy/protoc-gen-validate/validate/validate.proto": {
-							"_kics_line": 4
+					"_dd_lines": {
+						"_dd_envoyproxy/protoc-gen-validate/validate/validate.proto": {
+							"_dd_line": 4
 						},
-						"_kics_google/rpc/status.proto": {
-							"_kics_line": 5
+						"_dd_google/rpc/status.proto": {
+							"_dd_line": 5
 						}
 					},
 					"envoyproxy/protoc-gen-validate/validate/validate.proto": {},
@@ -333,31 +333,31 @@ func TestConvert(t *testing.T) {
 				},
 				"messages": {
 					"HelloReply": {
-						"_kics_lines": {
-							"_kics__default": {
-								"_kics_line": 22
+						"_dd_lines": {
+							"_dd__default": {
+								"_dd_line": 22
 							},
-							"_kics_message": {
-								"_kics_line": 23
+							"_dd_message": {
+								"_dd_line": 23
 							},
-							"_kics_status": {
-								"_kics_line": 24
+							"_dd_status": {
+								"_dd_line": 24
 							}
 						},
 						"field": {
 							"message": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 23
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 23
 									}
 								},
 								"sequence": 1,
 								"type": "string"
 							},
 							"status": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 24
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 24
 									}
 								},
 								"sequence": 2,
@@ -366,32 +366,32 @@ func TestConvert(t *testing.T) {
 						}
 					},
 					"HelloRequest": {
-						"_kics_lines": {
-							"_kics__default": {
-								"_kics_line": 18
+						"_dd_lines": {
+							"_dd__default": {
+								"_dd_line": 18
 							},
-							"_kics_name": {
-								"_kics_line": 19
+							"_dd_name": {
+								"_dd_line": 19
 							}
 						},
 						"field": {
 							"name": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 19
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 19
 									}
 								},
 								"options": [
 									{
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 19
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 19
 											}
 										},
 										"constant": {
-											"_kics_lines": {
-												"_kics__default": {
-													"_kics_line": 19
+											"_dd_lines": {
+												"_dd__default": {
+													"_dd_line": 19
 												}
 											},
 											"isString": true,
@@ -407,12 +407,12 @@ func TestConvert(t *testing.T) {
 							}
 						}
 					},
-					"_kics_lines": {
-						"_kics_HelloReply": {
-							"_kics_line": 22
+					"_dd_lines": {
+						"_dd_HelloReply": {
+							"_dd_line": 22
 						},
-						"_kics_HelloRequest": {
-							"_kics_line": 18
+						"_dd_HelloRequest": {
+							"_dd_line": 18
 						}
 					}
 				},
@@ -420,39 +420,39 @@ func TestConvert(t *testing.T) {
 				"package": "helloworld",
 				"services": {
 					"Greeter": {
-						"_kics_lines": {
-							"_kics_SayHello": {
-								"_kics_line": 10
+						"_dd_lines": {
+							"_dd_SayHello": {
+								"_dd_line": 10
 							},
-							"_kics__default": {
-								"_kics_line": 9
+							"_dd__default": {
+								"_dd_line": 9
 							}
 						},
 						"rpc": {
 							"SayHello": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 10
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 10
 									}
 								},
 								"options": [
 									{
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 11
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 11
 											}
 										},
 										"constant": {
-											"_kics_lines": {
-												"_kics__default": {
-													"_kics_line": 11
+											"_dd_lines": {
+												"_dd__default": {
+													"_dd_line": 11
 												}
 											},
 											"map": {
 												"body": {
-													"_kics_lines": {
-														"_kics__default": {
-															"_kics_line": 13
+													"_dd_lines": {
+														"_dd__default": {
+															"_dd_line": 13
 														}
 													},
 													"isString": true,
@@ -460,9 +460,9 @@ func TestConvert(t *testing.T) {
 													"source": "*"
 												},
 												"post": {
-													"_kics_lines": {
-														"_kics__default": {
-															"_kics_line": 12
+													"_dd_lines": {
+														"_dd__default": {
+															"_dd_line": 12
 														}
 													},
 													"isString": true,
@@ -472,9 +472,9 @@ func TestConvert(t *testing.T) {
 											},
 											"orderedMap": [
 												{
-													"_kics_lines": {
-														"_kics__default": {
-															"_kics_line": 12
+													"_dd_lines": {
+														"_dd__default": {
+															"_dd_line": 12
 														}
 													},
 													"isString": true,
@@ -483,9 +483,9 @@ func TestConvert(t *testing.T) {
 													"source": "/service/hello"
 												},
 												{
-													"_kics_lines": {
-														"_kics__default": {
-															"_kics_line": 13
+													"_dd_lines": {
+														"_dd__default": {
+															"_dd_line": 13
 														}
 													},
 													"isString": true,
@@ -503,9 +503,9 @@ func TestConvert(t *testing.T) {
 							}
 						}
 					},
-					"_kics_lines": {
-						"_kics_Greeter": {
-							"_kics_line": 9
+					"_dd_lines": {
+						"_dd_Greeter": {
+							"_dd_line": 9
 						}
 					}
 				},
@@ -535,60 +535,60 @@ func TestConvert(t *testing.T) {
 			}`),
 			wantIgnoreLines: []int(nil),
 			want: `{
-				"_kics_lines": {
-					"_kics_package": {
-						"_kics_line": 2
+				"_dd_lines": {
+					"_dd_package": {
+						"_dd_line": 2
 					},
-					"_kics_syntax": {
-						"_kics_line": 1
+					"_dd_syntax": {
+						"_dd_line": 1
 					},
-					"kics__default": {
-						"_kics_arr": [
+					"_dd__default": {
+						"_dd_arr": [
 							{
 								"java_package": {
-									"_kics_line": 4
+									"_dd_line": 4
 								}
 							}
 						],
-						"_kics_line": 0
+						"_dd_line": 0
 					}
 				},
 				"enum": {
 					"EnumAllowingAlias": {
-						"_kics_lines": {
-							"_kics_RUNNING": {
-								"_kics_line": 9
+						"_dd_lines": {
+							"_dd_RUNNING": {
+								"_dd_line": 9
 							},
-							"_kics_STARTED": {
-								"_kics_line": 8
+							"_dd_STARTED": {
+								"_dd_line": 8
 							},
-							"_kics_UNKNOWN": {
-								"_kics_line": 7
+							"_dd_UNKNOWN": {
+								"_dd_line": 7
 							},
-							"_kics__default": {
-								"_kics_line": 5
+							"_dd__default": {
+								"_dd_line": 5
 							},
-							"_kics_allow_alias": {
-								"_kics_line": 6
+							"_dd_allow_alias": {
+								"_dd_line": 6
 							}
 						},
 						"field": {
 							"RUNNING": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 9
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 9
 									}
 								},
 								"options": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 9
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 9
 										}
 									},
 									"constant": {
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 9
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 9
 											}
 										},
 										"isString": true,
@@ -601,9 +601,9 @@ func TestConvert(t *testing.T) {
 								"value": 2
 							},
 							"STARTED": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 8
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 8
 									}
 								},
 								"options": {
@@ -612,9 +612,9 @@ func TestConvert(t *testing.T) {
 								"value": 1
 							},
 							"UNKNOWN": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 7
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 7
 									}
 								},
 								"options": {
@@ -624,15 +624,15 @@ func TestConvert(t *testing.T) {
 						},
 						"options": {
 							"allow_alias": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 6
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 6
 									}
 								},
 								"constant": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 6
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 6
 										}
 									},
 									"source": "true"
@@ -641,16 +641,16 @@ func TestConvert(t *testing.T) {
 							}
 						}
 					},
-					"_kics_lines": {
-						"_kics_EnumAllowingAlias": {
-							"_kics_line": 5
+					"_dd_lines": {
+						"_dd_EnumAllowingAlias": {
+							"_dd_line": 5
 						}
 					}
 				},
 				"imports": {
-					"_kics_lines": {
-						"_kics_other.proto": {
-							"_kics_line": 3
+					"_dd_lines": {
+						"_dd_other.proto": {
+							"_dd_line": 3
 						}
 					},
 					"other.proto": {
@@ -659,40 +659,40 @@ func TestConvert(t *testing.T) {
 				},
 				"messages": {
 					"Outer": {
-						"_kics_lines": {
-							"_kics_(my_option).a": {
-								"_kics_line": 12
+						"_dd_lines": {
+							"_dd_(my_option).a": {
+								"_dd_line": 12
 							},
-							"_kics_Inner": {
-								"_kics_line": 13
+							"_dd_Inner": {
+								"_dd_line": 13
 							},
-							"_kics__default": {
-								"_kics_line": 11
+							"_dd__default": {
+								"_dd_line": 11
 							},
-							"_kics_enum_field": {
-								"_kics_line": 17
+							"_dd_enum_field": {
+								"_dd_line": 17
 							},
-							"_kics_inner_message": {
-								"_kics_line": 16
+							"_dd_inner_message": {
+								"_dd_line": 16
 							},
-							"_kics_my_map": {
-								"_kics_line": 18
+							"_dd_my_map": {
+								"_dd_line": 18
 							}
 						},
 						"field": {
 							"enum_field": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 17
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 17
 									}
 								},
 								"sequence": 3,
 								"type": "EnumAllowingAlias"
 							},
 							"inner_message": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 16
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 16
 									}
 								},
 								"repeated": true,
@@ -702,19 +702,19 @@ func TestConvert(t *testing.T) {
 						},
 						"inner_message": {
 							"Inner": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 13
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 13
 									},
-									"_kics_ival": {
-										"_kics_line": 14
+									"_dd_ival": {
+										"_dd_line": 14
 									}
 								},
 								"field": {
 									"ival": {
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 14
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 14
 											}
 										},
 										"sequence": 1,
@@ -726,9 +726,9 @@ func TestConvert(t *testing.T) {
 						"map": {
 							"my_map": {
 								"field": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 18
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 18
 										}
 									},
 									"sequence": 4,
@@ -739,15 +739,15 @@ func TestConvert(t *testing.T) {
 						},
 						"options": {
 							"(my_option).a": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 12
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 12
 									}
 								},
 								"constant": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 12
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 12
 										}
 									},
 									"source": "true"
@@ -756,23 +756,23 @@ func TestConvert(t *testing.T) {
 							}
 						}
 					},
-					"_kics_lines": {
-						"_kics_Outer": {
-							"_kics_line": 11
+					"_dd_lines": {
+						"_dd_Outer": {
+							"_dd_line": 11
 						}
 					}
 				},
 				"options": [
 					{
-						"_kics_lines": {
-							"_kics__default": {
-								"_kics_line": 4
+						"_dd_lines": {
+							"_dd__default": {
+								"_dd_line": 4
 							}
 						},
 						"constant": {
-							"_kics_lines": {
-								"_kics__default": {
-									"_kics_line": 4
+							"_dd_lines": {
+								"_dd__default": {
+									"_dd_line": 4
 								}
 							},
 							"isString": true,
@@ -784,7 +784,7 @@ func TestConvert(t *testing.T) {
 				],
 				"package": "Cx",
 				"services": {
-					"_kics_lines": {}
+					"_dd_lines": {}
 				},
 				"syntax": "proto3"
 			}`,

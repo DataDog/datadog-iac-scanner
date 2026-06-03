@@ -30,30 +30,30 @@ block "label_one" "label_two" {
 	"block": {
 		"label_one": {
 			"label_two": {
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 2
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 2
 					},
-					"_kics_nested_block": {
-						"_kics_line": 3
+					"_dd_nested_block": {
+						"_dd_line": 3
 					}
 				},
 				"nested_block": {
-					"_kics_lines": {
-						"_kics__default": {
-							"_kics_line": 3
+					"_dd_lines": {
+						"_dd__default": {
+							"_dd_line": 3
 						}
 					}
 				}
 			}
 		}
 	},
-	"_kics_lines": {
-		"_kics__default": {
-			"_kics_line": 0
+	"_dd_lines": {
+		"_dd__default": {
+			"_dd_line": 0
 		},
-		"_kics_block": {
-			"_kics_line": 2
+		"_dd_block": {
+			"_dd_line": 2
 		}
 	}
 }`
@@ -86,58 +86,58 @@ block "label_one" "label_two" {
 }`
 
 	expected := `{
-		"_kics_lines": {
-			"_kics__default": {
-				"_kics_line": 0
+		"_dd_lines": {
+			"_dd__default": {
+				"_dd_line": 0
 			},
-			"_kics_block": {
-				"_kics_line": 2
+			"_dd_block": {
+				"_dd_line": 2
 			}
 		},
 		"block": {
 			"label_one": {
 				"label_two": {
-					"_kics_lines": {
-						"_kics__default": {
-							"_kics_line": 2
+					"_dd_lines": {
+						"_dd__default": {
+							"_dd_line": 2
 						},
-						"_kics_default": {
-							"_kics_arr": [
+						"_dd_default": {
+							"_dd_arr": [
 								{
-									"_kics__default": {
-										"_kics_line": 5
+									"_dd__default": {
+										"_dd_line": 5
 									},
-									"_kics_attribute": {
-										"_kics_line": 6
+									"_dd_attribute": {
+										"_dd_line": 6
 									},
-									"_kics_id": {
-										"_kics_line": 5
+									"_dd_id": {
+										"_dd_line": 5
 									}
 								},
 								{
-									"_kics__default": {
-										"_kics_line": 9
+									"_dd__default": {
+										"_dd_line": 9
 									},
-									"_kics_attribute": {
-										"_kics_line": 10
+									"_dd_attribute": {
+										"_dd_line": 10
 									},
-									"_kics_id": {
-										"_kics_line": 9
+									"_dd_id": {
+										"_dd_line": 9
 									}
 								},
 								{
-									"_kics__default": {
-										"_kics_line": 13
+									"_dd__default": {
+										"_dd_line": 13
 									},
-									"_kics_attribute": {
-										"_kics_line": 14
+									"_dd_attribute": {
+										"_dd_line": 14
 									},
-									"_kics_id": {
-										"_kics_line": 13
+									"_dd_id": {
+										"_dd_line": 13
 									}
 								}
 							],
-							"_kics_line": 3
+							"_dd_line": 3
 						}
 					},
 					"default": [
@@ -185,22 +185,22 @@ block "label_one" {
 		"block": {
 			"label_one": {
 				"attribute": "value",
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 2
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 2
 					},
-					"_kics_attribute": {
-						"_kics_line": 3
+					"_dd_attribute": {
+						"_dd_line": 3
 					}
 				}
 			}
 		},
-		"_kics_lines": {
-			"_kics__default": {
-				"_kics_line": 0
+		"_dd_lines": {
+			"_dd__default": {
+				"_dd_line": 0
 			},
-			"_kics_block": {
-				"_kics_line": 2
+			"_dd_block": {
+				"_dd_line": 2
 			}
 		}
 	}`
@@ -228,35 +228,35 @@ block "label_one" {
 		"block": {
 			"label_one": [
 				{
-					"_kics_lines": {
-						"_kics__default": {
-							"_kics_line": 2
+					"_dd_lines": {
+						"_dd__default": {
+							"_dd_line": 2
 						},
-						"_kics_attribute": {
-							"_kics_line": 3
+						"_dd_attribute": {
+							"_dd_line": 3
 						}
 					},
 					"attribute": "value"
 				},
 				{
 					"attribute": "value_two",
-					"_kics_lines": {
-						"_kics__default": {
-							"_kics_line": 5
+					"_dd_lines": {
+						"_dd__default": {
+							"_dd_line": 5
 						},
-						"_kics_attribute": {
-							"_kics_line": 6
+						"_dd_attribute": {
+							"_dd_line": 6
 						}
 					}
 				}
 			]
 		},
-		"_kics_lines": {
-			"_kics__default": {
-				"_kics_line": 0
+		"_dd_lines": {
+			"_dd__default": {
+				"_dd_line": 0
 			},
-			"_kics_block": {
-				"_kics_line": 5
+			"_dd_block": {
+				"_dd_line": 5
 			}
 		}
 	}`
@@ -492,25 +492,25 @@ block "label_one" {
 }
 `,
 			want: `{
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 0
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 0
 				  },
-				  "_kics_block": {
-					"_kics_line": 2
+				  "_dd_block": {
+					"_dd_line": 2
 				  }
 				},
 				"block": {
 				  "label_one": {
-					"_kics_lines": {
-					  "_kics__default": {
-						"_kics_line": 2
+					"_dd_lines": {
+					  "_dd__default": {
+						"_dd_line": 2
 					  },
-					  "_kics_policy": {
-						"_kics_line": 3
+					  "_dd_policy": {
+						"_dd_line": 3
 					  },
-					  "_kics_some_number": {
-						"_kics_line": 6
+					  "_dd_some_number": {
+						"_dd_line": 6
 					  }
 					},
 					"policy": "{\"Id\":\"id\"}",
@@ -532,25 +532,25 @@ block "label_one" {
 }
 `,
 			want: `{
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 0
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 0
 				  },
-				  "_kics_block": {
-					"_kics_line": 2
+				  "_dd_block": {
+					"_dd_line": 2
 				  }
 				},
 				"block": {
 				  "label_one": {
-					"_kics_lines": {
-					  "_kics__default": {
-						"_kics_line": 2
+					"_dd_lines": {
+					  "_dd__default": {
+						"_dd_line": 2
 					  },
-					  "_kics_policy": {
-						"_kics_line": 3
+					  "_dd_policy": {
+						"_dd_line": 3
 					  },
-					  "_kics_some_number": {
-						"_kics_line": 6
+					  "_dd_some_number": {
+						"_dd_line": 6
 					  }
 					},
 					"policy": "{\"Id\":\"aws.meuId\"}",
@@ -587,42 +587,42 @@ block "label_one" {
 						"actions": [
 						  "secretsmanager:GetSecretValue"
 						],
-						"_kics_lines": {
-						  "_kics__default": {
-							"_kics_line": 2
+						"_dd_lines": {
+						  "_dd__default": {
+							"_dd_line": 2
 						  },
-						  "_kics_actions": {
-							"_kics_line": 3,
-							"_kics_arr": [
+						  "_dd_actions": {
+							"_dd_line": 3,
+							"_dd_arr": [
 							  {
-								"_kics__default": {
-								  "_kics_line": 4
+								"_dd__default": {
+								  "_dd_line": 4
 								}
 							  }
 							]
 						  },
-						  "_kics_resources": {
-							"_kics_line": 6
+						  "_dd_resources": {
+							"_dd_line": 6
 						  }
 						}
 					  },
-					  "_kics_lines": {
-						"_kics__default": {
-						  "_kics_line": 1
+					  "_dd_lines": {
+						"_dd__default": {
+						  "_dd_line": 1
 						},
-						"_kics_statement": {
-						  "_kics_line": 2
+						"_dd_statement": {
+						  "_dd_line": 2
 						}
 					  }
 					}
 				  }
 				},
-				"_kics_lines": {
-				  "_kics__default": {
-					"_kics_line": 0
+				"_dd_lines": {
+				  "_dd__default": {
+					"_dd_line": 0
 				  },
-				  "_kics_data": {
-					"_kics_line": 1
+				  "_dd_data": {
+					"_dd_line": 1
 				  }
 				}
 			  }
@@ -644,21 +644,21 @@ block "label_one" {
 			{
   "locals": {
     "namespace_secrets": "${{ for n in [\"string1\", \"string2\", \"string3\"] : \"${n}_default\" => {\n    \"roles/secretmanager.secretAccessor\" = [\n      \"serviceAccount:${module.test[local.name].email}\",\n    ]\n    }\n  }}",
-    "_kics_lines": {
-      "_kics__default": {
-        "_kics_line": 1
+    "_dd_lines": {
+      "_dd__default": {
+        "_dd_line": 1
       },
-      "_kics_namespace_secrets": {
-        "_kics_line": 2
+      "_dd_namespace_secrets": {
+        "_dd_line": 2
       }
     }
   },
-  "_kics_lines": {
-    "_kics__default": {
-      "_kics_line": 0
+  "_dd_lines": {
+    "_dd__default": {
+      "_dd_line": 0
     },
-    "_kics_locals": {
-      "_kics_line": 1
+    "_dd_locals": {
+      "_dd_line": 1
     }
   }
 }
@@ -759,67 +759,67 @@ variable "region" {
 				"x": -10,
 				"squoted": "'quoted'",
 				"hyphen-test": 3,
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 2
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 2
 					},
-					"_kics_arr": {
-						"_kics_line": 6,
-						"_kics_arr": [
+					"_dd_arr": {
+						"_dd_line": 6,
+						"_dd_arr": [
 							{
-								"_kics__default": {
-									"_kics_line": 6
+								"_dd__default": {
+									"_dd_line": 6
 								}
 							},
 							{
-								"_kics__default": {
-									"_kics_line": 6
+								"_dd__default": {
+									"_dd_line": 6
 								}
 							},
 							{
-								"_kics__default": {
-									"_kics_line": 6
+								"_dd__default": {
+									"_dd_line": 6
 								}
 							},
 							{
-								"_kics__default": {
-									"_kics_line": 6
+								"_dd__default": {
+									"_dd_line": 6
 								}
 							}
 						]
 					},
-					"_kics_hyphen-test": {
-						"_kics_line": 7
+					"_dd_hyphen-test": {
+						"_dd_line": 7
 					},
-					"_kics_quoted": {
-						"_kics_line": 10
+					"_dd_quoted": {
+						"_dd_line": 10
 					},
-					"_kics_squoted": {
-						"_kics_line": 11
+					"_dd_squoted": {
+						"_dd_line": 11
 					},
-					"_kics_temp": {
-						"_kics_line": 8
+					"_dd_temp": {
+						"_dd_line": 8
 					},
-					"_kics_temp2": {
-						"_kics_line": 9
+					"_dd_temp2": {
+						"_dd_line": 9
 					},
-					"_kics_test1": {
-						"_kics_line": 4
+					"_dd_test1": {
+						"_dd_line": 4
 					},
-					"_kics_test2": {
-						"_kics_line": 5
+					"_dd_test2": {
+						"_dd_line": 5
 					},
-					"_kics_test3": {
-						"_kics_line": 3
+					"_dd_test3": {
+						"_dd_line": 3
 					},
-					"_kics_x": {
-						"_kics_line": 12
+					"_dd_x": {
+						"_dd_line": 12
 					},
-					"_kics_y": {
-						"_kics_line": 13
+					"_dd_y": {
+						"_dd_line": 13
 					},
-					"_kics_z": {
-						"_kics_line": 14
+					"_dd_z": {
+						"_dd_line": 14
 					}
 				},
 				"quoted": "\"quoted\"",
@@ -841,32 +841,32 @@ variable "region" {
 					"a.b.c[\"hi\"][3].*": 3,
 					"loop": "This has a for loop: %{for x in local.arr}x,%{endfor}"
 				},
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 16
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 16
 					},
-					"_kics_other": {
-						"_kics_line": 17
+					"_dd_other": {
+						"_dd_line": 17
 					}
 				}
 			},
 			{
 				"heredoc2": "\t\tAnother heredoc, that\n\t\tdoesn't remove indentation\n\t\t${local.other.3}\n\t\t%{if true ? false : true}\"gotcha\"\\n%{else}4%{endif}\n",` + //nolint
-		`"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 28
+		`"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 28
 					},
-					"_kics_cond": {
-						"_kics_line": 34
+					"_dd_cond": {
+						"_dd_line": 34
 					},
-					"_kics_heredoc": {
-						"_kics_line": 29
+					"_dd_heredoc": {
+						"_dd_line": 29
 					},
-					"_kics_heredoc2": {
-						"_kics_line": 35
+					"_dd_heredoc2": {
+						"_dd_line": 35
 					},
-					"_kics_simple": {
-						"_kics_line": 33
+					"_dd_simple": {
+						"_dd_line": 33
 					}
 				},
 				"heredoc": "This is a heredoc template.\nIt references ${local.other.3}\n",
@@ -878,21 +878,21 @@ variable "region" {
 			"terraform_remote_state": {
 				"remote": {
 					"some_number": 3,
-					"_kics_lines": {
-						"_kics__default": {
-							"_kics_line": 42
+					"_dd_lines": {
+						"_dd__default": {
+							"_dd_line": 42
 						},
-						"_kics_backend": {
-							"_kics_line": 43
+						"_dd_backend": {
+							"_dd_line": 43
 						},
-						"_kics_config": {
-							"_kics_line": 44
+						"_dd_config": {
+							"_dd_line": 44
 						},
-						"_kics_policy": {
-							"_kics_line": 50
+						"_dd_policy": {
+							"_dd_line": 50
 						},
-						"_kics_some_number": {
-							"_kics_line": 53
+						"_dd_some_number": {
+							"_dd_line": 53
 						}
 					},
 					"backend": "s3",
@@ -908,36 +908,36 @@ variable "region" {
 		},
 		"variable": {
 			"profile": {
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 55
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 55
 					}
 				}
 			},
 			"region": {
 				"default": "us-east-1",
-				"_kics_lines": {
-					"_kics__default": {
-						"_kics_line": 56
+				"_dd_lines": {
+					"_dd__default": {
+						"_dd_line": 56
 					},
-					"_kics_default": {
-						"_kics_line": 57
+					"_dd_default": {
+						"_dd_line": 57
 					}
 				}
 			}
 		},
-		"_kics_lines": {
-			"_kics__default": {
-				"_kics_line": 0
+		"_dd_lines": {
+			"_dd__default": {
+				"_dd_line": 0
 			},
-			"_kics_data": {
-				"_kics_line": 42
+			"_dd_data": {
+				"_dd_line": 42
 			},
-			"_kics_locals": {
-				"_kics_line": 28
+			"_dd_locals": {
+				"_dd_line": 28
 			},
-			"_kics_variable": {
-				"_kics_line": 56
+			"_dd_variable": {
+				"_dd_line": 56
 			}
 		}
 	}`
