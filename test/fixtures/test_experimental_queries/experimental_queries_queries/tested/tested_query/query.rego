@@ -1,11 +1,11 @@
-package Cx
+package datadog
 
 import data.generic.ansible as ansLib
 import data.generic.common as common_lib
 
 modules := {"community.aws.aws_api_gateway", "aws_api_gateway"}
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	task := ansLib.tasks[id][t]
 	api_gateway := task[modules[m]]
 	ansLib.checkState(api_gateway)
@@ -23,7 +23,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	task := ansLib.tasks[id][t]
 	api_gateway := task[modules[m]]
 	ansLib.checkState(api_gateway)

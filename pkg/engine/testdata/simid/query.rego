@@ -1,8 +1,8 @@
-package Cx
+package datadog
 
 # Minimal rule for TestInspectorSimilarityID: fires on every aws_instance resource.
 # Deliberately avoids library imports so it works with the stubQueriesSource library stub.
-CxPolicy[result] {
+DatadogPolicy[result] {
 	resource := input.document[i].resource.aws_instance[name]
 	result := {
 		"documentId": input.document[i].id,

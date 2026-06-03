@@ -1,9 +1,9 @@
-package Cx
+package datadog
 
 import data.generic.cloudformation as cf_lib
 import data.generic.common as common_lib
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	docs := input.document[i]
 	[path, Resources] := walk(docs)
 	resource := Resources[name]

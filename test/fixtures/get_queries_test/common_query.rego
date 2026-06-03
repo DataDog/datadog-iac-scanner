@@ -1,6 +1,6 @@
-package Cx
+package datadog
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	input.document[i]
 
 	result := {

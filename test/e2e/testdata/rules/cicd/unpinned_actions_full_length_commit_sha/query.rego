@@ -1,9 +1,9 @@
-package Cx
+package datadog
 
 import data.generic.cicd as cicd_lib
 import data.generic.common as common_lib
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	doc := input.document[i]
 	cicd_lib.check_provider(doc) == "github"
 
@@ -24,7 +24,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	doc := input.document[i]
 	cicd_lib.check_provider(doc) == "github"
 
@@ -46,7 +46,7 @@ CxPolicy[result] {
 }
 
 # Composite action: `uses` references under `runs.steps[*]` must also be SHA-pinned.
-CxPolicy[result] {
+DatadogPolicy[result] {
 	doc := input.document[i]
 	cicd_lib.check_provider(doc) == "github"
 	

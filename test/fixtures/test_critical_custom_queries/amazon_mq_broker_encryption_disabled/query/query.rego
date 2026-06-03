@@ -1,9 +1,9 @@
-package Cx
+package datadog
 
 import data.generic.common as common_lib
 import data.generic.cloudformation as cf_lib
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	document := input.document
 	resource = document[i].Resources[name]
 	resource.Type == "AWS::AmazonMQ::Broker"

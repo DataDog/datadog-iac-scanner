@@ -1,6 +1,6 @@
-package Cx
+package datadog
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 	resource := input.document[i].resource.aws_s3_bucket[name]
 	role = "authenticated-read"
 	resource.acl == role

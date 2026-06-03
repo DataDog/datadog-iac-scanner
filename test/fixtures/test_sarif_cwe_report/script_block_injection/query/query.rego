@@ -1,8 +1,8 @@
-package Cx
+package datadog
 
 import data.generic.common as common_lib
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["pull_request_target"]
 
@@ -36,7 +36,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["issues"]
 
@@ -64,7 +64,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["issue_comment"]
 	
@@ -93,7 +93,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["discussion"]
 	
@@ -121,7 +121,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["discussion_comment"]
 	
@@ -150,7 +150,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["workflow_run"]
 	
@@ -182,7 +182,7 @@ CxPolicy[result] {
 	}
 }
 
-CxPolicy[result] {
+DatadogPolicy[result] {
 
 	input.document[i].on["author"]
 	
