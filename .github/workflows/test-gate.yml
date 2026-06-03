@@ -41,7 +41,7 @@ jobs:
         id: engine-tests
         run: |
           echo "🔍 Running critical tests..."
-          gotestsum --format testname -- -v -short -timeout 15m ./pkg/engine ./pkg/analyzer ./pkg/parser ./pkg/parser/terraform/... ./pkg/parser/yaml ./pkg/engine/source ./pkg/scan ./pkg/scanner ./pkg/builder/... ./pkg/kics ./test/e2e ./pkg/utils ./test/... ./pkg/report/model
+          gotestsum --format testname -- -v -short -timeout 15m ./pkg/engine ./pkg/runner ./pkg/analyzer ./pkg/parser ./pkg/parser/terraform/... ./pkg/parser/yaml ./pkg/engine/source ./pkg/scan ./pkg/scanner ./pkg/builder/... ./test/e2e ./pkg/utils ./test/... ./pkg/report/model
           echo "✅ All critical tests passed!"
 
       - name: Comment on PR (on failure)

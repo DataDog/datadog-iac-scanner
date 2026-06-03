@@ -439,4 +439,3 @@ func Test_PreparePaths(t *testing.T) {
 		})
 	}
 }
-
