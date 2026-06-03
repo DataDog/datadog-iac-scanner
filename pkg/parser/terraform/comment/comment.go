@@ -24,9 +24,9 @@ func (c *comment) position() hcl.Pos {
 // value returns the value of a comment
 func (c *comment) value() (value model.CommentCommand) {
 	comment := strings.ToLower(string(c.Bytes))
-	// check if we are working with kics command
-	if model.KICSCommentRgxp.MatchString(comment) {
-		comment = model.KICSCommentRgxp.ReplaceAllString(comment, "")
+	// check if we are working with a dd-iac-scan inline suppression comment
+	if model.DDCommentRgxp.MatchString(comment) {
+		comment = model.DDCommentRgxp.ReplaceAllString(comment, "")
 		comment = strings.Trim(comment, "\n")
 		commands := strings.Split(strings.Trim(comment, "\r"), " ")
 		value = model.ProcessCommands(commands)
@@ -118,7 +118,7 @@ func checkBlockRange(block *hcl.Block, position hcl.Pos) bool {
 //     COMMENT PARSER       //
 // ///////////////////////////
 
-// ParseComments parses the comments and returns the kics commands
+// ParseComments parses the comments and returns the dd-iac-scan commands
 func ParseComments(src []byte, filename string) (Ignore, error) {
 	comments, diags := hclsyntax.LexConfig(src, filename, hcl.Pos{Line: 0, Column: 0})
 	if diags != nil && diags.HasErrors() {
@@ -130,7 +130,7 @@ func ParseComments(src []byte, filename string) (Ignore, error) {
 	return ig, nil
 }
 
-// processTokens goes over the tokens and returns the kics commands
+// processTokens goes over the tokens and returns the dd-iac-scan commands
 func processTokens(tokens hclsyntax.Tokens) (ig Ignore) {
 	ignoreLines := make([]hcl.Pos, 0)
 	ignoreBlocks := make([]hcl.Pos, 0)
@@ -152,7 +152,7 @@ func processTokens(tokens hclsyntax.Tokens) (ig Ignore) {
 	return ig
 }
 
-// processComment analyzes the comment to determine which type of kics command the comment is
+// processComment analyzes the comment to determine which type of dd-iac-scan command it is
 func processComment(comment *comment, tokenToIgnore *comment,
 	ignoreLine, ignoreBlock, ignoreComments []hcl.Pos) (ignoreLineR, ignoreBlockR, ignoreCommentsR []hcl.Pos) {
 	ignoreLineR = ignoreLine
@@ -161,13 +161,13 @@ func processComment(comment *comment, tokenToIgnore *comment,
 
 	switch comment.value() {
 	case model.IgnoreLine:
-		// comment is of type kics ignore-line
+		// comment is of type dd-iac-scan ignore-line
 		ignoreLineR = append(ignoreLineR, tokenToIgnore.position(), hcl.Pos{Line: comment.position().Line - 1})
 	case model.IgnoreBlock:
-		// comment is of type kics ignore-block
+		// comment is of type dd-iac-scan ignore-block
 		ignoreBlockR = append(ignoreBlockR, tokenToIgnore.position(), hcl.Pos{Line: comment.position().Line - 1})
 	default:
-		// comment is not of type kics ignore
+		// comment is not of type dd-iac-scan ignore
 		ignoreCommentsR = append(ignoreCommentsR, hcl.Pos{Line: comment.position().Line - 1})
 		return
 	}

@@ -13,7 +13,7 @@ import (
 )
 
 func getKicsIgnore(comment string) string {
-	commentLower := model.KICSCommentRgxp.ReplaceAllString(strings.ToLower(comment), "")
+	commentLower := model.DDCommentRgxp.ReplaceAllString(strings.ToLower(comment), "")
 	commentLower = strings.Trim(commentLower, "\r")
 	commentLower = strings.Trim(commentLower, "\n")
 
@@ -24,7 +24,7 @@ func (i *Info) getIgnoreLines(comment *syntax.Comment) {
 	// get normal comments
 	i.IgnoreLines = append(i.IgnoreLines, int(comment.Hash.Line()))
 
-	if model.KICSCommentRgxp.MatchString(comment.Text) {
+	if model.DDCommentRgxp.MatchString(comment.Text) {
 		kicsIgnore := getKicsIgnore(comment.Text)
 
 		switch model.CommentCommand(kicsIgnore) {
@@ -43,7 +43,7 @@ func (i *Info) getIgnoreBlockLines(comments []syntax.Comment, start, end int) {
 		comment := comments[c]
 
 		// get dd-iac-scan ignore-block related to command
-		if model.KICSCommentRgxp.MatchString(comment.Text) {
+		if model.DDCommentRgxp.MatchString(comment.Text) {
 			kicsIgnore := getKicsIgnore(comment.Text)
 
 			if model.CommentCommand(kicsIgnore) == model.IgnoreBlock {

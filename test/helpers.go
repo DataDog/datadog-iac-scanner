@@ -480,7 +480,7 @@ var SummaryMockCriticalFullPathASFF = model.Summary{
 	},
 }
 
-// SummaryMock a summary to be used without running kics scan
+// SummaryMock a summary to be used without running a scan
 var SummaryMock = model.Summary{
 	Counters: model.Counters{
 		ScannedFiles:           1,
@@ -585,7 +585,7 @@ var SimpleSummaryMockAsff = model.Summary{
 	},
 }
 
-// ComplexSummaryMock a summary with more results to be used without running kics scan
+// ComplexSummaryMock a summary with more results to be used without running a scan
 var ComplexSummaryMock = model.Summary{
 	Counters: model.Counters{
 		ScannedFiles:           2,

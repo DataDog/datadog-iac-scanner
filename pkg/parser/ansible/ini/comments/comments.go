@@ -13,7 +13,7 @@ import (
 )
 
 func getKicsIgnore(comment string) string {
-	commentLower := model.KICSCommentRgxp.ReplaceAllString(strings.ToLower(comment), "")
+	commentLower := model.DDCommentRgxp.ReplaceAllString(strings.ToLower(comment), "")
 	commentLower = strings.Trim(commentLower, "\r")
 	commentLower = strings.Trim(commentLower, "\n")
 	return commentLower
@@ -48,7 +48,7 @@ func GetIgnoreLines(lines []string) []int {
 	comment := regexp.MustCompile(`^[#;]`)
 
 	for i, line := range lines {
-		if model.KICSCommentRgxp.MatchString(line) {
+		if model.DDCommentRgxp.MatchString(line) {
 			kicsIgnore := getKicsIgnore(line)
 
 			switch model.CommentCommand(kicsIgnore) {

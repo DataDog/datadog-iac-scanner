@@ -43,7 +43,7 @@ var Base64EncodeFunc = function.New(&function.Spec{
 	},
 })
 
-// TerraformFuncs contains all functions, if KICS has to override a function
+// TerraformFuncs contains all functions, overriding any conflicting built-ins
 // it should create a file in this package and add/change this function key here
 var TerraformFuncs = map[string]function.Function{
 	"abs":             stdlib.AbsoluteFunc,

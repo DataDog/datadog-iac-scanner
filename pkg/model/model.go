@@ -90,12 +90,12 @@ var (
 )
 
 var (
-	// KICSCommentRgxp is the regexp to identify if a comment is a KICS comment
-	KICSCommentRgxp = regexp.MustCompile(`(^|\n)((/{2})|#|;)*\s*dd-iac-scan\s*`)
-	// KICSGetContentCommentRgxp to gets the kics comment on the hel case
-	KICSGetContentCommentRgxp = regexp.MustCompile(`(^|\n)((/{2})|#|;)*\s*dd-iac-scan([^\n]*)\n`)
-	// KICSCommentRgxpYaml is the regexp to identify if the comment has KICS comment at the end of the comment in YAML
-	KICSCommentRgxpYaml = regexp.MustCompile(`((/{2})|#)*\s*dd-iac-scan\s*(ignore-line|ignore-block)\s*\n*$`)
+	// DDCommentRgxp identifies dd-iac-scan inline suppression comments
+	DDCommentRgxp = regexp.MustCompile(`(^|\n)((/{2})|#|;)*\s*dd-iac-scan\s*`)
+	// DDGetContentCommentRgxp extracts the dd-iac-scan comment content
+	DDGetContentCommentRgxp = regexp.MustCompile(`(^|\n)((/{2})|#|;)*\s*dd-iac-scan([^\n]*)\n`)
+	// DDCommentRgxpYaml identifies dd-iac-scan suppression comments in YAML
+	DDCommentRgxpYaml = regexp.MustCompile(`((/{2})|#)*\s*dd-iac-scan\s*(ignore-line|ignore-block)\s*\n*$`)
 )
 
 // VulnerabilityLines is the representation of the found line for issue
