@@ -12,8 +12,8 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-func getKicsIgnore(comment string) string {
-	commentLower := model.KICSCommentRgxp.ReplaceAllString(strings.ToLower(comment), "")
+func getIgnoreCommand(comment string) string {
+	commentLower := model.DDCommentRgxp.ReplaceAllString(strings.ToLower(comment), "")
 	commentLower = strings.Trim(commentLower, "\r")
 	commentLower = strings.Trim(commentLower, "\n")
 
@@ -24,10 +24,10 @@ func (i *Info) getIgnoreLines(comment *syntax.Comment) {
 	// get normal comments
 	i.IgnoreLines = append(i.IgnoreLines, int(comment.Hash.Line()))
 
-	if model.KICSCommentRgxp.MatchString(comment.Text) {
-		kicsIgnore := getKicsIgnore(comment.Text)
+	if model.DDCommentRgxp.MatchString(comment.Text) {
+		ignoreCmd := getIgnoreCommand(comment.Text)
 
-		switch model.CommentCommand(kicsIgnore) {
+		switch model.CommentCommand(ignoreCmd) {
 		case model.IgnoreLine:
 			// get dd-iac-scan ignore-line
 			i.IgnoreLines = append(i.IgnoreLines, int(comment.Hash.Line())+1)
@@ -43,10 +43,10 @@ func (i *Info) getIgnoreBlockLines(comments []syntax.Comment, start, end int) {
 		comment := comments[c]
 
 		// get dd-iac-scan ignore-block related to command
-		if model.KICSCommentRgxp.MatchString(comment.Text) {
-			kicsIgnore := getKicsIgnore(comment.Text)
+		if model.DDCommentRgxp.MatchString(comment.Text) {
+			ignoreCmd := getIgnoreCommand(comment.Text)
 
-			if model.CommentCommand(kicsIgnore) == model.IgnoreBlock {
+			if model.CommentCommand(ignoreCmd) == model.IgnoreBlock {
 				if int(comment.Hash.Line()) == start-1 {
 					i.IgnoreLines = append(i.IgnoreLines, model.Range(start, end)...)
 					i.IgnoreBlockLines = append(i.IgnoreBlockLines, model.Range(start, end)...)

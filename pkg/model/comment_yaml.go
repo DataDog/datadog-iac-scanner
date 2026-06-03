@@ -122,7 +122,7 @@ func processRegularLine(comment string, content *yaml.Node, position int, isFoot
 
 	// comment is not a foot comment
 
-	if KICSCommentRgxpYaml.MatchString(comment) {
+	if DDCommentRgxpYaml.MatchString(comment) {
 		// has dd-iac-scan ignore at the end of the comment
 		linesIgnore = append(linesIgnore, line)
 	}
@@ -188,14 +188,14 @@ func getNodeLastLine(node *yaml.Node) (lastLine int) {
 func (c *comment) value() (value CommentCommand) {
 	comment := strings.ToLower(string(*c))
 	if isHelm(comment) {
-		res := KICSGetContentCommentRgxp.FindString(comment)
+		res := DDGetContentCommentRgxp.FindString(comment)
 		if res != "" {
 			comment = res
 		}
 	}
-	// check if we are working with kics command
-	if KICSCommentRgxp.MatchString(comment) {
-		comment = KICSCommentRgxp.ReplaceAllString(comment, "")
+	// check if we are working with a dd-iac-scan command
+	if DDCommentRgxp.MatchString(comment) {
+		comment = DDCommentRgxp.ReplaceAllString(comment, "")
 		comment = strings.Trim(comment, "\n")
 		commands := strings.Split(strings.Trim(comment, "\r"), " ")
 		value = ProcessCommands(commands)

@@ -26,7 +26,7 @@ type ExtractedPath struct {
 }
 
 // GetKuberneterSources uses Kubernetes API to download runtime resources
-// After Downloaded files kics scan the files as normal local files
+// After downloading, scan the files as normal local files
 func GetKuberneterSources(ctx context.Context, source []string, destinationPath string) (ExtractedPath, error) {
 	contextLogger := logger.FromContext(ctx)
 	extrStruct := ExtractedPath{

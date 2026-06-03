@@ -582,8 +582,8 @@ func (j *JSONProto) processCommentProto(comment *proto.Comment, lineStart int, e
 	var value model.CommentCommand
 	for _, line := range comment.Lines {
 		comment := strings.ToLower(line)
-		if model.KICSCommentRgxp.MatchString(comment) {
-			comment = model.KICSCommentRgxp.ReplaceAllString(comment, "")
+		if model.DDCommentRgxp.MatchString(comment) {
+			comment = model.DDCommentRgxp.ReplaceAllString(comment, "")
 			comment = strings.Trim(comment, "\n")
 			commands := strings.Split(strings.Trim(comment, "\r"), " ")
 			value = model.ProcessCommands(commands)

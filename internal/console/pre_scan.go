@@ -6,7 +6,7 @@
 package console
 
 import (
-	_ "embed" // Embed kics CLI img and scan-flags
+	_ "embed" // Embed scanner CLI img and scan-flags
 	"fmt"
 	"runtime"
 	"strings"

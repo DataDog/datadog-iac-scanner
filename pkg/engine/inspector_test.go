@@ -60,7 +60,7 @@ type inspectorOpts struct {
 	useOldSeverities    bool
 	needsLog            bool
 	numWorkers          int
-	kicsComputeNewSimID bool
+	computeNewSimID bool
 	vb                  VulnerabilityBuilder
 	tracker             Tracker
 }
@@ -112,7 +112,7 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.useOldSeverities,
 		opts.needsLog,
 		opts.numWorkers,
-		opts.kicsComputeNewSimID,
+		opts.computeNewSimID,
 		featureflags.NewLocalEvaluator(),
 	)
 	require.NoError(t, err)
@@ -239,7 +239,7 @@ func TestNewInspector(t *testing.T) {
 		queries:             queries,
 		tracker:             track,
 		needsLog:            true,
-		kicsComputeNewSimID: true,
+		computeNewSimID: true,
 	})
 
 	require.NotNil(t, ins.vb, "vulnerability builder should be wired")
@@ -307,7 +307,7 @@ func TestEngine_LenQueriesByPlat(t *testing.T) {
 		{Query: "tf_rule_b", Content: "package tf_rule_b\n", InputData: "{}", Platform: "terraform", Aggregation: 1},
 		{Query: "k8s_rule", Content: "package k8s_rule\n", InputData: "{}", Platform: "kubernetes", Aggregation: 1},
 	}
-	ins := newTestInspector(t, inspectorOpts{queries: queries, kicsComputeNewSimID: true})
+	ins := newTestInspector(t, inspectorOpts{queries: queries, computeNewSimID: true})
 
 	require.Equal(t, 2, ins.LenQueriesByPlat([]string{"terraform"}))
 	require.Equal(t, 1, ins.LenQueriesByPlat([]string{"kubernetes"}))
@@ -316,7 +316,7 @@ func TestEngine_LenQueriesByPlat(t *testing.T) {
 }
 
 func TestEngine_GetFailedQueries(t *testing.T) {
-	ins := newTestInspector(t, inspectorOpts{kicsComputeNewSimID: true})
+	ins := newTestInspector(t, inspectorOpts{computeNewSimID: true})
 	const nrFailedQueries = 5
 	for idx := 0; idx < nrFailedQueries; idx++ {
 		ins.failedQueries[fmt.Sprint(idx)] = nil
@@ -614,7 +614,7 @@ func TestGetVulnerabilitiesFromQuery_FirstJustificationWins(t *testing.T) {
 
 func TestInspector_DecodeQueryResults(t *testing.T) {
 	ctx := context.Background()
-	c := newTestInspector(t, inspectorOpts{kicsComputeNewSimID: true})
+	c := newTestInspector(t, inspectorOpts{computeNewSimID: true})
 
 	queryContext := newQueryContext(ctx)
 

@@ -12,8 +12,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
-func getKicsIgnore(comment string) string {
-	commentLower := model.KICSCommentRgxp.ReplaceAllString(strings.ToLower(comment), "")
+func getIgnoreCommand(comment string) string {
+	commentLower := model.DDCommentRgxp.ReplaceAllString(strings.ToLower(comment), "")
 	commentLower = strings.Trim(commentLower, "\r")
 	commentLower = strings.Trim(commentLower, "\n")
 	return commentLower
@@ -48,10 +48,10 @@ func GetIgnoreLines(lines []string) []int {
 	comment := regexp.MustCompile(`^[#;]`)
 
 	for i, line := range lines {
-		if model.KICSCommentRgxp.MatchString(line) {
-			kicsIgnore := getKicsIgnore(line)
+		if model.DDCommentRgxp.MatchString(line) {
+			ignoreCmd := getIgnoreCommand(line)
 
-			switch model.CommentCommand(kicsIgnore) {
+			switch model.CommentCommand(ignoreCmd) {
 			case model.IgnoreLine:
 				if i+1 < len(lines) {
 					ignoreLines = append(ignoreLines, i, i+1)

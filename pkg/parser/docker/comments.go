@@ -63,8 +63,8 @@ func (i *ignore) getIgnoreComments(node *parser.Node) (ignore bool) {
 func processComment(comment string) (value model.CommentCommand) {
 	commentLower := strings.ToLower(comment)
 
-	if model.KICSCommentRgxp.MatchString(commentLower) {
-		commentLower = model.KICSCommentRgxp.ReplaceAllString(commentLower, "")
+	if model.DDCommentRgxp.MatchString(commentLower) {
+		commentLower = model.DDCommentRgxp.ReplaceAllString(commentLower, "")
 		commands := strings.Split(strings.Trim(commentLower, "\n"), " ")
 		value = model.ProcessCommands(commands)
 		return

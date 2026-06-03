@@ -149,7 +149,7 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	}
 	contextLogger.Debug().Msg("Chart installability check passed")
 
-	client.Namespace = "kics-namespace"
+	client.Namespace = "dd-namespace"
 	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, client.ReleaseName)
 	helmRelease, err := client.Run(chartRequested, vals)
 	if err != nil {
@@ -181,7 +181,7 @@ func newClient(ctx context.Context) *action.Install {
 	cfg := new(action.Configuration)
 	client := action.NewInstall(cfg)
 	client.DryRun = true
-	client.ReleaseName = "kics-helm"
+	client.ReleaseName = "dd-helm"
 	client.Replace = true // Skip the name check
 	client.ClientOnly = true
 	client.APIVersions = chartutil.VersionSet([]string{})

@@ -17,7 +17,7 @@ import (
 
 func contributionAppeal(customPrint *consolePrinter.Printer, queriesPath []string) {
 	if usingCustomQueries(queriesPath) {
-		msg := "\nAre you using a custom query? If so, feel free to contribute to KICS!\n"
+		msg := "\nAre you using a custom query? If so, feel free to contribute!\n"
 		contributionPage := "Check out how to do it: https://github.com/DataDog/datadog-iac-scanner/blob/master/docs/CONTRIBUTING.md\n"
 
 		output := customPrint.ContributionMessage.Sprintf("%s", msg+contributionPage)
@@ -88,7 +88,7 @@ func Test_ContributionAppeal(t *testing.T) {
 			name:           "test custom query",
 			consolePrinter: consolePrinter.NewPrinter(),
 			queriesPath:    []string{filepath.Join("custom", "query", "path")},
-			expectedOutput: "\nAre you using a custom query? If so, feel free to contribute to KICS!\nCheck out how to do it: https://github.com/DataDog/datadog-iac-scanner/blob/master/docs/CONTRIBUTING.md",
+			expectedOutput: "\nAre you using a custom query? If so, feel free to contribute!\nCheck out how to do it: https://github.com/DataDog/datadog-iac-scanner/blob/master/docs/CONTRIBUTING.md",
 		},
 		{
 			name:           "test non custom query",

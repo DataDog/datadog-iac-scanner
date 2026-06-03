@@ -102,7 +102,7 @@ func inspectSimIDs(t *testing.T, q model.QueryMetadata, filePath string, content
 	ins := newTestInspector(t, inspectorOpts{
 		queries:             []model.QueryMetadata{q},
 		vb:                  DefaultVulnerabilityBuilder,
-		kicsComputeNewSimID: true,
+		computeNewSimID: true,
 		repoPath:            "testdata/simid",
 	})
 

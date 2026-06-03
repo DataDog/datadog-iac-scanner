@@ -12,16 +12,16 @@ import (
 	hcl_plan "github.com/hashicorp/terraform-json"
 )
 
-// KicsPlan is an auxiliary structure for parsing tfplans as a KICS Document
-type KicsPlan struct {
-	Resource map[string]KicsPlanResource `json:"resource"`
+// TFPlan is an auxiliary structure for parsing tfplans as a scanner Document
+type TFPlan struct {
+	Resource map[string]TFPlanResource `json:"resource"`
 }
 
-// KicsPlanResource is an auxiliary structure for parsing tfplans as a KICS Document
-type KicsPlanResource map[string]KicsPlanNamedResource
+// TFPlanResource is an auxiliary structure for parsing tfplans as a scanner Document
+type TFPlanResource map[string]TFPlanNamedResource
 
-// KicsPlanNamedResource is an auxiliary structure for parsing tfplans as a KICS Document
-type KicsPlanNamedResource map[string]interface{}
+// TFPlanNamedResource is an auxiliary structure for parsing tfplans as a scanner Document
+type TFPlanNamedResource map[string]interface{}
 
 // parseTFPlan unmarshals Document as a plan so it can be rebuilt with only
 // the required information
@@ -43,10 +43,10 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 	return parsedPlan, nil
 }
 
-// readPlan will get the information needed and parse it in a way KICS understands it
+// readPlan extracts the information needed from a Terraform plan and converts it to a scanner Document
 func readPlan(plan *hcl_plan.Plan) model.Document {
-	kp := KicsPlan{
-		Resource: make(map[string]KicsPlanResource),
+	kp := TFPlan{
+		Resource: make(map[string]TFPlanResource),
 	}
 
 	kp.readModule(plan.PlannedValues.RootModule)
@@ -66,10 +66,10 @@ func readPlan(plan *hcl_plan.Plan) model.Document {
 }
 
 // readModule will iterate over all planned_value getting the information required
-func (kp *KicsPlan) readModule(module *hcl_plan.StateModule) {
+func (kp *TFPlan) readModule(module *hcl_plan.StateModule) {
 	// initialize all the types interfaces
 	for _, resource := range module.Resources {
-		convNamedRes := make(map[string]KicsPlanNamedResource)
+		convNamedRes := make(map[string]TFPlanNamedResource)
 		kp.Resource[resource.Type] = convNamedRes
 	}
 	// fill in all the types interfaces

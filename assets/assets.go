@@ -1,6 +1,6 @@
 package assets
 
-import "embed" // used for embedding KICS libraries
+import "embed" // used for embedding scanner libraries
 
 //go:embed libraries/*.rego
 var embeddedLibraries embed.FS

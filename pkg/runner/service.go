@@ -215,11 +215,11 @@ func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind 
 	var bodyMap map[string]interface{}
 	j, err := json.Marshal(body)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to remove kics line information")
+		contextLogger.Error().Msgf("failed to remove dd line information")
 		return body
 	}
 	if err := json.Unmarshal(j, &bodyMap); err != nil {
-		contextLogger.Error().Msgf("failed to remove kics line information: '%s'", err)
+		contextLogger.Error().Msgf("failed to remove dd line information: '%s'", err)
 		return body
 	}
 	prepareScanDocumentRoot(bodyMap, kind)

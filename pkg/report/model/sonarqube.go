@@ -10,7 +10,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
-// severitySonarQubeEquivalence maps the severity of the KICS to the SonarQube equivalent
+// severitySonarQubeEquivalence maps the scanner severity to the SonarQube equivalent
 var severitySonarQubeEquivalence = map[model.Severity]string{
 	"INFO":     "INFO",
 	"LOW":      "MINOR",

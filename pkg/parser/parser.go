@@ -70,7 +70,7 @@ func (b *Builder) Build(types, cloudProviders []string) ([]*Parser, error) {
 	return parserSlice, nil
 }
 
-// ErrNotSupportedFile represents an error when a file is not supported by KICS
+// ErrNotSupportedFile represents an error when a file is not supported by the scanner
 var ErrNotSupportedFile = errors.New("unsupported file to parse")
 
 // Parser is a struct that associates a parser to its supported extensions
@@ -170,7 +170,7 @@ func (c *Parser) Parse(
 	}, ErrNotSupportedFile
 }
 
-// SupportedExtensions returns extensions supported by KICS
+// SupportedExtensions returns extensions supported by the scanner
 func (c *Parser) SupportedExtensions() model.Extensions {
 	return c.extensions
 }
