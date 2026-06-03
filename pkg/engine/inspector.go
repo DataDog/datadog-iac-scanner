@@ -173,19 +173,19 @@ func NewInspector(
 	}
 
 	return &Inspector{
-		QueryLoader:         &queryLoader,
-		vb:                  vb,
-		tracker:             tracker,
-		failedQueries:       failedQueries,
-		excludeResults:      excludeResults,
-		ruleConfigs:         ruleConfigs,
-		detector:            lineDetector,
-		repoPath:            repoPath,
-		queryExecTimeout:    queryExecTimeout,
-		useOldSeverities:    useOldSeverities,
-		numWorkers:          utils.AdjustNumWorkers(numWorkers),
-		computeNewSimID: computeNewSimID,
-		flagEvaluator:       flagEvaluator,
+		QueryLoader:      &queryLoader,
+		vb:               vb,
+		tracker:          tracker,
+		failedQueries:    failedQueries,
+		excludeResults:   excludeResults,
+		ruleConfigs:      ruleConfigs,
+		detector:         lineDetector,
+		repoPath:         repoPath,
+		queryExecTimeout: queryExecTimeout,
+		useOldSeverities: useOldSeverities,
+		numWorkers:       utils.AdjustNumWorkers(numWorkers),
+		computeNewSimID:  computeNewSimID,
+		flagEvaluator:    flagEvaluator,
 	}, nil
 }
 
