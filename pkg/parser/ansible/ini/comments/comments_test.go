@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func Test_getKicsIgnore(t *testing.T) {
+func Test_getIgnoreCommand(t *testing.T) {
 	tests := []struct {
 		comment string
 		want    string

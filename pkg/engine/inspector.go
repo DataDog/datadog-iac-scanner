@@ -96,7 +96,7 @@ type Inspector struct {
 	queryExecTimeout     time.Duration
 	useOldSeverities     bool
 	numWorkers           int
-	computeNewSimID  bool
+	computeNewSimID      bool
 	flagEvaluator        featureflags.FlagEvaluator
 }
 
