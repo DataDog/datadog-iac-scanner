@@ -29,7 +29,8 @@ type Command struct {
 	Flags     []string
 	Value     []string
 	Original  string
-	StartLine int `json:"_kics_line"`
+	StartLine int `json:"_dd_line"`
+	KicsLine  int `json:"_kics_line"` // legacy field kept for backward compat; drop once all rules use _dd_line
 	EndLine   int
 	JSON      bool
 }
@@ -74,6 +75,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 			Original:  strings.TrimSpace(child.Original),
 			Flags:     child.Flags,
 			StartLine: child.StartLine,
+			KicsLine:  child.StartLine,
 			EndLine:   child.EndLine,
 		}
 

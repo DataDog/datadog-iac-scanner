@@ -182,7 +182,7 @@ func (j *jsonLineStruct) closeBrackets(lenPathArr int) {
 // setLineInfo will set the line information of keys in json based on the line Information map
 func (j *jsonLine) setLineInfo(doc map[string]interface{}) map[string]interface{} {
 	// set the line info for keys in root level
-	doc["_kics_lines"] = j.setLine(doc, 0, "", false)
+	doc["_dd_lines"] = j.setLine(doc, 0, "", false)
 	return doc
 }
 
@@ -193,7 +193,7 @@ func (j *jsonLine) setLineInfo(doc map[string]interface{}) map[string]interface{
 func (j *jsonLine) setLine(val map[string]interface{}, def int, father string, pop bool) map[string]*model.LineObject {
 	lineMap := make(map[string]*model.LineObject)
 	// set the line information of val
-	lineMap["_kics__default"] = &model.LineObject{
+	lineMap["_dd__default"] = &model.LineObject{
 		Line: def,
 		Arr:  []map[string]*model.LineObject{},
 	}
@@ -223,10 +223,10 @@ func (j *jsonLine) setLine(val map[string]interface{}, def int, father string, p
 			lineArr = j.setSeqLines(v, lineNr, father, key, lineArr)
 		// value is an object and must setLines for each element of the object
 		case map[string]interface{}:
-			v["_kics_lines"] = j.setLine(v, lineNr, fmt.Sprintf("%s.%s", father, key), pop)
+			v["_dd_lines"] = j.setLine(v, lineNr, fmt.Sprintf("%s.%s", father, key), pop)
 		default:
 			// value as no childs
-			lineMap[fmt.Sprintf("_kics_%s", key)] = &model.LineObject{
+			lineMap[fmt.Sprintf("_dd_%s", key)] = &model.LineObject{
 				Line: lineNr,
 				Arr:  lineArr,
 			}
@@ -235,7 +235,7 @@ func (j *jsonLine) setLine(val map[string]interface{}, def int, father string, p
 
 		// set line information of value with its default line and
 		// if present array elements line informations
-		lineMap[fmt.Sprintf("_kics_%s", key)] = &model.LineObject{
+		lineMap[fmt.Sprintf("_dd_%s", key)] = &model.LineObject{
 			Line: lineNr,
 			Arr:  lineArr,
 		}
@@ -268,7 +268,7 @@ func (j *jsonLine) setSeqLines(v []interface{}, def int, father, key string,
 					continue
 				}
 				lineArr = append(lineArr, map[string]*model.LineObject{
-					"_kics__default": {
+					"_dd__default": {
 						Line: lineStr.(*fifo).pop(),
 					},
 				})

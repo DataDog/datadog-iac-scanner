@@ -23,7 +23,7 @@ type JSONProto struct {
 	Services         map[string]interface{}      `json:"services"`
 	Imports          map[string]interface{}      `json:"imports"`
 	Options          []Option                    `json:"options"`
-	Lines            map[string]model.LineObject `json:"_kics_lines"`
+	Lines            map[string]model.LineObject `json:"_dd_lines"`
 	linesToIgnore    []int                       `json:"-"`
 	linesNotToIgnore []int                       `json:"-"`
 }
@@ -32,7 +32,7 @@ type JSONProto struct {
 type Service struct {
 	RPC     map[string]RPC              `json:"rpc,omitempty"`
 	Options map[string]Option           `json:"options,omitempty"`
-	Lines   map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines   map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // Message is a JSON representation of a proto message
@@ -44,21 +44,21 @@ type Message struct {
 	Map          map[string]*Map             `json:"map,omitempty"`
 	InnerMessage map[string]Message          `json:"inner_message,omitempty"`
 	Options      map[string]Option           `json:"options,omitempty"`
-	Lines        map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines        map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // Map is a JSON representation of a proto map
 type Map struct {
 	*Field  `json:"field,omitempty"`
 	KeyType string                      `json:"key_type,omitempty"`
-	Lines   map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines   map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // OneOf is a JSON representation of a proto oneof
 type OneOf struct {
 	Field   map[string]*Field           `json:"fields,omitempty"`
 	Options map[string]Option           `json:"options,omitempty"`
-	Lines   map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines   map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // Enum is a JSON representation of a proto enum
@@ -66,27 +66,27 @@ type Enum struct {
 	Reserved  []*Reserved                 `json:"reserved,omitempty"`
 	EnumField map[string]EnumValue        `json:"field,omitempty"`
 	Options   map[string]Option           `json:"options,omitempty"`
-	Lines     map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines     map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // EnumValue is a JSON representation of a proto enum value
 type EnumValue struct {
 	Value   int                         `json:"value,omitempty"`
 	Options Option                      `json:"options,omitempty"`
-	Lines   map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines   map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // Import is a JSON representation of a proto import
 type Import struct {
 	Kind  string                      `json:"kind,omitempty"`
-	Lines map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // Reserved is a JSON representation of a proto reserved
 type Reserved struct {
 	Ranges     []proto.Range               `json:"ranges,omitempty"`
 	FieldNames []string                    `json:"fieldNames,omitempty"`
-	Lines      map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines      map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // Field is a JSON representation of a proto field
@@ -97,7 +97,7 @@ type Field struct {
 	Required bool                        `json:"required,omitempty"`
 	Optional bool                        `json:"optional,omitempty"`
 	Options  []Option                    `json:"options,omitempty"`
-	Lines    map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines    map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // RPC is a JSON representation of a proto service RPC
@@ -107,7 +107,7 @@ type RPC struct {
 	ReturnsType    string                      `json:"returnsType,omitempty"`
 	StreamsReturns bool                        `json:"streamsReturns,omitempty"`
 	Options        []Option                    `json:"options,omitempty"`
-	Lines          map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines          map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // Option is a JSON representation of a proto option
@@ -116,7 +116,7 @@ type Option struct {
 	Constant            OptionLiteral               `json:"constant,omitempty"`
 	IsEmbedded          bool                        `json:"isEmbedded,omitempty"`
 	AggregatedConstants []*OptionLiteral            `json:"aggregatedConstants,omitempty"`
-	Lines               map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines               map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // OptionLiteral is a JSON representation of a proto option literal
@@ -128,7 +128,7 @@ type OptionLiteral struct {
 	Array      []OptionLiteral             `json:"array,omitempty"`
 	Map        map[string]OptionLiteral    `json:"map,omitempty"`
 	OrderedMap []OptionLiteral             `json:"orderedMap,omitempty"`
-	Lines      map[string]model.LineObject `json:"_kics_lines,omitempty"`
+	Lines      map[string]model.LineObject `json:"_dd_lines,omitempty"`
 }
 
 // newJSONProto creates a new JSONProto struct with default values for all fields
@@ -145,8 +145,6 @@ func newJSONProto() *JSONProto {
 		linesToIgnore: make([]int, 0),
 	}
 }
-
-const kicsLinesKey = "_kics_"
 
 // Convert converts a proto file to a JSONProto struct
 func Convert(ctx context.Context, nodes *proto.Proto) (file *JSONProto, linesIgnore []int) {
@@ -170,21 +168,21 @@ func Convert(ctx context.Context, nodes *proto.Proto) (file *JSONProto, linesIgn
 		case *proto.Message:
 			jproto.processCommentProto(element.Comment, element.Position.Line, element)
 			jproto.Messages[element.Name] = jproto.convertMessage(element)
-			messageLines[kicsLinesKey+element.Name] = model.LineObject{
+			messageLines["_dd_"+element.Name] = model.LineObject{
 				Line: element.Position.Line,
 				Arr:  make([]map[string]*model.LineObject, 0),
 			}
 		case *proto.Service:
 			jproto.processCommentProto(element.Comment, element.Position.Line, element)
 			jproto.convertService(element)
-			serviceLines[kicsLinesKey+element.Name] = model.LineObject{
+			serviceLines["_dd_"+element.Name] = model.LineObject{
 				Line: element.Position.Line,
 				Arr:  make([]map[string]*model.LineObject, 0),
 			}
 		case *proto.Package:
 			jproto.processCommentProto(element.Comment, element.Position.Line, element)
 			jproto.PackageName = element.Name
-			jproto.Lines["_kics_package"] = model.LineObject{
+			jproto.Lines["_dd_package"] = model.LineObject{
 				Line: element.Position.Line,
 			}
 		case *proto.Import:
@@ -192,7 +190,7 @@ func Convert(ctx context.Context, nodes *proto.Proto) (file *JSONProto, linesIgn
 			jproto.Imports[element.Filename] = Import{
 				Kind: element.Kind,
 			}
-			importLines[kicsLinesKey+element.Filename] = model.LineObject{
+			importLines["_dd_"+element.Filename] = model.LineObject{
 				Line: element.Position.Line,
 				Arr:  make([]map[string]*model.LineObject, 0),
 			}
@@ -207,26 +205,26 @@ func Convert(ctx context.Context, nodes *proto.Proto) (file *JSONProto, linesIgn
 		case *proto.Enum:
 			jproto.processCommentProto(element.Comment, element.Position.Line, element)
 			jproto.Enum[element.Name] = jproto.convertEnum(element)
-			enumLines[kicsLinesKey+element.Name] = model.LineObject{
+			enumLines["_dd_"+element.Name] = model.LineObject{
 				Line: element.Position.Line,
 				Arr:  make([]map[string]*model.LineObject, 0),
 			}
 		case *proto.Syntax:
 			jproto.processCommentProto(element.Comment, element.Position.Line, element)
 			jproto.Syntax = element.Value
-			jproto.Lines["_kics_syntax"] = model.LineObject{
+			jproto.Lines["_dd_syntax"] = model.LineObject{
 				Line: element.Position.Line,
 			}
 		}
 	}
 
 	// set line information
-	jproto.Messages["_kics_lines"] = messageLines
-	jproto.Enum["_kics_lines"] = enumLines
-	jproto.Services["_kics_lines"] = serviceLines
-	jproto.Imports["_kics_lines"] = importLines
+	jproto.Messages["_dd_lines"] = messageLines
+	jproto.Enum["_dd_lines"] = enumLines
+	jproto.Services["_dd_lines"] = serviceLines
+	jproto.Imports["_dd_lines"] = importLines
 
-	jproto.Lines["kics__default"] = model.LineObject{
+	jproto.Lines["_dd__default"] = model.LineObject{
 		Line: 0,
 		Arr:  defaultArr,
 	}
@@ -253,7 +251,7 @@ func (j *JSONProto) convertMessage(n *proto.Message) Message {
 		switch field := field.(type) {
 		case *proto.NormalField:
 			j.processCommentProto(field.Comment, field.Position.Line, field)
-			message.Lines[kicsLinesKey+field.Name] = model.LineObject{
+			message.Lines["_dd_"+field.Name] = model.LineObject{
 				Line: field.Position.Line,
 			}
 			message.Field[field.Name] = &Field{
@@ -263,7 +261,7 @@ func (j *JSONProto) convertMessage(n *proto.Message) Message {
 				Required: field.Required,
 				Options:  j.convertOption(field.Options),
 				Lines: map[string]model.LineObject{
-					"_kics__default": {Line: field.Position.Line},
+					"_dd__default": {Line: field.Position.Line},
 				},
 			}
 		case *proto.Reserved:
@@ -277,13 +275,13 @@ func (j *JSONProto) convertMessage(n *proto.Message) Message {
 		case *proto.Oneof:
 			j.processCommentProto(field.Comment, field.Position.Line, field)
 			message.OneOf[field.Name] = j.convertOneOf(field)
-			message.Lines[kicsLinesKey+field.Name] = model.LineObject{
+			message.Lines["_dd_"+field.Name] = model.LineObject{
 				Line: field.Position.Line,
 			}
 		case *proto.Enum:
 			j.processCommentProto(field.Comment, field.Position.Line, field)
 			message.Enum[field.Name] = j.convertEnum(field)
-			message.Lines[kicsLinesKey+field.Name] = model.LineObject{
+			message.Lines["_dd_"+field.Name] = model.LineObject{
 				Line: field.Position.Line,
 			}
 		case *proto.MapField:
@@ -293,31 +291,31 @@ func (j *JSONProto) convertMessage(n *proto.Message) Message {
 					Type:     field.Type,
 					Sequence: field.Sequence,
 					Lines: map[string]model.LineObject{
-						"_kics__default": {Line: field.Position.Line},
+						"_dd__default": {Line: field.Position.Line},
 					},
 				},
 				KeyType: field.KeyType,
 			}
-			message.Lines[kicsLinesKey+field.Name] = model.LineObject{
+			message.Lines["_dd_"+field.Name] = model.LineObject{
 				Line: field.Position.Line,
 			}
 		case *proto.Message:
 			j.processCommentProto(field.Comment, field.Position.Line, field)
 			message.InnerMessage[field.Name] = j.convertMessage(field)
-			message.Lines[kicsLinesKey+field.Name] = model.LineObject{
+			message.Lines["_dd_"+field.Name] = model.LineObject{
 				Line: field.Position.Line,
 			}
 		case *proto.Option:
 			j.processCommentProto(field.Comment, field.Position.Line, field)
 			message.Options[field.Name] = j.convertSingleOption(field)
-			message.Lines[kicsLinesKey+field.Name] = model.LineObject{
+			message.Lines["_dd_"+field.Name] = model.LineObject{
 				Line: field.Position.Line,
 			}
 		}
 		continue
 	}
 
-	message.Lines["_kics__default"] = model.LineObject{
+	message.Lines["_dd__default"] = model.LineObject{
 		Line: n.Position.Line,
 		Arr:  defaultArr,
 	}
@@ -344,10 +342,10 @@ func (j *JSONProto) convertEnum(n *proto.Enum) Enum {
 				Value:   elem.Integer,
 				Options: j.convertSingleOption(elem.ValueOption),
 				Lines: map[string]model.LineObject{
-					"_kics__default": {Line: elem.Position.Line},
+					"_dd__default": {Line: elem.Position.Line},
 				},
 			}
-			enum.Lines[kicsLinesKey+elem.Name] = model.LineObject{
+			enum.Lines["_dd_"+elem.Name] = model.LineObject{
 				Line: elem.Position.Line,
 			}
 		case *proto.Reserved:
@@ -361,14 +359,14 @@ func (j *JSONProto) convertEnum(n *proto.Enum) Enum {
 		case *proto.Option:
 			j.processCommentProto(elem.Comment, elem.Position.Line, elem)
 			enum.Options[elem.Name] = j.convertSingleOption(elem)
-			enum.Lines[kicsLinesKey+elem.Name] = model.LineObject{
+			enum.Lines["_dd_"+elem.Name] = model.LineObject{
 				Line: elem.Position.Line,
 			}
 		}
 		continue
 	}
 
-	enum.Lines["_kics__default"] = model.LineObject{
+	enum.Lines["_dd__default"] = model.LineObject{
 		Line: n.Position.Line,
 		Arr:  defaultArr,
 	}
@@ -383,7 +381,7 @@ func (j *JSONProto) convertOneOf(n *proto.Oneof) OneOf {
 		Options: make(map[string]Option),
 		Lines:   make(map[string]model.LineObject),
 	}
-	oneof.Lines["_kics__default"] = model.LineObject{
+	oneof.Lines["_dd__default"] = model.LineObject{
 		Line: n.Position.Line,
 		Arr:  make([]map[string]*model.LineObject, 0),
 	}
@@ -396,16 +394,16 @@ func (j *JSONProto) convertOneOf(n *proto.Oneof) OneOf {
 				Sequence: elem.Sequence,
 				Options:  j.convertOption(elem.Options),
 				Lines: map[string]model.LineObject{
-					"_kics__default": {Line: elem.Position.Line},
+					"_dd__default": {Line: elem.Position.Line},
 				},
 			}
-			oneof.Lines[kicsLinesKey+elem.Name] = model.LineObject{
+			oneof.Lines["_dd_"+elem.Name] = model.LineObject{
 				Line: elem.Position.Line,
 			}
 		case *proto.Option:
 			j.processCommentProto(elem.Comment, elem.Position.Line, elem)
 			oneof.Options[elem.Name] = j.convertSingleOption(elem)
-			oneof.Lines[kicsLinesKey+elem.Name] = model.LineObject{
+			oneof.Lines["_dd_"+elem.Name] = model.LineObject{
 				Line: elem.Position.Line,
 			}
 		}
@@ -420,7 +418,7 @@ func (j *JSONProto) convertReserved(n *proto.Reserved) *Reserved {
 		Ranges:     n.Ranges,
 		FieldNames: n.FieldNames,
 		Lines: map[string]model.LineObject{
-			"_kics__default": {Line: n.Position.Line},
+			"_dd__default": {Line: n.Position.Line},
 		},
 	}
 }
@@ -433,7 +431,7 @@ func (j *JSONProto) convertService(n *proto.Service) {
 		Lines:   make(map[string]model.LineObject),
 	}
 
-	service.Lines["_kics__default"] = model.LineObject{
+	service.Lines["_dd__default"] = model.LineObject{
 		Line: n.Position.Line,
 		Arr:  make([]map[string]*model.LineObject, 0),
 	}
@@ -443,13 +441,13 @@ func (j *JSONProto) convertService(n *proto.Service) {
 		case *proto.RPC:
 			j.processCommentProto(rpc.Comment, rpc.Position.Line, rpc)
 			service.RPC[rpc.Name] = j.convertRPC(rpc)
-			service.Lines[kicsLinesKey+rpc.Name] = model.LineObject{
+			service.Lines["_dd_"+rpc.Name] = model.LineObject{
 				Line: rpc.Position.Line,
 			}
 		case *proto.Option:
 			j.processCommentProto(rpc.Comment, rpc.Position.Line, rpc)
 			service.Options[rpc.Name] = j.convertSingleOption(rpc)
-			service.Lines[kicsLinesKey+rpc.Name] = model.LineObject{
+			service.Lines["_dd_"+rpc.Name] = model.LineObject{
 				Line: rpc.Position.Line,
 			}
 		}
@@ -472,7 +470,7 @@ func (j *JSONProto) convertOption(n []*proto.Option) []Option {
 			Constant:   j.convertOptionLiteral(&option.Constant),
 			IsEmbedded: option.IsEmbedded,
 			Lines: map[string]model.LineObject{
-				"_kics__default": {Line: option.Position.Line},
+				"_dd__default": {Line: option.Position.Line},
 			},
 		})
 	}
@@ -488,7 +486,7 @@ func (j *JSONProto) convertRPC(n *proto.RPC) RPC {
 		StreamsReturns: n.StreamsReturns,
 		Options:        j.convertOption(n.Options),
 		Lines: map[string]model.LineObject{
-			"_kics__default": {Line: n.Position.Line},
+			"_dd__default": {Line: n.Position.Line},
 		},
 	}
 }
@@ -504,7 +502,7 @@ func (j *JSONProto) convertOptionLiteral(n *proto.Literal) OptionLiteral {
 		Map:        j.getMapLiteral(n.Map),
 		OrderedMap: j.getLiteralMap(n.OrderedMap),
 		Lines: map[string]model.LineObject{
-			"_kics__default": {Line: n.Position.Line},
+			"_dd__default": {Line: n.Position.Line},
 		},
 	}
 }
@@ -520,7 +518,7 @@ func (j *JSONProto) convertOptionNamedLiteral(n *proto.NamedLiteral) OptionLiter
 		Map:        j.getMapLiteral(n.Map),
 		OrderedMap: j.getLiteralMap(n.OrderedMap),
 		Lines: map[string]model.LineObject{
-			"_kics__default": {Line: n.Position.Line},
+			"_dd__default": {Line: n.Position.Line},
 		},
 	}
 }
@@ -535,7 +533,7 @@ func (j *JSONProto) convertSingleOption(n *proto.Option) Option {
 		Constant:   j.convertOptionLiteral(&n.Constant),
 		IsEmbedded: n.IsEmbedded,
 		Lines: map[string]model.LineObject{
-			"_kics__default": {Line: n.Position.Line},
+			"_dd__default": {Line: n.Position.Line},
 		},
 	}
 }

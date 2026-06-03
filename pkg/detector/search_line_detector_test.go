@@ -28,30 +28,30 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 				pathComponents: []string{"father", "son", "grandson"},
 				file: &model.FileMetadata{
 					LineInfoDocument: map[string]interface{}{
-						"_kics_lines": map[string]interface{}{
-							"_kics__default": map[string]interface{}{
-								"_kics_line": 0,
+						"_dd_lines": map[string]interface{}{
+							"_dd__default": map[string]interface{}{
+								"_dd_line": 0,
 							},
-							"_kics_father": map[string]interface{}{
-								"_kics_line": 3,
+							"_dd_father": map[string]interface{}{
+								"_dd_line": 3,
 							},
 						},
 						"father": map[string]interface{}{
-							"_kics_lines": map[string]interface{}{
-								"_kics__default": map[string]interface{}{
-									"_kics_line": 3,
+							"_dd_lines": map[string]interface{}{
+								"_dd__default": map[string]interface{}{
+									"_dd_line": 3,
 								},
-								"_kics_son": map[string]interface{}{
-									"_kics_line": 4,
+								"_dd_son": map[string]interface{}{
+									"_dd_line": 4,
 								},
 							},
 							"son": map[string]interface{}{
-								"_kics_lines": map[string]interface{}{
-									"_kics__default": map[string]interface{}{
-										"_kics_line": 4,
+								"_dd_lines": map[string]interface{}{
+									"_dd__default": map[string]interface{}{
+										"_dd_line": 4,
 									},
-									"_kics_grandson": map[string]interface{}{
-										"_kics_line": 5,
+									"_dd_grandson": map[string]interface{}{
+										"_dd_line": 5,
 									},
 								},
 								"grandson": "value",
@@ -69,37 +69,37 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 				pathComponents: []string{"father", "1", "son"},
 				file: &model.FileMetadata{
 					LineInfoDocument: map[string]interface{}{
-						"_kics_lines": map[string]interface{}{
-							"_kics__default": map[string]interface{}{
-								"_kics_line": 0,
+						"_dd_lines": map[string]interface{}{
+							"_dd__default": map[string]interface{}{
+								"_dd_line": 0,
 							},
-							"_kics_father": map[string]interface{}{
-								"_kics_arr": []interface{}{
+							"_dd_father": map[string]interface{}{
+								"_dd_arr": []interface{}{
 									map[string]interface{}{
-										"_kics__default": map[string]interface{}{
-											"_kics_line": 2,
-										}, "_kics_son": map[string]interface{}{
-											"_kics_line": 4,
+										"_dd__default": map[string]interface{}{
+											"_dd_line": 2,
+										}, "_dd_son": map[string]interface{}{
+											"_dd_line": 4,
 										},
 									},
 									map[string]interface{}{
-										"_kics__default": map[string]interface{}{
-											"_kics_line": 2,
+										"_dd__default": map[string]interface{}{
+											"_dd_line": 2,
 										},
-										"_kics_son": map[string]interface{}{
-											"_kics_line": 7,
+										"_dd_son": map[string]interface{}{
+											"_dd_line": 7,
 										},
 									},
 									map[string]interface{}{
-										"_kics__default": map[string]interface{}{
-											"_kics_line": 2,
+										"_dd__default": map[string]interface{}{
+											"_dd_line": 2,
 										},
-										"_kics_son": map[string]interface{}{
-											"_kics_line": 10,
+										"_dd_son": map[string]interface{}{
+											"_dd_line": 10,
 										},
 									},
 								},
-								"_kics_line": 2,
+								"_dd_line": 2,
 							},
 						},
 						"father": []interface{}{
@@ -125,30 +125,30 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 				pathComponents: []string{"father", "son.name", "grandson"},
 				file: &model.FileMetadata{
 					LineInfoDocument: map[string]interface{}{
-						"_kics_lines": map[string]interface{}{
-							"_kics__default": map[string]interface{}{
-								"_kics_line": 0,
+						"_dd_lines": map[string]interface{}{
+							"_dd__default": map[string]interface{}{
+								"_dd_line": 0,
 							},
-							"_kics_father": map[string]interface{}{
-								"_kics_line": 2,
+							"_dd_father": map[string]interface{}{
+								"_dd_line": 2,
 							},
 						},
 						"father": map[string]interface{}{
-							"_kics_lines": map[string]interface{}{
-								"_kics__default": map[string]interface{}{
-									"_kics_line": 2,
+							"_dd_lines": map[string]interface{}{
+								"_dd__default": map[string]interface{}{
+									"_dd_line": 2,
 								},
-								"_kics_son.name": map[string]interface{}{
-									"_kics_line": 3,
+								"_dd_son.name": map[string]interface{}{
+									"_dd_line": 3,
 								},
 							},
 							"son.name": map[string]interface{}{
-								"_kics_lines": map[string]interface{}{
-									"_kics__default": map[string]interface{}{
-										"_kics_line": 3,
+								"_dd_lines": map[string]interface{}{
+									"_dd__default": map[string]interface{}{
+										"_dd_line": 3,
 									},
-									"_kics_grandson": map[string]interface{}{
-										"_kics_line": 4,
+									"_dd_grandson": map[string]interface{}{
+										"_dd_line": 4,
 									},
 								},
 								"grandson": "value",
@@ -166,30 +166,30 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 				pathComponents: []string{"father", "1", "grandson"},
 				file: &model.FileMetadata{
 					LineInfoDocument: map[string]interface{}{
-						"_kics_lines": map[string]interface{}{
-							"_kics__default": map[string]interface{}{
-								"_kics_line": 0,
+						"_dd_lines": map[string]interface{}{
+							"_dd__default": map[string]interface{}{
+								"_dd_line": 0,
 							},
-							"_kics_father": map[string]interface{}{
-								"_kics_line": 2,
+							"_dd_father": map[string]interface{}{
+								"_dd_line": 2,
 							},
 						},
 						"father": map[string]interface{}{
-							"_kics_lines": map[string]interface{}{
-								"_kics__default": map[string]interface{}{
-									"_kics_line": 2,
+							"_dd_lines": map[string]interface{}{
+								"_dd__default": map[string]interface{}{
+									"_dd_line": 2,
 								},
-								"_kics_son.name": map[string]interface{}{
-									"_kics_line": 3,
+								"_dd_son.name": map[string]interface{}{
+									"_dd_line": 3,
 								},
 							},
 							"1": map[string]interface{}{
-								"_kics_lines": map[string]interface{}{
-									"_kics__default": map[string]interface{}{
-										"_kics_line": 3,
+								"_dd_lines": map[string]interface{}{
+									"_dd__default": map[string]interface{}{
+										"_dd_line": 3,
 									},
-									"_kics_grandson": map[string]interface{}{
-										"_kics_line": 4,
+									"_dd_grandson": map[string]interface{}{
+										"_dd_line": 4,
 									},
 								},
 								"grandson": "value",
@@ -207,40 +207,40 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 				pathComponents: []string{"father", "son", "3"},
 				file: &model.FileMetadata{
 					LineInfoDocument: map[string]interface{}{
-						"_kics_lines": map[string]interface{}{
-							"_kics__default": map[string]interface{}{
-								"_kics_line": 0,
+						"_dd_lines": map[string]interface{}{
+							"_dd__default": map[string]interface{}{
+								"_dd_line": 0,
 							},
-							"_kics_father": map[string]interface{}{
-								"_kics_line": 2,
+							"_dd_father": map[string]interface{}{
+								"_dd_line": 2,
 							},
 						},
 						"father": map[string]interface{}{
-							"_kics_lines": map[string]interface{}{
-								"_kics__default": map[string]interface{}{
-									"_kics_line": 2,
+							"_dd_lines": map[string]interface{}{
+								"_dd__default": map[string]interface{}{
+									"_dd_line": 2,
 								},
-								"_kics_son": map[string]interface{}{
-									"_kics_arr": []interface{}{
+								"_dd_son": map[string]interface{}{
+									"_dd_arr": []interface{}{
 										map[string]interface{}{
-											"_kics__default": map[string]interface{}{
-												"_kics_line": 4,
+											"_dd__default": map[string]interface{}{
+												"_dd_line": 4,
 											},
 										}, map[string]interface{}{
-											"_kics__default": map[string]interface{}{
-												"_kics_line": 5,
+											"_dd__default": map[string]interface{}{
+												"_dd_line": 5,
 											},
 										}, map[string]interface{}{
-											"_kics__default": map[string]interface{}{
-												"_kics_line": 6,
+											"_dd__default": map[string]interface{}{
+												"_dd_line": 6,
 											},
 										}, map[string]interface{}{
-											"_kics__default": map[string]interface{}{
-												"_kics_line": 7,
+											"_dd__default": map[string]interface{}{
+												"_dd_line": 7,
 											},
 										},
 									},
-									"_kics_line": 3,
+									"_dd_line": 3,
 								},
 							},
 							"son": []interface{}{

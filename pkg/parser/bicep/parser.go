@@ -19,10 +19,10 @@ import (
 type Parser struct {
 }
 
-const kicsPrefix = "_kics_"
-const kicsLine = kicsPrefix + "line"
-const kicsLines = kicsPrefix + "lines"
-const kicsArray = kicsPrefix + "arr"
+const ddPrefix = "_dd_"
+const ddLine = ddPrefix + "line"
+const ddLines = ddPrefix + "lines"
+const ddArray = ddPrefix + "arr"
 
 const CloseParenthesis = "')"
 
@@ -39,7 +39,7 @@ type JSONBicep struct {
 	Resources  []interface{}          `json:"resources"`
 }
 
-type KicsObjectProperty struct {
+type bicepObjectProperty struct {
 	objectProperty map[string]interface{}
 	line           int
 }
@@ -341,13 +341,13 @@ func (s *BicepVisitor) VisitParameterDecl(ctx *parser.ParameterDeclContext) inte
 		}
 	}
 
-	line := map[string]int{kicsLine: ctx.GetStop().GetLine()}
+	line := map[string]int{ddLine: ctx.GetStop().GetLine()}
 	lines := map[string]map[string]int{
-		kicsPrefix + "defaultValue": line,
-		kicsPrefix + "type":         line,
+		"_dd_" + "defaultValue": line,
+		"_dd_" + "type":         line,
 	}
 
-	param[kicsLines] = lines
+	param[ddLines] = lines
 
 	s.paramList[identifier] = param
 
@@ -406,17 +406,17 @@ func (s *BicepVisitor) VisitResourceDecl(ctx *parser.ResourceDeclContext) interf
 	}
 
 	lines := map[string]interface{}{}
-	if resKicsLines, hasLines := resource[kicsLines]; hasLines {
+	if resLines, hasLines := resource[ddLines]; hasLines {
 		var ok bool
-		lines, ok = resKicsLines.(map[string]interface{})
+		lines, ok = resLines.(map[string]interface{})
 		if !ok {
 			lines = map[string]interface{}{}
 		}
 	}
 
-	line := map[string]int{kicsLine: ctx.GetStart().GetLine()}
-	lines[kicsPrefix+"apiVersion"] = line
-	lines[kicsPrefix+"type"] = line
+	line := map[string]int{ddLine: ctx.GetStart().GetLine()}
+	lines["_dd_"+"apiVersion"] = line
+	lines["_dd_"+"type"] = line
 
 	s.resourceList = append(s.resourceList, resource)
 
@@ -712,31 +712,31 @@ func (s *BicepVisitor) VisitObject(ctx *parser.ObjectContext) interface{} {
 	propertiesLines := map[string]interface{}{}
 
 	for _, val := range ctx.AllObjectProperty() {
-		objectProperty, ok := val.Accept(s).(KicsObjectProperty)
+		objectProperty, ok := val.Accept(s).(bicepObjectProperty)
 		if !ok {
 			return object
 		}
 		for key, val := range objectProperty.objectProperty {
 			object[key] = val
-			line := map[string]interface{}{kicsLine: objectProperty.line}
+			line := map[string]interface{}{ddLine: objectProperty.line}
 
 			arr, isArray := val.([]interface{})
 			if isArray {
 				for range arr {
-					arrLine := map[string]int{kicsLine: objectProperty.line}
-					kicsDefault := map[string]interface{}{kicsPrefix + "_default": arrLine}
-					kicsArr := []interface{}{kicsDefault}
-					line[kicsArray] = kicsArr
+					arrLine := map[string]int{ddLine: objectProperty.line}
+					ddDefault := map[string]interface{}{ddPrefix + "_default": arrLine}
+					ddArr := []interface{}{ddDefault}
+					line[ddArray] = ddArr
 				}
 			}
-			propertiesLines[kicsPrefix+key] = line
+			propertiesLines["_dd_"+key] = line
 		}
 	}
 
-	defaultLine := map[string]int{kicsLine: ctx.GetStart().GetLine()}
-	propertiesLines[kicsPrefix+"_default"] = defaultLine
+	defaultLine := map[string]int{ddLine: ctx.GetStart().GetLine()}
+	propertiesLines["_dd_"+"_default"] = defaultLine
 
-	object[kicsLines] = propertiesLines
+	object[ddLines] = propertiesLines
 
 	return object
 }
@@ -764,7 +764,7 @@ func (s *BicepVisitor) VisitObjectProperty(ctx *parser.ObjectPropertyContext) in
 		}
 	}
 
-	return KicsObjectProperty{objectProperty: objectProperty, line: ctx.GetStart().GetLine()}
+	return bicepObjectProperty{objectProperty: objectProperty, line: ctx.GetStart().GetLine()}
 }
 
 func (s *BicepVisitor) VisitIdentifier(ctx *parser.IdentifierContext) interface{} {

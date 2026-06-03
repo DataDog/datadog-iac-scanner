@@ -15,7 +15,8 @@ const (
 )
 
 type AWSJSONFilter struct {
-	FilterExpression interface{} `json:"_kics_filter_expr"`
+	FilterExpression     interface{} `json:"_dd_filter_expr"`
+	KicsFilterExpression interface{} `json:"_kics_filter_expr"` // legacy compat; drop once all rules use _dd_filter_expr
 }
 
 type FilterExp struct {
@@ -41,8 +42,10 @@ func NewJSONFilterPrinterVisitor() *JSONFilterTreeVisitor {
 }
 
 func (v *JSONFilterTreeVisitor) VisitAll(tree antlr.ParseTree) AWSJSONFilter {
+	expr := v.Visit(tree)
 	return AWSJSONFilter{
-		FilterExpression: v.Visit(tree),
+		FilterExpression:     expr,
+		KicsFilterExpression: expr,
 	}
 }
 

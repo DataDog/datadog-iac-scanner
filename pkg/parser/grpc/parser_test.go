@@ -41,27 +41,27 @@ func TestParser_Parse(t *testing.T) {
 			want: `[
 				{
 					"options": [],
-					"_kics_lines": {
-						"_kics_syntax": {
-							"_kics_line": 2
+					"_dd_lines": {
+						"_dd_syntax": {
+							"_dd_line": 2
 						},
-						"kics__default": {
-							"_kics_line": 0
+						"_dd__default": {
+							"_dd_line": 0
 						}
 					},
 					"syntax": "proto3",
 					"package": "",
 					"messages": {
-						"_kics_lines": {}
+						"_dd_lines": {}
 					},
 					"enum": {
-						"_kics_lines": {}
+						"_dd_lines": {}
 					},
 					"services": {
-						"_kics_lines": {}
+						"_dd_lines": {}
 					},
 					"imports": {
-						"_kics_lines": {}
+						"_dd_lines": {}
 					}
 				}
 			]`,
@@ -100,40 +100,40 @@ func TestParser_Parse(t *testing.T) {
 				{
 					"enum": {
 						"EnumAllowingAlias": {
-							"_kics_lines": {
-								"_kics_RUNNING": {
-									"_kics_line": 10
+							"_dd_lines": {
+								"_dd_RUNNING": {
+									"_dd_line": 10
 								},
-								"_kics_STARTED": {
-									"_kics_line": 9
+								"_dd_STARTED": {
+									"_dd_line": 9
 								},
-								"_kics_UNKNOWN": {
-									"_kics_line": 8
+								"_dd_UNKNOWN": {
+									"_dd_line": 8
 								},
-								"_kics__default": {
-									"_kics_line": 6
+								"_dd__default": {
+									"_dd_line": 6
 								},
-								"_kics_allow_alias": {
-									"_kics_line": 7
+								"_dd_allow_alias": {
+									"_dd_line": 7
 								}
 							},
 							"field": {
 								"RUNNING": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 10
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 10
 										}
 									},
 									"options": {
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 10
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 10
 											}
 										},
 										"constant": {
-											"_kics_lines": {
-												"_kics__default": {
-													"_kics_line": 10
+											"_dd_lines": {
+												"_dd__default": {
+													"_dd_line": 10
 												}
 											},
 											"isString": true,
@@ -146,9 +146,9 @@ func TestParser_Parse(t *testing.T) {
 									"value": 2
 								},
 								"STARTED": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 9
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 9
 										}
 									},
 									"options": {
@@ -157,9 +157,9 @@ func TestParser_Parse(t *testing.T) {
 									"value": 1
 								},
 								"UNKNOWN": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 8
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 8
 										}
 									},
 									"options": {
@@ -169,15 +169,15 @@ func TestParser_Parse(t *testing.T) {
 							},
 							"options": {
 								"allow_alias": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 7
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 7
 										}
 									},
 									"constant": {
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 7
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 7
 											}
 										},
 										"source": "true"
@@ -186,19 +186,19 @@ func TestParser_Parse(t *testing.T) {
 								}
 							}
 						},
-						"_kics_lines": {
-							"_kics_EnumAllowingAlias": {
-								"_kics_line": 6
+						"_dd_lines": {
+							"_dd_EnumAllowingAlias": {
+								"_dd_line": 6
 							}
 						}
 					},
 					"services": {
-						"_kics_lines": {}
+						"_dd_lines": {}
 					},
 					"imports": {
-						"_kics_lines": {
-							"_kics_other.proto": {
-								"_kics_line": 3
+						"_dd_lines": {
+							"_dd_other.proto": {
+								"_dd_line": 3
 							}
 						},
 						"other.proto": {
@@ -207,15 +207,15 @@ func TestParser_Parse(t *testing.T) {
 					},
 					"options": [
 						{
-							"_kics_lines": {
-								"_kics__default": {
-									"_kics_line": 4
+							"_dd_lines": {
+								"_dd__default": {
+									"_dd_line": 4
 								}
 							},
 							"constant": {
-								"_kics_lines": {
-									"_kics__default": {
-										"_kics_line": 4
+								"_dd_lines": {
+									"_dd__default": {
+										"_dd_line": 4
 									}
 								},
 								"isString": true,
@@ -225,62 +225,62 @@ func TestParser_Parse(t *testing.T) {
 							"name": "java_package"
 						}
 					],
-					"_kics_lines": {
-						"_kics_package": {
-							"_kics_line": 2
+					"_dd_lines": {
+						"_dd_package": {
+							"_dd_line": 2
 						},
-						"_kics_syntax": {
-							"_kics_line": 1
+						"_dd_syntax": {
+							"_dd_line": 1
 						},
-						"kics__default": {
-							"_kics_arr": [
+						"_dd__default": {
+							"_dd_arr": [
 								{
 									"java_package": {
-										"_kics_line": 4
+										"_dd_line": 4
 									}
 								}
 							],
-							"_kics_line": 0
+							"_dd_line": 0
 						}
 					},
 					"syntax": "proto3",
 					"package": "Cx",
 					"messages": {
 						"Outer": {
-							"_kics_lines": {
-								"_kics_(my_option).a": {
-									"_kics_line": 14
+							"_dd_lines": {
+								"_dd_(my_option).a": {
+									"_dd_line": 14
 								},
-								"_kics_Inner": {
-									"_kics_line": 15
+								"_dd_Inner": {
+									"_dd_line": 15
 								},
-								"_kics__default": {
-									"_kics_line": 12
+								"_dd__default": {
+									"_dd_line": 12
 								},
-								"_kics_enum_field": {
-									"_kics_line": 19
+								"_dd_enum_field": {
+									"_dd_line": 19
 								},
-								"_kics_inner_message": {
-									"_kics_line": 18
+								"_dd_inner_message": {
+									"_dd_line": 18
 								},
-								"_kics_my_map": {
-									"_kics_line": 21
+								"_dd_my_map": {
+									"_dd_line": 21
 								}
 							},
 							"field": {
 								"enum_field": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 19
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 19
 										}
 									},
 									"sequence": 3,
 									"type": "EnumAllowingAlias"
 								},
 								"inner_message": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 18
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 18
 										}
 									},
 									"repeated": true,
@@ -290,19 +290,19 @@ func TestParser_Parse(t *testing.T) {
 							},
 							"inner_message": {
 								"Inner": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 15
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 15
 										},
-										"_kics_ival": {
-											"_kics_line": 16
+										"_dd_ival": {
+											"_dd_line": 16
 										}
 									},
 									"field": {
 										"ival": {
-											"_kics_lines": {
-												"_kics__default": {
-													"_kics_line": 16
+											"_dd_lines": {
+												"_dd__default": {
+													"_dd_line": 16
 												}
 											},
 											"sequence": 1,
@@ -314,9 +314,9 @@ func TestParser_Parse(t *testing.T) {
 							"map": {
 								"my_map": {
 									"field": {
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 21
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 21
 											}
 										},
 										"sequence": 4,
@@ -327,15 +327,15 @@ func TestParser_Parse(t *testing.T) {
 							},
 							"options": {
 								"(my_option).a": {
-									"_kics_lines": {
-										"_kics__default": {
-											"_kics_line": 14
+									"_dd_lines": {
+										"_dd__default": {
+											"_dd_line": 14
 										}
 									},
 									"constant": {
-										"_kics_lines": {
-											"_kics__default": {
-												"_kics_line": 14
+										"_dd_lines": {
+											"_dd__default": {
+												"_dd_line": 14
 											}
 										},
 										"source": "true"
@@ -344,9 +344,9 @@ func TestParser_Parse(t *testing.T) {
 								}
 							}
 						},
-						"_kics_lines": {
-							"_kics_Outer": {
-								"_kics_line": 12
+						"_dd_lines": {
+							"_dd_Outer": {
+								"_dd_line": 12
 							}
 						}
 					}

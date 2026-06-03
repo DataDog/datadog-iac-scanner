@@ -238,7 +238,7 @@ func prepareScanDocumentRoot(body interface{}, kind model.FileKind) {
 }
 
 func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKind) {
-	delete(bodyType, "_kics_lines")
+	delete(bodyType, "_dd_lines")
 	for key, v := range bodyType {
 		switch value := v.(type) {
 		case map[string]interface{}:

@@ -41,47 +41,47 @@ func TestKics_prepareDocument(t *testing.T) {
 								"name": "CIS-4.11-Changes-NACL",
 								"namespace": "CIS_Metric_Alarm_Namespace",
 								"value": "1",
-								"_kics_lines": {
-								  "_kics__default": {
-									"_kics_line": 6
+								"_dd_lines": {
+								  "_dd__default": {
+									"_dd_line": 6
 								  },
-								  "_kics_name": {
-									"_kics_line": 7
+								  "_dd_name": {
+									"_dd_line": 7
 								  },
-								  "_kics_namespace": {
-									"_kics_line": 8
+								  "_dd_namespace": {
+									"_dd_line": 8
 								  },
-								  "_kics_value": {
-									"_kics_line": 9
+								  "_dd_value": {
+									"_dd_line": 9
 								  }
 								}
 							  },
-							  "_kics_lines": {
-								"_kics__default": {
-								  "_kics_line": 1
+							  "_dd_lines": {
+								"_dd__default": {
+								  "_dd_line": 1
 								},
-								"_kics_log_group_name": {
-								  "_kics_line": 4
+								"_dd_log_group_name": {
+								  "_dd_line": 4
 								},
-								"_kics_metric_transformation": {
-								  "_kics_line": 6
+								"_dd_metric_transformation": {
+								  "_dd_line": 6
 								},
-								"_kics_name": {
-								  "_kics_line": 2
+								"_dd_name": {
+								  "_dd_line": 2
 								},
-								"_kics_pattern": {
-								  "_kics_line": 3
+								"_dd_pattern": {
+								  "_dd_line": 3
 								}
 							  }
 							}
 						  }
 						},
-						"_kics_lines": {
-						  "_kics__default": {
-							"_kics_line": 0
+						"_dd_lines": {
+						  "_dd__default": {
+							"_dd_line": 0
 						  },
-						  "_kics_resource": {
-							"_kics_line": 1
+						  "_dd_resource": {
+							"_dd_line": 1
 						  }
 						}
 					  }
@@ -104,7 +104,7 @@ func TestKics_prepareDocument(t *testing.T) {
 							"value": "1"
 						  },
 						  "name": "CIS-4.11-Changes-NACL",
-						  "pattern": "{\"_kics_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAcl\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclAssociation\"}}}"
+						  "pattern": "{\"_dd_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAcl\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclAssociation\"}},\"_kics_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAcl\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclAssociation\"}}}"
 						}
 					  }
 					}

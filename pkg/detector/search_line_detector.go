@@ -70,7 +70,7 @@ func (d *searchLineDetector) preparePath(pathItems []string) int {
 	}
 
 	if arrayObject == objPath {
-		ArrPath = "_kics_lines._kics_" + arrayObject + "._kics_arr"
+		ArrPath = "_dd_lines._dd_" + arrayObject + "._dd_arr"
 	}
 
 	var treatedPathItems []string
@@ -82,7 +82,7 @@ func (d *searchLineDetector) preparePath(pathItems []string) int {
 	for _, pathItem := range treatedPathItems {
 		// In case of an array present
 		if pathItem == arrayObject {
-			ArrPath += "._kics_lines._kics_" + strings.ReplaceAll(pathItem, ".", "\\.") + "._kics_arr"
+			ArrPath += "._dd_lines._dd_" + strings.ReplaceAll(pathItem, ".", "\\.") + "._dd_arr"
 		} else {
 			ArrPath += "." + strings.ReplaceAll(pathItem, ".", "\\.")
 		}
@@ -99,10 +99,10 @@ func (d *searchLineDetector) preparePath(pathItems []string) int {
 // getResult creates the paths to be used by gjson pkg to find the line in the content
 func (d *searchLineDetector) getResult() int {
 	pathObjects := []string{
-		d.resolvedPath + "._kics_lines._kics_" + d.targetObj + "._kics_line",
-		d.resolvedPath + "." + d.targetObj + "._kics_lines._kics__default._kics_line",
-		d.resolvedArrayPath + "." + d.targetObj + "._kics__default._kics_line",
-		d.resolvedArrayPath + "._kics_" + d.targetObj + "._kics_line",
+		d.resolvedPath + "._dd_lines._dd_" + d.targetObj + "._dd_line",
+		d.resolvedPath + "." + d.targetObj + "._dd_lines._dd__default._dd_line",
+		d.resolvedArrayPath + "." + d.targetObj + "._dd__default._dd_line",
+		d.resolvedArrayPath + "._dd_" + d.targetObj + "._dd_line",
 	}
 
 	result := -1
