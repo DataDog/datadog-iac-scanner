@@ -49,22 +49,17 @@ func dryRunKubeVersion() *chartutil.KubeVersion {
 	return cachedKubeVersion
 }
 
-// resolveChartKubeVersion returns a version satisfying constraint; true means
-// nothing in range satisfies it (caller should drop the constraint).
-func resolveChartKubeVersion(constraint string) (*chartutil.KubeVersion, bool) {
+// resolveChartKubeVersion returns a version satisfying constraint; unsatisfiable
+// means nothing in range satisfies it (caller should drop the constraint).
+func resolveChartKubeVersion(constraint string) (kv *chartutil.KubeVersion, unsatisfiable bool) {
 	def := dryRunKubeVersion()
 	if constraint == "" || chartutil.IsCompatibleRange(constraint, def.Version) {
 		return def, false
 	}
 	defMinor, _ := strconv.Atoi(def.Minor)
 	// Walk minors outward from the default, probing all patch levels per minor.
-	for d := 0; d <= maxCandidateMinor; d++ {
-		var minors []int
-		if d == 0 {
-			minors = []int{defMinor}
-		} else {
-			minors = []int{defMinor - d, defMinor + d}
-		}
+	minors := []int{defMinor}
+	for d := 1; d <= maxCandidateMinor+1; d++ {
 		for _, minor := range minors {
 			if minor < minCandidateMinor || minor > maxCandidateMinor {
 				continue
@@ -81,6 +76,7 @@ func resolveChartKubeVersion(constraint string) (*chartutil.KubeVersion, bool) {
 				}
 			}
 		}
+		minors = []int{defMinor - d, defMinor + d}
 	}
 	return def, true
 }
