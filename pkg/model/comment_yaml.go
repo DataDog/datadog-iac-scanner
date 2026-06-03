@@ -193,7 +193,7 @@ func (c *comment) value() (value CommentCommand) {
 			comment = res
 		}
 	}
-	// check if we are working with kics command
+	// check if we are working with a dd-iac-scan command
 	if DDCommentRgxp.MatchString(comment) {
 		comment = DDCommentRgxp.ReplaceAllString(comment, "")
 		comment = strings.Trim(comment, "\n")

@@ -71,7 +71,7 @@ type QueryLoader struct {
 
 // VulnerabilityBuilder represents a function that will build a vulnerability
 type VulnerabilityBuilder func(ctx context.Context, qCtx *QueryContext, tracker Tracker, v interface{},
-	detector *detector.DetectLine, useOldSeverities bool, kicsComputeNewSimID bool, queryDuration time.Duration) (*model.Vulnerability, error)
+	detector *detector.DetectLine, useOldSeverities bool, computeNewSimID bool, queryDuration time.Duration) (*model.Vulnerability, error)
 
 // PreparedQuery includes the opaQuery and its metadata
 type PreparedQuery struct {
@@ -96,7 +96,7 @@ type Inspector struct {
 	queryExecTimeout     time.Duration
 	useOldSeverities     bool
 	numWorkers           int
-	kicsComputeNewSimID  bool
+	computeNewSimID  bool
 	flagEvaluator        featureflags.FlagEvaluator
 }
 
@@ -133,7 +133,7 @@ func NewInspector(
 	useOldSeverities bool,
 	needsLog bool,
 	numWorkers int,
-	kicsComputeNewSimID bool,
+	computeNewSimID bool,
 	flagEvaluator featureflags.FlagEvaluator,
 ) (*Inspector, error) {
 	contextLogger := logger.FromContext(ctx)
@@ -184,7 +184,7 @@ func NewInspector(
 		queryExecTimeout:    queryExecTimeout,
 		useOldSeverities:    useOldSeverities,
 		numWorkers:          utils.AdjustNumWorkers(numWorkers),
-		kicsComputeNewSimID: kicsComputeNewSimID,
+		computeNewSimID: computeNewSimID,
 		flagEvaluator:       flagEvaluator,
 	}, nil
 }
@@ -576,7 +576,7 @@ func (c *Inspector) DecodeQueryResults(
 func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Inspector,
 	queryResultItem interface{}, queryDuration time.Duration) (*model.Vulnerability, bool) {
 	contextLogger := logger.FromContext(ctx)
-	vulnerability, err := c.vb(ctx, qCtx, c.tracker, queryResultItem, c.detector, c.useOldSeverities, c.kicsComputeNewSimID, queryDuration)
+	vulnerability, err := c.vb(ctx, qCtx, c.tracker, queryResultItem, c.detector, c.useOldSeverities, c.computeNewSimID, queryDuration)
 	if err != nil && err.Error() == ErrNoResult.Error() {
 		// Ignoring bad results
 		return nil, false

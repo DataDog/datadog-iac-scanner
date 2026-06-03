@@ -43,7 +43,7 @@ const (
 
 	common = "Common"
 
-	kicsDefault = "default"
+	defaultLibrary = "default"
 )
 
 // NewFilesystemSource initializes a NewFilesystemSource with source to queries and types of queries to load
@@ -98,7 +98,7 @@ func isDefaultLibrary(libraryPath string) bool {
 // GetPathToCustomLibrary - returns the libraries path for a given platform
 func GetPathToCustomLibrary(ctx context.Context, platform, libraryPathFlag string) string {
 	contextLogger := logger.FromContext(ctx)
-	libraryFilePath := kicsDefault
+	libraryFilePath := defaultLibrary
 
 	if !isDefaultLibrary(libraryPathFlag) {
 		contextLogger.Debug().Msgf("Trying to load custom libraries from %s", libraryPathFlag)

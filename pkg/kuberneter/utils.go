@@ -186,7 +186,7 @@ func getDestinationFolder(destinationPath string) (string, error) {
 			return "", errors.Wrap(err, "failed to get working directory")
 		}
 	}
-	destFolderName := fmt.Sprintf("kics-extract-kuberneter-%s", time.Now().Format("01-02-2006"))
+	destFolderName := fmt.Sprintf("dd-extract-kuberneter-%s", time.Now().Format("01-02-2006"))
 	destination := filepath.Join(destinationPath, destFolderName)
 
 	if err := os.MkdirAll(destination, dirPerms); err != nil {
