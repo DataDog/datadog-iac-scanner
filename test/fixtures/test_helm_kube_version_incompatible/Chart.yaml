@@ -1,0 +1,6 @@
+apiVersion: v2
+name: test_helm_kube_version_incompatible
+description: Fixture chart with an unsatisfiable kubeVersion for dry-run (gate bypass test).
+type: application
+version: 0.1.0
+kubeVersion: ">= 1.99.0-0"

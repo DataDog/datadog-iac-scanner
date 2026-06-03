@@ -1,0 +1,6 @@
+apiVersion: v2
+name: test_helm_kube_version_gate
+description: Fixture chart with a lower-bound kubeVersion constraint.
+type: application
+version: 0.1.0
+kubeVersion: ">= 1.22.0-0"
