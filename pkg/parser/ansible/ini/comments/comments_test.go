@@ -27,7 +27,7 @@ func Test_getKicsIgnore(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.comment, func(t *testing.T) {
-			if got := getKicsIgnore(tt.comment); !reflect.DeepEqual(got, tt.want) {
+			if got := getIgnoreCommand(tt.comment); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("got = %s, want %s", got, tt.want)
 			}
 		})

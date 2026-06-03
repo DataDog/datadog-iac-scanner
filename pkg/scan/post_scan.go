@@ -7,7 +7,7 @@ package scan
 
 import (
 	"context"
-	_ "embed" // Embed kics CLI img and scan-flags
+	_ "embed" // Embed scanner CLI img and scan-flags
 	"os"
 	"path/filepath"
 	"sort"

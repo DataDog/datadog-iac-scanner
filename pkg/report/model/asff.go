@@ -58,7 +58,7 @@ type Resource struct {
 	Type string
 }
 
-// Severity contains the original severity (KICS severity) and the label severity (ASFF severity)
+// Severity contains the original severity and the label severity (ASFF severity)
 type Severity struct {
 	Original string
 	Label    string

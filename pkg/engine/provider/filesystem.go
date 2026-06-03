@@ -39,7 +39,7 @@ const (
 
 var (
 	queryRegexExcludeTerraCache = regexp.MustCompile(fmt.Sprintf(`^(.*?%s)?\.terra.*`, regexp.QuoteMeta(string(os.PathSeparator))))
-	// ErrNotSupportedFile - error representing when a file format is not supported by KICS
+	// ErrNotSupportedFile - error representing when a file format is not supported by the scanner
 	ErrNotSupportedFile = errors.New("invalid file format")
 )
 

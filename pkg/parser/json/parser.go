@@ -58,20 +58,20 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	}
 
 	jLine := initializeJSONLine(resolved)
-	kicsJSON := jLine.setLineInfo(r)
+	jsonDoc := jLine.setLineInfo(r)
 
 	// Try to parse JSON as Terraform plan
-	kicsPlan, err := parseTFPlan(kicsJSON)
+	tfPlan, err := parseTFPlan(jsonDoc)
 	if err != nil {
 		// JSON is not a tf plan
-		return resolved, []model.Document{kicsJSON}, nil, resolvedFiles, nil
+		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
 	}
 
 	p.shouldIdentMu.Lock()
 	p.shouldIdent = true
 	p.shouldIdentMu.Unlock()
 
-	return resolved, []model.Document{kicsPlan}, nil, resolvedFiles, nil
+	return resolved, []model.Document{tfPlan}, nil, resolvedFiles, nil
 }
 
 // SupportedExtensions returns extensions supported by this parser, which is json extension

@@ -102,7 +102,7 @@ func GenerateReport(ctx context.Context, path, filename string, body interface{}
 	return err
 }
 
-// GetExecutableDirectory - returns the path to the directory containing KICS executable
+// GetExecutableDirectory - returns the path to the directory containing the scanner executable
 func GetExecutableDirectory() string {
 	log.Debug().Msg("helpers.GetExecutableDirectory()")
 	path, err := os.Executable()

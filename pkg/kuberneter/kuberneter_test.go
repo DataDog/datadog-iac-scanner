@@ -42,7 +42,7 @@ func TestImport(t *testing.T) {
 			args: args{
 				kuberneterPath: "*:*:*",
 			},
-			want:    "kics-extract-kuberneter",
+			want:    "dd-extract-kuberneter",
 			wantErr: true,
 		},
 		{

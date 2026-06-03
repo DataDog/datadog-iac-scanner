@@ -49,7 +49,7 @@ type QueriesSource interface {
 	GetQueryLibrary(ctx context.Context, platform string) (RegoLibraries, error)
 }
 
-// MergeInputData merges KICS input data with custom input data user defined
+// MergeInputData merges default input data with custom input data user defined
 func MergeInputData(defaultInputData, customInputData string) (string, error) {
 	if checkEmptyInputdata(customInputData) && checkEmptyInputdata(defaultInputData) {
 		return emptyInputData, nil

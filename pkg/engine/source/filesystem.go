@@ -219,32 +219,32 @@ func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]any,
 		return false
 	}
 
-	// Extract KICS ID from query metadata
-	kicsID, exists := metadata["id"]
+	// Extract rule ID from query metadata
+	ruleID, exists := metadata["id"]
 	if !exists {
 		return false
 	}
 
-	kicsIDStr, ok := kicsID.(string)
+	ruleIDStr, ok := ruleID.(string)
 	if !ok {
 		return false
 	}
 
-	// Extract KICS PLATFORM from query metadata
-	kicsPlatform, exists := metadata["platform"]
+	// Extract platform from query metadata
+	rulePlatformVal, exists := metadata["platform"]
 	if !exists {
 		return false
 	}
 
-	kicsPlatformStr, ok := kicsPlatform.(string)
+	rulePlatformStr, ok := rulePlatformVal.(string)
 	if !ok {
 		return false
 	}
 
-	// Create custom variables with the KICS ID
+	// Create custom variables with the rule ID and platform for feature flag evaluation
 	customVariables := map[string]any{
-		"KICS_RULE_ID":       kicsIDStr,
-		"KICS_RULE_PLATFORM": kicsPlatformStr,
+		"KICS_RULE_ID":       ruleIDStr,
+		"KICS_RULE_PLATFORM": rulePlatformStr,
 	}
 
 	contextLogger := logger.FromContext(ctx)
@@ -254,29 +254,29 @@ func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]any,
 	if err != nil {
 		// If feature flag evaluation fails, log and continue (fail open)
 		contextLogger.Warn().
-			Err(err).Str("kics_id", kicsIDStr).
+			Err(err).Str("rule_id", ruleIDStr).
 			Str("feature_flag", featureflags.IacDisableKicsRule).
-			Msg("Failed to evaluate feature flag for KICS rule")
+			Msg("Failed to evaluate feature flag for rule")
 	}
 
 	if ruleIdDisabled {
-		contextLogger.Info().Str("kics_id", kicsIDStr).Str("feature_flag", featureflags.IacDisableKicsRule).
-			Msg("KICS rule disabled by feature flag")
+		contextLogger.Info().Str("rule_id", ruleIDStr).Str("feature_flag", featureflags.IacDisableKicsRule).
+			Msg("Rule disabled by feature flag")
 		return true
 	}
 
-	// Check if the rule is enabled via feature flag
+	// Check if the rule's platform is enabled via feature flag
 	rulePlatformEnabled, err := queryParameters.FlagEvaluator.EvaluateWithOrgAndEnvAndCustomVariables(featureflags.IacEnableKicsPlatform,
 		customVariables)
 	if err != nil {
 		// If feature flag evaluation fails, log and continue (fail open)
-		contextLogger.Warn().Err(err).Str("kics_id", kicsIDStr).Str("feature_flag", featureflags.IacEnableKicsPlatform).
-			Msg("Failed to evaluate feature flag for KICS rule")
+		contextLogger.Warn().Err(err).Str("rule_id", ruleIDStr).Str("feature_flag", featureflags.IacEnableKicsPlatform).
+			Msg("Failed to evaluate feature flag for rule platform")
 	}
 
 	if !rulePlatformEnabled {
-		contextLogger.Info().Str("kics_id", kicsIDStr).Str("feature_flag", featureflags.IacEnableKicsPlatform).
-			Msg("KICS rule disabled by feature flag")
+		contextLogger.Info().Str("rule_id", ruleIDStr).Str("feature_flag", featureflags.IacEnableKicsPlatform).
+			Msg("Rule platform disabled by feature flag")
 		return true
 	}
 
@@ -343,7 +343,7 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 	return queries
 }
 
-// validateMetadata prevents panics when KICS queries metadata fields are missing
+// validateMetadata prevents panics when query metadata fields are missing
 func validateMetadata(metadata map[string]any) (exist bool, field string) {
 	fields := []string{
 		"id",

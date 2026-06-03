@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	// Version - current KICS version
+	// Version - current scanner version
 	Version = "development"
 	// SCMCommit - Source control management commit identifier
 	SCMCommit = "NOCOMMIT"
@@ -93,7 +93,7 @@ var (
 )
 
 const (
-	// Fullname - KICS fullname
+	// Fullname - scanner fullname
 	Fullname = "DataDog IaC Scanner"
 
 	// URL - DD Docs url
