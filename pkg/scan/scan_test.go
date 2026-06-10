@@ -35,8 +35,8 @@ func Test_ExecuteScan(t *testing.T) {
 	const ruleID = "test-execute-scan-rule"
 	rego := `package datadog
 
-DatadogPolicy[result] {
-	resource := input.document[i].resource.aws_s3_bucket[name]
+DatadogPolicy contains result if {
+	input.document[i].resource.aws_s3_bucket[name]
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": "aws_s3_bucket",

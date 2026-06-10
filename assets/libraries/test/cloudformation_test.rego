@@ -3,76 +3,78 @@
 # Run from repo root using `opa test assets/libraries/ -v`
 package generic.cloudformation
 
+import rego.v1
+
 # Test normalize_cloudFormation_boolean function
-test_normalize_cloudFormation_boolean_true_bool {
+test_normalize_cloudFormation_boolean_true_bool if {
 	result := normalize_cloudFormation_boolean(true)
 	result == "true"
 }
 
-test_normalize_cloudFormation_boolean_true_string {
+test_normalize_cloudFormation_boolean_true_string if {
 	result := normalize_cloudFormation_boolean("true")
 	result == "true"
 }
 
-test_normalize_cloudFormation_boolean_yes {
+test_normalize_cloudFormation_boolean_yes if {
 	result := normalize_cloudFormation_boolean("yes")
 	result == "true"
 }
 
-test_normalize_cloudFormation_boolean_on {
+test_normalize_cloudFormation_boolean_on if {
 	result := normalize_cloudFormation_boolean("on")
 	result == "true"
 }
 
-test_normalize_cloudFormation_boolean_false {
+test_normalize_cloudFormation_boolean_false if {
 	result := normalize_cloudFormation_boolean(false)
 	result == "false"
 }
 
-test_normalize_cloudFormation_boolean_other {
+test_normalize_cloudFormation_boolean_other if {
 	result := normalize_cloudFormation_boolean("random")
 	result == "false"
 }
 
 # Test isLoadBalancer function
-test_is_load_balancer_classic {
+test_is_load_balancer_classic if {
 	resource := {"Type": "AWS::ElasticLoadBalancing::LoadBalancer"}
 	isLoadBalancer(resource)
 }
 
-test_is_load_balancer_v2 {
+test_is_load_balancer_v2 if {
 	resource := {"Type": "AWS::ElasticLoadBalancingV2::LoadBalancer"}
 	isLoadBalancer(resource)
 }
 
-test_is_not_load_balancer {
+test_is_not_load_balancer if {
 	resource := {"Type": "AWS::EC2::Instance"}
 	not isLoadBalancer(resource)
 }
 
 # Test checkAction function
-test_check_action_wildcard_string {
+test_check_action_wildcard_string if {
 	checkAction("*", "*")
 }
 
-test_check_action_contains_string {
+test_check_action_contains_string if {
 	checkAction("s3:getobject", "getobject")
 }
 
-test_check_action_wildcard_array {
+test_check_action_wildcard_array if {
 	checkAction(["*"], "*")
 }
 
-test_check_action_contains_array {
+test_check_action_contains_array if {
 	checkAction(["s3:GetObject", "s3:PutObject"], "getobject")
 }
 
-test_check_action_no_match {
+test_check_action_no_match if {
 	not checkAction("s3:DeleteObject", "getobject")
 }
 
 # Test getResourcesByType function
-test_get_resources_by_type_found {
+test_get_resources_by_type_found if {
 	resources := [
 		{"Type": "AWS::S3::Bucket", "Properties": {"BucketName": "bucket1"}},
 		{"Type": "AWS::EC2::Instance", "Properties": {"InstanceType": "t2.micro"}},
@@ -83,97 +85,95 @@ test_get_resources_by_type_found {
 	result[0].Properties.BucketName == "bucket1"
 }
 
-test_get_resources_by_type_not_found {
-	resources := [
-		{"Type": "AWS::S3::Bucket", "Properties": {"BucketName": "bucket1"}},
-	]
+test_get_resources_by_type_not_found if {
+	resources := [{"Type": "AWS::S3::Bucket", "Properties": {"BucketName": "bucket1"}}]
 	result := getResourcesByType(resources, "AWS::EC2::Instance")
 	count(result) == 0
 }
 
-test_get_resources_by_type_empty {
+test_get_resources_by_type_empty if {
 	resources := []
 	result := getResourcesByType(resources, "AWS::S3::Bucket")
 	count(result) == 0
 }
 
 # Test getBucketName function
-test_get_bucket_name_string {
+test_get_bucket_name_string if {
 	resource := {"Properties": {"Bucket": "my-bucket"}}
 	result := getBucketName(resource)
 	result == "my-bucket"
 }
 
-test_get_bucket_name_ref {
+test_get_bucket_name_ref if {
 	resource := {"Properties": {"Bucket": {"Ref": "MyBucketRef"}}}
 	result := getBucketName(resource)
 	result == "MyBucketRef"
 }
 
 # Test get_encryption function
-test_get_encryption_encrypted_true {
+test_get_encryption_encrypted_true if {
 	resource := {"Properties": {"Encrypted": true}}
 	result := get_encryption(resource)
 	result == "encrypted"
 }
 
-test_get_encryption_with_encryption_specification {
+test_get_encryption_with_encryption_specification if {
 	resource := {"Properties": {"EncryptionSpecification": {"SSEEnabled": true}}}
 	result := get_encryption(resource)
 	result == "encrypted"
 }
 
-test_get_encryption_with_kms_key {
+test_get_encryption_with_kms_key if {
 	resource := {"Properties": {"KmsMasterKeyId": "arn:aws:kms:..."}}
 	result := get_encryption(resource)
 	result == "encrypted"
 }
 
-test_get_encryption_with_encryption_info {
+test_get_encryption_with_encryption_info if {
 	resource := {"Properties": {"EncryptionInfo": {"EncryptionAtRest": {}}}}
 	result := get_encryption(resource)
 	result == "encrypted"
 }
 
-test_get_encryption_with_encryption_options {
+test_get_encryption_with_encryption_options if {
 	resource := {"Properties": {"EncryptionOptions": {"Enabled": true}}}
 	result := get_encryption(resource)
 	result == "encrypted"
 }
 
-test_get_encryption_with_bucket_encryption {
+test_get_encryption_with_bucket_encryption if {
 	resource := {"Properties": {"BucketEncryption": {"ServerSideEncryptionConfiguration": []}}}
 	result := get_encryption(resource)
 	result == "encrypted"
 }
 
-test_get_encryption_with_stream_encryption {
+test_get_encryption_with_stream_encryption if {
 	resource := {"Properties": {"StreamEncryption": {"StreamEncryptionType": "KMS"}}}
 	result := get_encryption(resource)
 	result == "encrypted"
 }
 
-test_get_encryption_unencrypted {
+test_get_encryption_unencrypted if {
 	resource := {"Properties": {"Name": "my-resource"}}
 	result := get_encryption(resource)
 	result == "unencrypted"
 }
 
 # Test get_name function
-test_get_name_with_ref {
+test_get_name_with_ref if {
 	targetName := {"Ref": "MyResource"}
 	result := get_name(targetName)
 	result == "MyResource"
 }
 
-test_get_name_without_ref {
+test_get_name_without_ref if {
 	targetName := "my-resource-name"
 	result := get_name(targetName)
 	result == "my-resource-name"
 }
 
 # Test get_resource_name function
-test_get_resource_name_with_field {
+test_get_resource_name_with_field if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": "my-bucket"},
@@ -182,7 +182,7 @@ test_get_resource_name_with_field {
 	result == "my-bucket"
 }
 
-test_get_resource_name_with_tag {
+test_get_resource_name_with_tag if {
 	resource := {
 		"Type": "AWS::EC2::Instance",
 		"Properties": {"Tags": [
@@ -194,7 +194,7 @@ test_get_resource_name_with_tag {
 	result == "my-instance"
 }
 
-test_get_resource_name_fallback {
+test_get_resource_name_fallback if {
 	resource := {
 		"Type": "AWS::EC2::Instance",
 		"Properties": {},
@@ -203,7 +203,7 @@ test_get_resource_name_fallback {
 	result == "MyInstance"
 }
 
-test_get_resource_name_elb {
+test_get_resource_name_elb if {
 	resource := {
 		"Type": "AWS::ElasticLoadBalancing::LoadBalancer",
 		"Properties": {"LoadBalancerName": "my-elb"},
@@ -212,7 +212,7 @@ test_get_resource_name_elb {
 	result == "my-elb"
 }
 
-test_get_resource_name_elbv2 {
+test_get_resource_name_elbv2 if {
 	resource := {
 		"Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
 		"Properties": {"Name": "my-alb"},
@@ -221,7 +221,7 @@ test_get_resource_name_elbv2 {
 	result == "my-alb"
 }
 
-test_get_resource_name_lambda {
+test_get_resource_name_lambda if {
 	resource := {
 		"Type": "AWS::Lambda::Function",
 		"Properties": {"FunctionName": "my-function"},
@@ -230,7 +230,7 @@ test_get_resource_name_lambda {
 	result == "my-function"
 }
 
-test_get_resource_name_rds {
+test_get_resource_name_rds if {
 	resource := {
 		"Type": "AWS::RDS::DBInstance",
 		"Properties": {"DBName": "mydb"},
@@ -239,7 +239,7 @@ test_get_resource_name_rds {
 	result == "mydb"
 }
 
-test_get_resource_name_api_gateway {
+test_get_resource_name_api_gateway if {
 	resource := {
 		"Type": "AWS::ApiGateway::RestApi",
 		"Properties": {"Name": "my-api"},
@@ -248,7 +248,7 @@ test_get_resource_name_api_gateway {
 	result == "my-api"
 }
 
-test_get_resource_name_dynamodb {
+test_get_resource_name_dynamodb if {
 	resource := {
 		"Type": "AWS::DynamoDB::Table",
 		"Properties": {"TableName": "my-table"},
@@ -257,7 +257,7 @@ test_get_resource_name_dynamodb {
 	result == "my-table"
 }
 
-test_get_resource_name_cloudtrail {
+test_get_resource_name_cloudtrail if {
 	resource := {
 		"Type": "AWS::CloudTrail::Trail",
 		"Properties": {"TrailName": "my-trail"},
@@ -267,101 +267,101 @@ test_get_resource_name_cloudtrail {
 }
 
 # Test getPath function
-test_get_path_with_elements {
+test_get_path_with_elements if {
 	path := ["Resources", "MyBucket", "Properties"]
 	result := getPath(path)
 	result == "Resources.MyBucket.Properties."
 }
 
-test_get_path_empty {
+test_get_path_empty if {
 	path := []
 	result := getPath(path)
 	result == ""
 }
 
-test_get_path_single_element {
+test_get_path_single_element if {
 	path := ["Resources"]
 	result := getPath(path)
 	result == "Resources."
 }
 
 # Test createSearchKey function
-test_create_search_key_without_ref {
+test_create_search_key_without_ref if {
 	elem := {"Name": "my-resource"}
 	result := createSearchKey(elem)
 	result == "=my-resource"
 }
 
-test_create_search_key_with_ref {
+test_create_search_key_with_ref if {
 	elem := {"Name": {"Ref": "MyResourceRef"}}
 	result := createSearchKey(elem)
 	result == ".Ref=MyResourceRef"
 }
 
 # Test UDP ports map
-test_udp_ports_map_dns {
+test_udp_ports_map_dns if {
 	port := udpPortsMap[53]
 	port == "DNS"
 }
 
-test_udp_ports_map_snmp {
+test_udp_ports_map_snmp if {
 	port := udpPortsMap[161]
 	port == "SNMP"
 }
 
-test_udp_ports_map_postgresql {
+test_udp_ports_map_postgresql if {
 	port := udpPortsMap[5432]
 	port == "PostgreSQL"
 }
 
-test_udp_ports_map_memcached {
+test_udp_ports_map_memcached if {
 	port := udpPortsMap[11211]
 	port == "Memcached"
 }
 
 # Test resourceFieldName map
-test_resource_field_name_s3 {
+test_resource_field_name_s3 if {
 	field := resourceFieldName["AWS::S3::Bucket"]
 	field == "BucketName"
 }
 
-test_resource_field_name_lambda {
+test_resource_field_name_lambda if {
 	field := resourceFieldName["AWS::Lambda::Function"]
 	field == "FunctionName"
 }
 
-test_resource_field_name_ec2 {
+test_resource_field_name_ec2 if {
 	field := resourceFieldName["AWS::EC2::Instance"]
 	field == ""
 }
 
-test_resource_field_name_dynamodb {
+test_resource_field_name_dynamodb if {
 	field := resourceFieldName["AWS::DynamoDB::Table"]
 	field == "TableName"
 }
 
-test_resource_field_name_rds {
+test_resource_field_name_rds if {
 	field := resourceFieldName["AWS::RDS::DBInstance"]
 	field == "DBName"
 }
 
-test_resource_field_name_api_gateway_stage {
+test_resource_field_name_api_gateway_stage if {
 	field := resourceFieldName["AWS::ApiGateway::Stage"]
 	field == "StageName"
 }
 
-test_resource_field_name_iam_role {
+test_resource_field_name_iam_role if {
 	field := resourceFieldName["AWS::IAM::Role"]
 	field == "RoleName"
 }
 
-test_resource_field_name_kms {
+test_resource_field_name_kms if {
 	field := resourceFieldName["AWS::KMS::Key"]
 	field == ""
 }
 
 # Test hasSecretManager function
-test_has_secret_manager_found {
+test_has_secret_manager_found if {
 	str := "${MySecret}"
 	document := {
 		"MySecret": {"Type": "AWS::SecretsManager::Secret"},
@@ -370,7 +370,7 @@ test_has_secret_manager_found {
 	hasSecretManager(str, document)
 }
 
-test_has_secret_manager_not_found {
+test_has_secret_manager_not_found if {
 	str := "${MySecret}"
 	document := {
 		"MySecret": {"Type": "AWS::S3::Bucket"},
@@ -379,16 +379,14 @@ test_has_secret_manager_not_found {
 	not hasSecretManager(str, document)
 }
 
-test_has_secret_manager_missing_resource {
+test_has_secret_manager_missing_resource if {
 	str := "${NonExistentSecret}"
-	document := {
-		"MySecret": {"Type": "AWS::SecretsManager::Secret"},
-	}
+	document := {"MySecret": {"Type": "AWS::SecretsManager::Secret"}}
 	not hasSecretManager(str, document)
 }
 
 # Test get_resource_name: Fn::Sub resolved against parameter defaults
-test_get_resource_name_fn_sub_single_param {
+test_get_resource_name_fn_sub_single_param if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Fn::Sub": "my-app-${Env}"}},
@@ -397,7 +395,7 @@ test_get_resource_name_fn_sub_single_param {
 	result == "my-app-prod"
 }
 
-test_get_resource_name_fn_sub_multiple_params {
+test_get_resource_name_fn_sub_multiple_params if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Fn::Sub": "${AppName}-${Env}-bucket"}},
@@ -409,7 +407,7 @@ test_get_resource_name_fn_sub_multiple_params {
 	result == "myapp-prod-bucket"
 }
 
-test_get_resource_name_fn_sub_sequence_form {
+test_get_resource_name_fn_sub_sequence_form if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Fn::Sub": [
@@ -421,7 +419,7 @@ test_get_resource_name_fn_sub_sequence_form {
 	result == "myapp-prod-bucket"
 }
 
-test_get_resource_name_fn_sub_sequence_ref_var {
+test_get_resource_name_fn_sub_sequence_ref_var if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Fn::Sub": [
@@ -433,7 +431,7 @@ test_get_resource_name_fn_sub_sequence_ref_var {
 	result == "myapp-prod-bucket"
 }
 
-test_get_resource_name_fn_sub_with_pseudo_parameters {
+test_get_resource_name_fn_sub_with_pseudo_parameters if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Fn::Sub": "my-bucket-${AWS::Region}-${AWS::AccountId}"}},
@@ -442,7 +440,7 @@ test_get_resource_name_fn_sub_with_pseudo_parameters {
 	result == "my-bucket-aws-region-aws-account-id"
 }
 
-test_get_resource_name_fn_sub_unresolvable_falls_back {
+test_get_resource_name_fn_sub_unresolvable_falls_back if {
 	# ${UnknownVar} cannot be resolved — falls back to logical id
 	resource := {
 		"Type": "AWS::S3::Bucket",
@@ -452,7 +450,7 @@ test_get_resource_name_fn_sub_unresolvable_falls_back {
 	result == "MyBucket"
 }
 
-test_get_resource_name_ref_param_default {
+test_get_resource_name_ref_param_default if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Ref": "BucketNameParam"}},
@@ -461,7 +459,7 @@ test_get_resource_name_ref_param_default {
 	result == "my-ref-bucket"
 }
 
-test_get_resource_name_ref_no_default_falls_back {
+test_get_resource_name_ref_no_default_falls_back if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Ref": "BucketNameParam"}},
@@ -470,7 +468,7 @@ test_get_resource_name_ref_no_default_falls_back {
 	result == "MyBucket"
 }
 
-test_get_resource_name_ref_pseudo_parameter {
+test_get_resource_name_ref_pseudo_parameter if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Ref": "AWS::Region"}},
@@ -481,7 +479,7 @@ test_get_resource_name_ref_pseudo_parameter {
 
 # Explicit sequence-form variables take precedence over a same-named parameter
 # default, matching CloudFormation Fn::Sub semantics.
-test_get_resource_name_fn_sub_sequence_overrides_param_default {
+test_get_resource_name_fn_sub_sequence_overrides_param_default if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Fn::Sub": [
@@ -495,7 +493,7 @@ test_get_resource_name_fn_sub_sequence_overrides_param_default {
 
 # A non-string Fn::Sub template head (here a nested Fn::If) cannot be resolved,
 # so resolution fails and get_resource_name falls back to the logical id.
-test_get_resource_name_fn_sub_complex_head_falls_back {
+test_get_resource_name_fn_sub_complex_head_falls_back if {
 	resource := {
 		"Type": "AWS::S3::Bucket",
 		"Properties": {"BucketName": {"Fn::Sub": [
@@ -508,7 +506,7 @@ test_get_resource_name_fn_sub_complex_head_falls_back {
 }
 
 # Test get_resource_accessibility function (basic scenarios)
-test_get_resource_accessibility_unknown {
+test_get_resource_accessibility_unknown if {
 	# When no matching policy is found, accessibility should be unknown
 	test_document := [{"Resources": {}}]
 	result := get_resource_accessibility("my-bucket", "AWS::S3::BucketPolicy", "Bucket") with input.document as test_document

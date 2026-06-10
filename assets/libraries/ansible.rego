@@ -1,23 +1,25 @@
 package generic.ansible
 
+import rego.v1
+
 # Global variable with all tasks in input
 tasks := TasksPerDocument
 
 # Builds an object that stores all tasks for each document id
-TasksPerDocument[id] = result {
+TasksPerDocument[id] := result if {
 	document := input.document[i]
 	id := document.id
 	result := getTasks(document)
 }
 
 # Function used to get all tasks from a document
-getTasks(document) = result {
+getTasks(document) := result if {
 	document.playbooks[0].tasks
 	result := [task |
 		playbook := document.playbooks[0].tasks[_]
 		task := getTasksFromBlocks(playbook)[_]
 	]
-} else = result {
+} else := result if {
 	result := [task |
 		playbook := document.playbooks[_]
 		task := getTasksFromBlocks(playbook)[_]
@@ -25,7 +27,7 @@ getTasks(document) = result {
 }
 
 # Function used to get all nested tasks inside a block task ("block", "always", "rescue")
-getTasksFromBlocks(playbook) = result {
+getTasksFromBlocks(playbook) := result if {
 	playbook.block
 	result := [task |
 		walk(playbook, [path, task])
@@ -33,58 +35,56 @@ getTasksFromBlocks(playbook) = result {
 		not task.block
 		validPath(path)
 	]
-} else = [playbook] {
-	true
-}
+} else := [playbook]
 
 # Validates the path of a nested element inside a block task to assure it's a task
-validPath(path) {
+validPath(path) if {
 	count(path) > 1
-	validGroup(path[minus(count(path), 2)])
+	validGroup(path[count(path) - 2])
 }
 
 # Identifies a block task
-validGroup("block") = true
+validGroup("block") := true
 
-validGroup("always") = true
+validGroup("always") := true
 
-validGroup("rescue") = true
+validGroup("rescue") := true
 
 # Checks if a task is not an absent task
-checkState(task) {
+checkState(task) if {
 	state := object.get(task, "state", "undefined")
 	state != "absent"
 }
 
 # Checks if a variable has 'true' value in Ansible
-isAnsibleTrue(answer) {
+isAnsibleTrue(answer) if {
 	lower(answer) == "yes"
-} else {
+} else if {
 	lower(answer) == "true"
-} else {
+} else if {
 	answer == true
 }
 
 # Checks if a variable has 'false' value in Ansible
-isAnsibleFalse(answer) {
+isAnsibleFalse(answer) if {
 	lower(answer) == "no"
-} else {
+} else if {
 	lower(answer) == "false"
-} else {
+} else if {
 	answer == false
 }
 
-check_database_flags_content(database_flags, flagName, flagValue) {
+check_database_flags_content(database_flags, flagName, flagValue) if {
 	database_flags[x].name == flagName
 	database_flags[x].value != flagValue
 }
 
-check_database_flags_content(database_flags, flagName, flagValue) {
+check_database_flags_content(database_flags, flagName, flagValue) if {
 	database_flags.name == flagName
 	database_flags.value != flagValue
 }
 
-allowsPort(allowed, port) {
+allowsPort(allowed, port) if {
 	portNumber := to_number(port)
 	some i
 	contains(allowed.ports[i], "-")
@@ -94,55 +94,53 @@ allowsPort(allowed, port) {
 
 	low <= portNumber
 	high >= portNumber
-} else {
+} else if {
 	allowed.ports[_] == port
-} else = false {
-	true
-}
+} else := false
 
 # Checks if a given port is included in a network rule
-isPortInRule(rule, portNumber) {
+isPortInRule(rule, portNumber) if {
 	rule.from_port != -1
 	rule.from_port <= portNumber
 	rule.to_port >= portNumber
 }
 
-isPortInRule(rule, portNumber) {
+isPortInRule(rule, portNumber) if {
 	rule.ports == portNumber
 }
 
-isPortInRule(rule, portNumber) {
+isPortInRule(rule, portNumber) if {
 	rule.ports[_] == portNumber
 }
 
-isPortInRule(rule, portNumber) {
+isPortInRule(rule, portNumber) if {
 	mports := split(rule.ports, "-")
 	to_number(mports[0]) <= portNumber
 	to_number(mports[1]) >= portNumber
 }
 
-isPortInRule(rule, portNumber) {
+isPortInRule(rule, portNumber) if {
 	mports := split(rule.ports[_], "-")
 	to_number(mports[0]) <= portNumber
 	to_number(mports[1]) >= portNumber
 }
 
-isPortInRule(rule, portNumber) {
+isPortInRule(rule, portNumber) if {
 	rule.from_port == -1
 }
 
-isPortInRule(rule, portNumber) {
+isPortInRule(rule, portNumber) if {
 	rule.to_port == -1
 }
 
 # Checks if CIDR represents entire network
-isEntireNetwork(cidr) {
+isEntireNetwork(cidr) if {
 	is_array(cidr)
 	cidrs = {"0.0.0.0/0", "::/0"}
 	count({x | cidr[x]; cidr[x] == cidrs[j]}) != 0
 }
 
-isEntireNetwork(cidr) {
+isEntireNetwork(cidr) if {
 	is_string(cidr)
 	cidrs = {"0.0.0.0/0", "::/0"}
 	cidr == cidrs[j]
@@ -198,18 +196,18 @@ ansible_modules := {
 	"config_rule": {"variants": {"community.aws.config_rule", "config_rule", "community.aws.aws_config_rule", "aws_config_rule"}, "name_key": "name"},
 	"copy": {"variants": {"ansible.builtin.copy", "copy"}, "name_key": "dest"},
 	"dnf": {"variants": {"ansible.builtin.dnf", "dnf"}, "name_key": "name"},
-    "easy_install": {"variants": {"community.general.easy_install", "easy_install"}, "name_key": "name"},
-    "ec2_ami": {"variants": {"amazon.aws.ec2_ami", "ec2_ami"}, "name_key": "name"},
-    "ec2_group": {"variants": {"amazon.aws.ec2_security_group", "amazon.aws.ec2_group", "ec2_group"}, "name_key": "name"},
-    "ec2_instance": {"variants": {"amazon.aws.ec2_instance", "community.aws.ec2_instance", "ec2_instance"}, "name_key": "name"},
-    "ec2_launch_template": {"variants": {"amazon.aws.ec2_launch_template", "community.aws.ec2_launch_template", "ec2_launch_template"}, "name_key": "name"},
-    "ec2_vol": {"variants": {"amazon.aws.ec2_vol", "ec2_vol"}, "name_key": "name"},
-    "ec2_vpc_subnet": {"variants": {"amazon.aws.ec2_vpc_subnet", "ec2_vpc_subnet"}, "name_key": "cidr"},
-    "ecs_ecr": {"variants": {"community.aws.ecs_ecr", "ecs_ecr"}, "name_key": "name"},
-    "ecs_service": {"variants": {"community.aws.ecs_service", "ecs_service"}, "name_key": "name"},
-    "ecs_taskdefinition": {"variants": {"community.aws.ecs_taskdefinition", "ecs_taskdefinition"}, "name_key": "family"},
-    "efs": {"variants": {"community.aws.efs", "efs"}, "name_key": "name"},
-    "elasticache": {"variants": {"community.aws.elasticache", "elasticache"}, "name_key": "name"},
+	"easy_install": {"variants": {"community.general.easy_install", "easy_install"}, "name_key": "name"},
+	"ec2_ami": {"variants": {"amazon.aws.ec2_ami", "ec2_ami"}, "name_key": "name"},
+	"ec2_group": {"variants": {"amazon.aws.ec2_security_group", "amazon.aws.ec2_group", "ec2_group"}, "name_key": "name"},
+	"ec2_instance": {"variants": {"amazon.aws.ec2_instance", "community.aws.ec2_instance", "ec2_instance"}, "name_key": "name"},
+	"ec2_launch_template": {"variants": {"amazon.aws.ec2_launch_template", "community.aws.ec2_launch_template", "ec2_launch_template"}, "name_key": "name"},
+	"ec2_vol": {"variants": {"amazon.aws.ec2_vol", "ec2_vol"}, "name_key": "name"},
+	"ec2_vpc_subnet": {"variants": {"amazon.aws.ec2_vpc_subnet", "ec2_vpc_subnet"}, "name_key": "cidr"},
+	"ecs_ecr": {"variants": {"community.aws.ecs_ecr", "ecs_ecr"}, "name_key": "name"},
+	"ecs_service": {"variants": {"community.aws.ecs_service", "ecs_service"}, "name_key": "name"},
+	"ecs_taskdefinition": {"variants": {"community.aws.ecs_taskdefinition", "ecs_taskdefinition"}, "name_key": "family"},
+	"efs": {"variants": {"community.aws.efs", "efs"}, "name_key": "name"},
+	"elasticache": {"variants": {"community.aws.elasticache", "elasticache"}, "name_key": "name"},
 	"elb_application_lb": {"variants": {"amazon.aws.elb_application_lb", "community.aws.elb_application_lb", "elb_application_lb"}, "name_key": "name"},
 	"elb_network_lb": {"variants": {"community.aws.elb_network_lb", "elb_network_lb"}, "name_key": "name"},
 	"file": {"variants": {"ansible.builtin.file", "file"}, "name_key": "path"},
@@ -261,30 +259,30 @@ ansible_modules := {
 	"route53": {"variants": {"amazon.aws.route53", "community.aws.route53", "route53"}, "name_key": "record"},
 	"s3_bucket": {"variants": {"amazon.aws.s3_bucket", "s3_bucket"}, "name_key": "name"},
 	"s3_cors": {"variants": {"community.aws.s3_cors", "s3_cors", "community.aws.aws_s3_cors", "aws_s3_cors"}, "name_key": "name"},
-    "s3_object": {"variants": {"amazon.aws.s3_object", "s3_object", "amazon.aws.aws_s3", "aws_s3"}, "name_key": "object"},
-    "ses_identity_policy": {"variants": {"community.aws.ses_identity_policy", "ses_identity_policy", "community.aws.aws_ses_identity_policy", "aws_ses_identity_policy"}, "name_key": "identity"},
-    "slackpkg": {"variants": {"community.general.slackpkg", "slackpkg"}, "name_key": "name"},
-    "sns_topic": {"variants": {"community.aws.sns_topic", "sns_topic"}, "name_key": "name"},
-    "sorcery": {"variants": {"community.general.sorcery", "sorcery"}, "name_key": "name"},
-    "sqs_queue": {"variants": {"community.aws.sqs_queue", "sqs_queue"}, "name_key": "name"},
-    "sts_assume_role": {"variants": {"amazon.aws.sts_assume_role", "community.aws.sts_assume_role", "sts_assume_role"}, "name_key": "role_arn"},
-    "swdepot": {"variants": {"community.general.swdepot", "swdepot"}, "name_key": "name"},
-    "template": {"variants": {"ansible.builtin.template", "template"}, "name_key": "dest"},
+	"s3_object": {"variants": {"amazon.aws.s3_object", "s3_object", "amazon.aws.aws_s3", "aws_s3"}, "name_key": "object"},
+	"ses_identity_policy": {"variants": {"community.aws.ses_identity_policy", "ses_identity_policy", "community.aws.aws_ses_identity_policy", "aws_ses_identity_policy"}, "name_key": "identity"},
+	"slackpkg": {"variants": {"community.general.slackpkg", "slackpkg"}, "name_key": "name"},
+	"sns_topic": {"variants": {"community.aws.sns_topic", "sns_topic"}, "name_key": "name"},
+	"sorcery": {"variants": {"community.general.sorcery", "sorcery"}, "name_key": "name"},
+	"sqs_queue": {"variants": {"community.aws.sqs_queue", "sqs_queue"}, "name_key": "name"},
+	"sts_assume_role": {"variants": {"amazon.aws.sts_assume_role", "community.aws.sts_assume_role", "sts_assume_role"}, "name_key": "role_arn"},
+	"swdepot": {"variants": {"community.general.swdepot", "swdepot"}, "name_key": "name"},
+	"template": {"variants": {"ansible.builtin.template", "template"}, "name_key": "dest"},
 	"uri": {"variants": {"ansible.builtin.uri", "uri"}, "name_key": "url"},
 	"win_copy": {"variants": {"ansible.windows.win_copy", "win_copy"}, "name_key": "dest"},
 	"win_template": {"variants": {"ansible.windows.win_template", "win_template"}, "name_key": "dest"},
-    "user": {"variants": {"ansible.builtin.user", "user"}, "name_key": "name"},
-    "win_chocolatey": {"variants": {"chocolatey.chocolatey.win_chocolatey", "win_chocolatey"}, "name_key": "name"},
-    "yarn": {"variants": {"community.general.yarn", "yarn"}, "name_key": "name"},
-    "yum": {"variants": {"ansible.builtin.yum", "yum"}, "name_key": "name"},
-    "zypper": {"variants": {"community.general.zypper", "zypper"}, "name_key": "name"}
+	"user": {"variants": {"ansible.builtin.user", "user"}, "name_key": "name"},
+	"win_chocolatey": {"variants": {"chocolatey.chocolatey.win_chocolatey", "win_chocolatey"}, "name_key": "name"},
+	"yarn": {"variants": {"community.general.yarn", "yarn"}, "name_key": "name"},
+	"yum": {"variants": {"ansible.builtin.yum", "yum"}, "name_key": "name"},
+	"zypper": {"variants": {"community.general.zypper", "zypper"}, "name_key": "name"},
 }
 
 # Set of variant keys (FQCNs/short names) for a canonical; iterate with get_variants(canonical)[_]
-get_variants(canonical) = ansible_modules[canonical].variants
+get_variants(canonical) := ansible_modules[canonical].variants
 
 # Resource name from task: module_args[name_key] or fallback to task.name
-get_resource_name(module_args, canonical, task) = name {
+get_resource_name(module_args, canonical, task) := name if {
 	key := ansible_modules[canonical].name_key
 	name := object.get(module_args, key, task.name)
 }

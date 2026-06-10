@@ -1,61 +1,62 @@
 package generic.cloudformation
 
+import rego.v1
+
 import data.generic.common as common_lib
 
-
-normalize_cloudFormation_boolean(boolOrString) = string {
+normalize_cloudFormation_boolean(boolOrString) := string if {
 	boolOrString == true
 	string = "true"
-} else = string {
+} else := string if {
 	lower(boolOrString) == "true"
 	string = "true"
-} else = string {
+} else := string if {
 	lower(boolOrString) == "on"
 	string = "true"
-} else = string {
+} else := string if {
 	lower(boolOrString) == "yes"
 	string = "true"
-} else = string {
+} else := string if {
 	string = "false"
 }
 
 # Find out if the document has a resource type equals to 'AWS::SecretsManager::Secret'
-hasSecretManager(str, document) {
+hasSecretManager(str, document) if {
 	selectedSecret := strings.replace_n({"${": "", "}": ""}, regex.find_n(`\${\w+}`, str, 1)[0])
 	document[selectedSecret].Type == "AWS::SecretsManager::Secret"
 }
 
 # Check if the type is ELB
-isLoadBalancer(resource) {
+isLoadBalancer(resource) if {
 	resource.Type == "AWS::ElasticLoadBalancing::LoadBalancer"
 }
 
 # Check if the type is ELB
-isLoadBalancer(resource) {
+isLoadBalancer(resource) if {
 	resource.Type == "AWS::ElasticLoadBalancingV2::LoadBalancer"
 }
 
 # Check if there is an action inside an array
-checkAction(currentAction, actionToCompare) {
+checkAction(currentAction, actionToCompare) if {
 	is_string(currentAction)
 	currentAction == "*"
 	currentAction == actionToCompare
-} else {
+} else if {
 	is_string(currentAction)
 	contains(lower(currentAction), actionToCompare)
-} else {
+} else if {
 	is_array(currentAction)
 	action := currentAction[_]
 	action == "*"
 	action == actionToCompare
-} else {
+} else if {
 	is_array(currentAction)
 	action := currentAction[_]
 	contains(lower(action), actionToCompare)
 }
 
 # Dictionary of UDP ports
-udpPortsMap = {
+udpPortsMap := {
 	53: "DNS",
 	137: "NetBIOS Name Service",
 	138: "NetBIOS Datagram Service",
@@ -72,37 +73,37 @@ udpPortsMap = {
 }
 
 # Get content of the resource(s) based on the type
-getResourcesByType(resources, type) = list {
+getResourcesByType(resources, type) := list if {
 	list = [resource | resources[i].Type == type; resource := resources[i]]
 }
 
-getBucketName(resource) = name {
+getBucketName(resource) := name if {
 	name := resource.Properties.Bucket
 	not common_lib.valid_key(name, "Ref")
-} else = name {
+} else := name if {
 	name := resource.Properties.Bucket.Ref
 }
 
-get_encryption(resource) = encryption {
+get_encryption(resource) := encryption if {
 	resource.Properties.Encrypted == true
 	encryption := "encrypted"
-} else = encryption {
+} else := encryption if {
 	fields := {"EncryptionSpecification", "KmsMasterKeyId", "EncryptionInfo", "EncryptionOptions", "BucketEncryption", "StreamEncryption"}
 	common_lib.valid_key(resource.Properties, fields[_])
 	encryption := "encrypted"
-} else = encryption {
+} else := encryption if {
 	encryption := "unencrypted"
 }
 
-get_name(targetName) = name {
+get_name(targetName) := name if {
 	common_lib.valid_key(targetName, "Ref")
 	name := targetName.Ref
-} else = name {
+} else := name if {
 	not common_lib.valid_key(targetName, "Ref")
 	name := targetName
 }
 
-get_resource_accessibility(nameRef, type, key) = info {
+get_resource_accessibility(nameRef, type, key) := info if {
 	document := input.document
 	policy := document[_].Resources[_]
 	policy.Type == type
@@ -116,7 +117,7 @@ get_resource_accessibility(nameRef, type, key) = info {
 	common_lib.is_allow_effect(statement)
 
 	info := {"accessibility": "public", "policy": policy.Properties.PolicyDocument}
-} else = info {
+} else := info if {
 	document := input.document
 	policy := document[_].Resources[_]
 	policy.Type == type
@@ -130,7 +131,7 @@ get_resource_accessibility(nameRef, type, key) = info {
 	common_lib.is_allow_effect(statement)
 
 	info := {"accessibility": "public", "policy": policy.Properties.PolicyDocument}
-} else = info {
+} else := info if {
 	document := input.document
 	policy := document[_].Resources[_]
 	policy.Type == type
@@ -140,7 +141,7 @@ get_resource_accessibility(nameRef, type, key) = info {
 	get_name(keys) == nameRef
 
 	info := {"accessibility": "hasPolicy", "policy": policy.Properties.PolicyDocument}
-} else = info {
+} else := info if {
 	document := input.document
 	policy := document[_].Resources[_]
 	policy.Type == type
@@ -150,11 +151,11 @@ get_resource_accessibility(nameRef, type, key) = info {
 	get_name(keys[_]) == nameRef
 
 	info := {"accessibility": "hasPolicy", "policy": policy.Properties.PolicyDocument}
-} else = info {
+} else := info if {
 	info := {"accessibility": "unknown", "policy": ""}
 }
 
-resourceFieldName = {
+resourceFieldName := {
 	"AWS::Config::ConfigRule": "ConfigRuleName",
 	"AWS::ElasticLoadBalancing::LoadBalancer": "LoadBalancerName",
 	"AWS::ElasticLoadBalancingV2::LoadBalancer": "Name",
@@ -249,18 +250,18 @@ resourceFieldName = {
 	"AWS::Serverless::Function": "FunctionName",
 }
 
-pseudo_parameter_default_replacements = {
-	"${AWS::AccountId}":   "aws-account-id",
+pseudo_parameter_default_replacements := {
+	"${AWS::AccountId}": "aws-account-id",
 	"${AWS::NotificationARNs}": "aws-notification-arns",
-	"${AWS::NoValue}":     "aws-no-value",
-	"${AWS::Partition}":   "aws",
-	"${AWS::Region}":      "aws-region",
-	"${AWS::StackId}":     "aws-stack-id",
-	"${AWS::StackName}":   "aws-stack-name",
-	"${AWS::URLSuffix}":   "amazonaws.com",
+	"${AWS::NoValue}": "aws-no-value",
+	"${AWS::Partition}": "aws",
+	"${AWS::Region}": "aws-region",
+	"${AWS::StackId}": "aws-stack-id",
+	"${AWS::StackName}": "aws-stack-name",
+	"${AWS::URLSuffix}": "amazonaws.com",
 }
 
-parameter_default_replacements = replacements {
+parameter_default_replacements := replacements if {
 	params := input.document[_].Parameters
 	replacements := {old: new |
 		some param_name
@@ -269,7 +270,7 @@ parameter_default_replacements = replacements {
 		old := sprintf("${%s}", [param_name])
 		new := sprintf("%v", [param.Default])
 	}
-} else = replacements {
+} else := replacements if {
 	replacements := {}
 }
 
@@ -281,32 +282,32 @@ parameter_default_replacements = replacements {
 # of explicit variable bindings. When the template head is itself an intrinsic
 # (e.g. {"Fn::If": [...]}) it is not a string, so no template is produced and
 # callers fall back to the logical id.
-sub_template(sub_expr) = template {
+sub_template(sub_expr) := template if {
 	is_string(sub_expr)
 	template := sub_expr
-} else = template {
+} else := template if {
 	is_array(sub_expr)
 	count(sub_expr) > 0
 	is_string(sub_expr[0])
 	template := sub_expr[0]
 }
 
-intrinsic_value_to_string(v) = stringified {
+intrinsic_value_to_string(v) := stringified if {
 	is_string(v)
 	stringified := v
-} else = stringified {
+} else := stringified if {
 	is_number(v)
 	stringified := sprintf("%v", [v])
-} else = stringified {
+} else := stringified if {
 	is_boolean(v)
 	stringified := sprintf("%v", [v])
-} else = stringified {
+} else := stringified if {
 	common_lib.valid_key(v, "Ref")
 	ref_name := v.Ref
 	default_val := input.document[_].Parameters[ref_name].Default
 	default_val != null
 	stringified := sprintf("%v", [default_val])
-} else = stringified {
+} else := stringified if {
 	common_lib.valid_key(v, "Ref")
 	ref_name := v.Ref
 	old := sprintf("${%s}", [ref_name])
@@ -317,7 +318,7 @@ intrinsic_value_to_string(v) = stringified {
 # the explicit variable bindings of a sequence-form Fn::Sub, i.e. the second
 # element of ["template", {"Var": value}]. Values may be literals or a Ref to a
 # parameter/pseudo-parameter, resolved via intrinsic_value_to_string.
-sequence_sub_replacements(sub_expr) = replacements {
+sequence_sub_replacements(sub_expr) := replacements if {
 	is_array(sub_expr)
 	count(sub_expr) > 1
 	vars := sub_expr[1]
@@ -328,7 +329,7 @@ sequence_sub_replacements(sub_expr) = replacements {
 		new := intrinsic_value_to_string(raw)
 		old := sprintf("${%s}", [var_name])
 	}
-} else = replacements {
+} else := replacements if {
 	replacements := {}
 }
 
@@ -337,7 +338,7 @@ sequence_sub_replacements(sub_expr) = replacements {
 # the sequence form win over template Parameters, which win over pseudo
 # parameters. If any placeholder remains unresolved the rule fails so callers
 # fall back to the logical id rather than leaking a "${...}" string.
-resolve_sub_name(sub_expr) = resolved {
+resolve_sub_name(sub_expr) := resolved if {
 	template := sub_template(sub_expr)
 	step1 := strings.replace_n(sequence_sub_replacements(sub_expr), template)
 	step2 := strings.replace_n(parameter_default_replacements, step1)
@@ -346,53 +347,53 @@ resolve_sub_name(sub_expr) = resolved {
 	resolved != ""
 }
 
-get_resource_name(resource, resourceDefinitionName) = name {
+get_resource_name(resource, resourceDefinitionName) := name if {
 	field := resourceFieldName[resource.Type]
 	fieldValue := resource.Properties[field]
 	is_string(fieldValue)
 	fieldValue != ""
 	name := fieldValue
-} else = name {
+} else := name if {
 	field := resourceFieldName[resource.Type]
 	fieldValue := resource.Properties[field]
 	is_string(fieldValue)
 	fieldValue != ""
 	name := fieldValue[_]
-} else = name {
+} else := name if {
 	field := resourceFieldName[resource.Type]
 	sub_expr := resource.Properties[field]["Fn::Sub"]
 	name := resolve_sub_name(sub_expr)
-} else = name {
+} else := name if {
 	field := resourceFieldName[resource.Type]
 	ref_name := resource.Properties[field].Ref
 	name := input.document[_].Parameters[ref_name].Default
 	name != null
 	name != ""
-} else = name {
+} else := name if {
 	field := resourceFieldName[resource.Type]
 	ref_name := resource.Properties[field].Ref
 	old := sprintf("${%s}", [ref_name])
 	name := pseudo_parameter_default_replacements[old]
-} else = name {
+} else := name if {
 	name := common_lib.get_tag_name_if_exists(resource)
-} else = name {
+} else := name if {
 	name := resourceDefinitionName
 }
 
-getPath(path) = result {
+getPath(path) := result if {
 	count(path) > 0
 	path_string := common_lib.concat_path(path)
 	out := array.concat([path_string], ["."])
 	result := concat("", out)
-} else = result {
+} else := result if {
 	count(path) == 0
 	result := ""
 }
 
-createSearchKey(elem) = search {
+createSearchKey(elem) := search if {
 	not elem.Name.Ref
 	search := sprintf("=%s", [elem.Name])
-} else = search {
+} else := search if {
 	elem.Name.Ref
 	search := sprintf(".Ref=%s", [elem.Name.Ref])
 }

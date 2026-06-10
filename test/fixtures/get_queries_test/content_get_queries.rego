@@ -1,6 +1,8 @@
 package datadog
 
-DatadogPolicy[result] {
+import rego.v1
+
+DatadogPolicy contains result if {
 	resource := input.document[i].resource.aws_s3_bucket[name]
 	role = "authenticated-read"
 	resource.acl == role

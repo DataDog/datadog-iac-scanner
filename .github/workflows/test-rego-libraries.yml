@@ -26,7 +26,7 @@ jobs:
 
       - name: Download and install OPA
         run: |
-          OPA_VERSION="0.49.2"
+          OPA_VERSION="1.13.2"
           curl -L -o opa "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_amd64_static"
           chmod +x opa
           sudo mv opa /usr/local/bin/
