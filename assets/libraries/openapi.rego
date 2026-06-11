@@ -1,26 +1,28 @@
 package generic.openapi
 
-check_openapi(doc) = version {
+import rego.v1
+
+check_openapi(doc) := version if {
 	object.get(doc, "openapi", "undefined") != "undefined"
 	regex.match("^3\\.0\\.\\d+$", doc.openapi)
 	version = "3.0"
-} else = version {
+} else := version if {
 	object.get(doc, "swagger", "undefined") != "undefined"
 	version = "2.0"
-} else = version {
+} else := version if {
 	version = "undefined"
 }
 
-is_valid_url(url) {
+is_valid_url(url) if {
 	regex.match(`^(https?):\/\/(-\.)?([^\s\/?\.#-]+([-\.\/])?)+(\/[^\s]*)?$`, url)
 }
 
-improperly_defined(params, value) {
+improperly_defined(params, value) if {
 	params.in == "header"
 	params.name == value
 }
 
-incorrect_ref(ref, object) {
+incorrect_ref(ref, object) if {
 	references := {
 		"schemas": "#/components/schemas/",
 		"responses": "#/components/responses/",
@@ -35,7 +37,7 @@ incorrect_ref(ref, object) {
 	not startswith(ref, references[object])
 }
 
-incorrect_ref_swagger(ref, object) {
+incorrect_ref_swagger(ref, object) if {
 	references := {
 		"parameters": "#/parameters/",
 		"responses": "#/responses/",
@@ -45,65 +47,65 @@ incorrect_ref_swagger(ref, object) {
 	not startswith(ref, references[object])
 }
 
-content_allowed(operation, code) {
+content_allowed(operation, code) if {
 	operation != "head"
-	all([code != "204", code != "304"])
+	code != "204"
+	code != "304"
 }
 
 # It verifies if there is some schema in 'key' equal to the input with the 'field' undefined
-check_content(s, field, key) {
+check_content(s, field, key) if {
 	object.get(key[s], field, "undefined") == "undefined"
 }
 
 # It verifies if the 'schema_ref' refers to a schema with the 'field' undefined
-undefined_field_in_json_object(doc, schema_ref, field, version) {
+undefined_field_in_json_object(doc, schema_ref, field, version) if {
 	version == "3.0"
 	r := split(schema_ref, "/")
 	count(r) == 4
 	check_content(r[3], field, doc.components.schemas)
-} else {
+} else if {
 	version == "2.0"
 	r := split(schema_ref, "/")
 	count(r) == 3
 	check_content(r[2], field, doc.definitions)
 }
 
-check_unused_reference(doc, referenceName, type) {
+check_unused_reference(doc, referenceName, type) if {
 	ref := sprintf("#/components/%s/%s", [type, referenceName])
 
 	count({ref | [_, value] := walk(doc); ref == value["$ref"]}) == 0
 }
 
-check_reference_unexisting(doc, reference, type) = checkComponents {
+check_reference_unexisting(doc, reference, type) := checkComponents if {
 	refString := sprintf("#/components/%s/", [type])
 	startswith(reference, refString)
 	checkComponents := trim_prefix(reference, refString)
 	object.get(doc.components[type], checkComponents, "undefined") == "undefined"
 }
 
-check_reference_unexisting_swagger(doc, reference, type) = checkRef {
+check_reference_unexisting_swagger(doc, reference, type) := checkRef if {
 	refString := sprintf("#/%s/", [type])
 	startswith(reference, refString)
 	checkRef := trim_prefix(reference, refString)
 	object.get(doc[type], checkRef, "undefined") == "undefined"
 }
 
-concat_path(path) = concatenated {
+concat_path(path) := concatenated if {
 	concatenated := concat(".", [x | x := resolve_path(path[_]); x != ""])
 }
 
-resolve_path(pathItem) = resolved {
-	any([contains(pathItem, "."), contains(pathItem, "="), contains(pathItem, "/")])
+resolve_path(pathItem) := resolved if {
+	checks := [contains(pathItem, "."), contains(pathItem, "="), contains(pathItem, "/")]
+	checks[_] == true
 	resolved := sprintf("{{%s}}", [pathItem])
-} else = resolved {
+} else := resolved if {
 	is_number(pathItem)
 	resolved := ""
-} else = pathItem {
-	true
-}
+} else := pathItem
 
 # It verifies if the path contains an operation. If true, keeps the operation type and the response code related to it
-is_operation(path) = info {
+is_operation(path) := info if {
 	path[0] == "paths"
 	operations := {"get", "post", "put", "delete", "options", "head", "patch", "trace"}
 	operations[z] == path[2]
@@ -112,45 +114,45 @@ is_operation(path) = info {
 	code := path[idx]
 	op := operations[z]
 	info := {"code": code, "operation": op}
-} else = info {
+} else := info if {
 	info := {}
 }
 
-is_numeric_type(type) {
+is_numeric_type(type) if {
 	numeric := {"integer", "number"}
 	type == numeric[_]
 }
 
 # It verifies if the string schema does not have the 'field' defined
-undefined_field_in_string_type(value, field) {
+undefined_field_in_string_type(value, field) if {
 	value.type == "string"
 	object.get(value, field, "undefined") == "undefined"
 }
 
 # It verifies if the numeric schema does not have the 'field' defined
-undefined_field_in_numeric_schema(value, field) {
+undefined_field_in_numeric_schema(value, field) if {
 	is_numeric_type(value.type)
 	object.get(value, field, "undefined") == "undefined"
 }
 
-is_path_template(path) = matches {
+is_path_template(path) := matches if {
 	matches := regex.find_n(`\{([A-Za-z]+[A-Za-z-_]*[A-Za-z]+)\}`, path, -1)
 }
 
 # It verifies if the 'field' is consistent with the 'type'
-invalid_field(field, type) {
+invalid_field(field, type) if {
 	is_numeric_type(type)
 	not is_number(field)
-} else {
+} else if {
 	type == "string"
 	not is_string(field)
-} else {
+} else if {
 	type == "boolean"
 	not is_boolean(field)
-} else {
+} else if {
 	type == "object"
 	not is_object(field)
-} else {
+} else if {
 	type == "array"
 	not is_array(field)
 }
@@ -215,35 +217,35 @@ require_objects_v2 := {
 }
 
 # get schema info (object and path) according to the openAPI version
-get_schema_info(doc, version) = schemaInfo {
+get_schema_info(doc, version) := schemaInfo if {
 	version == "3.0"
 	schemaInfo := {"obj": doc.components.schemas, "path": "components.schemas"}
-} else = schemaInfo {
+} else := schemaInfo if {
 	version == "2.0"
 	schemaInfo := {"obj": doc.definitions, "path": "definitions"}
 }
 
-api_key_exposed(doc, version, s) {
+api_key_exposed(doc, version, s) if {
 	version == "3.0"
 	doc.components.securitySchemes[s].type == "apiKey"
 	server := doc.servers[_]
 	startswith(server.url, "http://")
-} else {
+} else if {
 	version == "3.0"
 	doc.components.securitySchemes[s].type == "apiKey"
 	not valid_key(doc, "servers")
-} else {
+} else if {
 	version == "2.0"
 	doc.securityDefinitions[s].type == "apiKey"
 	scheme := doc.schemes[_]
-    scheme == "http"
-} else {
+	scheme == "http"
+} else if {
 	version == "2.0"
 	doc.securityDefinitions[s].type == "apiKey"
 	not valid_key(doc, "schemes")
 }
 
-check_scheme(doc, schemeKey, scope, version) {
+check_scheme(doc, schemeKey, scope, version) if {
 	version == "3.0"
 	secScheme := doc.components.securitySchemes[schemeKey]
 	secScheme.type == "oauth2"
@@ -251,7 +253,7 @@ check_scheme(doc, schemeKey, scope, version) {
 	arr := [x | _ := secScheme.flows[flowKey].scopes[scopeName]; scopeName == scope; x := scope]
 
 	count(arr) == 0
-} else {
+} else if {
 	version == "2.0"
 	secScheme := doc.securityDefinitions[schemeKey]
 	secScheme.type == "oauth2"
@@ -262,47 +264,47 @@ check_scheme(doc, schemeKey, scope, version) {
 }
 
 # It verifies if the path is empty. If so, it refers to a global object. If not, joins it with the defaultValue.
-concat_default_value(path, defaultValue) = searchKey {
+concat_default_value(path, defaultValue) := searchKey if {
 	count(path) == 0
 	searchKey := defaultValue
-} else = searchKey {
+} else := searchKey if {
 	searchKey := concat(".", [path, defaultValue])
 }
 
-get_name(p, name) = sk {
-	p[minus(count(p), 1)] == "components"
+get_name(p, name) := sk if {
+	p[count(p) - 1] == "components"
 	sk := name
-} else = sk {
+} else := sk if {
 	sk := concat("", ["name=", name])
 }
 
-get_complete_search_key(n, parcialSk, property) = sk {
+get_complete_search_key(n, parcialSk, property) := sk if {
 	is_string(n)
 	sk := sprintf("%s.%s.%s", [parcialSk, n, property])
-} else = sk {
+} else := sk if {
 	sk := sprintf("%s.%s", [parcialSk, property])
 }
 
-is_mimetype_valid(content) {
+is_mimetype_valid(content) if {
 	known_prefixs := {"application", "audio", "font", "example", "image", "message", "model", "multipart", "text", "video"}
 	count({x | prefix := known_prefixs[x]; startswith(content, prefix)}) > 0
 }
 
-get_discriminator(schema, version) = discriminator {
+get_discriminator(schema, version) := discriminator if {
 	version == "3.0"
 	discriminator := {"obj": schema.discriminator.propertyName, "path": "discriminator.propertyName"}
-} else = discriminator {
+} else := discriminator if {
 	version == "2.0"
 	discriminator := {"obj": schema.discriminator, "path": "discriminator"}
 }
 
-check_definitions(doc, object, name) {
+check_definitions(doc, object, name) if {
 	[path, value] := walk(doc)
 	ref := value["$ref"]
 	count({x | ref == sprintf("#/%s/%s", [object, name]); x := ref}) == 0
 }
 
-is_valid_mime(mime) {
+is_valid_mime(mime) if {
 	type := "[A-Za-z0-9][A-Za-z0-9!#$&\\-^_]{0,126}"
 	subtype := "[A-Za-z0-9][A-Za-z0-9!#$&\\-^_.+]{0,126}"
 	token := "([!#$%&'*+.^_`|~0-9A-Za-z-]+)"
@@ -315,12 +317,12 @@ is_valid_mime(mime) {
 	regex.match(mimeRegex, mime) == true
 }
 
-valid_key(obj, key) {
+valid_key(obj, key) if {
 	_ = obj[key]
 	not is_null(obj[key])
 }
 
-is_missing_attribute_and_ref(obj, attr) {
+is_missing_attribute_and_ref(obj, attr) if {
 	not valid_key(obj, attr)
 	not valid_key(obj, "$ref")
 }

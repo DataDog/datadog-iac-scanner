@@ -1,9 +1,11 @@
 package datadog
 
+import rego.v1
+
 import data.generic.cloudformation as cf_lib
 import data.generic.common as common_lib
 
-DatadogPolicy[result] {
+DatadogPolicy contains result if {
 	docs := input.document[i]
 	[path, Resources] := walk(docs)
 	resource := Resources[name]

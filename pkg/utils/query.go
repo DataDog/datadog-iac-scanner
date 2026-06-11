@@ -28,8 +28,9 @@ const (
 	// Once all rules have been migrated to DatadogPolicy, this shim can be removed
 	// and RegoQuery simplified back to `result = data.datadog.DatadogPolicy`.
 	RegoCompatShim = `package dd_iac_compat
-policy[r] { r = data.Cx.CxPolicy[_] }
-policy[r] { r = data.datadog.DatadogPolicy[_] }
+
+policy contains r if { r = data.Cx.CxPolicy[_] }
+policy contains r if { r = data.datadog.DatadogPolicy[_] }
 `
 )
 

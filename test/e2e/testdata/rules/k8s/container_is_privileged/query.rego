@@ -1,10 +1,12 @@
 package datadog
 
+import rego.v1
+
 import data.generic.k8s as k8sLib
 
 types := {"initContainers", "containers"}
 
-DatadogPolicy[result] {
+DatadogPolicy contains result if {
 	document := input.document[i]
 	metadata := document.metadata
 

@@ -1,6 +1,6 @@
 package generic.common
 
-import future.keywords.in
+import rego.v1
 
 # build_search_line will convert all values to string, and build path with given values
 # values need to be in the correct order
@@ -12,71 +12,70 @@ import future.keywords.in
 # [path, value] := walk(doc)
 # build_search_line(path, ["grandson"])
 
-build_search_line(path, obj) = resolvedPath {
+build_search_line(path, obj) := resolvedPath if {
 	resolveArray := [x | pathItem := path[n]; x := convert_path_item(pathItem)]
 	resolvedObj := [x | objItem := obj[n]; x := convert_path_item(objItem)]
 	resolvedPath = array.concat(resolveArray, resolvedObj)
 }
 
-convert_path_item(pathItem) = convertedPath {
+convert_path_item(pathItem) := convertedPath if {
 	is_number(pathItem)
 	convertedPath := sprintf("%d", [pathItem])
-} else = convertedPath {
+} else := convertedPath if {
 	convertedPath := sprintf("%s", [pathItem])
 }
 
-concat_path(path) = concatenated {
+concat_path(path) := concatenated if {
 	concatenated := concat(".", [x | x := resolve_path(path[_]); x != ""])
 }
 
-resolve_path(pathItem) = resolved {
-	any([contains(pathItem, "."), contains(pathItem, "="), contains(pathItem, "/")])
+resolve_path(pathItem) := resolved if {
+	checks := [contains(pathItem, "."), contains(pathItem, "="), contains(pathItem, "/")]
+	checks[_] == true
 	resolved := sprintf("{{%s}}", [pathItem])
-} else = resolved {
+} else := resolved if {
 	is_number(pathItem)
 	resolved := ""
-} else = pathItem {
-	true
+} else := pathItem
+
+json_unmarshal(s) := s if {
+	is_object(s)
 }
 
-json_unmarshal(s) = s {
-  is_object(s)
+json_unmarshal(s) := s if {
+	is_array(s)
 }
 
-json_unmarshal(s) = s {
-  is_array(s)
+json_unmarshal(s) := result if {
+	s == null
+	result := json.unmarshal("{}")
 }
 
-json_unmarshal(s) = result {
-  s == null
-  result := json.unmarshal("{}")
+json_unmarshal(s) := result if {
+	s != null
+	is_string(s)
+	startswith(s, "jsonencode(")
+	endswith(s, ")")
+
+	raw := substring(s, count("jsonencode("), (count(s) - count("jsonencode(")) - 1)
+	json_text := terraform_to_json(raw)
+	result := json.unmarshal(json_text)
 }
 
-json_unmarshal(s) = result {
-  s != null
-  is_string(s)
-  startswith(s, "jsonencode(")
-  endswith(s, ")")
-
-  raw := substring(s, count("jsonencode("), count(s) - count("jsonencode(") - 1)
-  json_text := terraform_to_json(raw)
-  result := json.unmarshal(json_text)
+json_unmarshal(s) := result if {
+	s != null
+	is_string(s)
+	not startswith(s, "jsonencode(")
+	result := json.unmarshal(s)
 }
 
-json_unmarshal(s) = result {
-  s != null
-  is_string(s)
-  not startswith(s, "jsonencode(")
-  result := json.unmarshal(s)
+terraform_to_json(s) := out if {
+	step1 := regex.replace(s, "(\\b\\w+\\b)\\s*=", "\"${1}\":")
+	step2 := regex.replace(step1, "#.*", "") # Remove inline comments
+	out := regex.replace(step2, ",\\s*]", "]") # Remove trailing commas
 }
 
-terraform_to_json(s) = out {
-  step1 := regex.replace(s, "(\\b\\w+\\b)\\s*=", "\"${1}\":")
-  step2 := regex.replace(step1, "#.*", "") # Remove inline comments
-  out := regex.replace(step2, ",\\s*]", "]") # Remove trailing commas
-}
-
-calc_IP_value(ip) = result {
+calc_IP_value(ip) := result if {
 	ips := split(ip, ".")
 
 	#calculate the value of an ip
@@ -86,54 +85,54 @@ calc_IP_value(ip) = result {
 }
 
 # Checks if a value is within a range
-between(value, min, max) {
+between(value, min, max) if {
 	value >= min
 	value <= max
 }
 
 # Checks if a list contains an item
-inArray(list, item) {
+inArray(list, item) if {
 	some i
 	list[i] == item
 }
 
 # Checks if a value is empty ("") or null
-emptyOrNull("") = true
+emptyOrNull("") := true
 
-emptyOrNull(null) = true
+emptyOrNull(null) := true
 
 # Checks if an IP is private
-isPrivateIP(ipVal) {
+isPrivateIP(ipVal) if {
 	private_ips := ["10.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12"]
 	some i
 	net.cidr_contains(private_ips[i], ipVal)
 }
 
 # Check if field equals to value or if any element from field equals to value
-equalsOrInArray(field, value) {
+equalsOrInArray(field, value) if {
 	is_string(field)
 	lower(field) == value
 }
 
-equalsOrInArray(field, value) {
+equalsOrInArray(field, value) if {
 	is_array(field)
 	some i
 	lower(field[i]) == value
 }
 
 # Check if field contains value or if any element from field contains value
-containsOrInArrayContains(field, value) {
+containsOrInArrayContains(field, value) if {
 	is_string(value)
 	contains(lower(field), value)
 }
 
-containsOrInArrayContains(field, value) {
+containsOrInArrayContains(field, value) if {
 	is_array(field)
 	some i
 	contains(lower(field[i]), value)
 }
 
-isCommonKey(p) {
+isCommonKey(p) if {
 	bl = {
 		"namespace",
 		"bypass",
@@ -207,7 +206,7 @@ isCommonKey(p) {
 }
 
 # Dictionary of TCP ports
-tcpPortsMap = {
+tcpPortsMap := {
 	20: "FTP",
 	21: "FTP",
 	22: "SSH",
@@ -274,48 +273,44 @@ tcpPortsMap = {
 }
 
 # verifies if the resource(statement.Principal.AWS) contains an ARN that points to a specific IAM user
-allowsAllPrincipalsToAssume(resource, statement) {
+allowsAllPrincipalsToAssume(resource, statement) if {
 	is_string(resource) == true
 	contains(resource, "arn:aws:iam::")
 	contains(resource, ":root")
 	not contains(statement.Effect, "Deny")
 }
 
-allowsAllPrincipalsToAssume(resource, statement) {
+allowsAllPrincipalsToAssume(resource, statement) if {
 	is_array(resource) == true
 	contains(resource[x], "arn:aws:iam::")
 	contains(resource[x], ":root")
 	not contains(statement.Effect, "Deny")
 }
 
-compareArrays(arrayOne, arrayTwo) {
+compareArrays(arrayOne, arrayTwo) if {
 	upper(arrayOne[_]) == upper(arrayTwo[_])
-} else = false {
-	true
-}
+} else := false
 
-valid_key(obj, key) {
+valid_key(obj, key) if {
 	_ = obj[key]
 	not is_null(obj[key])
-} else = false {
-	true
-}
+} else := false
 
-getDays(date, daysInMonth) = days {
+getDays(date, daysInMonth) := days if {
 	index := date[1] - 2
 	index >= 0
 
 	days = ((date[0] * 365) + daysInMonth[index]) + date[2]
 }
 
-getDays(date, daysInMonth) = days {
+getDays(date, daysInMonth) := days if {
 	index := date[1] - 2
 	index < 0
 
 	days = (date[0] * 365) + date[2]
 }
 
-expired(expirationDate) {
+expired(expirationDate) if {
 	currentDate := time.date(time.now_ns())
 	daysInMonth := [31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
 
@@ -325,89 +320,86 @@ expired(expirationDate) {
 	daysInExpirationDate < daysInCurrentDate
 }
 
-unsecured_cors_rule(methods, headers, origins) {
+unsecured_cors_rule(methods, headers, origins) if {
 	# allows all methods
 	availableMethods := {"GET", "PUT", "POST", "DELETE", "HEAD"}
 	count({x | method := methods[x]; method == availableMethods[_]}) == count(availableMethods)
-} else {
+} else if {
 	# allows all headers
 	contains(headers[_], "*")
-} else {
+} else if {
 	# allows several origins
 	contains(origins[_], "*")
 }
 
-get_module_equivalent_key(provider, moduleName, resource, key) = keyInResource {
+get_module_equivalent_key(provider, moduleName, resource, key) := keyInResource if {
 	providers := data.common_lib.modules[provider]
 	module := providers[moduleName]
 	inArray(module.resources, resource)
 	keyInResource := module.inputs[key]
 }
 
-check_selector(filter, value, op, name) {
+check_selector(filter, value, op, name) if {
 	selector := find_selector_by_value(filter, value)
 	selector._op == op
 	selector._selector == name
-} else = false {
-	true
-}
+} else := false
 
-find_selector_by_value(filter, str) = rtn {
+find_selector_by_value(filter, str) := rtn if {
 	[_, fvalue] := walk(filter)
 	trim(fvalue._value, "\"") == str
 	rtn := fvalue
-} else {
+} else if {
 	[_, fvalue] := walk(filter)
 	trim(fvalue._value, "'") == str
 	rtn = fvalue
 }
 
-get_tag_name_if_exists(resource) = name {
+get_tag_name_if_exists(resource) := name if {
 	name := resource.tags.Name
-} else = name {
+} else := name if {
 	tag := resource.Properties.Tags[_]
 	tag.Key == "Name"
 	is_string(tag.Value)
 	name := tag.Value
-} else = name {
+} else := name if {
 	tag := resource.Properties.FileSystemTags[_]
 	tag.Key == "Name"
 	is_string(tag.Value)
 	name := tag.Value
-} else = name {
+} else := name if {
 	tag := resource.Properties.Tags[key]
 	is_string(tag)
 	key == "Name"
 	name := tag
-} else = name {
+} else := name if {
 	tag := resource.spec.forProvider.tags[_]
 	tag.key == "Name"
 	is_string(tag.value)
 	name := tag.value
-} else = name {
+} else := name if {
 	tag := resource.properties.tags[key]
 	is_string(tag)
 	key == "Name"
 	name := tag
 }
 
-
-get_encryption_if_exists(resource) = encryption {
+get_encryption_if_exists(resource) := encryption if {
 	resource.encrypted == true
 	encryption := "encrypted"
-} else = encryption {
+} else := encryption if {
 	options := {"encryption_at_rest_kms_key_arn", "encryption_in_transit"}
 	valid_key(resource.encryption_info, options[_])
 	encryption := "encrypted"
-} else = encryption {
+} else := encryption if {
 	fields := {"sqs_managed_sse_enabled", "kms_master_key_id", "encryption_options", "server_side_encryption_configuration"}
 	valid_key(resource, fields[_])
 	encryption := "encrypted"
-} else = encryption {
+} else := encryption if {
 	encryption := "unencrypted"
 }
 
-engines = {
+engines := {
 	"aurora": 3306,
 	"aurora-mysql": 3306,
 	"aurora-postgresql": 3306,
@@ -424,36 +416,36 @@ engines = {
 	"sqlserver-web": 1433,
 }
 
-is_ingress(firewall) {
+is_ingress(firewall) if {
 	not valid_key(firewall, "direction")
-} else {
+} else if {
 	firewall.direction == "INGRESS"
 }
 
-get_statement(policy) = st {
+get_statement(policy) := st if {
 	is_object(policy.Statement)
 	st = [policy.Statement]
-} else = st {
+} else := st if {
 	is_array(policy.Statement)
 	st = policy.Statement
 }
 
-is_allow_effect(statement) {
+is_allow_effect(statement) if {
 	not valid_key(statement, "Effect")
 	not valid_key(statement, "effect")
-} else {
+} else if {
 	statement.Effect == "Allow"
-} else {
-    statement.effect == "Allow"
+} else if {
+	statement.effect == "Allow"
 }
 
-get_policy(p) = policy {
+get_policy(p) := policy if {
 	policy = json_unmarshal(p)
-} else = policy {
+} else := policy if {
 	policy = p
 }
 
-condition_keys_limiting_access_to_account_id = {
+condition_keys_limiting_access_to_account_id := {
 	"aws:SourceOwner",
 	"aws:SourceAccount",
 	"aws:ResourceAccount",
@@ -461,88 +453,98 @@ condition_keys_limiting_access_to_account_id = {
 	"aws:VpceAccount",
 }
 
-conditions = {
+conditions := {
 	"Condition",
 	"condition",
 }
 
-is_access_limited_to_an_account_id(statement) {
+is_access_limited_to_an_account_id(statement) if {
 	valid_key(statement, conditions[idx])
 	condition_operator := statement[conditions[idx]][op][key]
 	lower(key) == lower(condition_keys_limiting_access_to_account_id[_])
 }
 
-is_cross_account(statement) {
+is_cross_account(statement) if {
 	is_string(statement.Principal.AWS)
 	regex.match("(^[0-9]{12}$)|(^arn:aws:(iam|sts)::[0-9]{12})", statement.Principal.AWS)
-} else {
+} else if {
 	is_array(statement.Principal.AWS)
 	regex.match("(^[0-9]{12}$)|(^arn:aws:(iam|sts)::[0-9]{12})", statement.Principal.AWS[_])
 }
 
-is_assume_role(statement) {
+is_assume_role(statement) if {
 	statement.Action == "sts:AssumeRole"
-} else {
+} else if {
 	statement.Action[_] == "sts:AssumeRole"
 }
 
-has_external_id(statement) {
+has_external_id(statement) if {
 	count(statement.Condition.StringEquals["sts:ExternalId"]) > 0
 }
 
-has_mfa(statement) {
+has_mfa(statement) if {
 	statement.Condition.BoolIfExists["aws:MultiFactorAuthPresent"] == "true"
-} else {
+} else if {
 	statement.Condition.Bool["aws:MultiFactorAuthPresent"] == "true"
 }
 
-any_principal(statement) {
+any_principal(statement) if {
 	contains(statement.Principal, "*")
-} else {
+} else if {
 	is_string(statement.Principal.AWS)
 	contains(statement.Principal.AWS, "*")
-} else {
+} else if {
 	is_array(statement.Principal.AWS)
 	contains(statement.Principal.AWS[_], "*")
-} else {
+} else if {
 	not valid_key(statement, "Principal")
 }
 
-is_recommended_tls(field) {
+is_recommended_tls(field) if {
 	inArray({"TLSv1.2_2018", "TLSv1.2_2019", "TLSv1.2_2021"}, field)
 }
 
-is_unrestricted(sourceRange) {
+is_unrestricted(sourceRange) if {
 	cidrs := {"0.0.0.0/0", "::/0"}
 	sourceRange == cidrs[_]
 }
 
-check_principals(statement) {
+check_principals(statement) if {
 	statement.principals.identifiers[_] == "*"
 	statement.principals.type == "AWS"
-} else {
+} else if {
 	is_object(statement.Principal) == true
 	statement.Principal.AWS == "*"
-} else {
+} else if {
 	is_string(statement.Principal) == true
 	statement.Principal == "*"
 }
 
-check_actions(statement, typeAction) {
-	any([statement.actions[_] == typeAction, statement.actions[_] == "*"])
-} else {
-	any([statement.Actions[_] == typeAction, statement.Actions[_] == "*"])
-} else {
+check_actions(statement, typeAction) if {
+	statement.actions[_] == typeAction
+} else if {
+	statement.actions[_] == "*"
+} else if {
+	statement.Actions[_] == typeAction
+} else if {
+	statement.Actions[_] == "*"
+} else if {
 	is_array(statement.Action) == true
-	any([statement.Action[_] == typeAction, statement.Action[_] == "*"])
-} else {
+	statement.Action[_] == typeAction
+} else if {
+	is_array(statement.Action) == true
+	statement.Action[_] == "*"
+} else if {
 	is_string(statement.Action) == true
-	any([statement.Action == typeAction, statement.Action == "*"])
+	statement.Action == typeAction
+} else if {
+	is_string(statement.Action) == true
+	statement.Action == "*"
 }
 
-has_wildcard(statement, typeAction) {
+has_wildcard(statement, typeAction) if {
 	check_principals(statement)
-} else {
+} else if {
 	check_actions(statement, typeAction)
 }
 
@@ -553,7 +555,7 @@ has_wildcard(statement, typeAction) {
 # array_vals := ["elem1", "elem2", "elem4"]
 #
 # return_value := {"valid": false, "searchKey": "elem1.elem2"}
-get_nested_values_info(object, array_vals) = return_value {
+get_nested_values_info(object, array_vals) := return_value if {
 	arr := [x |
 		some i, _ in array_vals
 		path := array.slice(array_vals, 0, i + 1)
@@ -567,11 +569,11 @@ get_nested_values_info(object, array_vals) = return_value {
 	}
 }
 
-remove_last_point(searchKey) = sk {
+remove_last_point(searchKey) := sk if {
 	sk := trim_right(searchKey, ".")
 }
 
-isOSDir(mountPath) = result {
+isOSDir(mountPath) := result if {
 	hostSensitiveDir = {
 		"/bin", "/sbin", "/boot", "/cdrom",
 		"/dev", "/etc", "/home", "/lib",
@@ -581,31 +583,31 @@ isOSDir(mountPath) = result {
 	}
 
 	result = list_contains(hostSensitiveDir, mountPath)
-} else = result {
+} else := result if {
 	result = mountPath == "/"
 }
 
-list_contains(dirs, elem) {
+list_contains(dirs, elem) if {
 	startswith(elem, dirs[_])
 }
 
 # if accessibility is "hasPolicy", bom_output should also display the policy content
-get_bom_output(bom_output, policy) = output {
+get_bom_output(bom_output, policy) := output if {
 	bom_output.resource_accessibility == "hasPolicy"
 	out := {"policy": policy}
 
 	output := object.union(bom_output, out)
-} else = output {
+} else := output if {
 	output := bom_output
 }
 
 # This function is based on these docs: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-optimized.html#describe-ebs-optimization
-is_aws_ebs_optimized_by_default(instanceType) {
+is_aws_ebs_optimized_by_default(instanceType) if {
 	inArray(data.common_lib.aws_ebs_optimized_by_default, instanceType)
 }
 
 # IANA
-weakCipher(aux) {
+weakCipher(aux) if {
 	weak_ciphers_IANA_Format = {
 		"TLS_NULL_WITH_NULL_NULL", "TLS_RSA_WITH_NULL_MD5", "TLS_RSA_WITH_NULL_SHA", "TLS_RSA_EXPORT_WITH_RC4_40_MD5", "TLS_RSA_WITH_RC4_128_MD5", "TLS_RSA_WITH_RC4_128_SHA", "TLS_RSA_EXPORT_WITH_RC2_CBC_40_MD5", "TLS_RSA_WITH_IDEA_CBC_SHA", "TLS_RSA_EXPORT_WITH_DES40_CBC_SHA", "TLS_RSA_WITH_DES_CBC_SHA", "TLS_RSA_WITH_3DES_EDE_CBC_SHA", "TLS_DH_DSS_EXPORT_WITH_DES40_CBC_SHA", "TLS_DH_DSS_WITH_DES_CBC_SHA", "TLS_DH_DSS_WITH_3DES_EDE_CBC_SHA", "TLS_DH_RSA_EXPORT_WITH_DES40_CBC_SHA", "TLS_DH_RSA_WITH_DES_CBC_SHA", "TLS_DH_RSA_WITH_3DES_EDE_CBC_SHA", "TLS_DHE_DSS_EXPORT_WITH_DES40_CBC_SHA", "TLS_DHE_DSS_WITH_DES_CBC_SHA", "TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA", "TLS_DHE_RSA_EXPORT_WITH_DES40_CBC_SHA", "TLS_DHE_RSA_WITH_DES_CBC_SHA", "TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA", "TLS_DH_anon_EXPORT_WITH_RC4_40_MD5", "TLS_DH_anon_WITH_RC4_128_MD5", "TLS_DH_anon_EXPORT_WITH_DES40_CBC_SHA", "TLS_DH_anon_WITH_DES_CBC_SHA", "TLS_DH_anon_WITH_3DES_EDE_CBC_SHA", "TLS_KRB5_WITH_DES_CBC_SHA", "TLS_KRB5_WITH_3DES_EDE_CBC_SHA", "TLS_KRB5_WITH_RC4_128_SHA", "TLS_KRB5_WITH_IDEA_CBC_SHA", "TLS_KRB5_WITH_DES_CBC_MD5", "TLS_KRB5_WITH_3DES_EDE_CBC_MD5", "TLS_KRB5_WITH_RC4_128_MD5", "TLS_KRB5_WITH_IDEA_CBC_MD5", "TLS_KRB5_EXPORT_WITH_DES_CBC_40_SHA", "TLS_KRB5_EXPORT_WITH_RC2_CBC_40_SHA", "TLS_KRB5_EXPORT_WITH_RC4_40_SHA", "TLS_KRB5_EXPORT_WITH_DES_CBC_40_MD5", "TLS_KRB5_EXPORT_WITH_RC2_CBC_40_MD5", "TLS_KRB5_EXPORT_WITH_RC4_40_MD5", "TLS_PSK_WITH_NULL_SHA", "TLS_DHE_PSK_WITH_NULL_SHA", "TLS_RSA_PSK_WITH_NULL_SHA", "TLS_RSA_WITH_AES_128_CBC_SHA", "TLS_DH_DSS_WITH_AES_128_CBC_SHA", "TLS_DH_RSA_WITH_AES_128_CBC_SHA", "TLS_DHE_DSS_WITH_AES_128_CBC_SHA", "TLS_DHE_RSA_WITH_AES_128_CBC_SHA", "TLS_DH_anon_WITH_AES_128_CBC_SHA", "TLS_RSA_WITH_AES_256_CBC_SHA", "TLS_DH_DSS_WITH_AES_256_CBC_SHA", "TLS_DH_RSA_WITH_AES_256_CBC_SHA", "TLS_DHE_DSS_WITH_AES_256_CBC_SHA", "TLS_DHE_RSA_WITH_AES_256_CBC_SHA", "TLS_DH_anon_WITH_AES_256_CBC_SHA", "TLS_RSA_WITH_NULL_SHA256", "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_RSA_WITH_AES_256_CBC_SHA256", "TLS_DH_DSS_WITH_AES_128_CBC_SHA256", "TLS_DH_RSA_WITH_AES_128_CBC_SHA256", "TLS_DHE_DSS_WITH_AES_128_CBC_SHA256", "TLS_RSA_WITH_CAMELLIA_128_CBC_SHA", "TLS_DH_DSS_WITH_CAMELLIA_128_CBC_SHA", "TLS_DH_RSA_WITH_CAMELLIA_128_CBC_SHA", "TLS_DHE_DSS_WITH_CAMELLIA_128_CBC_SHA", "TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA", "TLS_DH_anon_WITH_CAMELLIA_128_CBC_SHA", "TLS_DHE_RSA_WITH_AES_128_CBC_SHA256", "TLS_DH_DSS_WITH_AES_256_CBC_SHA256", "TLS_DH_RSA_WITH_AES_256_CBC_SHA256", "TLS_DHE_DSS_WITH_AES_256_CBC_SHA256", "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256", "TLS_DH_anon_WITH_AES_128_CBC_SHA256", "TLS_DH_anon_WITH_AES_256_CBC_SHA256", "TLS_RSA_WITH_CAMELLIA_256_CBC_SHA", "TLS_DH_DSS_WITH_CAMELLIA_256_CBC_SHA", "TLS_DH_RSA_WITH_CAMELLIA_256_CBC_SHA", "TLS_DHE_DSS_WITH_CAMELLIA_256_CBC_SHA", "TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA", "TLS_DH_anon_WITH_CAMELLIA_256_CBC_SHA", "TLS_PSK_WITH_RC4_128_SHA", "TLS_PSK_WITH_3DES_EDE_CBC_SHA", "TLS_PSK_WITH_AES_128_CBC_SHA", "TLS_PSK_WITH_AES_256_CBC_SHA", "TLS_DHE_PSK_WITH_RC4_128_SHA", "TLS_DHE_PSK_WITH_3DES_EDE_CBC_SHA", "TLS_DHE_PSK_WITH_AES_128_CBC_SHA", "TLS_DHE_PSK_WITH_AES_256_CBC_SHA", "TLS_RSA_PSK_WITH_RC4_128_SHA", "TLS_RSA_PSK_WITH_3DES_EDE_CBC_SHA", "TLS_RSA_PSK_WITH_AES_128_CBC_SHA", "TLS_RSA_PSK_WITH_AES_256_CBC_SHA", "TLS_RSA_WITH_SEED_CBC_SHA", "TLS_DH_DSS_WITH_SEED_CBC_SHA", "TLS_DH_RSA_WITH_SEED_CBC_SHA", "TLS_DHE_DSS_WITH_SEED_CBC_SHA", "TLS_DHE_RSA_WITH_SEED_CBC_SHA", "TLS_DH_anon_WITH_SEED_CBC_SHA", "TLS_RSA_WITH_AES_128_GCM_SHA256", "TLS_RSA_WITH_AES_256_GCM_SHA384", "TLS_DH_RSA_WITH_AES_128_GCM_SHA256", "TLS_DH_RSA_WITH_AES_256_GCM_SHA384", "TLS_DHE_DSS_WITH_AES_128_GCM_SHA256", "TLS_DHE_DSS_WITH_AES_256_GCM_SHA384", "TLS_DH_DSS_WITH_AES_128_GCM_SHA256", "TLS_DH_DSS_WITH_AES_256_GCM_SHA384", "TLS_DH_anon_WITH_AES_128_GCM_SHA256", "TLS_DH_anon_WITH_AES_256_GCM_SHA384", "TLS_PSK_WITH_AES_128_GCM_SHA256", "TLS_PSK_WITH_AES_256_GCM_SHA384", "TLS_RSA_PSK_WITH_AES_128_GCM_SHA256", "TLS_RSA_PSK_WITH_AES_256_GCM_SHA384", "TLS_PSK_WITH_AES_128_CBC_SHA256", "TLS_PSK_WITH_AES_256_CBC_SHA384", "TLS_PSK_WITH_NULL_SHA256", "TLS_PSK_WITH_NULL_SHA384", "TLS_DHE_PSK_WITH_AES_128_CBC_SHA256",
 		"TLS_DHE_PSK_WITH_AES_256_CBC_SHA384", "TLS_DHE_PSK_WITH_NULL_SHA256", "TLS_DHE_PSK_WITH_NULL_SHA384", "TLS_RSA_PSK_WITH_AES_128_CBC_SHA256", "TLS_RSA_PSK_WITH_AES_256_CBC_SHA384", "TLS_RSA_PSK_WITH_NULL_SHA256", "TLS_RSA_PSK_WITH_NULL_SHA384", "TLS_RSA_WITH_CAMELLIA_128_CBC_SHA256", "TLS_DH_DSS_WITH_CAMELLIA_128_CBC_SHA256", "TLS_DH_RSA_WITH_CAMELLIA_128_CBC_SHA256", "TLS_DHE_DSS_WITH_CAMELLIA_128_CBC_SHA256", "TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA256", "TLS_DH_anon_WITH_CAMELLIA_128_CBC_SHA256", "TLS_RSA_WITH_CAMELLIA_256_CBC_SHA256", "TLS_DH_DSS_WITH_CAMELLIA_256_CBC_SHA256", "TLS_DH_RSA_WITH_CAMELLIA_256_CBC_SHA256", "TLS_DHE_DSS_WITH_CAMELLIA_256_CBC_SHA256", "TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA256", "TLS_DH_anon_WITH_CAMELLIA_256_CBC_SHA256", "TLS_SM4_GCM_SM3", "TLS_SM4_CCM_SM3", "TLS_EMPTY_RENEGOTIATION_INFO_SCSV", "TLS_AES_128_CCM_8_SHA256", "TLS_ECDH_ECDSA_WITH_NULL_SHA", "TLS_ECDH_ECDSA_WITH_RC4_128_SHA", "TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA", "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA", "TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA", "TLS_ECDHE_ECDSA_WITH_NULL_SHA", "TLS_ECDHE_ECDSA_WITH_RC4_128_SHA", "TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA", "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA", "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA", "TLS_ECDH_RSA_WITH_NULL_SHA", "TLS_ECDH_RSA_WITH_RC4_128_SHA", "TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA", "TLS_ECDH_RSA_WITH_AES_128_CBC_SHA", "TLS_ECDH_RSA_WITH_AES_256_CBC_SHA", "TLS_ECDHE_RSA_WITH_NULL_SHA", "TLS_ECDHE_RSA_WITH_RC4_128_SHA", "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA", "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA", "TLS_ECDH_anon_WITH_NULL_SHA", "TLS_ECDH_anon_WITH_RC4_128_SHA", "TLS_ECDH_anon_WITH_3DES_EDE_CBC_SHA", "TLS_ECDH_anon_WITH_AES_128_CBC_SHA", "TLS_ECDH_anon_WITH_AES_256_CBC_SHA", "TLS_SRP_SHA_WITH_3DES_EDE_CBC_SHA", "TLS_SRP_SHA_RSA_WITH_3DES_EDE_CBC_SHA", "TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA", "TLS_SRP_SHA_WITH_AES_128_CBC_SHA", "TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA", "TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA", "TLS_SRP_SHA_WITH_AES_256_CBC_SHA", "TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA", "TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA", "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256", "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384", "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256", "TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384", "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256", "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384", "TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256", "TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384", "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256", "TLS_ECDH_ECDSA_WITH_AES_256_GCM_SHA384", "TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256", "TLS_ECDH_RSA_WITH_AES_256_GCM_SHA384", "TLS_ECDHE_PSK_WITH_RC4_128_SHA", "TLS_ECDHE_PSK_WITH_3DES_EDE_CBC_SHA", "TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA", "TLS_ECDHE_PSK_WITH_AES_256_CBC_SHA", "TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256", "TLS_ECDHE_PSK_WITH_AES_256_CBC_SHA384", "TLS_ECDHE_PSK_WITH_NULL_SHA", "TLS_ECDHE_PSK_WITH_NULL_SHA256", "TLS_ECDHE_PSK_WITH_NULL_SHA384", "TLS_RSA_WITH_ARIA_128_CBC_SHA256", "TLS_RSA_WITH_ARIA_256_CBC_SHA384", "TLS_DH_DSS_WITH_ARIA_128_CBC_SHA256", "TLS_DH_DSS_WITH_ARIA_256_CBC_SHA384", "TLS_DH_RSA_WITH_ARIA_128_CBC_SHA256", "TLS_DH_RSA_WITH_ARIA_256_CBC_SHA384", "TLS_DHE_DSS_WITH_ARIA_128_CBC_SHA256", "TLS_DHE_DSS_WITH_ARIA_256_CBC_SHA384", "TLS_DHE_RSA_WITH_ARIA_128_CBC_SHA256", "TLS_DHE_RSA_WITH_ARIA_256_CBC_SHA384", "TLS_DH_anon_WITH_ARIA_128_CBC_SHA256", "TLS_DH_anon_WITH_ARIA_256_CBC_SHA384", "TLS_ECDHE_ECDSA_WITH_ARIA_128_CBC_SHA256", "TLS_ECDHE_ECDSA_WITH_ARIA_256_CBC_SHA384", "TLS_ECDH_ECDSA_WITH_ARIA_128_CBC_SHA256", "TLS_ECDH_ECDSA_WITH_ARIA_256_CBC_SHA384", "TLS_ECDHE_RSA_WITH_ARIA_128_CBC_SHA256", "TLS_ECDHE_RSA_WITH_ARIA_256_CBC_SHA384", "TLS_ECDH_RSA_WITH_ARIA_128_CBC_SHA256", "TLS_ECDH_RSA_WITH_ARIA_256_CBC_SHA384", "TLS_RSA_WITH_ARIA_128_GCM_SHA256", "TLS_RSA_WITH_ARIA_256_GCM_SHA384", "TLS_DHE_RSA_WITH_ARIA_128_GCM_SHA256", "TLS_DHE_RSA_WITH_ARIA_256_GCM_SHA384", "TLS_DH_RSA_WITH_ARIA_128_GCM_SHA256", "TLS_DH_RSA_WITH_ARIA_256_GCM_SHA384", "TLS_DHE_DSS_WITH_ARIA_128_GCM_SHA256", "TLS_DHE_DSS_WITH_ARIA_256_GCM_SHA384", "TLS_DH_DSS_WITH_ARIA_128_GCM_SHA256", "TLS_DH_DSS_WITH_ARIA_256_GCM_SHA384", "TLS_DH_anon_WITH_ARIA_128_GCM_SHA256",
@@ -615,58 +617,57 @@ weakCipher(aux) {
 }
 
 # OpenSSL
-weakCipher(aux) {
+weakCipher(aux) if {
 	weak_ciphers_OpenSSL_Format = {"NULL-MD5", "NULL-SHA", "IDEA-CBC-SHA", "DES-CBC3-SHA", "DHE-DSS-DES-CBC3-SHA", "DHE-RSA-DES-CBC3-SHA", "ADH-DES-CBC3-SHA", "PSK-NULL-SHA", "DHE-PSK-NULL-SHA", "RSA-PSK-NULL-SHA", "AES128-SHA", "DHE-DSS-AES128-SHA", "DHE-RSA-AES128-SHA", "ADH-AES128-SHA", "AES256-SHA", "DHE-DSS-AES256-SHA", "DHE-RSA-AES256-SHA", "ADH-AES256-SHA", "NULL-SHA256", "AES128-SHA256", "AES256-SHA256", "DHE-DSS-AES128-SHA256", "CAMELLIA128-SHA", "DHE-DSS-CAMELLIA128-SHA", "DHE-RSA-CAMELLIA128-SHA", "ADH-CAMELLIA128-SHA", "DHE-RSA-AES128-SHA256", "DHE-DSS-AES256-SHA256", "DHE-RSA-AES256-SHA256", "ADH-AES128-SHA256", "ADH-AES256-SHA256", "CAMELLIA256-SHA", "DHE-DSS-CAMELLIA256-SHA", "DHE-RSA-CAMELLIA256-SHA", "ADH-CAMELLIA256-SHA", "PSK-3DES-EDE-CBC-SHA", "PSK-AES128-CBC-SHA", "PSK-AES256-CBC-SHA", "DHE-PSK-3DES-EDE-CBC-SHA", "DHE-PSK-AES128-CBC-SHA", "DHE-PSK-AES256-CBC-SHA", "RSA-PSK-3DES-EDE-CBC-SHA", "RSA-PSK-AES128-CBC-SHA", "RSA-PSK-AES256-CBC-SHA", "SEED-SHA", "DHE-DSS-SEED-SHA", "DHE-RSA-SEED-SHA", "ADH-SEED-SHA", "AES128-GCM-SHA256", "AES256-GCM-SHA384", "DHE-DSS-AES128-GCM-SHA256", "DHE-DSS-AES256-GCM-SHA384", "ADH-AES128-GCM-SHA256", "ADH-AES256-GCM-SHA384", "PSK-AES128-GCM-SHA256", "PSK-AES256-GCM-SHA384", "RSA-PSK-AES128-GCM-SHA256", "RSA-PSK-AES256-GCM-SHA384", "PSK-AES128-CBC-SHA256", "PSK-AES256-CBC-SHA384", "PSK-NULL-SHA256", "PSK-NULL-SHA384", "DHE-PSK-AES128-CBC-SHA256", "DHE-PSK-AES256-CBC-SHA384", "DHE-PSK-NULL-SHA256", "DHE-PSK-NULL-SHA384", "RSA-PSK-AES128-CBC-SHA256", "RSA-PSK-AES256-CBC-SHA384", "RSA-PSK-NULL-SHA256", "RSA-PSK-NULL-SHA384", "CAMELLIA128-SHA256", "DHE-DSS-CAMELLIA128-SHA256", "DHE-RSA-CAMELLIA128-SHA256", "ADH-CAMELLIA128-SHA256", "CAMELLIA256-SHA256", "DHE-DSS-CAMELLIA256-SHA256", "DHE-RSA-CAMELLIA256-SHA256", "ADH-CAMELLIA256-SHA256", "ECDHE-ECDSA-NULL-SHA", "ECDHE-ECDSA-DES-CBC3-SHA", "ECDHE-ECDSA-AES128-SHA", "ECDHE-ECDSA-AES256-SHA", "ECDHE-RSA-NULL-SHA", "ECDHE-RSA-DES-CBC3-SHA", "ECDHE-RSA-AES128-SHA", "ECDHE-RSA-AES256-SHA", "AECDH-NULL-SHA", "AECDH-DES-CBC3-SHA", "AECDH-AES128-SHA", "AECDH-AES256-SHA", "SRP-3DES-EDE-CBC-SHA", "SRP-RSA-3DES-EDE-CBC-SHA", "SRP-DSS-3DES-EDE-CBC-SHA", "SRP-AES-128-CBC-SHA", "SRP-RSA-AES-128-CBC-SHA", "SRP-DSS-AES-128-CBC-SHA", "SRP-AES-256-CBC-SHA", "SRP-RSA-AES-256-CBC-SHA", "SRP-DSS-AES-256-CBC-SHA", "ECDHE-ECDSA-AES128-SHA256", "ECDHE-ECDSA-AES256-SHA384", "ECDHE-RSA-AES128-SHA256", "ECDHE-RSA-AES256-SHA384", "ECDHE-PSK-3DES-EDE-CBC-SHA", "ECDHE-PSK-AES128-CBC-SHA", "ECDHE-PSK-AES256-CBC-SHA", "ECDHE-PSK-AES128-CBC-SHA256", "ECDHE-PSK-AES256-CBC-SHA384", "ECDHE-PSK-NULL-SHA", "ECDHE-PSK-NULL-SHA256", "ECDHE-PSK-NULL-SHA384", "ECDHE-ECDSA-CAMELLIA128-SHA256", "ECDHE-ECDSA-CAMELLIA256-SHA384", "ECDHE-RSA-CAMELLIA128-SHA256", "ECDHE-RSA-CAMELLIA256-SHA384", "PSK-CAMELLIA128-SHA256", "PSK-CAMELLIA256-SHA384", "DHE-PSK-CAMELLIA128-SHA256", "DHE-PSK-CAMELLIA256-SHA384", "RSA-PSK-CAMELLIA128-SHA256", "RSA-PSK-CAMELLIA256-SHA384", "ECDHE-PSK-CAMELLIA128-SHA256", "ECDHE-PSK-CAMELLIA256-SHA384", "AES128-CCM", "AES256-CCM", "AES128-CCM8", "AES256-CCM8", "DHE-RSA-AES128-CCM8", "DHE-RSA-AES256-CCM8", "PSK-AES128-CCM", "PSK-AES256-CCM", "PSK-AES128-CCM8", "PSK-AES256-CCM8", "DHE-PSK-AES128-CCM8", "DHE-PSK-AES256-CCM8", "ECDHE-ECDSA-AES128-CCM", "ECDHE-ECDSA-AES256-CCM", "ECDHE-ECDSA-AES128-CCM8", "ECDHE-ECDSA-AES256-CCM8", "PSK-CHACHA20-POLY1305", "RSA-PSK-CHACHA20-POLY1305"}
 	weak_ciphers_OpenSSL_Format[_] == aux
 }
 
 # GnuTLS
-weakCipher(aux) {
+weakCipher(aux) if {
 	weak_ciphers_GnuTLS_Format = {"TLS_RSA_NULL_MD5", "TLS_RSA_NULL_SHA1", "TLS_RSA_ARCFOUR_128_MD5", "TLS_RSA_ARCFOUR_128_SHA1", "TLS_RSA_3DES_EDE_CBC_SHA1", "TLS_DHE_DSS_3DES_EDE_CBC_SHA1", "TLS_DHE_RSA_3DES_EDE_CBC_SHA1", "TLS_DH_ANON_ARCFOUR_128_MD5", "TLS_DH_ANON_3DES_EDE_CBC_SHA1", "TLS_PSK_NULL_SHA1", "TLS_DHE_PSK_NULL_SHA1", "TLS_RSA_PSK_NULL_SHA1", "TLS_RSA_AES_128_CBC_SHA1", "TLS_DHE_DSS_AES_128_CBC_SHA1", "TLS_DHE_RSA_AES_128_CBC_SHA1", "TLS_DH_ANON_AES_128_CBC_SHA1", "TLS_RSA_AES_256_CBC_SHA1", "TLS_DHE_DSS_AES_256_CBC_SHA1", "TLS_DHE_RSA_AES_256_CBC_SHA1", "TLS_DH_ANON_AES_256_CBC_SHA1", "TLS_RSA_NULL_SHA256", "TLS_RSA_AES_128_CBC_SHA256", "TLS_RSA_AES_256_CBC_SHA256", "TLS_DHE_DSS_AES_128_CBC_SHA256", "TLS_RSA_CAMELLIA_128_CBC_SHA1", "TLS_DHE_DSS_CAMELLIA_128_CBC_SHA1", "TLS_DHE_RSA_CAMELLIA_128_CBC_SHA1", "TLS_DH_ANON_CAMELLIA_128_CBC_SHA1", "TLS_DHE_RSA_AES_128_CBC_SHA256", "TLS_DHE_DSS_AES_256_CBC_SHA256", "TLS_DHE_RSA_AES_256_CBC_SHA256", "TLS_DH_ANON_AES_128_CBC_SHA256", "TLS_DH_ANON_AES_256_CBC_SHA256", "TLS_RSA_CAMELLIA_256_CBC_SHA1", "TLS_DHE_DSS_CAMELLIA_256_CBC_SHA1", "TLS_DHE_RSA_CAMELLIA_256_CBC_SHA1", "TLS_DH_ANON_CAMELLIA_256_CBC_SHA1", "TLS_PSK_ARCFOUR_128_SHA1", "TLS_PSK_3DES_EDE_CBC_SHA1", "TLS_PSK_AES_128_CBC_SHA1", "TLS_PSK_AES_256_CBC_SHA1", "TLS_DHE_PSK_ARCFOUR_128_SHA1", "TLS_DHE_PSK_3DES_EDE_CBC_SHA1", "TLS_DHE_PSK_AES_128_CBC_SHA1", "TLS_DHE_PSK_AES_256_CBC_SHA1", "TLS_RSA_PSK_ARCFOUR_128_SHA1", "TLS_RSA_PSK_3DES_EDE_CBC_SHA1", "TLS_RSA_PSK_AES_128_CBC_SHA1", "TLS_RSA_PSK_AES_256_CBC_SHA1", "TLS_RSA_AES_128_GCM_SHA256", "TLS_RSA_AES_256_GCM_SHA384", "TLS_DHE_DSS_AES_128_GCM_SHA256", "TLS_DHE_DSS_AES_256_GCM_SHA384", "TLS_DH_ANON_AES_128_GCM_SHA256", "TLS_DH_ANON_AES_256_GCM_SHA384", "TLS_PSK_AES_128_GCM_SHA256", "TLS_PSK_AES_256_GCM_SHA384", "TLS_RSA_PSK_AES_128_GCM_SHA256", "TLS_RSA_PSK_AES_256_GCM_SHA384", "TLS_PSK_AES_128_CBC_SHA256", "TLS_PSK_AES_256_CBC_SHA384", "TLS_PSK_NULL_SHA256", "TLS_PSK_NULL_SHA384", "TLS_DHE_PSK_AES_128_CBC_SHA256", "TLS_DHE_PSK_AES_256_CBC_SHA384", "TLS_DHE_PSK_NULL_SHA256", "TLS_DHE_PSK_NULL_SHA384", "TLS_RSA_PSK_AES_128_CBC_SHA256", "TLS_RSA_PSK_AES_256_CBC_SHA384", "TLS_RSA_PSK_NULL_SHA256", "TLS_RSA_PSK_NULL_SHA384", "TLS_RSA_CAMELLIA_128_CBC_SHA256", "TLS_DHE_DSS_CAMELLIA_128_CBC_SHA256", "TLS_DHE_RSA_CAMELLIA_128_CBC_SHA256", "TLS_DH_ANON_CAMELLIA_128_CBC_SHA256", "TLS_RSA_CAMELLIA_256_CBC_SHA256", "TLS_DHE_DSS_CAMELLIA_256_CBC_SHA256", "TLS_DHE_RSA_CAMELLIA_256_CBC_SHA256", "TLS_DH_ANON_CAMELLIA_256_CBC_SHA256", "TLS_ECDHE_ECDSA_NULL_SHA1", "TLS_ECDHE_ECDSA_ARCFOUR_128_SHA1", "TLS_ECDHE_ECDSA_3DES_EDE_CBC_SHA1", "TLS_ECDHE_ECDSA_AES_128_CBC_SHA1", "TLS_ECDHE_ECDSA_AES_256_CBC_SHA1", "TLS_ECDHE_RSA_NULL_SHA1", "TLS_ECDHE_RSA_ARCFOUR_128_SHA1", "TLS_ECDHE_RSA_3DES_EDE_CBC_SHA1", "TLS_ECDHE_RSA_AES_128_CBC_SHA1", "TLS_ECDHE_RSA_AES_256_CBC_SHA1", "TLS_ECDH_ANON_NULL_SHA1", "TLS_ECDH_ANON_ARCFOUR_128_SHA1", "TLS_ECDH_ANON_3DES_EDE_CBC_SHA1", "TLS_ECDH_ANON_AES_128_CBC_SHA1", "TLS_ECDH_ANON_AES_256_CBC_SHA1", "TLS_SRP_SHA_3DES_EDE_CBC_SHA1", "TLS_SRP_SHA_RSA_3DES_EDE_CBC_SHA1", "TLS_SRP_SHA_DSS_3DES_EDE_CBC_SHA1", "TLS_SRP_SHA_AES_128_CBC_SHA1", "TLS_SRP_SHA_RSA_AES_128_CBC_SHA1", "TLS_SRP_SHA_DSS_AES_128_CBC_SHA1", "TLS_SRP_SHA_AES_256_CBC_SHA1", "TLS_SRP_SHA_RSA_AES_256_CBC_SHA1", "TLS_SRP_SHA_DSS_AES_256_CBC_SHA1", "TLS_ECDHE_ECDSA_AES_128_CBC_SHA256", "TLS_ECDHE_ECDSA_AES_256_CBC_SHA384", "TLS_ECDHE_RSA_AES_128_CBC_SHA256", "TLS_ECDHE_RSA_AES_256_CBC_SHA384", "TLS_ECDHE_PSK_ARCFOUR_128_SHA1", "TLS_ECDHE_PSK_3DES_EDE_CBC_SHA1", "TLS_ECDHE_PSK_AES_128_CBC_SHA1", "TLS_ECDHE_PSK_AES_256_CBC_SHA1", "TLS_ECDHE_PSK_AES_128_CBC_SHA256", "TLS_ECDHE_PSK_AES_256_CBC_SHA384", "TLS_ECDHE_PSK_NULL_SHA1", "TLS_ECDHE_PSK_NULL_SHA256", "TLS_ECDHE_PSK_NULL_SHA384", "TLS_ECDHE_ECDSA_CAMELLIA_128_CBC_SHA256", "TLS_ECDHE_ECDSA_CAMELLIA_256_CBC_SHA384", "TLS_ECDHE_RSA_CAMELLIA_128_CBC_SHA256", "TLS_ECDHE_RSA_CAMELLIA_256_CBC_SHA384", "TLS_RSA_CAMELLIA_128_GCM_SHA256", "TLS_RSA_CAMELLIA_256_GCM_SHA384", "TLS_DHE_RSA_CAMELLIA_128_GCM_SHA256", "TLS_DHE_RSA_CAMELLIA_256_GCM_SHA384", "TLS_DHE_DSS_CAMELLIA_128_GCM_SHA256", "TLS_DHE_DSS_CAMELLIA_256_GCM_SHA384", "TLS_DH_ANON_CAMELLIA_128_GCM_SHA256", "TLS_DH_ANON_CAMELLIA_256_GCM_SHA384", "TLS_ECDHE_ECDSA_CAMELLIA_128_GCM_SHA256", "TLS_ECDHE_ECDSA_CAMELLIA_256_GCM_SHA384", "TLS_ECDHE_RSA_CAMELLIA_128_GCM_SHA256", "TLS_ECDHE_RSA_CAMELLIA_256_GCM_SHA384", "TLS_PSK_CAMELLIA_128_GCM_SHA256", "TLS_PSK_CAMELLIA_256_GCM_SHA384", "TLS_DHE_PSK_CAMELLIA_128_GCM_SHA256", "TLS_DHE_PSK_CAMELLIA_256_GCM_SHA384", "TLS_RSA_PSK_CAMELLIA_128_GCM_SHA256", "TLS_RSA_PSK_CAMELLIA_256_GCM_SHA384", "TLS_PSK_CAMELLIA_128_CBC_SHA256", "TLS_PSK_CAMELLIA_256_CBC_SHA384", "TLS_DHE_PSK_CAMELLIA_128_CBC_SHA256", "TLS_DHE_PSK_CAMELLIA_256_CBC_SHA384", "TLS_RSA_PSK_CAMELLIA_128_CBC_SHA256", "TLS_RSA_PSK_CAMELLIA_256_CBC_SHA384", "TLS_ECDHE_PSK_CAMELLIA_128_CBC_SHA256", "TLS_ECDHE_PSK_CAMELLIA_256_CBC_SHA384", "TLS_RSA_AES_128_CCM", "TLS_RSA_AES_256_CCM", "TLS_RSA_AES_128_CCM_8", "TLS_RSA_AES_256_CCM_8", "TLS_DHE_RSA_AES_128_CCM_8", "TLS_DHE_RSA_AES_256_CCM_8", "TLS_PSK_AES_128_CCM", "TLS_PSK_AES_256_CCM", "TLS_PSK_AES_128_CCM_8", "TLS_PSK_AES_256_CCM_8", "TLS_DHE_PSK_AES_128_CCM_8", "TLS_DHE_PSK_AES_256_CCM_8", "TLS_ECDHE_ECDSA_AES_128_CCM", "TLS_ECDHE_ECDSA_AES_256_CCM", "TLS_ECDHE_ECDSA_AES_128_CCM_8", "TLS_ECDHE_ECDSA_AES_256_CCM_8", "TLS_PSK_CHACHA20_POLY1305", "TLS_RSA_PSK_CHACHA20_POLY1305"}
 	weak_ciphers_GnuTLS_Format[_] == aux
 }
 
-
 #aurora is equivelent to mysql 5.6 https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/UsingWithRDS.IAMDBAuth.html#UsingWithRDS.IAMDBAuth.Availability
 #all aurora-postgresql versions that do not support IAM auth are deprecated Source:console.aws (launch rds instance)
-valid_for_iam_engine_and_version_check(resource, engineVar, engineVersionVar, instanceClassVar) {
+valid_for_iam_engine_and_version_check(resource, engineVar, engineVersionVar, instanceClassVar) if {
 	key_list := [engineVar, engineVersionVar]
 	contains(lower(resource[engineVar]), "mariadb")
 	version_check := {x | x := resource[key_list[_]]; contains(x, "10.6")}
 	count(version_check) > 0
-} else {
+} else if {
 	engines_that_supports_iam := ["aurora-postgresql", "postgres", "mysql", "mariadb"]
 	contains(lower(resource[engineVar]), engines_that_supports_iam[_])
 	not valid_key(resource, engineVersionVar)
-} else {
+} else if {
 	engines_that_supports_iam := ["aurora-postgresql", "postgres", "mysql"]
 	contains(lower(resource[engineVar]), engines_that_supports_iam[_])
-} else {
+} else if {
 	aurora_mysql_engines := ["aurora", "aurora-mysql"]
 	contains(lower(resource[engineVar]), aurora_mysql_engines[_])
 	invalid_classes := ["db.t2.small", "db.t3.small"]
 	not inArray(invalid_classes, resource[instanceClassVar])
 }
 
-get_group_from_policy_attachment(attachment) = group {
+get_group_from_policy_attachment(attachment) := group if {
 	group := split(attachment.groups[_], ".")[1]
-} else = group {
+} else := group if {
 	group := split(attachment.group, ".")[1]
 }
 
-get_role_from_policy_attachment(attachment) = role {
+get_role_from_policy_attachment(attachment) := role if {
 	role := split(attachment.roles[_], ".")[1]
-} else = role {
+} else := role if {
 	role := split(attachment.role, ".")[1]
 }
 
-get_user_from_policy_attachment(attachment) = user {
+get_user_from_policy_attachment(attachment) := user if {
 	user := split(attachment.users[_], ".")[1]
-} else = user {
+} else := user if {
 	user := split(attachment.user, ".")[1]
 }
 
-unrecommended_permission_policy(resourcePolicy, permission) {
+unrecommended_permission_policy(resourcePolicy, permission) if {
 	policy := json_unmarshal(resourcePolicy.policy)
 
 	st := get_statement(policy)
@@ -678,7 +679,7 @@ unrecommended_permission_policy(resourcePolicy, permission) {
 	equalsOrInArray(statement.Action, lower(permission))
 }
 
-group_unrecommended_permission_policy_scenarios(targetGroup, permission) {
+group_unrecommended_permission_policy_scenarios(targetGroup, permission) if {
 	# get the IAM group policy
 	groupPolicy := input.document[_].resource.aws_iam_group_policy[_]
 
@@ -688,7 +689,7 @@ group_unrecommended_permission_policy_scenarios(targetGroup, permission) {
 
 	# verify that the policy is unrecommended
 	unrecommended_permission_policy(groupPolicy, permission)
-} else {
+} else if {
 	# find attachment
 	attachments := {"aws_iam_policy_attachment", "aws_iam_group_policy_attachment"}
 	attachment := input.document[_].resource[attachments[_]][_]
@@ -707,7 +708,7 @@ group_unrecommended_permission_policy_scenarios(targetGroup, permission) {
 	unrecommended_permission_policy(resourcePolicy, permission)
 }
 
-role_unrecommended_permission_policy_scenarios(targetRole, permission) {
+role_unrecommended_permission_policy_scenarios(targetRole, permission) if {
 	# get the IAM role policy
 	rolePolicy := input.document[_].resource.aws_iam_role_policy[_]
 
@@ -717,7 +718,7 @@ role_unrecommended_permission_policy_scenarios(targetRole, permission) {
 
 	# verify that the policy is unrecommended
 	unrecommended_permission_policy(rolePolicy, permission)
-} else {
+} else if {
 	# find attachment
 	attachments := {"aws_iam_policy_attachment", "aws_iam_role_policy_attachment"}
 	attachment := input.document[_].resource[attachments[_]][_]
@@ -736,7 +737,7 @@ role_unrecommended_permission_policy_scenarios(targetRole, permission) {
 	unrecommended_permission_policy(resourcePolicy, permission)
 }
 
-user_unrecommended_permission_policy_scenarios(targetUser, permission) {
+user_unrecommended_permission_policy_scenarios(targetUser, permission) if {
 	# get the IAM user policy
 	userPolicy := input.document[_].resource.aws_iam_user_policy[_]
 
@@ -746,7 +747,7 @@ user_unrecommended_permission_policy_scenarios(targetUser, permission) {
 
 	# verify that the policy is unrecommended
 	unrecommended_permission_policy(userPolicy, permission)
-} else {
+} else if {
 	# find attachment
 	attachments := {"aws_iam_policy_attachment", "aws_iam_user_policy_attachment"}
 	attachment := input.document[_].resource[attachments[_]][_]
@@ -765,46 +766,46 @@ user_unrecommended_permission_policy_scenarios(targetUser, permission) {
 	unrecommended_permission_policy(resourcePolicy, permission)
 }
 
-get_latest_software_version(name) = version {
+get_latest_software_version(name) := version if {
 	software_info := data.version_numbers_to_check
 	software_info[i].name == name
 	version := software_info[i].version
 }
 
-get_version(name) = version {
+get_version(name) := version if {
 	val := get_latest_software_version(name)
 	splited := split(val, ".")
-	version := concat(".", [splited[0],splited[1]])
+	version := concat(".", [splited[0], splited[1]])
 }
 
-contains_element(arr, element) {
-    element == arr[_]
+contains_element(arr, element) if {
+	element == arr[_]
 }
 
-contains_with_size(arr, element){
-	count(arr)>0
-    test := arr[j]
+contains_with_size(arr, element) if {
+	count(arr) > 0
+	test := arr[j]
 	contains(test, element)
 }
 
-valid_non_empty_key(field, key) = output {
+valid_non_empty_key(field, key) := output if {
 	not valid_key(field, key)
 	output = ""
-} else = output {
+} else := output if {
 	keyObj := field[key]
 	is_object(keyObj)
 	count(keyObj) == 0
 	output := concat(".", ["", key])
-} else = output {
+} else := output if {
 	keyObj := field[key]
 	keyObj == ""
 	output := concat(".", ["", key])
 }
 
 # Helper to ensure that a value is always treated as an array.
-as_array(x) = y {
-    is_array(x)
-    y = x
-} else = [x] {
-    not is_array(x)
+as_array(x) := y if {
+	is_array(x)
+	y = x
+} else := [x] if {
+	not is_array(x)
 }

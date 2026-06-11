@@ -1,6 +1,8 @@
 package datadog
 
-DatadogPolicy[result] {
+import rego.v1
+
+DatadogPolicy contains result if {
 	resource := input.document[i].resource.aws_elasticache_cluster[name]
 	resource.engine != "redis"
 
@@ -15,72 +17,72 @@ DatadogPolicy[result] {
 		"keyActualValue": sprintf("resource.aws_elasticache_cluster[%s].engine doesn't enable Redis", [name]),
 		"remediation": json.marshal({
 			"before": "memcached",
-			"after": "redis"
+			"after": "redis",
 		}),
 		"remediationType": "replacement",
 	}
 }
 
-get_specific_resource_name(resource, resourceType, resourceDefinitionName) = name {
+get_specific_resource_name(resource, resourceType, resourceDefinitionName) := name if {
 	field := resourceFieldName[resourceType]
 	name := resource[field]
-} else = name {
+} else := name if {
 	name := get_resource_name(resource, resourceDefinitionName)
 }
 
-get_resource_name(resource, resourceDefinitionName) = name {
-	name := resource["name"]
-} else = name {
-	name := resource["display_name"]
-}  else = name {
+get_resource_name(resource, resourceDefinitionName) := name if {
+	name := resource.name
+} else := name if {
+	name := resource.display_name
+} else := name if {
 	name := resource.metadata.name
-} else = name {
+} else := name if {
 	prefix := resource.name_prefix
 	name := sprintf("%s<unknown-sufix>", [prefix])
-} else = name {
+} else := name if {
 	name := get_tag_name_if_exists(resource)
-} else = name {
+} else := name if {
 	name := resourceDefinitionName
 }
 
-build_search_line(path, obj) = resolvedPath {
+build_search_line(path, obj) := resolvedPath if {
 	resolveArray := [x | pathItem := path[n]; x := convert_path_item(pathItem)]
 	resolvedObj := [x | objItem := obj[n]; x := convert_path_item(objItem)]
 	resolvedPath = array.concat(resolveArray, resolvedObj)
 }
 
-convert_path_item(pathItem) = convertedPath {
+convert_path_item(pathItem) := convertedPath if {
 	is_number(pathItem)
 	convertedPath := sprintf("%d", [pathItem])
-} else = convertedPath {
+} else := convertedPath if {
 	convertedPath := sprintf("%s", [pathItem])
 }
 
-get_tag_name_if_exists(resource) = name {
+get_tag_name_if_exists(resource) := name if {
 	name := resource.tags.Name
-} else = name {
+} else := name if {
 	tag := resource.Properties.Tags[_]
 	tag.Key == "Name"
 	name := tag.Value
-} else = name {
+} else := name if {
 	tag := resource.Properties.FileSystemTags[_]
 	tag.Key == "Name"
 	name := tag.Value
-} else = name {
+} else := name if {
 	tag := resource.Properties.Tags[key]
 	key == "Name"
 	name := tag
-} else = name {
+} else := name if {
 	tag := resource.spec.forProvider.tags[_]
 	tag.key == "Name"
 	name := tag.value
-} else = name {
+} else := name if {
 	tag := resource.properties.tags[key]
 	key == "Name"
 	name := tag
 }
 
-resourceFieldName = {
+resourceFieldName := {
 	"google_bigquery_dataset": "friendly_name",
 	"alicloud_actiontrail_trail": "trail_name",
 	"alicloud_ros_stack": "stack_name",

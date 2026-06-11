@@ -1,6 +1,8 @@
 package datadog
 
-DatadogPolicy[result] {
+import rego.v1
+
+DatadogPolicy contains result if {
 	input.document[i]
 
 	result := {

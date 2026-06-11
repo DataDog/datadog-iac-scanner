@@ -1,8 +1,10 @@
 package datadog
 
+import rego.v1
+
 # Minimal rule for TestInspectorSimilarityID: fires on every aws_instance resource.
 # Deliberately avoids library imports so it works with the stubQueriesSource library stub.
-DatadogPolicy[result] {
+DatadogPolicy contains result if {
 	resource := input.document[i].resource.aws_instance[name]
 	result := {
 		"documentId": input.document[i].id,

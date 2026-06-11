@@ -455,7 +455,11 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 		return nil, errors.Wrap(err, "failed to evaluate query")
 	}
 	if c.enableCoverageReport && cov != nil {
-		module, parseErr := ast.ParseModule(qCtx.Query.Metadata.Query, qCtx.Query.Metadata.Content)
+		module, parseErr := ast.ParseModuleWithOpts(
+			qCtx.Query.Metadata.Query,
+			qCtx.Query.Metadata.Content,
+			ast.ParserOptions{RegoVersion: ast.RegoV1},
+		)
 		if parseErr != nil {
 			return nil, errors.Wrap(parseErr, "failed to parse coverage module")
 		}
@@ -772,6 +776,7 @@ func (q QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		store := inmem.NewFromReader(bytes.NewBufferString(mergedInputData))
 		opaQuery, err = rego.New(
 			rego.Query(regoQuery),
+			rego.SetRegoVersion(ast.RegoV1),
 			rego.Module("Common", q.commonLibrary.LibraryCode),
 			rego.Module("Generic", platformGeneralQuery.LibraryCode),
 			rego.Module(query.Query, query.Content),

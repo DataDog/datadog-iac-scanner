@@ -1,9 +1,11 @@
 package datadog
 
-import data.generic.common as common_lib
-import data.generic.cloudformation as cf_lib
+import rego.v1
 
-DatadogPolicy[result] {
+import data.generic.cloudformation as cf_lib
+import data.generic.common as common_lib
+
+DatadogPolicy contains result if {
 	document := input.document
 	resource = document[i].Resources[name]
 	resource.Type == "AWS::AmazonMQ::Broker"
