@@ -103,7 +103,6 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 
 	name, charts, err := client.NameAndChart(args)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to parse chart name and path from args %v: %s", args, err)
 		return nil, []string{}, err
 	}
 	contextLogger.Debug().Msgf("Parsed chart name: '%s', chart path: '%s'", name, charts)
@@ -111,7 +110,6 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 
 	cp, err := client.LocateChart(charts, settings)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to locate chart '%s': %s", charts, err)
 		return nil, []string{}, err
 	}
 	contextLogger.Debug().Msgf("Located chart at path: '%s'", cp)
@@ -119,7 +117,6 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	p := getter.All(settings)
 	vals, err := valueOpts.MergeValues(p)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to merge helm values: %s", err)
 		return nil, []string{}, err
 	}
 	contextLogger.Debug().Msgf("Merged helm values successfully, values count: %d", len(vals))
@@ -128,7 +125,6 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	contextLogger.Debug().Msgf("Loading chart from path: '%s'", cp)
 	chartRequested, err := loader.Load(cp)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to load chart from '%s': %s", cp, err)
 		return nil, []string{}, err
 	}
 
@@ -144,7 +140,6 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	chartRequested = setID(chartRequested)
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {
-		contextLogger.Error().Msgf("chart is not installable: %s", instErr)
 		return nil, []string{}, instErr
 	}
 	contextLogger.Debug().Msg("Chart installability check passed")
@@ -153,7 +148,6 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, client.ReleaseName)
 	helmRelease, err := client.Run(chartRequested, vals)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to run helm chart '%s': %s", chartRequested.Metadata.Name, err)
 		return nil, []string{}, err
 	}
 

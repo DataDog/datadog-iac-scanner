@@ -465,7 +465,7 @@ func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path str
 		// resolverSink returns an error only for actual chart directories (with Chart.yaml).
 		// For non-chart directories it returns nil/[] and we should not log.
 		if _, statErr := os.Stat(filepath.Join(path, "Chart.yaml")); statErr == nil {
-			contextLogger.Warn().Msgf("Failed to render Helm chart '%s'; scanning its raw files as a fallback", path)
+			contextLogger.Warn().Err(errRes).Msgf("Failed to render Helm chart '%s'; scanning its raw files as a fallback", path)
 		}
 		return nil
 	}
