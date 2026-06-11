@@ -1,0 +1,10 @@
+# Regal configuration for the IaC scanner Rego libraries.
+# https://docs.styra.com/regal
+rules:
+  bugs:
+    leaked-internal-reference:
+      # Scanner input documents expose engine-injected fields whose names start
+      # with an underscore (e.g. `_path`, `_op`, `_selector`, `_value`). These
+      # are input data, not internal Rego rules, so this rule only yields false
+      # positives in this codebase.
+      level: ignore

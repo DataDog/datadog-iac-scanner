@@ -83,21 +83,21 @@ hasFlagEqualOrGreaterThanValue(container, flag, value) if {
 	to_number(flag_value) >= value
 }
 
-hasFlagBetweenValues(container, flag, higher, lower) if {
+hasFlagBetweenValues(container, flag, higher, lowerLimit) if {
 	command := container.command
 	startswith(command[a], flag)
 	value := split(command[a], "=")[1]
-	betweenValues(value, higher, lower)
+	betweenValues(value, higher, lowerLimit)
 } else if {
 	args := container.args
 	startswith(args[a], flag)
 	value := split(args[a], "=")[1]
-	betweenValues(value, higher, lower)
+	betweenValues(value, higher, lowerLimit)
 }
 
-betweenValues(value, higher, lower) if {
+betweenValues(value, higher, lowerLimit) if {
 	to_number(value) > higher
-	to_number(value) < lower
+	to_number(value) < lowerLimit
 }
 
 # Valid K8s/Knative Kinds that support podSpec or PodSpecTemplate

@@ -51,9 +51,9 @@ references_untrusted_context(raw) if {
 # but not for `github.event.inputs.<X>`, whose root is `github`.
 is_bare_inputs_dereference(node) if {
 	node.type == "dereference_expression"
-	object := node.children[0]
-	object.type == "identifier"
-	lower(object.value) == "inputs"
+	obj := node.children[0]
+	obj.type == "identifier"
+	lower(obj.value) == "inputs"
 }
 
 check_provider(doc) := "github" if {
