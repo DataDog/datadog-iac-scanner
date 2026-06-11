@@ -59,8 +59,8 @@ withVersion(pack) if {
 	regex.match("[A-Za-z0-9_\\+-]+~?=(.+)", pack)
 }
 
-arrayContains(array, list) if {
-	contains(array[_], list[_])
+arrayContains(arr, list) if {
+	contains(arr[_], list[_])
 }
 
 check_multi_stage(imageName, images) if {

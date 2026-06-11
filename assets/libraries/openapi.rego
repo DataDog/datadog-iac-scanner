@@ -22,7 +22,7 @@ improperly_defined(params, value) if {
 	params.name == value
 }
 
-incorrect_ref(ref, object) if {
+incorrect_ref(ref, refKey) if {
 	references := {
 		"schemas": "#/components/schemas/",
 		"responses": "#/components/responses/",
@@ -34,17 +34,17 @@ incorrect_ref(ref, object) if {
 		"parameters": "#/components/parameters/",
 	}
 
-	not startswith(ref, references[object])
+	not startswith(ref, references[refKey])
 }
 
-incorrect_ref_swagger(ref, object) if {
+incorrect_ref_swagger(ref, refKey) if {
 	references := {
 		"parameters": "#/parameters/",
 		"responses": "#/responses/",
 		"schemas": "#/definitions/",
 	}
 
-	not startswith(ref, references[object])
+	not startswith(ref, references[refKey])
 }
 
 content_allowed(operation, code) if {
@@ -298,10 +298,10 @@ get_discriminator(schema, version) := discriminator if {
 	discriminator := {"obj": schema.discriminator, "path": "discriminator"}
 }
 
-check_definitions(doc, object, name) if {
+check_definitions(doc, refType, name) if {
 	[path, value] := walk(doc)
 	ref := value["$ref"]
-	count({x | ref == sprintf("#/%s/%s", [object, name]); x := ref}) == 0
+	count({x | ref == sprintf("#/%s/%s", [refType, name]); x := ref}) == 0
 }
 
 is_valid_mime(mime) if {

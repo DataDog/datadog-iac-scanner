@@ -33,20 +33,20 @@ portOpenToInternet(rule, port) if {
 	containsPort(rule, port)
 }
 
-portOpenToInternet(rules, port) if {
-	rule := rules[_]
-	rule.action != "deny"
-	check_cidr(rule)
-	rule.protocol == "tcp"
-	containsPort(rule, port)
+portOpenToInternet(rule, port) if {
+	r := rule[_]
+	r.action != "deny"
+	check_cidr(r)
+	r.protocol == "tcp"
+	containsPort(r, port)
 }
 
-portOpenToInternet(rules, port) if {
-	rule := rules[_]
-	not has_key(rule, "action")
-	check_cidr(rule)
-	rule.protocol == "tcp"
-	containsPort(rule, port)
+portOpenToInternet(rule, port) if {
+	r := rule[_]
+	not has_key(r, "action")
+	check_cidr(r)
+	r.protocol == "tcp"
+	containsPort(r, port)
 }
 
 # Checks if a port is included in a rule
@@ -500,8 +500,6 @@ empty_array(arr) if {
 	arr == []
 } else if {
 	arr == null
-} else if {
-	false
 }
 
 uses_aws_managed_key(key, awsManagedKey) if {
@@ -577,24 +575,6 @@ check_member(attribute, search) if {
 	startswith(attribute.members[_], search)
 } else if {
 	startswith(attribute.member, search)
-}
-
-check_member(attribute, search) if {
-	startswith(attribute.members[_], search)
-} else if {
-	startswith(attribute.member, search)
-}
-
-matches(target, name) if {
-	split(target, ".")[1] == name
-} else if {
-	target == name
-}
-
-matches(target, name) if {
-	split(target, ".")[1] == name
-} else if {
-	target == name
 }
 
 has_target_resource(bucketName, resourceName) if {
