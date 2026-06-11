@@ -43,6 +43,15 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			want: `{"Id":"lala","Statement":[{"Actions":["s3:ListAllMyBuckets","s3:GetBucketLocation"],"Resources":["arn:aws:s3:::*"],"Sid":"1"},{"Actions":["s3:ListBucket"],"Condition":{"StringLike":{"s3:prefix":["","home/","home/&{aws:username}/"]}},"Resources":["arn:aws:s3:::test"]},{"Actions":["s3:*"],"Resources":["arn:aws:s3:::test/home/&{aws:username}","arn:aws:s3:::test/home/&{aws:username}/*"]}]}
 `,
 		},
+		{
+			name: "should not drop policy when scalar fields reference unknown variables",
+			args: args{
+				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source_unknown_vars"),
+				resourceName: "partial_unknowns",
+			},
+			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"]}]}
+`,
+		},
 	}
 
 	ctx := context.Background()

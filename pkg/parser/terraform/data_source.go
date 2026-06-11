@@ -122,9 +122,9 @@ func getDataSourcePolicy(ctx context.Context, currentPath string, inputVariables
 
 func decodeDataSourcePolicy(ctx context.Context, value cty.Value) dataSourcePolicy {
 	contextLogger := logger.FromContext(ctx)
-	jsonified, err := ctyjson.Marshal(value, cty.DynamicPseudoType)
+	jsonified, err := ctyjson.Marshal(cty.UnknownAsNull(value), cty.DynamicPseudoType)
 	if err != nil {
-		contextLogger.Error().Msgf("Error trying to decode data source block: %s", err)
+		contextLogger.Warn().Msgf("Error trying to decode data source block: %s", err)
 		return dataSourcePolicy{}
 	}
 	var data dataSource
