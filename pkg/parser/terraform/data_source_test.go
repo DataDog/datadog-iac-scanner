@@ -20,10 +20,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 	type args struct {
 		currentPath  string
 		resourceName string
-		// inputVars seeds the variable map passed to getDataSourcePolicy.
-		// nil means an empty map (no var/local context), which is fine for
-		// fixtures that contain no variable references.
-		inputVars converter.VariableMap
+		inputVars converter.VariableMap // nil means empty map
 	}
 	tests := []struct {
 		name string
@@ -49,20 +46,22 @@ func Test_getDataSourcePolicy(t *testing.T) {
 `,
 		},
 		{
-			// In production, getInputVariables always populates "var" as a
-			// cty.Object whose attributes are only variables that have defaults.
-			// A variable with no default is absent from the object, so
-			// var.sid_value triggers "Unsupported attribute" rather than
-			// "Unknown variable". Without the fix both diagnostics caused the
-			// whole policy to be dropped.
-			name: "should not drop policy when scalar fields reference variables with no default",
+			// "var" present but no default: raises "Unsupported attribute".
+			name: "should not drop policy when scalar fields reference variables with no default (production var context)",
 			args: args{
 				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source_unknown_vars"),
 				resourceName: "partial_unknowns",
-				// Simulate production: "var" is a known empty object (no defaults resolved).
-				inputVars: converter.VariableMap{
-					"var": cty.EmptyObjectVal,
-				},
+				inputVars:    converter.VariableMap{"var": cty.EmptyObjectVal},
+			},
+			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"]}]}
+`,
+		},
+		{
+			// "var" absent entirely: raises "Unknown variable".
+			name: "should not drop policy when scalar fields reference variables with no var context",
+			args: args{
+				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source_unknown_vars"),
+				resourceName: "partial_unknowns",
 			},
 			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"]}]}
 `,

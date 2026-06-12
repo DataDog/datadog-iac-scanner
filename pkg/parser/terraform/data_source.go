@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/builder/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -244,14 +245,15 @@ func parseDataSourceBody(ctx context.Context, body *hclsyntax.Body, inputVariabl
 		Functions: functions.TerraformFuncs,
 	})
 
-	// Dismiss diagnostics caused by unresolvable references. "Unknown variable"
-	// fires when var/local/module is absent from the eval context entirely;
-	// "Unsupported attribute" fires when var IS in the context (as a cty.Object
-	// of known defaults) but the specific variable has no default and is therefore
-	// not an attribute on that object. Both leave the affected field as
-	// cty.DynamicVal, which cty.UnknownAsNull handles below.
+	// Dismiss unresolvable variable references; both leave the field as
+	// cty.DynamicVal which cty.UnknownAsNull handles below.
+	// "Unsupported attribute" is narrowed by Detail to avoid swallowing
+	// unrelated attribute errors on non-variable objects.
 	for _, decErr := range decodeErrs {
-		if decErr.Summary != "Unknown variable" && decErr.Summary != "Unsupported attribute" {
+		isUnknownVar := decErr.Summary == "Unknown variable"
+		isUnsupportedAttrOnVar := decErr.Summary == "Unsupported attribute" &&
+			strings.Contains(decErr.Detail, "does not have an attribute named")
+		if !isUnknownVar && !isUnsupportedAttrOnVar {
 			contextLogger.Debug().Msgf("Error trying to eval data source block: %s", decErr.Summary)
 			return ""
 		}
