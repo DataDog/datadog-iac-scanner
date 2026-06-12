@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/builder/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -122,9 +123,9 @@ func getDataSourcePolicy(ctx context.Context, currentPath string, inputVariables
 
 func decodeDataSourcePolicy(ctx context.Context, value cty.Value) dataSourcePolicy {
 	contextLogger := logger.FromContext(ctx)
-	jsonified, err := ctyjson.Marshal(value, cty.DynamicPseudoType)
+	jsonified, err := ctyjson.Marshal(cty.UnknownAsNull(value), cty.DynamicPseudoType)
 	if err != nil {
-		contextLogger.Error().Msgf("Error trying to decode data source block: %s", err)
+		contextLogger.Warn().Msgf("Error trying to decode data source block: %s", err)
 		return dataSourcePolicy{}
 	}
 	var data dataSource
@@ -244,13 +245,19 @@ func parseDataSourceBody(ctx context.Context, body *hclsyntax.Body, inputVariabl
 		Functions: functions.TerraformFuncs,
 	})
 
-	// check decode errors
+	// Dismiss unresolvable variable references; both leave the field as
+	// cty.DynamicVal which cty.UnknownAsNull handles below.
+	// "Unsupported attribute" is narrowed by Detail to avoid swallowing
+	// unrelated attribute errors on non-variable objects.
 	for _, decErr := range decodeErrs {
-		if decErr.Summary != "Unknown variable" {
+		isUnknownVar := decErr.Summary == "Unknown variable"
+		isUnsupportedAttrOnVar := decErr.Summary == "Unsupported attribute" &&
+			strings.Contains(decErr.Detail, "does not have an attribute named")
+		if !isUnknownVar && !isUnsupportedAttrOnVar {
 			contextLogger.Debug().Msgf("Error trying to eval data source block: %s", decErr.Summary)
 			return ""
 		}
-		contextLogger.Debug().Msg("Dismissed Error when decoding policy: Found unknown variable")
+		contextLogger.Debug().Msgf("Dismissed unresolvable reference when decoding policy: %s: %s", decErr.Summary, decErr.Detail)
 	}
 
 	dataSourceJSON := decodeDataSourcePolicy(ctx, target)

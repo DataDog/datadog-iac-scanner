@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 )
 
@@ -19,6 +20,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 	type args struct {
 		currentPath  string
 		resourceName string
+		inputVars converter.VariableMap // nil means empty map
 	}
 	tests := []struct {
 		name string
@@ -43,12 +45,36 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			want: `{"Id":"lala","Statement":[{"Actions":["s3:ListAllMyBuckets","s3:GetBucketLocation"],"Resources":["arn:aws:s3:::*"],"Sid":"1"},{"Actions":["s3:ListBucket"],"Condition":{"StringLike":{"s3:prefix":["","home/","home/&{aws:username}/"]}},"Resources":["arn:aws:s3:::test"]},{"Actions":["s3:*"],"Resources":["arn:aws:s3:::test/home/&{aws:username}","arn:aws:s3:::test/home/&{aws:username}/*"]}]}
 `,
 		},
+		{
+			// "var" present but no default: raises "Unsupported attribute".
+			name: "should not drop policy when scalar fields reference variables with no default (production var context)",
+			args: args{
+				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source_unknown_vars"),
+				resourceName: "partial_unknowns",
+				inputVars:    converter.VariableMap{"var": cty.EmptyObjectVal},
+			},
+			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"]}]}
+`,
+		},
+		{
+			// "var" absent entirely: raises "Unknown variable".
+			name: "should not drop policy when scalar fields reference variables with no var context",
+			args: args{
+				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source_unknown_vars"),
+				resourceName: "partial_unknowns",
+			},
+			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"]}]}
+`,
+		},
 	}
 
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inputVars := make(converter.VariableMap)
+			inputVars := tt.args.inputVars
+			if inputVars == nil {
+				inputVars = make(converter.VariableMap)
+			}
 			result := getDataSourcePolicy(ctx, tt.args.currentPath, inputVars)
 			data, ok := result["data"]
 			if !ok {
@@ -66,6 +92,4 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
-
-	// No cleanup needed since we're not using global variables anymore
 }
