@@ -1,0 +1,57 @@
+name: lint-rego
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "**/*.rego"
+      - ".regal/config.yaml"
+      - ".github/workflows/lint-rego.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.rego"
+      - ".regal/config.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  lint-rego:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Download and install OPA
+        run: |
+          OPA_VERSION="1.16.2"
+          curl -L -o opa "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_amd64_static"
+          chmod +x opa
+          sudo mv opa /usr/local/bin/
+          opa version
+
+      - name: Download and install Regal
+        run: |
+          REGAL_VERSION="0.41.1"
+          curl -L -o regal "https://github.com/StyraInc/regal/releases/download/v${REGAL_VERSION}/regal_Linux_x86_64"
+          chmod +x regal
+          sudo mv regal /usr/local/bin/
+          regal version
+
+      - name: Check Rego formatting
+        run: opa fmt --fail .
+
+      - name: Lint Rego (bugs only)
+        run: |
+          regal lint \
+            --fail-level error \
+            --disable-category style \
+            --disable-category idiomatic \
+            --disable-category performance \
+            --disable-category imports \
+            --disable-category testing \
+            .

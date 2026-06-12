@@ -86,8 +86,8 @@ isRelative(use) if {
 	startswith(use, allowed[i])
 }
 
-get_object_name(object, object_title, index) := object_name if {
-	object_name := object.name
+get_object_name(item, object_title, index) := object_name if {
+	object_name := item.name
 } else := object_name if {
 	object_name := sprintf("%s-%v", [object_title, index])
 }

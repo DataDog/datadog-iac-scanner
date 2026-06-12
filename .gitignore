@@ -20,7 +20,6 @@ bin
 *.out
 
 /.idea/
-/.vscode/
 file:/
 /resources
 /vendor
