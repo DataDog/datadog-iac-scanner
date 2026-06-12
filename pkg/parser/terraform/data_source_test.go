@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 )
 
@@ -19,6 +20,10 @@ func Test_getDataSourcePolicy(t *testing.T) {
 	type args struct {
 		currentPath  string
 		resourceName string
+		// inputVars seeds the variable map passed to getDataSourcePolicy.
+		// nil means an empty map (no var/local context), which is fine for
+		// fixtures that contain no variable references.
+		inputVars converter.VariableMap
 	}
 	tests := []struct {
 		name string
@@ -44,10 +49,20 @@ func Test_getDataSourcePolicy(t *testing.T) {
 `,
 		},
 		{
-			name: "should not drop policy when scalar fields reference unknown variables",
+			// In production, getInputVariables always populates "var" as a
+			// cty.Object whose attributes are only variables that have defaults.
+			// A variable with no default is absent from the object, so
+			// var.sid_value triggers "Unsupported attribute" rather than
+			// "Unknown variable". Without the fix both diagnostics caused the
+			// whole policy to be dropped.
+			name: "should not drop policy when scalar fields reference variables with no default",
 			args: args{
 				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source_unknown_vars"),
 				resourceName: "partial_unknowns",
+				// Simulate production: "var" is a known empty object (no defaults resolved).
+				inputVars: converter.VariableMap{
+					"var": cty.EmptyObjectVal,
+				},
 			},
 			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"]}]}
 `,
@@ -57,7 +72,10 @@ func Test_getDataSourcePolicy(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inputVars := make(converter.VariableMap)
+			inputVars := tt.args.inputVars
+			if inputVars == nil {
+				inputVars = make(converter.VariableMap)
+			}
 			result := getDataSourcePolicy(ctx, tt.args.currentPath, inputVars)
 			data, ok := result["data"]
 			if !ok {
@@ -75,6 +93,4 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
-
-	// No cleanup needed since we're not using global variables anymore
 }

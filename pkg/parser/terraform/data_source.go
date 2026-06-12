@@ -244,13 +244,18 @@ func parseDataSourceBody(ctx context.Context, body *hclsyntax.Body, inputVariabl
 		Functions: functions.TerraformFuncs,
 	})
 
-	// check decode errors
+	// Dismiss diagnostics caused by unresolvable references. "Unknown variable"
+	// fires when var/local/module is absent from the eval context entirely;
+	// "Unsupported attribute" fires when var IS in the context (as a cty.Object
+	// of known defaults) but the specific variable has no default and is therefore
+	// not an attribute on that object. Both leave the affected field as
+	// cty.DynamicVal, which cty.UnknownAsNull handles below.
 	for _, decErr := range decodeErrs {
-		if decErr.Summary != "Unknown variable" {
+		if decErr.Summary != "Unknown variable" && decErr.Summary != "Unsupported attribute" {
 			contextLogger.Debug().Msgf("Error trying to eval data source block: %s", decErr.Summary)
 			return ""
 		}
-		contextLogger.Debug().Msg("Dismissed Error when decoding policy: Found unknown variable")
+		contextLogger.Debug().Msgf("Dismissed unresolvable reference when decoding policy: %s", decErr.Summary)
 	}
 
 	dataSourceJSON := decodeDataSourcePolicy(ctx, target)
