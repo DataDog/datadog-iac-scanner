@@ -6,10 +6,108 @@
 package runner
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestIsExpectedHelmRenderError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil error", nil, false},
+		{"nil pointer evaluating", errors.New("template: chart/templates/deploy.yaml:5:14: executing \"deploy\" at <.Values.global.name>: nil pointer evaluating interface {}.name"), true},
+		{"map has no entry for key", errors.New("map has no entry for key \"datacenter\""), true},
+		{"can't evaluate field", errors.New("can't evaluate field Images in type interface {}"), true},
+		{"required helper", errors.New("template: chart/templates/deploy.yaml:3:10: executing \"deploy\" at <required \"datacenter\" .Values.datacenter>: error calling required: HELM_ERR_STARTdatacenterHELM_ERR_END"), true},
+		// fail is excluded from expected signatures — it is also used for real validation
+		// logic (e.g. unsupported kube version) that can trigger with values present.
+		{"fail helper stays at error", errors.New("template: chart/templates/deploy.yaml:2:5: executing \"deploy\" at <fail \"env required\">: error calling fail: HELM_ERR_STARTenv requiredHELM_ERR_END"), false},
+		{"unrelated render failure", errors.New("chart requires kubeVersion: >=1.20.0 which is incompatible with Kubernetes v1.14.0"), false},
+		{"load error", errors.New("failed to load chart from '/repo/chart': no Chart.yaml found"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isExpectedHelmRenderError(tt.err))
+		})
+	}
+}
+
+func TestIsUnderFailedHelmChart(t *testing.T) {
+	svc := &Service{}
+	svc.recordFailedHelmChart("/repo/charts/watchdog")
+	svc.recordFailedHelmChart("/repo/charts/ingester/")
+
+	tests := []struct {
+		name     string
+		filePath string
+		want     bool
+	}{
+		{"direct child template", "/repo/charts/watchdog/templates/deploy.yaml", true},
+		{"nested path", "/repo/charts/watchdog/templates/subdir/cm.yaml", true},
+		{"trailing-slash chart normalised", "/repo/charts/ingester/templates/svc.yaml", true},
+		{"sibling chart not matched", "/repo/charts/other/templates/deploy.yaml", false},
+		{"chart root itself not matched", "/repo/charts/watchdog", false},
+		{"unrelated file", "/repo/main.tf", false},
+		// Non-template chart files must not be suppressed: genuine YAML errors there
+		// are real bugs, not expected Go-template fallout.
+		{"values.yaml not suppressed", "/repo/charts/watchdog/values.yaml", false},
+		{"crds not suppressed", "/repo/charts/watchdog/crds/my-crd.yaml", false},
+		{"Chart.yaml not suppressed", "/repo/charts/watchdog/Chart.yaml", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, svc.isUnderFailedHelmChart(tt.filePath))
+		})
+	}
+}
+
+func TestIsUnderFailedHelmChart_NilMap(t *testing.T) {
+	// Before any chart has failed, the map is nil; iterating it must be a no-op.
+	svc := &Service{}
+	require.False(t, svc.isUnderFailedHelmChart("/repo/charts/anything/templates/deploy.yaml"))
+}
+
+func TestIsUnderFailedHelmChart_RelativeRoot(t *testing.T) {
+	// filepath.Walk(".") reports children as "templates/deploy.yaml" (no leading "./"),
+	// so prefix matching must work even when the chart dir is relative.
+	svc := &Service{}
+	svc.recordFailedHelmChart(".")
+
+	require.True(t, svc.isUnderFailedHelmChart("templates/deploy.yaml"))
+	require.True(t, svc.isUnderFailedHelmChart("templates/subdir/cm.yaml"))
+	// Non-template files in the same chart must not be suppressed.
+	require.False(t, svc.isUnderFailedHelmChart("values.yaml"))
+	require.False(t, svc.isUnderFailedHelmChart("crds/my-crd.yaml"))
+	// An absolute path outside cwd must not match.
+	require.False(t, svc.isUnderFailedHelmChart("/other/repo/templates/deploy.yaml"))
+}
+
+func TestIsCommentOnlyContent(t *testing.T) {
+	tests := []struct {
+		name    string
+		content []byte
+		want    bool
+	}{
+		{"empty", []byte(""), true},
+		{"blank lines only", []byte("\n\n"), true},
+		{"all comments", []byte("# foo\n# bar"), true},
+		// isCommentOnlyContent is called on post-split segments, so --- never
+		// appears in practice, but the function correctly rejects it as a non-comment.
+		{"yaml separator is not a comment", []byte("---\n# comment"), false},
+		{"real yaml line", []byte("foo: 1"), false},
+		{"comment then yaml", []byte("# ok\nfoo: 1"), false},
+		{"whitespace then yaml", []byte("  foo: bar"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isCommentOnlyContent(tt.content))
+		})
+	}
+}
 
 func TestFilterHelmGeneratedLines(t *testing.T) {
 	// Rendered Helm split content that resembles real scanner output.

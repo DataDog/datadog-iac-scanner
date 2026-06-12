@@ -6,11 +6,15 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -153,3 +157,67 @@ func compareJSONLine(t *testing.T, test1 interface{}, test2 string) {
 	require.NoError(t, err)
 	require.JSONEq(t, test2, string(stringefiedJSON))
 }
+
+// TestSink_ParseFailureLogLevel verifies that sink demotes the parse-error log
+// from Error to Debug when the file is under a chart that was already recorded
+// as a render failure — the central behaviour introduced by this PR.
+func TestSink_ParseFailureLogLevel(t *testing.T) {
+	ctx := context.Background()
+
+	parsers, err := parser.NewBuilder(ctx).
+		Add(&yamlParser.Parser{}).
+		Build([]string{""}, []string{""})
+	require.NoError(t, err)
+	require.NotEmpty(t, parsers)
+
+	tests := []struct {
+		name        string
+		filename    string
+		failedChart string // if non-empty, register before calling sink
+		wantLevel   string
+	}{
+		{
+			name:      "not under failed chart logs at error",
+			filename:  "/repo/other/deploy.yaml",
+			wantLevel: `"level":"error"`,
+		},
+		{
+			name:        "under failed chart logs at debug",
+			filename:    "/repo/charts/watchdog/templates/deploy.yaml",
+			failedChart: "/repo/charts/watchdog",
+			wantLevel:   `"level":"debug"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			testCtx := zerolog.New(&logBuf).WithContext(ctx)
+
+			svc := &Service{
+				Parser:      parsers[0],
+				Tracker:     noopTracker{},
+				MaxFileSize: 1,
+			}
+			if tt.failedChart != "" {
+				svc.recordFailedHelmChart(tt.failedChart)
+			}
+
+			// "{" is an unclosed YAML flow mapping — guaranteed parse error.
+			rc := bytes.NewReader([]byte("{"))
+			buf := make([]byte, 64)
+			_ = svc.sink(testCtx, tt.filename, "scan1", rc, buf, false, 1)
+
+			require.Contains(t, logBuf.String(), tt.wantLevel)
+		})
+	}
+}
+
+type noopTracker struct{}
+
+func (noopTracker) TrackFileFound(_ string)            {}
+func (noopTracker) TrackFileParse(_ string)            {}
+func (noopTracker) TrackFileFoundCountLines(_ int)     {}
+func (noopTracker) TrackFileParseCountLines(_ int)     {}
+func (noopTracker) TrackFileIgnoreCountLines(_ int)    {}
+func (noopTracker) TrackFileFoundCountResources(_ int) {}
