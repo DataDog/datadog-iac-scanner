@@ -8,6 +8,7 @@ package scan
 import (
 	"context"
 	_ "embed" // Embed scanner CLI img and scan-flags
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,6 +58,7 @@ func (c *Client) resolveOutputs(
 	ctx context.Context,
 	summary *model.Summary,
 	documents model.Documents,
+	files model.FileMetadatas,
 	printer *consolePrinter.Printer,
 ) error {
 	contextLogger := logger.FromContext(ctx)
@@ -77,13 +79,54 @@ func (c *Client) resolveOutputs(
 		}
 	}
 
-	return printOutput(
+	// The IaC resource inventory is built from the parsed files rather than the
+	// finding summary, so it is handled separately from the generic report
+	// formats that consume the Summary.
+	formats, wantInventory := extractInventoryFormat(c.ScanParams.ReportFormats)
+
+	if err := printOutput(
 		ctx,
 		c.ScanParams.OutputPath,
 		c.ScanParams.OutputName,
-		summary, c.ScanParams.ReportFormats,
+		summary, formats,
 		&c.ScanParams.SCIInfo,
-	)
+	); err != nil {
+		return err
+	}
+
+	if wantInventory {
+		if c.ScanParams.OutputPath == "" {
+			return errors.New("--resource-inventory requires --output-path to be set")
+		}
+		return report.PrintIaCInventoryReport(
+			ctx,
+			c.ScanParams.OutputPath,
+			c.ScanParams.OutputName,
+			c.ScanParams.RepoPath,
+			files,
+			c.ScanParams.GetEffectivePlatforms(),
+		)
+	}
+
+	return nil
+}
+
+// inventoryReportFormat is the report format name that triggers the IaC
+// resource inventory output.
+const inventoryReportFormat = "iac-inventory"
+
+// extractInventoryFormat removes the inventory format from the list of generic
+// report formats and reports whether it was requested.
+func extractInventoryFormat(formats []string) (remaining []string, wantInventory bool) {
+	remaining = make([]string, 0, len(formats))
+	for _, f := range formats {
+		if strings.EqualFold(strings.TrimSpace(f), inventoryReportFormat) {
+			wantInventory = true
+			continue
+		}
+		remaining = append(remaining, f)
+	}
+	return remaining, wantInventory
 }
 
 func printOutput(ctx context.Context, outputPath, filename string, body interface{}, formats []string, sciInfo *model.SCIInfo) error {
@@ -127,6 +170,7 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		ctx,
 		&summary,
 		scanResults.Files.Combine(ctx, c.ScanParams.LineInfoPayload),
+		scanResults.Files,
 		c.Printer); err != nil {
 		contextLogger.Err(err).Msgf("failed to resolve outputs %v", err)
 		memwatch.Sample(ctx, memwatch.PhaseGenerateReport)

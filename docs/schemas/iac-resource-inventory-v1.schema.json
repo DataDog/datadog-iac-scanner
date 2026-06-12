@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.datadoghq.com/schemas/iac-resource-inventory-v1.schema.json",
+  "title": "Datadog IaC Resource Inventory",
+  "description": "A purpose-built inventory of the Infrastructure-as-Code resources discovered by the Datadog IaC Scanner. Unlike the SARIF findings report, this document enumerates every resource present in the scanned files, independent of whether any rule matched it.",
+  "type": "object",
+  "required": ["schema_version", "tool", "generated_at", "resource_count", "resources"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this inventory document format.",
+      "const": "1.0"
+    },
+    "tool": {
+      "type": "object",
+      "description": "The tool that produced the inventory.",
+      "required": ["name", "vendor", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "vendor": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 timestamp of when the inventory was generated."
+    },
+    "root_path": {
+      "type": "string",
+      "description": "The scanned root path or repository location."
+    },
+    "resource_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of resources in the inventory."
+    },
+    "resources": {
+      "type": "array",
+      "description": "The enumerated IaC resources.",
+      "items": { "$ref": "#/$defs/resource" }
+    }
+  },
+  "$defs": {
+    "resource": {
+      "type": "object",
+      "required": [
+        "address",
+        "iac_platform",
+        "block_type",
+        "resource_type",
+        "name",
+        "file_path",
+        "line_range"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Stable, platform-native identifier for the resource. Examples: Terraform \"aws_s3_bucket.b\", \"data.aws_ami.example\", \"module.network\"; Kubernetes \"default/Deployment/my-app\" (\"<namespace>/<kind>/<name>\", namespace omitted for cluster-scoped objects); CloudFormation logical ID \"MyBucket\"; Ansible task name; Dockerfile stage alias or base image; CI/CD job identifier."
+        },
+        "iac_platform": {
+          "type": "string",
+          "description": "The IaC technology the resource was parsed from.",
+          "examples": ["terraform", "kubernetes", "cloudformation", "ansible", "dockerfile", "cicd"]
+        },
+        "block_type": {
+          "type": "string",
+          "description": "The category of block the resource originates from. \"resource\"/\"data\"/\"module\" are Terraform blocks (\"resource\" is also a CloudFormation logical resource); \"manifest\" is a Kubernetes object; \"task\" is an Ansible task; \"stage\" is a Dockerfile build stage; \"job\" is a CI/CD job or Dependabot update.",
+          "enum": ["resource", "data", "module", "manifest", "task", "stage", "job"]
+        },
+        "resource_type": {
+          "type": ["string", "null"],
+          "description": "The resource's type in its platform: Terraform type (e.g. \"aws_s3_bucket\"), Kubernetes kind (e.g. \"Deployment\"), CloudFormation type (e.g. \"AWS::S3::Bucket\"), Ansible module (e.g. \"ansible.builtin.copy\"), Dockerfile base image (e.g. \"alpine:3.19\"), or Dependabot package ecosystem. null when the block has no meaningful type (Terraform modules, CI/CD jobs)."
+        },
+        "name": {
+          "type": "string",
+          "description": "The resource's local identifier: Terraform label, Kubernetes metadata.name, CloudFormation logical ID, Ansible task name, Dockerfile stage alias/image, or CI/CD job id."
+        },
+        "provider": {
+          "type": "string",
+          "description": "Provider inferred from the resource type prefix, e.g. \"aws\" (from \"aws_s3_bucket\" or \"AWS::S3::Bucket\"). Absent when it cannot be inferred."
+        },
+        "file_path": {
+          "type": "string",
+          "description": "Path of the file the resource was declared in."
+        },
+        "line_range": { "$ref": "#/$defs/line_range" },
+        "module_source": {
+          "type": "string",
+          "description": "The `source` argument of a module block. Present only when block_type is \"module\"."
+        },
+        "module_version": {
+          "type": "string",
+          "description": "The `version` constraint of a module block, e.g. \"~> 5.0\". Present only when block_type is \"module\" and a version is specified."
+        },
+        "api_version": {
+          "type": "string",
+          "description": "The Kubernetes manifest apiVersion, e.g. \"apps/v1\". Present only when block_type is \"manifest\"."
+        },
+        "namespace": {
+          "type": "string",
+          "description": "The Kubernetes metadata.namespace. Present only when block_type is \"manifest\" and a namespace is declared."
+        },
+        "attributes": {
+          "type": "object",
+          "description": "Every attribute declared in the resource block, extracted verbatim from the parsed source. Nested blocks are preserved as objects; repeated blocks as arrays. No filtering or curation is applied — unresolved references appear as their raw string representation. Annotation keys prefixed with _dd_ are stripped.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "line_range": {
+      "type": "object",
+      "description": "The line span of the resource. Values are 1-based when line information is available; 0 means the parser did not record a location (e.g. an empty or unannotated block). \"end\" is derived from the furthest annotated attribute inside the block and equals \"start\" when no wider range is known.",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
