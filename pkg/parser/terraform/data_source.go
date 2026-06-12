@@ -257,7 +257,7 @@ func parseDataSourceBody(ctx context.Context, body *hclsyntax.Body, inputVariabl
 			contextLogger.Debug().Msgf("Error trying to eval data source block: %s", decErr.Summary)
 			return ""
 		}
-		contextLogger.Debug().Msgf("Dismissed unresolvable reference when decoding policy: %s", decErr.Summary)
+		contextLogger.Debug().Msgf("Dismissed unresolvable reference when decoding policy: %s: %s", decErr.Summary, decErr.Detail)
 	}
 
 	dataSourceJSON := decodeDataSourcePolicy(ctx, target)
