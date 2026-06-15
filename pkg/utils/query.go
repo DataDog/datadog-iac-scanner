@@ -18,20 +18,7 @@ const (
 	UnresolvedPlaceholder       = "__UNRESOLVED__"
 
 	// RegoQuery is the OPA query evaluated against every rule module.
-	// It delegates to RegoCompatShim so both legacy (package Cx / CxPolicy) and
-	// current (package datadog / DatadogPolicy) rules are accepted during migration.
-	RegoQuery = `result = data.dd_iac_compat.policy`
-
-	// RegoCompatShim is injected as an extra OPA module alongside every rule.
-	// The two incremental definitions union CxPolicy and DatadogPolicy results,
-	// so each evaluates to an empty set when the corresponding package is absent.
-	// Once all rules have been migrated to DatadogPolicy, this shim can be removed
-	// and RegoQuery simplified back to `result = data.datadog.DatadogPolicy`.
-	RegoCompatShim = `package dd_iac_compat
-
-policy contains r if { r = data.Cx.CxPolicy[_] }
-policy contains r if { r = data.datadog.DatadogPolicy[_] }
-`
+	RegoQuery = `result = data.datadog.DatadogPolicy`
 )
 
 func ChooseQueryID(queryID, legacyQueryID string) string {
