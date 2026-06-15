@@ -45,8 +45,8 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 		}
 	}()
 	splits, excluded, err := renderHelm(ctx, filePath)
-	if err != nil { // return error to be logged
-		return model.ResolvedFiles{}, errors.New("failed to render helm chart")
+	if err != nil {
+		return model.ResolvedFiles{}, errors.Wrap(err, "failed to render helm chart")
 	}
 	var rfiles = model.ResolvedFiles{
 		Excluded: excluded,
@@ -84,12 +84,10 @@ func renderHelm(ctx context.Context, path string) (*[]splitManifest, []string, e
 	contextLogger.Debug().Msg("Running helm install")
 	manifest, excluded, err := runInstall(ctx, []string{path}, client, &values.Options{})
 	if err != nil {
-		contextLogger.Error().Msgf("failed to run helm install '%s': %s", path, err)
 		return nil, []string{}, err
 	}
 	splitted, err := splitManifestYAML(manifest)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to split helm manifest YAML for chart '%s': %s", path, err)
 		return nil, []string{}, err
 	}
 	return splitted, excluded, nil

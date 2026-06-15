@@ -49,7 +49,16 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 	}
 	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to parse file content: %s", filename)
+		// failedHelmChartDirs is fully populated by collectFiles (Phase 1) before
+		// processFilesParallel (Phase 2) dispatches workers, so the map is always
+		// complete when this check runs.
+		// Raw templates inside a failed chart are not valid YAML; parse failures
+		// there are expected. Everything else stays at Error.
+		if s.isUnderFailedHelmChart(filename) {
+			contextLogger.Debug().Err(err).Msgf("skipping unparseable raw Helm template: %s", filename)
+		} else {
+			contextLogger.Error().Err(err).Msgf("failed to parse file content: %s", filename)
+		}
 		return nil
 	}
 

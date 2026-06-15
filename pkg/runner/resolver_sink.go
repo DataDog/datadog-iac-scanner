@@ -32,7 +32,7 @@ func (s *Service) resolverSink(
 	}
 	resFiles, err := s.Resolver.Resolve(ctx, filename, kind)
 	if err != nil {
-		contextLogger.Err(err).Msgf("failed to render file content '%s' with fileType '%s'", filename, kind)
+		s.logResolverResolveError(ctx, kind, filename, err)
 		return []string{}, err
 	}
 
@@ -51,7 +51,7 @@ func (s *Service) resolverSink(
 			if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
 				continue
 			}
-			contextLogger.Error().Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
+			contextLogger.Error().Err(err).Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
 			return []string{}, nil
 		}
 
@@ -116,6 +116,49 @@ func (s *Service) resolverSink(
 		}
 	}
 	return resFiles.Excluded, nil
+}
+
+// logResolverResolveError logs a Helm resolve/render failure as debug when it
+// matches missing deploy-time values (expected at scan time), otherwise as error.
+// Both paths fall back to raw-file scanning; only expected failures call
+// recordFailedHelmChart, which suppresses subsequent parse-error noise for those files.
+func (s *Service) logResolverResolveError(ctx context.Context, kind model.FileKind, filename string, err error) {
+	contextLogger := logger.FromContext(ctx)
+	if kind == model.KindHELM && isExpectedHelmRenderError(err) {
+		s.recordFailedHelmChart(filename)
+		contextLogger.Debug().Err(err).Msgf("helm chart '%s' could not be rendered with available values", filename)
+		return
+	}
+	contextLogger.Error().Err(err).Msgf("failed to render file content '%s' with fileType '%s'", filename, kind)
+}
+
+// expectedHelmRenderErrorSignatures matches Go template execution errors caused
+// by missing deploy-time values — the expected failure mode for charts that
+// require values unavailable at scan time.
+// "error calling required:" covers the Helm required helper, which exists
+// exclusively to guard absent values.
+// "error calling fail:" is intentionally excluded: fail is also used for real
+// validation logic (e.g. unsupported kube version) that can trigger even when
+// all values are present, so classifying it as expected would silence genuine
+// chart errors.
+var expectedHelmRenderErrorSignatures = []string{
+	"nil pointer evaluating",
+	"map has no entry for key",
+	"can't evaluate field",
+	"error calling required:",
+}
+
+func isExpectedHelmRenderError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, sig := range expectedHelmRenderErrorSignatures {
+		if strings.Contains(msg, sig) {
+			return true
+		}
+	}
+	return false
 }
 
 // isCommentOnlyContent returns true when every non-blank line in content starts

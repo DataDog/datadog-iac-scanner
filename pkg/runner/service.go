@@ -10,6 +10,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
@@ -65,6 +67,48 @@ type Service struct {
 	files          model.FileMetadatas
 	filesMu        sync.Mutex
 	MaxFileSize    int
+	// failedHelmChartDirsMu guards failedHelmChartDirs.
+	failedHelmChartDirsMu sync.RWMutex
+	// failedHelmChartDirs tracks chart directories that could not be rendered,
+	// so their raw template files are not mistaken for parse bugs in sink.
+	failedHelmChartDirs map[string]struct{}
+}
+
+func (s *Service) recordFailedHelmChart(chartDir string) {
+	// Absolutize so that relative roots (e.g. ".") match correctly when
+	// isUnderFailedHelmChart receives the children reported by filepath.Walk.
+	if abs, err := filepath.Abs(chartDir); err == nil {
+		chartDir = filepath.ToSlash(abs)
+	}
+	// Record only the templates/ subtree so that non-template YAML files
+	// (values.yaml, crds/, Chart.yaml) still produce Error-level parse
+	// failures when they have genuine syntax errors.
+	templatesDir := strings.TrimRight(chartDir, "/") + "/templates"
+	s.failedHelmChartDirsMu.Lock()
+	defer s.failedHelmChartDirsMu.Unlock()
+	if s.failedHelmChartDirs == nil {
+		s.failedHelmChartDirs = make(map[string]struct{})
+	}
+	s.failedHelmChartDirs[templatesDir] = struct{}{}
+}
+
+func (s *Service) isUnderFailedHelmChart(filePath string) bool {
+	s.failedHelmChartDirsMu.RLock()
+	defer s.failedHelmChartDirsMu.RUnlock()
+	if len(s.failedHelmChartDirs) == 0 {
+		return false
+	}
+	// Normalize to absolute so relative paths (e.g. from a "." root walk)
+	// match the absolute dirs stored by recordFailedHelmChart.
+	if abs, err := filepath.Abs(filePath); err == nil {
+		filePath = filepath.ToSlash(abs)
+	}
+	for dir := range s.failedHelmChartDirs {
+		if strings.HasPrefix(filePath, dir+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // PrepareSources will prepare the sources to be scanned
