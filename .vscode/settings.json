@@ -1,0 +1,6 @@
+{
+  "[rego]": {
+    "editor.defaultFormatter": "open-policy-agent.opa",
+    "editor.formatOnSave": true
+  }
+}

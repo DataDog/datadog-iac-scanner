@@ -1,0 +1,19 @@
+# Requires: opa (https://www.openpolicyagent.org) and regal (https://docs.styra.com/regal)
+# Setup: pip install pre-commit && pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: opa-fmt
+        name: opa fmt (Rego formatter)
+        language: system
+        entry: opa fmt --fail
+        files: '\.rego$'
+
+      - id: regal-lint
+        name: regal lint (Rego bugs)
+        language: system
+        entry: regal lint --fail-level error --disable-category style
+            --disable-category idiomatic --disable-category performance
+            --disable-category imports --disable-category testing
+        files: '\.rego$'
+        pass_filenames: true
