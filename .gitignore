@@ -20,6 +20,8 @@ bin
 *.out
 
 /.idea/
+/.vscode/
+!/.vscode/settings.json
 file:/
 /resources
 /vendor
