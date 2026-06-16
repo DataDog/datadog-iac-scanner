@@ -92,20 +92,56 @@ class TerraformPlanGenerator:
             'skipped': 0
         }
 
+    def is_critical_rule(self, tf_file: Path) -> bool:
+        """
+        Check if a .tf file belongs to a critical severity rule.
+
+        Args:
+            tf_file: Path to the .tf file
+
+        Returns:
+            True if the file is in a critical rule directory, False otherwise
+        """
+        # Look for metadata.json in parent directories
+        current = tf_file.parent
+        while current != current.parent:  # Stop at filesystem root
+            metadata_file = current / "metadata.json"
+            if metadata_file.exists():
+                try:
+                    with open(metadata_file, 'r') as f:
+                        metadata = json.load(f)
+
+                    severity = metadata.get("severity")
+                    if severity == "CRITICAL":
+                        return True
+                    else:
+                        # Found metadata but not critical, stop searching
+                        return False
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.debug(f"Failed to parse metadata file {metadata_file}: {e}")
+            current = current.parent
+
+        return False
+
     def find_tf_files(self, root_dir: Path) -> List[Path]:
         """
-        Recursively find all .tf files in the given directory.
+        Recursively find all .tf files in the given directory that belong to critical severity rules.
 
         Args:
             root_dir: Root directory to search
 
         Returns:
-            List of Path objects for .tf files
+            List of Path objects for .tf files in critical severity rules
         """
-        logger.info(f"Searching for .tf files in {root_dir}")
-        tf_files = list(root_dir.rglob("*.tf"))
-        logger.info(f"Found {len(tf_files)} .tf files")
-        return tf_files
+        logger.info(f"Searching for .tf files in critical severity rules in {root_dir}")
+        all_tf_files = list(root_dir.rglob("*.tf"))
+        logger.debug(f"Found {len(all_tf_files)} total .tf files")
+
+        # Filter to only critical severity rules
+        critical_tf_files = [tf for tf in all_tf_files if self.is_critical_rule(tf)]
+
+        logger.info(f"Found {len(critical_tf_files)} .tf files in critical severity rules (skipped {len(all_tf_files) - len(critical_tf_files)} non-critical)")
+        return critical_tf_files
 
     def run_command(
         self,
