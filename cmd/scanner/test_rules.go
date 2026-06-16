@@ -37,7 +37,7 @@ import (
 const (
 	defaultRuleTestQueryTimeoutSecs = 60
 	defaultRuleTestMaxResolverDepth = 15
-	fixtureDirPerm                  = 0750
+	fixtureDirPerm                  = 0700
 	fixtureFilePerm                 = 0600
 )
 
