@@ -500,6 +500,10 @@ func (f fakeDatadogClient) GetDefaultRuleset(ctx context.Context) (*datadog.Rule
 	return out, nil
 }
 
+func (f fakeDatadogClient) GetDefaultRulesetWithTests(ctx context.Context) (*datadog.Ruleset, error) {
+	panic("unimplemented")
+}
+
 func (f fakeDatadogClient) GetRemoteConfig(ctx context.Context, repoUrl string, localConfig []byte) ([]byte, error) {
 	panic("unimplemented")
 }
