@@ -68,3 +68,6 @@ payload.json
 __pycache__
 
 module_support
+
+# local scanner binary
+/scanner

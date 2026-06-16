@@ -33,6 +33,7 @@ func main() {
 			listPlatformsAction,
 			listQueriesAction,
 			showConfigAction,
+			testRulesAction,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{

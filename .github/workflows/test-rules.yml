@@ -1,0 +1,66 @@
+name: test-rules
+
+# Runs the scanner's engine against the rule fixtures stored in the Datadog
+# backend. This catches engine regressions that break existing rule tests.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Comma-separated list of platforms to test (empty = all)"
+        required: false
+        default: ""
+      rules:
+        description: "Comma-separated list of rule IDs to test (empty = all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  test-rules:
+    name: test-rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Get cache paths
+        id: go-cache-paths
+        run: echo "GO_BUILD=$(go env GOCACHE)" >>$GITHUB_OUTPUT
+
+      - name: Cache dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.go-cache-paths.outputs.GO_BUILD }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.OS }}-build-
+            ${{ runner.OS }}-
+
+      - name: Build
+        run: go build -o bin/datadog-iac-scanner ./cmd/scanner
+
+      - name: Run rule tests
+        run: |
+          args=()
+          if [ -n "${{ inputs.platforms }}" ]; then
+            args+=(--type "${{ inputs.platforms }}")
+          fi
+          if [ -n "${{ inputs.rules }}" ]; then
+            args+=(--rule "${{ inputs.rules }}")
+          fi
+          ./bin/datadog-iac-scanner test-rules "${args[@]}"

@@ -15,6 +15,8 @@ import (
 type Client interface {
 	// GetDefaultRuleset returns the content of the default ruleset.
 	GetDefaultRuleset(ctx context.Context) (*Ruleset, error)
+	// GetDefaultRulesetWithTests returns the default ruleset with per-rule test fixtures included.
+	GetDefaultRulesetWithTests(ctx context.Context) (*Ruleset, error)
 	// GetRemoteConfig applies server-side changes to the local configuration.
 	GetRemoteConfig(ctx context.Context, repoUrl string, localConfig []byte) ([]byte, error)
 }
@@ -139,7 +141,16 @@ type datadogClient struct {
 
 // GetDefaultRuleset returns the content of the default ruleset.
 func (s *datadogClient) GetDefaultRuleset(ctx context.Context) (*Ruleset, error) {
-	path := "iac/rulesets/default-ruleset?include_tests=false&include_testing_rules=true"
+	return s.fetchDefaultRuleset(ctx, false)
+}
+
+// GetDefaultRulesetWithTests returns the default ruleset with per-rule test fixtures included.
+func (s *datadogClient) GetDefaultRulesetWithTests(ctx context.Context) (*Ruleset, error) {
+	return s.fetchDefaultRuleset(ctx, true)
+}
+
+func (s *datadogClient) fetchDefaultRuleset(ctx context.Context, includeTests bool) (*Ruleset, error) {
+	path := fmt.Sprintf("iac/rulesets/default-ruleset?include_tests=%t&include_testing_rules=true", includeTests)
 	response, err := s.sendRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
@@ -270,8 +281,32 @@ type Rule struct {
 	Overrides         []RuleOverride `jsonapi:"attribute" json:"overrides,omitempty"`
 	DefaultFrameworks []Framework    `jsonapi:"attribute" json:"default_frameworks,omitempty"`
 	CustomFrameworks  []Framework    `jsonapi:"attribute" json:"custom_frameworks,omitempty"`
+	Tests             *RuleTests     `jsonapi:"attribute" json:"tests,omitempty"`
 	IsTesting         bool           `jsonapi:"attribute" json:"is_testing"`
 	IsPublished       bool           `jsonapi:"attribute" json:"is_published"`
+}
+
+// RuleTests holds the test suite stored alongside a rule in the backend.
+type RuleTests struct {
+	// Files contains all fixture files (positive*, negative*, and any support files).
+	Files []TestFile `jsonapi:"attribute" json:"files,omitempty"`
+	// Expected contains the expected findings produced by scanning the positive* files.
+	Expected []TestFinding `jsonapi:"attribute" json:"expected,omitempty"`
+}
+
+// TestFile is one fixture file stored in the backend alongside a rule.
+type TestFile struct {
+	FileName string `jsonapi:"attribute" json:"name"`
+	Content  []byte `jsonapi:"attribute" json:"content"`
+}
+
+// TestFinding is one expected finding in a rule's test suite.
+type TestFinding struct {
+	ShortDescription string `jsonapi:"attribute" json:"short_description"`
+	// FileName is the base name of the positive file; empty means any file.
+	FileName string `jsonapi:"attribute" json:"file_name,omitempty"`
+	Line     int    `jsonapi:"attribute" json:"line"`
+	Severity string `jsonapi:"attribute" json:"severity"`
 }
 
 // RuleOverride contains a set of keyed changes for the rule configuration
