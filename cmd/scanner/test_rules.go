@@ -37,12 +37,12 @@ import (
 const (
 	defaultRuleTestQueryTimeoutSecs = 60
 	defaultRuleTestMaxResolverDepth = 15
-	testFixtureDirPerm              = 0750
-	testFixtureFilePerm             = 0600
+	fixtureDirPerm                  = 0750
+	fixtureFilePerm                 = 0600
 )
 
-// testResultShape is the per-rule Rego result contract checked during tests.
-var testResultShape = struct {
+// resultShape is the per-rule Rego result contract checked during tests.
+var resultShape = struct {
 	Required     []string
 	ResourceKeys []string
 }{
@@ -56,11 +56,25 @@ var testResultShape = struct {
 	ResourceKeys: []string{"resourceType", "resourceName"},
 }
 
-// testAllowedIssueTypes is the set of issueType values a rule result may emit.
-var testAllowedIssueTypes = map[string]struct{}{
+// allowedIssueTypes is the set of issueType values a rule result may emit.
+var allowedIssueTypes = map[string]struct{}{
 	"MissingAttribute":   {},
 	"IncorrectValue":     {},
 	"RedundantAttribute": {},
+}
+
+// platformsRequiringResourceKeys is the set of platforms whose Rego results
+// must include resourceType and resourceName.
+var platformsRequiringResourceKeys = map[string]struct{}{
+	"terraform":               {},
+	"cloudformation":          {},
+	"ansible":                 {},
+	"kubernetes":              {},
+	"k8s":                     {},
+	"googledeploymentmanager": {},
+	"crossplane":              {},
+	"azureresourcemanager":    {},
+	"pulumi":                  {},
 }
 
 // ruleFinding is one result emitted by a rule's DatadogPolicy evaluation.
@@ -71,7 +85,7 @@ type ruleFinding struct {
 	FileName  string
 }
 
-type testRuleOutcome struct {
+type ruleOutcome struct {
 	id         string
 	mismatches []string
 }
@@ -103,26 +117,26 @@ func runTestRules(ctx context.Context, c *cli.Command) error {
 	ruleFilter := c.StringSlice("rule")
 	platformFilter := c.StringSlice("type")
 
-	var results []testRuleOutcome
+	var results []ruleOutcome
 	allPass := true
 
 	for _, rule := range ruleset.Rules {
-		if !testRuleShouldRun(rule, platformFilter, ruleFilter) {
+		if !shouldRunRule(rule, platformFilter, ruleFilter) {
 			continue
 		}
 
-		mismatches, err := testRule(ctx, rule)
+		mismatches, err := runRule(ctx, rule)
 		if err != nil {
 			return fmt.Errorf("testing rule %s: %w", rule.ID, err)
 		}
-		results = append(results, testRuleOutcome{id: rule.ID, mismatches: mismatches})
+		results = append(results, ruleOutcome{id: rule.ID, mismatches: mismatches})
 		allPass = allPass && len(mismatches) == 0
 	}
 
-	return testRulesFinish(results, allPass)
+	return finishTests(results, allPass)
 }
 
-func testRuleShouldRun(rule *datadog.Rule, platformFilter, ruleFilter []string) bool {
+func shouldRunRule(rule *datadog.Rule, platformFilter, ruleFilter []string) bool {
 	if !rule.IsPublished || rule.Tests == nil {
 		return false
 	}
@@ -141,13 +155,13 @@ func testRuleShouldRun(rule *datadog.Rule, platformFilter, ruleFilter []string) 
 	return slices.Contains(ruleFilter, rule.ID) || slices.Contains(ruleFilter, legacyID)
 }
 
-func testRulesFinish(results []testRuleOutcome, allPass bool) error {
+func finishTests(results []ruleOutcome, allPass bool) error {
 	if allPass {
 		if len(results) == 0 {
 			fmt.Println("No rules with tests were found")
 			os.Exit(1)
 		}
-		fmt.Printf("PASS: %s\n", testPlural(len(results), "%d rule", "%d rules"))
+		fmt.Printf("PASS: %s\n", plural("%d rule", "%d rules", len(results)))
 		return nil
 	}
 
@@ -165,14 +179,14 @@ func testRulesFinish(results []testRuleOutcome, allPass bool) error {
 		}
 	}
 	fmt.Printf("FAIL: %s, %s\n",
-		testPlural(failed, "%d rule failed", "%d rules failed"),
-		testPlural(passed, "%d rule passed", "%d rules passed"))
+		plural("%d rule failed", "%d rules failed", failed),
+		plural("%d rule passed", "%d rules passed", passed))
 	os.Exit(1)
 	return nil
 }
 
-// testRule materializes a rule's fixtures into a temp directory and runs them.
-func testRule(ctx context.Context, rule *datadog.Rule) ([]string, error) {
+// runRule materializes a rule's fixtures into a temp directory and runs them.
+func runRule(ctx context.Context, rule *datadog.Rule) ([]string, error) {
 	tmpDir, err := os.MkdirTemp("", "iac-rule-test-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating temp dir: %w", err)
@@ -182,10 +196,10 @@ func testRule(ctx context.Context, rule *datadog.Rule) ([]string, error) {
 	var positiveFiles, negativeFiles []string
 	for _, tf := range rule.Tests.Files {
 		dest := filepath.Join(tmpDir, filepath.FromSlash(tf.FileName))
-		if err := os.MkdirAll(filepath.Dir(dest), testFixtureDirPerm); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dest), fixtureDirPerm); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(dest, tf.Content, testFixtureFilePerm); err != nil {
+		if err := os.WriteFile(dest, tf.Content, fixtureFilePerm); err != nil {
 			return nil, err
 		}
 		base := filepath.Base(tf.FileName)
@@ -212,65 +226,38 @@ func testRule(ctx context.Context, rule *datadog.Rule) ([]string, error) {
 	}
 
 	query := source.ConvertRule(rule)
-	queryPtr := &query
-
-	platformStr := rule.Platform
-	resourcePlatforms := testResourcePlatformsFor(platformStr)
 
 	var mismatches []string
 
-	positiveGot, positiveShape, err := testRunFiles(ctx, tmpDir, rule.ID, queryPtr, positiveFiles, resourcePlatforms)
+	positiveGot, positiveShape, err := runFiles(ctx, tmpDir, rule.ID, &query, positiveFiles)
 	if err != nil {
 		return nil, err
 	}
-	negativeGot, negativeShape, err := testRunFiles(ctx, tmpDir, rule.ID, queryPtr, negativeFiles, resourcePlatforms)
+	negativeGot, negativeShape, err := runFiles(ctx, tmpDir, rule.ID, &query, negativeFiles)
 	if err != nil {
 		return nil, err
 	}
 
 	mismatches = append(mismatches, positiveShape...)
 	mismatches = append(mismatches, negativeShape...)
-	mismatches = append(mismatches, testCompareFindings(expected, positiveGot)...)
-	mismatches = append(mismatches, testCompareFindings([]ruleFinding{}, negativeGot)...)
+	mismatches = append(mismatches, compareFindings(expected, positiveGot)...)
+	mismatches = append(mismatches, compareFindings([]ruleFinding{}, negativeGot)...)
 
 	return mismatches, nil
 }
 
-// testResourcePlatformsFor returns the set of platforms that require resourceType/resourceName.
-// Mirrors the logic used in the default-rules test tool.
-func testResourcePlatformsFor(platform string) map[string]struct{} {
-	resourcePlatforms := map[string]struct{}{
-		"terraform":               {},
-		"cloudformation":          {},
-		"ansible":                 {},
-		"kubernetes":              {},
-		"k8s":                     {},
-		"googledeploymentmanager": {},
-		"crossplane":              {},
-		"azureresourcemanager":    {},
-		"pulumi":                  {},
-	}
-	out := map[string]struct{}{}
-	normalized := strings.ToLower(platform)
-	if _, ok := resourcePlatforms[normalized]; ok {
-		out[normalized] = struct{}{}
-	}
-	return out
-}
-
-// testRunFiles evaluates the rule against the given files and returns findings
+// runFiles evaluates the rule against the given files and returns findings
 // plus any result-shape errors.
-func testRunFiles(
+func runFiles(
 	ctx context.Context,
 	rootPath, ruleID string,
 	query *model.QueryMetadata,
 	files []string,
-	resourcePlatforms map[string]struct{},
 ) ([]ruleFinding, []string, error) {
 	var allFiles model.FileMetadatas
 	platformStr, _ := query.Metadata["platform"].(string)
 	for _, f := range files {
-		parsed, err := testParseFile(ctx, rootPath, f, platformStr)
+		parsed, err := parseFixtureFile(ctx, rootPath, f, platformStr)
 		if err != nil {
 			return nil, nil, fmt.Errorf("parsing %s: %w", f, err)
 		}
@@ -278,17 +265,16 @@ func testRunFiles(
 	}
 
 	var shapeErrs []string
-	builder := testWrapShapeValidator(
+	builder := wrapShapeValidator(
 		strings.ToLower(platformStr),
-		resourcePlatforms,
 		ruleID,
 		&shapeErrs,
 	)
 
 	inspector, err := engine.NewInspector(ctx,
-		&testSingleRuleSource{query: query},
+		&singleRuleSource{query: query},
 		builder,
-		&testNoopTracker{},
+		&noopTracker{},
 		&source.QueryInspectorParameters{
 			FlagEvaluator: featureflags.NewLocalEvaluator(),
 		},
@@ -324,30 +310,29 @@ func testRunFiles(
 	return out, shapeErrs, nil
 }
 
-func testWrapShapeValidator(
+func wrapShapeValidator(
 	platform string,
-	resourcePlatforms map[string]struct{},
 	ruleID string,
 	errs *[]string,
 ) engine.VulnerabilityBuilder {
 	return func(ctx context.Context, qCtx *engine.QueryContext, tracker engine.Tracker, v interface{},
 		dl *detector.DetectLine, useOldSeverities bool, kicsComputeNewSimID bool, queryDuration time.Duration) (*model.Vulnerability, error) {
 		if m, ok := v.(map[string]interface{}); ok {
-			*errs = append(*errs, testValidateResultShape(m, platform, resourcePlatforms, ruleID)...)
+			*errs = append(*errs, validateResultShape(m, platform, ruleID)...)
 		}
 		return engine.DefaultVulnerabilityBuilder(ctx, qCtx, tracker, v, dl, useOldSeverities, kicsComputeNewSimID, queryDuration)
 	}
 }
 
-func testValidateResultShape(m map[string]interface{}, platform string, resourcePlatforms map[string]struct{}, ruleID string) []string {
+func validateResultShape(m map[string]interface{}, platform, ruleID string) []string {
 	var errs []string
-	for _, key := range testResultShape.Required {
+	for _, key := range resultShape.Required {
 		if _, ok := m[key]; !ok {
 			errs = append(errs, fmt.Sprintf("Result missing required field %q", key))
 		}
 	}
-	if _, ok := resourcePlatforms[platform]; ok {
-		for _, key := range testResultShape.ResourceKeys {
+	if _, ok := platformsRequiringResourceKeys[platform]; ok {
+		for _, key := range resultShape.ResourceKeys {
 			if _, ok := m[key]; !ok {
 				errs = append(errs, fmt.Sprintf("Result missing required field %q for platform %q in rule %s", key, platform, ruleID))
 			}
@@ -359,16 +344,16 @@ func testValidateResultShape(m map[string]interface{}, platform string, resource
 		errs = append(errs, "Result has remediation/remediationType only on one side; both must be set together")
 	}
 	if issueType, _ := m["issueType"].(string); issueType != "" {
-		if _, ok := testAllowedIssueTypes[issueType]; !ok {
+		if _, ok := allowedIssueTypes[issueType]; !ok {
 			errs = append(errs, fmt.Sprintf("Result issueType %q is not in the allowed set", issueType))
 		}
 	}
 	return errs
 }
 
-// testCompareFindings returns mismatch messages between expected and actual findings.
+// compareFindings returns mismatch messages between expected and actual findings.
 // An empty FileName in an expected finding acts as a wildcard.
-func testCompareFindings(expected, got []ruleFinding) []string {
+func compareFindings(expected, got []ruleFinding) []string {
 	remaining := slices.Clone(got)
 
 	sorted := slices.Clone(expected)
@@ -385,7 +370,7 @@ func testCompareFindings(expected, got []ruleFinding) []string {
 	var mismatches []string
 	for _, exp := range sorted {
 		idx := slices.IndexFunc(remaining, func(g ruleFinding) bool {
-			return testFindingsMatch(exp, g)
+			return findingsMatch(exp, g)
 		})
 		if idx == -1 {
 			mismatches = append(mismatches, fmt.Sprintf("Missing expected: %#v", exp))
@@ -399,14 +384,14 @@ func testCompareFindings(expected, got []ruleFinding) []string {
 	return mismatches
 }
 
-func testFindingsMatch(exp, got ruleFinding) bool {
+func findingsMatch(exp, got ruleFinding) bool {
 	return exp.QueryName == got.QueryName &&
 		exp.Severity == got.Severity &&
 		exp.Line == got.Line &&
 		(exp.FileName == "" || exp.FileName == got.FileName)
 }
 
-func testParseFile(ctx context.Context, tmpRoot, filePath, platform string) (model.FileMetadatas, error) {
+func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (model.FileMetadatas, error) {
 	cleanRoot := filepath.Clean(tmpRoot)
 	cleanPath := filepath.Clean(filePath)
 	rel, err := filepath.Rel(cleanRoot, cleanPath)
@@ -419,14 +404,14 @@ func testParseFile(ctx context.Context, tmpRoot, filePath, platform string) (mod
 		return nil, err
 	}
 
-	ps, err := getTestParsers(ctx)
+	ps, err := getFixtureParsers(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	var files model.FileMetadatas
 	for _, p := range ps {
-		if !p.Parsers.SupportedTypes()[testNormalizePlatform(platform)] {
+		if !p.Parsers.SupportedTypes()[normalizePlatform(platform)] {
 			continue
 		}
 		docs, _ := p.Parse(ctx, cleanPath, content, true, false, defaultRuleTestMaxResolverDepth)
@@ -447,7 +432,7 @@ func testParseFile(ctx context.Context, tmpRoot, filePath, platform string) (mod
 	return files, nil
 }
 
-func testNormalizePlatform(platform string) string {
+func normalizePlatform(platform string) string {
 	if strings.EqualFold(platform, "k8s") {
 		return "kubernetes"
 	}
@@ -455,14 +440,14 @@ func testNormalizePlatform(platform string) string {
 }
 
 var (
-	testParsersOnce sync.Once
-	testParsers     []*parser.Parser
-	testParsersErr  error
+	fixtureParsersOnce sync.Once
+	fixtureParsers     []*parser.Parser
+	fixtureParsersErr  error
 )
 
-func getTestParsers(ctx context.Context) ([]*parser.Parser, error) {
-	testParsersOnce.Do(func() {
-		testParsers, testParsersErr = parser.NewBuilder(ctx).
+func getFixtureParsers(ctx context.Context) ([]*parser.Parser, error) {
+	fixtureParsersOnce.Do(func() {
+		fixtureParsers, fixtureParsersErr = parser.NewBuilder(ctx).
 			Add(&jsonParser.Parser{}).
 			Add(&yamlParser.Parser{}).
 			Add(terraformParser.NewDefault()).
@@ -475,18 +460,18 @@ func getTestParsers(ctx context.Context) ([]*parser.Parser, error) {
 			Add(&ansibleHostsParser.Parser{}).
 			Build([]string{""}, []string{""})
 	})
-	return testParsers, testParsersErr
+	return fixtureParsers, fixtureParsersErr
 }
 
-type testSingleRuleSource struct {
+type singleRuleSource struct {
 	query *model.QueryMetadata
 }
 
-func (s *testSingleRuleSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
+func (s *singleRuleSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
 	return []model.QueryMetadata{*s.query}, nil
 }
 
-func (s *testSingleRuleSource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
+func (s *singleRuleSource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
 	// Import assets here to avoid a circular init between the scanner packages.
 	// The embedded libraries live in the assets package and are needed for evaluation.
 	from := source.NewFilesystemSource(
@@ -500,19 +485,12 @@ func (s *testSingleRuleSource) GetQueryLibrary(_ context.Context, platform strin
 	return from.GetQueryLibrary(context.Background(), platform)
 }
 
-type testNoopTracker struct{}
+type noopTracker struct{}
 
-func (t *testNoopTracker) TrackQueryLoad(int)            {}
-func (t *testNoopTracker) TrackQueryExecuting(int)       {}
-func (t *testNoopTracker) TrackQueryExecution(int)       {}
-func (t *testNoopTracker) FailedDetectLine()             {}
-func (t *testNoopTracker) FailedComputeSimilarityID()    {}
-func (t *testNoopTracker) FailedComputeOldSimilarityID() {}
-func (t *testNoopTracker) GetOutputLines() int           { return 0 }
-
-func testPlural(n int, singular, pluralStr string) string {
-	if n == 1 {
-		return fmt.Sprintf(singular, n)
-	}
-	return fmt.Sprintf(pluralStr, n)
-}
+func (t *noopTracker) TrackQueryLoad(int)            {}
+func (t *noopTracker) TrackQueryExecuting(int)       {}
+func (t *noopTracker) TrackQueryExecution(int)       {}
+func (t *noopTracker) FailedDetectLine()             {}
+func (t *noopTracker) FailedComputeSimilarityID()    {}
+func (t *noopTracker) FailedComputeOldSimilarityID() {}
+func (t *noopTracker) GetOutputLines() int           { return 0 }

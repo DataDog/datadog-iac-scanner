@@ -150,11 +150,7 @@ func (s *datadogClient) GetDefaultRulesetWithTests(ctx context.Context) (*Rulese
 }
 
 func (s *datadogClient) fetchDefaultRuleset(ctx context.Context, includeTests bool) (*Ruleset, error) {
-	testsParam := "false"
-	if includeTests {
-		testsParam = "true"
-	}
-	path := "iac/rulesets/default-ruleset?include_tests=" + testsParam + "&include_testing_rules=true"
+	path := fmt.Sprintf("iac/rulesets/default-ruleset?include_tests=%t&include_testing_rules=true", includeTests)
 	response, err := s.sendRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
