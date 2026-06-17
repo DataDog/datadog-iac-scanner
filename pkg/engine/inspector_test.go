@@ -63,6 +63,7 @@ type inspectorOpts struct {
 	computeNewSimID bool
 	vb                  VulnerabilityBuilder
 	tracker             Tracker
+	flagEvaluator       featureflags.FlagEvaluator
 }
 
 // newTestInspector runs the real [NewInspector] against a configurable
@@ -98,6 +99,9 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 	if opts.tracker == nil {
 		opts.tracker = &tracker.CITracker{}
 	}
+	if opts.flagEvaluator == nil {
+		opts.flagEvaluator = featureflags.NewLocalEvaluator()
+	}
 
 	ins, err := NewInspector(
 		context.Background(),
@@ -113,7 +117,7 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.needsLog,
 		opts.numWorkers,
 		opts.computeNewSimID,
-		featureflags.NewLocalEvaluator(),
+		opts.flagEvaluator,
 	)
 	require.NoError(t, err)
 	return ins

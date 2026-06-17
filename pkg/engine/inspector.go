@@ -275,6 +275,13 @@ func (c *Inspector) Inspect(
 	platforms []string) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
+
+	// Instantiate local Terraform modules into resolved-resource documents and
+	// drop the called module bodies from the standalone scan to avoid duplicates.
+	moduleDocs := c.instantiateLocalModules(ctx, files)
+
+	// instantiateLocalModules mutates files in place (clears suppressed bodies).
+	// Combine skips empty documents, so this must stay before Combine.
 	combinedFiles := files.Combine(ctx, false)
 
 	vulnerabilities := make([]model.Vulnerability, 0)
@@ -292,9 +299,12 @@ func (c *Inspector) Inspect(
 
 	// Convert combined documents directly to OPA AST, skipping the
 	// json.Marshal -> UnmarshalJSON round-trip to avoid intermediate copies.
-	docs := make([]interface{}, len(combinedFiles.Documents))
-	for i, d := range combinedFiles.Documents {
-		docs[i] = map[string]interface{}(d)
+	docs := make([]interface{}, 0, len(combinedFiles.Documents))
+	for _, d := range combinedFiles.Documents {
+		docs = append(docs, map[string]interface{}(d))
+	}
+	for _, d := range moduleDocs {
+		docs = append(docs, map[string]interface{}(d))
 	}
 	astPayload, err := ast.InterfaceToValue(map[string]interface{}{
 		"document": docs,
