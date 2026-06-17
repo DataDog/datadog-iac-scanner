@@ -54,6 +54,7 @@ type Parameters struct {
 	SCIInfo                     model.SCIInfo
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
+	ShouldScanTfPlans           bool
 }
 
 func (p *Parameters) GetEffectivePlatforms() []string {
