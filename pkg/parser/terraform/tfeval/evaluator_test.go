@@ -485,6 +485,54 @@ resource "aws_security_group" "this" {
 	}
 }
 
+func TestEvaluateModule_SiblingModuleOutputInInput(t *testing.T) {
+	// module.b uses module.a's output as an input; without the pre-pass,
+	// module.a.suffix would resolve to unknown when computing b's inputs.
+	root := t.TempDir()
+
+	writeModule(t, root, "naming", map[string]string{
+		"main.tf": `
+variable "env" { type = string }
+
+output "suffix" {
+  value = "-${var.env}"
+}
+`,
+	})
+
+	writeModule(t, root, "bucket", map[string]string{
+		"main.tf": `
+variable "suffix" { type = string }
+
+resource "aws_s3_bucket" "this" {
+  bucket = "logs${var.suffix}"
+}
+`,
+	})
+
+	rootDir := writeModule(t, root, "root", map[string]string{
+		"main.tf": `
+module "naming" {
+  source = "../naming"
+  env    = "prod"
+}
+
+module "bucket" {
+  source = "../bucket"
+  suffix = module.naming.suffix
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+
+	r := findResource(t, resources, "aws_s3_bucket", "this")
+	requireString(t, r.Attributes, "bucket", "logs-prod")
+}
+
 func TestEvaluateModule_SingleNestedBlockIsSingletonTuple(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{

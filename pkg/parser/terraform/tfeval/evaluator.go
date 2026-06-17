@@ -134,6 +134,19 @@ func (e *Evaluator) evaluate(
 	localVals := e.resolveLocals(localExprs, evalCtx)
 	evalCtx.Variables["local"] = objectOrEmpty(localVals)
 
+	// Pre-pass: collect sibling module outputs so they are available in evalCtx
+	// when computing inputs in the main loop. Terraform allows module inputs to
+	// reference outputs of sibling modules regardless of block order; without
+	// this pass those references always resolve to unknown.
+	if len(moduleBlocks) > 1 {
+		prelimOutputs := e.preliminaryModuleOutputs(ctx, moduleBlocks, evalCtx, dir, addr, depth, visiting)
+		if len(prelimOutputs) > 0 {
+			evalCtx.Variables["module"] = cty.ObjectVal(prelimOutputs)
+			localVals = e.resolveLocals(localExprs, evalCtx)
+			evalCtx.Variables["local"] = objectOrEmpty(localVals)
+		}
+	}
+
 	var childResources []ResolvedResource
 	moduleOutputs := map[string]cty.Value{}
 
@@ -327,4 +340,50 @@ func (e *Evaluator) evalExpr(expr hclsyntax.Expression, ctx *hcl.EvalContext) ct
 		return cty.UnknownVal(cty.DynamicPseudoType)
 	}
 	return v
+}
+
+// preliminaryModuleOutputs runs a lightweight first pass over local module
+// blocks to collect their outputs. The results are installed into evalCtx
+// before the real evaluation loop so sibling module references (e.g.
+// module.a.out used as an input to module.b) resolve to known values.
+//
+// Uses a throw-away allVisited map so the main pass records accurate visited
+// dirs. The visiting set is copied to preserve cycle detection.
+func (e *Evaluator) preliminaryModuleOutputs(
+	ctx context.Context,
+	moduleBlocks []*hclsyntax.Block,
+	evalCtx *hcl.EvalContext,
+	dir, addr string,
+	depth int,
+	visiting map[string]bool,
+) map[string]cty.Value {
+	out := map[string]cty.Value{}
+	tmpVisiting := make(map[string]bool, len(visiting))
+	for k, v := range visiting {
+		tmpVisiting[k] = v
+	}
+	for _, mb := range moduleBlocks {
+		label := blockLabel(mb)
+		if label == "" {
+			continue
+		}
+		source := knownString(mb.Body.Attributes["source"], evalCtx)
+		if source == "" || !tfmodules.LooksLikeLocalModuleSource(StripGetterPrefix(source)) {
+			continue
+		}
+		if isLiteralZero(mb.Body.Attributes["count"], evalCtx) {
+			continue
+		}
+		if isEmptyCollection(mb.Body.Attributes["for_each"], evalCtx) {
+			continue
+		}
+		childDir := resolveLocalDir(dir, source)
+		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
+		childAddr := joinAddr(addr, "module."+label)
+		_, childOuts, _ := e.evaluate(ctx, childDir, modInputs, childAddr, nil, depth+1, tmpVisiting, map[string]bool{})
+		if len(childOuts) > 0 {
+			out[label] = objectOrEmpty(childOuts)
+		}
+	}
+	return out
 }
