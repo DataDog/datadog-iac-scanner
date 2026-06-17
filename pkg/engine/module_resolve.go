@@ -143,11 +143,7 @@ func resolveModuleDocuments(
 		}
 	}
 
-	// Only strip call sites for dirs that contributed synthetic documents (i.e.,
-	// their files are present in the scan input). If a module was read from disk
-	// by EvaluateModule but its files are absent from the scan, instantiatedDocs
-	// drops its resources; stripping the call site would remove the only payload
-	// those files provide without any synthetic replacement.
+	// Only strip call sites when that module's files are in the scan (avoid dropping sole coverage).
 	strippedDirs := make(map[string]bool, len(actualCalledDirs))
 	for dir := range actualCalledDirs {
 		if len(filesByDir[dir]) > 0 {
@@ -158,13 +154,8 @@ func resolveModuleDocuments(
 	return extra, suppressed, strippedDirs, true
 }
 
-// instantiatedDocs builds a synthetic resource document for each resolved
-// module resource, attributed to its defining file. Root resources and those
-// whose file is out of scope are skipped. seen dedupes across multiple roots.
-//
-// v1 limitation: count/for_each and multiple calls to the same module directory
-// are not expanded into separate instances; dedupe and document id attribution
-// use the defining file only, so distinct instances can collapse to one synthetic doc.
+// instantiatedDocs builds one synthetic document per resolved module resource (skips root
+// and out-of-scope). seen dedupes across eval roots; dedupe key includes type, name, line, module path.
 func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
@@ -189,12 +180,14 @@ func instantiatedDocs(
 		}
 		seen[key] = true
 
+		// Use the bare resource label (not the expanded name like k[0]) so that
+		// Rego rules matching input.document[_].resource.TYPE.NAME find the resource.
 		docs = append(docs, model.Document{
 			"id":   fm.ID,
 			"file": fm.FilePath,
 			"resource": map[string]interface{}{
 				r.Type: map[string]interface{}{
-					r.Name: tfeval.AttributesToDocument(r),
+					tfeval.ResourceBaseName(r.Name): tfeval.AttributesToDocument(r),
 				},
 			},
 		})
@@ -202,13 +195,9 @@ func instantiatedDocs(
 	return docs
 }
 
-// stripLocalModuleCalls removes module entries from doc whose source resolves
-// to one of calledDirs. Remote/registry sources are left intact so existing
-// Rego branches that match call-site attributes continue to work.
-//
-// The Terraform parser stores nested HCL blocks as model.Document (a named map
-// type), so we accept both model.Document and map[string]interface{} to handle
-// either representation safely.
+// stripLocalModuleCalls drops local module blocks whose source dir is in calledDirs.
+// Remote/registry sources stay so existing Rego call-site rules still match.
+// Accepts model.Document or map[string]interface{} for nested module maps.
 func stripLocalModuleCalls(doc model.Document, filePath, repoPath string, calledDirs map[string]bool) {
 	modules := docAsMap(doc["module"])
 	if modules == nil {
