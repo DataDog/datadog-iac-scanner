@@ -276,8 +276,9 @@ func (c *Inspector) Inspect(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
 
-	// Instantiate local modules into synthetic resource docs; suppress duplicate module bodies.
-	moduleDocs := c.instantiateLocalModules(ctx, files)
+	// Local modules: append synthetic file rows (ids match docs) for attribution and fingerprints.
+	moduleDocs, syntheticFiles := c.instantiateLocalModules(ctx, files)
+	files = append(files, syntheticFiles...)
 
 	// Must run before Combine: instantiateLocalModules clears suppressed file bodies in place.
 	combinedFiles := files.Combine(ctx, false)

@@ -126,6 +126,77 @@ resource "aws_s3_bucket" "this" {
 	require.Greater(t, v.Line, 0, "line should be detected in the module file")
 }
 
+// Two roots call the same module with the same inputs: expect two findings and two distinct ModuleCallChain values.
+func TestInspect_TwoCallersGetDistinctCallChains(t *testing.T) {
+	root := t.TempDir()
+
+	modDir := filepath.Join(root, "modules", "bucket")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "stack-a"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "stack-b"), 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+
+	aPath := filepath.Join(root, "stack-a", "main.tf")
+	bPath := filepath.Join(root, "stack-b", "main.tf")
+	modPath := filepath.Join(modDir, "main.tf")
+
+	require.NoError(t, os.WriteFile(aPath, []byte(`
+module "bucket" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(bPath, []byte(`
+module "bucket" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(modPath, []byte(`
+variable "acl" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  acl = var.acl
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, aPath)...)
+	files = append(files, parseTerraform(t, bPath)...)
+	files = append(files, parseTerraform(t, modPath)...)
+
+	queries := []model.QueryMetadata{{
+		Query:       "acl_rule",
+		Content:     aclRule,
+		InputData:   "{}",
+		Platform:    "terraform",
+		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Aggregation: 1,
+	}}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{root}, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	// Both callers pass the same (bad) value, yet we expect one finding per caller,
+	// each attributed to the module body but with a distinct call chain.
+	require.Len(t, vulns, 2, "expected one finding per module caller")
+	chains := map[string]bool{}
+	for _, v := range vulns {
+		require.Equal(t, modPath, v.FileName, "findings should be reported at the module resource definition")
+		require.NotEmpty(t, v.ModuleCallChain, "instantiated finding must carry a module call chain")
+		chains[v.ModuleCallChain] = true
+	}
+	require.Len(t, chains, 2, "the two callers must produce distinct module call chains")
+}
+
 // variableTypeRule fires on a variable declaration that has no type, mirroring
 // real rules that match non-resource blocks (variable/output/data/locals).
 const variableTypeRule = `package datadog
@@ -305,4 +376,3 @@ resource "aws_s3_bucket" "this" {
 	require.Len(t, vulns, 1, "legacy module branch must not fire alongside instantiated resource (no double-findings)")
 	require.Equal(t, "aws_s3_bucket", vulns[0].ResourceType, "finding must come from the resource branch, not the module branch")
 }
-
