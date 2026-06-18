@@ -276,12 +276,10 @@ func (c *Inspector) Inspect(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
 
-	// Instantiate local Terraform modules into resolved-resource documents and
-	// drop the called module bodies from the standalone scan to avoid duplicates.
+	// Instantiate local modules into synthetic resource docs; suppress duplicate module bodies.
 	moduleDocs := c.instantiateLocalModules(ctx, files)
 
-	// instantiateLocalModules mutates files in place (clears suppressed bodies).
-	// Combine skips empty documents, so this must stay before Combine.
+	// Must run before Combine: instantiateLocalModules clears suppressed file bodies in place.
 	combinedFiles := files.Combine(ctx, false)
 
 	vulnerabilities := make([]model.Vulnerability, 0)

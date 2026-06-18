@@ -4,16 +4,17 @@
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
 
-// Package tfeval evaluates local Terraform modules by binding caller inputs to
-// module variables, resolving locals, recursing into nested modules, and
-// returning a flat list of resources with concrete attribute values.
-// Unresolvable references (data sources, cross-resource refs, etc.) are left
-// as cty.UnknownVal rather than sentinel strings.
+// Package tfeval evaluates local Terraform modules: bind inputs, resolve locals,
+// recurse into nested modules, emit resources with concrete cty values where possible.
+// Anything still unresolvable (e.g. data sources) stays cty.UnknownVal, not sentinels.
 package tfeval
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sort"
+	"strconv"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
@@ -23,15 +24,18 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
+	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 const (
-	// defaultMaxDepth bounds nested-module recursion to protect against
-	// pathological or cyclic local module graphs.
+	// defaultMaxDepth caps nested module recursion (cycles, deep graphs).
 	defaultMaxDepth = 15
-	// localsMaxPasses bounds the fixed-point iteration used to resolve locals
-	// that reference one another.
+	// localsMaxPasses caps fixed-point resolution of locals that reference each other.
 	localsMaxPasses = 10
+	// resourceRefPasses caps passes that install same-module resource attrs for refs.
+	resourceRefPasses = 3
+	// maxCountExpansion caps instances per count/for_each block.
+	maxCountExpansion = 10
 )
 
 // ResolvedResource is a resource block after evaluation with attributes
@@ -60,12 +64,18 @@ type CallSite struct {
 type Evaluator struct {
 	funcs    map[string]function.Function
 	maxDepth int
+	// cache memoizes completed module evaluations keyed by (dir, addr, canonical-inputs).
+	// A single Evaluator is used for an entire scan, so the cache is shared across root
+	// module calls — entries with the same key represent the same module called with the
+	// same resolved inputs from the same structural position in the module tree.
+	cache map[evalCacheKey]*evalCacheEntry
 }
 
 func New() *Evaluator {
 	return &Evaluator{
 		funcs:    tffunctions.TerraformFuncs,
 		maxDepth: defaultMaxDepth,
+		cache:    make(map[evalCacheKey]*evalCacheEntry),
 	}
 }
 
@@ -112,8 +122,26 @@ func (e *Evaluator) evaluate(
 		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
 		return nil, map[string]cty.Value{}, nil
 	}
+
+	// Cache lookup: after guard checks but before file I/O. The pre-pass and main loop
+	// call evaluate with identical (dir, addr, inputs, chain) once chain is threaded
+	// through, so the second call always hits the cache.
+	cacheKey := evalCacheKey{dir: dir, addr: addr, inputs: canonicalInputsKey(inputs)}
+	if entry, ok := e.cache[cacheKey]; ok {
+		for _, d := range entry.visitedDirs {
+			allVisited[d] = true
+		}
+		return entry.resources, entry.outputs, nil
+	}
+
 	visiting[dir] = true
 	defer delete(visiting, dir)
+
+	// Snapshot allVisited so we can determine which dirs this subtree adds.
+	prevAllVisited := make(map[string]bool, len(allVisited))
+	for k := range allVisited {
+		prevAllVisited[k] = true
+	}
 
 	bodies, err := parseDir(dir)
 	if err != nil {
@@ -134,21 +162,107 @@ func (e *Evaluator) evaluate(
 	localVals := e.resolveLocals(localExprs, evalCtx)
 	evalCtx.Variables["local"] = objectOrEmpty(localVals)
 
-	// Pre-pass: collect sibling module outputs so they are available in evalCtx
-	// when computing inputs in the main loop. Terraform allows module inputs to
-	// reference outputs of sibling modules regardless of block order; without
-	// this pass those references always resolve to unknown.
-	if len(moduleBlocks) > 1 {
-		prelimOutputs := e.preliminaryModuleOutputs(ctx, moduleBlocks, evalCtx, dir, addr, depth, visiting)
-		if len(prelimOutputs) > 0 {
-			evalCtx.Variables["module"] = cty.ObjectVal(prelimOutputs)
-			localVals = e.resolveLocals(localExprs, evalCtx)
-			evalCtx.Variables["local"] = objectOrEmpty(localVals)
-		}
+	// Pre-inject sibling resource attrs so module inputs that reference them
+	// (e.g. module "x" { val = aws_resource.y.attr }) resolve on first evaluation.
+	if len(resourceBlocks) > 0 && len(moduleBlocks) > 0 {
+		earlyRes := e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+		injectResourceRefs(evalCtx, earlyRes)
+		localVals = e.resolveLocals(localExprs, evalCtx)
+		evalCtx.Variables["local"] = objectOrEmpty(localVals)
 	}
 
-	var childResources []ResolvedResource
-	moduleOutputs := map[string]cty.Value{}
+	e.applySiblingModulePrepass(ctx, moduleBlocks, evalCtx, localExprs, dir, addr, chain, depth, visiting)
+
+	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
+		ctx, moduleBlocks, evalCtx, dir, addr, chain, depth, visiting, allVisited,
+	)
+
+	if len(moduleOutputs) > 0 {
+		evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
+		localVals = e.resolveLocals(localExprs, evalCtx)
+		evalCtx.Variables["local"] = objectOrEmpty(localVals)
+	}
+
+	rootResources := e.rootResourcesWithRefPasses(resourceBlocks, localExprs, evalCtx, addr, chain)
+
+	// Re-inject the final-pass resource values so that outputs and locals that
+	// reference the Nth hop of an N-hop chain can resolve. For chains shorter
+	// than resourceRefPasses hops all resources were already injected inside the
+	// loop, so injectResourceRefs returns false and the locals refresh is skipped.
+	if injectResourceRefs(evalCtx, rootResources) {
+		localVals = e.resolveLocals(localExprs, evalCtx)
+		evalCtx.Variables["local"] = objectOrEmpty(localVals)
+	}
+
+	resources := make([]ResolvedResource, 0, len(rootResources)+len(childResources))
+	resources = append(resources, rootResources...)
+	resources = append(resources, childResources...)
+
+	outputs := make(map[string]cty.Value, len(outputExprs))
+	for name, expr := range outputExprs {
+		outputs[name] = e.evalExpr(expr, evalCtx)
+	}
+
+	// Collect dirs added to allVisited during this evaluation for the cache entry.
+	var visitedDirs []string
+	for d := range allVisited {
+		if !prevAllVisited[d] {
+			visitedDirs = append(visitedDirs, d)
+		}
+	}
+	e.cache[cacheKey] = &evalCacheEntry{
+		resources:   resources,
+		outputs:     outputs,
+		visitedDirs: visitedDirs,
+	}
+
+	return resources, outputs, nil
+}
+
+func (e *Evaluator) applySiblingModulePrepass(
+	ctx context.Context,
+	moduleBlocks []*hclsyntax.Block,
+	evalCtx *hcl.EvalContext,
+	localExprs map[string]hclsyntax.Expression,
+	dir, addr string,
+	chain []CallSite,
+	depth int,
+	visiting map[string]bool,
+) {
+	if len(moduleBlocks) <= 1 {
+		return
+	}
+	prelimOutputs := e.preliminaryModuleOutputs(ctx, moduleBlocks, evalCtx, dir, addr, chain, depth, visiting)
+	if len(prelimOutputs) == 0 {
+		return
+	}
+	evalCtx.Variables["module"] = cty.ObjectVal(prelimOutputs)
+	localVals := e.resolveLocals(localExprs, evalCtx)
+	evalCtx.Variables["local"] = objectOrEmpty(localVals)
+}
+
+func (e *Evaluator) evaluateLocalModuleBlocks(
+	ctx context.Context,
+	moduleBlocks []*hclsyntax.Block,
+	evalCtx *hcl.EvalContext,
+	dir, addr string,
+	chain []CallSite,
+	depth int,
+	visiting map[string]bool,
+	allVisited map[string]bool,
+) (childResources []ResolvedResource, moduleOutputs map[string]cty.Value) {
+	contextLogger := logger.FromContext(ctx)
+
+	// Seed with the pre-pass values already in evalCtx so that forward dependencies
+	// (module B referencing module C where C appears later in file order) survive the
+	// first iteration's evalCtx.Variables["module"] update.
+	moduleOutputs = map[string]cty.Value{}
+	if existing, ok := evalCtx.Variables["module"]; ok && existing.Type().IsObjectType() {
+		for it := existing.ElementIterator(); it.Next(); {
+			k, v := it.Element()
+			moduleOutputs[k.AsString()] = v
+		}
+	}
 
 	for _, mb := range moduleBlocks {
 		label := blockLabel(mb)
@@ -157,12 +271,11 @@ func (e *Evaluator) evaluate(
 		}
 		source := knownString(mb.Body.Attributes["source"], evalCtx)
 		if source == "" || !tfmodules.LooksLikeLocalModuleSource(StripGetterPrefix(source)) {
-			continue // remote/registry sources are out of scope
+			continue
 		}
 
 		childDir := resolveLocalDir(dir, source)
 
-		// Skip module instances that are explicitly disabled.
 		if isLiteralZero(mb.Body.Attributes["count"], evalCtx) {
 			continue
 		}
@@ -190,28 +303,43 @@ func (e *Evaluator) evaluate(
 		allVisited[childDir] = true
 		childResources = append(childResources, childRes...)
 		moduleOutputs[label] = objectOrEmpty(childOuts)
-	}
-
-	if len(moduleOutputs) > 0 {
-		// Re-evaluate locals now that module.* outputs are available.
+		// Update evalCtx so the next sibling's modInputs can reference this
+		// module's now-resolved outputs (e.g. module.B.x = module.A.output).
 		evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
-		localVals = e.resolveLocals(localExprs, evalCtx)
-		evalCtx.Variables["local"] = objectOrEmpty(localVals)
 	}
-
-	resources := make([]ResolvedResource, 0, len(resourceBlocks)+len(childResources))
-	resources = append(resources, e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)...)
-	resources = append(resources, childResources...)
-
-	outputs := make(map[string]cty.Value, len(outputExprs))
-	for name, expr := range outputExprs {
-		outputs[name] = e.evalExpr(expr, evalCtx)
-	}
-
-	return resources, outputs, nil
+	return childResources, moduleOutputs
 }
 
-// evalResourceBlocks evaluates all resource blocks in the current module scope.
+func (e *Evaluator) rootResourcesWithRefPasses(
+	resourceBlocks []*hclsyntax.Block,
+	localExprs map[string]hclsyntax.Expression,
+	evalCtx *hcl.EvalContext,
+	addr string,
+	chain []CallSite,
+) []ResolvedResource {
+	var rootResources []ResolvedResource
+	for pass := 0; pass < resourceRefPasses; pass++ {
+		rootResources = e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+		// Always inject so resolved attrs reach evalCtx on every pass including the last.
+		changed := injectResourceRefs(evalCtx, rootResources)
+		if !changed {
+			break
+		}
+		// Refresh locals after every successful injection so that locals referencing
+		// newly-resolved resource attrs are up-to-date before outputs are computed.
+		localVals := e.resolveLocals(localExprs, evalCtx)
+		evalCtx.Variables["local"] = objectOrEmpty(localVals)
+		if pass+1 >= resourceRefPasses {
+			break
+		}
+	}
+	// One final evaluation picks up attrs that were only injected on the last pass
+	// (e.g. the Nth resource in an A→B→C→D chain whose evalCtx was updated after the
+	// last evalResourceBlocks call).
+	return e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+}
+
+// evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
 func (e *Evaluator) evalResourceBlocks(
 	resourceBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
@@ -220,27 +348,215 @@ func (e *Evaluator) evalResourceBlocks(
 ) []ResolvedResource {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
-		if len(rb.Labels) < 2 {
-			continue
-		}
-		// Skip resources with count = 0 or for_each = {}; Terraform creates no instances.
-		if isLiteralZero(rb.Body.Attributes["count"], evalCtx) {
-			continue
-		}
-		if isEmptyCollection(rb.Body.Attributes["for_each"], evalCtx) {
-			continue
-		}
-		resources = append(resources, ResolvedResource{
-			Type:          rb.Labels[0],
-			Name:          rb.Labels[1],
-			Attributes:    e.evalBody(rb.Body, evalCtx, nil),
+		resources = append(resources, e.expandResourceBlock(rb, evalCtx, addr, chain)...)
+	}
+	return resources
+}
+
+// expandResourceBlock emits zero, one, or N instances per block; known count/for_each
+// get count.index / each.* in a child context; unknown expansion uses one placeholder instance.
+func (e *Evaluator) expandResourceBlock(
+	rb *hclsyntax.Block,
+	evalCtx *hcl.EvalContext,
+	addr string,
+	chain []CallSite,
+) []ResolvedResource {
+	if len(rb.Labels) < 2 {
+		return nil
+	}
+	typeName, resName := rb.Labels[0], rb.Labels[1]
+
+	makeOne := func(name string, ctx *hcl.EvalContext) ResolvedResource {
+		return ResolvedResource{
+			Type:          typeName,
+			Name:          name,
+			Attributes:    e.evalBody(rb.Body, ctx, nil),
 			DefinedIn:     rb.TypeRange.Filename,
 			DefLine:       rb.TypeRange.Start.Line,
 			ModuleAddress: addr,
 			CallChain:     cloneChain(chain),
-		})
+		}
 	}
-	return resources
+
+	if out, ok := e.expandCountInstances(rb, resName, evalCtx, makeOne); ok {
+		return out
+	}
+	if out, ok := e.expandForEachInstances(rb, resName, evalCtx, makeOne); ok {
+		return out
+	}
+	return []ResolvedResource{makeOne(resName, evalCtx)}
+}
+
+func (e *Evaluator) expandCountInstances(
+	rb *hclsyntax.Block,
+	resName string,
+	evalCtx *hcl.EvalContext,
+	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+) ([]ResolvedResource, bool) {
+	countAttr := rb.Body.Attributes["count"]
+	if countAttr == nil {
+		return nil, false
+	}
+	cv, diags := countAttr.Expr.Value(evalCtx)
+	if !diags.HasErrors() && cv.IsKnown() && !cv.IsNull() && cv.Type() == cty.Number {
+		var n int
+		if err := gocty.FromCtyValue(cv, &n); err != nil {
+			return nil, false
+		}
+		if n <= 0 {
+			return nil, true
+		}
+		nExpand := n
+		if nExpand > maxCountExpansion {
+			nExpand = maxCountExpansion
+		}
+		out := make([]ResolvedResource, 0, nExpand)
+		for i := 0; i < nExpand; i++ {
+			child := evalCtx.NewChild()
+			child.Variables = map[string]cty.Value{
+				"count": cty.ObjectVal(map[string]cty.Value{
+					"index": cty.NumberIntVal(int64(i)),
+				}),
+			}
+			out = append(out, makeOne(fmt.Sprintf("%s[%d]", resName, i), child))
+		}
+		return out, true
+	}
+	child := evalCtx.NewChild()
+	child.Variables = map[string]cty.Value{
+		"count": cty.ObjectVal(map[string]cty.Value{
+			"index": cty.UnknownVal(cty.Number),
+		}),
+	}
+	return []ResolvedResource{makeOne(resName, child)}, true
+}
+
+func (e *Evaluator) expandForEachInstances(
+	rb *hclsyntax.Block,
+	resName string,
+	evalCtx *hcl.EvalContext,
+	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+) ([]ResolvedResource, bool) {
+	feAttr := rb.Body.Attributes["for_each"]
+	if feAttr == nil {
+		return nil, false
+	}
+	fv, diags := feAttr.Expr.Value(evalCtx)
+	if !diags.HasErrors() && fv.IsKnown() && !fv.IsNull() {
+		t := fv.Type()
+		if t.IsObjectType() || t.IsMapType() || t.IsSetType() {
+			if fv.LengthInt() == 0 {
+				return nil, true
+			}
+			out := make([]ResolvedResource, 0)
+			i := 0
+			for it := fv.ElementIterator(); it.Next() && i < maxCountExpansion; i++ {
+				k, kv := it.Element()
+				keyStr := "__"
+				if k.Type() == cty.String && k.IsKnown() {
+					keyStr = k.AsString()
+				}
+				child := evalCtx.NewChild()
+				child.Variables = map[string]cty.Value{
+					"each": cty.ObjectVal(map[string]cty.Value{
+						"key":   k,
+						"value": kv,
+					}),
+				}
+				out = append(out, makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child))
+			}
+			return out, true
+		}
+	}
+	child := evalCtx.NewChild()
+	child.Variables = map[string]cty.Value{
+		"each": cty.ObjectVal(map[string]cty.Value{
+			"key":   cty.UnknownVal(cty.String),
+			"value": cty.UnknownVal(cty.DynamicPseudoType),
+		}),
+	}
+	return []ResolvedResource{makeOne(resName, child)}, true
+}
+
+// injectResourceRefs sets evalCtx.Variables[type][name] from resources; returns true if changed.
+// Count-expanded resources are exposed as ordered tuples so that x[0].attr resolves correctly;
+// for_each-expanded resources as keyed objects so that x["k"].attr resolves correctly.
+func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) bool {
+	type instBucket struct {
+		keys     []string
+		attrs    []map[string]cty.Value
+		isCount  bool
+		expanded bool // true when any instance has brackets (count or for_each)
+	}
+	byType := make(map[string]map[string]*instBucket)
+	for _, r := range resources {
+		base, key, isCount, expanded := parseResourceInstanceKey(r.Name)
+		if byType[r.Type] == nil {
+			byType[r.Type] = make(map[string]*instBucket)
+		}
+		b := byType[r.Type][base]
+		if b == nil {
+			b = &instBucket{isCount: isCount, expanded: expanded}
+			byType[r.Type][base] = b
+		} else if expanded {
+			b.expanded = true
+		}
+		b.keys = append(b.keys, key)
+		b.attrs = append(b.attrs, r.Attributes)
+	}
+	if len(byType) == 0 {
+		return false
+	}
+	progress := false
+	for typeName, nameMap := range byType {
+		typeAttrs := make(map[string]cty.Value, len(nameMap))
+		for baseName, b := range nameMap {
+			typeAttrs[baseName] = buildInstanceCtyVal(b.keys, b.attrs, b.isCount, b.expanded)
+		}
+		newVal := cty.ObjectVal(typeAttrs)
+		if existing, ok := evalCtx.Variables[typeName]; !ok || !existing.RawEquals(newVal) {
+			evalCtx.Variables[typeName] = newVal
+			progress = true
+		}
+	}
+	return progress
+}
+
+// buildInstanceCtyVal converts grouped resource instances into the cty value used for ref injection.
+// Non-expanded resources become plain objects. Count resources become ordered tuples (x[0]).
+// For_each resources become keyed objects (x["key"]), including the empty-string key case.
+func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCount, expanded bool) cty.Value {
+	if !expanded {
+		// Plain (non-indexed) resource: expose as a simple attribute object.
+		return objectOrEmpty(attrsSlice[0])
+	}
+	if isCount {
+		type indexed struct {
+			i     int
+			attrs map[string]cty.Value
+		}
+		items := make([]indexed, len(keys))
+		for i, k := range keys {
+			n, _ := strconv.Atoi(k)
+			items[i] = indexed{n, attrsSlice[i]}
+		}
+		sort.Slice(items, func(i, j int) bool { return items[i].i < items[j].i })
+		elems := make([]cty.Value, len(items))
+		for i, item := range items {
+			elems[i] = objectOrEmpty(item.attrs)
+		}
+		return cty.TupleVal(elems)
+	}
+	// for_each: expose as object keyed by string keys so x["key"].attr resolves.
+	// Empty-string keys ("") are valid Terraform for_each keys and are kept.
+	kvs := make(map[string]cty.Value, len(keys))
+	for i, k := range keys {
+		kvs[k] = objectOrEmpty(attrsSlice[i])
+	}
+	if len(kvs) == 0 {
+		return cty.EmptyObjectVal
+	}
+	return cty.ObjectVal(kvs)
 }
 
 // resolveVariables binds inputs to variables, falling back to the default then unknown.
@@ -342,18 +658,15 @@ func (e *Evaluator) evalExpr(expr hclsyntax.Expression, ctx *hcl.EvalContext) ct
 	return v
 }
 
-// preliminaryModuleOutputs runs a lightweight first pass over local module
-// blocks to collect their outputs. The results are installed into evalCtx
-// before the real evaluation loop so sibling module references (e.g.
-// module.a.out used as an input to module.b) resolve to known values.
-//
-// Uses a throw-away allVisited map so the main pass records accurate visited
-// dirs. The visiting set is copied to preserve cycle detection.
+// preliminaryModuleOutputs evaluates local modules once to fill module.* for sibling refs.
+// Passes the real chain so the cache key matches the main-loop evaluate calls, turning the
+// second evaluation into a cache hit. Copies visiting; uses a fresh allVisited.
 func (e *Evaluator) preliminaryModuleOutputs(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	dir, addr string,
+	chain []CallSite,
 	depth int,
 	visiting map[string]bool,
 ) map[string]cty.Value {
@@ -379,10 +692,21 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		}
 		childDir := resolveLocalDir(dir, source)
 		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
+		site := CallSite{
+			ModuleName: label,
+			Source:     source,
+			CalledFrom: mb.TypeRange.Filename,
+			CalledLine: mb.TypeRange.Start.Line,
+		}
 		childAddr := joinAddr(addr, "module."+label)
-		_, childOuts, _ := e.evaluate(ctx, childDir, modInputs, childAddr, nil, depth+1, tmpVisiting, map[string]bool{})
+		childChain := append(cloneChain(chain), site)
+		_, childOuts, _ := e.evaluate(ctx, childDir, modInputs, childAddr, childChain, depth+1, tmpVisiting, map[string]bool{})
 		if len(childOuts) > 0 {
 			out[label] = objectOrEmpty(childOuts)
+			// Make each module's outputs visible to subsequent siblings within this
+			// same pre-pass loop, so their inputs resolve to the same values that the
+			// main evaluation loop will compute — this keeps cache keys consistent.
+			evalCtx.Variables["module"] = cty.ObjectVal(out)
 		}
 	}
 	return out
