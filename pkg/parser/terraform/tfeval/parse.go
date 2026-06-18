@@ -239,10 +239,12 @@ func parseResourceInstanceKey(name string) (base, key string, isCount, expanded 
 		}
 	}
 	// count: name ends with [N] where N is an integer
-	if idx := strings.LastIndex(name, "["); idx >= 0 {
-		inner := strings.TrimSuffix(name[idx+1:], "]")
-		if _, err := strconv.Atoi(inner); err == nil {
-			return name[:idx], inner, true, true
+	if strings.HasSuffix(name, "]") {
+		if idx := strings.LastIndex(name, "["); idx >= 0 {
+			inner := name[idx+1 : len(name)-1]
+			if _, err := strconv.Atoi(inner); err == nil {
+				return name[:idx], inner, true, true
+			}
 		}
 	}
 	return name, "", false, false

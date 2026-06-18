@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
+	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 const (
@@ -398,8 +399,10 @@ func (e *Evaluator) expandCountInstances(
 	}
 	cv, diags := countAttr.Expr.Value(evalCtx)
 	if !diags.HasErrors() && cv.IsKnown() && !cv.IsNull() && cv.Type() == cty.Number {
-		f, _ := cv.AsBigFloat().Float64()
-		n := int(f)
+		var n int
+		if err := gocty.FromCtyValue(cv, &n); err != nil {
+			return nil, false
+		}
 		if n <= 0 {
 			return nil, true
 		}
