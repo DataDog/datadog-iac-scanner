@@ -1,0 +1,62 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.5.0",
+  "variables": {},
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.insecure_bucket",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "insecure_bucket",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "my-insecure-bucket",
+            "acl": "public-read"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.insecure_bucket",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "insecure_bucket",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "bucket": "my-insecure-bucket",
+          "acl": "public-read"
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.insecure_bucket",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "insecure_bucket",
+          "provider_config_key": "aws",
+          "expressions": {
+            "bucket": {
+              "constant_value": "my-insecure-bucket"
+            },
+            "acl": {
+              "constant_value": "public-read"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
