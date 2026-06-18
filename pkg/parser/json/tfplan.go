@@ -7,6 +7,7 @@ package json
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	hcl_plan "github.com/hashicorp/terraform-json"
@@ -66,18 +67,67 @@ func readPlan(plan *hcl_plan.Plan) model.Document {
 }
 
 // readModule will iterate over all planned_value getting the information required
+// It recursively processes all modules and accumulates resources without losing data
 func (kp *TFPlan) readModule(module *hcl_plan.StateModule) {
-	// initialize all the types interfaces
+	kp.readModuleWithAddress(module, "")
+}
+
+// readModuleWithAddress recursively processes a module and its children with full address path
+// to ensure unique resource identification across the module tree
+func (kp *TFPlan) readModuleWithAddress(module *hcl_plan.StateModule, moduleAddress string) {
+	// Process all resources in this module
 	for _, resource := range module.Resources {
-		convNamedRes := make(map[string]TFPlanNamedResource)
-		kp.Resource[resource.Type] = convNamedRes
-	}
-	// fill in all the types interfaces
-	for _, resource := range module.Resources {
-		kp.Resource[resource.Type][resource.Name] = resource.AttributeValues
+		// Ensure the resource type map exists - accumulate, don't reinitialize!
+		if kp.Resource[resource.Type] == nil {
+			kp.Resource[resource.Type] = make(map[string]TFPlanNamedResource)
+		}
+
+		// Build resource key with module path for child modules
+		// Root module resources keep simple names for backward compatibility
+		// Child module resources are prefixed with their module path
+		resourceKey := resource.Name
+		if moduleAddress != "" {
+			resourceKey = moduleAddress + "." + resource.Name
+		}
+
+		// Handle count and for_each: append the index to the resource key
+		// This ensures each instance gets a unique key
+		if resource.Index != nil {
+			resourceKey = formatResourceKeyWithIndex(resourceKey, resource.Index)
+		}
+
+		// Accumulate the resource into the existing type map
+		kp.Resource[resource.Type][resourceKey] = resource.AttributeValues
 	}
 
+	// Recursively process child modules with their full address path
 	for _, childModule := range module.ChildModules {
-		kp.readModule(childModule)
+		// The childModule.Address already contains the full path from root
+		// (e.g., "module.networking" or "module.networking.module.security")
+		// So we pass it directly without combining with parent
+		kp.readModuleWithAddress(childModule, childModule.Address)
+	}
+}
+
+// formatResourceKeyWithIndex formats a resource key to include count/for_each index
+// Examples:
+//   - count: "web" + 0 -> "web[0]"
+//   - count: "web" + 2 -> "web[2]"
+//   - for_each: "bucket" + "prod" -> "bucket[\"prod\"]"
+//   - for_each: "bucket" + "staging" -> "bucket[\"staging\"]"
+func formatResourceKeyWithIndex(baseName string, index interface{}) string {
+	switch idx := index.(type) {
+	case float64:
+		// Count index (JSON numbers are float64)
+		return fmt.Sprintf("%s[%d]", baseName, int(idx))
+	case int:
+		// Count index (in case it's already an int)
+		return fmt.Sprintf("%s[%d]", baseName, idx)
+	case string:
+		// For_each index with string key
+		return fmt.Sprintf("%s[%q]", baseName, idx)
+	default:
+		// Fallback: just use the base name if we don't recognize the index type
+		return baseName
 	}
 }
