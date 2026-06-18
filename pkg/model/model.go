@@ -167,6 +167,8 @@ type FileMetadata struct {
 	ResolvedFiles     map[string]ResolvedFile
 	LinesOriginalData *[]string
 	IsMinified        bool
+	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
+	ModuleCallChain string
 }
 
 // QueryMetadata is a representation of general information about a query
@@ -232,6 +234,8 @@ type Vulnerability struct {
 	IsSuppressed             bool   `json:"isSuppressed,omitempty"`
 	SuppressionKind          string `json:"suppressionKind,omitempty"`
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
+	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
+	ModuleCallChain string `json:"moduleCallChain,omitempty"`
 }
 
 // Framework represents a framework mapping for a query
