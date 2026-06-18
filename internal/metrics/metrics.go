@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -67,6 +68,9 @@ func InitializeMetrics(metric string) error {
 		Metric.metricsID = profileCPU
 		Metric.Disable = false
 	case profileMEM:
+		// Set once before any allocation so pprof can treat the rate as constant
+		// for the program lifetime, as the runtime docs require.
+		runtime.MemProfileRate = 4096
 		Metric.metric = &memMetric{}
 		Metric.metricsID = profileMEM
 		Metric.Disable = false

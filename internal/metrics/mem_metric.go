@@ -43,9 +43,6 @@ func (c *memMetric) start() {
 	c.idx = 3 // inuse_space in the heap profile
 	c.typeMap = memoryMap
 
-	old := runtime.MemProfileRate
-	runtime.MemProfileRate = 4096
-
 	c.writer = bytes.NewBuffer([]byte{})
 	c.close = func() {
 		// Force a GC so inuse_space reflects live memory rather than uncollected
@@ -54,7 +51,6 @@ func (c *memMetric) start() {
 		if err := pprof.Lookup("heap").WriteTo(c.writer, 0); err != nil {
 			log.Error().Msgf("failed to write mem profile")
 		}
-		runtime.MemProfileRate = old
 	}
 }
 
