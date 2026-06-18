@@ -12,6 +12,7 @@ require (
 	github.com/emicklei/proto v1.14.3
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
 	github.com/golang/mock v1.6.0
+	github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.0
 	github.com/hashicorp/hcl v1.0.0

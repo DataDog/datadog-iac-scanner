@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/report"
 	"github.com/hashicorp/hcl"
@@ -80,6 +81,8 @@ func FileAnalyzer(path string) (string, error) {
 // them, matching the CLI counters and avoiding leaks into json/csv/gitlab/etc.
 func GenerateReport(ctx context.Context, path, filename string, body interface{}, formats []string, sciInfo *model.SCIInfo) error {
 	log.Debug().Msgf("helpers.GenerateReport()")
+	metrics.Metric.Start("generate_report")
+	defer metrics.Metric.Stop()
 
 	nonSarifBody := body
 	if summary, ok := body.(*model.Summary); ok {

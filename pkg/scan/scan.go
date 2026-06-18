@@ -10,6 +10,7 @@ package scan
 import (
 	"context"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -72,6 +73,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 
 	contextLogger.Info().Msgf("Preparing to inspect query source %v", querySource)
 
+	metrics.Metric.Start("get_queries")
 	inspector, err := engine.NewInspector(ctx,
 		querySource,
 		engine.DefaultVulnerabilityBuilder,
@@ -87,6 +89,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		c.ScanParams.KicsComputeNewSimID,
 		c.ScanParams.FlagEvaluator,
 	)
+	metrics.Metric.Stop()
 	if err != nil {
 		return nil, err
 	}

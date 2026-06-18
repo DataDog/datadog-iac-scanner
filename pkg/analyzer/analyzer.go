@@ -16,6 +16,7 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -299,6 +300,8 @@ var defaultConfigFiles = []string{"pnpm-lock.yaml"}
 func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	contextLogger := logger.FromContext(ctx)
 	// start metrics for file analyzer
+	metrics.Metric.Start("file_type_analyzer")
+	defer metrics.Metric.Stop()
 	returnAnalyzedPaths := model.AnalyzedPaths{
 		Types:       make([]string, 0),
 		Exc:         make([]string, 0),
