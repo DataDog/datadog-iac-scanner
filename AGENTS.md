@@ -33,6 +33,21 @@ make build
 ./bin/datadog-iac-scanner scan -p <path> -o <output-dir> -t Terraform
 ```
 
+## Profiling
+
+`--profiling` is a global flag (`CPU` or `MEM`). It profiles each major scan phase and writes a pprof file per phase to the system temp dir for `go tool pprof`. For `CPU` it logs the total CPU time per phase. For `MEM` it logs the live heap (`inuse_space`) at the moment each phase ends — a whole-process snapshot, so the numbers form a footprint high-water progression across the run rather than memory attributable to a phase alone.
+
+```bash
+./bin/datadog-iac-scanner --profiling CPU scan -p <path>   # or MEM
+```
+
+To isolate a single phase's contribution, diff its pprof file against the previous phase's (the file paths are printed at info level):
+
+```bash
+go tool pprof -base <prev-phase>.prof <cur-phase>.prof   # phase-only delta
+go tool pprof -sample_index=alloc_space <cur-phase>.prof # total allocations (churn)
+```
+
 ## Go lint (before commit or push)
 
 Any time you change Go code under `pkg/`, `cmd/`, or elsewhere in this module, **run golangci-lint locally before you commit or push**, using the same flags as the PR `lint` job (`.github/workflows/go-ci.yml`), so CI does not fail only after opening the PR.

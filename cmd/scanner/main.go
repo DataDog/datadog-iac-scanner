@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	cli "github.com/urfave/cli/v3"
@@ -46,6 +47,10 @@ func main() {
 				Usage: "minimum log level to display (trace, debug, info, warn, error, fatal, panic, disable)",
 				Value: "error",
 			},
+			&cli.StringFlag{
+				Name:  "profiling",
+				Usage: "enables profiling; one of CPU or MEM (results logged at info level)",
+			},
 		},
 		Before: applyGlobalOptions,
 	}
@@ -72,6 +77,9 @@ func applyGlobalOptions(ctx context.Context, c *cli.Command) (context.Context, e
 		return nil, fmt.Errorf("error parsing the log level: %w", err)
 	}
 	zerolog.SetGlobalLevel(level)
+	if err := metrics.InitializeMetrics(c.String("profiling")); err != nil {
+		return nil, err
+	}
 	return log.Logger.WithContext(ctx), nil
 }
 

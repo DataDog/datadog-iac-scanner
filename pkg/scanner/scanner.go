@@ -9,6 +9,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
@@ -24,6 +25,7 @@ func PrepareAndScan(
 	services serviceSlice,
 	flagEvaluator featureflags.FlagEvaluator,
 ) error {
+	metrics.Metric.Start("prepare_sources")
 	var wg sync.WaitGroup
 	wgDone := make(chan bool)
 	errCh := make(chan error)
@@ -44,16 +46,21 @@ func PrepareAndScan(
 
 	select {
 	case <-ctx.Done():
+		metrics.Metric.Stop()
 		return ctx.Err()
 	case <-wgDone:
+		metrics.Metric.Stop()
 		return StartScan(ctx, scanID, services)
 	case err := <-errCh:
+		metrics.Metric.Stop()
 		return err
 	}
 }
 
 // StartScan will run concurrent scans by parser
 func StartScan(ctx context.Context, scanID string, services serviceSlice) error {
+	defer metrics.Metric.Stop()
+	metrics.Metric.Start("start_scan")
 	contextLogger := logger.FromContext(ctx)
 	var wg sync.WaitGroup
 	wgDone := make(chan bool)
