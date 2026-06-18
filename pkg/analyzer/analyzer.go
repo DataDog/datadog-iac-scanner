@@ -559,6 +559,7 @@ func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<
 	returnType = checkReturnType(ctx, a.filePath, returnType, ext, content)
 
 	// Only process JSON files if they are Terraform plans
+	// This will be the case until other platforms support json scanning
 	if ext == json && returnType != "terraform" {
 		unwanted <- a.filePath
 		return
