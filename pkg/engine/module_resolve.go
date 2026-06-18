@@ -18,39 +18,36 @@ import (
 )
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
-// documents. Called module body files are suppressed (their resources are
-// emitted instantiated instead), and the "module" key is stripped from root
-// documents so call-site rule branches don't fire alongside the instantiated ones.
+// documents. In a called module body only the resource blocks are dropped (they
+// are re-emitted instantiated, with caller-resolved values); variable, output,
+// data and locals blocks are kept so their rules still fire exactly as in a
+// standalone scan. The instantiated local "module" call-sites are stripped from
+// root documents so call-site rule branches don't fire alongside the
+// instantiated resources.
 //
-// It mutates the input FileMetadata slice in place (clears Document /
-// LineInfoDocument for suppressed files; strips module blocks on other .tf files).
-func (c *Inspector) instantiateLocalModules(ctx context.Context, files model.FileMetadatas) (out []model.Document) {
-	defer func() {
-		if r := recover(); r != nil {
-			contextLogger := logger.FromContext(ctx)
-			contextLogger.Error().Interface("panic", r).Msg(
-				"instantiateLocalModules: recovered from panic; skipping synthetic module docs (input files may be partially updated)",
-			)
-			out = nil
-		}
-	}()
-
-	moduleDocs, suppressed, calledDirs, ok := resolveModuleDocuments(ctx, files, c.repoPath)
+// It mutates the input FileMetadata documents in place. Mutations are applied
+// only after evaluation succeeds (see resolveModulesSafely); a panic during
+// evaluation leaves the scan input untouched rather than removing coverage
+// without a synthetic replacement.
+func (c *Inspector) instantiateLocalModules(ctx context.Context, files model.FileMetadatas) []model.Document {
+	moduleDocs, suppressed, calledDirs, ok := c.resolveModulesSafely(ctx, files)
 	if !ok {
 		return nil
 	}
 	for _, f := range files {
-		if f == nil {
+		if f == nil || !isTerraformFile(f.FilePath) {
 			continue
 		}
 		if suppressed[f.ID] {
-			f.Document = model.Document{}
-			f.LineInfoDocument = nil
-		} else if isTerraformFile(f.FilePath) {
-			// Only remove local module call-sites that were instantiated; remote/registry
-			// module blocks must remain so the corresponding Rego branches can still fire.
-			stripLocalModuleCalls(f.Document, f.FilePath, c.repoPath, calledDirs)
+			// Resource blocks are re-emitted as instantiated synthetic docs, so
+			// drop only those to avoid double-counting; keep the rest of the body
+			// (variable/output/data/locals) so those rules still fire.
+			delete(f.Document, "resource")
+			delete(f.LineInfoDocument, "resource")
 		}
+		// Only remove local module call-sites that were instantiated; remote/registry
+		// module blocks must remain so the corresponding Rego branches can still fire.
+		stripLocalModuleCalls(f.Document, f.FilePath, c.repoPath, calledDirs)
 	}
 	contextLogger := logger.FromContext(ctx)
 	if len(moduleDocs) > 0 {
@@ -61,14 +58,34 @@ func (c *Inspector) instantiateLocalModules(ctx context.Context, files model.Fil
 	return moduleDocs
 }
 
+// resolveModulesSafely runs the panic-prone module evaluation under a recover so
+// a malformed module aborts only the synthetic-doc injection, not the scan. It
+// performs no in-place mutation of files, so returning ok=false on panic leaves
+// the scan input untouched and the caller skips all document mutations.
+func (c *Inspector) resolveModulesSafely(
+	ctx context.Context,
+	files model.FileMetadatas,
+) (moduleDocs []model.Document, suppressed, calledDirs map[string]bool, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Error().Interface("panic", r).Msg(
+				"instantiateLocalModules: recovered from panic; skipping synthetic module docs",
+			)
+			moduleDocs, suppressed, calledDirs, ok = nil, nil, nil, false
+		}
+	}()
+	return resolveModuleDocuments(ctx, files, c.repoPath)
+}
+
 // resolveModuleDocuments instantiates all local modules referenced by the
 // scanned files and returns synthetic resource documents (one per resolved
 // resource, attributed to its defining file) and the set of FileMetadata IDs
 // that should be suppressed to avoid double-scanning. Uncalled modules are
 // left untouched and continue to be scanned standalone.
 //
-// The boolean is true when at least one root module evaluated successfully and
-// the caller should apply call-site / suppression mutations; otherwise false
+// `ok` is true when at least one root module evaluated successfully and the
+// caller should apply call-site / suppression mutations; otherwise it is false
 // and the returned maps are nil.
 func resolveModuleDocuments(
 	ctx context.Context,
@@ -92,7 +109,7 @@ func resolveModuleDocuments(
 	contextLogger := logger.FromContext(ctx)
 	evaluator := tfeval.New()
 	seen := make(map[string]bool)
-	var rootEvalOK int
+	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
 
 	for dir := range dirsWithTf {
@@ -104,7 +121,7 @@ func resolveModuleDocuments(
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
 			continue
 		}
-		rootEvalOK++
+		rootEvalOK = true
 		for d := range childDirs {
 			actualCalledDirs[d] = true
 		}
@@ -115,7 +132,7 @@ func resolveModuleDocuments(
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement.
-	if rootEvalOK == 0 {
+	if !rootEvalOK {
 		return nil, nil, nil, false
 	}
 

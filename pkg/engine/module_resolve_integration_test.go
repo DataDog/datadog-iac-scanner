@@ -126,6 +126,85 @@ resource "aws_s3_bucket" "this" {
 	require.Greater(t, v.Line, 0, "line should be detected in the module file")
 }
 
+// variableTypeRule fires on a variable declaration that has no type, mirroring
+// real rules that match non-resource blocks (variable/output/data/locals).
+const variableTypeRule = `package datadog
+
+DatadogPolicy contains result if {
+	some name, i
+	var_block := input.document[i].variable[name]
+	not var_block.type
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "variable",
+		"resourceName": name,
+		"searchKey": sprintf("variable[%s]", [name]),
+		"issueType": "MissingAttribute",
+		"keyExpectedValue": "variable should declare a type",
+		"keyActualValue": "variable has no type",
+	}
+}
+`
+
+// TestInspect_PreservesNonResourceBlocksInModuleBody verifies that suppressing a
+// called module body keeps its non-resource blocks scannable: a rule matching a
+// typeless variable in the module file still fires, while the module's resource
+// is only reported once (via the instantiated synthetic doc, not the body file).
+func TestInspect_PreservesNonResourceBlocksInModuleBody(t *testing.T) {
+	root := t.TempDir()
+
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "bucket")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+
+	rootPath := filepath.Join(rootDir, "main.tf")
+	modPath := filepath.Join(modDir, "main.tf")
+
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+module "bucket" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(modPath, []byte(`
+variable "acl" {
+}
+
+resource "aws_s3_bucket" "this" {
+  acl = var.acl
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootPath)...)
+	files = append(files, parseTerraform(t, modPath)...)
+
+	queries := []model.QueryMetadata{{
+		Query:       "variable_type_rule",
+		Content:     variableTypeRule,
+		InputData:   "{}",
+		Platform:    "terraform",
+		Metadata:    map[string]interface{}{"id": "variable-type-rule"},
+		Aggregation: 1,
+	}}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{root}, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	require.Len(t, vulns, 1, "typeless variable in the suppressed module body should still be reported")
+	require.Equal(t, "variable", vulns[0].ResourceType)
+	require.Equal(t, modPath, vulns[0].FileName, "variable finding should be reported in the module body file")
+}
+
 // legacyAclRule mimics the two-branch pattern used in the real rules repo:
 // one branch scans the resource directly, and one uses the module call-site
 // (the legacy get_module_equivalent_key pattern, simplified here to just
