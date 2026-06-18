@@ -53,7 +53,7 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, SimilarityID: "similarity"},
+					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1},
 				},
 				CWE: "",
 			},
@@ -62,7 +62,6 @@ var junitTests = []junitTest{
 			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
-			SimilarityID:   "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},
@@ -106,7 +105,7 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, SimilarityID: "similarity"},
+					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1},
 				},
 				CWE: "22",
 			},
@@ -115,7 +114,6 @@ var junitTests = []junitTest{
 			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
-			SimilarityID:   "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},
@@ -159,7 +157,7 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, SimilarityID: "similarity"},
+					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1},
 				},
 			},
 		},
@@ -167,7 +165,6 @@ var junitTests = []junitTest{
 			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
-			SimilarityID:   "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},

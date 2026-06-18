@@ -122,7 +122,7 @@ func (a *AwsAccountInfo) getFinding(query *model.QueryResult, file *model.Vulner
 		CreatedAt:    *aws.String(timeFormatted),
 		Description:  *aws.String(getDescription(query, "asff")),
 		GeneratorID:  *aws.String(query.QueryID),
-		ID:           *aws.String(fmt.Sprintf("%s/%s/%s", awsRegion, awsAccountID, file.SimilarityID)),
+		ID:           *aws.String(fmt.Sprintf("%s/%s/%s/%s/%d", awsRegion, awsAccountID, query.QueryID, file.FileName, file.Line)),
 		ProductArn:   *aws.String(arn),
 		Resources: []Resource{
 			{

@@ -207,10 +207,10 @@ func setFields(t *testing.T, expect, actual []string, expectFileName, actualFile
 				expectQuery.Files[j].FileName = ""
 			}
 			sort.Slice(actualQuery.Files, func(a, b int) bool {
-				return actualQuery.Files[a].SimilarityID < actualQuery.Files[b].SimilarityID
+				return actualQuery.Files[a].SearchKey < actualQuery.Files[b].SearchKey
 			})
 			sort.Slice(expectQuery.Files, func(a, b int) bool {
-				return expectQuery.Files[a].SimilarityID < expectQuery.Files[b].SimilarityID
+				return expectQuery.Files[a].SearchKey < expectQuery.Files[b].SearchKey
 			})
 		}
 

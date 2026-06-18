@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"gopkg.in/yaml.v3"
@@ -22,7 +21,7 @@ const (
 // Options are always applied even when no local file exists, so server-side
 // customizations are fetched regardless of local file presence.
 func ReadConfiguration(ctx context.Context, rootPath string, options ...ReadConfigurationOption) (*IacConfig, []byte, error) {
-	cfgBytes, legacyExcludeResults, err := findLocalConfig(ctx, rootPath)
+	cfgBytes, err := findLocalConfig(ctx, rootPath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -37,14 +36,6 @@ func ReadConfiguration(ctx context.Context, rootPath string, options ...ReadConf
 	cfg, err := ParseConfig(cfgBytes)
 	if err != nil {
 		return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not parse configuration file: %w", err))
-	}
-
-	if len(legacyExcludeResults) > 0 {
-		if cfg == nil {
-			cfg = &IacConfig{}
-		}
-		cfg.LegacyExcludeResults = legacyExcludeResults
-		cfgBytes = appendLegacyExcludeResultsComment(cfgBytes, legacyExcludeResults)
 	}
 
 	if cfg != nil {
@@ -90,20 +81,20 @@ func hasIacSectionForSupportedVersion(b []byte) (bool, error) {
 // findLocalConfig returns the local configuration as YAML bytes.
 // The new config format (code-security.datadog.yaml) takes priority over the legacy
 // format only when it contains an iac section. If the new file exists but has no iac
-// section, the legacy format is used as a fallback. Returns (nil, nil, nil) when no
-// config file is found. legacyExcludeResults is populated only for legacy configs.
-func findLocalConfig(ctx context.Context, rootPath string) (cfgBytes []byte, legacyExcludeResults []string, err error) {
+// section, the legacy format is used as a fallback. Returns (nil, nil) when no
+// config file is found.
+func findLocalConfig(ctx context.Context, rootPath string) (cfgBytes []byte, err error) {
 	if path, found := fileExists(rootPath, ConfigFileNameBase, ".yaml", ".yml"); found {
 		b, err := os.ReadFile(path) // nolint:gosec
 		if err != nil {
-			return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not read configuration file %s: %w", path, err))
+			return nil, newInvalidLocalConfigError(fmt.Errorf("could not read configuration file %s: %w", path, err))
 		}
 		hasIac, err := hasIacSectionForSupportedVersion(b)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if hasIac {
-			return b, nil, nil
+			return b, nil
 		}
 		// No iac section or schema too old: fall through to legacy.
 	}
@@ -112,33 +103,23 @@ func findLocalConfig(ctx context.Context, rootPath string) (cfgBytes []byte, leg
 }
 
 // readLegacyConfigBytes reads and converts the legacy config file to YAML bytes.
-// Returns (nil, nil, nil) if no legacy config file is found.
-func readLegacyConfigBytes(ctx context.Context, rootPath string) (cfgBytes []byte, legacyExcludeResults []string, err error) {
+// Returns (nil, nil) if no legacy config file is found.
+func readLegacyConfigBytes(ctx context.Context, rootPath string) (cfgBytes []byte, err error) {
 	if _, found := fileExists(rootPath, LegacyConfigFileName); !found {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	converted, err := readLegacyConfiguration(ctx, rootPath)
 	if err != nil {
-		return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not read legacy configuration file: %w", err))
+		return nil, newInvalidLocalConfigError(fmt.Errorf("could not read legacy configuration file: %w", err))
 	}
 
 	b, err := UnparseConfig(converted)
 	if err != nil {
-		return nil, nil, newInvalidLocalConfigError(fmt.Errorf("could not convert legacy configuration file: %w", err))
+		return nil, newInvalidLocalConfigError(fmt.Errorf("could not convert legacy configuration file: %w", err))
 	}
 
-	return b, converted.LegacyExcludeResults, nil
-}
-
-func appendLegacyExcludeResultsComment(cfgBytes []byte, excludeResults []string) []byte {
-	var names []string
-	for _, rn := range excludeResults {
-		names = append(names, fmt.Sprintf("%q", rn))
-	}
-	return []byte(string(cfgBytes) + fmt.Sprintf(
-		"# These settings have been applied, but they cannot be expressed in the new configuration format:\n"+
-			"# exclude-results: [ %s ]\n", strings.Join(names, ", ")))
+	return b, nil
 }
 
 type ReadConfigurationOption func(context.Context, []byte) ([]byte, error)

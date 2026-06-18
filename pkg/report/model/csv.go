@@ -23,7 +23,6 @@ type CSVReport struct {
 	CISDescriptionTitle         string `csv:"cis_description_title"`
 	CISDescriptionTextFormatted string `csv:"cis_description_text"`
 	FileName                    string `csv:"file_name"`
-	SimilarityID                string `csv:"similarity_id"`
 	Line                        int    `csv:"line"`
 	IssueType                   string `csv:"issue_type"`
 	SearchKey                   string `csv:"search_key"`
@@ -54,7 +53,6 @@ func BuildCSVReport(summary *model.Summary) []CSVReport {
 				CISDescriptionTitle:         summary.Queries[i].CISDescriptionTitle,
 				CISDescriptionTextFormatted: summary.Queries[i].CISDescriptionTextFormatted,
 				FileName:                    summary.Queries[i].Files[j].FileName,
-				SimilarityID:                summary.Queries[i].Files[j].SimilarityID,
 				Line:                        summary.Queries[i].Files[j].Line,
 				IssueType:                   string(summary.Queries[i].Files[j].IssueType),
 				SearchKey:                   summary.Queries[i].Files[j].SearchKey,

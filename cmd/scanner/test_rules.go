@@ -278,14 +278,12 @@ func runFiles(
 		&source.QueryInspectorParameters{
 			FlagEvaluator: featureflags.NewLocalEvaluator(),
 		},
-		map[string]bool{},
 		map[string]config.IacRuleConfig{},
 		rootPath,
 		defaultRuleTestQueryTimeoutSecs,
 		false,
 		false,
 		0,
-		false,
 		featureflags.NewLocalEvaluator(),
 	)
 	if err != nil {
@@ -316,11 +314,11 @@ func wrapShapeValidator(
 	errs *[]string,
 ) engine.VulnerabilityBuilder {
 	return func(ctx context.Context, qCtx *engine.QueryContext, tracker engine.Tracker, v interface{},
-		dl *detector.DetectLine, useOldSeverities bool, kicsComputeNewSimID bool, queryDuration time.Duration) (*model.Vulnerability, error) {
+		dl *detector.DetectLine, useOldSeverities bool, queryDuration time.Duration) (*model.Vulnerability, error) {
 		if m, ok := v.(map[string]interface{}); ok {
 			*errs = append(*errs, validateResultShape(m, platform, ruleID)...)
 		}
-		return engine.DefaultVulnerabilityBuilder(ctx, qCtx, tracker, v, dl, useOldSeverities, kicsComputeNewSimID, queryDuration)
+		return engine.DefaultVulnerabilityBuilder(ctx, qCtx, tracker, v, dl, useOldSeverities, queryDuration)
 	}
 }
 
@@ -487,10 +485,8 @@ func (s *singleRuleSource) GetQueryLibrary(_ context.Context, platform string) (
 
 type noopTracker struct{}
 
-func (t *noopTracker) TrackQueryLoad(int)            {}
-func (t *noopTracker) TrackQueryExecuting(int)       {}
-func (t *noopTracker) TrackQueryExecution(int)       {}
-func (t *noopTracker) FailedDetectLine()             {}
-func (t *noopTracker) FailedComputeSimilarityID()    {}
-func (t *noopTracker) FailedComputeOldSimilarityID() {}
-func (t *noopTracker) GetOutputLines() int           { return 0 }
+func (t *noopTracker) TrackQueryLoad(int)      {}
+func (t *noopTracker) TrackQueryExecuting(int) {}
+func (t *noopTracker) TrackQueryExecution(int) {}
+func (t *noopTracker) FailedDetectLine()       {}
+func (t *noopTracker) GetOutputLines() int     { return 0 }

@@ -36,13 +36,11 @@ func Test_GetSummary(t *testing.T) {
 				LoadedQueries:      2,
 				ExecutingQueries:   1,
 				ExecutedQueries:    1,
-				FailedSimilarityID: 12312312,
 			},
 			scanParameters: Parameters{},
 			results: []model.Vulnerability{
 				{
 					ScanID:       "console",
-					SimilarityID: "ac0e0a60afa5543f6b26b90cecbf38da3341f44161289c172c91ea1a49652620",
 					FileID:       "ac0e0a60afa5543f6b26b90cecbf38da3341f44161289c172c91ea1a49652620",
 					FileName:     "/assets/queries/terraform/alicloud/action_trail_logging_all_regions_disabled/test/positive2.tf",
 					QueryID:      "c065b98e-1515-4991-9dca-b602bd6a2fbb",
@@ -74,7 +72,6 @@ func Test_GetSummary(t *testing.T) {
 					FailedToScanFiles:      0,
 					TotalQueries:           2,
 					FailedToExecuteQueries: 0,
-					FailedSimilarityID:     12312312,
 				},
 				SeveritySummary: model.SeveritySummary{
 					ScanID: "",
@@ -137,7 +134,6 @@ func Test_PrintOutput(t *testing.T) {
 					FailedToScanFiles:      0,
 					TotalQueries:           1040,
 					FailedToExecuteQueries: 0,
-					FailedSimilarityID:     0,
 				},
 				SeveritySummary: model.SeveritySummary{
 					ScanID:            "console",
@@ -181,7 +177,6 @@ func Test_PrintOutput(t *testing.T) {
 					FailedToScanFiles:      0,
 					TotalQueries:           1040,
 					FailedToExecuteQueries: 0,
-					FailedSimilarityID:     0,
 				},
 				SeveritySummary: model.SeveritySummary{
 					ScanID:            "console",
@@ -225,7 +220,6 @@ func Test_PrintOutput(t *testing.T) {
 					FailedToScanFiles:      0,
 					TotalQueries:           1040,
 					FailedToExecuteQueries: 0,
-					FailedSimilarityID:     0,
 				},
 				SeveritySummary: model.SeveritySummary{
 					ScanID:            "console",
@@ -286,7 +280,6 @@ func Test_resolveOutputs(t *testing.T) {
 				ExecutingQueries:   0,
 				ExecutedQueries:    0,
 				FoundFiles:         0,
-				FailedSimilarityID: 0,
 				LoadedQueries:      0,
 				ParsedFiles:        0,
 				FoundCountLines:    0,
@@ -329,7 +322,6 @@ func Test_GetScanMetadata(t *testing.T) {
 				LoadedQueries:      2,
 				ExecutingQueries:   1,
 				ExecutedQueries:    1,
-				FailedSimilarityID: 12312312,
 			},
 			results: &Results{
 				Files: model.FileMetadatas{
@@ -344,7 +336,6 @@ func Test_GetScanMetadata(t *testing.T) {
 				Results: []model.Vulnerability{
 					{
 						ScanID:       "console",
-						SimilarityID: "ac0e0a60afa5543f6b26b90cecbf38da3341f44161289c172c91ea1a49652620",
 						FileID:       "ac0e0a60afa5543f6b26b90cecbf38da3341f44161289c172c91ea1a49652620",
 						FileName:     "/assets/queries/terraform/alicloud/action_trail_logging_all_regions_disabled/test/positive2.tf",
 						QueryID:      "c065b98e-1515-4991-9dca-b602bd6a2fbb",

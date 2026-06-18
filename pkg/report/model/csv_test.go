@@ -95,7 +95,6 @@ func TestBuildCSVReport(t *testing.T) {
 					CISDescriptionTitle:         "testCISTitle",
 					CISDescriptionTextFormatted: "testCISDescription",
 					FileName:                    "positive.tf",
-					SimilarityID:                "",
 					Line:                        35,
 					IssueType:                   "IncorrectValue",
 					SearchKey:                   "aws_alb_listener[front_end].default_action.redirect",

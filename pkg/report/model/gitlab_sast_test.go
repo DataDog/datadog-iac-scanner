@@ -59,7 +59,7 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityHigh,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, SimilarityID: "similarity"},
+				{KeyActualValue: "test", FileName: "test.json", Line: 1},
 			},
 			CWE: "",
 		},
@@ -67,12 +67,11 @@ var tests = []gitlabSASTTest{
 			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
-			SimilarityID:   "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
 				{
-					ID:       "similarity",
+					ID:       "1:test.json:1",
 					Severity: "High",
 					Name:     "test",
 					Links: []gitlabSASTVulnerabilityLink{
@@ -107,7 +106,7 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityHigh,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, SimilarityID: "similarity"},
+				{KeyActualValue: "test", FileName: "test.json", Line: 1},
 			},
 			CWE: "22",
 		},
@@ -115,12 +114,11 @@ var tests = []gitlabSASTTest{
 			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
-			SimilarityID:   "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
 				{
-					ID:       "similarity",
+					ID:       "1:test.json:1",
 					Severity: "High",
 					Name:     "test",
 					Links: []gitlabSASTVulnerabilityLink{
@@ -155,19 +153,18 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityCritical,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, SimilarityID: "similarity"},
+				{KeyActualValue: "test", FileName: "test.json", Line: 1},
 			},
 		},
 		file: model.VulnerableFile{
 			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
-			SimilarityID:   "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
 				{
-					ID:       "similarity",
+					ID:       "1:test.json:1",
 					Severity: "Critical",
 					Name:     "test",
 					Links: []gitlabSASTVulnerabilityLink{

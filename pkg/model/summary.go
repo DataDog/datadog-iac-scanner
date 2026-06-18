@@ -27,8 +27,6 @@ type SeveritySummary struct {
 // VulnerableFile contains information of a vulnerable file and where the vulnerability was found
 type VulnerableFile struct {
 	FileName              string           `json:"file_name"`
-	SimilarityID          string           `json:"similarity_id"`
-	OldSimilarityID       string           `json:"old_similarity_id,omitempty"`
 	Line                  int              `json:"line"`
 	ResourceLocation      ResourceLocation `json:"resource_location"`
 	VulnLines             *[]CodeLine      `json:"-"`
@@ -94,7 +92,6 @@ type Counters struct {
 	FailedToScanFiles      int `json:"files_failed_to_scan"`
 	TotalQueries           int `json:"queries_total"`
 	FailedToExecuteQueries int `json:"queries_failed_to_execute"`
-	FailedSimilarityID     int `json:"queries_failed_to_compute_similarity_id"`
 	FoundResources         int `json:"resources_found"`
 }
 
@@ -278,8 +275,6 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		qItem := q[item.QueryID]
 		qItem.Files = append(qItem.Files, VulnerableFile{
 			FileName:                 resolvedPath,
-			SimilarityID:             item.SimilarityID,
-			OldSimilarityID:          item.OldSimilarityID,
 			Line:                     item.Line,
 			VulnLines:                item.VulnLines,
 			ResourceType:             item.ResourceType,

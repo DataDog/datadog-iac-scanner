@@ -5,7 +5,11 @@
  */
 package model
 
-import "github.com/DataDog/datadog-iac-scanner/pkg/model"
+import (
+	"fmt"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+)
 
 type lines struct {
 	Begin int `json:"begin"`
@@ -43,18 +47,21 @@ func BuildCodeClimateReport(summary *model.Summary) []CodeClimateReport {
 
 	for i := range summary.Queries {
 		for j := range summary.Queries[i].Files {
+			qr := summary.Queries[i]
+			vf := qr.Files[j]
+			fp := fmt.Sprintf("%s:%s:%d", qr.QueryID, vf.FileName, vf.Line)
 			codeClimateReport = append(codeClimateReport, CodeClimateReport{
 				Type:        "issue",
-				CheckName:   summary.Queries[i].QueryName,
-				CWE:         summary.Queries[i].CWE,
-				Description: summary.Queries[i].Description,
+				CheckName:   qr.QueryName,
+				CWE:         qr.CWE,
+				Description: qr.Description,
 				Categories:  []string{"Security"},
 				Location: location{
-					Path:  summary.Queries[i].Files[j].FileName,
-					Lines: lines{Begin: summary.Queries[i].Files[j].Line},
+					Path:  vf.FileName,
+					Lines: lines{Begin: vf.Line},
 				},
-				Severity:    severityMap[string(summary.Queries[i].Severity)],
-				Fingerprint: summary.Queries[i].Files[j].SimilarityID,
+				Severity:    severityMap[string(qr.Severity)],
+				Fingerprint: fp,
 			})
 		}
 	}

@@ -126,8 +126,6 @@ func unparseRuleConfigs(in map[string]IacRuleConfig) map[string]iacRuleConfigYam
 }
 
 // UnparseConfig turns a parsed configuration into a YAML file.
-// It ignores the LegacyExcludeResults field, since it's not representable in YAML.
-// You will need to handle it externally if you need to.
 func UnparseConfig(cfg *IacConfig) ([]byte, error) {
 	if cfg == nil {
 		return nil, nil

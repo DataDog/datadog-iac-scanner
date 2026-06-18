@@ -71,7 +71,7 @@ type QueryLoader struct {
 
 // VulnerabilityBuilder represents a function that will build a vulnerability
 type VulnerabilityBuilder func(ctx context.Context, qCtx *QueryContext, tracker Tracker, v interface{},
-	detector *detector.DetectLine, useOldSeverities bool, computeNewSimID bool, queryDuration time.Duration) (*model.Vulnerability, error)
+	detector *detector.DetectLine, useOldSeverities bool, queryDuration time.Duration) (*model.Vulnerability, error)
 
 // PreparedQuery includes the opaQuery and its metadata
 type PreparedQuery struct {
@@ -82,13 +82,12 @@ type PreparedQuery struct {
 // Inspector represents a list of compiled queries, a builder for vulnerabilities, an information tracker
 // a flag to enable coverage and the coverage report if it is enabled
 type Inspector struct {
-	QueryLoader    *QueryLoader
-	vb             VulnerabilityBuilder
-	tracker        Tracker
-	failedQueries  map[string]error
-	excludeResults map[string]bool
-	ruleConfigs    map[string]config.IacRuleConfig
-	detector       *detector.DetectLine
+	QueryLoader   *QueryLoader
+	vb            VulnerabilityBuilder
+	tracker       Tracker
+	failedQueries map[string]error
+	ruleConfigs   map[string]config.IacRuleConfig
+	detector      *detector.DetectLine
 
 	repoPath             string
 	enableCoverageReport bool
@@ -96,7 +95,6 @@ type Inspector struct {
 	queryExecTimeout     time.Duration
 	useOldSeverities     bool
 	numWorkers           int
-	computeNewSimID      bool
 	flagEvaluator        featureflags.FlagEvaluator
 }
 
@@ -126,14 +124,12 @@ func NewInspector(
 	vb VulnerabilityBuilder,
 	tracker Tracker,
 	queryParameters *source.QueryInspectorParameters,
-	excludeResults map[string]bool,
 	ruleConfigs map[string]config.IacRuleConfig,
 	repoPath string,
 	queryTimeout int,
 	useOldSeverities bool,
 	needsLog bool,
 	numWorkers int,
-	computeNewSimID bool,
 	flagEvaluator featureflags.FlagEvaluator,
 ) (*Inspector, error) {
 	contextLogger := logger.FromContext(ctx)
@@ -177,14 +173,12 @@ func NewInspector(
 		vb:               vb,
 		tracker:          tracker,
 		failedQueries:    failedQueries,
-		excludeResults:   excludeResults,
 		ruleConfigs:      ruleConfigs,
 		detector:         lineDetector,
 		repoPath:         repoPath,
 		queryExecTimeout: queryExecTimeout,
 		useOldSeverities: useOldSeverities,
 		numWorkers:       utils.AdjustNumWorkers(numWorkers),
-		computeNewSimID:  computeNewSimID,
 		flagEvaluator:    flagEvaluator,
 	}, nil
 }
@@ -588,7 +582,7 @@ func (c *Inspector) DecodeQueryResults(
 func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Inspector,
 	queryResultItem interface{}, queryDuration time.Duration) (*model.Vulnerability, bool) {
 	contextLogger := logger.FromContext(ctx)
-	vulnerability, err := c.vb(ctx, qCtx, c.tracker, queryResultItem, c.detector, c.useOldSeverities, c.computeNewSimID, queryDuration)
+	vulnerability, err := c.vb(ctx, qCtx, c.tracker, queryResultItem, c.detector, c.useOldSeverities, queryDuration)
 	if err != nil && err.Error() == ErrNoResult.Error() {
 		// Ignoring bad results
 		return nil, false
@@ -629,13 +623,9 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		return nil, true
 	}
 
-	if _, ok := c.excludeResults[vulnerability.SimilarityID]; ok {
+	if checkComment(vulnerability.Line, file.LinesIgnore) {
 		contextLogger.Debug().
-			Msgf("Suppressing result by SimilarityID: %s", vulnerability.SimilarityID)
-		markSuppressed(vulnerability, model.SuppressionKindExternal, model.SuppressionJustificationExcludeResults)
-	} else if checkComment(vulnerability.Line, file.LinesIgnore) {
-		contextLogger.Debug().
-			Msgf("Suppressing result by Comment: %s", vulnerability.SimilarityID)
+			Msgf("Suppressing result by Comment: %s:%d", vulnerability.FileName, vulnerability.Line)
 		markSuppressed(vulnerability, model.SuppressionKindInSource, model.SuppressionJustificationIgnoreComment)
 	}
 

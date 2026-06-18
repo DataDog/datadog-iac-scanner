@@ -39,10 +39,6 @@ The following top-level entries are supported:
 - `include-queries`: (optional) a list of query (rule) IDs to run. If `include-queries`
   is set, every `exclude-*` field in the same file is ignored and only the listed
   queries are evaluated.
-- `exclude-results`: (optional) a list of result similarity IDs to drop from scan
-  results. This option only exists in the legacy schema; it has no equivalent in
-  `code-security.datadog.yaml`.
-
 ### Possible values
 
 `exclude-severities` accepts the following values:
@@ -88,8 +84,6 @@ exclude-queries:
 exclude-categories:
   - "Access Control"
   - "Best Practices"
-exclude-results:
-  - "result-similarity-id"
 ```
 
 ### JSON

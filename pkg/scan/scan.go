@@ -79,14 +79,12 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		engine.DefaultVulnerabilityBuilder,
 		c.Tracker,
 		queryFilter,
-		c.ExcludeResultsMap,
 		c.ScanParams.Config.RuleConfigs,
 		c.ScanParams.RepoPath,
 		c.ScanParams.QueryExecTimeout,
 		c.ScanParams.UseOldSeverities,
 		true,
 		c.ScanParams.ParallelScanFlag,
-		c.ScanParams.KicsComputeNewSimID,
 		c.ScanParams.FlagEvaluator,
 	)
 	metrics.Metric.Stop()
@@ -207,14 +205,6 @@ func useDifferentPlatformQueries(platforms *[]string) {
 	if hasBicep && !hasARM {
 		*platforms = append(*platforms, "azureresourcemanager")
 	}
-}
-
-func getExcludeResultsMap(excludeResults []string) map[string]bool {
-	excludeResultsMap := make(map[string]bool)
-	for _, er := range excludeResults {
-		excludeResultsMap[er] = true
-	}
-	return excludeResultsMap
 }
 
 func (c *Client) createQueryFilter() *source.QueryInspectorParameters {

@@ -59,11 +59,10 @@ exclude-severities: [critical, high]
 `
 
 var parsedLegacyCfg = IacConfig{
-	IgnoreRules:          []string{"query1", "query2"},
-	IgnorePaths:          []string{"path1", "path2"},
-	IgnoreSeverities:     []string{"critical", "high"},
-	IgnoreCategories:     []string{"Access Control", "Availability"},
-	LegacyExcludeResults: []string{"res1", "res2"},
+	IgnoreRules:      []string{"query1", "query2"},
+	IgnorePaths:      []string{"path1", "path2"},
+	IgnoreSeverities: []string{"critical", "high"},
+	IgnoreCategories: []string{"Access Control", "Availability"},
 }
 
 const convertedLegacyCfg = `schema-version: v1.3
@@ -81,10 +80,6 @@ iac:
     ignore-categories:
       - Access Control
       - Availability
-`
-
-const excludeSuffix = `# These settings have been applied, but they cannot be expressed in the new configuration format:
-# exclude-results: [ "res1", "res2" ]
 `
 
 const emptyCfgFile = `
@@ -194,7 +189,7 @@ func TestReadLegacyOnly(t *testing.T) {
 
 	cfg, b, err := ReadConfiguration(t.Context(), tmp)
 	assert.NoError(t, err)
-	assert.Equal(t, convertedLegacyCfg+excludeSuffix, string(b))
+	assert.Equal(t, convertedLegacyCfg, string(b))
 	assert.Equal(t, parsedLegacyCfg, *cfg)
 }
 
@@ -231,7 +226,7 @@ func TestConfigFilePrecedenceWithIgnoredConfigFile(t *testing.T) {
 	// New config file has no iac section, so legacy takes over.
 	cfg, b, err := ReadConfiguration(t.Context(), tmp)
 	assert.NoError(t, err)
-	assert.Equal(t, convertedLegacyCfg+excludeSuffix, string(b))
+	assert.Equal(t, convertedLegacyCfg, string(b))
 	assert.Equal(t, parsedLegacyCfg, *cfg)
 }
 
@@ -253,9 +248,6 @@ func TestNoConfigWithDatadog(t *testing.T) {
 
 func TestConfigFileFromDatadog(t *testing.T) {
 	const repoUrl = "https://example.com/repo.git"
-	const cfgWithExclude = cfgFile + excludeSuffix
-	parsedCfgWithExclude := parsedCfgFile
-	parsedCfgWithExclude.LegacyExcludeResults = []string{"res1", "res2"}
 	for _, tc := range []struct {
 		name           string
 		isLegacyConfig bool
@@ -294,13 +286,14 @@ func TestConfigFileFromDatadog(t *testing.T) {
 			parsedConfig:   &parsedCfgFile,
 		},
 		{
+			// Legacy config is converted and sent as new format; exclude-results is silently dropped.
 			name:           "legacy config",
 			isLegacyConfig: true,
 			localConfig:    legacyCfg,
 			sentConfig:     convertedLegacyCfg,
 			finalConfig:    cfgFile,
-			expectedConfig: cfgWithExclude,
-			parsedConfig:   &parsedCfgWithExclude,
+			expectedConfig: cfgFile,
+			parsedConfig:   &parsedCfgFile,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
