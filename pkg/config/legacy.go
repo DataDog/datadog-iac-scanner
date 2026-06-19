@@ -46,9 +46,6 @@ func readLegacyConfiguration(ctx context.Context, rootPath string) (*IacConfig, 
 	if v.Get("exclude-queries") != nil {
 		configParams.IgnoreRules = v.GetStringSlice("exclude-queries")
 	}
-	if v.Get("exclude-results") != nil {
-		configParams.LegacyExcludeResults = v.GetStringSlice("exclude-results")
-	}
 	if v.Get("exclude-severities") != nil {
 		configParams.IgnoreSeverities = v.GetStringSlice("exclude-severities")
 	}
