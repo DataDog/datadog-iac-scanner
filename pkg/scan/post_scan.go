@@ -32,7 +32,6 @@ func (c *Client) getSummary(ctx context.Context, results []model.Vulnerability,
 		IgnoredFilesLines:      c.Tracker.IgnoreCountLines,
 		TotalQueries:           c.Tracker.LoadedQueries,
 		FailedToExecuteQueries: c.Tracker.ExecutingQueries - c.Tracker.ExecutedQueries,
-		FailedSimilarityID:     c.Tracker.FailedSimilarityID,
 		FoundResources:         c.Tracker.FoundResources,
 	}
 
@@ -43,6 +42,7 @@ func (c *Client) getSummary(ctx context.Context, results []model.Vulnerability,
 		c.ScanParams.ScanID,
 		pathParameters.PathExtractionMap,
 		c.ScanParams.RepoPath,
+		c.ScanParams.SCIInfo,
 	)
 	summary.Times = model.Times{
 		Start: c.ScanStartTime,

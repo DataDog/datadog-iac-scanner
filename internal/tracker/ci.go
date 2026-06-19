@@ -20,21 +20,19 @@ var (
 )
 
 type CITracker struct {
-	ExecutingQueries      int
-	ExecutedQueries       int
-	FoundFiles            int
-	FailedSimilarityID    int
-	FailedOldSimilarityID int
-	LoadedQueries         int
-	ParsedFiles           int
-	lines                 int
-	FoundCountLines       int
-	ParsedCountLines      int
-	IgnoreCountLines      int
-	BagOfFilesParse       map[string]int
-	BagOfFilesFound       map[string]int
-	syncFileMutex         sync.Mutex
-	FoundResources        int
+	ExecutingQueries int
+	ExecutedQueries  int
+	FoundFiles       int
+	LoadedQueries    int
+	ParsedFiles      int
+	lines            int
+	FoundCountLines  int
+	ParsedCountLines int
+	IgnoreCountLines int
+	BagOfFilesParse  map[string]int
+	BagOfFilesFound  map[string]int
+	syncFileMutex    sync.Mutex
+	FoundResources   int
 }
 
 // NewTracker will create a new instance of a tracker with the number of lines to display in results output
@@ -108,20 +106,6 @@ func (c *CITracker) FailedDetectLine() {
 	trackerMu.Lock()
 	defer trackerMu.Unlock()
 	c.ExecutedQueries--
-}
-
-// FailedComputeSimilarityID - queries that failed to compute similarity ID
-func (c *CITracker) FailedComputeSimilarityID() {
-	trackerMu.Lock()
-	defer trackerMu.Unlock()
-	c.FailedSimilarityID++
-}
-
-// FailedComputeOldSimilarityID - queries that failed to compute old similarity ID
-func (c *CITracker) FailedComputeOldSimilarityID() {
-	trackerMu.Lock()
-	defer trackerMu.Unlock()
-	c.FailedOldSimilarityID++
 }
 
 // TrackFileFoundCountLines - information about the lines of the scanned files

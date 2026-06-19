@@ -47,7 +47,7 @@ func TestCreateSummary(t *testing.T) {
 
 	ctx := context.Background()
 	t.Run("create_summary_empty", func(t *testing.T) {
-		summary := CreateSummary(ctx, counter, []Vulnerability{}, "scanID", pathExtractionMap, "")
+		summary := CreateSummary(ctx, counter, []Vulnerability{}, "scanID", pathExtractionMap, "", SCIInfo{})
 		require.Equal(t, summary, Summary{
 			Counters: counter,
 			SeveritySummary: SeveritySummary{
@@ -71,7 +71,7 @@ func TestCreateSummary(t *testing.T) {
 	t.Run("create_summary", func(t *testing.T) {
 		filePaths := make(map[string]string)
 		filePaths["fileName"] = "fileName"
-		summary := CreateSummary(ctx, counter, vulnerabilities, "scanID", pathExtractionMap, "")
+		summary := CreateSummary(ctx, counter, vulnerabilities, "scanID", pathExtractionMap, "", SCIInfo{})
 		require.Equal(t, summary, Summary{
 			Counters: counter,
 			SeveritySummary: SeveritySummary{
@@ -96,6 +96,7 @@ func TestCreateSummary(t *testing.T) {
 					Files: []VulnerableFile{
 						{
 							FileName:         "fileName",
+							Fingerprint:      GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "", "", ""),
 							Line:             1,
 							IssueType:        IssueTypeMissingAttribute,
 							SearchKey:        "searchKey",

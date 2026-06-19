@@ -54,7 +54,7 @@ func BuildCodeClimateReport(summary *model.Summary) []CodeClimateReport {
 					Lines: lines{Begin: summary.Queries[i].Files[j].Line},
 				},
 				Severity:    severityMap[string(summary.Queries[i].Severity)],
-				Fingerprint: summary.Queries[i].Files[j].SimilarityID,
+				Fingerprint: summary.Queries[i].Files[j].Fingerprint,
 			})
 		}
 	}

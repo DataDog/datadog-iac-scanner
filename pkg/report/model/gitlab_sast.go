@@ -128,7 +128,7 @@ func initGitlabSASTScan(start, end time.Time) gitlabSASTScan {
 func (glsr *gitlabSASTReport) BuildGitlabSASTVulnerability(issue *model.QueryResult, file *model.VulnerableFile) {
 	if len(issue.Files) > 0 {
 		vulnerability := gitlabSASTVulnerability{
-			ID:       file.SimilarityID,
+			ID:       file.Fingerprint,
 			Severity: cases.Title(language.Und).String(strings.ToLower(string(issue.Severity))),
 			Name:     issue.QueryName,
 			CWE:      issue.CWE,

@@ -17,22 +17,20 @@ import (
 /*
 TestCITracker tests the functions [TrackQueryLoad(),TrackQueryExecution(),TrackFileFound(),
 
-	TrackFileParse(),TrackFileParse(),FailedDetectLine(),FailedComputeSimilarityID()]
+	TrackFileParse(),TrackFileParse(),FailedDetectLine()]
 */
 func TestCITracker(t *testing.T) {
 	type fields struct {
-		LoadedQueries         int
-		ExecutedQueries       int
-		ExecutingQueries      int
-		FoundFiles            int
-		ParsedFiles           int
-		FailedSimilarityID    int
-		FailedOldSimilarityID int
-		FoundCountLines       int
-		ParsedCountLines      int
-		IgnoreCountLines      int
-		lines                 int
-		FoundResources        int
+		LoadedQueries    int
+		ExecutedQueries  int
+		ExecutingQueries int
+		FoundFiles       int
+		ParsedFiles      int
+		FoundCountLines  int
+		ParsedCountLines int
+		IgnoreCountLines int
+		lines            int
+		FoundResources   int
 	}
 	tests := []struct {
 		name   string
@@ -41,37 +39,34 @@ func TestCITracker(t *testing.T) {
 		{
 			name: "testing_case_1",
 			fields: fields{
-				LoadedQueries:         0,
-				ExecutedQueries:       0,
-				ExecutingQueries:      0,
-				FoundFiles:            0,
-				ParsedFiles:           0,
-				FailedSimilarityID:    0,
-				FailedOldSimilarityID: 0,
-				FoundCountLines:       2,
-				ParsedCountLines:      1,
-				IgnoreCountLines:      4,
-				lines:                 3,
-				FoundResources:        5,
+				LoadedQueries:    0,
+				ExecutedQueries:  0,
+				ExecutingQueries: 0,
+				FoundFiles:       0,
+				ParsedFiles:      0,
+				FoundCountLines:  2,
+				ParsedCountLines: 1,
+				IgnoreCountLines: 4,
+				lines:            3,
+				FoundResources:   5,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		c := &CITracker{
-			LoadedQueries:      tt.fields.LoadedQueries,
-			ExecutedQueries:    tt.fields.ExecutedQueries,
-			ExecutingQueries:   tt.fields.ExecutingQueries,
-			FoundFiles:         tt.fields.FoundFiles,
-			ParsedFiles:        tt.fields.ParsedFiles,
-			FailedSimilarityID: tt.fields.FailedSimilarityID,
-			FoundCountLines:    tt.fields.FoundCountLines,
-			ParsedCountLines:   tt.fields.ParsedCountLines,
-			IgnoreCountLines:   tt.fields.IgnoreCountLines,
-			lines:              tt.fields.lines,
-			BagOfFilesParse:    make(map[string]int),
-			BagOfFilesFound:    make(map[string]int),
-			FoundResources:     tt.fields.FoundResources,
+			LoadedQueries:    tt.fields.LoadedQueries,
+			ExecutedQueries:  tt.fields.ExecutedQueries,
+			ExecutingQueries: tt.fields.ExecutingQueries,
+			FoundFiles:       tt.fields.FoundFiles,
+			ParsedFiles:      tt.fields.ParsedFiles,
+			FoundCountLines:  tt.fields.FoundCountLines,
+			ParsedCountLines: tt.fields.ParsedCountLines,
+			IgnoreCountLines: tt.fields.IgnoreCountLines,
+			lines:            tt.fields.lines,
+			BagOfFilesParse:  make(map[string]int),
+			BagOfFilesFound:  make(map[string]int),
+			FoundResources:   tt.fields.FoundResources,
 		}
 		t.Run(fmt.Sprintf("%s", tt.name+"_LoadedQueries"), func(t *testing.T) {
 			c.TrackQueryLoad(1)
@@ -95,14 +90,6 @@ func TestCITracker(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", tt.name+"_TrackQueryExecuting"), func(t *testing.T) {
 			c.TrackQueryExecuting(1)
 			require.Equal(t, 1, c.ExecutingQueries)
-		})
-		t.Run(fmt.Sprintf("%s", tt.name+"_FailedComputeSimilarityID"), func(t *testing.T) {
-			c.FailedComputeSimilarityID()
-			require.Equal(t, 1, c.FailedSimilarityID)
-		})
-		t.Run(fmt.Sprintf("%s", tt.name+"_FailedComputeOldSimilarityID"), func(t *testing.T) {
-			c.FailedComputeOldSimilarityID()
-			require.Equal(t, 1, c.FailedOldSimilarityID)
 		})
 		t.Run(fmt.Sprintf("%s", tt.name+"_FailedDetectLine"), func(t *testing.T) {
 			c.FailedDetectLine()

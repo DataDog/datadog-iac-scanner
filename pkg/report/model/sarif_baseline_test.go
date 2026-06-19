@@ -129,6 +129,7 @@ func TestSarifOutputValidation(t *testing.T) {
 	// Generate SARIF report
 	report := NewSarifReport()
 	for i := range queryResults {
+		stampFingerprints(&queryResults[i])
 		report.BuildSarifIssue(ctx, &queryResults[i], model.SCIInfo{})
 	}
 
@@ -506,15 +507,14 @@ func TestCreateSummary_SuppressedExcludedFromCounters(t *testing.T) {
 
 	vulnerabilities := []model.Vulnerability{
 		{
-			QueryID:       "rule-a",
-			QueryName:     "Rule A",
-			Severity:      model.SeverityHigh,
-			FileName:      "active.tf",
-			SimilarityID:  "sim-active",
-			Line:          1,
-			IsSuppressed:  false,
-			ResourceType:  "aws_s3_bucket",
-			ResourceName:  "active-bucket",
+			QueryID:      "rule-a",
+			QueryName:    "Rule A",
+			Severity:     model.SeverityHigh,
+			FileName:     "active.tf",
+			Line:         1,
+			IsSuppressed: false,
+			ResourceType: "aws_s3_bucket",
+			ResourceName: "active-bucket",
 			VulnerabilityLocation: model.ResourceLocation{
 				Start: model.ResourceLine{Line: 1, Col: 1},
 				End:   model.ResourceLine{Line: 3, Col: 1},
@@ -525,7 +525,6 @@ func TestCreateSummary_SuppressedExcludedFromCounters(t *testing.T) {
 			QueryName:                "Rule A",
 			Severity:                 model.SeverityHigh,
 			FileName:                 "suppressed.tf",
-			SimilarityID:             "sim-suppressed",
 			Line:                     5,
 			IsSuppressed:             true,
 			SuppressionKind:          model.SuppressionKindInSource,
@@ -539,7 +538,7 @@ func TestCreateSummary_SuppressedExcludedFromCounters(t *testing.T) {
 		},
 	}
 
-	summary := model.CreateSummary(ctx, model.Counters{}, vulnerabilities, "scan-1", nil, ".")
+	summary := model.CreateSummary(ctx, model.Counters{}, vulnerabilities, "scan-1", nil, ".", model.SCIInfo{})
 	require.Len(t, summary.Queries, 1)
 	require.Len(t, summary.Queries[0].Files, 2,
 		"both active and suppressed files must remain in the query result for SARIF emission")

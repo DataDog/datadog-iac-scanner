@@ -51,19 +51,17 @@ func (s *stubQueriesSource) GetQueryLibrary(_ context.Context, platform string) 
 // with no rules. Set `querySource` to plug in a custom QueriesSource (e.g. a
 // gomock) instead of the default in-memory stub backed by `queries`.
 type inspectorOpts struct {
-	queries             []model.QueryMetadata
-	querySource         source.QueriesSource
-	queryParameters     *source.QueryInspectorParameters
-	excludeResults      map[string]bool
-	repoPath            string
-	queryTimeout        int
-	useOldSeverities    bool
-	needsLog            bool
-	numWorkers          int
-	computeNewSimID bool
-	vb                  VulnerabilityBuilder
-	tracker             Tracker
-	flagEvaluator       featureflags.FlagEvaluator
+	queries          []model.QueryMetadata
+	querySource      source.QueriesSource
+	queryParameters  *source.QueryInspectorParameters
+	repoPath         string
+	queryTimeout     int
+	useOldSeverities bool
+	needsLog         bool
+	numWorkers       int
+	vb               VulnerabilityBuilder
+	tracker          Tracker
+	flagEvaluator    featureflags.FlagEvaluator
 }
 
 // newTestInspector runs the real [NewInspector] against a configurable
@@ -78,9 +76,6 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 	if opts.queryParameters == nil {
 		opts.queryParameters = &source.QueryInspectorParameters{}
 	}
-	if opts.excludeResults == nil {
-		opts.excludeResults = map[string]bool{}
-	}
 	if opts.repoPath == "" {
 		opts.repoPath = "."
 	}
@@ -92,7 +87,7 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 	}
 	if opts.vb == nil {
 		opts.vb = func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
-			_ *detector.DetectLine, _ bool, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
 			return &model.Vulnerability{}, nil
 		}
 	}
@@ -109,14 +104,12 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.vb,
 		opts.tracker,
 		opts.queryParameters,
-		opts.excludeResults,
 		nil,
 		opts.repoPath,
 		opts.queryTimeout,
 		opts.useOldSeverities,
 		opts.needsLog,
 		opts.numWorkers,
-		opts.computeNewSimID,
 		opts.flagEvaluator,
 	)
 	require.NoError(t, err)
@@ -240,10 +233,9 @@ func TestNewInspector(t *testing.T) {
 	}
 
 	ins := newTestInspector(t, inspectorOpts{
-		queries:             queries,
-		tracker:             track,
-		needsLog:            true,
-		computeNewSimID: true,
+		queries:  queries,
+		tracker:  track,
+		needsLog: true,
 	})
 
 	require.NotNil(t, ins.vb, "vulnerability builder should be wired")
@@ -311,7 +303,7 @@ func TestEngine_LenQueriesByPlat(t *testing.T) {
 		{Query: "tf_rule_b", Content: "package tf_rule_b\n", InputData: "{}", Platform: "terraform", Aggregation: 1},
 		{Query: "k8s_rule", Content: "package k8s_rule\n", InputData: "{}", Platform: "kubernetes", Aggregation: 1},
 	}
-	ins := newTestInspector(t, inspectorOpts{queries: queries, computeNewSimID: true})
+	ins := newTestInspector(t, inspectorOpts{queries: queries})
 
 	require.Equal(t, 2, ins.LenQueriesByPlat([]string{"terraform"}))
 	require.Equal(t, 1, ins.LenQueriesByPlat([]string{"kubernetes"}))
@@ -320,7 +312,7 @@ func TestEngine_LenQueriesByPlat(t *testing.T) {
 }
 
 func TestEngine_GetFailedQueries(t *testing.T) {
-	ins := newTestInspector(t, inspectorOpts{computeNewSimID: true})
+	ins := newTestInspector(t, inspectorOpts{})
 	const nrFailedQueries = 5
 	for idx := 0; idx < nrFailedQueries; idx++ {
 		ins.failedQueries[fmt.Sprint(idx)] = nil
@@ -423,15 +415,13 @@ func TestShouldSkipFile(t *testing.T) {
 	}
 }
 
-// TestGetVulnerabilitiesFromQuery_SuppressionPaths covers the three
-// suppression gates (`disable:<queryID>`, `ignore-line`, similarity-id
-// exclusion) plus the non-suppressed baseline.
+// TestGetVulnerabilitiesFromQuery_SuppressionPaths covers the suppression
+// gates (`disable:<queryID>`, `ignore-line`) plus the non-suppressed baseline.
 func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 	const (
 		fileID        = "file-1"
 		queryID       = "platform-provider-rule"
 		legacyQueryID = "legacy-id"
-		similarityID  = "sim-1"
 		matchingLine  = 7
 	)
 
@@ -449,7 +439,6 @@ func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 			QueryID:       queryID,
 			LegacyQueryID: legacyQueryID,
 			QueryName:     "rule",
-			SimilarityID:  similarityID,
 			Line:          matchingLine,
 		}
 	}
@@ -457,7 +446,6 @@ func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 	cases := []struct {
 		name                  string
 		file                  *model.FileMetadata
-		excludeResults        map[string]bool
 		expectSuppressed      bool
 		expectSuppressionKind string
 		expectJustification   string
@@ -489,23 +477,14 @@ func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 			expectSuppressionKind: model.SuppressionKindInSource,
 			expectJustification:   model.SuppressionJustificationIgnoreComment,
 		},
-		{
-			name:                  "excluded_by_similarity_id",
-			file:                  baseFile(),
-			excludeResults:        map[string]bool{similarityID: true},
-			expectSuppressed:      true,
-			expectSuppressionKind: model.SuppressionKindExternal,
-			expectJustification:   model.SuppressionJustificationExcludeResults,
-		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			built := buildVulnerability()
 			ins := newTestInspector(t, inspectorOpts{
-				excludeResults: tc.excludeResults,
 				vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
-					_ *detector.DetectLine, _ bool, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+					_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
 					return built, nil
 				},
 			})
@@ -550,7 +529,7 @@ func TestGetVulnerabilitiesFromQuery_SuppressedSurvivesUndetectedLine(t *testing
 
 	ins := newTestInspector(t, inspectorOpts{
 		vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
-			_ *detector.DetectLine, _ bool, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
 			return built, nil
 		},
 	})
@@ -576,7 +555,6 @@ func TestGetVulnerabilitiesFromQuery_FirstJustificationWins(t *testing.T) {
 	const (
 		fileID       = "file-1"
 		queryID      = "platform-provider-rule"
-		similarityID = "sim-1"
 		matchingLine = 11
 	)
 
@@ -588,17 +566,15 @@ func TestGetVulnerabilitiesFromQuery_FirstJustificationWins(t *testing.T) {
 	}
 
 	built := &model.Vulnerability{
-		FileID:       fileID,
-		QueryID:      queryID,
-		QueryName:    "rule",
-		SimilarityID: similarityID,
-		Line:         matchingLine,
+		FileID:    fileID,
+		QueryID:   queryID,
+		QueryName: "rule",
+		Line:      matchingLine,
 	}
 
 	ins := newTestInspector(t, inspectorOpts{
-		excludeResults: map[string]bool{similarityID: true},
 		vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
-			_ *detector.DetectLine, _ bool, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
 			return built, nil
 		},
 	})
@@ -618,7 +594,7 @@ func TestGetVulnerabilitiesFromQuery_FirstJustificationWins(t *testing.T) {
 
 func TestInspector_DecodeQueryResults(t *testing.T) {
 	ctx := context.Background()
-	c := newTestInspector(t, inspectorOpts{computeNewSimID: true})
+	c := newTestInspector(t, inspectorOpts{})
 
 	queryContext := newQueryContext(ctx)
 

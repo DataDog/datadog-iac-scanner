@@ -53,7 +53,7 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, SimilarityID: "similarity"},
+					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
 				},
 				CWE: "",
 			},
@@ -62,7 +62,7 @@ var junitTests = []junitTest{
 			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
-			SimilarityID:   "similarity",
+			Fingerprint:    "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},
@@ -106,7 +106,7 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, SimilarityID: "similarity"},
+					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
 				},
 				CWE: "22",
 			},
@@ -115,7 +115,7 @@ var junitTests = []junitTest{
 			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
-			SimilarityID:   "similarity",
+			Fingerprint:    "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},
@@ -159,7 +159,7 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, SimilarityID: "similarity"},
+					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
 				},
 			},
 		},
@@ -167,7 +167,7 @@ var junitTests = []junitTest{
 			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
-			SimilarityID:   "similarity",
+			Fingerprint:    "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},

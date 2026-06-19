@@ -19,10 +19,8 @@ func TestTransformToSarifFixE2E(t *testing.T) { //nolint
 	}{
 		{
 			vuln: model.VulnerableFile{
-				FileName:        "assets/queries/terraform/aws/s3_bucket_without_versioning/test/positive6.tf",
-				SimilarityID:    "3f57a6f32db9ebf0d1da3a73122381ae2b7605a6ba3dc432219fe9fd5a44d7d5",
-				OldSimilarityID: "",
-				Line:            1,
+				FileName: "assets/queries/terraform/aws/s3_bucket_without_versioning/test/positive6.tf",
+				Line:     1,
 				ResourceLocation: model.ResourceLocation{
 					Start: model.ResourceLine{Line: 1, Col: 1},
 					End:   model.ResourceLine{Line: 9, Col: 2},
