@@ -87,15 +87,15 @@ class TerraformPlanGenerator:
 
         self.stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0}
 
-    def is_critical_rule(self, tf_file: Path) -> bool:
+    def is_high_rule(self, tf_file: Path) -> bool:
         """
-        Check if a .tf file belongs to a critical severity rule.
+        Check if a .tf file belongs to a high severity rule.
 
         Args:
             tf_file: Path to the .tf file
 
         Returns:
-            True if the file is in a critical rule directory, False otherwise
+            True if the file is in a high rule directory, False otherwise
         """
         # Look for metadata.json in parent directories
         current = tf_file.parent
@@ -107,10 +107,10 @@ class TerraformPlanGenerator:
                         metadata = json.load(f)
 
                     severity = metadata.get("severity")
-                    if severity == "CRITICAL":
+                    if severity == "HIGH":
                         return True
                     else:
-                        # Found metadata but not critical, stop searching
+                        # Found metadata but not high, stop searching
                         return False
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.debug(f"Failed to parse metadata file {metadata_file}: {e}")
@@ -118,27 +118,62 @@ class TerraformPlanGenerator:
 
         return False
 
+    def has_json_tests(self, tf_file: Path) -> bool:
+        """
+        Check if the rule directory already has .json test files.
+
+        Args:
+            tf_file: Path to a .tf file
+
+        Returns:
+            True if the test directory contains Terraform plan .json files, False otherwise
+        """
+        # The test directory is the parent of the .tf file
+        test_dir = tf_file.parent
+
+        # Check if any .json files exist in this test directory
+        # Exclude positive_expected_result.json and negative_expected_result.json
+        json_files = [
+            f for f in test_dir.glob("*.json")
+            if f.name not in ["positive_expected_result.json", "negative_expected_result.json"]
+        ]
+
+        if json_files:
+            logger.debug(f"Found {len(json_files)} existing plan .json files in {test_dir}, skipping rule")
+            return True
+
+        return False
+
     def find_tf_files(self, root_dir: Path) -> List[Path]:
         """
-        Recursively find all .tf files in the given directory that belong to critical severity rules.
+        Recursively find all .tf files in the given directory that belong to high severity rules.
+        Skips rules that already have .json test files.
 
         Args:
             root_dir: Root directory to search
 
         Returns:
-            List of Path objects for .tf files in critical severity rules
+            List of Path objects for .tf files in high severity rules that don't have .json tests yet
         """
-        logger.info(f"Searching for .tf files in critical severity rules in {root_dir}")
+        logger.info(f"Searching for .tf files in high severity rules in {root_dir}")
         all_tf_files = list(root_dir.rglob("*.tf"))
         logger.debug(f"Found {len(all_tf_files)} total .tf files")
 
-        # Filter to only critical severity rules
-        critical_tf_files = [tf for tf in all_tf_files if self.is_critical_rule(tf)]
+        # Filter to only high severity rules
+        high_tf_files = [tf for tf in all_tf_files if self.is_high_rule(tf)]
+
+        # Filter out rules that already have .json test files
+        files_without_json = [tf for tf in high_tf_files if not self.has_json_tests(tf)]
+
+        skipped_count = len(high_tf_files) - len(files_without_json)
+        if skipped_count > 0:
+            logger.info(f"Skipped {skipped_count} .tf files from rules that already have .json tests")
 
         logger.info(
-            f"Found {len(critical_tf_files)} .tf files in critical severity rules (skipped {len(all_tf_files) - len(critical_tf_files)} non-critical)"
+            f"Found {len(files_without_json)} .tf files in high severity rules without .json tests "
+            f"(skipped {len(all_tf_files) - len(files_without_json)} files total)"
         )
-        return critical_tf_files
+        return files_without_json
 
     def run_command(
         self, cmd: List[str], cwd: Path, timeout: int = 300
@@ -355,7 +390,16 @@ The output should be valid .tf file content that can be directly saved and used.
 
             # If AI still included explanatory text, try to extract just the Terraform code
             # Look for the start of actual Terraform code
-            tf_keywords = ["terraform {", "resource \"", "provider \"", "data \"", "module \"", "variable \"", "output \"", "locals {"]
+            tf_keywords = [
+                "terraform {",
+                'resource "',
+                'provider "',
+                'data "',
+                'module "',
+                'variable "',
+                'output "',
+                "locals {",
+            ]
             lines = fixed_content.split("\n")
             start_idx = -1
 
@@ -367,11 +411,15 @@ The output should be valid .tf file content that can be directly saved and used.
 
             # If we found Terraform code but it's not at the start
             if start_idx > 0:
-                logger.debug(f"Stripping {start_idx} lines of explanatory text before Terraform code")
+                logger.debug(
+                    f"Stripping {start_idx} lines of explanatory text before Terraform code"
+                )
                 fixed_content = "\n".join(lines[start_idx:])
             elif start_idx == -1:
                 # No valid Terraform code found at all - this is likely explanatory text
-                logger.warning("AI response contained no valid Terraform code, likely explanatory text")
+                logger.warning(
+                    "AI response contained no valid Terraform code, likely explanatory text"
+                )
                 # Return None to trigger a retry with a stronger prompt
                 return None
 
@@ -474,9 +522,13 @@ The output should be valid .tf file content that can be directly saved and used.
 
                 # Special case for Azure authentication errors that can't be fixed
                 # These happen even with mock credentials because Azure validates them
-                if ("building account: could not acquire access token" in stderr or
-                    "could not configure AzureCli Authorizer" in stderr):
-                    logger.warning("Azure authentication failed - trying validation mode")
+                if (
+                    "building account: could not acquire access token" in stderr
+                    or "could not configure AzureCli Authorizer" in stderr
+                ):
+                    logger.warning(
+                        "Azure authentication failed - trying validation mode"
+                    )
 
                     # First, try terraform validate to at least check syntax
                     val_success, val_stdout, val_stderr = self.run_command(
@@ -484,35 +536,221 @@ The output should be valid .tf file content that can be directly saved and used.
                     )
 
                     if val_success:
-                        # Create a minimal plan structure from validation output
-                        import json
+                        # Parse the Terraform file to extract resource information
+                        import re
+
                         try:
                             # Parse validation output
                             val_data = json.loads(val_stdout) if val_stdout else {}
 
-                            # Create a minimal plan JSON structure
+                            # Parse the Terraform file to extract resources
+                            resources = []
+                            resource_changes = []
+
+                            # Extract resource blocks using regex
+                            resource_pattern = r'resource\s+"([^"]+)"\s+"([^"]+)"\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
+                            for match in re.finditer(
+                                resource_pattern, current_content, re.DOTALL
+                            ):
+                                resource_type = match.group(1)
+                                resource_name = match.group(2)
+                                resource_body = match.group(3)
+
+                                # Extract basic attributes
+                                attributes = {}
+
+                                # Common patterns for all resources (Azure, AWS, Alicloud)
+                                attribute_patterns = [
+                                    (r'name\s*=\s*"([^"]+)"', "name"),
+                                    (r'location\s*=\s*"([^"]+)"', "location"),
+                                    (
+                                        r'resource_group_name\s*=\s*"([^"]+)"',
+                                        "resource_group_name",
+                                    ),
+                                    (r"capacity\s*=\s*(\d+)", "capacity"),
+                                    (r'family\s*=\s*"([^"]+)"', "family"),
+                                    (r'sku_name\s*=\s*"([^"]+)"', "sku_name"),
+                                    (
+                                        r"enable_non_ssl_port\s*=\s*(true|false)",
+                                        "enable_non_ssl_port",
+                                    ),
+                                    (r'start_ip\s*=\s*"([^"]+)"', "start_ip"),
+                                    (r'end_ip\s*=\s*"([^"]+)"', "end_ip"),
+                                    # Alicloud specific
+                                    (r'zone_id\s*=\s*"([^"]+)"', "zone_id"),
+                                    (r'instance_type\s*=\s*"([^"]+)"', "instance_type"),
+                                    (r'vswitch_id\s*=\s*"([^"]+)"', "vswitch_id"),
+                                    (
+                                        r"security_groups\s*=\s*\[([^\]]+)\]",
+                                        "security_groups",
+                                    ),
+                                    (
+                                        r"internet_max_bandwidth_out\s*=\s*(\d+)",
+                                        "internet_max_bandwidth_out",
+                                    ),
+                                    # AWS specific
+                                    (r'instance_type\s*=\s*"([^"]+)"', "instance_type"),
+                                    (r'ami\s*=\s*"([^"]+)"', "ami"),
+                                    (r'vpc_id\s*=\s*"([^"]+)"', "vpc_id"),
+                                    (r'subnet_id\s*=\s*"([^"]+)"', "subnet_id"),
+                                ]
+
+                                for pattern, attr_name in attribute_patterns:
+                                    match_attr = re.search(pattern, resource_body)
+                                    if match_attr:
+                                        value = match_attr.group(1)
+                                        # Convert boolean strings
+                                        if value in ("true", "false"):
+                                            value = value == "true"
+                                        # Convert numeric strings
+                                        elif value.isdigit():
+                                            value = int(value)
+                                        attributes[attr_name] = value
+
+                                # Handle references
+                                ref_patterns = [
+                                    (
+                                        r"location\s*=\s*azurerm_resource_group\.[^.]+\.location",
+                                        "location",
+                                        "eastus",
+                                    ),
+                                    (
+                                        r"resource_group_name\s*=\s*azurerm_resource_group\.[^.]+\.name",
+                                        "resource_group_name",
+                                        "test-rg",
+                                    ),
+                                    (
+                                        r"redis_cache_name\s*=\s*azurerm_redis_cache\.[^.]+\.name",
+                                        "redis_cache_name",
+                                        "testcache",
+                                    ),
+                                ]
+
+                                for pattern, attr_name, default_value in ref_patterns:
+                                    if (
+                                        re.search(pattern, resource_body)
+                                        and attr_name not in attributes
+                                    ):
+                                        attributes[attr_name] = default_value
+
+                                # Extract nested blocks (e.g., redis_configuration)
+                                config_match = re.search(
+                                    r"redis_configuration\s*\{([^}]+)\}", resource_body
+                                )
+                                if config_match:
+                                    redis_config = {}
+                                    config_body = config_match.group(1)
+                                    for pattern, attr_name in [
+                                        (r"maxclients\s*=\s*(\d+)", "maxclients"),
+                                        (
+                                            r"maxmemory_reserved\s*=\s*(\d+)",
+                                            "maxmemory_reserved",
+                                        ),
+                                        (
+                                            r"maxmemory_delta\s*=\s*(\d+)",
+                                            "maxmemory_delta",
+                                        ),
+                                        (
+                                            r'maxmemory_policy\s*=\s*"([^"]+)"',
+                                            "maxmemory_policy",
+                                        ),
+                                    ]:
+                                        m = re.search(pattern, config_body)
+                                        if m:
+                                            val = m.group(1)
+                                            redis_config[attr_name] = (
+                                                int(val) if val.isdigit() else val
+                                            )
+                                    if redis_config:
+                                        attributes["redis_configuration"] = [
+                                            redis_config
+                                        ]
+
+                                # Determine provider
+                                if resource_type.startswith("alicloud_"):
+                                    provider_name = "alicloud"
+                                elif resource_type.startswith("azurerm_"):
+                                    provider_name = "azurerm"
+                                elif resource_type.startswith("aws_"):
+                                    provider_name = "aws"
+                                elif resource_type.startswith("google_"):
+                                    provider_name = "google"
+                                elif resource_type.startswith("random_"):
+                                    provider_name = "random"
+                                else:
+                                    provider_name = (
+                                        resource_type.split("_")[0]
+                                        if "_" in resource_type
+                                        else "null"
+                                    )
+
+                                # Create resource entry
+                                resource_entry = {
+                                    "address": f"{resource_type}.{resource_name}",
+                                    "mode": "managed",
+                                    "type": resource_type,
+                                    "name": resource_name,
+                                    "provider_name": provider_name,
+                                    "schema_version": 0,
+                                    "values": attributes,
+                                    "sensitive_values": {},
+                                }
+                                resources.append(resource_entry)
+
+                                # Create resource change entry
+                                change_entry = {
+                                    "address": f"{resource_type}.{resource_name}",
+                                    "mode": "managed",
+                                    "type": resource_type,
+                                    "name": resource_name,
+                                    "provider_name": f"registry.terraform.io/hashicorp/{provider_name}",
+                                    "change": {
+                                        "actions": ["create"],
+                                        "before": None,
+                                        "after": attributes,
+                                        "after_unknown": {},
+                                        "before_sensitive": False,
+                                        "after_sensitive": False,
+                                    },
+                                }
+                                resource_changes.append(change_entry)
+
+                            # Create a plan JSON structure with extracted resources
                             plan_json = {
                                 "format_version": "1.0",
                                 "terraform_version": "1.15.2",
                                 "planned_values": {
+                                    "root_module": {"resources": resources}
+                                },
+                                "resource_changes": resource_changes,
+                                "configuration": {
                                     "root_module": {
-                                        "resources": []
+                                        "resources": [
+                                            {
+                                                "address": res["address"],
+                                                "mode": res["mode"],
+                                                "type": res["type"],
+                                                "name": res["name"],
+                                                "provider_config_key": res[
+                                                    "provider_name"
+                                                ],
+                                            }
+                                            for res in resources
+                                        ]
                                     }
                                 },
-                                "resource_changes": [],
-                                "configuration": {
-                                    "root_module": {}
-                                },
                                 "validation_only": True,
-                                "validation_output": val_data
+                                "validation_output": val_data,
                             }
 
-                            # Write the minimal plan
-                            json_file = tf_file.with_suffix('.json')
-                            with open(json_file, 'w') as f:
+                            # Write the plan with extracted resources
+                            json_file = tf_file.with_suffix(".json")
+                            with open(json_file, "w") as f:
                                 json.dump(plan_json, f, indent=2)
 
-                            logger.info(f"✓ Generated validation-only plan for {json_file}")
+                            logger.info(
+                                f"✓ Generated validation-based plan with {len(resources)} resources for {json_file}"
+                            )
                             return True
                         except Exception as e:
                             logger.error(f"Failed to create validation plan: {e}")
@@ -548,6 +786,212 @@ The output should be valid .tf file content that can be directly saved and used.
                         logger.error("AI fix for plan error failed")
                         return False
                 else:
+                    # All retries exhausted - check if this is an Azure auth issue
+                    # and try validation fallback
+                    logger.warning(
+                        f"All plan attempts failed for {tf_file}, checking for Azure auth issues"
+                    )
+
+                    # Check the last error message for Azure authentication issues
+                    if (
+                        "building account" in stderr
+                        or "could not acquire access token" in stderr
+                        or "could not configure AzureCli Authorizer" in stderr
+                    ):
+                        logger.info(
+                            "Azure authentication issue detected, attempting validation fallback"
+                        )
+
+                        # Try terraform validate as a fallback
+                        val_success, val_stdout, val_stderr = self.run_command(
+                            ["terraform", "validate", "-json"], temp_path
+                        )
+
+                        if val_success:
+                            # Use the helper function we already defined earlier
+                            # Parse the Terraform file to extract resource information
+                            import re
+
+                            try:
+                                # Parse validation output
+                                val_data = json.loads(val_stdout) if val_stdout else {}
+
+                                # Parse the Terraform file to extract resources
+                                resources = []
+                                resource_changes = []
+
+                                # Extract resource blocks using regex
+                                resource_pattern = r'resource\s+"([^"]+)"\s+"([^"]+)"\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
+                                for match in re.finditer(
+                                    resource_pattern, current_content, re.DOTALL
+                                ):
+                                    resource_type = match.group(1)
+                                    resource_name = match.group(2)
+                                    resource_body = match.group(3)
+
+                                    # Extract basic attributes
+                                    attributes = {}
+
+                                    # Common patterns for all resources (Azure, AWS, Alicloud)
+                                    attribute_patterns = [
+                                        (r'name\s*=\s*"([^"]+)"', "name"),
+                                        (r'location\s*=\s*"([^"]+)"', "location"),
+                                        (
+                                            r'resource_group_name\s*=\s*"([^"]+)"',
+                                            "resource_group_name",
+                                        ),
+                                        (r"capacity\s*=\s*(\d+)", "capacity"),
+                                        (r'family\s*=\s*"([^"]+)"', "family"),
+                                        (r'sku_name\s*=\s*"([^"]+)"', "sku_name"),
+                                        (
+                                            r"enable_non_ssl_port\s*=\s*(true|false)",
+                                            "enable_non_ssl_port",
+                                        ),
+                                        (r'start_ip\s*=\s*"([^"]+)"', "start_ip"),
+                                        (r'end_ip\s*=\s*"([^"]+)"', "end_ip"),
+                                        # Alicloud specific
+                                        (r'zone_id\s*=\s*"([^"]+)"', "zone_id"),
+                                        (
+                                            r'instance_type\s*=\s*"([^"]+)"',
+                                            "instance_type",
+                                        ),
+                                        (r'vswitch_id\s*=\s*"([^"]+)"', "vswitch_id"),
+                                        (
+                                            r"security_groups\s*=\s*\[([^\]]+)\]",
+                                            "security_groups",
+                                        ),
+                                        (
+                                            r"internet_max_bandwidth_out\s*=\s*(\d+)",
+                                            "internet_max_bandwidth_out",
+                                        ),
+                                        # AWS specific
+                                        (r'ami\s*=\s*"([^"]+)"', "ami"),
+                                        (r'vpc_id\s*=\s*"([^"]+)"', "vpc_id"),
+                                        (r'subnet_id\s*=\s*"([^"]+)"', "subnet_id"),
+                                    ]
+
+                                    for pattern, attr_name in attribute_patterns:
+                                        match_attr = re.search(pattern, resource_body)
+                                        if match_attr:
+                                            value = match_attr.group(1)
+                                            # Convert boolean strings
+                                            if value in ("true", "false"):
+                                                value = value == "true"
+                                            # Convert numeric strings
+                                            elif value.isdigit():
+                                                value = int(value)
+                                            attributes[attr_name] = value
+
+                                    # Handle references
+                                    ref_patterns = [
+                                        (
+                                            r"location\s*=\s*azurerm_resource_group\.[^.]+\.location",
+                                            "location",
+                                            "eastus",
+                                        ),
+                                        (
+                                            r"resource_group_name\s*=\s*azurerm_resource_group\.[^.]+\.name",
+                                            "resource_group_name",
+                                            "test-rg",
+                                        ),
+                                        (
+                                            r"redis_cache_name\s*=\s*azurerm_redis_cache\.[^.]+\.name",
+                                            "redis_cache_name",
+                                            "testcache",
+                                        ),
+                                    ]
+
+                                    for (
+                                        pattern,
+                                        attr_name,
+                                        default_value,
+                                    ) in ref_patterns:
+                                        if (
+                                            re.search(pattern, resource_body)
+                                            and attr_name not in attributes
+                                        ):
+                                            attributes[attr_name] = default_value
+
+                                    # Determine provider
+                                    provider_name = (
+                                        resource_type.split("_")[0]
+                                        if "_" in resource_type
+                                        else "null"
+                                    )
+
+                                    # Create resource entry
+                                    resource_entry = {
+                                        "address": f"{resource_type}.{resource_name}",
+                                        "mode": "managed",
+                                        "type": resource_type,
+                                        "name": resource_name,
+                                        "provider_name": provider_name,
+                                        "schema_version": 0,
+                                        "values": attributes,
+                                        "sensitive_values": {},
+                                    }
+                                    resources.append(resource_entry)
+
+                                    # Create resource change entry
+                                    change_entry = {
+                                        "address": f"{resource_type}.{resource_name}",
+                                        "mode": "managed",
+                                        "type": resource_type,
+                                        "name": resource_name,
+                                        "provider_name": f"registry.terraform.io/hashicorp/{provider_name}",
+                                        "change": {
+                                            "actions": ["create"],
+                                            "before": None,
+                                            "after": attributes,
+                                            "after_unknown": {},
+                                            "before_sensitive": False,
+                                            "after_sensitive": False,
+                                        },
+                                    }
+                                    resource_changes.append(change_entry)
+
+                                # Create a plan JSON structure with extracted resources
+                                plan_json = {
+                                    "format_version": "1.0",
+                                    "terraform_version": "1.15.2",
+                                    "planned_values": {
+                                        "root_module": {"resources": resources}
+                                    },
+                                    "resource_changes": resource_changes,
+                                    "configuration": {
+                                        "root_module": {
+                                            "resources": [
+                                                {
+                                                    "address": res["address"],
+                                                    "mode": res["mode"],
+                                                    "type": res["type"],
+                                                    "name": res["name"],
+                                                    "provider_config_key": res[
+                                                        "provider_name"
+                                                    ],
+                                                }
+                                                for res in resources
+                                            ]
+                                        }
+                                    },
+                                    "validation_only": True,
+                                    "validation_output": val_data,
+                                }
+
+                                # Write the plan with extracted resources
+                                json_file = tf_file.with_suffix(".json")
+                                with open(json_file, "w") as f:
+                                    json.dump(plan_json, f, indent=2)
+
+                                logger.info(
+                                    f"✓ Generated validation-based plan with {len(resources)} resources for {json_file}"
+                                )
+                                return True
+                            except Exception as e:
+                                logger.error(f"Failed to create validation plan: {e}")
+                                return False
+
+                    # Not an Azure issue or validation also failed
                     logger.error(
                         f"Failed to generate plan for {tf_file} after {self.max_retries} attempts"
                     )
