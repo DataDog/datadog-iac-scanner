@@ -43,12 +43,25 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 
 	lines := *file.LinesOriginalData
 	splitSanitized := strings.Split(sanitizedSubstring, ".")
+
+	// Re-join $ref segments split by dot (e.g. "$ref=#/schemas/v1.0.Foo" → ["v1","0","Foo"])
+	// before the numeric-index check runs.
 	for index, split := range splitSanitized {
 		if strings.Contains(split, "$ref") {
 			splitSanitized[index] = strings.Join(splitSanitized[index:], ".")
 			splitSanitized = splitSanitized[:index+1]
 			break
 		}
+	}
+
+	// Numeric segments (e.g. "0" in "rules.0.apiGroups") have no literal text in the
+	// source file, so the text-matcher cannot advance through them. handleArrayIndex
+	// tries a structured gjson lookup first; on failure it strips numerics and falls
+	// back to the text-matcher.
+	if result, remaining := handleArrayIndex(splitSanitized, extractedString, file, detector.ResolvedFile, outputLines, lines); result != nil {
+		return *result
+	} else if remaining != nil {
+		splitSanitized = remaining
 	}
 
 	start, end := model.ResourceLine{}, model.ResourceLine{}
@@ -88,6 +101,74 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		VulnLines:    &[]model.CodeLine{},
 		ResolvedFile: detector.ResolvedFile,
 	}
+}
+
+// handleArrayIndex handles paths that contain numeric segments. It first attempts a
+// structured gjson lookup (precise, handles array indices and numeric map keys). On
+// failure it strips numerics and returns the remainder for the text-matcher fallback.
+// Returns (nil, nil) when no numeric segment is present.
+func handleArrayIndex(
+	splitSanitized []string,
+	extractedString [][]string,
+	file *model.FileMetadata,
+	resolvedFile string,
+	outputLines int,
+	lines []string,
+) (result *model.VulnerabilityLines, remaining []string) {
+	hasNumeric := false
+	for _, seg := range splitSanitized {
+		if _, err := strconv.Atoi(seg); err == nil {
+			hasNumeric = true
+			break
+		}
+	}
+	if !hasNumeric {
+		return nil, nil
+	}
+
+	// Strip value anchors (key=value → key) so gjson receives a pure key path.
+	// Paths with mid-path anchors (e.g. "meta.name={{pod}}.spec...") resolve to a
+	// nonexistent gjson path and return -1, falling through to the text-matcher.
+	structPath := extractStructuralPath(splitSanitized, extractedString)
+	if lineNr, err := GetLineBySearchLine(structPath, file); err == nil && lineNr > 0 && lineNr <= len(lines) {
+		result := model.VulnerabilityLines{
+			Line:         lineNr,
+			VulnLines:    GetAdjacentVulnLines(lineNr-1, outputLines, lines),
+			ResolvedFile: resolvedFile,
+			VulnerablilityLocation: model.ResourceLocation{
+				Start: model.ResourceLine{Line: lineNr},
+				End:   model.ResourceLine{Line: lineNr},
+			},
+		}
+		return &result, nil
+	}
+
+	filtered := splitSanitized[:0]
+	for _, s := range splitSanitized {
+		if _, err := strconv.Atoi(s); err != nil {
+			filtered = append(filtered, s)
+		}
+	}
+	return nil, filtered
+}
+
+// extractStructuralPath converts a sanitized segment list into a plain key path for
+// GetLineBySearchLine: resolves {{N}} placeholders, strips value anchors (key=value →
+// key), and preserves numeric indices.
+func extractStructuralPath(segments []string, extracted [][]string) []string {
+	result := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		for i, ext := range extracted {
+			seg = strings.ReplaceAll(seg, `{{`+strconv.Itoa(i)+`}}`, ext[1])
+		}
+		if idx := strings.Index(seg, "="); idx >= 0 {
+			seg = seg[:idx]
+		}
+		if seg != "" {
+			result = append(result, seg)
+		}
+	}
+	return result
 }
 
 func (d defaultDetectLine) prepareResolvedFiles(resFiles map[string]model.ResolvedFile) map[string]model.ResolvedFileSplit {
