@@ -205,7 +205,8 @@ func instantiatedDocs(
 	return docs, synthetic
 }
 
-// newInstanceFileMetadata is a clone with empty Document (Combine skips it); same path/source/LineInfoDocument as fm for line detection; id and ModuleCallChain match the synthetic doc.
+// newInstanceFileMetadata is a clone with empty Document (Combine skips it); same path/source/
+// LineInfoDocument as fm for line detection; id and ModuleCallChain match the synthetic doc.
 func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *model.FileMetadata {
 	clone := *fm
 	clone.ID = id

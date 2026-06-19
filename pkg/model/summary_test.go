@@ -96,7 +96,7 @@ func TestCreateSummary(t *testing.T) {
 					Files: []VulnerableFile{
 						{
 							FileName:         "fileName",
-							Fingerprint:      GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "", "", ""),
+							Fingerprint:      GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", ""),
 							Line:             1,
 							IssueType:        IssueTypeMissingAttribute,
 							SearchKey:        "searchKey",
