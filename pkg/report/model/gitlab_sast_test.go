@@ -6,6 +6,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,7 +72,7 @@ var tests = []gitlabSASTTest{
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
 				{
-					ID:       "1:test.json:1",
+					ID:       GetDatadogFingerprintHash(model.SCIInfo{}, "test.json", "", "", "", utils.ChooseQueryID("1", ""), ""),
 					Severity: "High",
 					Name:     "test",
 					Links: []gitlabSASTVulnerabilityLink{
@@ -118,7 +119,7 @@ var tests = []gitlabSASTTest{
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
 				{
-					ID:       "1:test.json:1",
+					ID:       GetDatadogFingerprintHash(model.SCIInfo{}, "test.json", "", "", "", utils.ChooseQueryID("1", ""), ""),
 					Severity: "High",
 					Name:     "test",
 					Links: []gitlabSASTVulnerabilityLink{
@@ -164,7 +165,7 @@ var tests = []gitlabSASTTest{
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
 				{
-					ID:       "1:test.json:1",
+					ID:       GetDatadogFingerprintHash(model.SCIInfo{}, "test.json", "", "", "", utils.ChooseQueryID("1", ""), ""),
 					Severity: "Critical",
 					Name:     "test",
 					Links: []gitlabSASTVulnerabilityLink{
@@ -195,7 +196,7 @@ func TestBuildGitlabSASTVulnerability(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := NewGitlabSASTReport(time.Now(), time.Now()).(*gitlabSASTReport)
-			result.BuildGitlabSASTVulnerability(&tt.vq, &tt.file)
+			result.BuildGitlabSASTVulnerability(&tt.vq, &tt.file, model.SCIInfo{})
 			require.Equal(t, tt.want.Vulnerabilities, result.Vulnerabilities)
 		})
 	}

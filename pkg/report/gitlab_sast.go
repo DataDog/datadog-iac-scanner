@@ -32,7 +32,7 @@ func PrintGitlabSASTReport(ctx context.Context, path, filename string, body inte
 
 		for idxQuery := range summary.Queries {
 			for idxFile := range summary.Queries[idxQuery].Files {
-				gitlabSASTReport.BuildGitlabSASTVulnerability(&summary.Queries[idxQuery], &summary.Queries[idxQuery].Files[idxFile])
+				gitlabSASTReport.BuildGitlabSASTVulnerability(&summary.Queries[idxQuery], &summary.Queries[idxQuery].Files[idxFile], *sciInfo)
 			}
 		}
 		body = gitlabSASTReport

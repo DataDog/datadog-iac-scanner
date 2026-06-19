@@ -34,7 +34,7 @@ func TestGetQueryID(t *testing.T) {
 				queryID:       "platform-cloudProvider-rule",
 				legacyQueryID: "",
 			},
-			want: "",
+			want: "platform-cloudProvider-rule",
 		},
 		{
 			have: QueryIDs{

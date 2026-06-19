@@ -25,7 +25,7 @@ func PrintCodeClimateReport(ctx context.Context, path, filename string, body int
 			return err
 		}
 
-		body = reportModel.BuildCodeClimateReport(&summary)
+		body = reportModel.BuildCodeClimateReport(&summary, *sciInfo)
 	}
 
 	return ExportJSONReport(ctx, path, filename, body)

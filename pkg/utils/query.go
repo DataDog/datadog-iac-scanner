@@ -22,7 +22,7 @@ const (
 )
 
 func ChooseQueryID(queryID, legacyQueryID string) string {
-	if legacyQueryID == DefaultQueryID {
+	if legacyQueryID == "" || legacyQueryID == DefaultQueryID {
 		return queryID
 	} else {
 		return legacyQueryID

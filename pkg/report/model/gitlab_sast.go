@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -85,7 +86,7 @@ type gitlabSASTAnalyzer struct {
 
 // GitlabSASTReport represents a usable gitlab sast report reference
 type GitlabSASTReport interface {
-	BuildGitlabSASTVulnerability(issue *model.QueryResult, file *model.VulnerableFile)
+	BuildGitlabSASTVulnerability(issue *model.QueryResult, file *model.VulnerableFile, sciInfo model.SCIInfo)
 }
 
 // NewGitlabSASTReport initializes a new instance of GitlabSASTReport to be used
@@ -125,10 +126,16 @@ func initGitlabSASTScan(start, end time.Time) gitlabSASTScan {
 }
 
 // BuildGitlabSASTVulnerability adds a new vulnerability struct to vulnerability slice
-func (glsr *gitlabSASTReport) BuildGitlabSASTVulnerability(issue *model.QueryResult, file *model.VulnerableFile) {
+func (glsr *gitlabSASTReport) BuildGitlabSASTVulnerability(issue *model.QueryResult, file *model.VulnerableFile, sciInfo model.SCIInfo) {
 	if len(issue.Files) > 0 {
+		artifactPath := file.FileName
+		if artifactPath == "." {
+			artifactPath = ""
+		}
+		queryID := utils.ChooseQueryID(issue.QueryID, issue.LegacyQueryID)
+		fp := GetDatadogFingerprintHash(sciInfo, artifactPath, issue.Platform, file.ResourceType, file.ResourceName, queryID, file.LineWithVulnerability)
 		vulnerability := gitlabSASTVulnerability{
-			ID:       fmt.Sprintf("%s:%s:%d", issue.QueryID, file.FileName, file.Line),
+			ID:       fp,
 			Severity: cases.Title(language.Und).String(strings.ToLower(string(issue.Severity))),
 			Name:     issue.QueryName,
 			CWE:      issue.CWE,

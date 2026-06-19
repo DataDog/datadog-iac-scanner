@@ -14,6 +14,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
@@ -70,7 +71,7 @@ type Compliance struct {
 }
 
 // BuildASFF builds the ASFF report
-func BuildASFF(ctx context.Context, summary *model.Summary) []AwsSecurityFinding {
+func BuildASFF(ctx context.Context, summary *model.Summary, sciInfo model.SCIInfo) []AwsSecurityFinding {
 	contextLogger := logger.FromContext(ctx)
 	findings := []AwsSecurityFinding{}
 
@@ -84,18 +85,18 @@ func BuildASFF(ctx context.Context, summary *model.Summary) []AwsSecurityFinding
 	for idx := range summary.Queries {
 		query := summary.Queries[idx]
 
-		findingPerQuery := awsAccountInfo.getFindingsPerQuery(&query)
+		findingPerQuery := awsAccountInfo.getFindingsPerQuery(&query, sciInfo)
 		findings = append(findings, findingPerQuery...)
 	}
 
 	return findings
 }
 
-func (a *AwsAccountInfo) getFindingsPerQuery(query *model.QueryResult) []AwsSecurityFinding {
+func (a *AwsAccountInfo) getFindingsPerQuery(query *model.QueryResult, sciInfo model.SCIInfo) []AwsSecurityFinding {
 	var findings []AwsSecurityFinding
 	if query.CloudProvider == "AWS" {
 		for i := range query.Files {
-			finding := a.getFinding(query, &query.Files[i])
+			finding := a.getFinding(query, &query.Files[i], sciInfo)
 			findings = append(findings, finding)
 		}
 	}
@@ -103,7 +104,7 @@ func (a *AwsAccountInfo) getFindingsPerQuery(query *model.QueryResult) []AwsSecu
 	return findings
 }
 
-func (a *AwsAccountInfo) getFinding(query *model.QueryResult, file *model.VulnerableFile) AwsSecurityFinding {
+func (a *AwsAccountInfo) getFinding(query *model.QueryResult, file *model.VulnerableFile, sciInfo model.SCIInfo) AwsSecurityFinding {
 	awsAccountID := a.AwsAccountID
 	awsRegion := a.AwsRegion
 
@@ -117,12 +118,19 @@ func (a *AwsAccountInfo) getFinding(query *model.QueryResult, file *model.Vulner
 		severity = "INFORMATIONAL"
 	}
 
+	artifactPath := file.FileName
+	if artifactPath == "." {
+		artifactPath = ""
+	}
+	queryID := utils.ChooseQueryID(query.QueryID, query.LegacyQueryID)
+	fp := GetDatadogFingerprintHash(sciInfo, artifactPath, query.Platform, file.ResourceType, file.ResourceName, queryID, file.LineWithVulnerability)
+
 	finding := AwsSecurityFinding{
 		AwsAccountID: *aws.String(awsAccountID),
 		CreatedAt:    *aws.String(timeFormatted),
 		Description:  *aws.String(getDescription(query, "asff")),
 		GeneratorID:  *aws.String(query.QueryID),
-		ID:           *aws.String(fmt.Sprintf("%s/%s/%s/%s/%d", awsRegion, awsAccountID, query.QueryID, file.FileName, file.Line)),
+		ID:           *aws.String(fmt.Sprintf("%s/%s/%s", awsRegion, awsAccountID, fp)),
 		ProductArn:   *aws.String(arn),
 		Resources: []Resource{
 			{

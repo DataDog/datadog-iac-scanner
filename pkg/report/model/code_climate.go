@@ -6,9 +6,8 @@
 package model
 
 import (
-	"fmt"
-
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 type lines struct {
@@ -42,14 +41,19 @@ var severityMap = map[string]string{
 }
 
 // BuildCodeClimateReport builds the code climate report
-func BuildCodeClimateReport(summary *model.Summary) []CodeClimateReport {
+func BuildCodeClimateReport(summary *model.Summary, sciInfo model.SCIInfo) []CodeClimateReport {
 	var codeClimateReport []CodeClimateReport
 
 	for i := range summary.Queries {
 		for j := range summary.Queries[i].Files {
 			qr := summary.Queries[i]
 			vf := qr.Files[j]
-			fp := fmt.Sprintf("%s:%s:%d", qr.QueryID, vf.FileName, vf.Line)
+			artifactPath := vf.FileName
+			if artifactPath == "." {
+				artifactPath = ""
+			}
+			queryID := utils.ChooseQueryID(qr.QueryID, qr.LegacyQueryID)
+			fp := GetDatadogFingerprintHash(sciInfo, artifactPath, qr.Platform, vf.ResourceType, vf.ResourceName, queryID, vf.LineWithVulnerability)
 			codeClimateReport = append(codeClimateReport, CodeClimateReport{
 				Type:        "issue",
 				CheckName:   qr.QueryName,

@@ -24,7 +24,7 @@ func PrintASFFReport(ctx context.Context, path, filename string, body interface{
 			return err
 		}
 
-		body = reportModel.BuildASFF(ctx, &summary)
+		body = reportModel.BuildASFF(ctx, &summary, *sciInfo)
 	}
 
 	return ExportJSONReport(ctx, path, filename, body)

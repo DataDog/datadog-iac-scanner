@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +35,7 @@ func TestBuildCodeClimateReport(t *testing.T) {
 					},
 					Severity:    "critical",
 					CWE:         "",
-					Fingerprint: "de7f5e83-da88-4046-871f-ea18504b1d43:positive.tf:25",
+					Fingerprint: GetDatadogFingerprintHash(model.SCIInfo{}, "positive.tf", "", "", "", utils.ChooseQueryID("de7f5e83-da88-4046-871f-ea18504b1d43", ""), ""),
 				},
 				{
 					Type:        "issue",
@@ -47,7 +48,7 @@ func TestBuildCodeClimateReport(t *testing.T) {
 					},
 					Severity:    "critical",
 					CWE:         "",
-					Fingerprint: "de7f5e83-da88-4046-871f-ea18504b1d43:positive.tf:19",
+					Fingerprint: GetDatadogFingerprintHash(model.SCIInfo{}, "positive.tf", "", "", "", utils.ChooseQueryID("de7f5e83-da88-4046-871f-ea18504b1d43", ""), ""),
 				},
 			},
 		},
@@ -66,7 +67,7 @@ func TestBuildCodeClimateReport(t *testing.T) {
 					},
 					Severity:    "critical",
 					CWE:         "22",
-					Fingerprint: "97707503-a22c-4cd7-b7c0-f088fa7cf830:positive.tf:30",
+					Fingerprint: GetDatadogFingerprintHash(model.SCIInfo{}, "positive.tf", "", "", "", utils.ChooseQueryID("97707503-a22c-4cd7-b7c0-f088fa7cf830", ""), ""),
 				},
 				{
 					Type:        "issue",
@@ -79,7 +80,7 @@ func TestBuildCodeClimateReport(t *testing.T) {
 						Lines: lines{Begin: 35},
 					},
 					Severity:    "critical",
-					Fingerprint: "97707503-a22c-4cd7-b7c0-f088fa7cf830:positive.tf:35",
+					Fingerprint: GetDatadogFingerprintHash(model.SCIInfo{}, "positive.tf", "", "", "", utils.ChooseQueryID("97707503-a22c-4cd7-b7c0-f088fa7cf830", ""), ""),
 				},
 			},
 		},
@@ -97,7 +98,7 @@ func TestBuildCodeClimateReport(t *testing.T) {
 						Lines: lines{Begin: 6},
 					},
 					Severity:    "blocker",
-					Fingerprint: "316278b3-87ac-444c-8f8f-a733a28da609:test/fixtures/test_critical_custom_queries/amazon_mq_broker_encryption_disabled/test/positive1.yaml:6",
+					Fingerprint: GetDatadogFingerprintHash(model.SCIInfo{}, "test/fixtures/test_critical_custom_queries/amazon_mq_broker_encryption_disabled/test/positive1.yaml", "", "", "", utils.ChooseQueryID("316278b3-87ac-444c-8f8f-a733a28da609", ""), ""),
 				},
 			},
 		},
@@ -105,7 +106,7 @@ func TestBuildCodeClimateReport(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			report := BuildCodeClimateReport(&test.summary)
+			report := BuildCodeClimateReport(&test.summary, model.SCIInfo{})
 			require.Equal(t, test.want, report)
 		})
 	}
