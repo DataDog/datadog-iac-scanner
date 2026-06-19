@@ -60,7 +60,7 @@ func TestService(t *testing.T) { //nolint
 				},
 				Parser:         mockParser,
 				Tracker:        &tracker.CITracker{},
-				Storage:        storage.NewMemoryStorage(),
+				Storage:        storage.NewMemoryStorage(model.SCIInfo{}),
 				SourceProvider: mockFilesSource,
 				Resolver:       mockResolver,
 			},

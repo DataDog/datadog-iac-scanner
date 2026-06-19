@@ -7,10 +7,11 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	reportmodel "github.com/DataDog/datadog-iac-scanner/pkg/report/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 
@@ -22,6 +23,7 @@ var (
 type MemoryStorage struct {
 	vulnerabilities []model.Vulnerability
 	allFiles        model.FileMetadatas
+	sciInfo         model.SCIInfo
 }
 
 // SaveFile adds a new file metadata to files collection
@@ -57,14 +59,14 @@ func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model
 func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 	vulnDictionary := make(map[string]model.Vulnerability)
 	for i := range m.vulnerabilities {
-		key := fmt.Sprintf("%s:%s:%d:%s:%s",
-			m.vulnerabilities[i].QueryID,
-			m.vulnerabilities[i].FileName,
-			m.vulnerabilities[i].Line,
-			m.vulnerabilities[i].SearchKey,
-			m.vulnerabilities[i].KeyActualValue,
-		)
-		vulnDictionary[key] = m.vulnerabilities[i]
+		v := m.vulnerabilities[i]
+		artifactPath := v.FileName
+		if artifactPath == "." {
+			artifactPath = ""
+		}
+		ruleID := utils.ChooseQueryID(v.QueryID, v.LegacyQueryID)
+		key := reportmodel.GetDatadogFingerprintHash(m.sciInfo, artifactPath, v.Platform, v.ResourceType, v.ResourceName, ruleID, v.LineWithVulnerability)
+		vulnDictionary[key] = v
 	}
 
 	var uniqueVulnerabilities []model.Vulnerability
@@ -78,10 +80,11 @@ func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 }
 
 // NewMemoryStorage creates a new MemoryStorage empty and returns it
-func NewMemoryStorage() *MemoryStorage {
+func NewMemoryStorage(sciInfo model.SCIInfo) *MemoryStorage {
 	log.Debug().Msg("storage.NewMemoryStorage()")
 	return &MemoryStorage{
 		allFiles:        make(model.FileMetadatas, 0),
 		vulnerabilities: make([]model.Vulnerability, 0),
+		sciInfo:         sciInfo,
 	}
 }

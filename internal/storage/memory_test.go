@@ -55,6 +55,7 @@ func TestMemoryStorage_SaveFile(t *testing.T) {
 			m := &MemoryStorage{
 				vulnerabilities: tt.fields.vulnerabilities,
 				allFiles:        tt.fields.allFiles,
+				sciInfo:         model.SCIInfo{},
 			}
 			if err := m.SaveFile(tt.args.in0, tt.args.metadata); (err != nil) != tt.wantErr {
 				t.Errorf("MemoryStorage.SaveFile() error = %v, wantErr %v", err, tt.wantErr)
@@ -150,6 +151,7 @@ func TestMemoryStorage(t *testing.T) { //nolint
 		m := &MemoryStorage{
 			vulnerabilities: tt.fields.vulnerabilities,
 			allFiles:        tt.fields.allFiles,
+			sciInfo:         model.SCIInfo{},
 		}
 		t.Run(fmt.Sprintf("%s", tt.name+"_GetFiles"), func(t *testing.T) {
 			got, err := m.GetFiles(tt.args.in0, tt.args.in1)
@@ -222,6 +224,7 @@ func TestMemoryStorage_SaveVulnerabilities(t *testing.T) {
 			m := &MemoryStorage{
 				vulnerabilities: tt.fields.vulnerabilities,
 				allFiles:        tt.fields.allFiles,
+				sciInfo:         model.SCIInfo{},
 			}
 			if err := m.SaveVulnerabilities(tt.args.in0, tt.args.vulnerabilities); (err != nil) != tt.wantErr {
 				t.Errorf("MemoryStorage.SaveVulnerabilities() error = %v, wantErr %v", err, tt.wantErr)
@@ -242,12 +245,13 @@ func TestNewMemoryStorage(t *testing.T) {
 			want: &MemoryStorage{
 				allFiles:        make(model.FileMetadatas, 0),
 				vulnerabilities: make([]model.Vulnerability, 0),
+				sciInfo:         model.SCIInfo{},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewMemoryStorage(); !reflect.DeepEqual(got, tt.want) {
+			if got := NewMemoryStorage(model.SCIInfo{}); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewMemoryStorage() = %v, want %v", got, tt.want)
 			}
 		})

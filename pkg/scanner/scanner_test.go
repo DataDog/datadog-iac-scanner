@@ -11,6 +11,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
@@ -66,7 +67,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 		return nil, nil, err
 	}
 
-	store := storage.NewMemoryStorage()
+	store := storage.NewMemoryStorage(model.SCIInfo{})
 
 	services := make([]*runner.Service, 0, len(combinedParser))
 

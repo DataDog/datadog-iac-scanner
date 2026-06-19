@@ -121,7 +121,7 @@ func NewClient(ctx context.Context, params *Parameters, customPrint *consolePrin
 		return nil, err
 	}
 
-	store := storage.NewMemoryStorage()
+	store := storage.NewMemoryStorage(params.SCIInfo)
 
 	return &Client{
 		ScanParams:    params,
