@@ -478,9 +478,14 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	}
 
 	queryDuration := time.Since(queryStart)
-	timeoutCtxToDecode, cancelDecode := context.WithTimeout(qCtx.Ctx, c.queryExecTimeout)
-	defer cancelDecode()
-	return c.DecodeQueryResults(ctx, qCtx, timeoutCtxToDecode, results, queryDuration)
+	// Decode all result items: do NOT impose a per-query wall-clock deadline here.
+	// Decoding is a finite, bounded operation (one pass over the result set, with a
+	// detect-line HCL re-parse per item). A 60s decode timer truncated high-volume
+	// rules (e.g. team-tag, thousands of results) at a timing-dependent point under
+	// worker CPU contention, silently dropping a variable suffix of findings with no
+	// error. This is the root cause of non-deterministic finding counts on large repos.
+	// Only honor real scan cancellation (qCtx.Ctx), which fires on shutdown/error.
+	return c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, queryDuration)
 }
 
 func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.Value) ast.Value {
@@ -553,13 +558,15 @@ func (c *Inspector) DecodeQueryResults(
 
 	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
 	failedDetectLine := false
-	timeOut := false
+	cancelled := false
+decodeLoop:
 	for _, queryResultItem := range queryResultItems {
 		select {
 		case <-ctxTimeout.Done():
-			timeOut = true
-			// nolint:staticcheck
-			break
+			// Scan cancelled (shutdown/error). Stop decoding entirely. The partial
+			// result is discarded by the aborting scan. break must exit the loop.
+			cancelled = true
+			break decodeLoop
 		default:
 			vulnerability, aux := getVulnerabilitiesFromQuery(ctx, qCtx, c, queryResultItem, queryDuration)
 			if aux {
@@ -571,9 +578,9 @@ func (c *Inspector) DecodeQueryResults(
 		}
 	}
 
-	if timeOut {
+	if cancelled {
 		contextLogger.Err(ctxTimeout.Err()).Msgf(
-			"Timeout processing the results of the query: %s %s",
+			"Scan cancelled while processing results of the query: %s %s",
 			qCtx.Query.Metadata.Platform,
 			qCtx.Query.Metadata.Query)
 	}
