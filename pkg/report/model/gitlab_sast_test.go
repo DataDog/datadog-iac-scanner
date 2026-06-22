@@ -59,7 +59,7 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityHigh,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, SimilarityID: "similarity"},
+				{KeyActualValue: "test", FileName: "test.json", Line: 1, Fingerprint: "similarity"},
 			},
 			CWE: "",
 		},
@@ -67,7 +67,7 @@ var tests = []gitlabSASTTest{
 			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
-			SimilarityID:   "similarity",
+			Fingerprint:    "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
@@ -107,7 +107,7 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityHigh,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, SimilarityID: "similarity"},
+				{KeyActualValue: "test", FileName: "test.json", Line: 1, Fingerprint: "similarity"},
 			},
 			CWE: "22",
 		},
@@ -115,7 +115,7 @@ var tests = []gitlabSASTTest{
 			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
-			SimilarityID:   "similarity",
+			Fingerprint:    "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
@@ -155,14 +155,14 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityCritical,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, SimilarityID: "similarity"},
+				{KeyActualValue: "test", FileName: "test.json", Line: 1, Fingerprint: "similarity"},
 			},
 		},
 		file: model.VulnerableFile{
 			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
-			SimilarityID:   "similarity",
+			Fingerprint:    "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{

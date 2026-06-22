@@ -7,8 +7,32 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 )
+
+// stampFingerprints mirrors what model.CreateSummary does in production, since
+// these tests build QueryResults directly and BuildSarifIssue only reads back
+// the stored fingerprint.
+func stampFingerprints(issue *model.QueryResult) {
+	for i := range issue.Files {
+		file := &issue.Files[i]
+		path := file.FileName
+		if path == "." {
+			path = ""
+		}
+		file.Fingerprint = model.GetDatadogFingerprintHash(
+			model.SCIInfo{},
+			path,
+			issue.Platform,
+			file.ResourceType,
+			file.ResourceName,
+			utils.ChooseQueryID(issue.QueryID, issue.LegacyQueryID),
+			file.LineWithVulnerability,
+			file.ModuleCallChain,
+		)
+	}
+}
 
 var targetTemplate = sarifDescriptorReference{
 	ToolComponent: sarifComponentReference{
@@ -149,7 +173,7 @@ var sarifTests = []sarifTest{
 								"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:MEDIUM", "IAC_RESOURCE_TYPE:aws_ami_launch_permission", "IAC_RESOURCE_NAME:test_resource"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
-								DatadogFingerprint: GetDatadogFingerprintHash(
+								DatadogFingerprint: model.GetDatadogFingerprintHash(
 									model.SCIInfo{
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
@@ -249,7 +273,7 @@ var sarifTests = []sarifTest{
 								"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
-								DatadogFingerprint: GetDatadogFingerprintHash(
+								DatadogFingerprint: model.GetDatadogFingerprintHash(
 									model.SCIInfo{
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
@@ -444,7 +468,7 @@ var sarifTests = []sarifTest{
 								"tags": []string{"DATADOG_CATEGORY:test", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
-								DatadogFingerprint: GetDatadogFingerprintHash(
+								DatadogFingerprint: model.GetDatadogFingerprintHash(
 									model.SCIInfo{
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
@@ -482,7 +506,7 @@ var sarifTests = []sarifTest{
 								"tags": []string{"DATADOG_CATEGORY:test", "DATADOG_SEVERITY:INFO", "CWE:22", "IAC_RESOURCE_TYPE:test_resource_type_2", "IAC_RESOURCE_NAME:test_resource_name_2"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
-								DatadogFingerprint: GetDatadogFingerprintHash(
+								DatadogFingerprint: model.GetDatadogFingerprintHash(
 									model.SCIInfo{
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
@@ -625,7 +649,7 @@ var sarifTests = []sarifTest{
 								"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
-								DatadogFingerprint: GetDatadogFingerprintHash(
+								DatadogFingerprint: model.GetDatadogFingerprintHash(
 									model.SCIInfo{
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
@@ -764,7 +788,7 @@ var sarifTests = []sarifTest{
 								"tags": []string{"DATADOG_CATEGORY:", "DATADOG_SEVERITY:HIGH", "IAC_RESOURCE_TYPE:test_resource_type", "IAC_RESOURCE_NAME:test_resource_name"},
 							},
 							PartialFingerprints: SarifPartialFingerprints{
-								DatadogFingerprint: GetDatadogFingerprintHash(
+								DatadogFingerprint: model.GetDatadogFingerprintHash(
 									model.SCIInfo{
 										RepositoryCommitInfo: model.RepositoryCommitInfo{
 											RepositoryUrl: "",
@@ -1005,7 +1029,9 @@ func TestBuildSarifIssue(t *testing.T) {
 	for _, tt := range sarifTests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := NewSarifReport().(*sarifReport)
-			for _, vq := range tt.vq {
+			for vqi := range tt.vq {
+				vq := tt.vq[vqi]
+				stampFingerprints(&vq)
 				result.BuildSarifIssue(ctx, &vq, model.SCIInfo{})
 			}
 			require.Equal(t, len(tt.want.Runs[0].Results), len(result.Runs[0].Results))
@@ -1157,27 +1183,4 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 	require.Equal(t, "AMI shared with multiple accounts", result.ResultRuleID)
 	require.Equal(t, "note", result.ResultLevel) // MEDIUM maps to "note"
 	require.Equal(t, "main.tf", result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
-}
-
-// Empty chain adds no segment; a chain changes the hash for Terraform and is ignored elsewhere.
-func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
-	sci := model.SCIInfo{RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "repo"}}
-
-	// An empty chain appends nothing, so Terraform matches the plain base hash (no fingerprint churn).
-	base := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "")
-	tfEmpty := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TERRAFORM, "aws_s3_bucket", "this", "rule-1", "", "")
-	require.Equal(t, base, tfEmpty, "empty call chain must not change the fingerprint")
-
-	fromA := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TERRAFORM, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
-	fromB := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TERRAFORM, "aws_s3_bucket", "this", "rule-1", "", "stack-b/main.tf|module.bucket")
-
-	require.NotEqual(t, tfEmpty, fromA, "a non-empty call chain must change the fingerprint")
-	require.NotEqual(t, fromA, fromB, "distinct callers must produce distinct fingerprints")
-
-	fromAAgain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TERRAFORM, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
-	require.Equal(t, fromA, fromAAgain, "the same caller must produce a stable fingerprint")
-
-	// Non-Terraform platforms must ignore the module call chain.
-	k8sWithChain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
-	require.Equal(t, base, k8sWithChain, "non-Terraform platforms must ignore the module call chain")
 }

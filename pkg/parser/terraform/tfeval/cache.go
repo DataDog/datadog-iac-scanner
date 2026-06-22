@@ -15,7 +15,8 @@ import (
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
-// evalCacheKey: dir + addr + inputs + call chain. Chain splits identical-input callers; pre-pass and main loop share the same chain and hit the same entry.
+// evalCacheKey: dir + addr + inputs + call chain.
+// Chain splits identical-input callers; pre-pass and main loop share the same chain and hit the same entry.
 type evalCacheKey struct {
 	dir    string
 	addr   string

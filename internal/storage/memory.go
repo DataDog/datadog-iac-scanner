@@ -7,10 +7,10 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 
@@ -57,15 +57,19 @@ func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model
 func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 	vulnDictionary := make(map[string]model.Vulnerability)
 	for i := range m.vulnerabilities {
-		key := fmt.Sprintf("%s:%s:%d:%s:%s:%s",
-			m.vulnerabilities[i].QueryID,
-			m.vulnerabilities[i].FileName,
-			m.vulnerabilities[i].Line,
-			m.vulnerabilities[i].SimilarityID,
-			m.vulnerabilities[i].SearchKey,
-			m.vulnerabilities[i].KeyActualValue,
+		v := m.vulnerabilities[i]
+		// SCIInfo is constant within a scan; an empty value yields the same grouping.
+		key := model.GetDatadogFingerprintHash(
+			model.SCIInfo{},
+			v.FileName,
+			v.Platform,
+			v.ResourceType,
+			v.ResourceName,
+			utils.ChooseQueryID(v.QueryID, v.LegacyQueryID),
+			v.LineWithVulnerability,
+			v.ModuleCallChain,
 		)
-		vulnDictionary[key] = m.vulnerabilities[i]
+		vulnDictionary[key] = v
 	}
 
 	var uniqueVulnerabilities []model.Vulnerability

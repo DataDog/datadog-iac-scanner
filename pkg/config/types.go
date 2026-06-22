@@ -10,8 +10,6 @@ type IacConfig struct {
 	IgnoreCategories []string
 	OnlyCategories   []string
 
-	LegacyExcludeResults []string
-
 	RuleConfigs     map[string]IacRuleConfig
 	IgnorePlatforms []string
 	OnlyPlatforms   []string

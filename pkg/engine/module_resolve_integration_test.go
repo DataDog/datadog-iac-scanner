@@ -114,7 +114,7 @@ resource "aws_s3_bucket" "this" {
 		vb:       DefaultVulnerabilityBuilder,
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{root}, []string{"terraform"})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries(), "no query should fail")
 
@@ -181,7 +181,7 @@ resource "aws_s3_bucket" "this" {
 		vb:       DefaultVulnerabilityBuilder,
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{root}, []string{"terraform"})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -267,7 +267,7 @@ resource "aws_s3_bucket" "this" {
 		vb:       DefaultVulnerabilityBuilder,
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{root}, []string{"terraform"})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -367,7 +367,7 @@ resource "aws_s3_bucket" "this" {
 		vb:       DefaultVulnerabilityBuilder,
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{root}, []string{"terraform"})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 

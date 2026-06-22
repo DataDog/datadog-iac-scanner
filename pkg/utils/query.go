@@ -22,11 +22,11 @@ const (
 )
 
 func ChooseQueryID(queryID, legacyQueryID string) string {
-	if legacyQueryID == DefaultQueryID {
+	// Empty legacy must not win: it would drop rule identity from fingerprints and dedupe keys.
+	if legacyQueryID == "" || legacyQueryID == DefaultQueryID {
 		return queryID
-	} else {
-		return legacyQueryID
 	}
+	return legacyQueryID
 }
 
 func ToSlug(name string) string {

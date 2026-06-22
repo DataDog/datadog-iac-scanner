@@ -41,7 +41,6 @@ const (
 // Suppression kinds map to SARIF 2.1.0 `suppressions[].kind`.
 const (
 	SuppressionKindInSource = "inSource"
-	SuppressionKindExternal = "external"
 )
 
 // Suppression justifications surfaced in SARIF `suppressions[].justification`.
@@ -49,9 +48,8 @@ const (
 // `LinesIgnore` flattens block directives to individual line numbers, so the
 // originating directive is no longer recoverable at suppression time.
 const (
-	SuppressionJustificationIgnoreComment  = "dd-iac-scan ignore"
-	SuppressionJustificationDisableInFile  = "dd-iac-scan disable"
-	SuppressionJustificationExcludeResults = "excluded by similarity id"
+	SuppressionJustificationIgnoreComment = "dd-iac-scan ignore"
+	SuppressionJustificationDisableInFile = "dd-iac-scan disable"
 )
 
 // Constants to describe vulnerability's severity
@@ -190,8 +188,6 @@ type QueryMetadata struct {
 type Vulnerability struct {
 	ID                    int              `json:"id"`
 	ScanID                string           `db:"scan_id" json:"-"`
-	SimilarityID          string           `db:"similarity_id" json:"similarityID"`
-	OldSimilarityID       string           `db:"old_similarity_id" json:"oldSimilarityID"`
 	FileID                string           `db:"file_id" json:"-"`
 	FileName              string           `db:"file_name" json:"fileName"`
 	QueryID               string           `db:"query_id" json:"queryID"`

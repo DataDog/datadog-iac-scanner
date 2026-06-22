@@ -173,7 +173,6 @@ func (s *Service) StartScan(
 		ctx,
 		scanID,
 		s.files,
-		s.SourceProvider.GetBasePaths(),
 		s.Parser.Platform,
 	)
 	if err != nil {

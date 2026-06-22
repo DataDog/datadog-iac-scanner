@@ -7,7 +7,6 @@
 	"files_failed_to_scan": 0,
 	"queries_total": 1040,
 	"queries_failed_to_execute": 0,
-	"queries_failed_to_compute_similarity_id": 0,
 	"scan_id": "console",
 	"severity_counters": {
 		"CRITICAL": 0,
@@ -38,7 +37,6 @@
 			"files": [
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "80a4954a79644f5b6820f9aef1ad4a8e90a549959b676c700479197d74581a1b",
 					"line": 1,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate1",
@@ -66,7 +64,6 @@
 			"files": [
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "f8f7c3cfd1dacb148935807493dc480a2fd49ebeabcef7748f7774409ab61e19",
 					"line": 3,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate1",
@@ -81,7 +78,6 @@
 				},
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "e516e4e23476196cfb03ab37c244ffd579cc689130689f77ca1be2fb3f026fcd",
 					"line": 14,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate2",
@@ -109,7 +105,6 @@
 			"files": [
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "1fc2d251036dc4777725e66c30c5476aad5bf49ca0a195e2a3398aa45f666bbc",
 					"line": 5,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate1",
@@ -124,7 +119,6 @@
 				},
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "3b65a534141296ab72ce74ec01942f30e08576973c87578600f95ee96f877acc",
 					"line": 16,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate2",
@@ -152,7 +146,6 @@
 			"files": [
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "39c624feda2671e5b9697dd15e1561a2ca58c46f9ceb3b4fa2ea82426d2a549a",
 					"line": 11,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate2",
@@ -167,7 +160,6 @@
 				},
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "5a59fcc29857f9f006f1588b873c763bdeac4b2a2dfeb67ba5fbd3c717f340a0",
 					"line": 1,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate1",
@@ -195,7 +187,6 @@
 			"files": [
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "ce810eae855cd0e35cbb35016e345d9bcf3a2b9334fdce76c90005dcbbda205c",
 					"line": 2,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate1",
@@ -210,7 +201,6 @@
 				},
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "32309d2cbb3207da11d61823093fd8c312b4d037377b93ee605f81808ba59780",
 					"line": 13,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate2",
@@ -238,7 +228,6 @@
 			"files": [
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "d3cd3e5e02d296738e514b7b981cd556f0ce12887018a1e63aba0457e09baff8",
 					"line": 15,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate2",
@@ -253,7 +242,6 @@
 				},
 				{
 					"file_name": "test/fixtures/kics_auto_remediation/terraform.tf",
-					"similarity_id": "3071de74f2c82d0f51e2f2b13c45a2ae709969356c9fbace9e42c2f207da5ca6",
 					"line": 4,
 					"resource_type": "alicloud_ram_account_password_policy",
 					"resource_name": "corporate1",

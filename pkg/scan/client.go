@@ -51,7 +51,6 @@ type Parameters struct {
 	MaxFileSizeFlag             int
 	UseOldSeverities            bool
 	MaxResolverDepth            int
-	KicsComputeNewSimID         bool
 	PreAnalysisExcludePaths     []string
 	SCIInfo                     model.SCIInfo
 	FlagEvaluator               featureflags.FlagEvaluator
@@ -64,13 +63,12 @@ func (p *Parameters) GetEffectivePlatforms() []string {
 
 // Client represents a scan client
 type Client struct {
-	ScanParams        *Parameters
-	ScanStartTime     time.Time
-	Tracker           *tracker.CITracker
-	Storage           *storage.MemoryStorage
-	ExcludeResultsMap map[string]bool
-	Printer           *consolePrinter.Printer
-	FlagEvaluator     featureflags.FlagEvaluator
+	ScanParams    *Parameters
+	ScanStartTime time.Time
+	Tracker       *tracker.CITracker
+	Storage       *storage.MemoryStorage
+	Printer       *consolePrinter.Printer
+	FlagEvaluator featureflags.FlagEvaluator
 	// querySourceFactory overrides createQuerySource; set in tests only.
 	querySourceFactory func(ctx context.Context, platforms []string) (source.QueriesSource, error)
 }
@@ -125,15 +123,12 @@ func NewClient(ctx context.Context, params *Parameters, customPrint *consolePrin
 
 	store := storage.NewMemoryStorage()
 
-	excludeResultsMap := getExcludeResultsMap(params.Config.LegacyExcludeResults)
-
 	return &Client{
-		ScanParams:        params,
-		Tracker:           t,
-		Storage:           store,
-		ExcludeResultsMap: excludeResultsMap,
-		Printer:           customPrint,
-		FlagEvaluator:     params.FlagEvaluator,
+		ScanParams:    params,
+		Tracker:       t,
+		Storage:       store,
+		Printer:       customPrint,
+		FlagEvaluator: params.FlagEvaluator,
 	}, nil
 }
 

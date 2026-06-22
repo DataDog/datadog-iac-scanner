@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 // SeveritySummary contains scans' result numbers, how many vulnerabilities of each severity was detected
@@ -27,8 +28,7 @@ type SeveritySummary struct {
 // VulnerableFile contains information of a vulnerable file and where the vulnerability was found
 type VulnerableFile struct {
 	FileName              string           `json:"file_name"`
-	SimilarityID          string           `json:"similarity_id"`
-	OldSimilarityID       string           `json:"old_similarity_id,omitempty"`
+	Fingerprint           string           `json:"fingerprint,omitempty"`
 	Line                  int              `json:"line"`
 	ResourceLocation      ResourceLocation `json:"resource_location"`
 	VulnLines             *[]CodeLine      `json:"-"`
@@ -96,7 +96,6 @@ type Counters struct {
 	FailedToScanFiles      int `json:"files_failed_to_scan"`
 	TotalQueries           int `json:"queries_total"`
 	FailedToExecuteQueries int `json:"queries_failed_to_execute"`
-	FailedSimilarityID     int `json:"queries_failed_to_compute_similarity_id"`
 	FoundResources         int `json:"resources_found"`
 }
 
@@ -246,7 +245,7 @@ func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObje
 //
 //nolint:gocritic
 func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vulnerability,
-	scanID string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) Summary {
+	scanID string, pathExtractionMap map[string]ExtractedPathObject, repoDir string, sciInfo SCIInfo) Summary {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("model.CreateSummary()")
 	q := make(map[string]QueryResult, len(vulnerabilities))
@@ -277,11 +276,26 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 
 		resolvedPath := resolvePath(item.FileName, pathExtractionMap, repoDir)
 
+		// Stamp the fingerprint here so every report format reads one shared value.
+		fingerprintPath := resolvedPath
+		if fingerprintPath == "." {
+			fingerprintPath = ""
+		}
+		fingerprint := GetDatadogFingerprintHash(
+			sciInfo,
+			fingerprintPath,
+			item.Platform,
+			item.ResourceType,
+			item.ResourceName,
+			utils.ChooseQueryID(item.QueryID, item.LegacyQueryID),
+			item.LineWithVulnerability,
+			item.ModuleCallChain,
+		)
+
 		qItem := q[item.QueryID]
 		qItem.Files = append(qItem.Files, VulnerableFile{
 			FileName:                 resolvedPath,
-			SimilarityID:             item.SimilarityID,
-			OldSimilarityID:          item.OldSimilarityID,
+			Fingerprint:              fingerprint,
 			Line:                     item.Line,
 			VulnLines:                item.VulnLines,
 			ResourceType:             item.ResourceType,

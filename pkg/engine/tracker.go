@@ -15,7 +15,5 @@ type Tracker interface {
 	TrackQueryExecuting(queryAggregation int)
 	TrackQueryExecution(queryAggregation int)
 	FailedDetectLine()
-	FailedComputeSimilarityID()
-	FailedComputeOldSimilarityID()
 	GetOutputLines() int
 }
