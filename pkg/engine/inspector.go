@@ -467,6 +467,45 @@ func (c *Inspector) GetFailedQueries() map[string]error {
 	return maps.Clone(c.failedQueries)
 }
 
+func ruleArgumentsValue(rc config.IacRuleConfig) (ast.Value, bool, error) {
+	if rc.Arguments == nil {
+		return nil, false, nil
+	}
+
+	value, err := ast.InterfaceToValue(rc.Arguments)
+	if err != nil {
+		return nil, false, err
+	}
+	return value, true, nil
+}
+
+func withRuleArguments(payload ast.Value, args ast.Value) (ast.Value, error) {
+	obj, ok := payload.(ast.Object)
+	if !ok {
+		return nil, fmt.Errorf("expected OPA input payload object, got %T", payload)
+	}
+
+	out := ast.NewObject()
+	_ = obj.Iter(func(k, v *ast.Term) error {
+		out.Insert(k, v)
+		return nil
+	})
+	out.Insert(ast.StringTerm("arguments"), ast.NewTerm(args))
+	return out, nil
+}
+
+func queryIDsFromMetadata(ctx context.Context, metadata model.QueryMetadata) (queryID, legacyQueryID string) {
+	queryID = DefaultQueryID
+	legacyQueryID = DefaultQueryID
+	if id, err := mapKeyToString(ctx, metadata.Metadata, "id", false); err == nil && id != nil {
+		queryID = *id
+	}
+	if legacyID, err := mapKeyToString(ctx, metadata.Metadata, "legacyId", true); err == nil && legacyID != nil {
+		legacyQueryID = *legacyID
+	}
+	return queryID, legacyQueryID
+}
+
 func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, err error) {
 	contextLogger := logger.FromContext(ctx)
 	defer func() {
@@ -476,8 +515,20 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			contextLogger.Err(err).Msg(errMessage)
 		}
 	}()
-
-	options := []rego.EvalOption{rego.EvalParsedInput(*qCtx.payload)}
+	
+	payload := *qCtx.payload
+	queryID, legacyQueryID := queryIDsFromMetadata(ctx, qCtx.Query.Metadata)
+	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID); found {
+		if args, ok, err := ruleArgumentsValue(rc); err != nil {
+			return nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
+		} else if ok {
+			payload, err = withRuleArguments(payload, args)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	options := []rego.EvalOption{rego.EvalParsedInput(payload)}
 
 	var cov *cover.Cover
 	if c.enableCoverageReport {
