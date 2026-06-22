@@ -380,6 +380,7 @@ func prepareScanDocumentNode(body interface{}, kind model.FileKind, resolveFilte
 
 func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKind, resolveFilters, atDocumentRoot bool) {
 	delete(bodyType, "_dd_lines")
+	delete(bodyType, "_dd_tf_address")
 	for key, v := range bodyType {
 		childResolveFilters := resolveFilters
 		if kind == model.KindTerraformPlan && atDocumentRoot {

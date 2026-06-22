@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 )
 
 // CITracker contains information of how many queries were loaded and executed
@@ -34,6 +35,7 @@ type CITracker struct {
 	syncFileMutex        sync.Mutex
 	FoundResources       int
 	LineInfoLoadFailures int
+	tfplanRegistry       *registry.AddressRegistry
 }
 
 // NewTracker will create a new instance of a tracker with the number of lines to display in results output
@@ -53,6 +55,18 @@ func NewTracker(previewLines int) (*CITracker, error) {
 // GetOutputLines returns the number of lines to display in results output
 func (c *CITracker) GetOutputLines() int {
 	return c.lines
+}
+
+// SetTFPlanRegistry sets the terraform address registry for this tracker
+// This is used by the vulnerability builder to create TFPlan detectors with the correct registry
+func (c *CITracker) SetTFPlanRegistry(reg *registry.AddressRegistry) {
+	c.tfplanRegistry = reg
+}
+
+// GetTFPlanRegistry returns the terraform address registry for this tracker
+// This implements the TFPlanDetectorRegistry interface from pkg/engine
+func (c *CITracker) GetTFPlanRegistry() *registry.AddressRegistry {
+	return c.tfplanRegistry
 }
 
 // TrackQueryLoad adds a loaded query

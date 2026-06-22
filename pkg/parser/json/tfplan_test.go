@@ -57,8 +57,9 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"fakewebservices_database": map[string]interface{}{
 						"prod_db": map[string]interface{}{
-							"name": "Production DB",
-							"size": (float64)(256),
+							"_dd_tf_address": "fakewebservices_database.prod_db",
+							"name":           "Production DB",
+							"size":           (float64)(256),
 						},
 					},
 				},
@@ -262,17 +263,20 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"main": map[string]interface{}{
-							"bucket": "main-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "aws_s3_bucket.main",
+							"bucket":         "main-bucket",
+							"acl":            "private",
 						},
 						"module.storage.backup": map[string]interface{}{
-							"bucket": "backup-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "module.storage.aws_s3_bucket.backup",
+							"bucket":         "backup-bucket",
+							"acl":            "private",
 						},
 					},
 					"aws_instance": map[string]interface{}{
 						"web": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.micro",
 						},
 					},
 				},
@@ -343,13 +347,15 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_instance": map[string]interface{}{
 						"web": map[string]interface{}{
-							"instance_type": "t2.large",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.large",
 							"tags": map[string]interface{}{
 								"Environment": "production",
 							},
 						},
 						"module.staging.web": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "module.staging.aws_instance.web",
+							"instance_type":  "t2.micro",
 							"tags": map[string]interface{}{
 								"Environment": "staging",
 							},
@@ -428,17 +434,20 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_vpc": map[string]interface{}{
 						"main": map[string]interface{}{
-							"cidr_block": "10.0.0.0/16",
+							"_dd_tf_address": "aws_vpc.main",
+							"cidr_block":     "10.0.0.0/16",
 						},
 					},
 					"aws_subnet": map[string]interface{}{
 						"module.networking.public": map[string]interface{}{
-							"cidr_block": "10.0.1.0/24",
+							"_dd_tf_address": "module.networking.aws_subnet.public",
+							"cidr_block":     "10.0.1.0/24",
 						},
 					},
 					"aws_security_group": map[string]interface{}{
 						"module.networking.module.security.web": map[string]interface{}{
-							"description": "Web traffic",
+							"_dd_tf_address": "module.networking.module.security.aws_security_group.web",
+							"description":    "Web traffic",
 						},
 					},
 				},
@@ -509,10 +518,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"module.app1.data": map[string]interface{}{
-							"bucket": "app1-data",
+							"_dd_tf_address": "module.app1.aws_s3_bucket.data",
+							"bucket":         "app1-data",
 						},
 						"module.app2.data": map[string]interface{}{
-							"bucket": "app2-data",
+							"_dd_tf_address": "module.app2.aws_s3_bucket.data",
+							"bucket":         "app2-data",
 						},
 					},
 				},
@@ -589,21 +600,24 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_instance": map[string]interface{}{
 						"web[0]": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.micro",
 							"tags": map[string]interface{}{
 								"Name":  "web-0",
 								"Index": float64(0),
 							},
 						},
 						"web[1]": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.micro",
 							"tags": map[string]interface{}{
 								"Name":  "web-1",
 								"Index": float64(1),
 							},
 						},
 						"web[2]": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.micro",
 							"tags": map[string]interface{}{
 								"Name":  "web-2",
 								"Index": float64(2),
@@ -678,16 +692,19 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"data[\"prod\"]": map[string]interface{}{
-							"bucket": "prod-data-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "aws_s3_bucket.data",
+							"bucket":         "prod-data-bucket",
+							"acl":            "private",
 						},
 						"data[\"staging\"]": map[string]interface{}{
-							"bucket": "staging-data-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "aws_s3_bucket.data",
+							"bucket":         "staging-data-bucket",
+							"acl":            "private",
 						},
 						"data[\"dev\"]": map[string]interface{}{
-							"bucket": "dev-data-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "aws_s3_bucket.data",
+							"bucket":         "dev-data-bucket",
+							"acl":            "private",
 						},
 					},
 				},

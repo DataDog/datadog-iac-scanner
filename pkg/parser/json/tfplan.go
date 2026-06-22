@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcl_plan "github.com/hashicorp/terraform-json"
@@ -427,6 +428,19 @@ func (kp *TFPlan) readModule(
 		if resource.Index != nil {
 			resourceKey = formatResourceKeyWithIndex(resourceKey, resource.Index)
 		}
+
+		// Build the full terraform address (type.name) and normalize away
+		// count/for_each indices so it matches HCL-registered addresses.
+		fullAddress := resource.Type + "." + resource.Name
+		if moduleAddress != "" {
+			fullAddress = moduleAddress + "." + resource.Type + "." + resource.Name
+		}
+		normalizedAddress := registry.NormalizeAddress(fullAddress)
+
+		if resource.AttributeValues == nil {
+			resource.AttributeValues = make(map[string]interface{})
+		}
+		resource.AttributeValues["_dd_tf_address"] = normalizedAddress
 
 		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
 
