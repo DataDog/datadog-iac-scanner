@@ -1,11 +1,14 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	"github.com/stretchr/testify/assert"
 	cli "github.com/urfave/cli/v3"
+	"github.com/stretchr/testify/require"
 )
 
 func TestApplyPlatformFilters(t *testing.T) {
@@ -36,10 +39,10 @@ func TestApplyPlatformFilters(t *testing.T) {
 			want:            []string{"Ansible", "CICD", "CloudFormation", "Kubernetes", "Terraform"},
 		},
 		{
-			name:            "case-insensitive only-platforms",
-			cliPlatforms:    all,
-			onlyPlatforms:   []string{"terraform"},
-			want:            []string{"Terraform"},
+			name:          "case-insensitive only-platforms",
+			cliPlatforms:  all,
+			onlyPlatforms: []string{"terraform"},
+			want:          []string{"Terraform"},
 		},
 		{
 			name:            "case-insensitive ignore-platforms",
@@ -103,6 +106,55 @@ func TestTerraformPlanFlag(t *testing.T) {
 			assert.True(t, foundFlag.Hidden, "x-terraform-plan flag should be hidden")
 			assert.Equal(t, false, foundFlag.Value, "x-terraform-plan flag should default to false")
 			assert.Contains(t, foundFlag.Usage, "experimental", "flag usage should indicate experimental status")
+		})
+	}
+}
+
+func TestValidateQueriesPaths(t *testing.T) {
+	tmp := t.TempDir()
+
+	validDir := filepath.Join(tmp, "queries")
+	require.NoError(t, os.Mkdir(validDir, 0o755))
+
+	missingPath := filepath.Join(tmp, "missing")
+
+	filePath := filepath.Join(tmp, "queries.rego")
+	require.NoError(t, os.WriteFile(filePath, []byte("package test"), 0o644))
+
+	tests := []struct {
+		name    string
+		paths   []string
+		wantErr string
+	}{
+		{
+			name:  "valid dir",
+			paths: []string{validDir},
+		},
+		{
+			name:    "non-existent path",
+			paths:   []string{missingPath},
+			wantErr: "invalid queries path",
+		},
+		{
+			name:    "path is a file",
+			paths:   []string{filePath},
+			wantErr: "is not a directory",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateQueriesPaths(tt.paths)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Len(t, got, len(tt.paths))
+			assert.True(t, filepath.IsAbs(got[0]))
 		})
 	}
 }

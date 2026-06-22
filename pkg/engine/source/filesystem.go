@@ -286,28 +286,55 @@ func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]any,
 // GetQueries returns all queries found under the source paths registered in s.Source.
 // Rules are no longer embedded in the binary; provide local rule directories via s.Source.
 func (s *FilesystemSource) GetQueries(ctx context.Context, queryParameters *QueryInspectorParameters) ([]model.QueryMetadata, error) {
-	dirs := s.localQueryDirs(ctx)
+	dirs, err := s.localQueryDirs(ctx)
+	if err != nil {
+		return nil, err
+	}
 	queries := s.iterateQueryDirs(ctx, dirs, queryParameters)
 	return queries, nil
 }
 
-// localQueryDirs collects one-level-deep sub-directories from each path in s.Source.
-func (s *FilesystemSource) localQueryDirs(ctx context.Context) []string {
+// localQueryDirs recursively collects sub-directories from each path in s.Source.
+// It does not collect sub-directories that do not contain a query.rego and metadata.json file.
+func (s *FilesystemSource) localQueryDirs(ctx context.Context) ([]string, error) {
 	contextLogger := logger.FromContext(ctx)
 	var dirs []string
 	for _, src := range s.Source {
-		entries, err := os.ReadDir(src)
+		evaluated, err := filepath.EvalSymlinks(src)
 		if err != nil {
-			contextLogger.Debug().Msgf("localQueryDirs: skipping %s: %v", src, err)
-			continue
+			fmt.Println(err)
+			contextLogger.Debug().Msgf("localQueryDirs: error evaluating %s: %v", src, err)
+			return nil, err
 		}
-		for _, e := range entries {
-			if e.IsDir() {
-				dirs = append(dirs, filepath.Join(src, e.Name()))
+		err = filepath.WalkDir(evaluated, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				contextLogger.Debug().Msgf("localQueryDirs: error walking %s: %v", path, err)
+				return err
 			}
+			if !d.IsDir() {
+				return nil
+			}
+			queryPath := filepath.Join(path, QueryFileName)
+			metadataPath := filepath.Join(path, MetadataFileName)
+			if fileExists(queryPath) && fileExists(metadataPath) {
+				dirs = append(dirs, path)
+				return filepath.SkipDir
+			}
+			return nil
+		})
+		if err != nil {
+			contextLogger.Debug().Msgf("localQueryDirs: error walking %s: %v", src, err)
+			return nil, err
 		}
 	}
-	return dirs
+	if len(dirs) == 0 {
+		return nil, errors.New("no valid query directories found")
+	}
+	return dirs, nil
+}
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // iterateQueryDirs iterates all query directories and reads the respective queries

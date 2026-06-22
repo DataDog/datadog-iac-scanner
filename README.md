@@ -56,6 +56,18 @@ By default, the output file is named `datadog-iac-scanner-result.sarif`. Use `--
 datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR --output-name OUTPUTFILE.sarif
 ```
 
+You can run the scanner using your own local rules, written in the QUERYDIR directory, with the -q flag:
+
+```bash
+datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR -q QUERYDIR
+```
+
+The rule directories in the QUERYDIR directory must contain a 'query.rego' and a 'metadata.json' file. You can also specify multiple paths:
+
+```bash
+datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR -q QUERYDIR1 -q QUERYDIR2
+```
+
 Run `datadog-iac-scanner scan --help` to see all available flags.
 
 ### Configuring the scan
