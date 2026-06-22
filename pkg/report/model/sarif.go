@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -225,6 +226,7 @@ const (
 	scannedFileCountTag      = "DATADOG_SCANNED_FILE_COUNT:%d"
 
 	DOCKERFILE = "Dockerfile"
+	TERRAFORM  = "Terraform"
 )
 
 func initSarifTool() sarifTool {
@@ -591,6 +593,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 						resourceName,
 						queryID,
 						vulnerability.LineWithVulnerability,
+						vulnerability.ModuleCallChain,
 					),
 				},
 				Suppressions: buildSarifSuppressions(ctx, &vulnerability),
@@ -684,11 +687,48 @@ func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diff
 }
 
 // nolint:gocritic
-func GetDatadogFingerprintHash(sciInfo model.SCIInfo, filePath, platform, resourceType, resourceName, ruleId, vulnline string) string {
-	if platform == DOCKERFILE {
-		return StringToHash(fmt.Sprintf("%s|%s|%s|%s|%s|%s", sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleId, vulnline)) //nolint:lll
+func GetDatadogFingerprintHash(
+	sciInfo model.SCIInfo, filePath, platform, resourceType, resourceName, ruleId, vulnline, moduleCallChain string,
+) string {
+	segments := datadogFingerprintSegments(fingerprintInput{
+		repoURL:         sciInfo.RepositoryCommitInfo.RepositoryUrl,
+		filePath:        filePath,
+		platform:        platform,
+		resourceType:    resourceType,
+		resourceName:    resourceName,
+		ruleID:          ruleId,
+		vulnLine:        vulnline,
+		moduleCallChain: moduleCallChain,
+	})
+	return StringToHash(strings.Join(segments, "|"))
+}
+
+// fingerprintInput groups inputs to datadogFingerprintSegments.
+type fingerprintInput struct {
+	repoURL         string
+	filePath        string
+	platform        string
+	resourceType    string
+	resourceName    string
+	ruleID          string
+	vulnLine        string
+	moduleCallChain string
+}
+
+// datadogFingerprintSegments builds repo|file|type|name|rule, then platform-specific suffixes (Dockerfile: vuln line; Terraform: module chain when set).
+func datadogFingerprintSegments(in fingerprintInput) []string {
+	segments := []string{in.repoURL, in.filePath, in.resourceType, in.resourceName, in.ruleID}
+
+	switch in.platform {
+	case DOCKERFILE:
+		segments = append(segments, in.vulnLine)
+	case TERRAFORM:
+		if in.moduleCallChain != "" {
+			segments = append(segments, in.moduleCallChain)
+		}
 	}
-	return StringToHash(fmt.Sprintf("%s|%s|%s|%s|%s", sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleId)) //nolint:lll
+
+	return segments
 }
 
 func logVulnerabilityLineEmpty(ctx context.Context, lineWithVulnerability, platform, queryName, fileName string, line int) {

@@ -123,10 +123,8 @@ func (e *Evaluator) evaluate(
 		return nil, map[string]cty.Value{}, nil
 	}
 
-	// Cache lookup: after guard checks but before file I/O. The pre-pass and main loop
-	// call evaluate with identical (dir, addr, inputs, chain) once chain is threaded
-	// through, so the second call always hits the cache.
-	cacheKey := evalCacheKey{dir: dir, addr: addr, inputs: canonicalInputsKey(inputs)}
+	// Pre-pass and main loop share (dir, addr, inputs, chain); distinct callers differ in chain only.
+	cacheKey := evalCacheKey{dir: dir, addr: addr, inputs: canonicalInputsKey(inputs), chain: chainKey(chain)}
 	if entry, ok := e.cache[cacheKey]; ok {
 		for _, d := range entry.visitedDirs {
 			allVisited[d] = true

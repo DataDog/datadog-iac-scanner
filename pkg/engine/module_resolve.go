@@ -29,10 +29,15 @@ import (
 // only after evaluation succeeds (see resolveModulesSafely); a panic during
 // evaluation leaves the scan input untouched rather than removing coverage
 // without a synthetic replacement.
-func (c *Inspector) instantiateLocalModules(ctx context.Context, files model.FileMetadatas) []model.Document {
-	moduleDocs, suppressed, calledDirs, ok := c.resolveModulesSafely(ctx, files)
+// instantiateLocalModules returns synthetic docs and matching FileMetadata (call chain for fingerprints).
+// Caller must append the files before Combine/ToMap.
+func (c *Inspector) instantiateLocalModules(
+	ctx context.Context,
+	files model.FileMetadatas,
+) ([]model.Document, []*model.FileMetadata) {
+	moduleDocs, syntheticFiles, suppressed, calledDirs, ok := c.resolveModulesSafely(ctx, files)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	for _, f := range files {
 		if f == nil || !isTerraformFile(f.FilePath) {
@@ -55,7 +60,7 @@ func (c *Inspector) instantiateLocalModules(ctx context.Context, files model.Fil
 	} else {
 		contextLogger.Debug().Msg("Instantiated 0 local module resources")
 	}
-	return moduleDocs
+	return moduleDocs, syntheticFiles
 }
 
 // resolveModulesSafely runs the panic-prone module evaluation under a recover so
@@ -65,14 +70,14 @@ func (c *Inspector) instantiateLocalModules(ctx context.Context, files model.Fil
 func (c *Inspector) resolveModulesSafely(
 	ctx context.Context,
 	files model.FileMetadatas,
-) (moduleDocs []model.Document, suppressed, calledDirs map[string]bool, ok bool) {
+) (moduleDocs []model.Document, syntheticFiles []*model.FileMetadata, suppressed, calledDirs map[string]bool, ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			contextLogger := logger.FromContext(ctx)
 			contextLogger.Error().Interface("panic", r).Msg(
 				"instantiateLocalModules: recovered from panic; skipping synthetic module docs",
 			)
-			moduleDocs, suppressed, calledDirs, ok = nil, nil, nil, false
+			moduleDocs, syntheticFiles, suppressed, calledDirs, ok = nil, nil, nil, nil, false
 		}
 	}()
 	return resolveModuleDocuments(ctx, files, c.repoPath)
@@ -91,10 +96,10 @@ func resolveModuleDocuments(
 	ctx context.Context,
 	files model.FileMetadatas,
 	repoPath string,
-) (extra []model.Document, suppressed, calledDirs map[string]bool, ok bool) {
+) (extra []model.Document, syntheticFiles []*model.FileMetadata, suppressed, calledDirs map[string]bool, ok bool) {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
-		return nil, nil, nil, false
+		return nil, nil, nil, nil, false
 	}
 
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
@@ -127,13 +132,15 @@ func resolveModuleDocuments(
 		}
 		// evalRootDir distinguishes the same child module reached from different roots
 		// (different variable bindings) so synthetic documents are not incorrectly deduped.
-		extra = append(extra, instantiatedDocs(resources, byAbsPath, repoPath, seen, dir)...)
+		docs, syn := instantiatedDocs(resources, byAbsPath, repoPath, seen, dir)
+		extra = append(extra, docs...)
+		syntheticFiles = append(syntheticFiles, syn...)
 	}
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement.
 	if !rootEvalOK {
-		return nil, nil, nil, false
+		return nil, nil, nil, nil, false
 	}
 
 	suppressed = make(map[string]bool)
@@ -151,19 +158,18 @@ func resolveModuleDocuments(
 		}
 	}
 
-	return extra, suppressed, strippedDirs, true
+	return extra, syntheticFiles, suppressed, strippedDirs, true
 }
 
-// instantiatedDocs builds one synthetic document per resolved module resource (skips root
-// and out-of-scope). seen dedupes across eval roots; dedupe key includes type, name, line, module path.
+// instantiatedDocs builds one synthetic doc + FileMetadata per resolved module resource (skips root / out-of-scope).
+// seen dedupes across eval roots. Doc id is file id + call chain + instance; synthetic row carries ModuleCallChain for hashing.
 func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
 	repoPath string,
 	seen map[string]bool,
 	evalRootDir string,
-) []model.Document {
-	var docs []model.Document
+) (docs []model.Document, synthetic []*model.FileMetadata) {
 	for i := range resources {
 		r := &resources[i]
 		if r.ModuleAddress == "" {
@@ -180,10 +186,13 @@ func instantiatedDocs(
 		}
 		seen[key] = true
 
+		cck := callChainKey(r, repoPath)
+		docID := strings.Join([]string{fm.ID, cck, r.Name}, "\x00")
+
 		// Use the bare resource label (not the expanded name like k[0]) so that
 		// Rego rules matching input.document[_].resource.TYPE.NAME find the resource.
 		docs = append(docs, model.Document{
-			"id":   fm.ID,
+			"id":   docID,
 			"file": fm.FilePath,
 			"resource": map[string]interface{}{
 				r.Type: map[string]interface{}{
@@ -191,8 +200,31 @@ func instantiatedDocs(
 				},
 			},
 		})
+		synthetic = append(synthetic, newInstanceFileMetadata(fm, docID, cck))
 	}
-	return docs
+	return docs, synthetic
+}
+
+// newInstanceFileMetadata is a clone with empty Document (Combine skips it); same path/source/LineInfoDocument as fm for line detection; id and ModuleCallChain match the synthetic doc.
+func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *model.FileMetadata {
+	clone := *fm
+	clone.ID = id
+	clone.Document = model.Document{}
+	clone.ModuleCallChain = callChain
+	return &clone
+}
+
+// callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).
+func callChainKey(r *tfeval.ResolvedResource, repoPath string) string {
+	if len(r.CallChain) == 0 {
+		return r.ModuleAddress
+	}
+	root := absPath(r.CallChain[0].CalledFrom, repoPath)
+	rel := root
+	if rp, err := filepath.Rel(repoPath, root); err == nil {
+		rel = rp
+	}
+	return filepath.ToSlash(rel) + "|" + r.ModuleAddress
 }
 
 // stripLocalModuleCalls drops local module blocks whose source dir is in calledDirs.

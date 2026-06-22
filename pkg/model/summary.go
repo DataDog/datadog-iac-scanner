@@ -52,6 +52,8 @@ type VulnerableFile struct {
 	IsSuppressed             bool   `json:"is_suppressed,omitempty"`
 	SuppressionKind          string `json:"suppression_kind,omitempty"`
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
+	// ModuleCallChain: local-module call path; empty for root; included in fingerprint.
+	ModuleCallChain string `json:"module_call_chain,omitempty"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -302,6 +304,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			IsSuppressed:             item.IsSuppressed,
 			SuppressionKind:          item.SuppressionKind,
 			SuppressionJustification: item.SuppressionJustification,
+			ModuleCallChain:          item.ModuleCallChain,
 		})
 
 		filePaths[resolvedPath] = item.FileName

@@ -163,6 +163,7 @@ var sarifTests = []sarifTest{
 									"test_resource",
 									"1",
 									"",
+									"",
 								),
 							},
 						},
@@ -261,6 +262,7 @@ var sarifTests = []sarifTest{
 									"test_resource_type",
 									"test_resource_name",
 									"1",
+									"",
 									"",
 								),
 							},
@@ -456,6 +458,7 @@ var sarifTests = []sarifTest{
 									"test_resource_name",
 									"test",
 									"",
+									"",
 								),
 							},
 						},
@@ -492,6 +495,7 @@ var sarifTests = []sarifTest{
 									"test_resource_type_2",
 									"test_resource_name_2",
 									"test info",
+									"",
 									"",
 								),
 							},
@@ -635,6 +639,7 @@ var sarifTests = []sarifTest{
 									"test_resource_name",
 									"1",
 									"",
+									"",
 								),
 							},
 						},
@@ -772,6 +777,7 @@ var sarifTests = []sarifTest{
 									"test_resource_type",
 									"test_resource_name",
 									"1",
+									"",
 									"",
 								),
 							},
@@ -1151,4 +1157,27 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 	require.Equal(t, "AMI shared with multiple accounts", result.ResultRuleID)
 	require.Equal(t, "note", result.ResultLevel) // MEDIUM maps to "note"
 	require.Equal(t, "main.tf", result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
+}
+
+// Empty chain adds no segment; a chain changes the hash for Terraform and is ignored elsewhere.
+func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
+	sci := model.SCIInfo{RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "repo"}}
+
+	// An empty chain appends nothing, so Terraform matches the plain base hash (no fingerprint churn).
+	base := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "")
+	tfEmpty := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TERRAFORM, "aws_s3_bucket", "this", "rule-1", "", "")
+	require.Equal(t, base, tfEmpty, "empty call chain must not change the fingerprint")
+
+	fromA := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TERRAFORM, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
+	fromB := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TERRAFORM, "aws_s3_bucket", "this", "rule-1", "", "stack-b/main.tf|module.bucket")
+
+	require.NotEqual(t, tfEmpty, fromA, "a non-empty call chain must change the fingerprint")
+	require.NotEqual(t, fromA, fromB, "distinct callers must produce distinct fingerprints")
+
+	fromAAgain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TERRAFORM, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
+	require.Equal(t, fromA, fromAAgain, "the same caller must produce a stable fingerprint")
+
+	// Non-Terraform platforms must ignore the module call chain.
+	k8sWithChain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
+	require.Equal(t, base, k8sWithChain, "non-Terraform platforms must ignore the module call chain")
 }
