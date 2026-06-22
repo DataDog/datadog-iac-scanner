@@ -141,7 +141,7 @@ func TestParsePlatformValues(t *testing.T) {
 
 func TestParseRuleConfigs(t *testing.T) {
 	t.Run("full rule config", func(t *testing.T) {
-		input := `schema-version: v1.3
+		input := `schema-version: v1.4
 iac:
   rule-configs:
     terraform-aws-s3-unencrypted:
@@ -150,6 +150,8 @@ iac:
       only-paths:
         - src/
       severity: low
+      arguments:
+        required: enabled
 `
 		cfg, err := ParseConfig([]byte(input))
 		require.NoError(t, err)
@@ -160,10 +162,12 @@ iac:
 		assert.Equal(t, []string{"src/"}, rc.OnlyPaths)
 		require.NotNil(t, rc.Severity)
 		assert.Equal(t, "low", *rc.Severity)
+		require.NotNil(t, rc.Arguments)
+		assert.Equal(t, "enabled", (rc.Arguments)["required"])
 	})
 
 	t.Run("severity override only", func(t *testing.T) {
-		input := `schema-version: v1.3
+		input := `schema-version: v1.4
 iac:
   rule-configs:
     some-rule:
@@ -180,7 +184,7 @@ iac:
 	})
 
 	t.Run("invalid severity in rule-config", func(t *testing.T) {
-		input := `schema-version: v1.3
+		input := `schema-version: v1.4
 iac:
   rule-configs:
     some-rule:
@@ -192,7 +196,7 @@ iac:
 	})
 
 	t.Run("unknown field in rule-config", func(t *testing.T) {
-		input := `schema-version: v1.3
+		input := `schema-version: v1.4
 iac:
   rule-configs:
     some-rule:
@@ -201,6 +205,20 @@ iac:
 		_, err := ParseConfig([]byte(input))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "iac.rule-configs.<rule-id>")
+	})
+
+	t.Run("arguments in rule-config", func(t *testing.T) {
+		input := `schema-version: v1.4
+iac:
+  rule-configs:
+    some-rule:
+      arguments:
+        required: enabled
+`
+		cfg, err := ParseConfig([]byte(input))
+		require.NoError(t, err)
+		require.NotNil(t, cfg.RuleConfigs["some-rule"].Arguments)
+		assert.Equal(t, "enabled", (cfg.RuleConfigs["some-rule"].Arguments)["required"])
 	})
 }
 

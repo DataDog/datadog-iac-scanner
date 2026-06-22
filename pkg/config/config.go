@@ -43,6 +43,7 @@ type iacGlobalConfig struct {
 type iacRuleConfigYaml struct {
 	IgnorePaths []string     `yaml:"ignore-paths,omitempty"`
 	OnlyPaths   []string     `yaml:"only-paths,omitempty"`
+	Arguments   map[string]any `yaml:"arguments,omitempty"`
 	Severity    *iacSeverity `yaml:"severity,omitempty"`
 }
 
@@ -104,6 +105,7 @@ func parseRuleConfigs(in map[string]iacRuleConfigYaml) map[string]IacRuleConfig 
 		out[ruleID] = IacRuleConfig{
 			IgnorePaths: rc.IgnorePaths,
 			OnlyPaths:   rc.OnlyPaths,
+			Arguments:   rc.Arguments,
 			Severity:    (*string)(rc.Severity),
 		}
 	}
@@ -119,6 +121,7 @@ func unparseRuleConfigs(in map[string]IacRuleConfig) map[string]iacRuleConfigYam
 		out[ruleID] = iacRuleConfigYaml{
 			IgnorePaths: rc.IgnorePaths,
 			OnlyPaths:   rc.OnlyPaths,
+			Arguments:   rc.Arguments,
 			Severity:    (*iacSeverity)(rc.Severity),
 		}
 	}
@@ -195,7 +198,7 @@ var (
 	// minIacVersion is the minimum schema version supporting the iac: configuration section.
 	minIacVersion = schemaVersion{1, 2}
 	// currentVersion is the current schema version emitted by UnparseConfig.
-	currentVersion = schemaVersion{1, 3}
+	currentVersion = schemaVersion{1, 4}
 	// minRequiredVersion is the minimum schema version supported by this scanner.
 	// It's different from minIacVersion for user-friendliness in case people add an `iac`
 	// section to an old configuration file and forget to upgrade the version number.
