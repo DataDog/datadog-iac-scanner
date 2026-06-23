@@ -115,21 +115,44 @@ func TestJSON_StringifyContent(t *testing.T) {
 	}
 }
 
-// TestJSON_StringifyContent_PerFileDeterministic guards the parallel-parsing
-func TestJSON_StringifyContent_PerFileDeterministic(t *testing.T) {
+// TestJSON_StringifyContent_NoCrossFileState guards the parallel-parsing
+func TestJSON_StringifyContent_NoCrossFileState(t *testing.T) {
+	ctx := context.Background()
 	p := &Parser{}
 	const nonPlan = `{"apiVersion":"v1","kind":"Pod"}`
 
+	_, _, _, _, err := p.Parse(ctx, []byte(minifiedTFPlan), "plan.json", false, 15)
+	require.NoError(t, err)
+
+	got, err := p.StringifyContent([]byte(nonPlan))
+	require.NoError(t, err)
+	require.Equal(t, nonPlan, got,
+		"non-plan content was reformatted after a plan was parsed — parser carries shared cross-file state")
+}
+
+// TestJSON_StringifyContent_ConcurrentNonPlan is the parallel flavor: a non-plan
+// file stringified concurrently with plans being parsed on the same *Parser must
+// always be raw. Run with -race!
+func TestJSON_StringifyContent_ConcurrentNonPlan(t *testing.T) {
+	ctx := context.Background()
+	p := &Parser{}
+	const nonPlan = `{"apiVersion":"v1","kind":"Pod"}`
+	const n = 500
+
+	results := make([]string, n)
 	var wg sync.WaitGroup
-	for i := 0; i < 200; i++ {
+	for i := 0; i < n; i++ {
 		wg.Add(2)
-		go func() { defer wg.Done(); _, _ = p.StringifyContent([]byte(minifiedTFPlan)) }()
-		go func() {
+		go func() { defer wg.Done(); _, _, _, _, _ = p.Parse(ctx, []byte(minifiedTFPlan), "plan.json", false, 15) }()
+		go func(idx int) {
 			defer wg.Done()
-			got, err := p.StringifyContent([]byte(nonPlan))
-			require.NoError(t, err)
-			require.Equal(t, nonPlan, got, "non-plan content must never be indented")
-		}()
+			got, _ := p.StringifyContent([]byte(nonPlan))
+			results[idx] = got // each goroutine writes its own index: no shared-slice race
+		}(i)
 	}
 	wg.Wait()
+
+	for i, got := range results {
+		require.Equalf(t, nonPlan, got, "iter %d: non-plan content was reformatted (shared parser state leaked)", i)
+	}
 }
