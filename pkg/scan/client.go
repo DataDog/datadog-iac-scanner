@@ -23,20 +23,21 @@ import (
 
 // Parameters represents all available scan parameters
 type Parameters struct {
-	CloudProvider               []string
-	ExperimentalQueries         bool
-	InputData                   string
-	OutputName                  string
-	OutputPath                  string
-	RepoPath                    string
-	Path                        []string
-	PayloadPath                 string
-	PreviewLines                int
-	QueriesPath                 []string
-	LibrariesPath               string
-	ReportFormats               []string
-	Platform                    []string
-	TerraformVarsPath           string
+	CloudProvider       []string
+	ExperimentalQueries bool
+	InputData           string
+	OutputName          string
+	OutputPath          string
+	RepoPath            string
+	Path                []string
+	PayloadPath         string
+	PreviewLines        int
+	QueriesPath         []string
+	LibrariesPath       string
+	ReportFormats       []string
+	Platform            []string
+	TerraformVarsPath   string
+	// Deprecated: ignored. Queries are no longer time-bounded.
 	QueryExecTimeout            int
 	LineInfoPayload             bool
 	DisableSecrets              bool

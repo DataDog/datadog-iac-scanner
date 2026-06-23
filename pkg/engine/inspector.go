@@ -55,6 +55,10 @@ const (
 	regoQuery = utils.RegoQuery
 )
 
+// slowQueryWarnThreshold is how long a single query (rego eval + result decode)
+// may take before it is logged as slow. We surface slow rules so they can be optimized later.
+const slowQueryWarnThreshold = 60 * time.Second
+
 // ErrNoResult - error representing when a query didn't return a result
 var ErrNoResult = errors.New("query: not result")
 
@@ -92,7 +96,6 @@ type Inspector struct {
 	repoPath             string
 	enableCoverageReport bool
 	coverageReport       cover.Report
-	queryExecTimeout     time.Duration
 	useOldSeverities     bool
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
@@ -161,12 +164,6 @@ func NewInspector(
 		Add(docker.DetectKindLine{}, model.KindDOCKER).
 		Add(terraform.DetectKindLine{}, model.KindTerraform)
 
-	queryExecTimeout := time.Duration(queryTimeout) * time.Second
-
-	if needsLog {
-		contextLogger.Info().Msgf("Query execution timeout=%v", queryExecTimeout)
-	}
-
 	return &Inspector{
 		QueryLoader:      &queryLoader,
 		vb:               vb,
@@ -175,7 +172,6 @@ func NewInspector(
 		ruleConfigs:      ruleConfigs,
 		detector:         lineDetector,
 		repoPath:         repoPath,
-		queryExecTimeout: queryExecTimeout,
 		useOldSeverities: useOldSeverities,
 		numWorkers:       utils.AdjustNumWorkers(numWorkers),
 		flagEvaluator:    flagEvaluator,
@@ -426,9 +422,6 @@ func (c *Inspector) GetFailedQueries() map[string]error {
 
 func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, err error) {
 	contextLogger := logger.FromContext(ctx)
-	queryStart := time.Now()
-	timeoutCtx, cancel := context.WithTimeout(qCtx.Ctx, c.queryExecTimeout)
-	defer cancel()
 	defer func() {
 		if r := recover(); r != nil {
 			errMessage := fmt.Sprintf("Recovered from panic during query '%s' run. ", qCtx.Query.Metadata.Query)
@@ -445,11 +438,13 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 		options = append(options, rego.EvalQueryTracer(cov))
 	}
 
-	results, err := qCtx.Query.OpaQuery.Eval(timeoutCtx, options...)
+	evalStart := time.Now()
+	results, err := qCtx.Query.OpaQuery.Eval(qCtx.Ctx, options...)
+	evalDuration := time.Since(evalStart)
 	qCtx.payload = nil
 	if err != nil {
 		if topdown.IsCancel(err) {
-			return nil, errors.Wrap(err, "query executing timeout exited")
+			return nil, errors.Wrap(err, "query evaluation canceled (scan aborting)")
 		}
 
 		return nil, errors.Wrap(err, "failed to evaluate query")
@@ -469,15 +464,23 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 		})
 	}
 
-	queryDuration := time.Since(queryStart)
-	// Decode all result items: do NOT impose a per-query wall-clock deadline here.
-	// Decoding is a finite, bounded operation (one pass over the result set, with a
-	// detect-line HCL re-parse per item). A 60s decode timer truncated high-volume
-	// rules (e.g. team-tag, thousands of results) at a timing-dependent point under
-	// worker CPU contention, silently dropping a variable suffix of findings with no
-	// error. This is the root cause of non-deterministic finding counts on large repos.
-	// Only honor real scan cancellation (qCtx.Ctx), which fires on shutdown/error.
-	return c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, queryDuration)
+	decodeStart := time.Now()
+	vulns, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
+	decodeDuration := time.Since(decodeStart)
+
+	// Flag slow rules so they can be debugged/optimized later
+	if total := evalDuration + decodeDuration; total > slowQueryWarnThreshold {
+		contextLogger.Warn().
+			Str("event", "slow_rule").
+			Str("queryID", qCtx.Query.Metadata.Query).
+			Str("platform", qCtx.Query.Metadata.Platform).
+			Int64("evalMs", evalDuration.Milliseconds()).
+			Int64("decodeMs", decodeDuration.Milliseconds()).
+			Int64("totalMs", total.Milliseconds()).
+			Int64("thresholdMs", slowQueryWarnThreshold.Milliseconds()).
+			Msg("slow rule")
+	}
+	return vulns, err
 }
 
 func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.Value) ast.Value {
