@@ -96,6 +96,7 @@ type VulnerabilityLines struct {
 	ResourceSource         string
 	FileSource             []string
 	BlockLocation          ResourceLocation
+	TransformedSearchKey   string // For TFPlan: the transformed searchKey after module mapping (e.g., "module.vpc.resource_tags" instead of "module.vpc.aws_instance.web.tags")
 }
 
 // CommentCommand represents a command given from a comment
