@@ -649,10 +649,16 @@ resolve_reference_name(resource, attr, parent_type, fallback) := out if {
 	parts := split(trim_suffix(trim_prefix(ref, "${"), "}"), ".")
 	count(parts) >= 2
 	parts[0] == parent_type
-	target := input.document[_].resource[parent_type][parts[1]]
-	candidate := get_specific_resource_name(target, parent_type, parts[1])
-	is_literal_string(candidate)
-	out := candidate
+
+	# Collect all matching candidates into a set to avoid multiple-output conflicts
+	# when the same resource name appears across several documents (e.g. module instances).
+	candidates := {c |
+		target := input.document[_].resource[parent_type][parts[1]]
+		c := get_specific_resource_name(target, parent_type, parts[1])
+		is_literal_string(c)
+	}
+	count(candidates) > 0
+	out := min(candidates)
 } else := out if {
 	out := fallback
 }

@@ -17,10 +17,13 @@ import (
 
 const defaultFailCode = 126
 
-// gcPercent sets the garbage collection target percentage. A lower value makes
-// the GC run more frequently, reclaiming transient allocations from OPA query
-// evaluation faster and reducing peak memory usage.
-const gcPercent = 50
+// gcPercent is the GC target (GOGC). The scan is a short-lived batch job whose
+// live heap stays small (~150 MB on large repos), but OPA evaluation and HCL
+// parsing churn huge volumes of short-lived objects. A low GOGC collects very
+// frequently and, in profiles, GC accounts for ~40% of scan CPU. Letting the
+// heap grow ~3x between collections trades a modest amount of peak memory for a
+// large reduction in GC CPU. Override with GOGC; cap peak memory with GOMEMLIMIT.
+const gcPercent = 200
 
 func main() {
 	if _, ok := os.LookupEnv("GOGC"); !ok {

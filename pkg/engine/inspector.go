@@ -32,11 +32,12 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/open-policy-agent/opa/ast"           // nolint:staticcheck
-	"github.com/open-policy-agent/opa/cover"         // nolint:staticcheck
-	"github.com/open-policy-agent/opa/rego"          // nolint:staticcheck
-	"github.com/open-policy-agent/opa/storage/inmem" // nolint:staticcheck
-	"github.com/open-policy-agent/opa/topdown"       // nolint:staticcheck
+	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/cover"
+	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/open-policy-agent/opa/v1/storage"
+	"github.com/open-policy-agent/opa/v1/storage/inmem"
+	"github.com/open-policy-agent/opa/v1/topdown"
 	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -72,6 +73,13 @@ type QueryLoader struct {
 	platformLibraries map[string]source.RegoLibraries
 	querySum          int
 	QueriesMetadata   []model.QueryMetadata
+	// parsedCommon is the Common library module parsed once at startup.
+	// Passed via rego.ParsedModule() to skip re-parsing 40 KB of Rego text on
+	// every PrepareForEval call; each call still compiles its own fresh module
+	// set so there is no shared mutable compiler state across goroutines.
+	parsedCommon *ast.Module
+	// parsedGeneric holds the per-platform Generic library module, also parsed once.
+	parsedGeneric map[string]*ast.Module
 }
 
 // VulnerabilityBuilder represents a function that will build a vulnerability
@@ -155,7 +163,7 @@ func NewInspector(
 	}
 	platformLibraries := getPlatformLibraries(ctx, queriesSource, queries)
 
-	queryLoader := prepareQueries(queries, commonLibrary, platformLibraries, tracker)
+	queryLoader := prepareQueries(ctx, queries, commonLibrary, platformLibraries, tracker)
 
 	failedQueries := make(map[string]error)
 
@@ -224,7 +232,7 @@ func (c *Inspector) createInspectionJobs(jobs chan<- InspectionJob, queries []mo
 func (c *Inspector) performInspection(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	astPayload ast.Value,
 	jobs <-chan InspectionJob, results chan<- QueryResult, queries []model.QueryMetadata,
-	modules []tfmodules.ParsedModule) {
+	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store) {
 	for job := range jobs {
 		select {
 		case <-ctx.Done():
@@ -233,8 +241,12 @@ func (c *Inspector) performInspection(ctx context.Context, scanID string, filesM
 		default:
 		}
 
-		queryOpa, err := c.QueryLoader.LoadQuery(ctx, &queries[job.queryID], modules)
+		loadStart := time.Now()
+		queryOpa, err := c.QueryLoader.LoadQuery(ctx, &queries[job.queryID], modules, baseStores)
+		loadDur := time.Since(loadStart)
 		if err != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Warn().Err(err).Msgf("failed to load query %s", queries[job.queryID].Query)
 			continue
 		}
 
@@ -252,7 +264,12 @@ func (c *Inspector) performInspection(ctx context.Context, scanID string, filesM
 			FlagEvaluator: c.flagEvaluator,
 		}
 
+		evalStart := time.Now()
 		vuls, err := c.doRun(ctx, queryContext)
+		evalDur := time.Since(evalStart)
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
+			loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[job.queryID].Query)
 		if err == nil {
 			c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
 		}
@@ -310,6 +327,10 @@ func (c *Inspector) Inspect(
 
 	queries := c.getQueriesByPlat(platforms)
 
+	// Pre-build one inmem.Store per platform so LoadQuery does not re-parse the
+	// same payload for every PrepareForEval call.
+	baseStores := precomputeBaseStores(c.QueryLoader.precomputeBaseInputData(ctx, enrichedModules))
+
 	// Compute the file map once and share it (read-only) across all workers
 	filesMap := files.ToMap()
 
@@ -328,7 +349,7 @@ func (c *Inspector) Inspect(
 		go func() {
 			// Decrement the counter when the goroutine completes
 			defer wg.Done()
-			c.performInspection(ctx, scanID, filesMap, astPayload, jobs, results, queries, enrichedModules)
+			c.performInspection(ctx, scanID, filesMap, astPayload, jobs, results, queries, enrichedModules, baseStores)
 		}()
 	}
 	// Start a goroutine to create inspection jobs
@@ -369,6 +390,7 @@ func processResult(ctx context.Context, result *QueryResult,
 	queries []model.QueryMetadata, c *Inspector) {
 	contextLogger := logger.FromContext(ctx)
 	if result.err != nil {
+		contextLogger.Warn().Err(result.err).Msgf("query failed to execute: %s", queries[result.queryID].Query)
 		c.failedQueriesMu.Lock()
 		c.failedQueries[queries[result.queryID].Query] = result.err
 		c.failedQueriesMu.Unlock()
@@ -747,28 +769,108 @@ func ShouldSkipVulnerability(command model.CommentsCommands, queryID, legacyQuer
 	return false
 }
 
-func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibraries,
+func prepareQueries(ctx context.Context, queries []model.QueryMetadata, commonLibrary source.RegoLibraries,
 	platformLibraries map[string]source.RegoLibraries, tracker Tracker) QueryLoader {
+	contextLogger := logger.FromContext(ctx)
 	// track queries loaded
 	sum := 0
 	for _, metadata := range queries {
 		tracker.TrackQueryLoad(metadata.Aggregation)
 		sum += metadata.Aggregation
 	}
+
+	// Pre-parse the Common and platform-Generic library modules once so that
+	// each LoadQuery call can pass them via rego.ParsedModule() and skip
+	// re-tokenizing ~82 KB of Rego text on every PrepareForEval call.
+	// Each PrepareForEval still compiles its own independent module set, so
+	// there is no shared mutable compiler state and no concurrency hazard.
+	parsedCommon, err := ast.ParseModuleWithOpts("Common", commonLibrary.LibraryCode,
+		ast.ParserOptions{RegoVersion: ast.RegoV1})
+	if err != nil {
+		contextLogger.Warn().Err(err).Msg("Failed to pre-parse Common Rego library; will re-parse per query")
+		parsedCommon = nil
+	}
+
+	parsedGeneric := make(map[string]*ast.Module, len(platformLibraries))
+	for platform, lib := range platformLibraries {
+		mod, parseErr := ast.ParseModuleWithOpts("Generic", lib.LibraryCode,
+			ast.ParserOptions{RegoVersion: ast.RegoV1})
+		if parseErr != nil {
+			contextLogger.Warn().Err(parseErr).Msgf("Failed to pre-parse Generic Rego library for platform %s; will re-parse per query", platform)
+			continue
+		}
+		parsedGeneric[platform] = mod
+	}
+
 	return QueryLoader{
 		commonLibrary:     commonLibrary,
 		platformLibraries: platformLibraries,
 		querySum:          sum,
 		QueriesMetadata:   queries,
+		parsedCommon:      parsedCommon,
+		parsedGeneric:     parsedGeneric,
 	}
 }
 
-// LoadQuery loads the query into memory so it can be freed when not used anymore
-func (q QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
-	modules []tfmodules.ParsedModule) (*rego.PreparedEvalQuery, error) {
+// buildMergedInputData merges the platform library, common library and (when
+// present) module input data into a single JSON document for a query.
+func (q *QueryLoader) buildMergedInputData(ctx context.Context, query *model.QueryMetadata,
+	modules []tfmodules.ParsedModule) (string, error) {
 	contextLogger := logger.FromContext(ctx)
-	opaQuery := rego.PreparedEvalQuery{}
+	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
+	if !ok {
+		return "", errors.New("failed to get platform library")
+	}
+	mergedInputData, err := source.MergeInputData(platformGeneralQuery.LibraryInputData, query.InputData)
+	if err != nil {
+		contextLogger.Debug().Msgf("Could not merge %s library input data", query.Platform)
+	}
+	mergedInputData, err = source.MergeInputData(q.commonLibrary.LibraryInputData, mergedInputData)
+	if err != nil {
+		contextLogger.Debug().Msg("Could not merge common library input data")
+	}
+	if modules != nil {
+		mergedInputData, err = source.MergeModulesData(modules, mergedInputData)
+		if err != nil {
+			contextLogger.Debug().Msg("Could not merge modules input data")
+		}
+	}
+	return mergedInputData, nil
+}
 
+// precomputeBaseInputData builds, once per platform, the merged input data for
+// queries that carry no custom InputData. The common/platform library data and
+// the module payload are identical across such queries, so doing this once
+// avoids re-serializing the (potentially large) module set for every query.
+func (q *QueryLoader) precomputeBaseInputData(ctx context.Context,
+	modules []tfmodules.ParsedModule) map[string]string {
+	base := make(map[string]string, len(q.platformLibraries))
+	for platform := range q.platformLibraries {
+		data, err := q.buildMergedInputData(ctx, &model.QueryMetadata{Platform: platform}, modules)
+		if err != nil {
+			continue
+		}
+		base[platform] = data
+	}
+	return base
+}
+
+// precomputeBaseStores builds one inmem.Store per platform from the already-merged
+// input data strings. The store is read-only after construction and is safe for
+// concurrent use by all query goroutines, avoiding repeated JSON parsing of the
+// same large input-data payload for every LoadQuery call.
+func precomputeBaseStores(baseInputData map[string]string) map[string]storage.Store {
+	stores := make(map[string]storage.Store, len(baseInputData))
+	for platform, data := range baseInputData {
+		stores[platform] = inmem.NewFromReader(bytes.NewBufferString(data))
+	}
+	return stores
+}
+
+// LoadQuery loads the query into memory so it can be freed when not used anymore
+func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
+	modules []tfmodules.ParsedModule,
+	baseStores map[string]storage.Store) (*rego.PreparedEvalQuery, error) {
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
 	if !ok {
 		return nil, errors.New("failed to get platform library")
@@ -778,31 +880,46 @@ func (q QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
-		mergedInputData, err := source.MergeInputData(platformGeneralQuery.LibraryInputData, query.InputData)
-		if err != nil {
-			contextLogger.Debug().Msgf("Could not merge %s library input data", query.Platform)
-		}
-		mergedInputData, err = source.MergeInputData(q.commonLibrary.LibraryInputData, mergedInputData)
-		if err != nil {
-			contextLogger.Debug().Msg("Could not merge common library input data")
-		}
-		if modules != nil {
-			mergedInputData, err = source.MergeModulesData(modules, mergedInputData)
+		hasCustomInput := !source.IsEmptyInputData(query.InputData)
+
+		// Choose the inmem store: reuse the pre-built per-platform store for
+		// queries with no custom InputData (the common case); fall back to
+		// building a fresh store for the rare query with custom InputData.
+		var store storage.Store
+		if prebuilt, ok := baseStores[query.Platform]; ok && !hasCustomInput {
+			store = prebuilt
+		} else {
+			mergedInputData, err := q.buildMergedInputData(ctx, query, modules)
 			if err != nil {
-				contextLogger.Debug().Msg("Could not merge modules input data")
+				return nil, err
 			}
+			store = inmem.NewFromReader(bytes.NewBufferString(mergedInputData))
 		}
-		store := inmem.NewFromReader(bytes.NewBufferString(mergedInputData))
-		opaQuery, err = rego.New(
+
+		// Build the rego.New() options. When pre-parsed AST modules are
+		// available, pass them via rego.ParsedModule() to skip re-tokenizing
+		// the ~82 KB of shared library Rego text on every call. Each
+		// PrepareForEval still compiles its own fresh module set, so there is
+		// no shared mutable compiler state and no concurrency hazard.
+		opts := []func(*rego.Rego){
 			rego.Query(regoQuery),
 			rego.SetRegoVersion(ast.RegoV1),
-			rego.Module("Common", q.commonLibrary.LibraryCode),
-			rego.Module("Generic", platformGeneralQuery.LibraryCode),
-			rego.Module(query.Query, query.Content),
 			rego.Store(store),
 			rego.UnsafeBuiltins(unsafeRegoFunctions),
-		).PrepareForEval(ctx)
+		}
+		if q.parsedCommon != nil {
+			opts = append(opts, rego.ParsedModule(q.parsedCommon))
+		} else {
+			opts = append(opts, rego.Module("Common", q.commonLibrary.LibraryCode))
+		}
+		if parsedGen, ok := q.parsedGeneric[query.Platform]; ok {
+			opts = append(opts, rego.ParsedModule(parsedGen))
+		} else {
+			opts = append(opts, rego.Module("Generic", platformGeneralQuery.LibraryCode))
+		}
+		opts = append(opts, rego.Module(query.Query, query.Content))
 
+		opaQuery, err := rego.New(opts...).PrepareForEval(ctx)
 		if err != nil {
 			return nil, err
 		}

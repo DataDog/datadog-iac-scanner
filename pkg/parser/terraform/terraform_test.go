@@ -7,8 +7,11 @@ package terraform
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -237,7 +240,7 @@ func Test_GetCommentToken(t *testing.T) {
 
 func TestTerraform_StringifyContent(t *testing.T) {
 	type fields struct {
-		parser Parser
+		parser *Parser
 	}
 	type args struct {
 		content []byte
@@ -252,7 +255,7 @@ func TestTerraform_StringifyContent(t *testing.T) {
 		{
 			name: "test stringify content",
 			fields: fields{
-				parser: Parser{},
+				parser: &Parser{},
 			},
 			args: args{
 				content: []byte(`
@@ -386,4 +389,42 @@ data "aws_iam_policy_document" "test_destination_policy" {
 			}
 		})
 	}
+}
+
+// TestParser_ConcurrentSameDir guards the per-directory variable cache: the
+// converter adds per-file keys to the variable map during evaluation, so the
+// cached map must never be shared across the files parsed concurrently in the
+// same directory (doing so caused "concurrent map writes" crashes). Run under
+// -race to catch regressions.
+func TestParser_ConcurrentSameDir(t *testing.T) {
+	dir := t.TempDir()
+	const numFiles = 32
+	for i := 0; i < numFiles; i++ {
+		// format() over an unknown variable forces the converter's evalFunction
+		// fallback, which writes the unknown root key into the variable map.
+		content := fmt.Sprintf(`
+resource "aws_s3_bucket" "b%d" {
+  bucket = format("%%s-%%s", unknown_input_%d, another_unknown_%d)
+}
+`, i, i, i)
+		path := filepath.Join(dir, fmt.Sprintf("file_%d.tf", i))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	}
+
+	p := NewDefault()
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	for i := 0; i < numFiles; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			path := filepath.Join(dir, fmt.Sprintf("file_%d.tf", i))
+			content, err := os.ReadFile(path) //nolint:gosec
+			require.NoError(t, err)
+			_, _, _, _, parseErr := p.Parse(ctx, content, path, false, 0)
+			require.NoError(t, parseErr)
+		}(i)
+	}
+	wg.Wait()
 }

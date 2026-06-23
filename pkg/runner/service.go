@@ -31,6 +31,15 @@ const (
 	mbConst = 1048576
 )
 
+// scanReadBufferPool reuses the 1 MiB read buffers handed to getContent so we
+// don't allocate (and GC) one per file when scanning large repositories.
+var scanReadBufferPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, mbConst)
+		return &b
+	},
+}
+
 // Storage is the interface that wraps following basic methods: SaveFile, SaveVulnerabilities, and GetVulnerabilities
 // SaveFile should append metadata to a file
 // SaveVulnerabilities should append vulnerabilities list to current storage
@@ -129,9 +138,11 @@ func (s *Service) PrepareSources(ctx context.Context,
 			ctx,
 			s.Parser.SupportedExtensions(),
 			func(ctx context.Context, filename string, rc io.ReadCloser) error {
-				// data will be used as buffer as the sink is used multiple times concurrently
-				data := make([]byte, mbConst)
-				return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
+				// Buffer is reused across files via a pool; the sink runs
+				// concurrently but each call borrows its own buffer.
+				buf := scanReadBufferPool.Get().(*[]byte)
+				defer scanReadBufferPool.Put(buf)
+				return s.sink(ctx, filename, scanID, rc, *buf, openAPIResolveReferences, maxResolverDepth)
 			},
 			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
 				return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
@@ -142,8 +153,9 @@ func (s *Service) PrepareSources(ctx context.Context,
 			ctx,
 			s.Parser.SupportedExtensions(),
 			func(ctx context.Context, filename string, rc io.ReadCloser) error {
-				data := make([]byte, mbConst)
-				return s.sink(ctx, filename, scanID, rc, data, openAPIResolveReferences, maxResolverDepth)
+				buf := scanReadBufferPool.Get().(*[]byte)
+				defer scanReadBufferPool.Put(buf)
+				return s.sink(ctx, filename, scanID, rc, *buf, openAPIResolveReferences, maxResolverDepth)
 			},
 			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
 				return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
@@ -252,21 +264,32 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	}
 }
 
-// PrepareScanDocument removes _dd_lines from payload and parses json filters
+// PrepareScanDocument removes _dd_lines from payload and parses json filters.
+// On a marshal failure it logs and returns the original body unchanged.
 func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind model.FileKind) map[string]interface{} {
-	contextLogger := logger.FromContext(ctx)
-	var bodyMap map[string]interface{}
-	j, err := json.Marshal(body)
+	bodyMap, err := prepareScanDocument(body, kind)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to remove dd line information")
-		return body
-	}
-	if err := json.Unmarshal(j, &bodyMap); err != nil {
+		contextLogger := logger.FromContext(ctx)
 		contextLogger.Error().Msgf("failed to remove dd line information: '%s'", err)
 		return body
 	}
-	prepareScanDocumentRoot(bodyMap, kind)
 	return bodyMap
+}
+
+// prepareScanDocument deep-copies body (via a single JSON round-trip), strips
+// _dd_lines and resolves json filters. Returning the error lets callers that
+// already gate on marshalability skip the document instead of double-marshaling.
+func prepareScanDocument(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
+	j, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	var bodyMap map[string]interface{}
+	if err := json.Unmarshal(j, &bodyMap); err != nil {
+		return nil, err
+	}
+	prepareScanDocumentRoot(bodyMap, kind)
+	return bodyMap, nil
 }
 
 func prepareScanDocumentRoot(body interface{}, kind model.FileKind) {
