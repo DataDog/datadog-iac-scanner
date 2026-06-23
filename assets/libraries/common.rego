@@ -464,6 +464,46 @@ is_access_limited_to_an_account_id(statement) if {
 	lower(key) == lower(condition_keys_limiting_access_to_account_id[_])
 }
 
+# Global condition keys that scope a wildcard principal down to specific
+# callers or source resources (e.g. AWS service integrations such as
+# S3/CloudTrail -> SNS event notifications). A statement carrying one of these
+# is not effectively public. Superset of
+# condition_keys_limiting_access_to_account_id (which only covers account-id
+# scoping); this also covers source-resource, VPC, network and org scoping.
+condition_keys_scoping_principal := {
+	"aws:SourceArn",
+	"aws:SourceAccount",
+	"aws:SourceOwner",
+	"aws:SourceOrgID",
+	"aws:SourceOrgPaths",
+	"aws:SourceVpc",
+	"aws:SourceVpce",
+	"aws:SourceIp",
+	"aws:VpcSourceIp",
+	"aws:ResourceAccount",
+	"aws:PrincipalArn",
+	"aws:PrincipalAccount",
+	"aws:PrincipalOrgID",
+	"aws:PrincipalOrgPaths",
+	"aws:VpceAccount",
+}
+
+# verifies whether an IAM policy statement scopes its principal down via a
+# recognized Condition key so that a wildcard ("*") principal is not effectively
+# public. Three checks are combined:
+#   1. The operator must be affirmative — negating operators (containing "not")
+#      or conditional-presence operators ("...ifexists") do not restrict access.
+#   2. The condition key must be in the recognized scoping-key allowlist.
+#   3. The value must not itself be a wildcard ("*"), which would restrict nothing.
+is_iam_policy_principal_scoped_by_condition(statement) if {
+	valid_key(statement, conditions[idx])
+	value := statement[conditions[idx]][op][key]
+	not contains(lower(op), "not")
+	not endswith(lower(op), "ifexists")
+	lower(key) == lower(condition_keys_scoping_principal[_])
+	value != "*"
+}
+
 is_cross_account(statement) if {
 	is_string(statement.Principal.AWS)
 	regex.match("(^[0-9]{12}$)|(^arn:aws:(iam|sts)::[0-9]{12})", statement.Principal.AWS)

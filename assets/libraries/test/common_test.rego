@@ -628,3 +628,78 @@ test_get_encryption_unencrypted if {
 	result := get_encryption_if_exists(resource)
 	result == "unencrypted"
 }
+
+# Test is_iam_policy_principal_scoped_by_condition function
+test_is_iam_policy_principal_scoped_source_arn if {
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Action": "sns:Publish",
+		"Condition": {"ArnLike": {"aws:SourceArn": "arn:aws:s3:::my-bucket"}},
+	}
+	is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_source_account if {
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"StringEquals": {"aws:SourceAccount": "123456789012"}},
+	}
+	is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_lowercase_key if {
+	# condition key matching is case-insensitive
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"ArnLike": {"AWS:sourcearn": "arn:aws:s3:::my-bucket"}},
+	}
+	is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_non_scoping_key if {
+	# aws:SecureTransport restricts HOW, not WHO — not scoped
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"Bool": {"aws:SecureTransport": "true"}},
+	}
+	not is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_no_condition if {
+	statement := {"Effect": "Allow", "Principal": "*", "Action": "sns:Publish"}
+	not is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_negating_operator if {
+	# StringNotEquals means "everyone EXCEPT this account" — still public
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"StringNotEquals": {"aws:SourceAccount": "123456789012"}},
+	}
+	not is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_ifexists_operator if {
+	# ArnLikeIfExists passes when the key is absent — does not reliably restrict
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"ArnLikeIfExists": {"aws:SourceArn": "arn:aws:s3:::my-bucket"}},
+	}
+	not is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_wildcard_value if {
+	# aws:SourceArn set to "*" restricts nothing
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"ArnLike": {"aws:SourceArn": "*"}},
+	}
+	not is_iam_policy_principal_scoped_by_condition(statement)
+}
