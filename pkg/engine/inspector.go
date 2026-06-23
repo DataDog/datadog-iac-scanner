@@ -558,14 +558,14 @@ func (c *Inspector) DecodeQueryResults(
 
 	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
 	failedDetectLine := false
-	cancelled := false
+	canceled := false
 decodeLoop:
 	for _, queryResultItem := range queryResultItems {
 		select {
 		case <-ctxTimeout.Done():
-			// Scan cancelled (shutdown/error). Stop decoding entirely. The partial
+			// Scan canceled (shutdown/error). Stop decoding entirely. The partial
 			// result is discarded by the aborting scan. break must exit the loop.
-			cancelled = true
+			canceled = true
 			break decodeLoop
 		default:
 			vulnerability, aux := getVulnerabilitiesFromQuery(ctx, qCtx, c, queryResultItem, queryDuration)
@@ -578,9 +578,9 @@ decodeLoop:
 		}
 	}
 
-	if cancelled {
+	if canceled {
 		contextLogger.Err(ctxTimeout.Err()).Msgf(
-			"Scan cancelled while processing results of the query: %s %s",
+			"Scan canceled while processing results of the query: %s %s",
 			qCtx.Query.Metadata.Platform,
 			qCtx.Query.Metadata.Query)
 	}
