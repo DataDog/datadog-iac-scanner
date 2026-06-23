@@ -9,17 +9,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
 )
 
 // Parser defines a parser type
-type Parser struct {
-	shouldIdent   bool
-	shouldIdentMu sync.RWMutex
-}
+type Parser struct{}
 
 // Resolve - replace or modifies in-memory content before parsing
 func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
@@ -67,10 +63,6 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
 	}
 
-	p.shouldIdentMu.Lock()
-	p.shouldIdent = true
-	p.shouldIdentMu.Unlock()
-
 	return resolved, []model.Document{tfPlan}, nil, resolvedFiles, nil
 }
 
@@ -103,17 +95,31 @@ func (p *Parser) GetCommentToken() string {
 
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
-	p.shouldIdentMu.RLock()
-	shouldIdent := p.shouldIdent
-	p.shouldIdentMu.RUnlock()
-
-	if shouldIdent {
+	if contentIsTerraformPlan(content) {
 		var out bytes.Buffer
-		err := json.Indent(&out, content, "", "  ")
-		if err != nil {
+		if err := json.Indent(&out, content, "", "  "); err != nil {
 			return "", err
 		}
 		return out.String(), nil
 	}
 	return string(content), nil
+}
+
+// contentIsTerraformPlan reports whether content parses as a Terraform plan,
+// using the same check as Parse. Stateless and per-call. Recovers from panics
+// in plan parsing (malformed/partial plans) and treats them as "not a plan".
+func contentIsTerraformPlan(content []byte) (isPlan bool) {
+	defer func() {
+		if recover() != nil {
+			isPlan = false
+		}
+	}()
+	var doc model.Document
+	if err := json.Unmarshal(content, &doc); err != nil {
+		return false
+	}
+	if _, err := parseTFPlan(doc); err != nil {
+		return false
+	}
+	return true
 }

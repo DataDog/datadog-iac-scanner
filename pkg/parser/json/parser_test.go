@@ -6,7 +6,10 @@
 package json
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -67,57 +70,66 @@ func Test_GetCommentToken(t *testing.T) {
 	require.Equal(t, "", parser.GetCommentToken())
 }
 
+// minifiedTFPlan is a valid (minified) Terraform plan JSON
+// parseTFPlan needs format_version/terraform_version and a planned_values tree.
+const minifiedTFPlan = `{"format_version":"0.2","terraform_version":"1.0.5","planned_values":{"root_module":{"resources":[{"address":"fakewebservices_database.prod_db","mode":"managed","type":"fakewebservices_database","name":"prod_db","provider_name":"registry.terraform.io/hashicorp/fakewebservices","schema_version":0,"values":{"name":"Production DB","size":256},"sensitive_values":{}}]}},"resource_changes":[],"configuration":{}}`
+
 func TestJSON_StringifyContent(t *testing.T) {
-	type fields struct {
-		parser Parser
-	}
-	type args struct {
-		content []byte
-	}
+	// The indenting decision is now driven per-file by the content itself
+	var indentedPlan bytes.Buffer
+	require.NoError(t, json.Indent(&indentedPlan, []byte(minifiedTFPlan), "", "  "))
+
 	tests := []struct {
 		name    string
-		fields  fields
-		args    args
+		content []byte
 		want    string
 		wantErr bool
 	}{
 		{
-			name: "test stringify content",
-			fields: fields{
-				parser: Parser{shouldIdent: false},
-			},
-			args: args{
-				content: []byte(`{
-					"key" : "value"
-				}
-`),
-			},
-			want: `{
-					"key" : "value"
-				}
-`,
+			name:    "non-plan JSON is returned unchanged (not indented)",
+			content: []byte("{\n\t\t\t\t\t\"key\" : \"value\"\n\t\t\t\t}\n"),
+			want:    "{\n\t\t\t\t\t\"key\" : \"value\"\n\t\t\t\t}\n",
 			wantErr: false,
 		},
 		{
-			name: "test stringify content single line",
-			fields: fields{
-				parser: Parser{shouldIdent: true},
-			},
-			args: args{
-				content: []byte(`{"key":"value"}`),
-			},
-			want: `{
-  "key": "value"
-}`,
+			name:    "minified non-plan JSON stays minified",
+			content: []byte(`{"key":"value"}`),
+			want:    `{"key":"value"}`,
+			wantErr: false,
+		},
+		{
+			name:    "terraform plan JSON is indented",
+			content: []byte(minifiedTFPlan),
+			want:    indentedPlan.String(),
 			wantErr: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.fields.parser.StringifyContent(tt.args.content)
+			var p Parser
+			got, err := p.StringifyContent(tt.content)
 			require.Equal(t, tt.wantErr, (err != nil))
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestJSON_StringifyContent_PerFileDeterministic guards the parallel-parsing
+func TestJSON_StringifyContent_PerFileDeterministic(t *testing.T) {
+	p := &Parser{}
+	const nonPlan = `{"apiVersion":"v1","kind":"Pod"}`
+
+	var wg sync.WaitGroup
+	for i := 0; i < 200; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = p.StringifyContent([]byte(minifiedTFPlan)) }()
+		go func() {
+			defer wg.Done()
+			got, err := p.StringifyContent([]byte(nonPlan))
+			require.NoError(t, err)
+			require.Equal(t, nonPlan, got, "non-plan content must never be indented")
+		}()
+	}
+	wg.Wait()
 }
