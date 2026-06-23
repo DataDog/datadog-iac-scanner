@@ -60,10 +60,10 @@ func TestValidateCustomRegoQuery_MissingComma(t *testing.T) {
 	}
 }
 
-// TestValidateCustomRegoQuery_WrongPackage catches the silent failure where a user
+// TestValidateRegoStructure_WrongPackage catches the silent failure where a user
 // writes `package mycompany` — OPA compiles it fine but the scanner finds zero findings
 // because it evaluates data.datadog.DatadogPolicy.
-func TestValidateCustomRegoQuery_WrongPackage(t *testing.T) {
+func TestValidateRegoStructure_WrongPackage(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "package datadog", "package mycompany", 1)
 
 	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)

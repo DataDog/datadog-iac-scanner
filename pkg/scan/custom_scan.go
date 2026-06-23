@@ -105,7 +105,7 @@ func ValidateCustomRegoQuery(
 	// Check structural constraints that OPA won't catch at compile time: the scanner
 	// evaluates `result = data.datadog.DatadogPolicy`, so the module must declare
 	// `package datadog` and at least one `DatadogPolicy` rule.
-	if errs := validateRegoStructure(regoContent); len(errs) > 0 {
+	if errs := ValidateRegoStructure(regoContent); len(errs) > 0 {
 		return errs, nil
 	}
 
@@ -140,14 +140,17 @@ func ValidateCustomRegoQuery(
 	return regoValidationErrorsFrom(compileErr), nil
 }
 
-// validateRegoStructure parses regoContent and checks constraints that OPA's compiler
+// ValidateRegoStructure parses regoContent and checks constraints that OPA's compiler
 // will not report as errors but that will silently produce zero findings:
 //   - the module must declare `package datadog`
 //   - at least one rule named `DatadogPolicy` must exist
 //
 // Parse errors from ast.ParseModule are returned directly as validation errors so the
 // caller gets line-accurate markers without going through the full compile pipeline.
-func validateRegoStructure(regoContent string) []RegoValidationError {
+//
+// This is exported so both the validate and evaluate CLI commands can run the same
+// structural pre-check, preventing misleading "0 findings" results from misnamed rules.
+func ValidateRegoStructure(regoContent string) []RegoValidationError {
 	module, err := ast.ParseModuleWithOpts("query.rego", regoContent, ast.ParserOptions{
 		ProcessAnnotation: false,
 		RegoVersion:       ast.RegoV1,
