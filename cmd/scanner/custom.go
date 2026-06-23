@@ -33,6 +33,7 @@ type customFinding struct {
 	EndLine      int    `json:"end_line"`
 	ResourceType string `json:"resource_type"`
 	ResourceName string `json:"resource_name"`
+	Message      string `json:"message"`
 }
 
 type customRegoError struct {
@@ -68,11 +69,13 @@ func runEvaluateCustom(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("decoding --file: %w", err)
 	}
 
-	// Run the same structural pre-check as Check Syntax: wrong package or rule name
-	// would silently produce zero findings, making it look like the rule passes.
-	if structuralErrs := scan.ValidateRegoStructure(string(regoBytes)); len(structuralErrs) > 0 {
-		errs := regoValidationErrorsToCustom(structuralErrs)
-		return writeJSON(evaluateOutput{Findings: []customFinding{}, Errors: errs})
+	// Compile errors must be returned before scanning; otherwise evaluate looks like zero matches.
+	validationErrs, err := scan.ValidateCustomRegoQuery(ctx, platform, string(regoBytes))
+	if err != nil {
+		return fmt.Errorf("validating custom query: %w", err)
+	}
+	if len(validationErrs) > 0 {
+		return writeJSON(evaluateOutput{Findings: []customFinding{}, Errors: regoValidationErrorsToCustom(validationErrs)})
 	}
 
 	vulns, failedQueries, err := scan.RunCustomRegoQuery(ctx, platform, string(regoBytes), fileBytes)
@@ -95,11 +98,10 @@ func runEvaluateCustom(ctx context.Context, c *cli.Command) error {
 			EndLine:      endLine,
 			ResourceType: v.ResourceType,
 			ResourceName: v.ResourceName,
+			Message:      v.KeyExpectedValue,
 		})
 	}
 
-	// failedQueries are runtime errors (rego evaluation errors, not compile errors).
-	// They have no location info because they come from the engine's error map.
 	regoErrors := make([]customRegoError, 0, len(failedQueries))
 	for _, queryErr := range failedQueries {
 		regoErrors = append(regoErrors, customRegoError{
@@ -111,8 +113,6 @@ func runEvaluateCustom(ctx context.Context, c *cli.Command) error {
 	return writeJSON(evaluateOutput{Findings: findings, Errors: regoErrors})
 }
 
-// regoValidationErrorsToCustom converts structured RegoValidationErrors (with location)
-// to the customRegoError shape used by the evaluate CLI output.
 func regoValidationErrorsToCustom(errs []scan.RegoValidationError) []customRegoError {
 	out := make([]customRegoError, 0, len(errs))
 	for _, e := range errs {
@@ -128,8 +128,6 @@ func regoValidationErrorsToCustom(errs []scan.RegoValidationError) []customRegoE
 	return out
 }
 
-// validateOutput is the JSON shape written to stdout by the validate subcommand.
-// nil errors means a clean compile; a non-empty slice carries Monaco-compatible markers.
 type validateOutput struct {
 	Errors []scan.RegoValidationError `json:"errors"`
 }

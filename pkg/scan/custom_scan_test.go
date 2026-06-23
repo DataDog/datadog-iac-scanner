@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// validTerraformRego is a minimal but complete DatadogPolicy rule that passes validation.
+// validTerraformRego is a minimal DatadogPolicy rule that passes validation.
 const validTerraformRego = `
 package datadog
 
@@ -38,11 +38,7 @@ func TestValidateCustomRegoQuery_Valid(t *testing.T) {
 	assert.Empty(t, errs, "valid rule should produce no errors")
 }
 
-// TestValidateCustomRegoQuery_MissingComma reproduces the original bug: a missing comma
-// in the result object was returned with start_line=0 (no location) because errors.As
-// failed to match ast.Errors. After the fix, start_line must be >0.
 func TestValidateCustomRegoQuery_MissingComma(t *testing.T) {
-	// Remove the comma after "documentId": input.document[i].id
 	rego := strings.Replace(validTerraformRego,
 		`"documentId": input.document[i].id,`,
 		`"documentId": input.document[i].id`,
@@ -53,16 +49,11 @@ func TestValidateCustomRegoQuery_MissingComma(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, errs, "missing comma should produce at least one error")
 
-	// The key assertion: start_line must be set so the frontend can highlight the line.
 	for _, e := range errs {
-		assert.Greater(t, e.StartLine, 0,
-			"parse error must carry a line number (got start_line=0, meaning location was lost); error: %s", e.Message)
+		assert.Greater(t, e.StartLine, 0, "parse error must carry a line number: %s", e.Message)
 	}
 }
 
-// TestValidateRegoStructure_WrongPackage catches the silent failure where a user
-// writes `package mycompany` — OPA compiles it fine but the scanner finds zero findings
-// because it evaluates data.datadog.DatadogPolicy.
 func TestValidateRegoStructure_WrongPackage(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "package datadog", "package mycompany", 1)
 
@@ -72,8 +63,6 @@ func TestValidateRegoStructure_WrongPackage(t *testing.T) {
 	assert.Equal(t, "invalid_package", errs[0].Code)
 }
 
-// TestValidateCustomRegoQuery_WrongRuleName catches the silent failure where a user
-// names their rule `MyPolicy` instead of `DatadogPolicy`.
 func TestValidateCustomRegoQuery_WrongRuleName(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "DatadogPolicy", "MyPolicy", -1)
 
@@ -83,8 +72,6 @@ func TestValidateCustomRegoQuery_WrongRuleName(t *testing.T) {
 	assert.Equal(t, "missing_rule", errs[0].Code)
 }
 
-// TestValidateCustomRegoQuery_MissingIf catches `DatadogPolicy contains result { ... }`
-// without the `if` keyword (common mistake from Rego v0 habits).
 func TestValidateCustomRegoQuery_MissingIf(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "DatadogPolicy contains result if {", "DatadogPolicy contains result {", 1)
 
@@ -94,10 +81,6 @@ func TestValidateCustomRegoQuery_MissingIf(t *testing.T) {
 	assert.Greater(t, errs[0].StartLine, 0, "parse error must have a line number")
 }
 
-// TestValidateCustomRegoQuery_SprintfArityMismatch documents that OPA does NOT catch
-// sprintf format/arg count mismatches at compile time — they fail silently at runtime
-// (the call returns undefined, so the rule body fails to unify and produces no findings).
-// This is a known limitation: users will see 0 findings rather than an error.
 func TestValidateCustomRegoQuery_SprintfArityMismatch(t *testing.T) {
 	rego := strings.Replace(validTerraformRego,
 		`sprintf("aws_s3_bucket[%s].acl", [name])`,
@@ -107,12 +90,37 @@ func TestValidateCustomRegoQuery_SprintfArityMismatch(t *testing.T) {
 
 	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
 	require.NoError(t, err)
-	// OPA does not enforce sprintf arity statically — the mismatch is a runtime
-	// undefined, not a compile error. No errors expected here.
-	assert.Empty(t, errs, "sprintf arity mismatch is not caught at compile time")
+	require.NotEmpty(t, errs, "sprintf arity mismatch should be caught by AST walking")
+	assert.Equal(t, "sprintf_arity", errs[0].Code)
+	assert.Greater(t, errs[0].StartLine, 0, "sprintf arity error must have a line number")
 }
 
-// TestValidateCustomRegoQuery_MissingImport catches using tf_lib without importing it.
+func TestValidateCustomRegoQuery_MissingResultField(t *testing.T) {
+	rego := strings.Replace(validTerraformRego,
+		`"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),`+"\n",
+		"",
+		1,
+	)
+
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	require.NoError(t, err)
+	require.NotEmpty(t, errs, "missing result field should be reported")
+	codes := make([]string, 0, len(errs))
+	for _, e := range errs {
+		codes = append(codes, e.Code)
+	}
+	assert.Contains(t, codes, "missing_result_field")
+}
+
+func TestValidateCustomRegoQuery_AllResultFieldsPresent(t *testing.T) {
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", validTerraformRego)
+	require.NoError(t, err)
+	for _, e := range errs {
+		assert.NotEqual(t, "missing_result_field", e.Code,
+			"valid rule should not report missing_result_field: %s", e.Message)
+	}
+}
+
 func TestValidateCustomRegoQuery_MissingImport(t *testing.T) {
 	rego := strings.Replace(validTerraformRego,
 		"import data.generic.terraform as tf_lib\n",
@@ -125,9 +133,7 @@ func TestValidateCustomRegoQuery_MissingImport(t *testing.T) {
 	require.NotEmpty(t, errs, "missing import should produce a compile error")
 }
 
-// TestValidateCustomRegoQuery_UnbalancedBrace catches a missing closing brace.
 func TestValidateCustomRegoQuery_UnbalancedBrace(t *testing.T) {
-	// Drop the last `}` that closes the rule body.
 	rego := validTerraformRego[:strings.LastIndex(validTerraformRego, "}")]
 
 	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)

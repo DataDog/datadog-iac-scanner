@@ -102,9 +102,6 @@ func ValidateCustomRegoQuery(
 	platform string,
 	regoContent string,
 ) ([]RegoValidationError, error) {
-	// Check structural constraints that OPA won't catch at compile time: the scanner
-	// evaluates `result = data.datadog.DatadogPolicy`, so the module must declare
-	// `package datadog` and at least one `DatadogPolicy` rule.
 	if errs := ValidateRegoStructure(regoContent); len(errs) > 0 {
 		return errs, nil
 	}
@@ -140,16 +137,7 @@ func ValidateCustomRegoQuery(
 	return regoValidationErrorsFrom(compileErr), nil
 }
 
-// ValidateRegoStructure parses regoContent and checks constraints that OPA's compiler
-// will not report as errors but that will silently produce zero findings:
-//   - the module must declare `package datadog`
-//   - at least one rule named `DatadogPolicy` must exist
-//
-// Parse errors from ast.ParseModule are returned directly as validation errors so the
-// caller gets line-accurate markers without going through the full compile pipeline.
-//
-// This is exported so both the validate and evaluate CLI commands can run the same
-// structural pre-check, preventing misleading "0 findings" results from misnamed rules.
+// ValidateRegoStructure checks package/rule shape and other issues OPA won't flag but that yield zero findings.
 func ValidateRegoStructure(regoContent string) []RegoValidationError {
 	module, err := ast.ParseModuleWithOpts("query.rego", regoContent, ast.ParserOptions{
 		ProcessAnnotation: false,
@@ -163,36 +151,172 @@ func ValidateRegoStructure(regoContent string) []RegoValidationError {
 
 	if module.Package.Path.String() != "data.datadog" {
 		errs = append(errs, RegoValidationError{
-			Code:    "invalid_package",
-			Message: fmt.Sprintf("package must be 'datadog', got %q — the scanner evaluates data.datadog.DatadogPolicy", module.Package.Path.String()),
+			Code: "invalid_package",
+			Message: fmt.Sprintf(
+				"package must be 'datadog', got %q — the scanner evaluates data.datadog.DatadogPolicy",
+				module.Package.Path.String(),
+			),
 		})
 	}
 
 	hasPolicy := false
 	for _, rule := range module.Rules {
-		if rule.Head.Name == "DatadogPolicy" {
+		if rule.Head.Name == datadogPolicyRule {
 			hasPolicy = true
 			break
 		}
 	}
 	if !hasPolicy {
 		errs = append(errs, RegoValidationError{
-			Code:    "missing_rule",
-			Message: "no 'DatadogPolicy' rule found — the scanner evaluates data.datadog.DatadogPolicy so the rule must use that exact name",
+			Code: "missing_rule",
+			Message: "no '" + datadogPolicyRule + "' rule found — " +
+				"the scanner evaluates data.datadog.DatadogPolicy so the rule must use that exact name",
 		})
+	}
+
+	if len(errs) == 0 {
+		errs = append(errs, checkSprintfArity(module)...)
+		errs = append(errs, checkResultFields(module)...)
 	}
 
 	return errs
 }
 
-// regoValidationErrorsFrom converts an error returned by OPA (ast.Errors, or anything
-// wrapping it) into a []RegoValidationError with accurate line/column information.
-// It tries a direct type assertion first (most reliable for ast.Errors, a slice type),
-// then errors.As for wrapped errors, and finally falls back to a single message-only
-// error so callers always get something actionable.
+const datadogPolicyRule = "DatadogPolicy"
+
+var requiredResultFields = []string{
+	"documentId",
+	"resourceType",
+	"resourceName",
+	"searchKey",
+	"issueType",
+	"keyExpectedValue",
+	"keyActualValue",
+	"searchLine",
+}
+
+// checkResultFields reports missing keys in literal result := { ... } assignments.
+func checkResultFields(module *ast.Module) []RegoValidationError {
+	var errs []RegoValidationError
+
+	ast.WalkRules(module, func(rule *ast.Rule) bool {
+		if string(rule.Head.Name) != datadogPolicyRule {
+			return false
+		}
+
+		ast.WalkExprs(rule, func(expr *ast.Expr) bool {
+			if !expr.IsAssignment() {
+				return false
+			}
+			terms, ok := expr.Terms.([]*ast.Term)
+			if !ok || len(terms) != 3 {
+				return false
+			}
+
+			lhs, ok := terms[1].Value.(ast.Var)
+			if !ok || string(lhs) != "result" {
+				return false
+			}
+
+			obj, ok := terms[2].Value.(ast.Object)
+			if !ok {
+				return false
+			}
+
+			present := make(map[string]bool)
+			obj.Foreach(func(k, _ *ast.Term) {
+				if s, ok := k.Value.(ast.String); ok {
+					present[string(s)] = true
+				}
+			})
+
+			loc := terms[2].Location
+			for _, field := range requiredResultFields {
+				if !present[field] {
+					errs = append(errs, RegoValidationError{
+						Code: "missing_result_field",
+						Message: fmt.Sprintf(
+							"result object is missing required field %q — "+
+								"findings without this field will have empty values in scan output",
+							field,
+						),
+						StartLine: loc.Row,
+						StartCol:  loc.Col,
+						EndLine:   loc.Row,
+						EndCol:    loc.Col + 1,
+					})
+				}
+			}
+			return false
+		})
+		return false
+	})
+
+	return errs
+}
+
+// checkSprintfArity reports sprintf calls where verb count does not match args; OPA misses these at compile time.
+func checkSprintfArity(module *ast.Module) []RegoValidationError {
+	var errs []RegoValidationError
+
+	ast.WalkTerms(module, func(term *ast.Term) bool {
+		call, ok := term.Value.(ast.Call)
+		if !ok || len(call) < 3 {
+			return false
+		}
+
+		ref, ok := call[0].Value.(ast.Ref)
+		if !ok || ref.String() != "sprintf" {
+			return false
+		}
+
+		fmtStr, ok := call[1].Value.(ast.String)
+		if !ok {
+			return false
+		}
+
+		argsArr, ok := call[2].Value.(*ast.Array)
+		if !ok {
+			return false
+		}
+
+		verbCount := countFormatVerbs(string(fmtStr))
+		if verbCount != argsArr.Len() {
+			loc := term.Location
+			errs = append(errs, RegoValidationError{
+				Code: "sprintf_arity",
+				Message: fmt.Sprintf(
+					"sprintf: format string has %d verb(s) but %d argument(s) provided — "+
+						"this call returns undefined and the rule body will never unify, producing zero findings",
+					verbCount, argsArr.Len(),
+				),
+				StartLine: loc.Row,
+				StartCol:  loc.Col,
+				EndLine:   loc.Row,
+				EndCol:    loc.Col + 1,
+			})
+		}
+		return false
+	})
+
+	return errs
+}
+
+func countFormatVerbs(s string) int {
+	count := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' {
+			i++
+			if i < len(s) && s[i] != '%' {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// regoValidationErrorsFrom maps OPA errors to RegoValidationError; ast.Errors is asserted directly because errors.As misses slice types.
 func regoValidationErrorsFrom(err error) []RegoValidationError {
-	// Direct type assertion: OPA commonly returns ast.Errors as a concrete value.
-	// errors.As struggles with non-pointer slice types so we prefer this path.
 	if astErrs, ok := err.(ast.Errors); ok {
 		out := make([]RegoValidationError, 0, len(astErrs))
 		for _, e := range astErrs {
@@ -201,7 +325,6 @@ func regoValidationErrorsFrom(err error) []RegoValidationError {
 		return out
 	}
 
-	// Fallback: try errors.As in case the error is wrapped.
 	var wrapped ast.Errors
 	if errors.As(err, &wrapped) {
 		out := make([]RegoValidationError, 0, len(wrapped))
