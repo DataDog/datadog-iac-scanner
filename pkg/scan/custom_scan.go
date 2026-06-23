@@ -102,6 +102,13 @@ func ValidateCustomRegoQuery(
 	platform string,
 	regoContent string,
 ) ([]RegoValidationError, error) {
+	// Check structural constraints that OPA won't catch at compile time: the scanner
+	// evaluates `result = data.datadog.DatadogPolicy`, so the module must declare
+	// `package datadog` and at least one `DatadogPolicy` rule.
+	if errs := validateRegoStructure(regoContent); len(errs) > 0 {
+		return errs, nil
+	}
+
 	fs := libraryFilesystemSource(ctx, platform)
 
 	commonLib, err := fs.GetQueryLibrary(ctx, "common")
@@ -130,16 +137,78 @@ func ValidateCustomRegoQuery(
 		return nil, nil
 	}
 
-	var astErrors ast.Errors
-	if errors.As(compileErr, &astErrors) {
-		out := make([]RegoValidationError, 0, len(astErrors))
-		for _, e := range astErrors {
-			out = append(out, regoValidationErrorFromAST(e))
-		}
-		return out, nil
+	return regoValidationErrorsFrom(compileErr), nil
+}
+
+// validateRegoStructure parses regoContent and checks constraints that OPA's compiler
+// will not report as errors but that will silently produce zero findings:
+//   - the module must declare `package datadog`
+//   - at least one rule named `DatadogPolicy` must exist
+//
+// Parse errors from ast.ParseModule are returned directly as validation errors so the
+// caller gets line-accurate markers without going through the full compile pipeline.
+func validateRegoStructure(regoContent string) []RegoValidationError {
+	module, err := ast.ParseModuleWithOpts("query.rego", regoContent, ast.ParserOptions{
+		ProcessAnnotation: false,
+		RegoVersion:       ast.RegoV1,
+	})
+	if err != nil {
+		return regoValidationErrorsFrom(err)
 	}
 
-	return []RegoValidationError{{Code: ast.CompileErr, Message: compileErr.Error()}}, nil
+	var errs []RegoValidationError
+
+	if module.Package.Path.String() != "data.datadog" {
+		errs = append(errs, RegoValidationError{
+			Code:    "invalid_package",
+			Message: fmt.Sprintf("package must be 'datadog', got %q — the scanner evaluates data.datadog.DatadogPolicy", module.Package.Path.String()),
+		})
+	}
+
+	hasPolicy := false
+	for _, rule := range module.Rules {
+		if rule.Head.Name == "DatadogPolicy" {
+			hasPolicy = true
+			break
+		}
+	}
+	if !hasPolicy {
+		errs = append(errs, RegoValidationError{
+			Code:    "missing_rule",
+			Message: "no 'DatadogPolicy' rule found — the scanner evaluates data.datadog.DatadogPolicy so the rule must use that exact name",
+		})
+	}
+
+	return errs
+}
+
+// regoValidationErrorsFrom converts an error returned by OPA (ast.Errors, or anything
+// wrapping it) into a []RegoValidationError with accurate line/column information.
+// It tries a direct type assertion first (most reliable for ast.Errors, a slice type),
+// then errors.As for wrapped errors, and finally falls back to a single message-only
+// error so callers always get something actionable.
+func regoValidationErrorsFrom(err error) []RegoValidationError {
+	// Direct type assertion: OPA commonly returns ast.Errors as a concrete value.
+	// errors.As struggles with non-pointer slice types so we prefer this path.
+	if astErrs, ok := err.(ast.Errors); ok {
+		out := make([]RegoValidationError, 0, len(astErrs))
+		for _, e := range astErrs {
+			out = append(out, regoValidationErrorFromAST(e))
+		}
+		return out
+	}
+
+	// Fallback: try errors.As in case the error is wrapped.
+	var wrapped ast.Errors
+	if errors.As(err, &wrapped) {
+		out := make([]RegoValidationError, 0, len(wrapped))
+		for _, e := range wrapped {
+			out = append(out, regoValidationErrorFromAST(e))
+		}
+		return out
+	}
+
+	return []RegoValidationError{{Code: ast.CompileErr, Message: err.Error()}}
 }
 
 // narrowToAttributeLocation narrows VulnerabilityLocation to the precise attribute-level
