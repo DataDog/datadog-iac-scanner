@@ -127,7 +127,7 @@ resource "aws_s3_bucket" "data" {
 	})
 
 	ctx := context.Background()
-	detector := NewTFPlanDetectLine(reg)
+	detector := NewTFPlanDetectLine(reg, nil)
 
 	// Create a mock tfplan document with _dd_tf_address fields
 	mockDocument := model.Document{
@@ -163,11 +163,11 @@ resource "aws_s3_bucket" "data" {
 
 	// Create a mock file metadata for tfplan with the round-tripped document
 	fileMetadata := &model.FileMetadata{
-		ID:              "test-file",
-		FilePath:        "test.tfplan.json",
-		Kind:            model.KindJSON,
-		Document:        roundTrippedDoc,     // This is now map[string]interface{} nested
-		LineInfoDocument: roundTrippedDoc,    // TFPlan detector reads _dd_tf_address from here
+		ID:               "test-file",
+		FilePath:         "test.tfplan.json",
+		Kind:             model.KindJSON,
+		Document:         roundTrippedDoc, // This is now map[string]interface{} nested
+		LineInfoDocument: roundTrippedDoc, // TFPlan detector reads _dd_tf_address from here
 	}
 
 	tests := []struct {
@@ -211,7 +211,7 @@ func TestTFPlanDetectLineFallback(t *testing.T) {
 	reg := registry.New()
 
 	ctx := context.Background()
-	detector := NewTFPlanDetectLine(reg)
+	detector := NewTFPlanDetectLine(reg, nil)
 
 	// Create a mock file with actual content
 	tmpDir := t.TempDir()
@@ -355,5 +355,339 @@ line 5`
 	// Check location information
 	if result.VulnerablilityLocation.Start.Line != 3 {
 		t.Errorf("Expected start line 3, got %d", result.VulnerablilityLocation.Start.Line)
+	}
+}
+
+func TestTFPlanDetectLineWithModuleMappings(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "main.tf")
+
+	// Write test HCL content with module call
+	hclContent := `module "vpc" {
+  source = "./modules/vpc"
+
+  # Line 4: Module inputs
+  resource_tags = {
+    Environment = "production"
+    Team        = "platform"
+  }
+
+  cidr_block = "10.0.0.0/16"
+}`
+	err := os.WriteFile(testFile, []byte(hclContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	// Create registry and register module address
+	reg := registry.New()
+	reg.Register("module.vpc", registry.Location{
+		FilePath: testFile,
+		Line:     1, // Module declaration line
+		Column:   1,
+	})
+
+	// Create module mappings that simulate the module attribute mapping
+	// This maps "tags" attribute → "resource_tags" variable
+	moduleMappings := map[string]interface{}{
+		"vpc": map[string]interface{}{
+			"AttributesData": map[string]interface{}{
+				"aws": map[string]interface{}{
+					"inputs": map[string]interface{}{
+						"tags": "resource_tags", // tags maps to resource_tags
+					},
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, moduleMappings)
+
+	// Create a mock tfplan document with _dd_tf_address for a module resource
+	mockDocument := model.Document{
+		"resource": model.Document{
+			"aws_instance": model.Document{
+				"web": model.Document{
+					"_dd_tf_address": "module.vpc.aws_instance.web",
+					"tags": map[string]interface{}{
+						"Environment": "production",
+					},
+				},
+			},
+		},
+	}
+
+	// Simulate JSON round-trip
+	jsonBytes, err := json.Marshal(mockDocument)
+	if err != nil {
+		t.Fatalf("Failed to marshal document: %v", err)
+	}
+
+	var roundTrippedDoc model.Document
+	err = json.Unmarshal(jsonBytes, &roundTrippedDoc)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal document: %v", err)
+	}
+
+	// Create file metadata with the tfplan document
+	fileMetadata := &model.FileMetadata{
+		ID:               "test-file",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTrippedDoc,
+		LineInfoDocument: roundTrippedDoc,
+	}
+
+	// Test that the detector maps the module resource attribute to the module input variable line
+	// searchKey should be in the format that comes from the query: "aws_instance.web.tags"
+	// The detector will extract the address from the document ("module.vpc.aws_instance.web")
+	result := detector.DetectLine(ctx, fileMetadata, "aws_instance.web.tags", 3)
+
+	// Check that it resolved to the HCL file
+	if result.ResolvedFile != testFile {
+		t.Errorf("Expected resolved file %s, got %s", testFile, result.ResolvedFile)
+	}
+
+	// Check that it resolved to the resource_tags line (line 5), not the module declaration (line 1)
+	if result.Line != 5 {
+		t.Errorf("Expected line 5 (resource_tags attribute), got line %d", result.Line)
+	}
+}
+
+func TestFindAttributeLineInFile(t *testing.T) {
+	// Create a test file
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.tf")
+	content := `module "vpc" {
+  source = "./vpc"
+
+  region = "us-east-1"
+  resource_tags = {
+    Team = "platform"
+  }
+
+  cidr_block = "10.0.0.0/16"
+}`
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		startLine     int
+		attributeName string
+		searchRange   int
+		expectedLine  int
+	}{
+		{
+			name:          "find resource_tags",
+			startLine:     1,
+			attributeName: "resource_tags",
+			searchRange:   10,
+			expectedLine:  5,
+		},
+		{
+			name:          "find region",
+			startLine:     1,
+			attributeName: "region",
+			searchRange:   10,
+			expectedLine:  4,
+		},
+		{
+			name:          "find cidr_block",
+			startLine:     1,
+			attributeName: "cidr_block",
+			searchRange:   10,
+			expectedLine:  9,
+		},
+		{
+			name:          "attribute not found",
+			startLine:     1,
+			attributeName: "nonexistent",
+			searchRange:   10,
+			expectedLine:  -1,
+		},
+		{
+			name:          "small search range with min window",
+			startLine:     1,
+			attributeName: "cidr_block",
+			searchRange:   2, // With min window of 100, will still find it on line 9
+			expectedLine:  9, // Now found due to minimum search window
+		},
+		{
+			name:          "start from middle of file",
+			startLine:     5,
+			attributeName: "cidr_block",
+			searchRange:   5,
+			expectedLine:  9,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := findAttributeLineInFile(testFile, tt.startLine, tt.attributeName, tt.searchRange)
+			if result != tt.expectedLine {
+				t.Errorf("Expected line %d, got %d", tt.expectedLine, result)
+			}
+		})
+	}
+}
+
+func TestBuildFullSearchKey(t *testing.T) {
+	detector := &TFPlanDetectLine{}
+
+	tests := []struct {
+		name        string
+		address     string
+		searchKey   string
+		expected    string
+		description string
+	}{
+		{
+			name:        "simple module resource with attribute",
+			address:     "module.vpc.aws_instance.web",
+			searchKey:   "aws_instance.web.tags",
+			expected:    "module.vpc.aws_instance.web.tags",
+			description: "Should combine address and attribute",
+		},
+		{
+			name:        "resource prefix in searchKey",
+			address:     "module.vpc.aws_instance.web",
+			searchKey:   "resource.aws_instance.web.tags",
+			expected:    "module.vpc.aws_instance.web.tags",
+			description: "Should strip resource prefix before combining",
+		},
+		{
+			name:        "no attribute in searchKey",
+			address:     "module.vpc.aws_instance.web",
+			searchKey:   "aws_instance.web",
+			expected:    "module.vpc.aws_instance.web",
+			description: "Should return address when no attribute",
+		},
+		{
+			name:        "nested attribute path",
+			address:     "module.vpc.aws_instance.web",
+			searchKey:   "aws_instance.web.root_block_device.volume_size",
+			expected:    "module.vpc.aws_instance.web.root_block_device.volume_size",
+			description: "Should handle nested attribute paths",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detector.buildFullSearchKey(tt.address, tt.searchKey)
+			if result != tt.expected {
+				t.Errorf("%s: Expected %q, got %q", tt.description, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestTransformSearchKeyForModuleEdgeCases(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name              string
+		moduleMappings    map[string]interface{}
+		moduleAddress     string
+		searchKey         string
+		expectedSearchKey string
+		expectedAttribute string
+		description       string
+	}{
+		{
+			name:              "nil module mappings",
+			moduleMappings:    nil,
+			moduleAddress:     "module.vpc",
+			searchKey:         "module.vpc.aws_instance.web.tags",
+			expectedSearchKey: "",
+			expectedAttribute: "",
+			description:       "Should return empty when no mappings",
+		},
+		{
+			name: "module not in mappings",
+			moduleMappings: map[string]interface{}{
+				"other_module": map[string]interface{}{},
+			},
+			moduleAddress:     "module.vpc",
+			searchKey:         "module.vpc.aws_instance.web.tags",
+			expectedSearchKey: "",
+			expectedAttribute: "",
+			description:       "Should return empty when module not found",
+		},
+		{
+			name: "attribute not in mappings",
+			moduleMappings: map[string]interface{}{
+				"vpc": map[string]interface{}{
+					"AttributesData": map[string]interface{}{
+						"aws": map[string]interface{}{
+							"inputs": map[string]interface{}{
+								"cidr": "vpc_cidr", // Different attribute
+							},
+						},
+					},
+				},
+			},
+			moduleAddress:     "module.vpc",
+			searchKey:         "module.vpc.aws_instance.web.tags",
+			expectedSearchKey: "module.vpc.aws_instance.web.tags", // Fallback uses full searchKey
+			expectedAttribute: "tags",
+			description:       "Should use fallback transformation when attribute not mapped",
+		},
+		{
+			name: "successful transformation",
+			moduleMappings: map[string]interface{}{
+				"vpc": map[string]interface{}{
+					"AttributesData": map[string]interface{}{
+						"aws": map[string]interface{}{
+							"inputs": map[string]interface{}{
+								"tags": "resource_tags",
+							},
+						},
+					},
+				},
+			},
+			moduleAddress:     "module.vpc",
+			searchKey:         "module.vpc.aws_instance.web.tags",
+			expectedSearchKey: "module.vpc.resource_tags",
+			expectedAttribute: "resource_tags",
+			description:       "Should successfully transform with valid mappings",
+		},
+		{
+			name: "searchKey too short",
+			moduleMappings: map[string]interface{}{
+				"vpc": map[string]interface{}{
+					"AttributesData": map[string]interface{}{
+						"aws": map[string]interface{}{
+							"inputs": map[string]interface{}{
+								"tags": "resource_tags",
+							},
+						},
+					},
+				},
+			},
+			moduleAddress:     "module.vpc",
+			searchKey:         "module.vpc",
+			expectedSearchKey: "",
+			expectedAttribute: "",
+			description:       "Should return empty when searchKey too short",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			detector := NewTFPlanDetectLine(nil, tt.moduleMappings)
+			transformedKey, attribute := detector.transformSearchKeyForModule(ctx, tt.moduleAddress, tt.searchKey)
+
+			if transformedKey != tt.expectedSearchKey {
+				t.Errorf("%s: Expected searchKey %q, got %q", tt.description, tt.expectedSearchKey, transformedKey)
+			}
+			if attribute != tt.expectedAttribute {
+				t.Errorf("%s: Expected attribute %q, got %q", tt.description, tt.expectedAttribute, attribute)
+			}
+		})
 	}
 }
