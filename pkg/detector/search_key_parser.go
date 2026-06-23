@@ -126,7 +126,7 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 	resourceType := workingKey[:bracketIdx]
 
 	// Find matching closing bracket
-	closeBracketIdx := findMatchingBracket(workingKey, bracketIdx)
+	closeBracketIdx := findMatchingBracketSimple(workingKey, bracketIdx)
 	if closeBracketIdx == -1 {
 		return nil, fmt.Errorf("unmatched opening bracket in searchKey: %s", originalKey)
 	}
@@ -445,8 +445,8 @@ func parseSimpleDotNotation(workingKey string, originalKey string) (*ParsedSearc
 
 // Helper functions
 
-// findMatchingBracket finds the closing bracket matching the opening bracket at startIdx
-func findMatchingBracket(s string, startIdx int) int {
+// findMatchingBracketSimple finds the closing bracket matching the opening bracket at startIdx
+func findMatchingBracketSimple(s string, startIdx int) int {
 	depth := 0
 	for i := startIdx; i < len(s); i++ {
 		if s[i] == '[' {
@@ -504,7 +504,7 @@ func extractNameAndIndex(nameWithIndex string) (string, string) {
 	}
 
 	name := nameWithIndex[:bracketIdx]
-	closeBracketIdx := findMatchingBracket(nameWithIndex, bracketIdx)
+	closeBracketIdx := findMatchingBracketSimple(nameWithIndex, bracketIdx)
 	if closeBracketIdx == -1 {
 		return nameWithIndex, ""
 	}

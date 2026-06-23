@@ -36,6 +36,7 @@ type CITracker struct {
 	FoundResources       int
 	LineInfoLoadFailures int
 	tfplanRegistry       *registry.AddressRegistry
+	moduleMappings       map[string]interface{}
 }
 
 // NewTracker will create a new instance of a tracker with the number of lines to display in results output
@@ -67,6 +68,18 @@ func (c *CITracker) SetTFPlanRegistry(reg *registry.AddressRegistry) {
 // This implements the TFPlanDetectorRegistry interface from pkg/engine
 func (c *CITracker) GetTFPlanRegistry() *registry.AddressRegistry {
 	return c.tfplanRegistry
+}
+
+// SetModuleMappings sets the terraform module mappings for this tracker
+// This is used by the vulnerability builder to pass module mappings to TFPlan detectors
+func (c *CITracker) SetModuleMappings(mappings map[string]interface{}) {
+	c.moduleMappings = mappings
+}
+
+// GetModuleMappings returns the terraform module mappings for this tracker
+// This implements the TFPlanDetectorRegistry interface from pkg/engine
+func (c *CITracker) GetModuleMappings() map[string]interface{} {
+	return c.moduleMappings
 }
 
 // TrackQueryLoad adds a loaded query

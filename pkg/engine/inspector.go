@@ -246,6 +246,7 @@ type Inspector struct {
 	remoteModuleDirs       map[string]RemoteModuleDirectory
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
+	moduleMappings         map[string]interface{} // Stored after Inspect() for use by tracker
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -529,6 +530,23 @@ func (c *Inspector) Inspect(
 		return nil, err
 	}
 
+	// Step 3: Convert module mappings to format expected by TFPlanDetectLine and store in inspector
+	c.moduleMappings = convertModuleMappings(enrichedModules)
+	contextLogger.Info().
+		Int("moduleCount", len(c.moduleMappings)).
+		Msg("Converted and stored module mappings")
+
+	// Step 4: Set module mappings on tracker so they're available to vulnerability builder
+	// Check if tracker supports module mappings (TFPlanDetectorRegistry interface)
+	if trackerWithMappings, ok := c.tracker.(interface {
+		SetModuleMappings(map[string]interface{})
+	}); ok && len(c.moduleMappings) > 0 {
+		trackerWithMappings.SetModuleMappings(c.moduleMappings)
+		contextLogger.Info().
+			Int("moduleCount", len(c.moduleMappings)).
+			Msg("Set module mappings on tracker for use by vulnerability builder")
+	}
+
 	// Synthetic files stand in for module instantiations of a file that has
 	// already been read; they are only joined once findings need to be
 	// attributed back to a call site. Adding them any earlier would have every
@@ -734,6 +752,85 @@ func (c *Inspector) GetFailedQueries() map[string]error {
 	c.failedQueriesMu.Lock()
 	defer c.failedQueriesMu.Unlock()
 	return maps.Clone(c.failedQueries)
+}
+
+// GetModuleMappings returns the module mappings computed during Inspect()
+func (c *Inspector) GetModuleMappings() map[string]interface{} {
+	return c.moduleMappings
+}
+
+// convertModuleMappings converts []ParsedModule to the map format expected by TFPlanDetectLine
+// Expected format: map[moduleKey]->AttributesData->provider->inputs->map[attr]variableName
+//
+// Module key format: For local modules, use just the name since they have unique content per call site.
+// For non-local modules (registry, git), use source+name to handle multiple calls to the same module.
+// This handles collisions where the same module source is called with different names.
+func convertModuleMappings(enrichedModules []tfmodules.ParsedModule) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Track which keys we've seen to detect actual collisions
+	seen := make(map[string]string) // key -> module name for debugging
+
+	for _, module := range enrichedModules {
+		// Convert AttributesData from map[string]ModuleAttributesInfo to map[string]interface{}
+		attributesData := make(map[string]interface{})
+
+		for provider, info := range module.AttributesData {
+			// Convert ModuleAttributesInfo to map[string]interface{}
+			providerData := make(map[string]interface{})
+
+			// Convert Inputs map[string]string to map[string]interface{}
+			inputs := make(map[string]interface{})
+			for k, v := range info.Inputs {
+				inputs[k] = v
+			}
+			providerData["inputs"] = inputs
+
+			// Also include resources for completeness
+			resources := make([]interface{}, len(info.Resources))
+			for i, r := range info.Resources {
+				resources[i] = r
+			}
+			providerData["resources"] = resources
+
+			attributesData[provider] = providerData
+		}
+
+		// Build the module entry
+		moduleEntry := make(map[string]interface{})
+		moduleEntry["AttributesData"] = attributesData
+		moduleEntry["Source"] = module.Source       // Store source for reference
+		moduleEntry["AbsSource"] = module.AbsSource // Store absolute source
+
+		// Determine the key to use:
+		// - For local modules: use name (each call site typically has unique local path)
+		// - For non-local: use source to handle cases where the same registry/git module
+		//   is called multiple times with different names
+		// NOTE: This still has a limitation - if the same local module is called twice
+		// with the same name but in different scopes, they will collide. However, local
+		// modules are typically designed to be called once per scope, and module instances
+		// (count/for_each) share the same variable schema.
+		var key string
+		if module.IsLocal {
+			key = module.Name
+		} else {
+			// For remote modules, use source+name to distinguish different call sites
+			// Using the same remote module source with different names
+			key = module.Source + "::" + module.Name
+		}
+
+		// Check for collisions (primarily for debugging/awareness)
+		if existingName, exists := seen[key]; exists {
+			// This is expected for module instances (count/for_each) which share the schema
+			// but could indicate a real problem for truly different modules
+			_ = existingName // Will be used for logging if needed
+		}
+
+		seen[key] = module.Name
+		result[key] = moduleEntry
+	}
+
+	return result
 }
 
 func ruleArgumentsValue(rc config.IacRuleConfig) (ast.Value, bool, error) {
