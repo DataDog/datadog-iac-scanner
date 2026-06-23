@@ -43,7 +43,7 @@ func TestTFPlanDetectLineNestedModules(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	detector := NewTFPlanDetectLine(reg)
+	detector := NewTFPlanDetectLine(reg, nil)
 
 	// Create a mock tfplan document with a resource in a nested module
 	// The address is: module.network.module.subnet.aws_subnet.private
@@ -72,10 +72,10 @@ func TestTFPlanDetectLineNestedModules(t *testing.T) {
 
 	// Create file metadata
 	fileMetadata := &model.FileMetadata{
-		ID:              "test-file",
-		FilePath:        "test.tfplan.json",
-		Kind:            model.KindJSON,
-		Document:        roundTrippedDoc,
+		ID:               "test-file",
+		FilePath:         "test.tfplan.json",
+		Kind:             model.KindJSON,
+		Document:         roundTrippedDoc,
 		LineInfoDocument: roundTrippedDoc, // TFPlan detector reads _dd_tf_address from here
 	}
 
@@ -117,7 +117,7 @@ func TestTFPlanDetectLineTripleNestedModules(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	detector := NewTFPlanDetectLine(reg)
+	detector := NewTFPlanDetectLine(reg, nil)
 
 	// Triple nested: module.env.module.region.module.vpc.aws_vpc.main
 	mockDocument := model.Document{
@@ -143,10 +143,10 @@ func TestTFPlanDetectLineTripleNestedModules(t *testing.T) {
 	}
 
 	fileMetadata := &model.FileMetadata{
-		ID:              "test-file",
-		FilePath:        "test.tfplan.json",
-		Kind:            model.KindJSON,
-		Document:        roundTrippedDoc,
+		ID:               "test-file",
+		FilePath:         "test.tfplan.json",
+		Kind:             model.KindJSON,
+		Document:         roundTrippedDoc,
 		LineInfoDocument: roundTrippedDoc, // TFPlan detector reads _dd_tf_address from here
 	}
 
