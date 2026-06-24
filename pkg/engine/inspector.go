@@ -163,7 +163,10 @@ func NewInspector(
 	}
 	platformLibraries := getPlatformLibraries(ctx, queriesSource, queries)
 
-	queryLoader := prepareQueries(ctx, queries, commonLibrary, platformLibraries, tracker)
+	queryLoader, err := prepareQueries(queries, commonLibrary, platformLibraries, tracker)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to prepare queries")
+	}
 
 	failedQueries := make(map[string]error)
 
@@ -295,7 +298,7 @@ func (c *Inspector) Inspect(
 	vulnerabilities := make([]model.Vulnerability, 0)
 
 	// Step 1: Parse Terraform modules
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, files)
+	parsedModules, err := tfmodules.ParseTerraformModules(ctx, files, c.numWorkers)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
 	}
@@ -769,9 +772,8 @@ func ShouldSkipVulnerability(command model.CommentsCommands, queryID, legacyQuer
 	return false
 }
 
-func prepareQueries(ctx context.Context, queries []model.QueryMetadata, commonLibrary source.RegoLibraries,
-	platformLibraries map[string]source.RegoLibraries, tracker Tracker) QueryLoader {
-	contextLogger := logger.FromContext(ctx)
+func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibraries,
+	platformLibraries map[string]source.RegoLibraries, tracker Tracker) (QueryLoader, error) {
 	// track queries loaded
 	sum := 0
 	for _, metadata := range queries {
@@ -779,16 +781,12 @@ func prepareQueries(ctx context.Context, queries []model.QueryMetadata, commonLi
 		sum += metadata.Aggregation
 	}
 
-	// Pre-parse the Common and platform-Generic library modules once so that
-	// each LoadQuery call can pass them via rego.ParsedModule() and skip
-	// re-tokenizing ~82 KB of Rego text on every PrepareForEval call.
-	// Each PrepareForEval still compiles its own independent module set, so
-	// there is no shared mutable compiler state and no concurrency hazard.
+	// Pre-parse shared Rego libraries once; each LoadQuery passes them via
+	// rego.ParsedModule(). Parse failure is fatal (static embedded code).
 	parsedCommon, err := ast.ParseModuleWithOpts("Common", commonLibrary.LibraryCode,
 		ast.ParserOptions{RegoVersion: ast.RegoV1})
 	if err != nil {
-		contextLogger.Warn().Err(err).Msg("Failed to pre-parse Common Rego library; will re-parse per query")
-		parsedCommon = nil
+		return QueryLoader{}, errors.Wrap(err, "failed to parse Common Rego library")
 	}
 
 	parsedGeneric := make(map[string]*ast.Module, len(platformLibraries))
@@ -796,8 +794,7 @@ func prepareQueries(ctx context.Context, queries []model.QueryMetadata, commonLi
 		mod, parseErr := ast.ParseModuleWithOpts("Generic", lib.LibraryCode,
 			ast.ParserOptions{RegoVersion: ast.RegoV1})
 		if parseErr != nil {
-			contextLogger.Warn().Err(parseErr).Msgf("Failed to pre-parse Generic Rego library for platform %s; will re-parse per query", platform)
-			continue
+			return QueryLoader{}, errors.Wrapf(parseErr, "failed to parse Generic Rego library for platform %s", platform)
 		}
 		parsedGeneric[platform] = mod
 	}
@@ -809,7 +806,7 @@ func prepareQueries(ctx context.Context, queries []model.QueryMetadata, commonLi
 		QueriesMetadata:   queries,
 		parsedCommon:      parsedCommon,
 		parsedGeneric:     parsedGeneric,
-	}
+	}, nil
 }
 
 // buildMergedInputData merges the platform library, common library and (when

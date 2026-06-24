@@ -39,12 +39,8 @@ type Parser struct {
 	terraformVarsPath string
 	sciInfo           model.SCIInfo
 
-	// dirVarsCache memoizes the per-directory variable/locals/data-source
-	// resolution. getInputVariables + getDataSourcePolicy read and parse every
-	// *.tf file in the directory, so without this cache a directory of N files
-	// re-parses all N files N times (O(N²)). The result depends only on the
-	// directory contents and the (constant) terraformVarsPath, so it is shared
-	// read-only across all files in the same directory.
+	// dirVarsCache memoizes per-directory variable/locals resolution (O(N²) without
+	// it). Scoped to the Parser instance, which is created once per scan.
 	dirVarsCache sync.Map // dir -> converter.VariableMap
 	dirVarsSF    singleflight.Group
 }

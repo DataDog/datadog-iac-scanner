@@ -8,13 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/cespare/xxhash/v2"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -73,7 +73,6 @@ const (
 	stringPrivate               = "private"
 	unresolvedPlaceholder       = "__UNRESOLVED__"
 	invalidTraversalPlaceholder = "__INVALID_TRAVERSAL__"
-	minParseWorkers             = 4
 )
 
 // bodyCacheKey identifies file content by length plus a 64-bit content hash.
@@ -82,15 +81,11 @@ type bodyCacheKey struct {
 	hash uint64
 }
 
-// parsedBodyCache memoizes parsed *hclsyntax.Body keyed by content. The same
-// Terraform bytes can be parsed more than once per scan (module discovery,
-// enrichment, etc.); caching avoids redundant lex/parse work. Parsed bodies are
-// read-only after construction, so sharing them across goroutines is safe.
-var parsedBodyCache sync.Map // bodyCacheKey -> *hclsyntax.Body
-
-func parseHCLBodyCached(content, filePath string) (*hclsyntax.Body, hcl.Diagnostics) {
+// parseHCLBodyCached parses Terraform bytes, caching by content hash. Cache is
+// per-scan (passed in by the caller) so it does not grow across scans.
+func parseHCLBodyCached(cache *sync.Map, content, filePath string) (*hclsyntax.Body, hcl.Diagnostics) {
 	key := bodyCacheKey{len: len(content), hash: xxhash.Sum64String(content)}
-	if cached, ok := parsedBodyCache.Load(key); ok {
+	if cached, ok := cache.Load(key); ok {
 		return cached.(*hclsyntax.Body), nil
 	}
 	hclFile, diags := hclsyntax.ParseConfig([]byte(content), filePath, hcl.Pos{Line: 1, Column: 1})
@@ -101,11 +96,11 @@ func parseHCLBodyCached(content, filePath string) (*hclsyntax.Body, hcl.Diagnost
 	if !ok {
 		return nil, diags
 	}
-	parsedBodyCache.Store(key, body)
+	cache.Store(key, body)
 	return body, diags
 }
 
-func parseHCLBodies(ctx context.Context, files model.FileMetadatas) map[string]*hclsyntax.Body {
+func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers int) map[string]*hclsyntax.Body {
 	contextLogger := logger.FromContext(ctx)
 	parsedBodies := make(map[string]*hclsyntax.Body)
 
@@ -119,11 +114,10 @@ func parseHCLBodies(ctx context.Context, files model.FileMetadatas) map[string]*
 		return parsedBodies
 	}
 
+	bodyCache := &sync.Map{}
+
 	bodies := make([]*hclsyntax.Body, len(tfFiles))
-	numWorkers := runtime.GOMAXPROCS(0)
-	if numWorkers < minParseWorkers {
-		numWorkers = minParseWorkers
-	}
+	numWorkers = utils.AdjustNumWorkers(numWorkers)
 	if numWorkers > len(tfFiles) {
 		numWorkers = len(tfFiles)
 	}
@@ -137,7 +131,7 @@ func parseHCLBodies(ctx context.Context, files model.FileMetadatas) map[string]*
 			for i := range indices {
 				file := tfFiles[i]
 				content := getFileContent(file)
-				body, diags := parseHCLBodyCached(content, file.FilePath)
+				body, diags := parseHCLBodyCached(bodyCache, content, file.FilePath)
 				if diags.HasErrors() {
 					contextLogger.Warn().Msgf("Skipping file %s due to HCL parse errors: %s", file.FilePath, diags.Error())
 					continue
@@ -247,10 +241,10 @@ func extractModuleBlocks(
 	}
 }
 
-// nolint:gocyclo
-// ParseTerraformModules parses HCL content and extracts module source/version, resolving locals/variables if possible.
-func ParseTerraformModules(ctx context.Context, files model.FileMetadatas) (map[string]ParsedModule, error) {
-	parsedBodies := parseHCLBodies(ctx, files)
+// ParseTerraformModules parses HCL content and extracts module source/version.
+// numWorkers: 0 means auto-detect (GOMAXPROCS).
+func ParseTerraformModules(ctx context.Context, files model.FileMetadatas, numWorkers int) (map[string]ParsedModule, error) {
+	parsedBodies := parseHCLBodies(ctx, files, numWorkers)
 	modules := make(map[string]ParsedModule)
 
 	// Group files by directory so locals/vars are scoped per Terraform module root,

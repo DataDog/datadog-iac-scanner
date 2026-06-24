@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -375,4 +376,43 @@ resource "aws_s3_bucket" "this" {
 	// The legacy module branch does NOT fire because the module key is stripped.
 	require.Len(t, vulns, 1, "legacy module branch must not fire alongside instantiated resource (no double-findings)")
 	require.Equal(t, "aws_s3_bucket", vulns[0].ResourceType, "finding must come from the resource branch, not the module branch")
+}
+
+// TestInspect_SharedBaseStoresConcurrentReads runs multiple queries on one platform
+// with several workers so shared baseStores are read concurrently (-race).
+func TestInspect_SharedBaseStoresConcurrentReads(t *testing.T) {
+	root := t.TempDir()
+	rootPath := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+resource "aws_s3_bucket" "this" {
+  acl = "public-read"
+}
+`), 0o644))
+
+	files := parseTerraform(t, rootPath)
+
+	const numQueries = 8
+	queries := make([]model.QueryMetadata, 0, numQueries)
+	for i := 0; i < numQueries; i++ {
+		queries = append(queries, model.QueryMetadata{
+			Query:       fmt.Sprintf("acl_rule_%d", i),
+			Content:     aclRule,
+			InputData:   "{}",
+			Platform:    "terraform",
+			Metadata:    map[string]interface{}{"id": fmt.Sprintf("acl-rule-%d", i)},
+			Aggregation: 1,
+		})
+	}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries:    queries,
+		repoPath:   root,
+		numWorkers: 4,
+		vb:         DefaultVulnerabilityBuilder,
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, numQueries)
 }
