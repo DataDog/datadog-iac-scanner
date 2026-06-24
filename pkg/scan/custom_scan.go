@@ -37,6 +37,7 @@ const (
 	scanTargetJSON     = "scan-target.json"
 	platformARM        = "azureresourcemanager"
 	codeMissingPackage = "missing_package"
+	datadogPackage     = "package datadog"
 )
 
 // platformTempFileName returns a temp filename whose extension the scanner's file-type
@@ -70,7 +71,7 @@ func RunCustomRegoQuery(
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	const ownerReadWritePerm = 0o600
+	const ownerReadWritePerm = 0600
 	tmpFile := filepath.Join(tmpDir, platformTempFileName(platform))
 	if err := os.WriteFile(tmpFile, fileContent, ownerReadWritePerm); err != nil {
 		return nil, nil, fmt.Errorf("writing temp file: %w", err)
@@ -87,7 +88,6 @@ func RunCustomRegoQuery(
 		Platform:                []string{platform},
 		ChangedDefaultQueryPath: true,
 		MaxFileSizeFlag:         5,
-		QueryExecTimeout:        10, // shorter than the CLI default; custom rules should be fast
 		ScanID:                  "console",
 		MaxResolverDepth:        15,
 		FlagEvaluator:           featureflags.NewLocalEvaluator(),
@@ -136,7 +136,7 @@ func ValidateCustomRegoQuery(
 	module, parseErrs := parseRegoModule(regoContent)
 	if module == nil {
 		if hasPackageExpectedError(parseErrs) {
-			if recoveredModule, _ := parseRegoModule("package datadog\n\n" + regoContent); recoveredModule != nil {
+			if recoveredModule, _ := parseRegoModule(datadogPackage + "\n\n" + regoContent); recoveredModule != nil {
 				recoveredErrs := staticChecks(recoveredModule)
 				shiftErrorLines(recoveredErrs, -2)
 				return append(parseErrs, recoveredErrs...), nil
@@ -219,10 +219,10 @@ func hasPackageExpectedError(errs []RegoValidationError) bool {
 func shiftErrorLines(errs []RegoValidationError, delta int) {
 	for i := range errs {
 		if errs[i].StartLine > 0 {
-			errs[i].StartLine += delta
+			errs[i].StartLine = max(1, errs[i].StartLine+delta)
 		}
 		if errs[i].EndLine > 0 {
-			errs[i].EndLine += delta
+			errs[i].EndLine = max(1, errs[i].EndLine+delta)
 		}
 	}
 }
@@ -599,7 +599,7 @@ func enrichParseErrors(regoContent string, errs []RegoValidationError) []RegoVal
 		switch {
 		case e.Code == ast.ParseErr && e.Message == "package expected":
 			e.Code = codeMissingPackage
-			e.Message = "expected `package datadog` at the start of the module."
+			e.Message = "expected `" + datadogPackage + "` at the start of the module."
 			result = append(result, e)
 		case e.Code == ast.ParseErr && e.Message == "unexpected identifier token: expected number":
 			rewriteMissingInputRoot(regoContent, &e)
