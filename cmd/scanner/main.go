@@ -31,6 +31,7 @@ func main() {
 		Usage: "Scans your Infrastructure as Code configurations",
 		Commands: []*cli.Command{
 			scanAction,
+			customAction,
 			listPlatformsAction,
 			listQueriesAction,
 			showConfigAction,

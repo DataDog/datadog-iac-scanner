@@ -68,8 +68,13 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		NumWorkers:        c.ScanParams.ParallelScanFlag,
 	}
 
-	pathTypes, errAnalyze := analyzePaths(ctx, a)
-
+	var pathTypes model.AnalyzedPaths
+	var errAnalyze error
+	if c.analyzerOverride != nil {
+		pathTypes, errAnalyze = c.analyzerOverride(ctx)
+	} else {
+		pathTypes, errAnalyze = analyzePaths(ctx, a)
+	}
 	if errAnalyze != nil {
 		return provider.ExtractedPath{}, errAnalyze
 	}
