@@ -72,7 +72,6 @@ DatadogPolicy contains result if {
 		Platform:                []string{"Terraform"},
 		ChangedDefaultQueryPath: false,
 		MaxFileSizeFlag:         100,
-		QueryExecTimeout:        60,
 		ScanID:                  "console",
 		MaxResolverDepth:        15,
 		FlagEvaluator:           featureflags.NewLocalEvaluator(),

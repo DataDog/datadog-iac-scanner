@@ -37,7 +37,6 @@ type Parameters struct {
 	ReportFormats               []string
 	Platform                    []string
 	TerraformVarsPath           string
-	QueryExecTimeout            int
 	LineInfoPayload             bool
 	DisableSecrets              bool
 	SecretsRegexesPath          string
@@ -95,7 +94,6 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		ReportFormats:               []string{"sarif"},
 		Platform:                    platforms.Supported,
 		TerraformVarsPath:           "",
-		QueryExecTimeout:            60,
 		LineInfoPayload:             false,
 		DisableSecrets:              true,
 		SecretsRegexesPath:          "",

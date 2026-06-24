@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacplatforms "github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
@@ -62,9 +63,10 @@ var scanAction = &cli.Command{
 			Value: 15,
 		},
 		&cli.IntFlag{
-			Name:  "timeout",
-			Usage: "query timeout, in seconds",
-			Value: 60,
+			Name:   "timeout",
+			Usage:  "(DEPRECATED) no longer has any effect; queries run to completion and slow rules are logged instead. This flag will be removed.",
+			Value:  60,
+			Hidden: true,
 		},
 		&cli.StringSliceFlag{
 			Name:  "exclude-queries",
@@ -94,6 +96,11 @@ const (
 
 // nolint:gocyclo
 func runScan(ctx context.Context, c *cli.Command) error {
+	if c.IsSet("timeout") {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Warn().Msg(
+			"the --timeout flag is deprecated and no longer has any effect; queries run to completion and slow rules are logged instead")
+	}
 	if c.Args().Len() > 0 {
 		return fmt.Errorf("unexpected arguments: %v", c.Args().Slice())
 	}
@@ -171,7 +178,6 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		LibrariesPath:    "./assets/libraries",
 		ReportFormats:    []string{"sarif"},
 		Platform:         selectPlatforms(c.StringSlice("type")),
-		QueryExecTimeout: c.Int("timeout"),
 		DisableSecrets:   true,
 		ScanID:           "console",
 		MaxFileSizeFlag:  c.Int("max-file-size"),
