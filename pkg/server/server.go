@@ -68,7 +68,6 @@ type Config struct {
 	EnableShutdown   bool          // gate for the /shutdown endpoint
 	LibrariesPath    string        // Rego support libraries
 	QueriesPath      string        // default rule corpus (used only when a request omits rules)
-	QueryExecTimeout int           // per-query evaluation timeout, seconds
 }
 
 // Server is the IaC analysis HTTP server.
@@ -100,10 +99,6 @@ func New(cfg *Config) *Server {
 	if cfg.QueriesPath == "" {
 		cfg.QueriesPath = "./assets/queries"
 	}
-	if cfg.QueryExecTimeout == 0 {
-		cfg.QueryExecTimeout = 60
-	}
-
 	s := &Server{cfg: *cfg, shutdownCh: make(chan struct{})}
 
 	mux := http.NewServeMux()

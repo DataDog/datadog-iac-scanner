@@ -38,9 +38,8 @@ func newTestServer(t *testing.T) *Server {
 		t.Skipf("assets/libraries not found (%v); skipping engine-backed test", err)
 	}
 	return New(&Config{
-		LibrariesPath:    libs,
-		QueriesPath:      filepath.Join(root, "assets", "queries"),
-		QueryExecTimeout: 60,
+		LibrariesPath: libs,
+		QueriesPath:   filepath.Join(root, "assets", "queries"),
 	})
 }
 
@@ -181,7 +180,7 @@ resource "aws_s3_bucket" "b" { bucket = "x" }`}},
 
 // TestAnalyze_Validation exercises the request validation rules.
 func TestAnalyze_Validation(t *testing.T) {
-	s := New(&Config{QueryExecTimeout: 60})
+	s := New(&Config{})
 	ts := httptest.NewServer(s.http.Handler)
 	defer ts.Close()
 
@@ -213,7 +212,7 @@ func TestAnalyze_Validation(t *testing.T) {
 // returns "pong", standard + CORS headers are present, and /shutdown is gated by
 // --enable-shutdown.
 func TestLifecycle_Contract(t *testing.T) {
-	s := New(&Config{QueryExecTimeout: 60}) // EnableShutdown defaults false
+	s := New(&Config{}) // EnableShutdown defaults false
 	ts := httptest.NewServer(s.http.Handler)
 	defer ts.Close()
 

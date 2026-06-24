@@ -176,7 +176,6 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		LibrariesPath:    s.cfg.LibrariesPath,
 		PreviewLines:     3,
 		Platform:         plats,
-		QueryExecTimeout: s.cfg.QueryExecTimeout,
 		DisableSecrets:   true,
 		ScanID:           "serve",
 		MaxFileSizeFlag:  100,

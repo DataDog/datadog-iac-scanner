@@ -39,11 +39,6 @@ var serveAction = &cli.Command{
 			Value: false,
 			Usage: "accepted for compatibility with the static-analyzer server contract; currently a no-op",
 		},
-		&cli.IntFlag{
-			Name:  "rule-timeout-ms",
-			Value: 0,
-			Usage: "per-query evaluation timeout in milliseconds (0 uses the default of 60s)",
-		},
 		&cli.StringFlag{
 			Name:  "libraries-path",
 			Value: "./assets/libraries",
@@ -58,18 +53,9 @@ var serveAction = &cli.Command{
 	Action: serve,
 }
 
-const msPerSecond = 1000
-
 func serve(ctx context.Context, c *cli.Command) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
-	// Mirror the static-analyzer server's --rule-timeout-ms flag onto the IaC
-	// engine's per-query timeout (which is expressed in seconds).
-	queryExecTimeout := 60
-	if ms := c.Int("rule-timeout-ms"); ms > 0 {
-		queryExecTimeout = max(ms/msPerSecond, 1)
-	}
 
 	cfg := server.Config{
 		Address:          c.String("address"),
@@ -78,7 +64,6 @@ func serve(ctx context.Context, c *cli.Command) error {
 		EnableShutdown:   c.Bool("enable-shutdown"),
 		LibrariesPath:    c.String("libraries-path"),
 		QueriesPath:      c.String("queries-path"),
-		QueryExecTimeout: queryExecTimeout,
 	}
 	return server.New(&cfg).ListenAndServe(ctx)
 }
