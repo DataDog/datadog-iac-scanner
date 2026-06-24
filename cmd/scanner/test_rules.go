@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	defaultRuleTestQueryTimeoutSecs = 60
+	defaultRuleTestTimeoutSecs      = 60
 	defaultRuleTestMaxResolverDepth = 15
 	fixtureDirPerm                  = 0700
 	fixtureFilePerm                 = 0600
@@ -187,6 +187,12 @@ func finishTests(results []ruleOutcome, allPass bool) error {
 
 // runRule materializes a rule's fixtures into a temp directory and runs them.
 func runRule(ctx context.Context, rule *datadog.Rule) ([]string, error) {
+	// Bound each rule's test run so a non-terminating or pathologically slow rule
+	// is canceled instead of hanging CI. rego eval runs on this context, so the
+	// deadline propagates into the engine without any engine-level timeout knob.
+	ctx, cancel := context.WithTimeout(ctx, defaultRuleTestTimeoutSecs*time.Second)
+	defer cancel()
+
 	tmpDir, err := os.MkdirTemp("", "iac-rule-test-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating temp dir: %w", err)
@@ -280,7 +286,6 @@ func runFiles(
 		},
 		map[string]config.IacRuleConfig{},
 		rootPath,
-		defaultRuleTestQueryTimeoutSecs,
 		false,
 		false,
 		0,

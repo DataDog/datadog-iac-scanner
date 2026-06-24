@@ -55,7 +55,6 @@ type inspectorOpts struct {
 	querySource      source.QueriesSource
 	queryParameters  *source.QueryInspectorParameters
 	repoPath         string
-	queryTimeout     int
 	useOldSeverities bool
 	needsLog         bool
 	numWorkers       int
@@ -78,9 +77,6 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 	}
 	if opts.repoPath == "" {
 		opts.repoPath = "."
-	}
-	if opts.queryTimeout == 0 {
-		opts.queryTimeout = 60
 	}
 	if opts.numWorkers == 0 {
 		opts.numWorkers = 1
@@ -106,7 +102,6 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.queryParameters,
 		nil,
 		opts.repoPath,
-		opts.queryTimeout,
 		opts.useOldSeverities,
 		opts.needsLog,
 		opts.numWorkers,

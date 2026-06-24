@@ -23,22 +23,20 @@ import (
 
 // Parameters represents all available scan parameters
 type Parameters struct {
-	CloudProvider       []string
-	ExperimentalQueries bool
-	InputData           string
-	OutputName          string
-	OutputPath          string
-	RepoPath            string
-	Path                []string
-	PayloadPath         string
-	PreviewLines        int
-	QueriesPath         []string
-	LibrariesPath       string
-	ReportFormats       []string
-	Platform            []string
-	TerraformVarsPath   string
-	// Deprecated: ignored. Queries are no longer time-bounded.
-	QueryExecTimeout            int
+	CloudProvider               []string
+	ExperimentalQueries         bool
+	InputData                   string
+	OutputName                  string
+	OutputPath                  string
+	RepoPath                    string
+	Path                        []string
+	PayloadPath                 string
+	PreviewLines                int
+	QueriesPath                 []string
+	LibrariesPath               string
+	ReportFormats               []string
+	Platform                    []string
+	TerraformVarsPath           string
 	LineInfoPayload             bool
 	DisableSecrets              bool
 	SecretsRegexesPath          string
@@ -96,7 +94,6 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		ReportFormats:               []string{"sarif"},
 		Platform:                    platforms.Supported,
 		TerraformVarsPath:           "",
-		QueryExecTimeout:            60,
 		LineInfoPayload:             false,
 		DisableSecrets:              true,
 		SecretsRegexesPath:          "",

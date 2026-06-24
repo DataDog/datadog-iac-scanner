@@ -128,7 +128,6 @@ func NewInspector(
 	queryParameters *source.QueryInspectorParameters,
 	ruleConfigs map[string]config.IacRuleConfig,
 	repoPath string,
-	queryTimeout int,
 	useOldSeverities bool,
 	needsLog bool,
 	numWorkers int,
