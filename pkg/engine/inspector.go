@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
 	"runtime/debug"
 	"strings"
@@ -86,8 +87,13 @@ type Inspector struct {
 	vb            VulnerabilityBuilder
 	tracker       Tracker
 	failedQueries map[string]error
-	ruleConfigs   map[string]config.IacRuleConfig
-	detector      *detector.DetectLine
+	// failedQueriesMu guards failedQueries. Inspect writes it from two places
+	// concurrently: the collector goroutine (processResult, on a query error)
+	// and every worker goroutine (getVulnerabilitiesFromQuery, on a
+	// vulnerability-build error)
+	failedQueriesMu sync.Mutex
+	ruleConfigs     map[string]config.IacRuleConfig
+	detector        *detector.DetectLine
 
 	repoPath             string
 	enableCoverageReport bool
@@ -368,7 +374,9 @@ func processResult(ctx context.Context, result *QueryResult,
 	queries []model.QueryMetadata, c *Inspector) {
 	contextLogger := logger.FromContext(ctx)
 	if result.err != nil {
+		c.failedQueriesMu.Lock()
 		c.failedQueries[queries[result.queryID].Query] = result.err
+		c.failedQueriesMu.Unlock()
 		return
 	}
 
@@ -419,9 +427,13 @@ func (c *Inspector) GetCoverageReport() cover.Report {
 	return c.coverageReport
 }
 
-// GetFailedQueries returns a map of failed queries and the associated error
+// GetFailedQueries returns a map of failed queries and the associated error.
+// It returns a copy taken under failedQueriesMu so callers can read the result
+// safely even if a scan is still writing to the underlying map.
 func (c *Inspector) GetFailedQueries() map[string]error {
-	return c.failedQueries
+	c.failedQueriesMu.Lock()
+	defer c.failedQueriesMu.Unlock()
+	return maps.Clone(c.failedQueries)
 }
 
 func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, err error) {
@@ -593,9 +605,11 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		return nil, false
 	}
 	if err != nil {
+		c.failedQueriesMu.Lock()
 		if _, ok := c.failedQueries[qCtx.Query.Metadata.Query]; !ok {
 			c.failedQueries[qCtx.Query.Metadata.Query] = err
 		}
+		c.failedQueriesMu.Unlock()
 
 		return nil, false
 	}

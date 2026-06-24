@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -1058,4 +1059,66 @@ func TestRulePathExcluded(t *testing.T) {
 			assert.Equal(t, tt.want, rulePathExcluded(tt.filePath, tt.ignorePaths, tt.onlyPaths))
 		})
 	}
+}
+
+// TestInspector_FailedQueriesConcurrentWrites reproduces the data race on
+// Inspector.failedQueries.
+func TestInspector_FailedQueriesConcurrentWrites(t *testing.T) {
+	buildErr := fmt.Errorf("vulnerability build failed")
+
+	ins := newTestInspector(t, inspectorOpts{
+		// vb always errors (and never with ErrNoResult), forcing the
+		// worker-side failedQueries write in getVulnerabilitiesFromQuery.
+		vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
+			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			return nil, buildErr
+		},
+	})
+
+	ctx := context.Background()
+
+	const goroutines = 64
+	queries := make([]model.QueryMetadata, goroutines)
+	for i := range queries {
+		queries[i] = model.QueryMetadata{Query: fmt.Sprintf("query-%d", i)}
+	}
+
+	var wg sync.WaitGroup
+	// start gates every goroutine so the writes overlap instead of running
+	// serially as each goroutine is scheduled.
+	start := make(chan struct{})
+
+	for i := 0; i < goroutines; i++ {
+		i := i
+
+		// Worker path: getVulnerabilitiesFromQuery writes failedQueries on a vb error.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			qCtx := &QueryContext{
+				Ctx:   ctx,
+				Query: &PreparedQuery{Metadata: queries[i]},
+				Files: map[string]*model.FileMetadata{},
+			}
+			<-start
+			getVulnerabilitiesFromQuery(ctx, qCtx, ins, struct{}{}, 0)
+		}()
+
+		// Collector path: processResult writes failedQueries on a query error.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			vulns := make([]model.Vulnerability, 0)
+			moduleVulns := make(map[string]int)
+			result := QueryResult{err: buildErr, queryID: i}
+			<-start
+			processResult(ctx, &result, &vulns, &moduleVulns, queries, ins)
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+
+	// Sanity: the failures were actually recorded
+	require.NotEmpty(t, ins.GetFailedQueries())
 }
