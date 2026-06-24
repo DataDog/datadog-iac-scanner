@@ -68,8 +68,12 @@ type Client struct {
 	Storage       *storage.MemoryStorage
 	Printer       *consolePrinter.Printer
 	FlagEvaluator featureflags.FlagEvaluator
-	// querySourceFactory overrides createQuerySource; set in tests only.
+	// querySourceFactory overrides createQuerySource; set in tests and custom scans.
 	querySourceFactory func(ctx context.Context, platforms []string) (source.QueriesSource, error)
+	// analyzerOverride skips the file-extension analyzer and returns a pre-known platform list.
+	// Set when the platform is already known (e.g. RunCustomRegoQuery) so the temp file name
+	// does not need to encode platform information.
+	analyzerOverride func(ctx context.Context) (model.AnalyzedPaths, error)
 }
 
 func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, context.Context) {
