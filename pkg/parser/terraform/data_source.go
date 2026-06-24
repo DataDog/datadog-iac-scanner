@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -78,9 +79,9 @@ type convertedPolicy struct {
 	Version   string                     `json:"Version,omitempty"`
 }
 
-func getDataSourcePolicy(ctx context.Context, currentPath string, inputVariables converter.VariableMap) converter.VariableMap {
+func getDataSourcePolicy(ctx context.Context, fsys vfs.FS, currentPath string, inputVariables converter.VariableMap) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
-	tfFiles, err := filepath.Glob(filepath.Join(currentPath, "*.tf"))
+	tfFiles, err := fsys.Glob(filepath.Join(currentPath, "*.tf"))
 	if err != nil {
 		contextLogger.Error().Msg("Error getting .tf files to parse data source")
 		return inputVariables
@@ -90,7 +91,7 @@ func getDataSourcePolicy(ctx context.Context, currentPath string, inputVariables
 	}
 	jsonMap := make(map[string]map[string]string)
 	for _, tfFile := range tfFiles {
-		parsedFile, parseErr := parseFile(tfFile, true)
+		parsedFile, parseErr := parseFile(fsys, tfFile, true)
 		if parseErr != nil {
 			contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
 			continue

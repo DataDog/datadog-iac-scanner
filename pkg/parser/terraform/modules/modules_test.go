@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
@@ -53,7 +54,7 @@ module "local_bucket" {
 		},
 	}
 
-	gotMap, err := ParseTerraformModules(ctx, files, 0)
+	gotMap, err := ParseTerraformModules(ctx, vfs.DiskFS{}, files, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -322,7 +323,7 @@ module "three" {
 					}},
 			}
 
-			gotMap, err := ParseTerraformModules(ctx, files, 0)
+			gotMap, err := ParseTerraformModules(ctx, vfs.DiskFS{}, files, 0)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

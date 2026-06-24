@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -185,6 +185,7 @@ func collectLocalsAndVars(body *hclsyntax.Body, localsMap, varsMap map[string]st
 
 func extractModuleBlocks(
 	ctx context.Context,
+	fsys vfs.FS,
 	filePath string,
 	body *hclsyntax.Body,
 	localsMap, varsMap map[string]string,
@@ -211,12 +212,12 @@ func extractModuleBlocks(
 				if mod.IsLocal {
 					absPath := filepath.Join(baseDir, strings.TrimPrefix(resolved, "file://"))
 					var err error
-					mod.AbsSource, err = filepath.Abs(absPath)
+					mod.AbsSource, err = fsys.Abs(absPath)
 					if err != nil {
 						contextLogger.Warn().Msgf("Could not compute absolute path name for %v: %v", absPath, err)
 						mod.AbsSource = filepath.Clean(absPath)
 					}
-					err = validateModuleSource(ctx, mod.AbsSource)
+					err = validateModuleSource(ctx, fsys, mod.AbsSource)
 					if err != nil {
 						contextLogger.Warn().Msgf("Invalid local module source %q: %v", mod.Source, err)
 						continue
@@ -243,7 +244,7 @@ func extractModuleBlocks(
 
 // ParseTerraformModules parses HCL content and extracts module source/version.
 // numWorkers: 0 means auto-detect (GOMAXPROCS).
-func ParseTerraformModules(ctx context.Context, files model.FileMetadatas, numWorkers int) (map[string]ParsedModule, error) {
+func ParseTerraformModules(ctx context.Context, fsys vfs.FS, files model.FileMetadatas, numWorkers int) (map[string]ParsedModule, error) {
 	parsedBodies := parseHCLBodies(ctx, files, numWorkers)
 	modules := make(map[string]ParsedModule)
 
@@ -272,16 +273,16 @@ func ParseTerraformModules(ctx context.Context, files model.FileMetadatas, numWo
 			collectLocalsAndVars(e.body, localsMap, varsMap)
 		}
 		for _, e := range entries {
-			extractModuleBlocks(ctx, e.file.FilePath, e.body, localsMap, varsMap, modules)
+			extractModuleBlocks(ctx, fsys, e.file.FilePath, e.body, localsMap, varsMap, modules)
 		}
 	}
 	return modules, nil
 }
 
-func validateModuleSource(ctx context.Context, absPath string) error {
+func validateModuleSource(ctx context.Context, fsys vfs.FS, absPath string) error {
 	contextLogger := logger.FromContext(ctx)
 	// Attempt to read the directory contents
-	entries, err := os.ReadDir(absPath)
+	entries, err := fsys.ReadDir(absPath)
 	if err != nil {
 		err := fmt.Errorf("module source path %q is not accessible: %w", absPath, err)
 		contextLogger.Error().Msg(err.Error())
@@ -593,7 +594,7 @@ func DetectModuleSourceType(source string) (string, string) {
 	return stringUnknown, ""
 }
 
-func ParseAllModuleVariables(ctx context.Context, modules map[string]ParsedModule, rootDir string) []ParsedModule {
+func ParseAllModuleVariables(ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string) []ParsedModule {
 	contextLogger := logger.FromContext(ctx)
 	numWorkers := 4
 
@@ -622,7 +623,7 @@ func ParseAllModuleVariables(ctx context.Context, modules map[string]ParsedModul
 					}
 					modulePath := resolveModulePath(mod.AbsSource, rootDir)
 
-					attributesData, err := generateEquivalentMap(ctx, modulePath)
+					attributesData, err := generateEquivalentMap(ctx, fsys, modulePath)
 					if err != nil {
 						contextLogger.Warn().Msg("Failed to generate equivalent map")
 					} else {
@@ -671,12 +672,12 @@ func ParseAllModuleVariables(ctx context.Context, modules map[string]ParsedModul
 	}
 }
 
-func generateEquivalentMap(ctx context.Context, modulePath string) (map[string]ModuleAttributesInfo, error) {
+func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) (map[string]ModuleAttributesInfo, error) {
 	contextLogger := logger.FromContext(ctx)
 	equivalentMap := make(map[string]ModuleAttributesInfo)
 	resourceTypesMap := make(map[string]map[string]bool)
 
-	entries, err := os.ReadDir(modulePath)
+	entries, err := fsys.ReadDir(modulePath)
 	if err != nil {
 		contextLogger.Error().Msgf("Failed to read module source directory: %s", modulePath)
 		return nil, err
@@ -695,7 +696,7 @@ func generateEquivalentMap(ctx context.Context, modulePath string) (map[string]M
 			continue
 		}
 
-		contents, err := os.ReadFile(filepath.Clean(path))
+		contents, err := fsys.ReadFile(filepath.Clean(path))
 		if err != nil {
 			contextLogger.Error().Msgf("Failed to read file: %s", path)
 			return nil, err

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
@@ -20,7 +21,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 	type args struct {
 		currentPath  string
 		resourceName string
-		inputVars converter.VariableMap // nil means empty map
+		inputVars    converter.VariableMap // nil means empty map
 	}
 	tests := []struct {
 		name string
@@ -75,7 +76,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			if inputVars == nil {
 				inputVars = make(converter.VariableMap)
 			}
-			result := getDataSourcePolicy(ctx, tt.args.currentPath, inputVars)
+			result := getDataSourcePolicy(ctx, vfs.DiskFS{}, tt.args.currentPath, inputVars)
 			data, ok := result["data"]
 			if !ok {
 				t.FailNow()

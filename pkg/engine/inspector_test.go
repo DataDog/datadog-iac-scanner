@@ -24,6 +24,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -107,6 +108,7 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.needsLog,
 		opts.numWorkers,
 		opts.flagEvaluator,
+		vfs.DiskFS{},
 	)
 	require.NoError(t, err)
 	return ins

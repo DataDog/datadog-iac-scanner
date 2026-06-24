@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 type kindParser interface {
@@ -30,6 +31,7 @@ type kindParser interface {
 // Builder is a representation of parsers that will be construct
 type Builder struct {
 	parsers []kindParser
+	fsys    vfs.FS
 }
 
 // NewBuilder creates a new Builder's reference
@@ -37,6 +39,16 @@ func NewBuilder(ctx context.Context) *Builder {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("parser.NewBuilder()")
 	return &Builder{}
+}
+
+// WithFS sets the filesystem used for extension detection during parsing. The
+// CLI omits it (defaults to the real disk); the HTTP server injects an in-memory
+// FS so pushed content (not on disk) is recognized. A nil fsys is ignored.
+func (b *Builder) WithFS(fsys vfs.FS) *Builder {
+	if fsys != nil {
+		b.fsys = fsys
+	}
+	return b
 }
 
 // Add is a function that adds a new parser to the caller and returns it
@@ -63,6 +75,7 @@ func (b *Builder) Build(types, cloudProviders []string) ([]*Parser, error) {
 				Parsers:    parser,
 				extensions: extensions,
 				Platform:   platforms,
+				fsys:       b.fsys,
 			})
 		}
 	}
@@ -80,6 +93,7 @@ type Parser struct {
 	extensions model.Extensions
 	Platform   []string
 	SCIInfo    model.SCIInfo
+	fsys       vfs.FS
 }
 
 // ParsedDocument is a struct containing data retrieved from parsing
@@ -193,7 +207,11 @@ func contains(types []string, supportedTypes map[string]bool) bool {
 }
 
 func (c *Parser) isValidExtension(ctx context.Context, filePath string) bool {
-	ext, _ := utils.GetExtension(ctx, filePath)
+	fsys := c.fsys
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
+	ext, _ := utils.GetExtensionWithFS(ctx, fsys, filePath)
 	_, ok := c.extensions[ext]
 	return ok
 }

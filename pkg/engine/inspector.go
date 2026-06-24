@@ -30,6 +30,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -113,6 +114,10 @@ type Inspector struct {
 	useOldSeverities     bool
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
+	// fsys is the filesystem used for Terraform module resolution. Defaults to
+	// the real disk; the HTTP server injects an in-memory FS built from pushed
+	// content.
+	fsys vfs.FS
 }
 
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
@@ -146,9 +151,14 @@ func NewInspector(
 	needsLog bool,
 	numWorkers int,
 	flagEvaluator featureflags.FlagEvaluator,
+	fsys vfs.FS,
 ) (*Inspector, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.NewInspector()")
+
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
 
 	queries, err := queriesSource.GetQueries(ctx, queryParameters)
 	if err != nil {
@@ -191,6 +201,7 @@ func NewInspector(
 		useOldSeverities: useOldSeverities,
 		numWorkers:       utils.AdjustNumWorkers(numWorkers),
 		flagEvaluator:    flagEvaluator,
+		fsys:             fsys,
 	}, nil
 }
 
@@ -298,7 +309,7 @@ func (c *Inspector) Inspect(
 	vulnerabilities := make([]model.Vulnerability, 0)
 
 	// Step 1: Parse Terraform modules
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, files, c.numWorkers)
+	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
 	}
@@ -306,7 +317,7 @@ func (c *Inspector) Inspect(
 
 	// Step 2: Enrich modules with parsed variables
 	rootDir := c.repoPath
-	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, parsedModules, rootDir)
+	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, rootDir)
 
 	// Convert combined documents directly to OPA AST, skipping the
 	// json.Marshal -> UnmarshalJSON round-trip to avoid intermediate copies.

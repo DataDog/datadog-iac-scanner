@@ -7,13 +7,13 @@ package terraform
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -29,8 +29,8 @@ func mergeMaps(baseMap, newItems converter.VariableMap) {
 }
 
 // nolint:gocyclo
-func getInputVariablesFromFile(filename string) (converter.VariableMap, error) {
-	src, err := os.ReadFile(filepath.Clean(filename))
+func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
+	src, err := fsys.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +86,8 @@ func getInputVariablesFromFile(filename string) (converter.VariableMap, error) {
 	return variables, nil
 }
 
-func getInputLocalsFromFile(filename string) (converter.VariableMap, error) {
-	src, err := os.ReadFile(filepath.Clean(filename))
+func getInputLocalsFromFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
+	src, err := fsys.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		return nil, err
 	}
@@ -147,12 +147,12 @@ func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {
 	return out
 }
 
-func getInputVariables(ctx context.Context, currentPath, fileContent, terraformVarsPath string) converter.VariableMap {
+func getInputVariables(ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
 	variablesMap := make(converter.VariableMap)
 	localsMap := make(converter.VariableMap)
 
-	tfFiles, err := filepath.Glob(filepath.Join(currentPath, "*.tf"))
+	tfFiles, err := fsys.Glob(filepath.Join(currentPath, "*.tf"))
 	if err != nil {
 		contextLogger.Error().Msg("Error getting .tf files")
 	}
@@ -160,7 +160,7 @@ func getInputVariables(ctx context.Context, currentPath, fileContent, terraformV
 	// Parse all .tf files for variables and locals
 	for _, tfFile := range tfFiles {
 		// Get variables
-		vars, errVars := getInputVariablesFromFile(tfFile)
+		vars, errVars := getInputVariablesFromFile(fsys, tfFile)
 		if errVars != nil {
 			contextLogger.Error().Msgf("Error getting default values from %s", tfFile)
 			contextLogger.Err(errVars)
@@ -169,7 +169,7 @@ func getInputVariables(ctx context.Context, currentPath, fileContent, terraformV
 		}
 
 		// Get locals
-		locals, errLocals := getInputLocalsFromFile(tfFile)
+		locals, errLocals := getInputLocalsFromFile(fsys, tfFile)
 		if errLocals != nil {
 			contextLogger.Error().Msgf("Error getting locals from %s", tfFile)
 			contextLogger.Err(errLocals)
@@ -179,18 +179,18 @@ func getInputVariables(ctx context.Context, currentPath, fileContent, terraformV
 	}
 
 	// Parse *.auto.tfvars files
-	tfVarsFiles, err := filepath.Glob(filepath.Join(currentPath, "*.auto.tfvars"))
+	tfVarsFiles, err := fsys.Glob(filepath.Join(currentPath, "*.auto.tfvars"))
 	if err != nil {
 		contextLogger.Error().Msg("Error getting .auto.tfvars files")
 	}
 
 	// Add terraform.tfvars if it exists
-	if _, err := os.Stat(filepath.Join(currentPath, "terraform.tfvars")); err == nil {
+	if _, err := fsys.Stat(filepath.Join(currentPath, "terraform.tfvars")); err == nil {
 		tfVarsFiles = append(tfVarsFiles, filepath.Join(currentPath, "terraform.tfvars"))
 	}
 
 	for _, tfVarsFile := range tfVarsFiles {
-		vars, errInput := getInputVariablesFromFile(tfVarsFile)
+		vars, errInput := getInputVariablesFromFile(fsys, tfVarsFile)
 		if errInput != nil {
 			contextLogger.Error().Msgf("Error getting values from %s", tfVarsFile)
 			contextLogger.Err(errInput)
@@ -211,8 +211,8 @@ func getInputVariables(ctx context.Context, currentPath, fileContent, terraformV
 	}
 
 	if terraformVarsPath != "" {
-		if _, err := os.Stat(terraformVarsPath); err == nil {
-			vars, errInput := getInputVariablesFromFile(terraformVarsPath)
+		if _, err := fsys.Stat(terraformVarsPath); err == nil {
+			vars, errInput := getInputVariablesFromFile(fsys, terraformVarsPath)
 			if errInput != nil {
 				contextLogger.Error().Msgf("Error getting values from %s", terraformVarsPath)
 				contextLogger.Err(errInput)

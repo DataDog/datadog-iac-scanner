@@ -92,6 +92,7 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes, onlyPaths
 func (s *FileSystemSourceProvider) addExcluded(ctx context.Context, excludePaths []string) error {
 	contextLogger := logger.FromContext(ctx)
 	for _, excludePath := range excludePaths {
+		excludePath = filepath.Clean(excludePath)
 		info, err := os.Stat(excludePath)
 		if err != nil {
 			if os.IsNotExist(err) {
