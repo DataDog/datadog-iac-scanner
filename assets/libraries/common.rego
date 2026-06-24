@@ -494,14 +494,17 @@ condition_keys_scoping_principal := {
 #   1. The operator must be affirmative — negating operators (containing "not")
 #      or conditional-presence operators ("...ifexists") do not restrict access.
 #   2. The condition key must be in the recognized scoping-key allowlist.
-#   3. The value must not itself be a wildcard ("*"), which would restrict nothing.
+#   3. No value in the (possibly array) condition value is a wildcard ("*") or an
+#      unrestricted CIDR ("0.0.0.0/0", "::/0"), either of which would restrict nothing.
 is_iam_policy_principal_scoped_by_condition(statement) if {
 	valid_key(statement, conditions[idx])
 	value := statement[conditions[idx]][op][key]
 	not contains(lower(op), "not")
 	not endswith(lower(op), "ifexists")
 	lower(key) == lower(condition_keys_scoping_principal[_])
-	value != "*"
+	values := as_array(value)
+	not "*" in values
+	every v in values { not is_unrestricted(v) }
 }
 
 is_cross_account(statement) if {

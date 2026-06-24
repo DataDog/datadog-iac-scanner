@@ -703,3 +703,42 @@ test_is_iam_policy_principal_scoped_wildcard_value if {
 	}
 	not is_iam_policy_principal_scoped_by_condition(statement)
 }
+
+test_is_iam_policy_principal_scoped_array_wildcard_value if {
+	# Terraform aws_iam_policy_document emits condition values as arrays; ["*"] is still a wildcard
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"ArnLike": {"aws:SourceArn": ["*"]}},
+	}
+	not is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_unrestricted_cidr if {
+	# 0.0.0.0/0 on aws:SourceIp restricts nothing
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"IpAddress": {"aws:SourceIp": "0.0.0.0/0"}},
+	}
+	not is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_unrestricted_ipv6 if {
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"IpAddress": {"aws:SourceIp": "::/0"}},
+	}
+	not is_iam_policy_principal_scoped_by_condition(statement)
+}
+
+test_is_iam_policy_principal_scoped_specific_cidr if {
+	# A specific CIDR is a real restriction
+	statement := {
+		"Effect": "Allow",
+		"Principal": "*",
+		"Condition": {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}},
+	}
+	is_iam_policy_principal_scoped_by_condition(statement)
+}
