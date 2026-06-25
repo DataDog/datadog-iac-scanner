@@ -29,15 +29,22 @@ func TestAnalyzer_Analyze(t *testing.T) {
 		repoPath          string
 	}{
 		{
-			name:      "analyze_test_dir_single_path",
-			paths:     []string{filepath.FromSlash("../../test/fixtures/analyzer_test")},
-			wantTypes: []string{"ansible", "azureresourcemanager", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
+			name:  "analyze_test_dir_single_path",
+			paths: []string{filepath.FromSlash("../../test/fixtures/analyzer_test")},
+			// The following test is changed by the json gating that only allows terraform plans to be scanned.
+			// It will be changed when support for json files for other platforms is added.
+			// wantTypes: []string{"ansible", "azureresourcemanager", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
+			wantTypes: []string{"ansible", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
 			wantExclude: []string{
+				filepath.FromSlash("../../test/fixtures/analyzer_test/azureResourceManager.json"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/not_openapi.json"),
+				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI.json"),
+				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI_test/openAPI.json"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/pnpm-lock.yaml"),
-				filepath.FromSlash("../../test/fixtures/analyzer_test/undetected.yaml")},
+				filepath.FromSlash("../../test/fixtures/analyzer_test/undetected.yaml"),
+			},
 			typesFromFlag:     []string{""},
-			wantLOC:           819,
+			wantLOC:           680, // Reduced from 819 due to JSON file exclusion
 			wantErr:           false,
 			gitIgnoreFileName: "",
 			excludeGitIgnore:  false,
@@ -74,10 +81,12 @@ func TestAnalyzer_Analyze(t *testing.T) {
 			paths: []string{
 				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI_test"),
 			},
-			wantTypes:         []string{"openapi"},
-			wantExclude:       []string{},
+			wantTypes: []string{"openapi"},
+			wantExclude: []string{
+				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI_test/openAPI.json"),
+			},
 			typesFromFlag:     []string{""},
-			wantLOC:           107,
+			wantLOC:           39, // Reduced from 107 due to JSON file exclusion (107 - 68 = 39)
 			wantErr:           false,
 			gitIgnoreFileName: "",
 			excludeGitIgnore:  false,
@@ -229,16 +238,22 @@ func TestAnalyzer_Analyze(t *testing.T) {
 			MaxFileSize:       -1,
 		},
 		{
-			name:      "analyze_test_ignore_pnpm_lock_yaml_file",
-			paths:     []string{filepath.FromSlash("../../test/fixtures/analyzer_test")},
-			wantTypes: []string{"ansible", "azureresourcemanager", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
+			name:  "analyze_test_ignore_pnpm_lock_yaml_file",
+			paths: []string{filepath.FromSlash("../../test/fixtures/analyzer_test")},
+			// The following test is changed by the json gating that only allows terraform plans to be scanned.
+			// It will be changed when support for json files for other platforms is added.
+			// wantTypes: []string{"ansible", "azureresourcemanager", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
+			wantTypes: []string{"ansible", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
 			wantExclude: []string{
-				filepath.FromSlash("../../test/fixtures/analyzer_test/pnpm-lock.yaml"),
+				filepath.FromSlash("../../test/fixtures/analyzer_test/azureResourceManager.json"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/not_openapi.json"),
+				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI.json"),
+				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI_test/openAPI.json"),
+				filepath.FromSlash("../../test/fixtures/analyzer_test/pnpm-lock.yaml"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/undetected.yaml"),
 			},
 			typesFromFlag:     []string{""},
-			wantLOC:           819,
+			wantLOC:           680, // Reduced from 819 due to JSON file exclusion
 			wantErr:           false,
 			gitIgnoreFileName: "",
 			excludeGitIgnore:  false,

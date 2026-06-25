@@ -25,6 +25,7 @@ import (
 	buildahParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/buildah"
 	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
+	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
@@ -244,7 +245,7 @@ func (c *Client) createService(
 		return nil, err
 	}
 
-	combinedParser, err := parser.NewBuilder(ctx).
+	combinedParserBuilder := parser.NewBuilder(ctx).
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefaultWithParams(c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
 		Add(&bicepParser.Parser{}).
@@ -253,8 +254,13 @@ func (c *Client) createService(
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).
 		Add(&ansibleConfigParser.Parser{}).
-		Add(&ansibleHostsParser.Parser{}).
-		Build(types, cloudProviders)
+		Add(&ansibleHostsParser.Parser{})
+
+	if c.ScanParams.ShouldScanTfPlans {
+		combinedParserBuilder.Add(&jsonParser.Parser{})
+	}
+
+	combinedParser, err := combinedParserBuilder.Build(types, cloudProviders)
 	if err != nil {
 		return nil, err
 	}
