@@ -6,10 +6,10 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
-	"regexp"
 	"sort"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -73,7 +73,10 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 	fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
 
 	for _, document := range documents.Docs {
-		_, err = json.Marshal(document)
+		// Deep-copy + sanitize the document with a single marshal. A marshal
+		// failure means the document can't be scanned, so skip it (preserving
+		// the previous skip-on-unmarshalable-document behavior).
+		preparedDocument, err := prepareScanDocument(document, documents.Kind)
 		if err != nil {
 			contextLogger.Err(err).Msgf("failed to marshal document for file: %s", filename)
 			continue
@@ -86,7 +89,7 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 		file := model.FileMetadata{
 			ID:                uuid.New().String(),
 			ScanID:            scanID,
-			Document:          PrepareScanDocument(ctx, document, documents.Kind),
+			Document:          preparedDocument,
 			LineInfoDocument:  document,
 			OriginalData:      documents.Content,
 			Kind:              documents.Kind,
@@ -109,9 +112,7 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 }
 
 func resolveCRLFFile(fileContent []byte) []byte {
-	regex := regexp.MustCompile(`\r\n`)
-	contentSTR := regex.ReplaceAllString(string(fileContent), "\n")
-	return []byte(contentSTR)
+	return bytes.ReplaceAll(fileContent, []byte("\r\n"), []byte("\n"))
 }
 
 func resolveJSONFilter(jsonFilter string) string {

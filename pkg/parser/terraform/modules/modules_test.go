@@ -53,7 +53,7 @@ module "local_bucket" {
 		},
 	}
 
-	gotMap, err := ParseTerraformModules(ctx, files)
+	gotMap, err := ParseTerraformModules(ctx, files, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -322,7 +322,7 @@ module "three" {
 					}},
 			}
 
-			gotMap, err := ParseTerraformModules(ctx, files)
+			gotMap, err := ParseTerraformModules(ctx, files, 0)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

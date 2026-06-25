@@ -126,3 +126,8 @@ func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (strin
 func checkEmptyInputdata(inputData string) bool {
 	return inputData == emptyInputData || inputData == ""
 }
+
+// IsEmptyInputData reports whether inputData carries no custom data (empty or "{}").
+func IsEmptyInputData(inputData string) bool {
+	return checkEmptyInputdata(inputData)
+}

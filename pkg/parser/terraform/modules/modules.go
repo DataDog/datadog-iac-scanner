@@ -14,6 +14,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/cespare/xxhash/v2"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -73,108 +75,206 @@ const (
 	invalidTraversalPlaceholder = "__INVALID_TRAVERSAL__"
 )
 
-// nolint:gocyclo
-// ParseTerraformModules parses HCL content and extracts module source/version, resolving locals/variables if possible.
-func ParseTerraformModules(ctx context.Context, files model.FileMetadatas) (map[string]ParsedModule, error) {
+// bodyCacheKey identifies file content by length plus a 64-bit content hash.
+type bodyCacheKey struct {
+	len  int
+	hash uint64
+}
+
+// parseHCLBodyCached parses Terraform bytes, caching by content hash. Cache is
+// per-scan (passed in by the caller) so it does not grow across scans.
+func parseHCLBodyCached(cache *sync.Map, content, filePath string) (*hclsyntax.Body, hcl.Diagnostics) {
+	key := bodyCacheKey{len: len(content), hash: xxhash.Sum64String(content)}
+	if cached, ok := cache.Load(key); ok {
+		return cached.(*hclsyntax.Body), nil
+	}
+	hclFile, diags := hclsyntax.ParseConfig([]byte(content), filePath, hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return nil, diags
+	}
+	body, ok := hclFile.Body.(*hclsyntax.Body)
+	if !ok {
+		return nil, diags
+	}
+	cache.Store(key, body)
+	return body, diags
+}
+
+func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers int) map[string]*hclsyntax.Body {
 	contextLogger := logger.FromContext(ctx)
-	modules := make(map[string]ParsedModule)
-	localsMap := make(map[string]string)
-	varsMap := make(map[string]string)
+	parsedBodies := make(map[string]*hclsyntax.Body)
 
-	// nolint:gocritic
+	tfFiles := make([]*model.FileMetadata, 0, len(files))
 	for _, file := range files {
-		filePath := file.FilePath
-		if !isTerraformFile(filePath) {
-			continue
+		if isTerraformFile(file.FilePath) {
+			tfFiles = append(tfFiles, file)
 		}
-		baseDir := filepath.Dir(filePath)
+	}
+	if len(tfFiles) == 0 {
+		return parsedBodies
+	}
 
-		content := getFileContent(file)
+	bodyCache := &sync.Map{}
 
-		hclFile, diags := hclsyntax.ParseConfig([]byte(content), filePath, hcl.Pos{Line: 1, Column: 1})
-		if diags.HasErrors() {
-			contextLogger.Warn().Msgf("Skipping file %s due to HCL parse errors: %s", filePath, diags.Error())
-			continue
-		}
+	bodies := make([]*hclsyntax.Body, len(tfFiles))
+	numWorkers = utils.AdjustNumWorkers(numWorkers)
+	if numWorkers > len(tfFiles) {
+		numWorkers = len(tfFiles)
+	}
 
-		body, ok := hclFile.Body.(*hclsyntax.Body)
-		if !ok {
-			contextLogger.Error().Msgf("Unexpected body type in %s", filePath)
-			continue
-		}
-
-		// Collect locals and variable defaults
-		for _, block := range body.Blocks {
-			switch block.Type {
-			case "locals":
-				for name, attr := range block.Body.Attributes {
-					val, diag := attr.Expr.Value(nil)
-					if !diag.HasErrors() &&
-						val.Type().Equals(cty.String) &&
-						!val.IsNull() {
-						localsMap[name] = val.AsString()
-					}
-				}
-			case "variable":
-				if len(block.Labels) != 1 {
+	indices := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range indices {
+				file := tfFiles[i]
+				content := getFileContent(file)
+				body, diags := parseHCLBodyCached(bodyCache, content, file.FilePath)
+				if diags.HasErrors() {
+					contextLogger.Warn().Msgf("Skipping file %s due to HCL parse errors: %s", file.FilePath, diags.Error())
 					continue
 				}
-				varName := block.Labels[0]
-				if defAttr, ok := block.Body.Attributes["default"]; ok {
-					val, diag := defAttr.Expr.Value(nil)
-					if !diag.HasErrors() &&
-						val.Type().Equals(cty.String) &&
-						!val.IsNull() {
-						varsMap[varName] = val.AsString()
-					}
+				if body == nil {
+					contextLogger.Error().Msgf("Unexpected body type in %s", file.FilePath)
+					continue
+				}
+				bodies[i] = body
+			}
+		}()
+	}
+	for i := range tfFiles {
+		indices <- i
+	}
+	close(indices)
+	wg.Wait()
+
+	for i, file := range tfFiles {
+		if bodies[i] != nil {
+			parsedBodies[file.FilePath] = bodies[i]
+		}
+	}
+	return parsedBodies
+}
+
+func collectLocalsAndVars(body *hclsyntax.Body, localsMap, varsMap map[string]string) {
+	for _, block := range body.Blocks {
+		switch block.Type {
+		case "locals":
+			for name, attr := range block.Body.Attributes {
+				val, diag := attr.Expr.Value(nil)
+				if !diag.HasErrors() && val.Type().Equals(cty.String) && !val.IsNull() {
+					localsMap[name] = val.AsString()
 				}
 			}
-		}
-
-		// Extract module blocks
-		for _, block := range body.Blocks {
-			if block.Type != "module" || len(block.Labels) == 0 {
+		case "variable":
+			if len(block.Labels) != 1 {
 				continue
 			}
-
-			mod := ParsedModule{Name: block.Labels[0]}
-
-			for key, attr := range block.Body.Attributes {
-				resolved := resolveExpr(attr.Expr, localsMap, varsMap)
-
-				switch key {
-				case "source":
-					mod.Source = resolved
-					mod.SourceType, mod.RegistryScope = DetectModuleSourceType(resolved)
-					mod.IsLocal = LooksLikeLocalModuleSource(strings.TrimPrefix(resolved, "git::"))
-
-					if mod.IsLocal {
-						// Normalize relative path to absolute
-						absPath := filepath.Join(baseDir, strings.TrimPrefix(resolved, "file://"))
-						var err error
-						mod.AbsSource, err = filepath.Abs(absPath)
-						if err != nil {
-							contextLogger.Warn().Msgf("Could not compute absolute path name for %v: %v", absPath, err)
-							mod.AbsSource = filepath.Clean(absPath) // Use the inferior alternative
-						}
-						err = validateModuleSource(ctx, mod.AbsSource)
-						if err != nil {
-							contextLogger.Warn().Msgf("Invalid local module source %q: %v", mod.Source, err)
-							continue
-						}
-					}
-
-				case "version":
-					mod.Version = resolved
+			varName := block.Labels[0]
+			if defAttr, ok := block.Body.Attributes["default"]; ok {
+				val, diag := defAttr.Expr.Value(nil)
+				if !diag.HasErrors() && val.Type().Equals(cty.String) && !val.IsNull() {
+					varsMap[varName] = val.AsString()
 				}
-			}
-
-			if _, exists := modules[mod.Source]; !exists {
-				modules[mod.Source] = mod
 			}
 		}
 	}
+}
 
+func extractModuleBlocks(
+	ctx context.Context,
+	filePath string,
+	body *hclsyntax.Body,
+	localsMap, varsMap map[string]string,
+	modules map[string]ParsedModule,
+) {
+	contextLogger := logger.FromContext(ctx)
+	baseDir := filepath.Dir(filePath)
+	for _, block := range body.Blocks {
+		if block.Type != "module" || len(block.Labels) == 0 {
+			continue
+		}
+
+		mod := ParsedModule{Name: block.Labels[0]}
+
+		for key, attr := range block.Body.Attributes {
+			resolved := resolveExpr(attr.Expr, localsMap, varsMap)
+
+			switch key {
+			case "source":
+				mod.Source = resolved
+				mod.SourceType, mod.RegistryScope = DetectModuleSourceType(resolved)
+				mod.IsLocal = LooksLikeLocalModuleSource(strings.TrimPrefix(resolved, "git::"))
+
+				if mod.IsLocal {
+					absPath := filepath.Join(baseDir, strings.TrimPrefix(resolved, "file://"))
+					var err error
+					mod.AbsSource, err = filepath.Abs(absPath)
+					if err != nil {
+						contextLogger.Warn().Msgf("Could not compute absolute path name for %v: %v", absPath, err)
+						mod.AbsSource = filepath.Clean(absPath)
+					}
+					err = validateModuleSource(ctx, mod.AbsSource)
+					if err != nil {
+						contextLogger.Warn().Msgf("Invalid local module source %q: %v", mod.Source, err)
+						continue
+					}
+				}
+
+			case "version":
+				mod.Version = resolved
+			}
+		}
+
+		// Use the resolved absolute path as the key for local modules so that
+		// two roots with identical relative sources (e.g. "./module") are stored
+		// as separate entries rather than one silently overwriting the other.
+		key := mod.Source
+		if mod.IsLocal && mod.AbsSource != "" {
+			key = mod.AbsSource
+		}
+		if _, exists := modules[key]; !exists {
+			modules[key] = mod
+		}
+	}
+}
+
+// ParseTerraformModules parses HCL content and extracts module source/version.
+// numWorkers: 0 means auto-detect (GOMAXPROCS).
+func ParseTerraformModules(ctx context.Context, files model.FileMetadatas, numWorkers int) (map[string]ParsedModule, error) {
+	parsedBodies := parseHCLBodies(ctx, files, numWorkers)
+	modules := make(map[string]ParsedModule)
+
+	// Group files by directory so locals/vars are scoped per Terraform module root,
+	// preventing cross-root contamination when the same local/variable name is defined
+	// differently in two separate directories.
+	type dirEntry struct {
+		file *model.FileMetadata
+		body *hclsyntax.Body
+	}
+	byDir := make(map[string][]dirEntry)
+	for i := range files {
+		file := files[i]
+		body := parsedBodies[file.FilePath]
+		if body == nil {
+			continue
+		}
+		dir := filepath.Dir(file.FilePath)
+		byDir[dir] = append(byDir[dir], dirEntry{file: file, body: body})
+	}
+
+	for _, entries := range byDir {
+		localsMap := make(map[string]string)
+		varsMap := make(map[string]string)
+		for _, e := range entries {
+			collectLocalsAndVars(e.body, localsMap, varsMap)
+		}
+		for _, e := range entries {
+			extractModuleBlocks(ctx, e.file.FilePath, e.body, localsMap, varsMap, modules)
+		}
+	}
 	return modules, nil
 }
 

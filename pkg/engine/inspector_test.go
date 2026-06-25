@@ -16,7 +16,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/open-policy-agent/opa/rego"
+	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
@@ -28,7 +28,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/open-policy-agent/opa/cover"
+	"github.com/open-policy-agent/opa/v1/cover"
 )
 
 // stubQueriesSource is an in-memory [source.QueriesSource] that returns a

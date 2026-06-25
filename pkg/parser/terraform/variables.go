@@ -19,6 +19,9 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// terraformVarsPathDirective is the inline comment prefix that overrides the tfvars path for a file.
+const terraformVarsPathDirective = "kics_terraform_vars"
+
 func mergeMaps(baseMap, newItems converter.VariableMap) {
 	for key, value := range newItems {
 		baseMap[key] = value
@@ -197,7 +200,7 @@ func getInputVariables(ctx context.Context, currentPath, fileContent, terraformV
 	}
 
 	if terraformVarsPath == "" {
-		terraformVarsPathRegex := regexp.MustCompile(`(?m)^\s*// kics_terraform_vars: ([\w/\\.:-]+)\r?\n`)
+		terraformVarsPathRegex := regexp.MustCompile(`(?m)^\s*// ` + terraformVarsPathDirective + `: ([\w/\\.:-]+)\r?\n`)
 		match := terraformVarsPathRegex.FindStringSubmatch(fileContent)
 		if match != nil {
 			terraformVarsPath = filepath.FromSlash(strings.ReplaceAll(match[1], "\\", "/"))

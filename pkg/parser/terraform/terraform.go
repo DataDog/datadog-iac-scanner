@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -21,6 +23,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pkg/errors"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
+	"golang.org/x/sync/singleflight"
 )
 
 // RetriesDefaultValue is default number of times a parser will retry to execute
@@ -35,6 +38,11 @@ type Parser struct {
 	numOfRetries      int
 	terraformVarsPath string
 	sciInfo           model.SCIInfo
+
+	// dirVarsCache memoizes per-directory variable/locals resolution (O(N²) without
+	// it). Scoped to the Parser instance, which is created once per scan.
+	dirVarsCache sync.Map // dir -> converter.VariableMap
+	dirVarsSF    singleflight.Group
 }
 
 // NewDefault initializes a parser with Parser default values
@@ -64,10 +72,40 @@ func (p *Parser) Resolve(ctx context.Context,
 			masterUtils.HandlePanic(ctx, r, errMessage)
 		}
 	}()
-	inputVars := getInputVariables(ctx, filepath.Dir(filename), string(fileContent), p.terraformVarsPath)
-	vars = getDataSourcePolicy(ctx, filepath.Dir(filename), inputVars)
-
+	vars = p.resolveDirVars(ctx, filepath.Dir(filename), fileContent)
 	return fileContent, vars, nil
+}
+
+// resolveDirVars returns the variable/locals/data-source map for a directory,
+// memoized per directory. Files carrying an inline terraform vars path directive
+// are resolved per-file (uncached) because their result depends on file content.
+func (p *Parser) resolveDirVars(ctx context.Context, dir string, fileContent []byte) converter.VariableMap {
+	if p.terraformVarsPath == "" && strings.Contains(string(fileContent), terraformVarsPathDirective) {
+		inputVars := getInputVariables(ctx, dir, string(fileContent), p.terraformVarsPath)
+		return getDataSourcePolicy(ctx, dir, inputVars)
+	}
+
+	if v, ok := p.dirVarsCache.Load(dir); ok {
+		return cloneVariableMap(v.(converter.VariableMap))
+	}
+	v, _, _ := p.dirVarsSF.Do(dir, func() (interface{}, error) {
+		inputVars := getInputVariables(ctx, dir, string(fileContent), p.terraformVarsPath)
+		vars := getDataSourcePolicy(ctx, dir, inputVars)
+		p.dirVarsCache.Store(dir, vars)
+		return vars, nil
+	})
+	// Return a shallow clone: the converter adds per-file top-level keys to the
+	// variable map during evaluation, so each file must get its own map. The
+	// cty.Value entries are immutable and safe to share by reference.
+	return cloneVariableMap(v.(converter.VariableMap))
+}
+
+func cloneVariableMap(src converter.VariableMap) converter.VariableMap {
+	dst := make(converter.VariableMap, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }
 
 func processContent(ctx context.Context, elements model.Document, content, path string) {
