@@ -121,6 +121,7 @@ var (
 )
 
 const (
+	cdkTf        = "cdkTf"
 	yml          = ".yml"
 	yaml         = ".yaml"
 	json         = ".json"
@@ -556,18 +557,18 @@ func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<
 		}
 	}
 
-	returnType = checkReturnType(ctx, a.filePath, returnType, ext, content)
+	endReturnType := checkReturnType(ctx, a.filePath, returnType, ext, content)
 
 	// Only process JSON files if they are Terraform plans
 	// This will be the case until other platforms support json scanning
-	if ext == json && returnType != "terraform" {
+	if ext == json && (endReturnType != "terraform" || returnType == cdkTf) {
 		unwanted <- a.filePath
 		return
 	}
 
-	if returnType != "" {
-		if a.isAvailableType(returnType) {
-			results <- returnType
+	if endReturnType != "" {
+		if a.isAvailableType(endReturnType) {
+			results <- endReturnType
 			locCount <- linesCount
 			return
 		}
@@ -579,7 +580,7 @@ func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<
 func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte) string {
 	if returnType != "" {
 		switch returnType {
-		case "cdkTf":
+		case cdkTf:
 			return terraform
 		case dependabot:
 			return cicd
