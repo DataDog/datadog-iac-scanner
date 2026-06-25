@@ -283,6 +283,32 @@ func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]any,
 	return false
 }
 
+// FilterQueries returns the subset of queries whose metadata passes the
+// include/exclude filters in queryParameters (use-rules, ignore-rules,
+// severity/category filters, TRACE/BoM gating, and feature-flag exclusions),
+// plus the experimental gate. It lets query sources that don't read from disk
+// (e.g. the server's pushed-rule source) apply the same filtering the
+// filesystem source applies via iterateQueryDirs. A nil queryParameters returns
+// the queries unchanged.
+func FilterQueries(ctx context.Context, queries []model.QueryMetadata,
+	queryParameters *QueryInspectorParameters) []model.QueryMetadata {
+	if queryParameters == nil {
+		return queries
+	}
+	out := make([]model.QueryMetadata, 0, len(queries))
+	for _, query := range queries {
+		if query.Experimental && !queryParameters.ExperimentalQueries {
+			continue
+		}
+		if !checkQueryInclude(ctx, query.Metadata, queryParameters) ||
+			checkQueryExclude(ctx, query.Metadata, queryParameters) {
+			continue
+		}
+		out = append(out, query)
+	}
+	return out
+}
+
 // GetQueries returns all queries found under the source paths registered in s.Source.
 // Rules are no longer embedded in the binary; provide local rule directories via s.Source.
 func (s *FilesystemSource) GetQueries(ctx context.Context, queryParameters *QueryInspectorParameters) ([]model.QueryMetadata, error) {

@@ -33,6 +33,27 @@ func MatchesPath(pattern, filePath string) bool {
 	return false
 }
 
+// Excluded reports whether filePath should be dropped given ignore-paths and
+// only-paths lists. A file is excluded if it matches any ignorePaths pattern;
+// otherwise, when onlyPaths is non-empty, it is excluded unless it matches one
+// of them. Patterns use MatchesPath semantics.
+func Excluded(filePath string, ignorePaths, onlyPaths []string) bool {
+	for _, pattern := range ignorePaths {
+		if MatchesPath(pattern, filePath) {
+			return true
+		}
+	}
+	if len(onlyPaths) == 0 {
+		return false
+	}
+	for _, pattern := range onlyPaths {
+		if MatchesPath(pattern, filePath) {
+			return false
+		}
+	}
+	return true
+}
+
 // matchDoublestar matches a pre-split path against a pre-split pattern where
 // "**" matches zero or more path segments.
 func matchDoublestar(pat, filePath []string) bool {

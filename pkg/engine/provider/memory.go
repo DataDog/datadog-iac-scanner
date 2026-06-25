@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -29,17 +30,21 @@ import (
 // and is unsupported in content-push mode. Pushed Helm templates fall through to
 // raw-YAML scanning.
 type MemorySourceProvider struct {
-	fsys  vfs.FS
-	paths []string
+	fsys        vfs.FS
+	paths       []string
+	ignorePaths []string
+	onlyPaths   []string
 }
 
 // NewMemorySourceProvider builds a provider over the given paths, reading each
 // file's content from fsys (the same in-memory FS used for cross-file
-// resolution, so content is stored once).
-func NewMemorySourceProvider(fsys vfs.FS, paths []string) *MemorySourceProvider {
+// resolution, so content is stored once). ignorePaths/onlyPaths are the config's
+// global path filters; they apply the same ignore-paths/only-paths semantics the
+// disk source provider applies, so server-mode scans honor them too.
+func NewMemorySourceProvider(fsys vfs.FS, paths, ignorePaths, onlyPaths []string) *MemorySourceProvider {
 	sorted := append([]string(nil), paths...)
 	sort.Strings(sorted)
-	return &MemorySourceProvider{fsys: fsys, paths: sorted}
+	return &MemorySourceProvider{fsys: fsys, paths: sorted, ignorePaths: ignorePaths, onlyPaths: onlyPaths}
 }
 
 // GetBasePaths returns the synthetic root the pushed (workspace-relative) paths
@@ -53,6 +58,9 @@ func (m *MemorySourceProvider) GetSources(ctx context.Context,
 	contextLogger := logger.FromContext(ctx)
 	for _, p := range m.paths {
 		if !extensions.Include(memExtension(p)) {
+			continue
+		}
+		if pathutil.Excluded(p, m.ignorePaths, m.onlyPaths) {
 			continue
 		}
 		content, err := m.fsys.ReadFile(p)

@@ -256,7 +256,8 @@ func (c *Client) createService(
 		// Content-push mode: serve the pushed files from the in-memory FS instead
 		// of walking the disk. No symlink/SameFile handling and no Helm chart
 		// discovery occur (the resolverSink is never invoked).
-		filesSource = provider.NewMemorySourceProvider(c.fsys, paths)
+		filesSource = provider.NewMemorySourceProvider(c.fsys, paths,
+			c.ScanParams.Config.IgnorePaths, c.ScanParams.Config.OnlyPaths)
 	} else {
 		fsSource, err := c.getFileSystemSourceProvider(ctx, paths)
 		if err != nil {

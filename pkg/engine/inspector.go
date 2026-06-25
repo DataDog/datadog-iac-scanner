@@ -708,20 +708,7 @@ func lookupRuleConfig(ruleConfigs map[string]config.IacRuleConfig, queryID, lega
 // rulePathExcluded returns true if the file should be dropped for a given rule
 // based on its ignore-paths and only-paths lists.
 func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
-	for _, pattern := range ignorePaths {
-		if pathutil.MatchesPath(pattern, filePath) {
-			return true
-		}
-	}
-	if len(onlyPaths) == 0 {
-		return false
-	}
-	for _, pattern := range onlyPaths {
-		if pathutil.MatchesPath(pattern, filePath) {
-			return false
-		}
-	}
-	return true
+	return pathutil.Excluded(filePath, ignorePaths, onlyPaths)
 }
 
 // markSuppressed records the first suppression decision; later gates are

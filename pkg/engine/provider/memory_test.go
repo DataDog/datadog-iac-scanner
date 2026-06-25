@@ -22,7 +22,7 @@ func TestMemorySourceProvider_GetSources_FiltersByExtension(t *testing.T) {
 		"k8s/deploy.yaml": []byte("yaml-content"),
 		"Dockerfile":      []byte("FROM scratch"),
 	})
-	p := NewMemorySourceProvider(mem, mem.Paths())
+	p := NewMemorySourceProvider(mem, mem.Paths(), nil, nil)
 
 	got := collect(t, p, model.Extensions{".tf": {}})
 	if len(got) != 1 || got["infra/main.tf"] != "tf-content" {
@@ -40,8 +40,34 @@ func TestMemorySourceProvider_GetSources_FiltersByExtension(t *testing.T) {
 	}
 }
 
+func TestMemorySourceProvider_GetSources_FiltersByPath(t *testing.T) {
+	files := map[string][]byte{
+		"infra/main.tf": []byte("infra-tf"),
+		"src/main.tf":   []byte("src-tf"),
+	}
+	tfOnly := model.Extensions{".tf": {}}
+
+	t.Run("ignore-paths skips matching files", func(t *testing.T) {
+		mem := vfs.NewMemFS(files)
+		p := NewMemorySourceProvider(mem, mem.Paths(), []string{"infra/**"}, nil)
+		got := collect(t, p, tfOnly)
+		if len(got) != 1 || got["src/main.tf"] != "src-tf" {
+			t.Errorf("with ignore-paths infra/**, emitted %v, want just src/main.tf", got)
+		}
+	})
+
+	t.Run("only-paths restricts to matching files", func(t *testing.T) {
+		mem := vfs.NewMemFS(files)
+		p := NewMemorySourceProvider(mem, mem.Paths(), nil, []string{"infra/**"})
+		got := collect(t, p, tfOnly)
+		if len(got) != 1 || got["infra/main.tf"] != "infra-tf" {
+			t.Errorf("with only-paths infra/**, emitted %v, want just infra/main.tf", got)
+		}
+	})
+}
+
 func TestMemorySourceProvider_GetBasePaths(t *testing.T) {
-	p := NewMemorySourceProvider(vfs.NewMemFS(nil), nil)
+	p := NewMemorySourceProvider(vfs.NewMemFS(nil), nil, nil, nil)
 	if got := p.GetBasePaths(); len(got) != 1 || got[0] != "." {
 		t.Errorf("GetBasePaths = %v, want [.]", got)
 	}

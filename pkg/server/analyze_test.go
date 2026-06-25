@@ -306,6 +306,80 @@ func TestAnalyze_Concurrent(t *testing.T) {
 	}
 }
 
+// TestAnalyze_ConfigWithoutIacSection guards against a nil-pointer panic when
+// the caller pushes a valid config that has no `iac` section (e.g. a workspace
+// configured only for secrets). ParseConfig returns (nil, nil) there; analyze
+// must fall back to the empty IaC config rather than dereferencing nil.
+func TestAnalyze_ConfigWithoutIacSection(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+
+	req := analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+		Config:   "schema-version: v1.3\nsecrets:\n  enabled: true\n",
+	}
+
+	out, _ := postAnalyze(t, s, req) // must not panic
+	if len(out.Findings) == 0 {
+		t.Errorf("expected findings with an iac-less config (empty config fallback), got none")
+	}
+}
+
+// TestAnalyze_ConfigIgnoreRulePushedRule verifies that ignore-rules in config
+// suppresses a rule even when the caller pushes that rule in the request — the
+// pushed-rule source must apply the same query filters the filesystem source
+// applies.
+func TestAnalyze_ConfigIgnoreRulePushedRule(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+
+	req := analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+		Config:   "schema-version: v1.3\niac:\n  ignore-rules:\n    - terraform-aws-team-tag-not-present\n",
+	}
+
+	out, _ := postAnalyze(t, s, req)
+	for _, f := range out.Findings {
+		if f.QueryID == "terraform-aws-team-tag-not-present" {
+			t.Errorf("ignore-rules should have suppressed the pushed rule, but it fired: %+v", f)
+		}
+	}
+}
+
+// TestAnalyze_ConfigIgnorePaths verifies that global ignore-paths in config
+// suppresses findings for matching pushed files in the in-memory (server) scan
+// path, mirroring the disk scanner's behavior.
+func TestAnalyze_ConfigIgnorePaths(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+	body := `resource "aws_s3_bucket" "b" { bucket = "x" }`
+
+	// Baseline: without filters the rule fires on infra/main.tf.
+	base, _ := postAnalyze(t, s, analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: body}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+	})
+	if len(base.Findings) == 0 {
+		t.Fatalf("baseline expected findings, got none")
+	}
+
+	// With ignore-paths covering infra/, the file is skipped → no findings.
+	out, _ := postAnalyze(t, s, analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: body}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+		Config:   "schema-version: v1.3\niac:\n  global-config:\n    ignore-paths:\n      - \"infra/**\"\n",
+	})
+	if len(out.Findings) != 0 {
+		t.Errorf("ignore-paths should have skipped infra/main.tf, got findings: %+v", out.Findings)
+	}
+}
+
 func readAll(resp *http.Response) ([]byte, error) {
 	defer resp.Body.Close()
 	var buf bytes.Buffer

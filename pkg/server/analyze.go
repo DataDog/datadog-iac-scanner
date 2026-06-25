@@ -160,7 +160,11 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		if err != nil {
 			return nil, err
 		}
-		cfg = *parsed
+		// ParseConfig returns (nil, nil) for a valid config that has no `iac`
+		// section. Keep the empty IaC config in that case.
+		if parsed != nil {
+			cfg = *parsed
+		}
 	}
 
 	plats := req.Platform
@@ -248,8 +252,11 @@ type requestQuerySource struct {
 	libraries source.QueriesSource
 }
 
-func (r *requestQuerySource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
-	return r.queries, nil
+func (r *requestQuerySource) GetQueries(ctx context.Context, params *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
+	// Apply the same use-rules/ignore-rules, severity/category, and feature-flag
+	// filters the filesystem source applies, so config-disabled rules stay
+	// suppressed even when the caller pushes them in the request.
+	return source.FilterQueries(ctx, r.queries, params), nil
 }
 
 func (r *requestQuerySource) GetQueryLibrary(ctx context.Context, platform string) (source.RegoLibraries, error) {
