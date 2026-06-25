@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
@@ -487,8 +488,81 @@ func getDatadogSource(t *testing.T, rules []*datadog.Rule, options ...DatadogSou
 	return source
 }
 
+func TestGetQueryLibraryUsesBackendWithFallback(t *testing.T) {
+	source, err := NewDatadogSource(
+		&fakeDatadogClient{
+			libraries: map[string]datadog.Library{
+				"terraform": {
+					RegoCode:  "backend code",
+					InputData: "backend input",
+				},
+			},
+		},
+		WithLibraryFallback(stubLibrarySource{
+			libraries: map[string]RegoLibraries{
+				"k8s": {
+					LibraryCode:      "fallback code",
+					LibraryInputData: "fallback input",
+				},
+			},
+		}),
+	)
+	require.NoError(t, err)
+
+	terraformLib, err := source.GetQueryLibrary(t.Context(), "terraform")
+	require.NoError(t, err)
+	assert.Equal(t, "backend code", terraformLib.LibraryCode)
+	assert.Equal(t, "backend input", terraformLib.LibraryInputData)
+
+	k8sLib, err := source.GetQueryLibrary(t.Context(), "k8s")
+	require.NoError(t, err)
+	assert.Equal(t, "fallback code", k8sLib.LibraryCode)
+	assert.Equal(t, "fallback input", k8sLib.LibraryInputData)
+}
+
+func TestGetQueryLibraryUsesExplicitLibrarySource(t *testing.T) {
+	source, err := NewDatadogSource(
+		&fakeDatadogClient{
+			libraries: map[string]datadog.Library{
+				"terraform": {
+					RegoCode: "backend code",
+				},
+			},
+		},
+		WithLibrarySource(stubLibrarySource{
+			libraries: map[string]RegoLibraries{
+				"terraform": {
+					LibraryCode: "explicit source code",
+				},
+			},
+		}),
+	)
+	require.NoError(t, err)
+
+	lib, err := source.GetQueryLibrary(t.Context(), "terraform")
+	require.NoError(t, err)
+	assert.Equal(t, "explicit source code", lib.LibraryCode)
+}
+
+type stubLibrarySource struct {
+	libraries map[string]RegoLibraries
+}
+
+func (s stubLibrarySource) GetQueries(_ context.Context, _ *QueryInspectorParameters) ([]model.QueryMetadata, error) {
+	return nil, nil
+}
+
+func (s stubLibrarySource) GetQueryLibrary(_ context.Context, platform string) (RegoLibraries, error) {
+	lib, ok := s.libraries[platform]
+	if !ok {
+		return RegoLibraries{}, errors.New("missing library")
+	}
+	return lib, nil
+}
+
 type fakeDatadogClient struct {
-	rules []*datadog.Rule
+	rules     []*datadog.Rule
+	libraries map[string]datadog.Library
 }
 
 func (f fakeDatadogClient) GetDefaultRuleset(ctx context.Context) (*datadog.Ruleset, error) {
@@ -506,6 +580,10 @@ func (f fakeDatadogClient) GetDefaultRulesetWithTests(ctx context.Context) (*dat
 
 func (f fakeDatadogClient) GetRemoteConfig(ctx context.Context, repoUrl string, localConfig []byte) ([]byte, error) {
 	panic("unimplemented")
+}
+
+func (f fakeDatadogClient) GetLibraries(_ context.Context) (map[string]datadog.Library, error) {
+	return f.libraries, nil
 }
 
 func ptr[T any](t T) *T {

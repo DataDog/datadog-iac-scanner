@@ -130,11 +130,17 @@ func (c *Client) createQuerySource(ctx context.Context, paramsPlatforms []string
 	if c.ScanParams.ChangedDefaultQueryPath {
 		return fss, nil
 	}
-	return source.NewDatadogSource(
-		datadog.NewDatadogClient(),
+	options := []source.DatadogSourceOption{
 		source.WithWantedPlatforms(paramsPlatforms),
 		source.WithWantedCloudProviders(c.ScanParams.CloudProvider),
-		source.WithLibrarySource(fss),
+		source.WithLibraryFallback(fss),
+	}
+	if c.ScanParams.ChangedDefaultLibrariesPath {
+		options = append(options, source.WithLibrarySource(fss))
+	}
+	return source.NewDatadogSource(
+		datadog.NewDatadogClient(),
+		options...,
 	)
 }
 
