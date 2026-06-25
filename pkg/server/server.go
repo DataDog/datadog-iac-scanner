@@ -46,6 +46,9 @@ const (
 	// readHeaderTimeout / readTimeout are explicit slowloris guards
 	readHeaderTimeout = 10 * time.Second
 	readTimeout       = 60 * time.Second
+	// idleTimeout bounds how long an idle keep-alive TCP connection is held open
+	// between requests, so abandoned connections don't accumulate.
+	idleTimeout = 120 * time.Second
 	// shutdownGraceTimeout matches the static-analyzer server: its keep-alive
 	// loop notifies a graceful shutdown, then allows 10s before escalating to
 	// process abort. We give in-flight requests the same window via http.Server.Shutdown.
@@ -57,6 +60,10 @@ const (
 	// handlers via http.MaxBytesReader). 32 MiB comfortably fits a directory of
 	// IaC files plus the pushed rule corpus.
 	maxRequestBytes = 32 << 20
+	// defaultMaxConcurrentAnalyze bounds how many /analyze scans run at once.
+	// Each scan buffers up to maxRequestBytes and spins worker goroutines, so an
+	// unbounded burst could exhaust memory/goroutines.
+	defaultMaxConcurrentAnalyze = 4
 )
 
 // Config holds the server's runtime settings, populated from the serve command's
@@ -68,6 +75,9 @@ type Config struct {
 	EnableShutdown   bool          // gate for the /shutdown endpoint
 	LibrariesPath    string        // Rego support libraries
 	QueriesPath      string        // default rule corpus (used only when a request omits rules)
+	// MaxConcurrentAnalyze caps simultaneous /analyze scans. <= 0 applies
+	// defaultMaxConcurrentAnalyze.
+	MaxConcurrentAnalyze int
 }
 
 // Server is the IaC analysis HTTP server.
@@ -75,9 +85,23 @@ type Server struct {
 	cfg  Config
 	http *http.Server
 
-	// lastRequestNanos is the UnixNano timestamp of the most recent request,
-	// updated by middleware and read by the keep-alive monitor.
+	// lastRequestNanos is the UnixNano timestamp of the most recent request
+	// boundary (start and completion), updated by middleware and read by the
+	// keep-alive monitor.
 	lastRequestNanos atomic.Int64
+
+	// inFlight counts requests currently being handled. The keep-alive monitor
+	// never shuts down while this is non-zero, so a long scan with no concurrent
+	// /ping is not mistaken for an idle server and killed mid-flight.
+	inFlight atomic.Int64
+
+	// analyzeSem bounds concurrent /analyze scans (acquire-or-503). Buffered to
+	// cfg.MaxConcurrentAnalyze.
+	analyzeSem chan struct{}
+
+	// pollInterval is the keep-alive monitor's check cadence; defaults to
+	// keepAlivePollInterval and is overridable in tests.
+	pollInterval time.Duration
 
 	// shutdownCh is closed exactly once to trigger graceful shutdown (by
 	// /shutdown, the keep-alive monitor, or a canceled context).
@@ -99,7 +123,15 @@ func New(cfg *Config) *Server {
 	if cfg.QueriesPath == "" {
 		cfg.QueriesPath = "./assets/queries"
 	}
-	s := &Server{cfg: *cfg, shutdownCh: make(chan struct{})}
+	if cfg.MaxConcurrentAnalyze <= 0 {
+		cfg.MaxConcurrentAnalyze = defaultMaxConcurrentAnalyze
+	}
+	s := &Server{
+		cfg:          *cfg,
+		analyzeSem:   make(chan struct{}, cfg.MaxConcurrentAnalyze),
+		pollInterval: keepAlivePollInterval,
+		shutdownCh:   make(chan struct{}),
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ping", s.handlePing)
@@ -119,6 +151,7 @@ func New(cfg *Config) *Server {
 		Handler:           s.middleware(mux),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 		// No WriteTimeout: a cold scan recompiles the rule corpus and can take
 		// several seconds until the prepared-query cache lands.
 	}
@@ -155,7 +188,11 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 // requests, mirroring the SAST server's idle-exit behavior.
 func (s *Server) keepAliveMonitor(ctx context.Context) {
 	contextLogger := logger.FromContext(ctx)
-	ticker := time.NewTicker(keepAlivePollInterval)
+	interval := s.pollInterval
+	if interval <= 0 {
+		interval = keepAlivePollInterval
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -164,6 +201,11 @@ func (s *Server) keepAliveMonitor(ctx context.Context) {
 		case <-s.shutdownCh:
 			return
 		case <-ticker.C:
+			// A request in flight means the server is busy, not idle — never
+			// shut down underneath an active scan.
+			if s.inFlight.Load() > 0 {
+				continue
+			}
 			last := time.Unix(0, s.lastRequestNanos.Load())
 			if time.Since(last) > s.cfg.KeepAliveTimeout {
 				contextLogger.Info().Msg("keep-alive timeout reached; shutting down")
@@ -222,6 +264,13 @@ func (s *Server) handleOptions(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.lastRequestNanos.Store(time.Now().UnixNano())
+		s.inFlight.Add(1)
+		defer func() {
+			s.inFlight.Add(-1)
+			// Restamp on completion so the idle window starts when the request
+			// finishes, not when it began.
+			s.lastRequestNanos.Store(time.Now().UnixNano())
+		}()
 
 		h := w.Header()
 		h.Set("X-iac-scanner-server-version", constants.Version)

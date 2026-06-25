@@ -34,6 +34,11 @@ var serveAction = &cli.Command{
 			Value: false,
 			Usage: "allow POST/GET /shutdown to stop the server",
 		},
+		&cli.IntFlag{
+			Name:  "max-concurrent-analyze",
+			Value: 4,
+			Usage: "maximum concurrent /analyze scans before returning 503 (must be > 0)",
+		},
 		&cli.BoolFlag{
 			Name:  "use-rules-cache",
 			Value: false,
@@ -58,12 +63,13 @@ func serve(ctx context.Context, c *cli.Command) error {
 	defer stop()
 
 	cfg := server.Config{
-		Address:          c.String("address"),
-		Port:             c.Int("port"),
-		KeepAliveTimeout: time.Duration(c.Int("keep-alive-timeout")) * time.Second,
-		EnableShutdown:   c.Bool("enable-shutdown"),
-		LibrariesPath:    c.String("libraries-path"),
-		QueriesPath:      c.String("queries-path"),
+		Address:              c.String("address"),
+		Port:                 c.Int("port"),
+		KeepAliveTimeout:     time.Duration(c.Int("keep-alive-timeout")) * time.Second,
+		EnableShutdown:       c.Bool("enable-shutdown"),
+		LibrariesPath:        c.String("libraries-path"),
+		QueriesPath:          c.String("queries-path"),
+		MaxConcurrentAnalyze: c.Int("max-concurrent-analyze"),
 	}
 	return server.New(&cfg).ListenAndServe(ctx)
 }

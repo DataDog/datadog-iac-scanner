@@ -76,6 +76,18 @@ type analyzeResponse struct {
 func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	contextLogger := logger.FromContext(r.Context())
 
+	// Bound concurrent scans before buffering the body or spinning up the
+	// engine. Acquire-or-503 so a burst (reachable cross-origin) can't exhaust
+	// memory/goroutines; the caller is expected to retry.
+	select {
+	case s.analyzeSem <- struct{}{}:
+		defer func() { <-s.analyzeSem }()
+	default:
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusServiceUnavailable, "server busy: too many concurrent analyses")
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 	var req analyzeRequest
 	// Deliberately not DisallowUnknownFields: tolerating unknown fields lets a

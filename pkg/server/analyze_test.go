@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // repoRoot returns the module root relative to this package (pkg/server).
@@ -377,6 +378,60 @@ func TestAnalyze_ConfigIgnorePaths(t *testing.T) {
 	})
 	if len(out.Findings) != 0 {
 		t.Errorf("ignore-paths should have skipped infra/main.tf, got findings: %+v", out.Findings)
+	}
+}
+
+// TestKeepAlive_NotShutdownWhileInFlight verifies the keep-alive monitor does
+// not shut the server down while a request is being handled, even after the
+// idle window has elapsed — then shuts down once the request completes and the
+// server is genuinely idle.
+func TestKeepAlive_NotShutdownWhileInFlight(t *testing.T) {
+	s := New(&Config{KeepAliveTimeout: 15 * time.Millisecond})
+	s.pollInterval = 2 * time.Millisecond
+	// Look idle for far longer than the keep-alive window.
+	s.lastRequestNanos.Store(time.Now().Add(-time.Hour).UnixNano())
+	// But a request is in flight.
+	s.inFlight.Add(1)
+
+	go s.keepAliveMonitor(t.Context())
+
+	select {
+	case <-s.shutdownCh:
+		t.Fatal("server shut down while a request was in flight")
+	case <-time.After(60 * time.Millisecond):
+	}
+
+	// Request completes; server is now idle past the window → must shut down.
+	s.inFlight.Add(-1)
+	s.lastRequestNanos.Store(time.Now().Add(-time.Hour).UnixNano())
+	select {
+	case <-s.shutdownCh:
+	case <-time.After(time.Second):
+		t.Fatal("server did not shut down after the request completed and idle elapsed")
+	}
+}
+
+// TestAnalyze_ConcurrencyLimit verifies /analyze returns 503 once the
+// concurrency limit is saturated, without running a scan.
+func TestAnalyze_ConcurrencyLimit(t *testing.T) {
+	s := New(&Config{MaxConcurrentAnalyze: 1})
+	ts := httptest.NewServer(s.http.Handler)
+	defer ts.Close()
+
+	// Saturate the single slot so the next request is rejected.
+	s.analyzeSem <- struct{}{}
+
+	resp, err := http.Post(ts.URL+"/ide/v1/iac/analyze", "application/json",
+		strings.NewReader(`{"files":[{"path":"a.tf","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503 when concurrency limit is saturated", resp.StatusCode)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Errorf("expected a Retry-After header on the 503 response")
 	}
 }
 
