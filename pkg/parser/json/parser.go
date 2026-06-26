@@ -76,6 +76,15 @@ func (p *Parser) GetKind() model.FileKind {
 	return model.KindJSON
 }
 
+// KindForContent overrides the static kind for Terraform plan JSON so line
+// detection can resolve plan resources structurally instead of by text match.
+func (p *Parser) KindForContent(content []byte) (model.FileKind, bool) {
+	if contentIsTerraformPlan(content) {
+		return model.KindTerraformPlan, true
+	}
+	return "", false
+}
+
 // SupportedTypes returns types supported by this parser, which are cloudFormation
 func (p *Parser) SupportedTypes() map[string]bool {
 	return map[string]bool{

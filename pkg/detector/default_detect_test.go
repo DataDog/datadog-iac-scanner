@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/stretchr/testify/require"
@@ -353,6 +354,133 @@ func Test_detectLineK8s(t *testing.T) { //nolint
 			}
 		})
 	}
+}
+
+func Test_terraformPlanPath(t *testing.T) {
+	tests := []struct {
+		name      string
+		searchKey string
+		want      []string
+	}{
+		{
+			name:      "resource_and_attribute",
+			searchKey: "alicloud_db_instance[example].address",
+			want:      []string{"resource", "alicloud_db_instance", "example", "address"},
+		},
+		{
+			name:      "already_prefixed",
+			searchKey: "resource.aws_s3_bucket[b].acl",
+			want:      []string{"resource", "aws_s3_bucket", "b", "acl"},
+		},
+		{
+			name:      "array_index_and_value_anchor",
+			searchKey: "aws_security_group[sg].ingress[0].cidr_blocks=0.0.0.0/0",
+			want:      []string{"resource", "aws_security_group", "sg", "ingress", "0", "cidr_blocks"},
+		},
+		{
+			name:      "resource_only",
+			searchKey: "azurerm_sql_firewall_rule[positive1]",
+			want:      []string{"resource", "azurerm_sql_firewall_rule", "positive1"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := terraformPlanPath(tt.searchKey); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("terraformPlanPath() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+var OriginalDataTFPlan = `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "alicloud_db_instance.example",
+          "mode": "managed",
+          "type": "alicloud_db_instance",
+          "name": "example",
+          "values": {
+            "engine": "MySQL",
+            "address": "0.0.0.0/0"
+          }
+        }
+      ]
+    }
+  }
+}`
+
+// Test_detectLineTerraformPlan verifies attribute-level and allowlisted resource-level plan searchKeys.
+func Test_detectLineTerraformPlan(t *testing.T) {
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(OriginalDataTFPlan), "plan.json", false, 1)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+
+	file := &model.FileMetadata{
+		ScanID:            "scanID",
+		ID:                "Test",
+		Kind:              model.KindTerraformPlan,
+		OriginalData:      OriginalDataTFPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(OriginalDataTFPlan),
+	}
+
+	d := defaultDetectLine{}
+	got := d.DetectLine(context.Background(), file, "alicloud_db_instance[example].address", 0)
+	require.Equal(t, 13, got.Line)
+}
+
+func Test_detectLineTerraformPlanResourceLevel(t *testing.T) {
+	plan := `{
+  "planned_values": {
+    "root_module": {
+      "resources": [{
+        "address": "aws_api_gateway_deployment.positive1",
+        "type": "aws_api_gateway_deployment",
+        "name": "positive1",
+        "values": {
+          "rest_api_id": "some rest api id",
+          "stage_name": "some name"
+        }
+      }]
+    }
+  }
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+	got := defaultDetectLine{}.DetectLine(context.Background(), file, "aws_api_gateway_deployment[positive1]", 0)
+	require.Equal(t, 5, got.Line)
+}
+
+func Test_detectLineTerraformPlanMinified(t *testing.T) {
+	// terraform show -json produces minified output; _dd_lines are all 1.
+	// After StringifyContent pretty-prints, LinesOriginalData is multi-line.
+	// Structural lookup must fall through to text matching.
+	minified := `{"format_version":"1.0","planned_values":{"root_module":{"resources":[{"address":"alicloud_db_instance.example","type":"alicloud_db_instance","name":"example","values":{"address":"0.0.0.0/0"}}]}}}`
+	p := &jsonParser.Parser{}
+	// Parse computes _dd_lines from the minified bytes.
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(minified), "plan.json", false, 1)
+	require.NoError(t, err)
+	// Simulate what StringifyContent produces for LinesOriginalData.
+	prettified, _ := p.StringifyContent([]byte(minified))
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(prettified),
+	}
+	got := defaultDetectLine{}.DetectLine(context.Background(), file, "alicloud_db_instance[example].address", 0)
+	// Must not return line 1 (the opening "{" from minified _dd_lines).
+	require.Greater(t, got.Line, 1)
 }
 
 var content = []byte(

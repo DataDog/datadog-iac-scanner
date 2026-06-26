@@ -17,7 +17,19 @@ import (
 
 const (
 	undetectedVulnerabilityLine = -1
+	// resource, type, name, and at least one attribute segment.
+	tfPlanMinAttributePathLen = 4
+	// resource, type, and name — used for types where plan line metadata
+	// lives on the resource object rather than a specific attribute.
+	tfPlanMinResourcePathLen = 3
 )
+
+// tfPlanResourceLevelTypes are Terraform resource types whose plan JSON line
+// metadata is anchored on the resource object (not an attribute). Text matching
+// on the plan address field is wrong for these; resolve structurally instead.
+var tfPlanResourceLevelTypes = map[string]struct{}{
+	"aws_api_gateway_deployment": {},
+}
 
 type defaultDetectLine struct {
 }
@@ -34,14 +46,23 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		ResolvedFiles:   d.prepareResolvedFiles(file.ResolvedFiles),
 	}
 
+	lines := *file.LinesOriginalData
+
+	// Terraform plan JSON is remapped under a top-level "resource" key, so the
+	// resource block has no source text to match. Resolve the searchKey path
+	// structurally (mirroring the legacy searchLine) before any text matching.
+	if file.Kind == model.KindTerraformPlan {
+		if result := detectTerraformPlanLine(searchKey, file, detector.ResolvedFile, outputLines, lines); result != nil {
+			return *result
+		}
+	}
+
 	var extractedString [][]string
 	extractedString = GetBracketValues(searchKey, extractedString, "")
 	sanitizedSubstring := searchKey
 	for idx, str := range extractedString {
 		sanitizedSubstring = strings.ReplaceAll(sanitizedSubstring, str[0], `{{`+strconv.Itoa(idx)+`}}`)
 	}
-
-	lines := *file.LinesOriginalData
 	splitSanitized := strings.Split(sanitizedSubstring, ".")
 
 	// Re-join $ref segments split by dot (e.g. "$ref=#/schemas/v1.0.Foo" → ["v1","0","Foo"])
@@ -101,6 +122,85 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		VulnLines:    &[]model.CodeLine{},
 		ResolvedFile: detector.ResolvedFile,
 	}
+}
+
+// detectTerraformPlanLine resolves a plan searchKey (e.g. "type[name].attr")
+// against the remapped "resource.type.name" document. Returns nil when the path
+// cannot be resolved so the caller can fall back to text matching.
+func detectTerraformPlanLine(
+	searchKey string,
+	file *model.FileMetadata,
+	resolvedFile string,
+	outputLines int,
+	lines []string,
+) *model.VulnerabilityLines {
+	path := terraformPlanPath(searchKey)
+	if len(path) < tfPlanMinResourcePathLen {
+		return nil
+	}
+	if len(path) < tfPlanMinAttributePathLen {
+		if _, ok := tfPlanResourceLevelTypes[path[1]]; !ok {
+			return nil
+		}
+	}
+	lineNr, err := GetLineBySearchLine(path, file)
+	// lineNr == 1 means _dd_lines were computed from minified (single-line) JSON;
+	// the plan opening "{" sits on line 1 so that value is never a real attribute
+	// line. Fall through to text matching, which runs on the pretty-printed content.
+	if err != nil || lineNr <= 1 || lineNr > len(lines) {
+		return nil
+	}
+	return &model.VulnerabilityLines{
+		Line:         lineNr,
+		VulnLines:    GetAdjacentVulnLines(lineNr-1, outputLines, lines),
+		ResolvedFile: resolvedFile,
+		VulnerablilityLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: lineNr},
+			End:   model.ResourceLine{Line: lineNr},
+		},
+	}
+}
+
+// terraformPlanPath turns a plan searchKey into structural path components for
+// GetLineBySearchLine. It expands bracket groups ("type[name]" -> type, name;
+// "list[0]" -> list, 0), drops value anchors (key=value -> key), and ensures the
+// path is rooted at the plan's top-level "resource" key.
+func terraformPlanPath(searchKey string) []string {
+	// Drop the value anchor (key=value) up front; the value may contain dots.
+	if eq := strings.Index(searchKey, "="); eq >= 0 {
+		searchKey = searchKey[:eq]
+	}
+	var comps []string
+	for _, seg := range strings.Split(searchKey, ".") {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		for seg != "" {
+			open := strings.Index(seg, "[")
+			if open < 0 {
+				if seg != "" {
+					comps = append(comps, seg)
+				}
+				break
+			}
+			if head := seg[:open]; head != "" {
+				comps = append(comps, head)
+			}
+			closeIdx := strings.Index(seg, "]")
+			if closeIdx < 0 || closeIdx < open {
+				break
+			}
+			if inner := seg[open+1 : closeIdx]; inner != "" {
+				comps = append(comps, inner)
+			}
+			seg = seg[closeIdx+1:]
+		}
+	}
+	if len(comps) > 0 && comps[0] == "resource" {
+		comps = comps[1:]
+	}
+	return append([]string{"resource"}, comps...)
 }
 
 // handleArrayIndex handles paths that contain numeric segments. It first attempts a
