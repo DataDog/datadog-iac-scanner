@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "test_helm_nondeterministic.fullname" . }}-{{ randAlphaNum 8 | lower }}
+  labels:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    scan-id: {{ uuidv4 }}
+    created-date: {{ now | htmlDate }}
+spec:
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+      restartPolicy: Never
