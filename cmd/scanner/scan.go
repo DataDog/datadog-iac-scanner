@@ -210,7 +210,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	queriesPath := c.StringSlice("queries-path")
 	queriesPath, err = validateQueriesPaths(queriesPath)
 	if err != nil {
-		return errorWithExitCode(fmt.Errorf("Path parsing exited with error: %q", err), constants.InvalidConfigErrorCode)
+		return errorWithExitCode(fmt.Errorf("path parsing exited with error: %q", err), constants.InvalidConfigErrorCode)
 	}
 
 	changedDefaultQueryPath := len(queriesPath) > 0

@@ -40,7 +40,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 	if err != nil {
 		return nil, nil, err
 	}
-	querySource := source.NewFilesystemSource(ctx, []string{}, types, cloudProviders, filepath.FromSlash("../../assets/libraries"), true)
+	querySource := source.NewFilesystemSource(ctx, []string{"../../test"}, types, cloudProviders, filepath.FromSlash("../../assets/libraries"), true)
 
 	inspector, err := engine.NewInspector(context.Background(),
 		querySource, engine.DefaultVulnerabilityBuilder,

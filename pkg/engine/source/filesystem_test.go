@@ -612,7 +612,7 @@ func TestFilesystemSource_localQueryDirs(t *testing.T) {
 		{
 			name: "non-existent path",
 			set: func(t *testing.T, root string) ([]string, []string, error) {
-				return []string{filepath.Join(root, "missing")}, nil, errors.New("no such file or directory")
+				return []string{filepath.Join(root, "missing")}, nil, errors.New("unable to evaluate path")
 			},
 		},
 		{
@@ -651,7 +651,7 @@ func TestFilesystemSource_localQueryDirs(t *testing.T) {
 			name: "error in one of multiple paths",
 			set: func(t *testing.T, root string) ([]string, []string, error) {
 				createQueryDir(t, root, "not_returned_valid_query_dir")
-				return []string{root, "non_existent_path"}, nil, errors.New("no such file or directory")
+				return []string{root, "non_existent_path"}, nil, errors.New("unable to evaluate path")
 			},
 		},
 		{

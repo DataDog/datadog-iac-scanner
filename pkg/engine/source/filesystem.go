@@ -304,7 +304,7 @@ func (s *FilesystemSource) localQueryDirs(ctx context.Context) ([]string, error)
 		if err != nil {
 			fmt.Println(err)
 			contextLogger.Debug().Msgf("localQueryDirs: error evaluating %s: %v", src, err)
-			return nil, err
+			return nil, errors.New("unable to evaluate path: " + src)
 		}
 		err = filepath.WalkDir(evaluated, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
