@@ -235,9 +235,21 @@ func applyDeterministicSubstitutions(data []byte) []byte {
 	s := string(data)
 	var replacements []replacement
 
-	for _, p := range deterministicPatterns {
+	for patternIdx, p := range deterministicPatterns {
 		matches := p.re.FindAllStringIndex(s, -1)
 		for _, m := range matches {
+			// For the "now" pattern, skip matches preceded by $ or .
+			// These are variable references ($now) or field accesses (.Values.now),
+			// not function calls.
+			if patternIdx == 5 { // Index of the "now" pattern in deterministicPatterns
+				if m[0] > 0 {
+					prev := s[m[0]-1]
+					if prev == '$' || prev == '.' {
+						continue // Skip this match
+					}
+				}
+			}
+
 			lineNum := strings.Count(s[:m[0]], "\n") + 1
 			replacements = append(replacements, replacement{
 				start: m[0],

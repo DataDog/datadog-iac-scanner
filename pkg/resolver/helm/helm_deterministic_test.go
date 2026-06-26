@@ -52,6 +52,18 @@ func TestApplyDeterministicSubstitutions(t *testing.T) {
 			absent:   "now",
 		},
 		{
+			name:     "$now variable should NOT be substituted",
+			input:    "name: {{ $now }}\n",
+			contains: "$now",
+			absent:   "$(toDate",
+		},
+		{
+			name:     ".Values.now field should NOT be substituted",
+			input:    "value: {{ .Values.now }}\n",
+			contains: ".Values.now",
+			absent:   "toDate",
+		},
+		{
 			name:     "no match leaves template unchanged",
 			input:    "name: {{ .Values.myName }}\nport: 80\n",
 			contains: "name: {{ .Values.myName }}\nport: 80\n",
