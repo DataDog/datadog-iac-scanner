@@ -68,6 +68,18 @@ func TestApplyDeterministicSubstitutions(t *testing.T) {
 			input:    "name: {{ .Values.myName }}\nport: 80\n",
 			contains: "name: {{ .Values.myName }}\nport: 80\n",
 		},
+		{
+			name:     "randAlphaNum outside action block",
+			input:    "data:\n  script: randAlphaNum 8\n",
+			contains: "randAlphaNum 8",
+			absent:   "ddscan",
+		},
+		{
+			name:     "uuidv4 as template-include string arg",
+			input:    `{{ include "uuidv4" . }}`,
+			contains: `"uuidv4"`,
+			absent:   "00000000",
+		},
 	}
 
 	for _, tt := range tests {

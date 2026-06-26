@@ -190,6 +190,49 @@ func newClient(ctx context.Context) *action.Install {
 	return client
 }
 
+// templateActionRE matches Helm/Go template action delimiters including trim markers.
+var templateActionRE = regexp.MustCompile(`(?s)\{\{-?.*?-?\}\}`)
+
+// templateActionSpans returns the [start, end) byte ranges of all {{ ... }} blocks in s.
+// The returned slice is sorted by start (FindAllStringIndex guarantees this).
+func templateActionSpans(s string) [][2]int {
+	matches := templateActionRE.FindAllStringIndex(s, -1)
+	spans := make([][2]int, len(matches))
+	for i, m := range matches {
+		spans[i] = [2]int{m[0], m[1]}
+	}
+	return spans
+}
+
+// inAnySpan reports whether pos falls within any of the sorted, non-overlapping spans.
+func inAnySpan(pos int, spans [][2]int) bool {
+	// Binary search for the last span with start <= pos.
+	lo, hi := 0, len(spans)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if spans[mid][0] <= pos {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo == 0 {
+		return false
+	}
+	span := spans[lo-1]
+	return pos < span[1]
+}
+
+// notPrecededByQuoteVarOrField rejects matches that are string arguments, variable
+// references ($name), or field accesses (.field) rather than bare function calls.
+func notPrecededByQuoteVarOrField(s string, pos int) bool {
+	if pos == 0 {
+		return true
+	}
+	prev := s[pos-1]
+	return prev != '"' && prev != '$' && prev != '.'
+}
+
 // deterministicPattern represents a non-deterministic sprig function to replace.
 type deterministicPattern struct {
 	re      *regexp.Regexp
@@ -205,39 +248,32 @@ var deterministicPatterns = []deterministicPattern{
 	{
 		re:      regexp.MustCompile(`\brandAlphaNum\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
-		guard:   nil,
+		guard:   notPrecededByQuoteVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\brandAlpha\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
-		guard:   nil,
+		guard:   notPrecededByQuoteVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\brandAscii\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
-		guard:   nil,
+		guard:   notPrecededByQuoteVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\brandNumeric\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"%08d"`, lineNum) },
-		guard:   nil,
+		guard:   notPrecededByQuoteVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\buuidv4\b`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"00000000-0000-0000-%04d-%012d"`, lineNum, lineNum) },
-		guard:   nil,
+		guard:   notPrecededByQuoteVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\bnow\b`),
 		replace: func(_ int) string { return `(toDate "2006-01-02" "2000-01-01")` },
-		guard: func(s string, matchStart int) bool {
-			// Skip matches preceded by $ or . (variable/field references)
-			if matchStart == 0 {
-				return true
-			}
-			prev := s[matchStart-1]
-			return prev != '$' && prev != '.'
-		},
+		guard:   notPrecededByQuoteVarOrField,
 	},
 }
 
@@ -254,9 +290,18 @@ func applyDeterministicSubstitutions(data []byte) []byte {
 	s := string(data)
 	var replacements []replacement
 
+	// Pre-compute the spans of all {{ ... }} action blocks so we only substitute
+	// inside them, not in literal text (e.g. shell scripts in ConfigMap data).
+	spans := templateActionSpans(s)
+
 	for _, p := range deterministicPatterns {
 		matches := p.re.FindAllStringIndex(s, -1)
 		for _, m := range matches {
+			// Only substitute inside {{ ... }} action blocks.
+			if !inAnySpan(m[0], spans) {
+				continue
+			}
+
 			// Check guard if present
 			if p.guard != nil && !p.guard(s, m[0]) {
 				continue
