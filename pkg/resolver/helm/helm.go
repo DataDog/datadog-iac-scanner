@@ -223,14 +223,45 @@ func inAnySpan(pos int, spans [][2]int) bool {
 	return pos < span[1]
 }
 
-// notPrecededByQuoteVarOrField rejects matches that are string arguments, variable
-// references ($name), or field accesses (.field) rather than bare function calls.
-func notPrecededByQuoteVarOrField(s string, pos int) bool {
+// notPrecededByVarOrField rejects matches that are variable references ($name) or
+// field accesses (.field). Quoted-string detection is handled separately by
+// insideQuotedStringInSpan, which is more accurate than a single-byte check.
+func notPrecededByVarOrField(s string, pos int) bool {
 	if pos == 0 {
 		return true
 	}
 	prev := s[pos-1]
-	return prev != '"' && prev != '$' && prev != '.'
+	return prev != '$' && prev != '.'
+}
+
+// insideQuotedStringInSpan reports whether pos is inside a Go template string literal
+// within the action span that contains it. It counts unescaped double-quotes from the
+// span's opening {{ to pos; an odd count means we are inside a string.
+func insideQuotedStringInSpan(s string, pos int, spans [][2]int) bool {
+	lo, hi := 0, len(spans)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if spans[mid][0] <= pos {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo == 0 {
+		return false
+	}
+	span := spans[lo-1]
+	if pos >= span[1] {
+		return false
+	}
+	text := s[span[0]:pos]
+	quoteCount := 0
+	for i := 0; i < len(text); i++ {
+		if text[i] == '"' && (i == 0 || text[i-1] != '\\') {
+			quoteCount++
+		}
+	}
+	return quoteCount%2 == 1
 }
 
 // deterministicPattern represents a non-deterministic sprig function to replace.
@@ -248,32 +279,32 @@ var deterministicPatterns = []deterministicPattern{
 	{
 		re:      regexp.MustCompile(`\brandAlphaNum\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
-		guard:   notPrecededByQuoteVarOrField,
+		guard:   notPrecededByVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\brandAlpha\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
-		guard:   notPrecededByQuoteVarOrField,
+		guard:   notPrecededByVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\brandAscii\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
-		guard:   notPrecededByQuoteVarOrField,
+		guard:   notPrecededByVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\brandNumeric\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"%08d"`, lineNum) },
-		guard:   notPrecededByQuoteVarOrField,
+		guard:   notPrecededByVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\buuidv4\b`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"00000000-0000-0000-%04d-%012d"`, lineNum, lineNum) },
-		guard:   notPrecededByQuoteVarOrField,
+		guard:   notPrecededByVarOrField,
 	},
 	{
 		re:      regexp.MustCompile(`\bnow\b`),
 		replace: func(_ int) string { return `(toDate "2006-01-02" "2000-01-01")` },
-		guard:   notPrecededByQuoteVarOrField,
+		guard:   notPrecededByVarOrField,
 	},
 }
 
@@ -302,7 +333,12 @@ func applyDeterministicSubstitutions(data []byte) []byte {
 				continue
 			}
 
-			// Check guard if present
+			// Skip matches inside string literals within the action (e.g. printf "...now...").
+			if insideQuotedStringInSpan(s, m[0], spans) {
+				continue
+			}
+
+			// Check guard if present (variable/field references).
 			if p.guard != nil && !p.guard(s, m[0]) {
 				continue
 			}

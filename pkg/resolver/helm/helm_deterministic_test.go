@@ -80,6 +80,18 @@ func TestApplyDeterministicSubstitutions(t *testing.T) {
 			contains: `"uuidv4"`,
 			absent:   "00000000",
 		},
+		{
+			name:     "now inside quoted string in action — not substituted",
+			input:    "name: {{ required \"set this now\" .Values.foo }}\n",
+			contains: "set this now",
+			absent:   "toDate",
+		},
+		{
+			name:     "randAlphaNum inside quoted string in action — not substituted",
+			input:    "x: {{ printf \"prefix randAlphaNum 8\" }}\n",
+			contains: "prefix randAlphaNum 8",
+			absent:   "ddscan",
+		},
 	}
 
 	for _, tt := range tests {
