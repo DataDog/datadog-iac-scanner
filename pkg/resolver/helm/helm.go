@@ -190,35 +190,54 @@ func newClient(ctx context.Context) *action.Install {
 	return client
 }
 
-// deterministicPatterns maps each non-deterministic sprig function regex to a replacement generator.
-// The generator receives the line number of the match.
-var deterministicPatterns = []struct {
+// deterministicPattern represents a non-deterministic sprig function to replace.
+type deterministicPattern struct {
 	re      *regexp.Regexp
 	replace func(lineNum int) string
-}{
+	// guard is an optional function that can reject a match. Returns true to accept, false to skip.
+	// If nil, all matches are accepted.
+	guard func(s string, matchStart int) bool
+}
+
+// deterministicPatterns maps each non-deterministic sprig function regex to a replacement generator.
+// The generator receives the line number of the match.
+var deterministicPatterns = []deterministicPattern{
 	{
 		re:      regexp.MustCompile(`\brandAlphaNum\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
+		guard:   nil,
 	},
 	{
 		re:      regexp.MustCompile(`\brandAlpha\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
+		guard:   nil,
 	},
 	{
 		re:      regexp.MustCompile(`\brandAscii\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
+		guard:   nil,
 	},
 	{
 		re:      regexp.MustCompile(`\brandNumeric\s+\d+`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"%08d"`, lineNum) },
+		guard:   nil,
 	},
 	{
 		re:      regexp.MustCompile(`\buuidv4\b`),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"00000000-0000-0000-%04d-%012d"`, lineNum, lineNum) },
+		guard:   nil,
 	},
 	{
 		re:      regexp.MustCompile(`\bnow\b`),
 		replace: func(_ int) string { return `(toDate "2006-01-02" "2000-01-01")` },
+		guard: func(s string, matchStart int) bool {
+			// Skip matches preceded by $ or . (variable/field references)
+			if matchStart == 0 {
+				return true
+			}
+			prev := s[matchStart-1]
+			return prev != '$' && prev != '.'
+		},
 	},
 }
 
@@ -235,19 +254,12 @@ func applyDeterministicSubstitutions(data []byte) []byte {
 	s := string(data)
 	var replacements []replacement
 
-	for patternIdx, p := range deterministicPatterns {
+	for _, p := range deterministicPatterns {
 		matches := p.re.FindAllStringIndex(s, -1)
 		for _, m := range matches {
-			// For the "now" pattern, skip matches preceded by $ or .
-			// These are variable references ($now) or field accesses (.Values.now),
-			// not function calls.
-			if patternIdx == 5 { // Index of the "now" pattern in deterministicPatterns
-				if m[0] > 0 {
-					prev := s[m[0]-1]
-					if prev == '$' || prev == '.' {
-						continue // Skip this match
-					}
-				}
+			// Check guard if present
+			if p.guard != nil && !p.guard(s, m[0]) {
+				continue
 			}
 
 			lineNum := strings.Count(s[:m[0]], "\n") + 1
