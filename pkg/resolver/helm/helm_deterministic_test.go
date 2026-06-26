@@ -28,6 +28,12 @@ func TestApplyDeterministicSubstitutions(t *testing.T) {
 			absent:   "randAlpha",
 		},
 		{
+			name:     "randAscii replaced with ddscan stub",
+			input:    "apiVersion: v1\nname: {{ randAscii 6 }}\n",
+			contains: `"ddscan0002"`,
+			absent:   "randAscii",
+		},
+		{
 			name:     "randNumeric replaced with digit-only stub",
 			input:    "port-seed: {{ randNumeric 4 }}\n",
 			contains: `"00000001"`,

@@ -266,10 +266,7 @@ func makeDeterministic(ch *chart.Chart) *chart.Chart {
 		temp.Data = applyDeterministicSubstitutions(temp.Data)
 	}
 	for _, dep := range ch.Dependencies() {
-		dep = makeDeterministic(dep)
-		if dep != nil {
-			continue
-		}
+		makeDeterministic(dep)
 	}
 	return ch
 }
