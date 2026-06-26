@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -137,6 +139,7 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 
 	excluded := getExcluded(ctx, chartRequested, cp)
 
+	chartRequested = makeDeterministic(chartRequested)
 	chartRequested = setID(chartRequested)
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {
@@ -185,6 +188,90 @@ func newClient(ctx context.Context) *action.Install {
 		client.DryRun, client.ClientOnly, client.IncludeCRDs, client.ReleaseName)
 
 	return client
+}
+
+// deterministicPatterns maps each non-deterministic sprig function regex to a replacement generator.
+// The generator receives the line number of the match.
+var deterministicPatterns = []struct {
+	re      *regexp.Regexp
+	replace func(lineNum int) string
+}{
+	{
+		re:      regexp.MustCompile(`\brandAlphaNum\s+\d+`),
+		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
+	},
+	{
+		re:      regexp.MustCompile(`\brandAlpha\s+\d+`),
+		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
+	},
+	{
+		re:      regexp.MustCompile(`\brandAscii\s+\d+`),
+		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
+	},
+	{
+		re:      regexp.MustCompile(`\brandNumeric\s+\d+`),
+		replace: func(lineNum int) string { return fmt.Sprintf(`"%08d"`, lineNum) },
+	},
+	{
+		re:      regexp.MustCompile(`\buuidv4\b`),
+		replace: func(lineNum int) string { return fmt.Sprintf(`"00000000-0000-0000-%04d-%012d"`, lineNum, lineNum) },
+	},
+	{
+		re:      regexp.MustCompile(`\bnow\b`),
+		replace: func(_ int) string { return `(toDate "2006-01-02" "2000-01-01")` },
+	},
+}
+
+// replacement is a single pending substitution collected before applying back-to-front.
+type replacement struct {
+	start int
+	end   int
+	text  string
+}
+
+// applyDeterministicSubstitutions replaces non-deterministic sprig function calls in a Helm
+// template with stable, line-number-seeded stubs so that repeated renders produce identical output.
+func applyDeterministicSubstitutions(data []byte) []byte {
+	s := string(data)
+	var replacements []replacement
+
+	for _, p := range deterministicPatterns {
+		matches := p.re.FindAllStringIndex(s, -1)
+		for _, m := range matches {
+			lineNum := strings.Count(s[:m[0]], "\n") + 1
+			replacements = append(replacements, replacement{
+				start: m[0],
+				end:   m[1],
+				text:  p.replace(lineNum),
+			})
+		}
+	}
+
+	// Apply back-to-front so earlier offsets remain valid.
+	sort.Slice(replacements, func(i, j int) bool {
+		return replacements[i].start > replacements[j].start
+	})
+
+	b := []byte(s)
+	for _, r := range replacements {
+		b = append(b[:r.start], append([]byte(r.text), b[r.end:]...)...)
+	}
+	return b
+}
+
+// makeDeterministic replaces all non-deterministic sprig calls in every template of the chart
+// and its dependencies, making repeated renders produce identical manifests.
+func makeDeterministic(ch *chart.Chart) *chart.Chart {
+	for _, temp := range ch.Templates {
+		temp.Data = applyDeterministicSubstitutions(temp.Data)
+	}
+	for _, dep := range ch.Dependencies() {
+		dep = makeDeterministic(dep)
+		if dep != nil {
+			continue
+		}
+	}
+	return ch
 }
 
 // setID will add auxiliary lines for each template as well as its dependencies
