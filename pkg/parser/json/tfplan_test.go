@@ -2078,3 +2078,132 @@ func TestJson_parseTFPlan_dd_tfplan_meta_call_site_chain_grows_linearly_not_expo
 	require.Less(t, full, 100,
 		"call_site_expressions should stay proportional to the number of real call sites (depth=%d), not explode to %d", depth, full)
 }
+
+// TestOriginHints_FromPlanConfig verifies that _dd_tf_origin is correctly derived from
+// the plan's configuration section and embedded alongside _dd_tf_address.
+func TestOriginHints_FromPlanConfig(t *testing.T) {
+	// Build a minimal plan document that exercises all three origin cases:
+	// 1. module_hardcoded: attribute has a constant value in the module resource
+	// 2. call: attribute references a variable that the call site sets
+	// 3. module_default: attribute references a variable that the call site omits
+	doc := model.Document{
+		"format_version":    "1.0",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"child_modules": []interface{}{
+					map[string]interface{}{
+						"address": "module.rds",
+						"resources": []interface{}{
+							map[string]interface{}{
+								"address": "module.rds.aws_db_instance.this",
+								"mode":    "managed",
+								"type":    "aws_db_instance",
+								"name":    "this",
+								"values": map[string]interface{}{
+									"publicly_accessible": false,
+									"storage_encrypted":   true,
+									"identifier":          "app-db",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"module_calls": map[string]interface{}{
+					"rds": map[string]interface{}{
+						"source": "./modules/rds",
+						// Call sets storage_encrypted but omits publicly_accessible
+						"expressions": map[string]interface{}{
+							"storage_encrypted": map[string]interface{}{
+								"constant_value": true,
+							},
+						},
+						"module": map[string]interface{}{
+							"resources": []interface{}{
+								map[string]interface{}{
+									"address": "aws_db_instance.this",
+									"type":    "aws_db_instance",
+									"name":    "this",
+									"expressions": map[string]interface{}{
+										// module_hardcoded: literal constant, no variable reference
+										"identifier": map[string]interface{}{
+											"constant_value": "hardcoded-db",
+										},
+										// call: references a variable that the call sets
+										"storage_encrypted": map[string]interface{}{
+											"references": []interface{}{"var.storage_encrypted"},
+										},
+										// module_default: references a variable the call does NOT set
+										"publicly_accessible": map[string]interface{}{
+											"references": []interface{}{"var.publicly_accessible"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	// Navigate to the resource
+	resourceSection, ok := got["resource"]
+	require.True(t, ok, "expected 'resource' key in document")
+	resourceMap, ok := resourceSection.(map[string]interface{})
+	require.True(t, ok)
+	dbSection, ok := resourceMap["aws_db_instance"]
+	require.True(t, ok, "expected aws_db_instance in resource map")
+	dbMap, ok := dbSection.(map[string]interface{})
+	require.True(t, ok)
+
+	// Find the module.rds instance (stored under a key containing the module path)
+	var attrs map[string]interface{}
+	for _, v := range dbMap {
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if addr, _ := m["_dd_tf_address"].(string); addr == "module.rds.aws_db_instance.this" {
+			attrs = m
+			break
+		}
+	}
+	require.NotNil(t, attrs, "could not find module.rds.aws_db_instance.this in resource map")
+
+	// _dd_tf_origin must be present
+	originRaw, ok := attrs["_dd_tf_origin"]
+	require.True(t, ok, "_dd_tf_origin should be attached to the resource")
+	originMap, ok := originRaw.(map[string]interface{})
+	require.True(t, ok)
+
+	getHint := func(attr string) map[string]interface{} {
+		h, ok := originMap[attr]
+		require.True(t, ok, "origin hint missing for attribute %q", attr)
+		m, ok := h.(map[string]interface{})
+		require.True(t, ok)
+		return m
+	}
+
+	// 1. identifier: hardcoded constant in module resource
+	identHint := getHint("identifier")
+	require.Equal(t, "module_hardcoded", identHint["origin"])
+	require.Equal(t, "./modules/rds", identHint["moduleDir"])
+
+	// 2. storage_encrypted: variable reference, call sets it
+	encHint := getHint("storage_encrypted")
+	require.Equal(t, "call", encHint["origin"])
+
+	// 3. publicly_accessible: variable reference, call omits it
+	pubHint := getHint("publicly_accessible")
+	require.Equal(t, "module_default", pubHint["origin"])
+	require.Equal(t, "publicly_accessible", pubHint["variable"])
+	require.Equal(t, "./modules/rds", pubHint["moduleDir"])
+}

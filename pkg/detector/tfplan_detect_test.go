@@ -528,7 +528,7 @@ func TestFindAttributeLineInFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := findAttributeLineInFile(testFile, tt.startLine, tt.attributeName, tt.searchRange)
+			result := findAttributeLineInFile(testFile, tt.startLine, tt.attributeName, tt.searchRange, "module")
 			if result != tt.expectedLine {
 				t.Errorf("Expected line %d, got %d", tt.expectedLine, result)
 			}
@@ -689,5 +689,248 @@ func TestTransformSearchKeyForModuleEdgeCases(t *testing.T) {
 				t.Errorf("%s: Expected attribute %q, got %q", tt.description, tt.expectedAttribute, attribute)
 			}
 		})
+	}
+}
+
+func roundTripDocument(doc model.Document) model.Document {
+	b, err := json.Marshal(doc)
+	if err != nil {
+		panic(err)
+	}
+	var out model.Document
+	if err := json.Unmarshal(b, &out); err != nil {
+		panic(err)
+	}
+	return out
+}
+
+// TestOriginBranch_ModuleHardcoded verifies that a module_hardcoded origin resolves to
+// the resource definition attribute line in the module's .tf file.
+func TestOriginBranch_ModuleHardcoded(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write parent main.tf with module call
+	mainTF := filepath.Join(tmpDir, "main.tf")
+	err := os.WriteFile(mainTF, []byte(`module "rds" {
+  source = "./modules/rds"
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write module definition with hardcoded publicly_accessible
+	modulesDir := filepath.Join(tmpDir, "modules", "rds")
+	if err := os.MkdirAll(modulesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	moduleMainTF := filepath.Join(modulesDir, "main.tf")
+	err = os.WriteFile(moduleMainTF, []byte(`resource "aws_db_instance" "this" {
+  identifier          = "app-db"
+  publicly_accessible = true
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Register both the module call and the resource definition
+	reg := registry.New()
+	reg.Register("module.rds", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
+	reg.Register("aws_db_instance.this", registry.Location{FilePath: moduleMainTF, Line: 1, Column: 1})
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, nil)
+
+	// Build document with module_hardcoded origin for publicly_accessible
+	rawDoc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_db_instance": map[string]interface{}{
+				"module.rds.this": map[string]interface{}{
+					"_dd_tf_address": "module.rds.aws_db_instance.this",
+					"_dd_tf_origin": map[string]interface{}{
+						"publicly_accessible": map[string]interface{}{
+							"origin":    "module_hardcoded",
+							"moduleDir": "./modules/rds",
+						},
+					},
+					"publicly_accessible": true,
+				},
+			},
+		},
+	}
+	roundTripped := roundTripDocument(rawDoc)
+
+	fileMetadata := &model.FileMetadata{
+		ID:               "plan",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTripped,
+		LineInfoDocument: roundTripped,
+	}
+
+	result := detector.DetectLine(ctx, fileMetadata, "module.rds.aws_db_instance.this.publicly_accessible", 3)
+
+	// Should resolve to the module DEFINITION file (modules/rds/main.tf), not main.tf
+	if result.ResolvedFile != moduleMainTF {
+		t.Errorf("expected module definition file %q, got %q", moduleMainTF, result.ResolvedFile)
+	}
+	// Line 3 is "publicly_accessible = true"
+	if result.Line != 3 {
+		t.Errorf("expected attribute line 3, got %d", result.Line)
+	}
+	// No secondary finding for hardcoded
+	if result.SecondaryLines != nil {
+		t.Error("expected no SecondaryLines for module_hardcoded")
+	}
+}
+
+// TestOriginBranch_ModuleDefault verifies that a module_default origin produces TWO findings:
+// primary at the variable default line and secondary at the module call block.
+func TestOriginBranch_ModuleDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write parent main.tf with module call (omits publicly_accessible)
+	mainTF := filepath.Join(tmpDir, "main.tf")
+	err := os.WriteFile(mainTF, []byte(`module "rds" {
+  source = "./modules/rds"
+  identifier = "app-db"
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write module variables.tf with insecure default
+	modulesDir := filepath.Join(tmpDir, "modules", "rds")
+	if err := os.MkdirAll(modulesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	variablesTF := filepath.Join(modulesDir, "variables.tf")
+	err = os.WriteFile(variablesTF, []byte(`variable "publicly_accessible" {
+  description = "Whether the DB is publicly accessible."
+  type        = bool
+  default     = true
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := registry.New()
+	reg.Register("module.rds", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
+	reg.Register("var.publicly_accessible", registry.Location{FilePath: variablesTF, Line: 1, Column: 1})
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, nil)
+
+	rawDoc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_db_instance": map[string]interface{}{
+				"module.rds.this": map[string]interface{}{
+					"_dd_tf_address": "module.rds.aws_db_instance.this",
+					"_dd_tf_origin": map[string]interface{}{
+						"publicly_accessible": map[string]interface{}{
+							"origin":    "module_default",
+							"variable":  "publicly_accessible",
+							"moduleDir": "./modules/rds",
+						},
+					},
+					"publicly_accessible": true,
+				},
+			},
+		},
+	}
+	roundTripped := roundTripDocument(rawDoc)
+
+	fileMetadata := &model.FileMetadata{
+		ID:               "plan",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTripped,
+		LineInfoDocument: roundTripped,
+	}
+
+	result := detector.DetectLine(ctx, fileMetadata, "module.rds.aws_db_instance.this.publicly_accessible", 3)
+
+	// Primary should point at variables.tf default line (line 4: "default = true")
+	if result.ResolvedFile != variablesTF {
+		t.Errorf("expected variables.tf %q as primary, got %q", variablesTF, result.ResolvedFile)
+	}
+	if result.Line != 4 {
+		t.Errorf("expected default line 4, got %d", result.Line)
+	}
+
+	// Secondary should point at the module call block in main.tf
+	if result.SecondaryLines == nil {
+		t.Fatal("expected SecondaryLines for module_default, got nil")
+	}
+	if result.SecondaryLines.ResolvedFile != mainTF {
+		t.Errorf("expected secondary file %q (module call), got %q", mainTF, result.SecondaryLines.ResolvedFile)
+	}
+	if result.SecondaryLines.Line != 1 {
+		t.Errorf("expected secondary line 1 (module block), got %d", result.SecondaryLines.Line)
+	}
+}
+
+// TestOriginBranch_CallSite verifies that a call origin (or no hint) still resolves to the
+// module call block as before, with no secondary finding.
+func TestOriginBranch_CallSite(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mainTF := filepath.Join(tmpDir, "main.tf")
+	err := os.WriteFile(mainTF, []byte(`module "rds" {
+  source              = "./modules/rds"
+  publicly_accessible = true
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := registry.New()
+	reg.Register("module.rds", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, nil)
+
+	rawDoc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_db_instance": map[string]interface{}{
+				"module.rds.this": map[string]interface{}{
+					"_dd_tf_address": "module.rds.aws_db_instance.this",
+					"_dd_tf_origin": map[string]interface{}{
+						"publicly_accessible": map[string]interface{}{
+							"origin":   "call",
+							"variable": "publicly_accessible",
+						},
+					},
+					"publicly_accessible": true,
+				},
+			},
+		},
+	}
+	roundTripped := roundTripDocument(rawDoc)
+
+	fileMetadata := &model.FileMetadata{
+		ID:               "plan",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTripped,
+		LineInfoDocument: roundTripped,
+	}
+
+	result := detector.DetectLine(ctx, fileMetadata, "module.rds.aws_db_instance.this.publicly_accessible", 3)
+
+	// Should resolve to the module call in main.tf (module declaration line without mappings)
+	if result.ResolvedFile != mainTF {
+		t.Errorf("expected call file %q, got %q", mainTF, result.ResolvedFile)
+	}
+	// Without module mappings to translate the attribute name, resolves to the module declaration line
+	if result.Line != 1 {
+		t.Errorf("expected module declaration line 1, got %d", result.Line)
+	}
+	if result.SecondaryLines != nil {
+		t.Error("expected no SecondaryLines for call origin")
 	}
 }

@@ -344,6 +344,26 @@ func extractAndRegisterAddresses(ctx context.Context, file *hcl.File, filePath s
 					Msg("HCL: Registered module address")
 				moduleCount++
 			}
+
+		case "variable":
+			// Variable blocks have format: variable "name"
+			// Register as "var.<name>" so the tfplan detector can resolve module_default
+			// findings to the variable's default = ... line in variables.tf
+			if len(block.Labels) >= 1 {
+				address := fmt.Sprintf("var.%s", block.Labels[0])
+				defRange := block.DefRange()
+				location := registry.Location{
+					FilePath: filePath,
+					Line:     defRange.Start.Line,
+					Column:   defRange.Start.Column,
+				}
+				reg.Register(address, location)
+				contextLogger.Debug().
+					Str("address", address).
+					Str("file", filePath).
+					Int("line", location.Line).
+					Msg("HCL: Registered variable address")
+			}
 		}
 	}
 

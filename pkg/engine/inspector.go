@@ -1076,7 +1076,36 @@ decodeLoop:
 				failedDetectLine = aux
 			}
 			if vulnerability != nil && !aux {
-				vulnerabilities = append(vulnerabilities, *vulnerability)
+				// Fan-out: if the detector produced a secondary location (module_default case),
+				// emit a second finding with the secondary location (e.g. module call block)
+				// alongside the primary (e.g. variable default line). Both are independently actionable.
+				if secondary := vulnerability.SecondaryVulnerabilityLines; secondary != nil {
+					secondaryVuln := *vulnerability
+					secondaryVuln.FileName = secondary.ResolvedFile
+					secondaryVuln.Line = secondary.Line
+					secondaryVuln.VulnerabilityLocation = model.ResourceLocation{
+						Start: secondary.VulnerablilityLocation.Start,
+						End:   secondary.VulnerablilityLocation.End,
+					}
+					secondaryVuln.RemediationLocation = model.ResourceLocation{
+						Start: secondary.RemediationLocation.Start,
+						End:   secondary.RemediationLocation.End,
+					}
+					secondaryVuln.VulnLines = secondary.VulnLines
+					secondaryVuln.ResourceSource = secondary.ResourceSource
+					secondaryVuln.FileSource = secondary.FileSource
+					secondaryVuln.BlockLocation = secondary.BlockLocation
+					if secondary.TransformedSearchKey != "" {
+						secondaryVuln.SearchKey = secondary.TransformedSearchKey
+					}
+					secondaryVuln.SecondaryVulnerabilityLines = nil
+
+					vulnerability.SecondaryVulnerabilityLines = nil
+					vulnerabilities = append(vulnerabilities, *vulnerability)
+					vulnerabilities = append(vulnerabilities, secondaryVuln)
+				} else {
+					vulnerabilities = append(vulnerabilities, *vulnerability)
+				}
 			}
 		}
 	}
