@@ -385,7 +385,8 @@ func Test_terraformPlanPath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := terraformPlanPath(tt.searchKey); !reflect.DeepEqual(got, tt.want) {
+			got, _ := terraformPlanPath(tt.searchKey)
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("terraformPlanPath() = %v, want %v", got, tt.want)
 			}
 		})
@@ -412,7 +413,7 @@ var OriginalDataTFPlan = `{
   }
 }`
 
-// Test_detectLineTerraformPlan verifies attribute-level and allowlisted resource-level plan searchKeys.
+// Test_detectLineTerraformPlan verifies attribute-level plan searchKeys.
 func Test_detectLineTerraformPlan(t *testing.T) {
 	p := &jsonParser.Parser{}
 	_, docs, _, _, err := p.Parse(context.Background(), []byte(OriginalDataTFPlan), "plan.json", false, 1)
@@ -458,7 +459,7 @@ func Test_detectLineTerraformPlanResourceLevel(t *testing.T) {
 		LineInfoDocument:  docs[0],
 		LinesOriginalData: utils.SplitLines(plan),
 	}
-	got := defaultDetectLine{}.DetectLine(context.Background(), file, "aws_api_gateway_deployment[positive1]", 0)
+	got := defaultDetectLine{}.DetectLine(context.Background(), file, "resource.aws_api_gateway_deployment[positive1]", 0)
 	require.Equal(t, 5, got.Line)
 }
 

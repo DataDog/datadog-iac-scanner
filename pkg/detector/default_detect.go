@@ -19,17 +19,7 @@ const (
 	undetectedVulnerabilityLine = -1
 	// resource, type, name, and at least one attribute segment.
 	tfPlanMinAttributePathLen = 4
-	// resource, type, and name — used for types where plan line metadata
-	// lives on the resource object rather than a specific attribute.
-	tfPlanMinResourcePathLen = 3
 )
-
-// tfPlanResourceLevelTypes are Terraform resource types whose plan JSON line
-// metadata is anchored on the resource object (not an attribute). Text matching
-// on the plan address field is wrong for these; resolve structurally instead.
-var tfPlanResourceLevelTypes = map[string]struct{}{
-	"aws_api_gateway_deployment": {},
-}
 
 type defaultDetectLine struct {
 }
@@ -79,7 +69,15 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 	// source file, so the text-matcher cannot advance through them. handleArrayIndex
 	// tries a structured gjson lookup first; on failure it strips numerics and falls
 	// back to the text-matcher.
-	if result, remaining := handleArrayIndex(splitSanitized, extractedString, file, detector.ResolvedFile, outputLines, lines); result != nil {
+	if result, remaining := handleArrayIndex(
+		splitSanitized,
+		extractedString,
+		file,
+		detector.ResolvedFile,
+		outputLines,
+		lines,
+		file.Kind == model.KindTerraformPlan,
+	); result != nil {
 		return *result
 	} else if remaining != nil {
 		splitSanitized = remaining
@@ -134,14 +132,9 @@ func detectTerraformPlanLine(
 	outputLines int,
 	lines []string,
 ) *model.VulnerabilityLines {
-	path := terraformPlanPath(searchKey)
-	if len(path) < tfPlanMinResourcePathLen {
+	path, explicitResourcePath := terraformPlanPath(searchKey)
+	if len(path) < tfPlanMinAttributePathLen && !explicitResourcePath {
 		return nil
-	}
-	if len(path) < tfPlanMinAttributePathLen {
-		if _, ok := tfPlanResourceLevelTypes[path[1]]; !ok {
-			return nil
-		}
 	}
 	lineNr, err := GetLineBySearchLine(path, file)
 	// lineNr == 1 means _dd_lines were computed from minified (single-line) JSON;
@@ -165,7 +158,7 @@ func detectTerraformPlanLine(
 // GetLineBySearchLine. It expands bracket groups ("type[name]" -> type, name;
 // "list[0]" -> list, 0), drops value anchors (key=value -> key), and ensures the
 // path is rooted at the plan's top-level "resource" key.
-func terraformPlanPath(searchKey string) []string {
+func terraformPlanPath(searchKey string) ([]string, bool) {
 	// Drop the value anchor (key=value) up front; the value may contain dots.
 	if eq := strings.Index(searchKey, "="); eq >= 0 {
 		searchKey = searchKey[:eq]
@@ -197,10 +190,11 @@ func terraformPlanPath(searchKey string) []string {
 			seg = seg[closeIdx+1:]
 		}
 	}
-	if len(comps) > 0 && comps[0] == "resource" {
+	explicitResourcePath := len(comps) > 0 && comps[0] == "resource"
+	if explicitResourcePath {
 		comps = comps[1:]
 	}
-	return append([]string{"resource"}, comps...)
+	return append([]string{"resource"}, comps...), explicitResourcePath
 }
 
 // handleArrayIndex handles paths that contain numeric segments. It first attempts a
@@ -214,6 +208,7 @@ func handleArrayIndex(
 	resolvedFile string,
 	outputLines int,
 	lines []string,
+	skipStructuredLookup bool,
 ) (result *model.VulnerabilityLines, remaining []string) {
 	hasNumeric := false
 	for _, seg := range splitSanitized {
@@ -226,21 +221,23 @@ func handleArrayIndex(
 		return nil, nil
 	}
 
-	// Strip value anchors (key=value → key) so gjson receives a pure key path.
-	// Paths with mid-path anchors (e.g. "meta.name={{pod}}.spec...") resolve to a
-	// nonexistent gjson path and return -1, falling through to the text-matcher.
-	structPath := extractStructuralPath(splitSanitized, extractedString)
-	if lineNr, err := GetLineBySearchLine(structPath, file); err == nil && lineNr > 0 && lineNr <= len(lines) {
-		result := model.VulnerabilityLines{
-			Line:         lineNr,
-			VulnLines:    GetAdjacentVulnLines(lineNr-1, outputLines, lines),
-			ResolvedFile: resolvedFile,
-			VulnerablilityLocation: model.ResourceLocation{
-				Start: model.ResourceLine{Line: lineNr},
-				End:   model.ResourceLine{Line: lineNr},
-			},
+	if !skipStructuredLookup {
+		// Strip value anchors (key=value → key) so gjson receives a pure key path.
+		// Paths with mid-path anchors (e.g. "meta.name={{pod}}.spec...") resolve to a
+		// nonexistent gjson path and return -1, falling through to the text-matcher.
+		structPath := extractStructuralPath(splitSanitized, extractedString)
+		if lineNr, err := GetLineBySearchLine(structPath, file); err == nil && lineNr > 0 && lineNr <= len(lines) {
+			result := model.VulnerabilityLines{
+				Line:         lineNr,
+				VulnLines:    GetAdjacentVulnLines(lineNr-1, outputLines, lines),
+				ResolvedFile: resolvedFile,
+				VulnerablilityLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: lineNr},
+					End:   model.ResourceLine{Line: lineNr},
+				},
+			}
+			return &result, nil
 		}
-		return &result, nil
 	}
 
 	filtered := splitSanitized[:0]
