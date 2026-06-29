@@ -30,6 +30,7 @@ import (
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/google/uuid"
 	cli "github.com/urfave/cli/v3"
 )
@@ -290,6 +291,7 @@ func runFiles(
 		false,
 		0,
 		featureflags.NewLocalEvaluator(),
+		vfs.DiskFS{},
 	)
 	if err != nil {
 		return nil, nil, err

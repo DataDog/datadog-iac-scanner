@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
@@ -36,7 +37,7 @@ type inputVarTest struct {
 }
 
 func setInputVariablesDefaultValues(filename string) (converter.VariableMap, error) {
-	parsedFile, err := parseFile(filename, false)
+	parsedFile, err := parseFile(vfs.DiskFS{}, filename, false)
 	if err != nil || parsedFile == nil {
 		return nil, err
 	}
@@ -174,7 +175,7 @@ func TestGetInputVariablesFromFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inputVars, err := getInputVariablesFromFile(tt.filename)
+			inputVars, err := getInputVariablesFromFile(vfs.DiskFS{}, tt.filename)
 			if tt.wantErr {
 				require.NotNil(t, err)
 			} else {
@@ -230,7 +231,7 @@ func TestGetInputVariables(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fileContent, _ := os.ReadFile(tt.filename)
-			result := getInputVariables(ctx, tt.filename, string(fileContent), "../../../test/fixtures/test_terraform_variables/varsToUse/varsToUse.tf")
+			result := getInputVariables(ctx, vfs.DiskFS{}, tt.filename, string(fileContent), "../../../test/fixtures/test_terraform_variables/varsToUse/varsToUse.tf")
 			require.Equal(t, tt.want, result)
 		})
 	}

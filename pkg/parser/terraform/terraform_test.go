@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -379,7 +380,7 @@ data "aws_iam_policy_document" "test_destination_policy" {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsedFile, err := parseFile(tt.filename, tt.shouldReplaceDataSource)
+			parsedFile, err := parseFile(vfs.DiskFS{}, tt.filename, tt.shouldReplaceDataSource)
 			if tt.wantErr {
 				require.NotNil(t, err)
 				require.Nil(t, parsedFile)

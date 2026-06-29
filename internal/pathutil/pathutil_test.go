@@ -37,3 +37,25 @@ func TestMatchesPath(t *testing.T) {
 		})
 	}
 }
+
+func TestExcluded(t *testing.T) {
+	tests := []struct {
+		name        string
+		file        string
+		ignorePaths []string
+		onlyPaths   []string
+		want        bool
+	}{
+		{"no filters", "infra/main.tf", nil, nil, false},
+		{"ignored by glob", "infra/main.tf", []string{"infra/**"}, nil, true},
+		{"not ignored", "src/main.tf", []string{"infra/**"}, nil, false},
+		{"only-paths match", "src/main.tf", nil, []string{"src/**"}, false},
+		{"only-paths excludes others", "infra/main.tf", nil, []string{"src/**"}, true},
+		{"ignore wins over only", "src/main.tf", []string{"src/**"}, []string{"src/**"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, Excluded(tt.file, tt.ignorePaths, tt.onlyPaths))
+		})
+	}
+}

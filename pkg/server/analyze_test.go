@@ -1,0 +1,443 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+
+package server
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// repoRoot returns the module root relative to this package (pkg/server).
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	return filepath.Join(wd, "..", "..")
+}
+
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	root := repoRoot(t)
+	libs := filepath.Join(root, "assets", "libraries")
+	if _, err := os.Stat(libs); err != nil {
+		t.Skipf("assets/libraries not found (%v); skipping engine-backed test", err)
+	}
+	return New(&Config{
+		LibrariesPath: libs,
+		QueriesPath:   filepath.Join(root, "assets", "queries"),
+	})
+}
+
+// teamTagRule loads the real Terraform "Team tag" rule from the e2e fixtures so
+// the test exercises a production-shaped rule without a network fetch.
+func teamTagRule(t *testing.T) analyzeRule {
+	t.Helper()
+	root := repoRoot(t)
+	regoPath := filepath.Join(root, "test", "e2e", "testdata", "rules", "terraform", "team_tag_not_present", "query.rego")
+	content, err := os.ReadFile(regoPath)
+	if err != nil {
+		t.Skipf("rule fixture not found (%v); skipping", err)
+	}
+	return analyzeRule{
+		ID:       "terraform-aws-team-tag-not-present",
+		Platform: "terraform",
+		Content:  string(content),
+		Metadata: map[string]any{
+			"id":        "terraform-aws-team-tag-not-present",
+			"queryName": "Team tag missing on AWS resource",
+			"severity":  "LOW",
+			"platform":  "Terraform",
+			"category":  "Best Practices",
+		},
+	}
+}
+
+func postAnalyze(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse, int) {
+	t.Helper()
+	out, err := s.analyze(context.Background(), &req)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	return out, http.StatusOK
+}
+
+// TestAnalyze_ContentPush_TerraformFinding verifies the full content-push path:
+// a pushed Terraform file plus its sibling variables file are scanned in memory
+// (no disk), a real rule fires, and same-directory siblings resolve without
+// being reported missing.
+func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" {
+  bucket = var.bucket_name
+}`},
+			{Path: "infra/variables.tf", Content: `variable "bucket_name" { default = "my-bucket" }`},
+		},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	if len(out.Findings) == 0 {
+		t.Fatalf("expected at least one finding for an AWS resource missing a Team tag, got none")
+	}
+	var found bool
+	for _, f := range out.Findings {
+		if f.QueryID == "terraform-aws-team-tag-not-present" {
+			found = true
+			if f.FileName != "infra/main.tf" {
+				t.Errorf("finding fileName = %q, want infra/main.tf", f.FileName)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected the team-tag rule to fire; findings = %+v", out.Findings)
+	}
+	// Same-directory siblings resolve via the in-memory glob, so nothing is
+	// reported missing.
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files for same-dir siblings, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_MissingModuleEscalation verifies a Terraform module pointing at a
+// directory that was not pushed is reported in missing_files as a clean
+// workspace-relative path (the hybrid escalation signal).
+func TestAnalyze_MissingModuleEscalation(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/main.tf", Content: `module "net" {
+  source = "../modules/networking"
+}
+resource "aws_s3_bucket" "b" { bucket = "x" }`},
+		},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var sawModule bool
+	for _, m := range out.MissingFiles {
+		if m == "modules/networking" {
+			sawModule = true
+		}
+		if filepath.IsAbs(m) {
+			t.Errorf("missing path should be workspace-relative, got absolute: %q", m)
+		}
+	}
+	if !sawModule {
+		t.Errorf("expected modules/networking in missing_files, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_MissingFilesCWDIndependent proves missing_files are
+// workspace-relative regardless of the server process's working directory. A
+// single server serves many IDE workspaces/windows, so the result must not
+// depend on where the binary was launched.
+func TestAnalyze_MissingFilesCWDIndependent(t *testing.T) {
+	s := newTestServer(t) // resolves an absolute libraries path before we chdir
+	rule := teamTagRule(t)
+	req := analyzeRequest{
+		Files: []analyzeFile{{Path: "infra/main.tf", Content: `module "net" {
+  source = "../modules/networking"
+}
+resource "aws_s3_bucket" "b" { bucket = "x" }`}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+	}
+
+	// Move CWD somewhere unrelated to the (virtual) workspace.
+	t.Chdir(t.TempDir())
+
+	out, _ := postAnalyze(t, s, req)
+	if len(out.MissingFiles) != 1 || out.MissingFiles[0] != "modules/networking" {
+		t.Errorf("missing_files = %v, want [modules/networking] (workspace-relative, CWD-independent)", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_Validation exercises the request validation rules.
+func TestAnalyze_Validation(t *testing.T) {
+	s := New(&Config{})
+	ts := httptest.NewServer(s.http.Handler)
+	defer ts.Close()
+
+	cases := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"empty files", `{"files":[],"rules":[]}`, http.StatusBadRequest},
+		{"path traversal", `{"files":[{"path":"../escape.tf","content":"x"}],"rules":[]}`, http.StatusBadRequest},
+		{"absolute path", `{"files":[{"path":"/etc/passwd","content":"x"}],"rules":[]}`, http.StatusBadRequest},
+		{"malformed json", `{`, http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Post(ts.URL+"/ide/v1/iac/analyze", "application/json", strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatalf("post: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.want {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tc.want)
+			}
+		})
+	}
+}
+
+// TestLifecycle_Contract checks the SAST-mirrored lifecycle contract: /ping
+// returns "pong", standard + CORS headers are present, and /shutdown is gated by
+// --enable-shutdown.
+func TestLifecycle_Contract(t *testing.T) {
+	s := New(&Config{}) // EnableShutdown defaults false
+	ts := httptest.NewServer(s.http.Handler)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/ping")
+	if err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+	body, _ := readAll(resp)
+	if resp.StatusCode != http.StatusOK || string(body) != "pong" {
+		t.Errorf("/ping = %d %q, want 200 pong", resp.StatusCode, body)
+	}
+	for _, h := range []string{"X-Iac-Scanner-Server-Version", "Access-Control-Allow-Origin", "X-Request-Id"} {
+		if resp.Header.Get(h) == "" {
+			t.Errorf("missing response header %s", h)
+		}
+	}
+
+	// Shutdown is disabled by default → 403.
+	sresp, err := http.Post(ts.URL+"/shutdown", "", nil)
+	if err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	defer sresp.Body.Close()
+	if sresp.StatusCode != http.StatusForbidden {
+		t.Errorf("/shutdown (disabled) = %d, want 403", sresp.StatusCode)
+	}
+
+	// Supported-files returns the strategy map.
+	fresp, err := http.Get(ts.URL + "/ide/v1/iac/supported-files")
+	if err != nil {
+		t.Fatalf("supported-files: %v", err)
+	}
+	defer fresp.Body.Close()
+	var entries []SupportedFileEntry
+	if err := json.NewDecoder(fresp.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode supported-files: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Errorf("supported-files returned no entries")
+	}
+}
+
+// TestAnalyze_Concurrent runs many analyze requests in parallel — each spawning
+// a multi-worker inspector over several documents — to exercise the engine's
+// shared per-request state (notably the failedQueries map written by worker
+// goroutines). Run with `go test -race` to surface data races.
+func TestAnalyze_Concurrent(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+
+	files := make([]analyzeFile, 0, 6)
+	for i := range 6 {
+		files = append(files, analyzeFile{
+			Path:    fmt.Sprintf("infra/r%d.tf", i),
+			Content: fmt.Sprintf(`resource "aws_s3_bucket" "b%d" { bucket = "x%d" }`, i, i),
+		})
+	}
+	// Replicate the rule under distinct IDs so the inspector runs several queries
+	// across multiple worker goroutines, producing findings concurrently — this
+	// exercises the shared per-request engine state (failedQueries, the shared
+	// line detector) that earlier raced under -race.
+	rules := make([]analyzeRule, 0, 8)
+	for i := range 8 {
+		r := rule
+		r.ID = fmt.Sprintf("%s-%d", rule.ID, i)
+		rules = append(rules, r)
+	}
+	req := analyzeRequest{Files: files, Rules: rules, Platform: []string{"terraform"}}
+
+	const n = 12
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for range n {
+		// Each goroutine builds its own client/inspector; the request value is
+		// read-only and safe to share.
+		wg.Go(func() {
+			out, err := s.analyze(context.Background(), &req)
+			if err != nil {
+				errs <- err
+				return
+			}
+			if len(out.Findings) == 0 {
+				errs <- fmt.Errorf("expected findings, got none")
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent analyze: %v", err)
+	}
+}
+
+// TestAnalyze_ConfigWithoutIacSection guards against a nil-pointer panic when
+// the caller pushes a valid config that has no `iac` section (e.g. a workspace
+// configured only for secrets). ParseConfig returns (nil, nil) there; analyze
+// must fall back to the empty IaC config rather than dereferencing nil.
+func TestAnalyze_ConfigWithoutIacSection(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+
+	req := analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+		Config:   "schema-version: v1.3\nsecrets:\n  enabled: true\n",
+	}
+
+	out, _ := postAnalyze(t, s, req) // must not panic
+	if len(out.Findings) == 0 {
+		t.Errorf("expected findings with an iac-less config (empty config fallback), got none")
+	}
+}
+
+// TestAnalyze_ConfigIgnoreRulePushedRule verifies that ignore-rules in config
+// suppresses a rule even when the caller pushes that rule in the request — the
+// pushed-rule source must apply the same query filters the filesystem source
+// applies.
+func TestAnalyze_ConfigIgnoreRulePushedRule(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+
+	req := analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+		Config:   "schema-version: v1.3\niac:\n  ignore-rules:\n    - terraform-aws-team-tag-not-present\n",
+	}
+
+	out, _ := postAnalyze(t, s, req)
+	for _, f := range out.Findings {
+		if f.QueryID == "terraform-aws-team-tag-not-present" {
+			t.Errorf("ignore-rules should have suppressed the pushed rule, but it fired: %+v", f)
+		}
+	}
+}
+
+// TestAnalyze_ConfigIgnorePaths verifies that global ignore-paths in config
+// suppresses findings for matching pushed files in the in-memory (server) scan
+// path, mirroring the disk scanner's behavior.
+func TestAnalyze_ConfigIgnorePaths(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+	body := `resource "aws_s3_bucket" "b" { bucket = "x" }`
+
+	// Baseline: without filters the rule fires on infra/main.tf.
+	base, _ := postAnalyze(t, s, analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: body}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+	})
+	if len(base.Findings) == 0 {
+		t.Fatalf("baseline expected findings, got none")
+	}
+
+	// With ignore-paths covering infra/, the file is skipped → no findings.
+	out, _ := postAnalyze(t, s, analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: body}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+		Config:   "schema-version: v1.3\niac:\n  global-config:\n    ignore-paths:\n      - \"infra/**\"\n",
+	})
+	if len(out.Findings) != 0 {
+		t.Errorf("ignore-paths should have skipped infra/main.tf, got findings: %+v", out.Findings)
+	}
+}
+
+// TestKeepAlive_NotShutdownWhileInFlight verifies the keep-alive monitor does
+// not shut the server down while a request is being handled, even after the
+// idle window has elapsed — then shuts down once the request completes and the
+// server is genuinely idle.
+func TestKeepAlive_NotShutdownWhileInFlight(t *testing.T) {
+	s := New(&Config{KeepAliveTimeout: 15 * time.Millisecond})
+	s.pollInterval = 2 * time.Millisecond
+	// Look idle for far longer than the keep-alive window.
+	s.lastRequestNanos.Store(time.Now().Add(-time.Hour).UnixNano())
+	// But a request is in flight.
+	s.inFlight.Add(1)
+
+	go s.keepAliveMonitor(t.Context())
+
+	select {
+	case <-s.shutdownCh:
+		t.Fatal("server shut down while a request was in flight")
+	case <-time.After(60 * time.Millisecond):
+	}
+
+	// Request completes; server is now idle past the window → must shut down.
+	s.inFlight.Add(-1)
+	s.lastRequestNanos.Store(time.Now().Add(-time.Hour).UnixNano())
+	select {
+	case <-s.shutdownCh:
+	case <-time.After(time.Second):
+		t.Fatal("server did not shut down after the request completed and idle elapsed")
+	}
+}
+
+// TestAnalyze_ConcurrencyLimit verifies /analyze returns 503 once the
+// concurrency limit is saturated, without running a scan.
+func TestAnalyze_ConcurrencyLimit(t *testing.T) {
+	s := New(&Config{MaxConcurrentAnalyze: 1})
+	ts := httptest.NewServer(s.http.Handler)
+	defer ts.Close()
+
+	// Saturate the single slot so the next request is rejected.
+	s.analyzeSem <- struct{}{}
+
+	resp, err := http.Post(ts.URL+"/ide/v1/iac/analyze", "application/json",
+		strings.NewReader(`{"files":[{"path":"a.tf","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503 when concurrency limit is saturated", resp.StatusCode)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Errorf("expected a Retry-After header on the 503 response")
+	}
+}
+
+func readAll(resp *http.Response) ([]byte, error) {
+	defer resp.Body.Close()
+	var buf bytes.Buffer
+	_, err := buf.ReadFrom(resp.Body)
+	return buf.Bytes(), err
+}

@@ -120,6 +120,18 @@ var (
 	listKeywordsAnsibleHots = []string{"hosts", "children"}
 )
 
+// PossibleFileTypes returns the sorted set of file extensions and filenames the
+// scanner can analyze. Exposed so the server's supported-files endpoint can
+// stay in sync with the scanner's capabilities.
+func PossibleFileTypes() []string {
+	out := make([]string, 0, len(possibleFileTypes))
+	for k := range possibleFileTypes {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 const (
 	cdkTf        = "cdkTf"
 	yml          = ".yml"

@@ -52,10 +52,20 @@ type executeScanParameters struct {
 func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	contextLogger := logger.FromContext(ctx)
 
-	extractedPaths, err := c.prepareAndAnalyzePaths(ctx)
-	if err != nil {
-		contextLogger.Err(err).Msgf("failed to prepare and analyze paths %v", err)
-		return nil, err
+	var extractedPaths provider.ExtractedPath
+	if c.inMemory {
+		// Content-push (server) mode: the file set is the pushed paths. Skip the
+		// disk walk + analyzer.Analyze the CLI path runs (it reads the repo from
+		// disk and mutates ScanParams.Platform). Platforms come from the request
+		// (ScanParams.Platform); content is read through c.fsys.
+		extractedPaths = provider.ExtractedPath{Path: c.inMemoryPaths}
+	} else {
+		paths, err := c.prepareAndAnalyzePaths(ctx)
+		if err != nil {
+			contextLogger.Err(err).Msgf("failed to prepare and analyze paths %v", err)
+			return nil, err
+		}
+		extractedPaths = paths
 	}
 
 	if len(extractedPaths.Path) == 0 {
@@ -86,6 +96,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		true,
 		c.ScanParams.ParallelScanFlag,
 		c.ScanParams.FlagEvaluator,
+		c.fsys,
 	)
 	metrics.Metric.Stop()
 	if err != nil {
@@ -240,14 +251,25 @@ func (c *Client) createService(
 	types []string,
 	cloudProviders []string,
 	flagEvaluator featureflags.FlagEvaluator) ([]*runner.Service, error) {
-	filesSource, err := c.getFileSystemSourceProvider(ctx, paths)
-	if err != nil {
-		return nil, err
+	var filesSource provider.SourceProvider
+	if c.inMemory {
+		// Content-push mode: serve the pushed files from the in-memory FS instead
+		// of walking the disk. No symlink/SameFile handling and no Helm chart
+		// discovery occur (the resolverSink is never invoked).
+		filesSource = provider.NewMemorySourceProvider(c.fsys, paths,
+			c.ScanParams.Config.IgnorePaths, c.ScanParams.Config.OnlyPaths)
+	} else {
+		fsSource, err := c.getFileSystemSourceProvider(ctx, paths)
+		if err != nil {
+			return nil, err
+		}
+		filesSource = fsSource
 	}
 
 	combinedParserBuilder := parser.NewBuilder(ctx).
+		WithFS(c.fsys).
 		Add(&yamlParser.Parser{}).
-		Add(terraformParser.NewDefaultWithParams(c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
+		Add(terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
 		Add(&bicepParser.Parser{}).
 		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).

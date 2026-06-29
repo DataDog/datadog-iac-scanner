@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -27,8 +28,9 @@ func main() {
 		debug.SetGCPercent(gcPercent)
 	}
 	cmd := &cli.Command{
-		Name:  "datadog-iac-scanner",
-		Usage: "Scans your Infrastructure as Code configurations",
+		Name:    "datadog-iac-scanner",
+		Usage:   "Scans your Infrastructure as Code configurations",
+		Version: constants.GetVersion(),
 		Commands: []*cli.Command{
 			scanAction,
 			customAction,
@@ -36,6 +38,7 @@ func main() {
 			listQueriesAction,
 			showConfigAction,
 			testRulesAction,
+			serveAction,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{

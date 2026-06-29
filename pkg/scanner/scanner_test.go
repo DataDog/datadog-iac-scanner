@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
@@ -46,6 +47,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 		querySource, engine.DefaultVulnerabilityBuilder,
 		t, &source.QueryInspectorParameters{}, nil, ".", true, true, 1,
 		featureflags.NewLocalEvaluator(),
+		vfs.DiskFS{},
 	)
 	if err != nil {
 		return nil, nil, err

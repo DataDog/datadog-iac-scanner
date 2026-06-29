@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog/log"
 )
 
@@ -75,6 +76,46 @@ type Client struct {
 	// Set when the platform is already known (e.g. RunCustomRegoQuery) so the temp file name
 	// does not need to encode platform information.
 	analyzerOverride func(ctx context.Context) (model.AnalyzedPaths, error)
+	// fsys is the filesystem used for cross-file resolution. Defaults to the real
+	// disk (CLI); the HTTP server injects an in-memory FS built from pushed
+	// content via WithFS.
+	fsys vfs.FS
+	// inMemory marks a server (content-push) scan: initScan builds its file set
+	// from inMemoryPaths instead of walking the disk via the analyzer.
+	inMemory      bool
+	inMemoryPaths []string
+}
+
+// ClientOption customizes a Client at construction time.
+type ClientOption func(*Client)
+
+// WithQuerySourceFactory injects a factory that supplies the engine's queries,
+// bypassing the default Datadog/filesystem source. The HTTP server uses this to
+// serve rules pushed in the request body. Promotes the previously test-only
+// querySourceFactory seam to a first-class production option.
+func WithQuerySourceFactory(f func(ctx context.Context, platforms []string) (source.QueriesSource, error)) ClientOption {
+	return func(c *Client) { c.querySourceFactory = f }
+}
+
+// WithFS sets the filesystem used for cross-file resolution. The CLI uses the
+// default (real disk); the HTTP server injects an in-memory FS built from pushed
+// content. A nil fsys is ignored.
+func WithFS(fsys vfs.FS) ClientOption {
+	return func(c *Client) {
+		if fsys != nil {
+			c.fsys = fsys
+		}
+	}
+}
+
+// WithInMemoryScan marks the scan as content-push: initScan builds its file set
+// from the given paths (the keys of the pushed content) instead of walking the
+// disk. Used together with WithFS.
+func WithInMemoryScan(paths []string) ClientOption {
+	return func(c *Client) {
+		c.inMemory = true
+		c.inMemoryPaths = paths
+	}
 }
 
 func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, context.Context) {
@@ -115,8 +156,10 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 	}, logCtx
 }
 
-// NewClient initializes the client with all the required parameters
-func NewClient(ctx context.Context, params *Parameters, customPrint *consolePrinter.Printer) (*Client, error) {
+// NewClient initializes the client with all the required parameters. Optional
+// ClientOptions (WithFS, WithQuerySourceFactory, WithInMemoryScan) configure the
+// HTTP server's content-push path; the CLI passes none.
+func NewClient(ctx context.Context, params *Parameters, customPrint *consolePrinter.Printer, opts ...ClientOption) (*Client, error) {
 	contextLogger := logger.FromContext(ctx)
 	t, err := tracker.NewTracker(params.PreviewLines)
 	if err != nil {
@@ -126,13 +169,26 @@ func NewClient(ctx context.Context, params *Parameters, customPrint *consolePrin
 
 	store := storage.NewMemoryStorage()
 
-	return &Client{
+	client := &Client{
 		ScanParams:    params,
 		Tracker:       t,
 		Storage:       store,
 		Printer:       customPrint,
 		FlagEvaluator: params.FlagEvaluator,
-	}, nil
+		fsys:          vfs.DiskFS{},
+	}
+	for _, opt := range opts {
+		opt(client)
+	}
+	return client, nil
+}
+
+// Scan runs the scan pipeline in memory and returns the results without writing
+// SARIF, reading git, or calling the network. It is the entry point used by the
+// HTTP server; the CLI uses PerformScan (which additionally produces reports).
+func (c *Client) Scan(ctx context.Context) (*Results, error) {
+	c.ScanStartTime = time.Now()
+	return c.executeScan(ctx)
 }
 
 // PerformScan executes executeScan and postScan

@@ -7,7 +7,6 @@ package terraform
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pkg/errors"
@@ -39,6 +39,11 @@ type Parser struct {
 	terraformVarsPath string
 	sciInfo           model.SCIInfo
 
+	// fsys is the filesystem used for cross-file resolution (sibling .tf files,
+	// .tfvars, data sources). Defaults to the real disk; the HTTP server injects
+	// an in-memory FS populated from pushed content.
+	fsys vfs.FS
+
 	// dirVarsCache memoizes per-directory variable/locals resolution (O(N²) without
 	// it). Scoped to the Parser instance, which is created once per scan.
 	dirVarsCache sync.Map // dir -> converter.VariableMap
@@ -50,12 +55,16 @@ func NewDefault() *Parser {
 	return &Parser{
 		numOfRetries: RetriesDefaultValue,
 		convertFunc:  converter.DefaultConverted,
+		fsys:         vfs.DiskFS{},
 	}
 }
 
 // nolint:gocritic
-func NewDefaultWithParams(terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
+func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
 	parser := NewDefault()
+	if fsys != nil {
+		parser.fsys = fsys
+	}
 	parser.terraformVarsPath = terraformVarsPath
 	parser.sciInfo = sciInfo
 	return parser
@@ -81,16 +90,16 @@ func (p *Parser) Resolve(ctx context.Context,
 // are resolved per-file (uncached) because their result depends on file content.
 func (p *Parser) resolveDirVars(ctx context.Context, dir string, fileContent []byte) converter.VariableMap {
 	if p.terraformVarsPath == "" && strings.Contains(string(fileContent), terraformVarsPathDirective) {
-		inputVars := getInputVariables(ctx, dir, string(fileContent), p.terraformVarsPath)
-		return getDataSourcePolicy(ctx, dir, inputVars)
+		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath)
+		return getDataSourcePolicy(ctx, p.fsys, dir, inputVars)
 	}
 
 	if v, ok := p.dirVarsCache.Load(dir); ok {
 		return cloneVariableMap(v.(converter.VariableMap))
 	}
 	v, _, _ := p.dirVarsSF.Do(dir, func() (interface{}, error) {
-		inputVars := getInputVariables(ctx, dir, string(fileContent), p.terraformVarsPath)
-		vars := getDataSourcePolicy(ctx, dir, inputVars)
+		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath)
+		vars := getDataSourcePolicy(ctx, p.fsys, dir, inputVars)
 		p.dirVarsCache.Store(dir, vars)
 		return vars, nil
 	})
@@ -200,8 +209,8 @@ func addExtraInfo(ctx context.Context, json []model.Document, path string) ([]mo
 	return json, nil
 }
 
-func parseFile(filename string, shouldReplaceDataSource bool) (*hcl.File, error) {
-	file, err := os.ReadFile(filepath.Clean(filename))
+func parseFile(fsys vfs.FS, filename string, shouldReplaceDataSource bool) (*hcl.File, error) {
+	file, err := fsys.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		return nil, err
 	}
