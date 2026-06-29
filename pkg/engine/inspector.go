@@ -300,7 +300,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Debug().Msg("engine.Inspect()")
 
 	// Local modules: append synthetic file rows (ids match docs) for attribution and fingerprints.
-	moduleDocs, syntheticFiles := c.instantiateLocalModules(ctx, files)
+	moduleDocs, syntheticFiles, moduleExtras := c.instantiateLocalModules(ctx, files)
 	files = append(files, syntheticFiles...)
 
 	// Must run before Combine: instantiateLocalModules clears suppressed file bodies in place.
@@ -395,7 +395,29 @@ loop:
 	for vulnerability, number := range moduleVulns {
 		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
 	}
+
+	vulnerabilities = expandModuleFindings(vulnerabilities, moduleExtras)
+
 	return vulnerabilities, nil
+}
+
+// expandModuleFindings clones findings from deduplicated OPA docs back to each
+// extra caller, so every call-site gets its own fingerprint/file attribution.
+func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo) []model.Vulnerability {
+	if len(extras) == 0 {
+		return vulns
+	}
+	expanded := make([]model.Vulnerability, 0, len(vulns))
+	for i := range vulns {
+		expanded = append(expanded, vulns[i])
+		for _, ex := range extras[vulns[i].FileID] {
+			vCopy := vulns[i]
+			vCopy.ModuleCallChain = ex.callChain
+			vCopy.FileID = ex.docID
+			expanded = append(expanded, vCopy)
+		}
+	}
+	return expanded
 }
 
 // nolint:gocritic
