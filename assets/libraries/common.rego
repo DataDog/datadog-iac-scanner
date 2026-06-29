@@ -722,91 +722,82 @@ unrecommended_permission_policy(resourcePolicy, permission) if {
 	equalsOrInArray(statement.Action, lower(permission))
 }
 
-group_unrecommended_permission_policy_scenarios(targetGroup, permission) if {
-	# get the IAM group policy
+# Normalises Action (string or array) to an array for uniform iteration.
+_to_action_array(x) := [x] if is_string(x)
+
+_to_action_array(x) := x if is_array(x)
+
+# Returns the set of lowercased Allow-on-"*" actions for a policy resource object.
+# Complete rules are memoized by OPA per unique argument, so json_unmarshal
+# is paid at most once per unique policy object within a query.
+_policy_wildcard_actions(policyObj) := {lower(a) |
+	policy := json_unmarshal(policyObj.policy)
+	statement := get_statement(policy)[_]
+	is_allow_effect(statement)
+	equalsOrInArray(statement.Resource, "*")
+	a := _to_action_array(statement.Action)[_]
+}
+
+# Pre-computed sets of [principalName, permission] pairs, one per principal type.
+#
+# Using complete set rules (not incremental/partial rules) guarantees that OPA
+# evaluates and caches each set ONCE per top-level query, regardless of how
+# many times the caller loops over principal names. The 64 privilege-escalation
+# rules that call *_unrecommended_permission_policy_scenarios share these sets
+# and avoid repeating an O(roles × docs × policies) document scan per role.
+
+_role_dangerous_pairs := {[roleName, permission] |
+	rolePolicy := input.document[_].resource.aws_iam_role_policy[_]
+	roleName := split(rolePolicy.role, ".")[1]
+	permission := _policy_wildcard_actions(rolePolicy)[_]
+} | {[roleName, permission] |
+	attachments := {"aws_iam_policy_attachment", "aws_iam_role_policy_attachment"}
+	attachment := input.document[_].resource[attachments[_]][_]
+	roleName := get_role_from_policy_attachment(attachment)
+	policyName := split(attachment.policy_arn, ".")[1]
+	policies := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
+	resourcePolicy := input.document[_].resource[policies[_]][policyName]
+	permission := _policy_wildcard_actions(resourcePolicy)[_]
+}
+
+_user_dangerous_pairs := {[userName, permission] |
+	userPolicy := input.document[_].resource.aws_iam_user_policy[_]
+	userName := split(userPolicy.user, ".")[1]
+	permission := _policy_wildcard_actions(userPolicy)[_]
+} | {[userName, permission] |
+	attachments := {"aws_iam_policy_attachment", "aws_iam_user_policy_attachment"}
+	attachment := input.document[_].resource[attachments[_]][_]
+	userName := get_user_from_policy_attachment(attachment)
+	policyName := split(attachment.policy_arn, ".")[1]
+	policies := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
+	resourcePolicy := input.document[_].resource[policies[_]][policyName]
+	permission := _policy_wildcard_actions(resourcePolicy)[_]
+}
+
+_group_dangerous_pairs := {[groupName, permission] |
 	groupPolicy := input.document[_].resource.aws_iam_group_policy[_]
-
-	# get the group referenced in IAM group policy and confirm it is the target group
-	group := split(groupPolicy.group, ".")[1]
-	group == targetGroup
-
-	# verify that the policy is unrecommended
-	unrecommended_permission_policy(groupPolicy, permission)
-} else if {
-	# find attachment
+	groupName := split(groupPolicy.group, ".")[1]
+	permission := _policy_wildcard_actions(groupPolicy)[_]
+} | {[groupName, permission] |
 	attachments := {"aws_iam_policy_attachment", "aws_iam_group_policy_attachment"}
 	attachment := input.document[_].resource[attachments[_]][_]
-
-	# get the group referenced in IAM policy attachment and confirm it is the target group
-	group := get_group_from_policy_attachment(attachment)
-	group == targetGroup
-
-	# confirm that policy associated is unrecommended
-	policy := split(attachment.policy_arn, ".")[1]
-
+	groupName := get_group_from_policy_attachment(attachment)
+	policyName := split(attachment.policy_arn, ".")[1]
 	policies := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
-	resourcePolicy := input.document[_].resource[policies[_]][policy]
+	resourcePolicy := input.document[_].resource[policies[_]][policyName]
+	permission := _policy_wildcard_actions(resourcePolicy)[_]
+}
 
-	# verify that the policy is unrecommended
-	unrecommended_permission_policy(resourcePolicy, permission)
+group_unrecommended_permission_policy_scenarios(targetGroup, permission) if {
+	[targetGroup, lower(permission)] in _group_dangerous_pairs
 }
 
 role_unrecommended_permission_policy_scenarios(targetRole, permission) if {
-	# get the IAM role policy
-	rolePolicy := input.document[_].resource.aws_iam_role_policy[_]
-
-	# get the role referenced in IAM role policy and confirm it is the target role
-	role := split(rolePolicy.role, ".")[1]
-	role == targetRole
-
-	# verify that the policy is unrecommended
-	unrecommended_permission_policy(rolePolicy, permission)
-} else if {
-	# find attachment
-	attachments := {"aws_iam_policy_attachment", "aws_iam_role_policy_attachment"}
-	attachment := input.document[_].resource[attachments[_]][_]
-
-	# get the role referenced in IAM policy attachment and confirm it is the target role
-	role := get_role_from_policy_attachment(attachment)
-	role == targetRole
-
-	# confirm that policy associated is unrecommended
-	policy := split(attachment.policy_arn, ".")[1]
-
-	policies := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
-	resourcePolicy := input.document[_].resource[policies[_]][policy]
-
-	# verify that the policy is unrecommended
-	unrecommended_permission_policy(resourcePolicy, permission)
+	[targetRole, lower(permission)] in _role_dangerous_pairs
 }
 
 user_unrecommended_permission_policy_scenarios(targetUser, permission) if {
-	# get the IAM user policy
-	userPolicy := input.document[_].resource.aws_iam_user_policy[_]
-
-	# get the user referenced in IAM user policy and confirm it is the target user
-	user := split(userPolicy.user, ".")[1]
-	user == targetUser
-
-	# verify that the policy is unrecommended
-	unrecommended_permission_policy(userPolicy, permission)
-} else if {
-	# find attachment
-	attachments := {"aws_iam_policy_attachment", "aws_iam_user_policy_attachment"}
-	attachment := input.document[_].resource[attachments[_]][_]
-
-	# get the user referenced in IAM policy attachment and confirm it is the target user
-	user := get_user_from_policy_attachment(attachment)
-	user == targetUser
-
-	# confirm that policy associated is unrecommended
-	policy := split(attachment.policy_arn, ".")[1]
-
-	policies := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
-	resourcePolicy := input.document[_].resource[policies[_]][policy]
-
-	# verify that the policy is unrecommended
-	unrecommended_permission_policy(resourcePolicy, permission)
+	[targetUser, lower(permission)] in _user_dangerous_pairs
 }
 
 get_latest_software_version(name) := version if {
