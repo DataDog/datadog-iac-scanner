@@ -517,8 +517,10 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	}()
 
 	payload := *qCtx.payload
-	queryID, legacyQueryID := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
-	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID); found {
+	queryID, _ := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
+	if rc, found, err := lookupRuleArgumentsConfig(ctx, c.ruleConfigs, &qCtx.Query.Metadata); err != nil {
+		return nil, errors.Wrap(err, "Failed to lookup rule arguments config for query "+queryID)
+	} else if found {
 		if args, ok, err := ruleArgumentsValue(rc); err != nil {
 			return nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
 		} else if ok {
@@ -708,6 +710,9 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	}
 
 	if rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID); found {
+		if err != nil {
+			return nil, false
+		}
 		if rc.Severity != nil {
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
@@ -738,6 +743,41 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	}
 
 	return vulnerability, false
+}
+
+func lookupRuleArgumentsConfig(ctx context.Context, ruleConfigs map[string]config.IacRuleConfig,
+	metadata *model.QueryMetadata) (config.IacRuleConfig, bool, error) {
+	queryID, legacyQueryID := queryIDsFromMetadata(ctx, metadata)
+	if rc, found := lookupRuleConfig(ruleConfigs, queryID, legacyQueryID); found {
+		return rc, true, nil
+	}
+
+	overrides, _ := metadata.Metadata["override"].(map[string]any)
+
+	var matched *config.IacRuleConfig
+	for _, raw := range overrides {
+		override, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		overrideID, err := mapKeyToString(ctx, override, "id", true)
+		if err != nil || overrideID == nil {
+			continue
+		}
+
+		if rc, found := lookupRuleConfig(ruleConfigs, *overrideID, ""); found && rc.Arguments != nil {
+			if matched != nil {
+				return config.IacRuleConfig{}, false, fmt.Errorf("multiple override argument configs match aggregated rule %s", queryID)
+			}
+			matched = &rc
+		}
+	}
+
+	if matched != nil {
+		return *matched, true, nil
+	}
+	return config.IacRuleConfig{}, false, nil
 }
 
 // lookupRuleConfig returns the first matching rule config for the given queryID or legacyQueryID.

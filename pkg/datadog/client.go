@@ -311,18 +311,19 @@ type TestFinding struct {
 
 // RuleOverride contains a set of keyed changes for the rule configuration
 type RuleOverride struct {
-	Key              string  `jsonapi:"primary,iac_rule_override" json:"key"`
-	ID               *string `jsonapi:"attribute" json:"id,omitempty"`
-	ShortDescription *string `jsonapi:"attribute" json:"short_description,omitempty"`
-	Description      *string `jsonapi:"attribute" json:"description,omitempty"`
-	DescriptionId    *string `jsonapi:"attribute" json:"description_id,omitempty"`
-	Platform         *string `jsonapi:"attribute" json:"platform,omitempty"`
-	Severity         *string `jsonapi:"attribute" json:"severity,omitempty"`
-	Category         *string `jsonapi:"attribute" json:"category,omitempty"`
-	Provider         *string `jsonapi:"attribute" json:"provider,omitempty"`
-	Cwe              *string `jsonapi:"attribute" json:"cwe,omitempty"`
-	DocumentationUrl *string `jsonapi:"attribute" json:"documentation_url,omitempty"`
-	ProviderUrl      *string `jsonapi:"attribute" json:"provider_url,omitempty"`
+	Key              string          `jsonapi:"primary,iac_rule_override" json:"key"`
+	ID               *string         `jsonapi:"attribute" json:"id,omitempty"`
+	ShortDescription *string         `jsonapi:"attribute" json:"short_description,omitempty"`
+	Description      *string         `jsonapi:"attribute" json:"description,omitempty"`
+	DescriptionId    *string         `jsonapi:"attribute" json:"description_id,omitempty"`
+	Platform         *string         `jsonapi:"attribute" json:"platform,omitempty"`
+	Severity         *string         `jsonapi:"attribute" json:"severity,omitempty"`
+	Category         *string         `jsonapi:"attribute" json:"category,omitempty"`
+	Provider         *string         `jsonapi:"attribute" json:"provider,omitempty"`
+	Cwe              *string         `jsonapi:"attribute" json:"cwe,omitempty"`
+	DocumentationUrl *string         `jsonapi:"attribute" json:"documentation_url,omitempty"`
+	ProviderUrl      *string         `jsonapi:"attribute" json:"provider_url,omitempty"`
+	Arguments        *map[string]any `jsonapi:"attribute" json:"arguments,omitempty"`
 }
 
 // Framework defines a compliance framework

@@ -230,6 +230,9 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 			setStringPtr(override, "category", ovr.Category)
 			setStringPtr(override, "cloudProvider", ovr.Provider)
 			setStringPtr(override, "cwe", ovr.Cwe)
+			if ovr.Arguments != nil {
+				override["arguments"] = *ovr.Arguments
+			}
 			overrides[ovr.Key] = override
 		}
 		out.Metadata["override"] = overrides
