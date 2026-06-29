@@ -1117,3 +1117,14 @@ func TestInspector_FailedQueriesConcurrentWrites(t *testing.T) {
 	// Sanity: the failures were actually recorded
 	require.NotEmpty(t, ins.GetFailedQueries())
 }
+
+func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
+	ins := &Inspector{
+		externalPathRoots: map[string]bool{"/tmp/remote-module": true},
+	}
+
+	require.True(t, ins.isExternalModulePath("/tmp/remote-module/main.tf"))
+	require.True(t, rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
+	require.False(t, !ins.isExternalModulePath("/tmp/remote-module/main.tf") &&
+		rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
+}

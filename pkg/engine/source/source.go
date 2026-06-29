@@ -103,8 +103,10 @@ func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (strin
 		commonLib["modules"] = commonModules
 	}
 
+	instanceCounts := moduleInstanceCounts(modules)
 	// Iterate through generated module mappings and merge their data.
-	for _, module := range modules {
+	for i := range modules {
+		module := &modules[i]
 		for provider, attrData := range module.AttributesData {
 			providersMap, ok := commonModules[provider].(map[string]any)
 			if !ok || providersMap == nil {
@@ -112,7 +114,10 @@ func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (strin
 				commonModules[provider] = providersMap
 			}
 
-			providersMap[module.Source] = attrData
+			providersMap[moduleEquivalentKey(module.Source, module.Version)] = attrData
+			if instanceCounts[provider+"\x00"+module.Source] <= 1 {
+				providersMap[module.Source] = attrData
+			}
 		}
 	}
 
@@ -121,6 +126,25 @@ func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (strin
 		return "", errors.Wrapf(mergeErr, "failed to merge query input data")
 	}
 	return string(mergedJSON), nil
+}
+
+func moduleEquivalentKey(source, version string) string {
+	if version == "" {
+		return source
+	}
+	return source + "@" + version
+}
+
+func moduleInstanceCounts(modules []tfmodules.ParsedModule) map[string]int {
+	counts := make(map[string]int)
+	for i := range modules {
+		module := &modules[i]
+		for provider := range module.AttributesData {
+			key := provider + "\x00" + module.Source
+			counts[key]++
+		}
+	}
+	return counts
 }
 
 func checkEmptyInputdata(inputData string) bool {

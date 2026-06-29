@@ -307,6 +307,38 @@ module "three" {
 				},
 			},
 		},
+		{
+			name: "same_source_different_versions_are_preserved",
+			content: `
+module "old" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "1.0.0"
+}
+
+module "new" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "2.0.0"
+}
+`,
+			expected: []ParsedModule{
+				{
+					Name:          "old",
+					Source:        "terraform-aws-modules/vpc/aws",
+					Version:       "1.0.0",
+					IsLocal:       false,
+					SourceType:    "registry",
+					RegistryScope: "public",
+				},
+				{
+					Name:          "new",
+					Source:        "terraform-aws-modules/vpc/aws",
+					Version:       "2.0.0",
+					IsLocal:       false,
+					SourceType:    "registry",
+					RegistryScope: "public",
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()
@@ -349,6 +381,17 @@ module "three" {
 			sort.Slice(tt.expected, func(i, j int) bool {
 				return tt.expected[i].Name < tt.expected[j].Name
 			})
+			// Assert FileName/DefLine are set, then clear for DeepEqual against fixtures without those fields.
+			for i, m := range got {
+				if m.FileName == "" {
+					t.Errorf("module %q: FileName should be populated", m.Name)
+				}
+				if m.DefLine == 0 {
+					t.Errorf("module %q: DefLine should be non-zero", m.Name)
+				}
+				got[i].FileName = ""
+				got[i].DefLine = 0
+			}
 			if !reflect.DeepEqual(got, tt.expected) {
 				t.Errorf("unexpected result:\nGot:  %#v\nWant: %#v", got, tt.expected)
 			}
@@ -387,8 +430,11 @@ func TestDetectModuleSourceTypeWithScope(t *testing.T) {
 		{"./module", "local", ""},
 		{"git::./mod", "git", ""},
 		{"registry.terraform.io/org/vpc/aws", "registry", "public"},
+		{"registry.terraform.io/org/vpc/aws//modules/child", "registry", "public"},
 		{"terraform-aws-modules/vpc/aws", "registry", "public"},
+		{"terraform-aws-modules/vpc/aws//modules/child", "registry", "public"},
 		{"company.internal.io/infra/mod/aws", "registry", "private"},
+		{"company.internal.io/infra/mod/aws//modules/child", "registry", "private"},
 		{"https://github.com/org/repo", "unknown", ""},
 		{"data_ref:aws_s3.bucket.id", "data_ref", ""},
 		{"", "unknown", ""},

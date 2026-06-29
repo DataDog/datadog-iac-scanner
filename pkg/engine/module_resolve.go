@@ -7,6 +7,8 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,21 +31,22 @@ import (
 // only after evaluation succeeds (see resolveModulesSafely); a panic during
 // evaluation leaves the scan input untouched rather than removing coverage
 // without a synthetic replacement.
-// instantiateLocalModules returns synthetic docs and matching FileMetadata (call chain for fingerprints).
-// Caller must append the files before Combine/ToMap.
+// Returns synthetic docs and matching FileMetadata (call chain for fingerprints).
+// Caller must append the files before Combine/ToMap. extras lists duplicate callers for post-OPA finding expansion.
 func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
-) ([]model.Document, []*model.FileMetadata) {
-	moduleDocs, syntheticFiles, suppressed, calledDirs, ok := c.resolveModulesSafely(ctx, files)
-	if !ok {
-		return nil, nil
+) ([]model.Document, []*model.FileMetadata, map[string][]extraCallerInfo) {
+	resolver := c.buildRemoteResolver()
+	res := c.resolveModulesSafely(ctx, files, resolver)
+	if !res.ok {
+		return nil, nil, nil
 	}
 	for _, f := range files {
 		if f == nil || !isTerraformFile(f.FilePath) {
 			continue
 		}
-		if suppressed[f.ID] {
+		if res.suppressed[f.ID] {
 			// Resource blocks are re-emitted as instantiated synthetic docs, so
 			// drop only those to avoid double-counting; keep the rest of the body
 			// (variable/output/data/locals) so those rules still fire.
@@ -52,15 +55,99 @@ func (c *Inspector) instantiateLocalModules(
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
-		stripLocalModuleCalls(f.Document, f.FilePath, c.repoPath, calledDirs)
+		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, resolver)
 	}
 	contextLogger := logger.FromContext(ctx)
-	if len(moduleDocs) > 0 {
-		contextLogger.Info().Msgf("Instantiated %d local module resources", len(moduleDocs))
-	} else {
-		contextLogger.Debug().Msg("Instantiated 0 local module resources")
+	totalCallers := len(res.docs)
+	for _, ex := range res.extras {
+		totalCallers += len(ex)
 	}
-	return moduleDocs, syntheticFiles
+	if totalCallers > 0 {
+		contextLogger.Info().Msgf("Instantiated %d module resources (%d unique OPA docs, %d deduplicated callers)",
+			totalCallers, len(res.docs), totalCallers-len(res.docs))
+	} else {
+		contextLogger.Debug().Msg("Instantiated 0 module resources")
+	}
+	return res.docs, res.syntheticFiles, res.extras
+}
+
+func (c *Inspector) buildRemoteResolver() tfeval.RemoteResolver {
+	if len(c.remoteModuleDirs) == 0 {
+		return nil
+	}
+	dirs := c.remoteModuleDirs
+	return func(source, version, callerFile, moduleName string) (string, bool) {
+		root := remoteModuleRoot(callerFile, c.repoPath)
+		return lookupRemoteDir(dirs, root, source, version, moduleName)
+	}
+}
+
+func (c *Inspector) buildModuleMetadataResolver() tfmodules.RemoteResolver {
+	if len(c.remoteModuleDirs) == 0 {
+		return nil
+	}
+	return moduleMetadataResolver{dirs: c.remoteModuleDirs, repoPath: c.repoPath}
+}
+
+type moduleMetadataResolver struct {
+	dirs     map[string]string
+	repoPath string
+}
+
+func (r moduleMetadataResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (string, error) {
+	root := remoteModuleRoot(mod.FileName, r.repoPath)
+	dir, ok := lookupRemoteDir(r.dirs, root, mod.Source, mod.Version, mod.Name)
+	if !ok {
+		return "", &tfmodules.UnresolvedError{Reason: "module was not resolved during pre-scan"}
+	}
+	return dir, nil
+}
+
+func lookupRemoteDir(dirs map[string]string, root, source, version, name string) (string, bool) {
+	if d, ok := dirs[RemoteModuleCallKey(root, source, version, name)]; ok {
+		return d, true
+	}
+	if d, ok := dirs[RemoteModuleCallKey(root, source, "", name)]; ok {
+		return d, true
+	}
+	if d, ok := dirs[RemoteModuleKey(root, source, version)]; ok {
+		return d, true
+	}
+	if version != "" {
+		if d, ok := dirs[RemoteModuleKey(root, source, "")]; ok {
+			return d, true
+		}
+	}
+	return "", false
+}
+
+func RemoteModuleKey(root, source, version string) string {
+	return filepath.Clean(root) + "\x00" + strings.TrimSpace(source) + "\x00" + strings.TrimSpace(version)
+}
+
+func RemoteModuleCallKey(root, source, version, moduleName string) string {
+	return RemoteModuleKey(root, source, version) + "\x00" + strings.TrimSpace(moduleName)
+}
+
+func remoteModuleRoot(fileName, repoPath string) string {
+	if fileName == "" {
+		return filepath.Clean(repoPath)
+	}
+	return filepath.Clean(filepath.Dir(absPath(fileName, repoPath)))
+}
+
+type extraCallerInfo struct {
+	callChain string
+	docID     string
+}
+
+type moduleResolutionResult struct {
+	docs           []model.Document
+	syntheticFiles []*model.FileMetadata
+	suppressed     map[string]bool
+	calledDirs     map[string]bool
+	extras         map[string][]extraCallerInfo
+	ok             bool
 }
 
 // resolveModulesSafely runs the panic-prone module evaluation under a recover so
@@ -70,17 +157,18 @@ func (c *Inspector) instantiateLocalModules(
 func (c *Inspector) resolveModulesSafely(
 	ctx context.Context,
 	files model.FileMetadatas,
-) (moduleDocs []model.Document, syntheticFiles []*model.FileMetadata, suppressed, calledDirs map[string]bool, ok bool) {
+	resolver tfeval.RemoteResolver,
+) (res moduleResolutionResult) {
 	defer func() {
 		if r := recover(); r != nil {
 			contextLogger := logger.FromContext(ctx)
 			contextLogger.Error().Interface("panic", r).Msg(
 				"instantiateLocalModules: recovered from panic; skipping synthetic module docs",
 			)
-			moduleDocs, syntheticFiles, suppressed, calledDirs, ok = nil, nil, nil, nil, false
+			res = moduleResolutionResult{}
 		}
 	}()
-	return resolveModuleDocuments(ctx, files, c.repoPath)
+	return resolveModuleDocuments(ctx, files, c.repoPath, resolver)
 }
 
 // resolveModuleDocuments instantiates all local modules referenced by the
@@ -96,26 +184,34 @@ func resolveModuleDocuments(
 	ctx context.Context,
 	files model.FileMetadatas,
 	repoPath string,
-) (extra []model.Document, syntheticFiles []*model.FileMetadata, suppressed, calledDirs map[string]bool, ok bool) {
+	resolver tfeval.RemoteResolver,
+) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
-		return nil, nil, nil, nil, false
+		return moduleResolutionResult{}
+	}
+
+	contextLogger := logger.FromContext(ctx)
+	evaluator := tfeval.New()
+	if resolver != nil {
+		evaluator.SetRemoteResolver(resolver)
 	}
 
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
 	staticCalledDirs := make(map[string]bool)
 	for dir := range dirsWithTf {
-		for _, called := range tfeval.CalledLocalDirs(dir) {
+		for _, called := range evaluator.CalledModuleDirs(dir) {
 			staticCalledDirs[called] = true
 		}
 	}
 
-	contextLogger := logger.FromContext(ctx)
-	evaluator := tfeval.New()
-	seen := make(map[string]bool)
+	seen := make(map[string]string)
+	extras := make(map[string][]extraCallerInfo)
 	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
+	var extra []model.Document
+	var syntheticFiles []*model.FileMetadata
 
 	for dir := range dirsWithTf {
 		if staticCalledDirs[dir] {
@@ -130,9 +226,7 @@ func resolveModuleDocuments(
 		for d := range childDirs {
 			actualCalledDirs[d] = true
 		}
-		// evalRootDir distinguishes the same child module reached from different roots
-		// (different variable bindings) so synthetic documents are not incorrectly deduped.
-		docs, syn := instantiatedDocs(resources, byAbsPath, repoPath, seen, dir)
+		docs, syn := instantiatedDocs(resources, byAbsPath, repoPath, seen, extras)
 		extra = append(extra, docs...)
 		syntheticFiles = append(syntheticFiles, syn...)
 	}
@@ -140,10 +234,10 @@ func resolveModuleDocuments(
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement.
 	if !rootEvalOK {
-		return nil, nil, nil, nil, false
+		return moduleResolutionResult{}
 	}
 
-	suppressed = make(map[string]bool)
+	suppressed := make(map[string]bool)
 	for dir := range actualCalledDirs {
 		for _, f := range filesByDir[dir] {
 			suppressed[f.ID] = true
@@ -158,7 +252,14 @@ func resolveModuleDocuments(
 		}
 	}
 
-	return extra, syntheticFiles, suppressed, strippedDirs, true
+	return moduleResolutionResult{
+		docs:           extra,
+		syntheticFiles: syntheticFiles,
+		suppressed:     suppressed,
+		calledDirs:     strippedDirs,
+		extras:         extras,
+		ok:             true,
+	}
 }
 
 // instantiatedDocs builds one synthetic doc + FileMetadata per resolved module resource (skips root / out-of-scope).
@@ -167,8 +268,8 @@ func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
 	repoPath string,
-	seen map[string]bool,
-	evalRootDir string,
+	seen map[string]string,
+	extras map[string][]extraCallerInfo,
 ) (docs []model.Document, synthetic []*model.FileMetadata) {
 	for i := range resources {
 		r := &resources[i]
@@ -180,14 +281,17 @@ func instantiatedDocs(
 		if !ok {
 			continue
 		}
-		key := strings.Join([]string{evalRootDir, abs, r.ModuleAddress, r.Type, r.Name, strconv.Itoa(r.DefLine)}, "\x00")
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
 
 		cck := callChainKey(r, repoPath)
 		docID := strings.Join([]string{fm.ID, cck, r.Name}, "\x00")
+
+		// Identical resolved attributes dedupe to one OPA doc; extras get cloned findings after OPA.
+		contentKey := strings.Join([]string{abs, r.ModuleAddress, r.Type, r.Name, strconv.Itoa(r.DefLine), resourceAttrKey(r)}, "\x00")
+		if primaryDocID, duplicate := seen[contentKey]; duplicate {
+			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{callChain: cck, docID: docID})
+			continue
+		}
+		seen[contentKey] = docID
 
 		// Use the bare resource label (not the expanded name like k[0]) so that
 		// Rego rules matching input.document[_].resource.TYPE.NAME find the resource.
@@ -215,6 +319,19 @@ func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *mode
 	return &clone
 }
 
+func resourceAttrKey(r *tfeval.ResolvedResource) string {
+	attrs := tfeval.AttributesToDocument(r)
+	b, err := json.Marshal(attrs)
+	if err != nil {
+		return ""
+	}
+	var h uint64
+	for _, c := range b {
+		h = h*31 + uint64(c)
+	}
+	return fmt.Sprintf("%x", h)
+}
+
 // callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).
 func callChainKey(r *tfeval.ResolvedResource, repoPath string) string {
 	if len(r.CallChain) == 0 {
@@ -228,10 +345,9 @@ func callChainKey(r *tfeval.ResolvedResource, repoPath string) string {
 	return filepath.ToSlash(rel) + "|" + r.ModuleAddress
 }
 
-// stripLocalModuleCalls drops local module blocks whose source dir is in calledDirs.
+// stripModuleCalls drops module blocks whose target dir is in calledDirs.
 // Remote/registry sources stay so existing Rego call-site rules still match.
-// Accepts model.Document or map[string]interface{} for nested module maps.
-func stripLocalModuleCalls(doc model.Document, filePath, repoPath string, calledDirs map[string]bool) {
+func stripModuleCalls(doc model.Document, filePath, repoPath string, calledDirs map[string]bool, resolver tfeval.RemoteResolver) {
 	modules := docAsMap(doc["module"])
 	if modules == nil {
 		return
@@ -246,11 +362,17 @@ func stripLocalModuleCalls(doc model.Document, filePath, repoPath string, called
 		if source == "" {
 			continue
 		}
+		version, _ := call["version"].(string)
 		cleanSource := tfeval.StripGetterPrefix(source)
-		if !tfmodules.LooksLikeLocalModuleSource(cleanSource) {
-			continue
+
+		var resolvedDir string
+		if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
+			resolvedDir = filepath.Clean(filepath.Join(fileDir, cleanSource))
+		} else if resolver != nil {
+			resolvedDir, _ = resolver(source, version, filePath, name)
 		}
-		if calledDirs[filepath.Clean(filepath.Join(fileDir, cleanSource))] {
+
+		if resolvedDir != "" && calledDirs[resolvedDir] {
 			delete(modules, name)
 		}
 	}

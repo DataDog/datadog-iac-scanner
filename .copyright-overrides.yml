@@ -301,3 +301,13 @@ github.com/kr/text: Copyright 2012 Keith Rarick
 github.com/anchore/go-struct-converter: "" # At date, this repository have no copyright
 github.com/santhosh-tekuri/jsonschema/*: Copyright Santhosh Tekuri
 github.com/DataDog/jsonapi: Copyright 2022-Present Datadog, Inc
+
+# Apache-2.0 projects whose LICENSE files contain only boilerplate (no copyright line)
+cel.dev/expr: Copyright 2018 Google LLC
+github.com/cncf/xds/*: Copyright 2020 The CNCF xDS API Working Group Authors
+github.com/envoyproxy/go-control-plane/*: Copyright 2020 Envoy Project Authors
+github.com/envoyproxy/protoc-gen-validate/*: Copyright 2018 Envoy Project
+github.com/go-jose/go-jose/v4: Copyright 2014 Square Inc.
+github.com/go-jose/go-jose/v4/*: Copyright 2014 Square Inc.
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/*: Copyright 2020 Google LLC
+github.com/spiffe/go-spiffe/v2/*: Copyright SPIFFE Project Contributors

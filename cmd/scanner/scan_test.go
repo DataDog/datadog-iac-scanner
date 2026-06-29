@@ -7,8 +7,8 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	"github.com/stretchr/testify/assert"
-	cli "github.com/urfave/cli/v3"
 	"github.com/stretchr/testify/require"
+	cli "github.com/urfave/cli/v3"
 )
 
 func TestApplyPlatformFilters(t *testing.T) {
@@ -157,4 +157,97 @@ func TestValidateQueriesPaths(t *testing.T) {
 			assert.True(t, filepath.IsAbs(got[0]))
 		})
 	}
+}
+
+func TestCollectTerraformFilesAcceptsSingleFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.tf")
+	err := os.WriteFile(file, []byte(`module "x" { source = local.module_source }`), 0o644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(dir, "locals.tf"), []byte(`locals { module_source = "example/x/aws" }`), 0o644)
+	require.NoError(t, err)
+	nested := filepath.Join(dir, "nested")
+	require.NoError(t, os.MkdirAll(nested, 0o755))
+	err = os.WriteFile(filepath.Join(nested, "child.tf"), []byte(`locals { module_source = "wrong/x/aws" }`), 0o644)
+	require.NoError(t, err)
+
+	files, err := collectTerraformFiles([]string{file})
+
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+}
+
+func TestAllowedModuleFilesForSingleFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.tf")
+	err := os.WriteFile(file, []byte(`module "x" { source = "example/x/aws" }`), 0o644)
+	require.NoError(t, err)
+
+	files, err := collectTerraformFiles([]string{file})
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{file: true}, allowedModuleFiles([]string{file}, files))
+}
+
+func TestAllowedModuleFilesIncludesDirectoryInputs(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.tf")
+	other := filepath.Join(dir, "other.tf")
+	err := os.WriteFile(file, []byte(`module "x" { source = "example/x/aws" }`), 0o644)
+	require.NoError(t, err)
+	err = os.WriteFile(other, []byte(`module "y" { source = "example/y/aws" }`), 0o644)
+	require.NoError(t, err)
+
+	files, err := collectTerraformFiles([]string{dir, file})
+	require.NoError(t, err)
+	got := allowedModuleFiles([]string{dir, file}, files)
+
+	require.Equal(t, true, got[file])
+	require.Equal(t, true, got[other])
+}
+
+func TestModuleTuningFlagsHidden(t *testing.T) {
+	for _, name := range []string{"module-fetch-timeout", "max-module-bytes-total"} {
+		var found *cli.IntFlag
+		for _, flag := range scanAction.Flags {
+			if intFlag, ok := flag.(*cli.IntFlag); ok && intFlag.Name == name {
+				found = intFlag
+				break
+			}
+		}
+		require.NotNil(t, found, "flag %q should be defined", name)
+		require.True(t, found.Hidden, "flag %q should be hidden", name)
+	}
+
+	var allowlist *cli.StringSliceFlag
+	for _, flag := range scanAction.Flags {
+		if sliceFlag, ok := flag.(*cli.StringSliceFlag); ok && sliceFlag.Name == "module-host-allowlist" {
+			allowlist = sliceFlag
+			break
+		}
+	}
+	require.NotNil(t, allowlist)
+	require.True(t, allowlist.Hidden)
+
+	var maxDepth *cli.IntFlag
+	for _, flag := range scanAction.Flags {
+		if intFlag, ok := flag.(*cli.IntFlag); ok && intFlag.Name == "module-max-depth" {
+			maxDepth = intFlag
+			break
+		}
+	}
+	require.NotNil(t, maxDepth)
+	require.False(t, maxDepth.Hidden)
+	require.Contains(t, maxDepth.Usage, "traversing nested module calls")
+	require.NotContains(t, maxDepth.Usage, "disables remote modules")
+
+	var noRemote *cli.BoolFlag
+	for _, flag := range scanAction.Flags {
+		if boolFlag, ok := flag.(*cli.BoolFlag); ok && boolFlag.Name == "no-remote-modules" {
+			noRemote = boolFlag
+			break
+		}
+	}
+	require.NotNil(t, noRemote)
+	require.False(t, noRemote.Hidden)
+	require.Contains(t, noRemote.Usage, "network module fetches")
 }

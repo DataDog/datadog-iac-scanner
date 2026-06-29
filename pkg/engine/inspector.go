@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime/debug"
 	"strings"
@@ -113,6 +115,24 @@ type Inspector struct {
 	useOldSeverities     bool
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
+	remoteModuleDirs     map[string]string
+	externalPathRoots    map[string]bool
+}
+
+func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]string) {
+	c.remoteModuleDirs = sourceToDir
+}
+
+func (c *Inspector) SetExternalModulePaths(paths []string) {
+	if len(paths) == 0 {
+		c.externalPathRoots = nil
+		return
+	}
+	roots := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		roots[filepath.Clean(p)] = true
+	}
+	c.externalPathRoots = roots
 }
 
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
@@ -289,7 +309,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Debug().Msg("engine.Inspect()")
 
 	// Local modules: append synthetic file rows (ids match docs) for attribution and fingerprints.
-	moduleDocs, syntheticFiles := c.instantiateLocalModules(ctx, files)
+	moduleDocs, syntheticFiles, moduleExtras := c.instantiateLocalModules(ctx, files)
 	files = append(files, syntheticFiles...)
 
 	// Must run before Combine: instantiateLocalModules clears suppressed file bodies in place.
@@ -306,7 +326,10 @@ func (c *Inspector) Inspect(
 
 	// Step 2: Enrich modules with parsed variables
 	rootDir := c.repoPath
-	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, parsedModules, rootDir)
+	enrichedModules, unresolvedModules := tfmodules.ParseAllModuleVariables(ctx, parsedModules, rootDir, c.buildModuleMetadataResolver())
+	if len(unresolvedModules) > 0 {
+		contextLogger.Debug().Msgf("%d module(s) could not be resolved and will be skipped", len(unresolvedModules))
+	}
 
 	// Convert combined documents directly to OPA AST, skipping the
 	// json.Marshal -> UnmarshalJSON round-trip to avoid intermediate copies.
@@ -384,7 +407,28 @@ loop:
 	for vulnerability, number := range moduleVulns {
 		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
 	}
+
+	vulnerabilities = expandModuleFindings(vulnerabilities, moduleExtras)
+
 	return vulnerabilities, nil
+}
+
+// expandModuleFindings clones findings for deduplicated module callers so each gets its own fingerprint.
+func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo) []model.Vulnerability {
+	if len(extras) == 0 {
+		return vulns
+	}
+	expanded := make([]model.Vulnerability, 0, len(vulns))
+	for i := range vulns {
+		expanded = append(expanded, vulns[i])
+		for _, ex := range extras[vulns[i].FileID] {
+			vCopy := vulns[i]
+			vCopy.ModuleCallChain = ex.callChain
+			vCopy.FileID = ex.docID
+			expanded = append(expanded, vCopy)
+		}
+	}
+	return expanded
 }
 
 // nolint:gocritic
@@ -649,7 +693,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		if rc.Severity != nil {
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
-		if rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+		if !c.isExternalModulePath(file.FilePath) && rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
 			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
 				file.FilePath, vulnerability.QueryID)
 			return nil, false
@@ -711,6 +755,16 @@ func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
 		}
 	}
 	return true
+}
+
+func (c *Inspector) isExternalModulePath(filePath string) bool {
+	for root := range c.externalPathRoots {
+		rel, err := filepath.Rel(root, filepath.Clean(filePath))
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // markSuppressed records the first suppression decision; later gates are

@@ -34,6 +34,7 @@ func main() {
 			customAction,
 			listPlatformsAction,
 			listQueriesAction,
+			listModulesAction,
 			showConfigAction,
 			testRulesAction,
 		},

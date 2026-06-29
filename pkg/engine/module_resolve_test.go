@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
 // docFileID is the prefix of synthetic doc ids: fileID\x00callChain\x00name.
@@ -36,6 +37,88 @@ func writeFile(t *testing.T, dir, name, content string) string {
 
 func fileMeta(id, path string) *model.FileMetadata {
 	return &model.FileMetadata{ID: id, FilePath: path, Document: model.Document{}}
+}
+
+func TestBuildRemoteResolverUsesVersion(t *testing.T) {
+	repoPath := t.TempDir()
+	callerFile := filepath.Join(repoPath, "stack", "main.tf")
+	root := filepath.Dir(callerFile)
+	inspector := &Inspector{
+		repoPath: repoPath,
+		remoteModuleDirs: map[string]string{
+			RemoteModuleKey(root, "terraform-aws-modules/vpc/aws", "1.0.0"):                             "/cache/v1",
+			RemoteModuleKey(root, "terraform-aws-modules/vpc/aws", "2.0.0"):                             "/cache/v2",
+			RemoteModuleKey(filepath.Join(repoPath, "other"), "terraform-aws-modules/vpc/aws", "2.0.0"): "/cache/other",
+		},
+	}
+
+	resolver := inspector.buildRemoteResolver()
+	got, ok := resolver("terraform-aws-modules/vpc/aws", "2.0.0", callerFile, "vpc")
+	if !ok {
+		t.Fatal("expected resolver hit")
+	}
+	if got != "/cache/v2" {
+		t.Fatalf("resolved dir = %q, want /cache/v2", got)
+	}
+
+	metaResolver := inspector.buildModuleMetadataResolver()
+	got, err := metaResolver.Resolve(context.Background(), &tfmodules.ParsedModule{
+		Source:   "terraform-aws-modules/vpc/aws",
+		Version:  "1.0.0",
+		FileName: callerFile,
+	})
+	if err != nil {
+		t.Fatalf("metadata Resolve: %v", err)
+	}
+	if got != "/cache/v1" {
+		t.Fatalf("metadata resolved dir = %q, want /cache/v1", got)
+	}
+}
+
+func TestBuildRemoteResolverPrefersCallSpecificMapping(t *testing.T) {
+	repoPath := t.TempDir()
+	callerFile := filepath.Join(repoPath, "main.tf")
+	inspector := &Inspector{
+		repoPath: repoPath,
+		remoteModuleDirs: map[string]string{
+			RemoteModuleKey(repoPath, "same/source/aws", "1.0.0"):             "/cache/generic",
+			RemoteModuleCallKey(repoPath, "same/source/aws", "1.0.0", "call"): "/cache/call",
+		},
+	}
+
+	resolver := inspector.buildRemoteResolver()
+	got, ok := resolver("same/source/aws", "1.0.0", callerFile, "call")
+	if !ok {
+		t.Fatal("expected resolver hit")
+	}
+	if got != "/cache/call" {
+		t.Fatalf("resolved dir = %q, want /cache/call", got)
+	}
+}
+
+func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
+	root := t.TempDir()
+	rootFile := filepath.Join(root, "main.tf")
+	doc := model.Document{
+		"module": map[string]interface{}{
+			"remote": map[string]interface{}{
+				"source":  "terraform-aws-modules/vpc/aws",
+				"version": "1.0.0",
+			},
+		},
+	}
+	calledDirs := map[string]bool{"/cache/vpc": true}
+
+	stripModuleCalls(doc, rootFile, root, calledDirs, func(source, version, callerFile, moduleName string) (string, bool) {
+		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
+			return "/cache/vpc", true
+		}
+		return "", false
+	})
+
+	if _, ok := doc["module"]; ok {
+		t.Fatalf("expected resolved remote module call to be stripped")
+	}
 }
 
 func TestResolveModuleDocuments_InstantiatesAndSuppresses(t *testing.T) {
@@ -65,7 +148,8 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	extra, synthetic, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
+	r1 := resolveModuleDocuments(context.Background(), files, root, nil)
+	extra, synthetic, suppressed, ok := r1.docs, r1.syntheticFiles, r1.suppressed, r1.ok
 	if !ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -137,7 +221,8 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", filepath.Join("modules", "bucket", "main.tf")),
 	}
 
-	extra, _, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
+	r2 := resolveModuleDocuments(context.Background(), files, root, nil)
+	extra, suppressed, ok := r2.docs, r2.suppressed, r2.ok
 	if !ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -194,7 +279,8 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	extra, synthetic, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
+	r3 := resolveModuleDocuments(context.Background(), files, root, nil)
+	extra, synthetic, suppressed, ok := r3.docs, r3.syntheticFiles, r3.suppressed, r3.ok
 	if !ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -253,7 +339,8 @@ module "bucket" {
 		fileMeta("root-id", filepath.Join("stack", "main.tf")),
 	}
 
-	extra, _, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
+	r4 := resolveModuleDocuments(context.Background(), files, root, nil)
+	extra, suppressed, ok := r4.docs, r4.suppressed, r4.ok
 	if ok {
 		t.Fatalf("resolveModuleDocuments ok = true, want false when all roots fail")
 	}
@@ -280,7 +367,8 @@ resource "aws_s3_bucket" "this" {
 
 	files := model.FileMetadatas{fileMeta("orphan-id", orphanFile)}
 
-	extra, _, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
+	r5 := resolveModuleDocuments(context.Background(), files, root, nil)
+	extra, suppressed, ok := r5.docs, r5.suppressed, r5.ok
 	if !ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
@@ -323,7 +411,8 @@ resource "aws_s3_bucket" "leaf" {
 		fileMeta("leaf-id", leafFile),
 	}
 
-	extra, _, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
+	r6 := resolveModuleDocuments(context.Background(), files, root, nil)
+	extra, suppressed, ok := r6.docs, r6.suppressed, r6.ok
 	if !ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -377,7 +466,7 @@ module "bucket" {
 	ins := newTestInspector(t, inspectorOpts{
 		repoPath: root,
 	})
-	if docs, synthetic := ins.instantiateLocalModules(context.Background(), files); docs != nil || synthetic != nil {
+	if docs, synthetic, _ := ins.instantiateLocalModules(context.Background(), files); docs != nil || synthetic != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v), want nil when resolve aborts", docs, synthetic)
 	}
 	if _, has := rootFM.Document["module"]; !has {
