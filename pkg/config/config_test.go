@@ -64,13 +64,13 @@ func TestUnparseConfig(t *testing.T) {
 	assert.Equal(t, cfgFile, string(b))
 }
 
-func TestUnparseConfigV13Fields(t *testing.T) {
+func TestUnparseConfigV14Fields(t *testing.T) {
 	t.Run("config with only-platforms serializes field", func(t *testing.T) {
 		cfg := parsedCfgFile
 		cfg.OnlyPlatforms = []string{"Terraform"}
 		b, err := UnparseConfig(&cfg)
 		require.NoError(t, err)
-		assert.Contains(t, string(b), "schema-version: v1.3")
+		assert.Contains(t, string(b), "schema-version: v1.4")
 		assert.Contains(t, string(b), "only-platforms:")
 	})
 
@@ -95,8 +95,8 @@ func TestUnparseConfigV13Fields(t *testing.T) {
 	})
 }
 
-func TestParseUnparseRoundTripV13(t *testing.T) {
-	input := `schema-version: v1.3
+func TestParseUnparseRoundTripV14(t *testing.T) {
+	input := `schema-version: v1.4
 iac:
   ignore-rules:
     - query1
@@ -111,6 +111,9 @@ iac:
       ignore-paths:
         - test/
       severity: low
+      arguments:
+        required_tags:
+          - Env
 `
 	cfg, err := ParseConfig([]byte(input))
 	require.NoError(t, err)
@@ -122,5 +125,7 @@ iac:
 	rc := cfg.RuleConfigs["terraform-aws-s3-unencrypted"]
 	assert.Equal(t, []string{"test/"}, rc.IgnorePaths)
 	require.NotNil(t, rc.Severity)
-	assert.Equal(t, "low", *rc.Severity)
+	assert.Equal(t, "low", *rc.Severity)	
+	require.NotNil(t, rc.Arguments)
+	assert.Equal(t, []interface {}([]interface {}{"Env"}), rc.Arguments["required_tags"])
 }
