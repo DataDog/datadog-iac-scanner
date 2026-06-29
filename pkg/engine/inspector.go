@@ -343,7 +343,23 @@ func (c *Inspector) Inspect(
 
 	// Pre-build one inmem.Store per platform so LoadQuery does not re-parse the
 	// same payload for every PrepareForEval call.
-	baseStores := precomputeBaseStores(c.QueryLoader.precomputeBaseInputData(ctx, enrichedModules))
+	baseInputData := c.QueryLoader.precomputeBaseInputData(ctx, enrichedModules)
+
+	// Compute the ansible task index once and inject it into the ansible store
+	// so the ~200 ansible rules read it instead of rebuilding it per query.
+	if _, ok := c.QueryLoader.parsedGeneric[ansiblePlatform]; ok {
+		if fragment, err := c.QueryLoader.precomputeAnsibleTasks(ctx, astPayload); err != nil {
+			contextLogger.Warn().Err(err).Msg("failed to precompute ansible tasks; rules will compute them per query")
+		} else if fragment != "" {
+			if merged, mErr := source.MergeInputData(baseInputData[ansiblePlatform], fragment); mErr == nil {
+				baseInputData[ansiblePlatform] = merged
+			} else {
+				contextLogger.Warn().Err(mErr).Msg("failed to merge precomputed ansible tasks into base input data")
+			}
+		}
+	}
+
+	baseStores := precomputeBaseStores(baseInputData)
 
 	// Compute the file map once and share it (read-only) across all workers
 	filesMap := files.ToMap()
@@ -848,6 +864,55 @@ func (q *QueryLoader) precomputeBaseInputData(ctx context.Context,
 		base[platform] = data
 	}
 	return base
+}
+
+// ansiblePlatform is the platform key used for ansible queries and libraries.
+const ansiblePlatform = "ansible"
+
+// precomputedAnsibleTasksKey is the input-data document key under which the
+// engine injects the once-per-scan ansible task index. The generic.ansible
+// library reads data.precomputed_ansible_tasks and falls back to computing the
+// tasks itself when the key is absent.
+const precomputedAnsibleTasksKey = "precomputed_ansible_tasks"
+
+// precomputeAnsibleTasks evaluates the generic.ansible task builder a single
+// time against the payload and returns the result as an input-data JSON
+// fragment. Each ansible rule is evaluated as an independent OPA query, so
+// without this every ansible rule rebuilds the same walk-heavy task structure;
+// injecting it once lets all rules read it from the store instead. An empty
+// string means there was nothing to inject (rules fall back to computing it).
+func (q *QueryLoader) precomputeAnsibleTasks(ctx context.Context, astPayload ast.Value) (string, error) {
+	lib, ok := q.parsedGeneric[ansiblePlatform]
+	if !ok || q.parsedCommon == nil {
+		return "", nil
+	}
+
+	prepared, err := rego.New(
+		rego.Query("data.generic.ansible.TasksPerDocument"),
+		rego.SetRegoVersion(ast.RegoV1),
+		rego.ParsedModule(q.parsedCommon),
+		rego.ParsedModule(lib),
+		rego.UnsafeBuiltins(unsafeRegoFunctions),
+	).PrepareForEval(ctx)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to prepare ansible task precompute")
+	}
+
+	results, err := prepared.Eval(ctx, rego.EvalParsedInput(astPayload))
+	if err != nil {
+		return "", errors.Wrap(err, "failed to evaluate ansible task precompute")
+	}
+	if len(results) == 0 || len(results[0].Expressions) == 0 {
+		return "", nil
+	}
+
+	fragment, err := json.Marshal(map[string]interface{}{
+		precomputedAnsibleTasksKey: results[0].Expressions[0].Value,
+	})
+	if err != nil {
+		return "", errors.Wrap(err, "failed to marshal precomputed ansible tasks")
+	}
+	return string(fragment), nil
 }
 
 // precomputeBaseStores builds one inmem.Store per platform from the already-merged

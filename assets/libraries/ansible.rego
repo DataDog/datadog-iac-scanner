@@ -2,8 +2,16 @@ package generic.ansible
 
 import rego.v1
 
-# Global variable with all tasks in input
-tasks := TasksPerDocument
+# Global variable with all tasks in input.
+#
+# The engine precomputes this object once per scan and injects it as
+# data.precomputed_ansible_tasks, so the walk-heavy task flattening is not
+# rebuilt for every ansible rule. When the precomputed value is absent (rule
+# tooling, or a query carrying custom input data) the tasks are derived on
+# demand from the document set, yielding identical results.
+tasks := data.precomputed_ansible_tasks if {
+	data.precomputed_ansible_tasks
+} else := TasksPerDocument
 
 # Builds an object that stores all tasks for each document id
 TasksPerDocument[id] := result if {
