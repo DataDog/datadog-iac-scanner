@@ -91,6 +91,22 @@ var scanAction = &cli.Command{
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
 			Value:  false,
 		},
+		&cli.StringSliceFlag{
+			Name:    "queries-path",
+			Aliases: []string{"q"},
+			Usage:   "a list of query directories paths",
+		},
+
+		// NOTE: --x-parallelparsing flag disabled due to pre-existing race conditions
+		// in concurrent query workers (SetupLogs shared state write, docker detector
+		// shallow slice copy) that cause non-deterministic violation counts.
+		// See K9VULN-13746 for the follow-up to fix and re-enable.
+		// &cli.BoolFlag{
+		// 	Name:   "x-parallelparsing",
+		// 	Hidden: true,
+		// 	Usage:  "(experimental, will be removed soon) parse files in parallel",
+		// 	Value:  false,
+		// },
 	},
 	Action: runScan,
 }
@@ -99,6 +115,24 @@ const (
 	filePerms = 0644
 	dirPerms  = 0755
 )
+
+func validateQueriesPaths(paths []string) ([]string, error) {
+	absolutePaths, err := getAbsolutePaths(paths)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, path := range absolutePaths {
+		info, err := os.Stat(path) // follows symlink
+		if err != nil {
+			return nil, fmt.Errorf("invalid queries path %q", path)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("queries path %q is not a directory", path)
+		}
+	}
+	return absolutePaths, nil
+}
 
 // nolint:gocyclo
 func runScan(ctx context.Context, c *cli.Command) error {
@@ -173,26 +207,38 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		cfg.RuleConfigs[ruleID] = rc
 	}
 
+	queriesPath := c.StringSlice("queries-path")
+	queriesPath, err = validateQueriesPaths(queriesPath)
+	if err != nil {
+		return errorWithExitCode(fmt.Errorf("path parsing exited with error: %q", err), constants.InvalidConfigErrorCode)
+	}
+
+	changedDefaultQueryPath := len(queriesPath) > 0
+	if !changedDefaultQueryPath {
+		queriesPath = []string{"./assets/queries"}
+	}
+
 	params := &scan.Parameters{
-		CloudProvider:     []string{""},
-		OutputPath:        outputPath,
-		OutputName:        c.String("output-name"),
-		PreviewLines:      3,
-		RepoPath:          repoDir,
-		Path:              inputPaths,
-		QueriesPath:       []string{"./assets/queries"},
-		LibrariesPath:     "./assets/libraries",
-		ReportFormats:     []string{"sarif"},
-		Platform:          selectPlatforms(c.StringSlice("type")),
-		DisableSecrets:    true,
-		ScanID:            "console",
-		MaxFileSizeFlag:   c.Int("max-file-size"),
-		MaxResolverDepth:  c.Int("max-resolver-depth"),
-		PayloadPath:       payloadPath,
-		SCIInfo:           model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
-		FlagEvaluator:     getFeatureFlagEvaluator(c),
-		Config:            *cfg,
-		ShouldScanTfPlans: c.Bool("x-terraform-plan"),
+		CloudProvider:           []string{""},
+		OutputPath:              outputPath,
+		OutputName:              c.String("output-name"),
+		PreviewLines:            3,
+		RepoPath:                repoDir,
+		Path:                    inputPaths,
+		QueriesPath:             queriesPath,
+		ChangedDefaultQueryPath: changedDefaultQueryPath,
+		LibrariesPath:           "./assets/libraries",
+		ReportFormats:           []string{"sarif"},
+		Platform:                selectPlatforms(c.StringSlice("type")),
+		DisableSecrets:          true,
+		ScanID:                  "console",
+		MaxFileSizeFlag:         c.Int("max-file-size"),
+		MaxResolverDepth:        c.Int("max-resolver-depth"),
+		PayloadPath:             payloadPath,
+		SCIInfo:                 model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
+		FlagEvaluator:           getFeatureFlagEvaluator(c),
+		Config:                  *cfg,
+		ShouldScanTfPlans:       c.Bool("x-terraform-plan"),
 	}
 
 	metadata, err := console.ExecuteScan(ctx, params)

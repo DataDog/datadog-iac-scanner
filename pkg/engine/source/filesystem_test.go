@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -568,6 +569,113 @@ func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 			}
 			result := checkQueryInclude(ctx, tt.metadata, queryParams)
 			assert.Equal(t, tt.expectedResult, result, tt.description)
+		})
+	}
+}
+
+func TestFilesystemSource_localQueryDirs(t *testing.T) {
+	ctx := context.Background()
+
+	normalizePaths := func(t *testing.T, paths []string) []string {
+		t.Helper()
+		out := make([]string, 0, len(paths))
+		for _, path := range paths {
+			evaluated, err := filepath.EvalSymlinks(path)
+			require.NoError(t, err)
+			out = append(out, evaluated)
+		}
+		return out
+	}
+
+	createQueryDir := func(t *testing.T, root, name string) string {
+		t.Helper()
+
+		queryDir := filepath.Join(root, name)
+		require.NoError(t, os.MkdirAll(queryDir, 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(queryDir, QueryFileName), []byte("package test"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(queryDir, MetadataFileName), []byte(`{"id":"test","platform":"terraform"}`), 0o600))
+
+		return queryDir
+	}
+
+	tests := []struct {
+		name string
+		set  func(t *testing.T, root string) (source []string, want []string, err error)
+	}{
+		{
+			name: "valid dir",
+			set: func(t *testing.T, root string) ([]string, []string, error) {
+				queryDir := createQueryDir(t, root, "valid_query")
+				return []string{root}, []string{queryDir}, nil
+			},
+		},
+		{
+			name: "non-existent path",
+			set: func(t *testing.T, root string) ([]string, []string, error) {
+				return []string{filepath.Join(root, "missing")}, nil, errors.New("unable to evaluate path")
+			},
+		},
+		{
+			name: "path is a file",
+			set: func(t *testing.T, root string) ([]string, []string, error) {
+				filePath := filepath.Join(root, "queries.rego")
+				require.NoError(t, os.WriteFile(filePath, []byte("package test"), 0o600))
+				return []string{filePath}, nil, errors.New("no valid query directories found")
+			},
+		},
+		{
+			name: "symlink to dir",
+			set: func(t *testing.T, root string) ([]string, []string, error) {
+				target := filepath.Join(root, "target")
+				queryDir := createQueryDir(t, target, "linked_query")
+
+				link := filepath.Join(root, "queries-link")
+				require.NoError(t, os.Symlink(target, link))
+
+				return []string{link}, []string{queryDir}, nil
+			},
+		},
+		{
+			name: "recursive search",
+			set: func(t *testing.T, root string) ([]string, []string, error) {
+				recdir := filepath.Join(root, "recursive")
+				require.NoError(t, os.MkdirAll(recdir, 0o700))
+				queryDir := createQueryDir(t, recdir, "recursive_query")
+				queryDir2 := createQueryDir(t, recdir, "recursive_query2")
+				queryDir3 := createQueryDir(t, recdir, "recursive_query3")
+
+				return []string{root}, []string{queryDir, queryDir2, queryDir3}, nil
+			},
+		},
+		{
+			name: "error in one of multiple paths",
+			set: func(t *testing.T, root string) ([]string, []string, error) {
+				createQueryDir(t, root, "not_returned_valid_query_dir")
+				return []string{root, "non_existent_path"}, nil, errors.New("unable to evaluate path")
+			},
+		},
+		{
+			name: "no valid query directories",
+			set: func(t *testing.T, root string) ([]string, []string, error) {
+				return []string{root}, nil, errors.New("no valid query directories found")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			src, want, wantErr := tt.set(t, root)
+
+			source := NewFilesystemSource(ctx, src, []string{""}, []string{""}, "", true)
+
+			got, err := source.localQueryDirs(ctx)
+			assert.ElementsMatch(t, normalizePaths(t, want), got)
+			if wantErr != nil {
+				require.ErrorContains(t, err, wantErr.Error())
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
