@@ -221,8 +221,12 @@ func instantiatedDocs(
 		cck := callChainKey(r, repoPath)
 		docID := strings.Join([]string{fm.ID, cck, r.Name}, "\x00")
 
-		// Dedupe by resource content: identical resolved attributes from different callers collapse
-		// to a single OPA doc (saving eval cost on quadratic rules); findings are cloned after eval.
+		// Dedupe by resource content: identical resolved attributes reached through different
+		// call chains collapse to a single OPA doc (saving eval cost on quadratic rules); findings
+		// are cloned per caller after eval. The key includes ModuleAddress, so distinct module
+		// instances within one configuration (module.a vs module.b, count/for_each indices) always
+		// get distinct keys and are never merged. Cardinality is therefore preserved within a
+		// configuration; only the same module resource re-reached from another root collapses.
 		contentKey := strings.Join([]string{abs, r.ModuleAddress, r.Type, r.Name, strconv.Itoa(r.DefLine), resourceAttrKey(r)}, "\x00")
 		if primaryDocID, duplicate := seen[contentKey]; duplicate {
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{callChain: cck, docID: docID})

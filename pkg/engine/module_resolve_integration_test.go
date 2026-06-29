@@ -198,6 +198,94 @@ resource "aws_s3_bucket" "this" {
 	require.Len(t, chains, 2, "the two callers must produce distinct module call chains")
 }
 
+// aggregateCountRule fires once when two or more aws_s3_bucket resources are
+// present in the document set. It mirrors a cardinality/aggregate rule whose
+// result depends on how many matching resources exist, the class of rule the
+// content-dedup must not silently break.
+const aggregateCountRule = `package datadog
+
+DatadogPolicy contains result if {
+	buckets := [name | input.document[_].resource.aws_s3_bucket[name]]
+	count(buckets) >= 2
+
+	result := {
+		"documentId": input.document[0].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": "multiple",
+		"searchKey": "aws_s3_bucket",
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "at most one bucket",
+		"keyActualValue": "two or more buckets",
+	}
+}
+`
+
+// TestInspect_AggregateRuleCardinalityPreservedWithinConfig verifies that an
+// aggregate rule that counts resources still sees every distinct module instance
+// within a single configuration. Two module calls in one root resolve to the same
+// attributes but distinct module addresses, so content-dedup keeps both documents
+// and the count-based rule fires, no cardinality is lost.
+func TestInspect_AggregateRuleCardinalityPreservedWithinConfig(t *testing.T) {
+	root := t.TempDir()
+
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "bucket")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+
+	rootPath := filepath.Join(rootDir, "main.tf")
+	modPath := filepath.Join(modDir, "main.tf")
+
+	// Two distinct module instances with identical inputs in the same root.
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+module "bucket_a" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+
+module "bucket_b" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(modPath, []byte(`
+variable "acl" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  acl = var.acl
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootPath)...)
+	files = append(files, parseTerraform(t, modPath)...)
+
+	queries := []model.QueryMetadata{{
+		Query:       "aggregate_count_rule",
+		Content:     aggregateCountRule,
+		InputData:   "{}",
+		Platform:    "terraform",
+		Metadata:    map[string]interface{}{"id": "aggregate-count-rule"},
+		Aggregation: 1,
+	}}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	// Both module instances survive dedup (distinct module addresses), so the
+	// count-based rule sees two buckets and fires.
+	require.Len(t, vulns, 1, "aggregate rule must see both bucket instances and fire")
+}
+
 // variableTypeRule fires on a variable declaration that has no type, mirroring
 // real rules that match non-resource blocks (variable/output/data/locals).
 const variableTypeRule = `package datadog
