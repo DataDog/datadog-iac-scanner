@@ -40,9 +40,11 @@ var serveAction = &cli.Command{
 			Usage: "maximum concurrent /analyze scans before returning 503 (must be > 0)",
 		},
 		&cli.BoolFlag{
-			Name:  "use-rules-cache",
+			Name:   "x-use-rules-cache",
+			Hidden: true,
+			Usage: "(experimental, will be removed soon) cache compiled rules across requests so " +
+				"warm scans skip recompilation (faster repeat scans at the cost of retained memory)",
 			Value: false,
-			Usage: "accepted for compatibility with the static-analyzer server contract; currently a no-op",
 		},
 		&cli.StringFlag{
 			Name:  "libraries-path",
@@ -53,6 +55,20 @@ var serveAction = &cli.Command{
 			Name:  "queries-path",
 			Value: "./assets/queries",
 			Usage: "path to the default rule corpus (used only when a request omits its own rules)",
+		},
+		&cli.BoolFlag{
+			Name:   "x-disable-rule-isolation",
+			Hidden: true,
+			Usage: "(experimental, will be removed soon) co-compile all rules and libraries into a " +
+				"shared compiler instead of isolating each rule; greatly reduces memory at the cost " +
+				"of per-rule compile-failure isolation",
+			Value: false,
+		},
+		&cli.BoolFlag{
+			Name:   "x-parallelparsing",
+			Hidden: true,
+			Usage:  "(experimental, will be removed soon) parse pushed files in parallel across CPUs",
+			Value:  false,
 		},
 	},
 	Action: serve,
@@ -70,6 +86,9 @@ func serve(ctx context.Context, c *cli.Command) error {
 		LibrariesPath:        c.String("libraries-path"),
 		QueriesPath:          c.String("queries-path"),
 		MaxConcurrentAnalyze: c.Int("max-concurrent-analyze"),
+		DisableRuleIsolation: c.Bool("x-disable-rule-isolation"),
+		ParallelParsing:      c.Bool("x-parallelparsing"),
+		UseRulesCache:        c.Bool("x-use-rules-cache"),
 	}
 	return server.New(&cfg).ListenAndServe(ctx)
 }

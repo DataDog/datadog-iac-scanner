@@ -78,6 +78,18 @@ type Config struct {
 	// MaxConcurrentAnalyze caps simultaneous /analyze scans. <= 0 applies
 	// defaultMaxConcurrentAnalyze.
 	MaxConcurrentAnalyze int
+	// DisableRuleIsolation opts into the engine's shared-compiler mode (rules +
+	// libraries co-compiled once) instead of isolating each rule. Lowers memory
+	// substantially at the cost of per-rule compile-failure isolation.
+	DisableRuleIsolation bool
+	// UseRulesCache enables the process-global compiled-query cache so repeated
+	// /analyze scans reuse compiled rules (warm scans skip recompilation, at the
+	// cost of retained memory). Maps to the --use-rules-cache server flag.
+	UseRulesCache bool
+	// ParallelParsing fans the per-file parse across CPUs for pushed content.
+	// Measured ~26% faster wall-clock on a 950-file push; same CPU total. Maps
+	// to the experimental --x-parallelparsing server flag.
+	ParallelParsing bool
 }
 
 // Server is the IaC analysis HTTP server.

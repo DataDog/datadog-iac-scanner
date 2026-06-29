@@ -8,10 +8,12 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"maps"
 	"reflect"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -31,6 +33,7 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/cespare/xxhash/v2"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -81,6 +84,67 @@ type QueryLoader struct {
 	parsedCommon *ast.Module
 	// parsedGeneric holds the per-platform Generic library module, also parsed once.
 	parsedGeneric map[string]*ast.Module
+	// platformKeyBases holds, per platform, a precomputed hash of the common and
+	// platform library code + input data. It is the library-dependent part of a
+	// compiled-query cache key, hashed once at load time instead of hashing
+	// ~82 KB of library text on every LoadQuery call. See preparedCacheKey.
+	platformKeyBases map[string]uint64
+}
+
+// preparedQueryCache caches compiled *rego.PreparedEvalQuery values across scans
+// and across the whole process, keyed by preparedCacheKey. A compiled query is
+// safe to share: PrepareForEval/Eval open only read-only transactions on the
+// store, the *PreparedEvalQuery is immutable after construction, and Eval is
+// safe for concurrent use.
+var preparedQueryCache sync.Map // map[uint64]*rego.PreparedEvalQuery
+
+// hashFields computes a fast, non-cryptographic 64-bit hash of the given strings
+// joined by a NUL separator. The NUL separator keeps the field boundaries
+// unambiguous (so e.g. ("a","bc") and ("ab","c") hash differently).
+func hashFields(fields ...string) uint64 {
+	var h xxhash.Digest
+	h.Reset()
+	for i, f := range fields {
+		if i > 0 {
+			_, _ = h.WriteString("\x00")
+		}
+		_, _ = h.WriteString(f)
+	}
+	return h.Sum64()
+}
+
+// preparedCacheKey builds the cache key for a compiled query from everything its
+// compiled form depends on: platform, query name, query content, the library
+// hash base (library Rego *code*), and the base-store data hash (the merged
+// library + module input *data* the store bakes in). Two queries that produce
+// the same key compile to an interchangeable *PreparedEvalQuery.
+//
+// The two precomputed uint64 bases are mixed in as raw 8-byte words rather than
+// formatted to strings, so this allocates nothing beyond the digest itself.
+func preparedCacheKey(query *model.QueryMetadata, libBase, baseDataHash uint64) uint64 {
+	var h xxhash.Digest
+	h.Reset()
+	_, _ = h.WriteString(query.Platform)
+	_, _ = h.WriteString("\x00")
+	_, _ = h.WriteString(query.Query)
+	_, _ = h.WriteString("\x00")
+	_, _ = h.WriteString(query.Content)
+	var buf [16]byte
+	binary.LittleEndian.PutUint64(buf[0:8], libBase)
+	binary.LittleEndian.PutUint64(buf[8:16], baseDataHash)
+	_, _ = h.Write(buf[:])
+	return h.Sum64()
+}
+
+// hashBaseInputData computes a fast hash of each platform's merged base
+// input-data string, identifying the data baked into that platform's shared
+// base store for compiled-query cache keying.
+func hashBaseInputData(baseInputData map[string]string) map[string]uint64 {
+	hashes := make(map[string]uint64, len(baseInputData))
+	for platform, data := range baseInputData {
+		hashes[platform] = hashFields(data)
+	}
+	return hashes
 }
 
 // VulnerabilityBuilder represents a function that will build a vulnerability
@@ -114,6 +178,8 @@ type Inspector struct {
 	useOldSeverities     bool
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
+	disableRuleIsolation bool
+	useRulesCache        bool
 	// fsys is the filesystem used for Terraform module resolution. Defaults to
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
 	// content.
@@ -138,6 +204,25 @@ var (
 	}
 )
 
+// safeCapabilities returns the OPA capabilities for this version with the
+// unsafeRegoFunctions removed from the allowed-builtins list, so a rule
+// referencing one fails to compile (an "undefined function"). This is the
+// non-deprecated replacement for Compiler.WithUnsafeBuiltins, which OPA derives
+// the same way: the compiler's known-builtins set is built solely from
+// capabilities.Builtins. Computed once — capabilities are immutable.
+var safeCapabilities = sync.OnceValue(func() *ast.Capabilities {
+	caps := ast.CapabilitiesForThisVersion()
+	allowed := caps.Builtins[:0]
+	for _, b := range caps.Builtins {
+		if _, unsafe := unsafeRegoFunctions[b.Name]; unsafe {
+			continue
+		}
+		allowed = append(allowed, b)
+	}
+	caps.Builtins = allowed
+	return caps
+})
+
 // NewInspector initializes a inspector, compiling and loading queries for scan and its tracker
 func NewInspector(
 	ctx context.Context,
@@ -152,6 +237,8 @@ func NewInspector(
 	numWorkers int,
 	flagEvaluator featureflags.FlagEvaluator,
 	fsys vfs.FS,
+	disableRuleIsolation bool,
+	useRulesCache bool,
 ) (*Inspector, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.NewInspector()")
@@ -191,17 +278,19 @@ func NewInspector(
 		Add(terraform.DetectKindLine{}, model.KindTerraform)
 
 	return &Inspector{
-		QueryLoader:      &queryLoader,
-		vb:               vb,
-		tracker:          tracker,
-		failedQueries:    failedQueries,
-		ruleConfigs:      ruleConfigs,
-		detector:         lineDetector,
-		repoPath:         repoPath,
-		useOldSeverities: useOldSeverities,
-		numWorkers:       utils.AdjustNumWorkers(numWorkers),
-		flagEvaluator:    flagEvaluator,
-		fsys:             fsys,
+		QueryLoader:          &queryLoader,
+		vb:                   vb,
+		tracker:              tracker,
+		failedQueries:        failedQueries,
+		ruleConfigs:          ruleConfigs,
+		detector:             lineDetector,
+		repoPath:             repoPath,
+		useOldSeverities:     useOldSeverities,
+		numWorkers:           utils.AdjustNumWorkers(numWorkers),
+		flagEvaluator:        flagEvaluator,
+		fsys:                 fsys,
+		disableRuleIsolation: disableRuleIsolation,
+		useRulesCache:        useRulesCache,
 	}, nil
 }
 
@@ -246,7 +335,8 @@ func (c *Inspector) createInspectionJobs(jobs chan<- InspectionJob, queries []mo
 func (c *Inspector) performInspection(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	astPayload ast.Value,
 	jobs <-chan InspectionJob, results chan<- QueryResult, queries []model.QueryMetadata,
-	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store) {
+	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
+	sharedQueries map[int]*rego.PreparedEvalQuery) {
 	for job := range jobs {
 		select {
 		case <-ctx.Done():
@@ -256,7 +346,11 @@ func (c *Inspector) performInspection(ctx context.Context, scanID string, filesM
 		}
 
 		loadStart := time.Now()
-		queryOpa, err := c.QueryLoader.LoadQuery(ctx, &queries[job.queryID], modules, baseStores)
+		queryOpa, ok := sharedQueries[job.queryID]
+		var err error
+		if !ok {
+			queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[job.queryID], modules, baseStores, baseDataHashes, c.useRulesCache)
+		}
 		loadDur := time.Since(loadStart)
 		if err != nil {
 			contextLogger := logger.FromContext(ctx)
@@ -342,8 +436,24 @@ func (c *Inspector) Inspect(
 	queries := c.getQueriesByPlat(platforms)
 
 	// Pre-build one inmem.Store per platform so LoadQuery does not re-parse the
-	// same payload for every PrepareForEval call.
-	baseStores := precomputeBaseStores(c.QueryLoader.precomputeBaseInputData(ctx, enrichedModules))
+	// same payload for every PrepareForEval call. The per-platform data hash is
+	// folded into each compiled-query cache key so a compiled query is only
+	// reused by a later scan whose base data is byte-identical.
+	baseInputData := c.QueryLoader.precomputeBaseInputData(ctx, enrichedModules)
+	baseStores := precomputeBaseStores(baseInputData)
+	baseDataHashes := hashBaseInputData(baseInputData)
+
+	// When rule isolation is disabled, co-compile all rules + libraries once per
+	// platform into a shared compiler (rules rewritten to unique packages) so the
+	// library AST is retained a single time. Rules missing from the returned map
+	// (parse/compile failures) fall back to isolated LoadQuery in the worker, so
+	// correctness is preserved even if shared compilation partially fails.
+	var sharedQueries map[int]*rego.PreparedEvalQuery
+	if c.disableRuleIsolation {
+		sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
+		contextLogger.Info().Msgf("Rule isolation disabled: %d/%d queries served from shared compiler",
+			len(sharedQueries), len(queries))
+	}
 
 	// Compute the file map once and share it (read-only) across all workers
 	filesMap := files.ToMap()
@@ -363,7 +473,8 @@ func (c *Inspector) Inspect(
 		go func() {
 			// Decrement the counter when the goroutine completes
 			defer wg.Done()
-			c.performInspection(ctx, scanID, filesMap, astPayload, jobs, results, queries, enrichedModules, baseStores)
+			c.performInspection(ctx, scanID, filesMap, astPayload, jobs, results, queries,
+				enrichedModules, baseStores, baseDataHashes, sharedQueries)
 		}()
 	}
 	// Start a goroutine to create inspection jobs
@@ -788,6 +899,7 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 	}
 
 	parsedGeneric := make(map[string]*ast.Module, len(platformLibraries))
+	platformKeyBases := make(map[string]uint64, len(platformLibraries))
 	for platform, lib := range platformLibraries {
 		mod, parseErr := ast.ParseModuleWithOpts("Generic", lib.LibraryCode,
 			ast.ParserOptions{RegoVersion: ast.RegoV1})
@@ -795,6 +907,12 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 			return QueryLoader{}, errors.Wrapf(parseErr, "failed to parse Generic Rego library for platform %s", platform)
 		}
 		parsedGeneric[platform] = mod
+		platformKeyBases[platform] = hashFields(
+			commonLibrary.LibraryCode,
+			commonLibrary.LibraryInputData,
+			lib.LibraryCode,
+			lib.LibraryInputData,
+		)
 	}
 
 	return QueryLoader{
@@ -804,6 +922,7 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 		QueriesMetadata:   queries,
 		parsedCommon:      parsedCommon,
 		parsedGeneric:     parsedGeneric,
+		platformKeyBases:  platformKeyBases,
 	}, nil
 }
 
@@ -862,10 +981,21 @@ func precomputeBaseStores(baseInputData map[string]string) map[string]storage.St
 	return stores
 }
 
-// LoadQuery loads the query into memory so it can be freed when not used anymore
+// LoadQuery loads the query into memory so it can be freed when not used anymore.
+//
+// baseStores holds one shared, read-only inmem store per platform (the merged
+// library + module input data for this scan); baseDataHashes holds a hash of
+// each store's data. When the query carries no custom InputData it uses the
+// shared base store, and its compiled *PreparedEvalQuery is served from / stored
+// in the process-global preparedQueryCache — the cache key folds in the base
+// data hash, so a compiled query (whose store bakes in this scan's data) is only
+// reused by a later scan whose base data is byte-identical. This makes warm
+// scans skip the expensive PrepareForEval compile even when Terraform module
+// data is present, as long as that data is unchanged.
 func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 	modules []tfmodules.ParsedModule,
-	baseStores map[string]storage.Store) (*rego.PreparedEvalQuery, error) {
+	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
+	cacheEnabled bool) (*rego.PreparedEvalQuery, error) {
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
 	if !ok {
 		return nil, errors.New("failed to get platform library")
@@ -876,12 +1006,25 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		return nil, ctx.Err()
 	default:
 		hasCustomInput := !source.IsEmptyInputData(query.InputData)
+		prebuilt, hasBaseStore := baseStores[query.Platform]
 
-		// Choose the inmem store: reuse the pre-built per-platform store for
-		// queries with no custom InputData (the common case); fall back to
-		// building a fresh store for the rare query with custom InputData.
+		// The compiled query is cacheable only when the caller enabled the cache
+		// (server mode via --use-rules-cache) AND it uses the shared per-platform
+		// base store (no custom per-query InputData, and a base store exists for
+		// the platform). The cache key folds in the base data hash so a cached
+		// query is reused only by a scan with identical base data — the store it
+		// bakes in.
+		useCache := cacheEnabled && hasBaseStore && !hasCustomInput
+		var cacheKey uint64
+		if useCache {
+			cacheKey = preparedCacheKey(query, q.platformKeyBases[query.Platform], baseDataHashes[query.Platform])
+			if cached, ok := preparedQueryCache.Load(cacheKey); ok {
+				return cached.(*rego.PreparedEvalQuery), nil
+			}
+		}
+
 		var store storage.Store
-		if prebuilt, ok := baseStores[query.Platform]; ok && !hasCustomInput {
+		if useCache {
 			store = prebuilt
 		} else {
 			mergedInputData, err := q.buildMergedInputData(ctx, query, modules)
@@ -919,8 +1062,119 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 			return nil, err
 		}
 
+		if useCache {
+			// the duplicate compiled query is discarded.
+			actual, _ := preparedQueryCache.LoadOrStore(cacheKey, &opaQuery)
+			return actual.(*rego.PreparedEvalQuery), nil
+		}
+
 		return &opaQuery, nil
 	}
+}
+
+// pkgDatadogDecl matches the `package datadog` declaration at the head of every
+// rule, so it can be rewritten to a unique per-rule package for shared compilation.
+var pkgDatadogDecl = regexp.MustCompile(`(?m)^(\s*)package\s+datadog\b`)
+
+// loadSharedQueries compiles all given queries together with their libraries in
+// a SINGLE ast.Compiler per platform, instead of compiling each rule in its own
+// isolated compiler. Every rule is rewritten from `package datadog` to a unique
+// `package datadog.q<i>` so the rules no longer collide and can co-exist in one
+// compiler; the shared common+platform library AST then exists once instead of
+// being copied into every compiled query (the dominant retained-heap cost).
+//
+// It returns a map from the caller's query index to the prepared query. A rule
+// that fails to parse or whose platform has no base store is skipped (logged),
+// preserving the isolated path's "skip and continue" behavior. Rule identity,
+// findings, and SARIF are unaffected: the package rename is internal to
+// compilation and never reaches QueryMetadata or the emitted result payload.
+func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.QueryMetadata,
+	baseStores map[string]storage.Store) map[int]*rego.PreparedEvalQuery {
+	contextLogger := logger.FromContext(ctx)
+
+	// Group query indices by platform: one shared compiler is built per platform
+	// because libraries and the base store are platform-specific.
+	indicesByPlatform := make(map[string][]int)
+	for i := range queries {
+		indicesByPlatform[queries[i].Platform] = append(indicesByPlatform[queries[i].Platform], i)
+	}
+
+	prepared := make(map[int]*rego.PreparedEvalQuery, len(queries))
+	for platform, indices := range indicesByPlatform {
+		store, ok := baseStores[platform]
+		if !ok {
+			contextLogger.Warn().Msgf("shared compile: no base store for platform %s, skipping %d rules", platform, len(indices))
+			continue
+		}
+		platformLib, ok := q.platformLibraries[platform]
+		if !ok {
+			contextLogger.Warn().Msgf("shared compile: no library for platform %s, skipping %d rules", platform, len(indices))
+			continue
+		}
+
+		// Parse libraries + every rule (renamed) into one module set. A rule that
+		// fails to parse is dropped here, individually, BEFORE the shared compile —
+		// so one malformed rule cannot fail the whole batch at the parse stage.
+		modules := map[string]*ast.Module{
+			"Common":  q.parsedCommon,
+			"Generic": q.parsedGeneric[platform],
+		}
+		if modules["Common"] == nil {
+			modules["Common"], _ = ast.ParseModuleWithOpts("Common", q.commonLibrary.LibraryCode,
+				ast.ParserOptions{RegoVersion: ast.RegoV1})
+		}
+		if modules["Generic"] == nil {
+			modules["Generic"], _ = ast.ParseModuleWithOpts("Generic", platformLib.LibraryCode,
+				ast.ParserOptions{RegoVersion: ast.RegoV1})
+		}
+		// queryPath maps each surviving rule index to its unique query path.
+		queryPath := make(map[int]string, len(indices))
+		for _, i := range indices {
+			renamed := pkgDatadogDecl.ReplaceAllString(queries[i].Content, fmt.Sprintf("${1}package datadog.q%d", i))
+			mod, parseErr := ast.ParseModuleWithOpts(queries[i].Query, renamed,
+				ast.ParserOptions{RegoVersion: ast.RegoV1})
+			if parseErr != nil {
+				contextLogger.Warn().Err(parseErr).Msgf("shared compile: rule %s failed to parse, skipping", queries[i].Query)
+				continue
+			}
+			modules[fmt.Sprintf("rule%d", i)] = mod
+			queryPath[i] = fmt.Sprintf("data.datadog.q%d.DatadogPolicy", i)
+		}
+
+		compiler := ast.NewCompiler().WithCapabilities(safeCapabilities())
+		compiler.Compile(modules)
+		if compiler.Failed() {
+			// A rule that parsed but failed semantic compilation poisons the whole
+			// batch. Fall back to isolated compilation for this platform's rules so
+			// correctness is never sacrificed for the memory optimization.
+			contextLogger.Warn().Msgf("shared compile failed for platform %s (%v); falling back to isolated compilation",
+				platform, compiler.Errors)
+			continue
+		}
+
+		// Prepare each rule's eval query against the one shared compiler. They all
+		// reference the same compiled library AST, so it is retained once.
+		for _, i := range indices {
+			path, ok := queryPath[i]
+			if !ok {
+				continue // rule was dropped at parse stage
+			}
+			pq, prepErr := rego.New(
+				rego.Query(fmt.Sprintf("result = %s", path)),
+				rego.SetRegoVersion(ast.RegoV1),
+				rego.Compiler(compiler),
+				rego.Store(store),
+				rego.UnsafeBuiltins(unsafeRegoFunctions),
+			).PrepareForEval(ctx)
+			if prepErr != nil {
+				contextLogger.Warn().Err(prepErr).Msgf("shared compile: failed to prepare rule %s, skipping", queries[i].Query)
+				continue
+			}
+			p := pq
+			prepared[i] = &p
+		}
+	}
+	return prepared
 }
 
 func parseJsonencodeHCL(ctx context.Context, input string) (ast.Value, error) {

@@ -297,8 +297,15 @@ func (s *FileSystemSourceProvider) processFilesParallel(ctx context.Context, fil
 
 // calculateWorkerCount determines the optimal number of workers for parallel processing
 func (s *FileSystemSourceProvider) calculateWorkerCount() int {
+	return calculateWorkerCount()
+}
+
+// calculateWorkerCount auto-detects the worker count from GOMAXPROCS via
+// utils.AdjustNumWorkers and clamps it to [minNumWorkers, maxNumWorkers]. Shared
+// by every parallel source provider so they pick worker counts identically.
+func calculateWorkerCount() int {
 	numWorkers := utils.AdjustNumWorkers(0) // 0 means auto-detect
-	if numWorkers < 1 {
+	if numWorkers < minNumWorkers {
 		numWorkers = minNumWorkers
 	}
 	if numWorkers > maxNumWorkers {

@@ -198,12 +198,15 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		MaxResolverDepth: 15,
 		// Helm rendering shells out to a chart on disk, which content-push mode
 		// has no way to materialize, so disable the resolver. Parallel file
-		// parsing is pointless for in-memory content.
+		// parsing fans the per-file parse across CPUs; off unless the server
+		// opts in via --x-parallelparsing.
 		FlagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
 			featureflags.IacEnableKicsHelmResolver:        false,
-			featureflags.IaCEnableKicsParallelFileParsing: false,
+			featureflags.IaCEnableKicsParallelFileParsing: s.cfg.ParallelParsing,
 		}),
-		Config: cfg,
+		Config:               cfg,
+		DisableRuleIsolation: s.cfg.DisableRuleIsolation,
+		UseRulesCache:        s.cfg.UseRulesCache,
 	}
 
 	client, err := scan.NewClient(ctx, params, &consolePrinter.Printer{},

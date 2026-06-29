@@ -7,6 +7,7 @@ import (
 	"maps"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -749,12 +750,17 @@ func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) 
 		}
 	}
 
-	// After iterating through all files and blocks, populate the unique resources slice
+	// After iterating through all files and blocks, populate the unique resources
+	// slice. Sort it so the result is deterministic across runs: it is built from
+	// a map, and unstable ordering otherwise yields byte-different module input
+	// data each scan (which defeats the compiled-query cache and makes output
+	// non-reproducible).
 	for provider, typesSet := range resourceTypesMap {
 		modInfo := equivalentMap[provider]
 		for rt := range typesSet {
 			modInfo.Resources = append(modInfo.Resources, rt)
 		}
+		sort.Strings(modInfo.Resources)
 		equivalentMap[provider] = modInfo
 	}
 
