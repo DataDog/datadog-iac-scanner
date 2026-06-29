@@ -597,7 +597,7 @@ func ruleArgumentsValue(rc config.IacRuleConfig) (ast.Value, bool, error) {
 	return value, true, nil
 }
 
-func withRuleArguments(payload ast.Value, args ast.Value) (ast.Value, error) {
+func withRuleArguments(payload, args ast.Value) (ast.Value, error) {
 	obj, ok := payload.(ast.Object)
 	if !ok {
 		return nil, fmt.Errorf("expected OPA input payload object, got %T", payload)
@@ -612,7 +612,7 @@ func withRuleArguments(payload ast.Value, args ast.Value) (ast.Value, error) {
 	return out, nil
 }
 
-func queryIDsFromMetadata(ctx context.Context, metadata model.QueryMetadata) (queryID, legacyQueryID string) {
+func queryIDsFromMetadata(ctx context.Context, metadata *model.QueryMetadata) (queryID, legacyQueryID string) {
 	queryID = DefaultQueryID
 	legacyQueryID = DefaultQueryID
 	if id, err := mapKeyToString(ctx, metadata.Metadata, "id", false); err == nil && id != nil {
@@ -633,9 +633,9 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			contextLogger.Err(err).Msg(errMessage)
 		}
 	}()
-	
+
 	payload := *qCtx.payload
-	queryID, legacyQueryID := queryIDsFromMetadata(ctx, qCtx.Query.Metadata)
+	queryID, legacyQueryID := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
 	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID); found {
 		if args, ok, err := ruleArgumentsValue(rc); err != nil {
 			return nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
