@@ -92,6 +92,45 @@ func TestApplyDeterministicSubstitutions(t *testing.T) {
 			contains: "prefix randAlphaNum 8",
 			absent:   "ddscan",
 		},
+		// Variable-argument forms.
+		{
+			name:     "randAlphaNum with .Values arg replaced",
+			input:    "name: {{ randAlphaNum .Values.suffixLen }}\n",
+			contains: `"ddscan0001"`,
+			absent:   "randAlphaNum",
+		},
+		{
+			name:     "randAlphaNum with $var arg replaced",
+			input:    "name: {{ randAlphaNum $len }}\n",
+			contains: `"ddscan0001"`,
+			absent:   "randAlphaNum",
+		},
+		// randBytes.
+		{
+			name:     "randBytes with literal arg replaced",
+			input:    "token: {{ randBytes 16 }}\n",
+			contains: `"ddscan0001"`,
+			absent:   "randBytes",
+		},
+		{
+			name:     "randBytes with .Values arg replaced",
+			input:    "token: {{ randBytes .Values.len }}\n",
+			contains: `"ddscan0001"`,
+			absent:   "randBytes",
+		},
+		// Helm template comments — must not be modified.
+		{
+			name:     "Helm comment block not substituted",
+			input:    "{{/* randAlphaNum 8 is documented here */}}\nname: {{ .Values.name }}\n",
+			contains: "randAlphaNum 8 is documented here",
+			absent:   "ddscan",
+		},
+		{
+			name:     "Helm comment block with trim markers not substituted",
+			input:    "{{- /* randBytes 16 */ -}}\nname: {{ .Values.name }}\n",
+			contains: "randBytes 16",
+			absent:   "ddscan",
+		},
 	}
 
 	for _, tt := range tests {

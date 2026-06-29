@@ -193,13 +193,24 @@ func newClient(ctx context.Context) *action.Install {
 // templateActionRE matches Helm/Go template action delimiters including trim markers.
 var templateActionRE = regexp.MustCompile(`(?s)\{\{-?.*?-?\}\}`)
 
-// templateActionSpans returns the [start, end) byte ranges of all {{ ... }} blocks in s.
+// templateCommentRE matches Helm template comment blocks: {{/* ... */}} (with optional trim markers).
+var templateCommentRE = regexp.MustCompile(`(?s)\{\{-?\s*/\*.*?\*/\s*-?\}\}`)
+
+// templateActionSpans returns the [start, end) byte ranges of all {{ ... }} blocks in s,
+// excluding comment blocks ({{/* ... */}}).
 // The returned slice is sorted by start (FindAllStringIndex guarantees this).
 func templateActionSpans(s string) [][2]int {
-	matches := templateActionRE.FindAllStringIndex(s, -1)
-	spans := make([][2]int, len(matches))
-	for i, m := range matches {
-		spans[i] = [2]int{m[0], m[1]}
+	allMatches := templateActionRE.FindAllStringIndex(s, -1)
+	commentMatches := templateCommentRE.FindAllStringIndex(s, -1)
+	commentSet := make(map[[2]int]bool, len(commentMatches))
+	for _, m := range commentMatches {
+		commentSet[[2]int{m[0], m[1]}] = true
+	}
+	spans := make([][2]int, 0, len(allMatches))
+	for _, m := range allMatches {
+		if !commentSet[[2]int{m[0], m[1]}] {
+			spans = append(spans, [2]int{m[0], m[1]})
+		}
 	}
 	return spans
 }
@@ -275,25 +286,34 @@ type deterministicPattern struct {
 
 // deterministicPatterns maps each non-deterministic sprig function regex to a replacement generator.
 // The generator receives the line number of the match.
+// templateArgRE matches a Sprig function argument: a numeric literal, a .Values.foo
+// field path, or a $variable reference.
+const templateArgRE = `[\w$.]+`
+
 var deterministicPatterns = []deterministicPattern{
 	{
-		re:      regexp.MustCompile(`\brandAlphaNum\s+\d+`),
+		re:      regexp.MustCompile(`\brandAlphaNum\s+` + templateArgRE),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
 		guard:   notPrecededByVarOrField,
 	},
 	{
-		re:      regexp.MustCompile(`\brandAlpha\s+\d+`),
+		re:      regexp.MustCompile(`\brandAlpha\s+` + templateArgRE),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
 		guard:   notPrecededByVarOrField,
 	},
 	{
-		re:      regexp.MustCompile(`\brandAscii\s+\d+`),
+		re:      regexp.MustCompile(`\brandAscii\s+` + templateArgRE),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
 		guard:   notPrecededByVarOrField,
 	},
 	{
-		re:      regexp.MustCompile(`\brandNumeric\s+\d+`),
+		re:      regexp.MustCompile(`\brandNumeric\s+` + templateArgRE),
 		replace: func(lineNum int) string { return fmt.Sprintf(`"%08d"`, lineNum) },
+		guard:   notPrecededByVarOrField,
+	},
+	{
+		re:      regexp.MustCompile(`\brandBytes\s+` + templateArgRE),
+		replace: func(lineNum int) string { return fmt.Sprintf(`"ddscan%04d"`, lineNum) },
 		guard:   notPrecededByVarOrField,
 	},
 	{
