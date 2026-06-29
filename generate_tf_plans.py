@@ -39,7 +39,7 @@ class TerraformPlanGenerator:
 
     def __init__(
         self,
-        max_retries: int = 5,
+        max_retries: int = 3,
         anthropic_api_key: Optional[str] = None,
         verbose: bool = False,
     ):
@@ -134,12 +134,16 @@ class TerraformPlanGenerator:
         # Check if any .json files exist in this test directory
         # Exclude positive_expected_result.json and negative_expected_result.json
         json_files = [
-            f for f in test_dir.glob("*.json")
-            if f.name not in ["positive_expected_result.json", "negative_expected_result.json"]
+            f
+            for f in test_dir.glob("*.json")
+            if f.name
+            not in ["positive_expected_result.json", "negative_expected_result.json"]
         ]
 
         if json_files:
-            logger.debug(f"Found {len(json_files)} existing plan .json files in {test_dir}, skipping rule")
+            logger.debug(
+                f"Found {len(json_files)} existing plan .json files in {test_dir}, skipping rule"
+            )
             return True
 
         return False
@@ -167,7 +171,9 @@ class TerraformPlanGenerator:
 
         skipped_count = len(high_tf_files) - len(files_without_json)
         if skipped_count > 0:
-            logger.info(f"Skipped {skipped_count} .tf files from rules that already have .json tests")
+            logger.info(
+                f"Skipped {skipped_count} .tf files from rules that already have .json tests"
+            )
 
         logger.info(
             f"Found {len(files_without_json)} .tf files in high severity rules without .json tests "
@@ -1118,7 +1124,7 @@ Examples:
     parser.add_argument(
         "--max-retries",
         type=int,
-        default=5,
+        default=3,
         help="Maximum retry attempts for terraform init (default: 3)",
     )
 
