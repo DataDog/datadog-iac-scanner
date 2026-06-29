@@ -21,6 +21,8 @@ DatadogPolicy contains result if {
 	# Determine all tag keys (including merge scenarios)
 	all_tag_keys := get_all_tag_keys(tags)
 
+	not all_tags_in_config(all_tag_keys)
+
 	missing_labels := {
 	req_lower |
 		req := required_tags[_]
@@ -86,4 +88,16 @@ is_merge_call(tags) if {
 key_in_set_ignore_case(key, keyset) if {
 	k := keyset[_]
 	lower(k) == lower(key)
+}
+
+all_tags_in_config(tags) if {
+	args_required = input.arguments.required_tags
+	missing_labels := {
+	req_lower |
+		req := args_required[_]
+		req_lower := lower(req)
+		not key_in_set_ignore_case(req, tags)
+	}
+
+	count(missing_labels) == 0
 }
