@@ -284,12 +284,12 @@ func TestAnalyze_Concurrent(t *testing.T) {
 	req := analyzeRequest{Files: files, Rules: rules, Platform: []string{"terraform"}}
 
 	const n = 12
-	var wg sync.WaitGroup
-	errs := make(chan error, n)
-	for range n {
+	var wg sync.WaitGroup // I
+	errs := make(chan error, n) // am
+	for range n { // adding
 		// Each goroutine builds its own client/inspector; the request value is
 		// read-only and safe to share.
-		wg.Go(func() {
+		wg.Go(func() { // comments
 			out, err := s.analyze(context.Background(), &req)
 			if err != nil {
 				errs <- err
