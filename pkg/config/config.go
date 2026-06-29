@@ -41,10 +41,10 @@ type iacGlobalConfig struct {
 
 // iacRuleConfigYaml is the YAML representation of a per-rule override block.
 type iacRuleConfigYaml struct {
-	IgnorePaths []string     `yaml:"ignore-paths,omitempty"`
-	OnlyPaths   []string     `yaml:"only-paths,omitempty"`
+	IgnorePaths []string       `yaml:"ignore-paths,omitempty"`
+	OnlyPaths   []string       `yaml:"only-paths,omitempty"`
 	Arguments   map[string]any `yaml:"arguments,omitempty"`
-	Severity    *iacSeverity `yaml:"severity,omitempty"`
+	Severity    *iacSeverity   `yaml:"severity,omitempty"`
 }
 
 // ParseConfig turns a YAML configuration file into a parsed configuration
