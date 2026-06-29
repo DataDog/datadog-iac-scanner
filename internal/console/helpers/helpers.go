@@ -39,6 +39,7 @@ var reportGenerators = map[string]func(ctx context.Context, path, filename strin
 	"asff":        report.PrintASFFReport,
 	"csv":         report.PrintCSVReport,
 	"codeclimate": report.PrintCodeClimateReport,
+	"simple-json": report.PrintSimpleJSONReport,
 }
 
 // FileAnalyzer determines the type of extension in the passed config file by its content
