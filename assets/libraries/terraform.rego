@@ -577,10 +577,18 @@ check_member(attribute, search) if {
 	startswith(attribute.member, search)
 }
 
-has_target_resource(bucketName, resourceName) if {
-	resource := input.document[i].resource[resourceName][_]
+# Set of [resourceType, bucketName] pairs referenced by any resource's `bucket`
+# attribute, built once per query (complete set rule, cached by OPA). Lets
+# has_target_resource do an O(1) membership check instead of re-scanning every
+# document for each bucket it is called with.
+target_resource_bucket_refs contains [resourceName, bucketName] if {
+	some resourceName
+	resource := input.document[_].resource[resourceName][_]
+	bucketName := split(resource.bucket, ".")[1]
+}
 
-	split(resource.bucket, ".")[1] == bucketName
+has_target_resource(bucketName, resourceName) if {
+	[resourceName, bucketName] in target_resource_bucket_refs
 }
 
 #Checks if an action is allowed for all principals
