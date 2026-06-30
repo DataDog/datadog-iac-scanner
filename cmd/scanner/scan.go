@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
+	"github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
@@ -121,12 +122,9 @@ const (
 	dirPerms  = 0755
 )
 
-var validReportFormats = []string{
-	"sarif", "simple-json",
-}
-
 func validateReportFormats(formats []string) error {
 	valid := map[string]struct{}{}
+	validReportFormats := helpers.GetSupportedReportFormats()
 	for _, f := range validReportFormats {
 		valid[f] = struct{}{}
 	}

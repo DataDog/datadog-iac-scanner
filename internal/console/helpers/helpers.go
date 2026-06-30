@@ -42,6 +42,10 @@ var reportGenerators = map[string]func(ctx context.Context, path, filename strin
 	"simple-json": report.PrintSimpleJSONReport,
 }
 
+func GetSupportedReportFormats() []string {
+	return []string{"sarif, simple-json"}
+}
+
 // FileAnalyzer determines the type of extension in the passed config file by its content
 func FileAnalyzer(path string) (string, error) {
 	rc, err := os.ReadFile(filepath.Clean(path))
