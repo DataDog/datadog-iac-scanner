@@ -934,3 +934,190 @@ func TestOriginBranch_CallSite(t *testing.T) {
 		t.Error("expected no SecondaryLines for call origin")
 	}
 }
+
+// TestOriginBranch_AbsentAttribute verifies that when an attribute (e.g. "tags") is completely
+// absent from the module resource's expressions, it is treated as module_hardcoded and the
+// finding resolves to the module definition — not the module call. This covers the case where
+// a module simply never declares an attribute (e.g. no tags block), so the call cannot fix it.
+func TestOriginBranch_AbsentAttribute(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Parent main.tf: module call does not (and cannot) pass tags
+	mainTF := filepath.Join(tmpDir, "main.tf")
+	err := os.WriteFile(mainTF, []byte(`module "asg" {
+  source            = "./modules/asg"
+  security_group_id = ["sg-123"]
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Module definition: resource has no tags attribute at all
+	modulesDir := filepath.Join(tmpDir, "modules", "asg")
+	if err := os.MkdirAll(modulesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	moduleMainTF := filepath.Join(modulesDir, "main.tf")
+	err = os.WriteFile(moduleMainTF, []byte(`resource "aws_launch_template" "this" {
+  name                   = "web"
+  vpc_security_group_ids = var.security_group_id
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := registry.New()
+	reg.Register("module.asg", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
+	reg.Register("aws_launch_template.this", registry.Location{FilePath: moduleMainTF, Line: 1, Column: 1})
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, nil)
+
+	// _dd_tf_origin has hints for the attributes that ARE in expressions (name, vpc_security_group_ids),
+	// but NOT for "tags" — because it is absent from the module resource entirely.
+	rawDoc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_launch_template": map[string]interface{}{
+				"module.asg.this": map[string]interface{}{
+					"_dd_tf_address": "module.asg.aws_launch_template.this",
+					"_dd_tf_origin": map[string]interface{}{
+						// "name" is hardcoded in the module ("web")
+						"name": map[string]interface{}{
+							"origin":    "module_hardcoded",
+							"moduleDir": "./modules/asg",
+						},
+						// "vpc_security_group_ids" is set by the call
+						"vpc_security_group_ids": map[string]interface{}{
+							"origin":   "call",
+							"variable": "security_group_id",
+							"moduleDir": "./modules/asg",
+						},
+						// "tags" is intentionally absent — not in module expressions at all
+					},
+					"name":                   "web",
+					"vpc_security_group_ids": []interface{}{"sg-123"},
+				},
+			},
+		},
+	}
+	roundTripped := roundTripDocument(rawDoc)
+
+	fileMetadata := &model.FileMetadata{
+		ID:               "plan",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTripped,
+		LineInfoDocument: roundTripped,
+	}
+
+	// searchKey has "tags" attribute — absent from module resource expressions
+	result := detector.DetectLine(ctx, fileMetadata, "aws_launch_template[module.asg.this].tags", 3)
+
+	// Must resolve to the module DEFINITION file (where the fix needs to happen: add a tags block)
+	if result.ResolvedFile != moduleMainTF {
+		t.Errorf("expected module definition %q, got %q", moduleMainTF, result.ResolvedFile)
+	}
+	// Line 1 is the resource block declaration — the attribute line won't be found since tags is absent
+	if result.Line != 1 {
+		t.Errorf("expected resource definition line 1, got %d", result.Line)
+	}
+	// No secondary finding — this is a single-location module_hardcoded finding
+	if result.SecondaryLines != nil {
+		t.Error("expected no SecondaryLines for absent-attribute (module_hardcoded) finding")
+	}
+}
+
+// TestOriginBranch_NestedBlockHardcoded verifies that a hardcoded attribute inside a nested
+// block (e.g. metadata_options { http_endpoint = "enabled" }) is correctly classified as
+// module_hardcoded and resolves to the module definition file.
+func TestOriginBranch_NestedBlockHardcoded(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mainTF := filepath.Join(tmpDir, "main.tf")
+	err := os.WriteFile(mainTF, []byte(`module "ec2" {
+  source     = "./modules/ec2"
+  ami        = "ami-123"
+  http_tokens = "required"
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	modulesDir := filepath.Join(tmpDir, "modules", "ec2")
+	if err := os.MkdirAll(modulesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	moduleMainTF := filepath.Join(modulesDir, "main.tf")
+	err = os.WriteFile(moduleMainTF, []byte(`resource "aws_instance" "this" {
+  ami = var.ami
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = var.http_tokens
+  }
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := registry.New()
+	reg.Register("module.ec2", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
+	reg.Register("aws_instance.this", registry.Location{FilePath: moduleMainTF, Line: 1, Column: 1})
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, nil)
+
+	// _dd_tf_origin reflects the nested block classification:
+	// metadata_options.http_endpoint is module_hardcoded (constant "enabled")
+	// metadata_options.http_tokens is call (caller sets it)
+	rawDoc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_instance": map[string]interface{}{
+				"module.ec2.this": map[string]interface{}{
+					"_dd_tf_address": "module.ec2.aws_instance.this",
+					"_dd_tf_origin": map[string]interface{}{
+						"ami": map[string]interface{}{
+							"origin":    "call",
+							"variable":  "ami",
+							"moduleDir": "./modules/ec2",
+						},
+						"metadata_options.http_endpoint": map[string]interface{}{
+							"origin":    "module_hardcoded",
+							"moduleDir": "./modules/ec2",
+						},
+						"metadata_options.http_tokens": map[string]interface{}{
+							"origin":    "call",
+							"variable":  "http_tokens",
+							"moduleDir": "./modules/ec2",
+						},
+					},
+					"ami": "ami-123",
+				},
+			},
+		},
+	}
+	roundTripped := roundTripDocument(rawDoc)
+
+	fileMetadata := &model.FileMetadata{
+		ID:               "plan",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTripped,
+		LineInfoDocument: roundTripped,
+	}
+
+	// Resource-level finding (no attribute): should pick module_hardcoded as the dominant origin
+	result := detector.DetectLine(ctx, fileMetadata, "aws_instance.{{module.ec2.this}}", 3)
+
+	// Must resolve to the module DEFINITION file
+	if result.ResolvedFile != moduleMainTF {
+		t.Errorf("expected module definition %q, got %q", moduleMainTF, result.ResolvedFile)
+	}
+	if result.SecondaryLines != nil {
+		t.Error("expected no SecondaryLines for module_hardcoded resource-level finding")
+	}
+}

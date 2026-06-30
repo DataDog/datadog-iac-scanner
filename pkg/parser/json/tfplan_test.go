@@ -2207,3 +2207,205 @@ func TestOriginHints_FromPlanConfig(t *testing.T) {
 	require.Equal(t, "publicly_accessible", pubHint["variable"])
 	require.Equal(t, "./modules/rds", pubHint["moduleDir"])
 }
+
+// TestOriginHints_AbsentAttribute verifies that when a module resource has no "tags" attribute
+// in its expressions, the parser still populates _dd_tf_origin for the attributes it does know
+// about (so the detector can detect the absent-attribute case at query time).
+func TestOriginHints_AbsentAttribute(t *testing.T) {
+	doc := model.Document{
+		"format_version":    "1.0",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"child_modules": []interface{}{
+					map[string]interface{}{
+						"address": "module.asg",
+						"resources": []interface{}{
+							map[string]interface{}{
+								"address": "module.asg.aws_launch_template.this",
+								"mode":    "managed",
+								"type":    "aws_launch_template",
+								"name":    "this",
+								"values": map[string]interface{}{
+									"name":                   "web",
+									"vpc_security_group_ids": []interface{}{"sg-123"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"module_calls": map[string]interface{}{
+					"asg": map[string]interface{}{
+						"source": "./modules/asg",
+						"expressions": map[string]interface{}{
+							"security_group_id": map[string]interface{}{
+								"constant_value": []interface{}{"sg-123"},
+							},
+						},
+						"module": map[string]interface{}{
+							"resources": []interface{}{
+								map[string]interface{}{
+									"address": "aws_launch_template.this",
+									"type":    "aws_launch_template",
+									"name":    "this",
+									"expressions": map[string]interface{}{
+										// "name" is hardcoded — no variable
+										"name": map[string]interface{}{
+											"constant_value": "web",
+										},
+										// "vpc_security_group_ids" is driven by a variable the call sets
+										"vpc_security_group_ids": map[string]interface{}{
+											"references": []interface{}{"var.security_group_id"},
+										},
+										// "tags" is intentionally absent — the module resource never declares it
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	// Navigate to the resource
+	resourceSection := got["resource"].(map[string]interface{})
+	ltSection := resourceSection["aws_launch_template"].(map[string]interface{})
+
+	var attrs map[string]interface{}
+	for _, v := range ltSection {
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if addr, _ := m["_dd_tf_address"].(string); addr == "module.asg.aws_launch_template.this" {
+			attrs = m
+			break
+		}
+	}
+	require.NotNil(t, attrs)
+
+	// _dd_tf_origin must be present (populated for the attributes that ARE declared)
+	originRaw, ok := attrs["_dd_tf_origin"]
+	require.True(t, ok, "_dd_tf_origin should be present")
+	originMap := originRaw.(map[string]interface{})
+
+	// "name" should be module_hardcoded (constant in module resource)
+	nameHint := originMap["name"].(map[string]interface{})
+	require.Equal(t, "module_hardcoded", nameHint["origin"])
+	require.Equal(t, "./modules/asg", nameHint["moduleDir"])
+
+	// "vpc_security_group_ids" should be call (call sets security_group_id)
+	sgHint := originMap["vpc_security_group_ids"].(map[string]interface{})
+	require.Equal(t, "call", sgHint["origin"])
+
+	// "tags" must NOT appear in the origin map — its absence is what the detector checks at query time
+	_, tagsPresent := originMap["tags"]
+	require.False(t, tagsPresent, "tags should be absent from _dd_tf_origin since it is not declared in the module resource")
+}
+
+// TestOriginHints_NestedBlocks verifies that hardcoded attributes inside nested blocks
+// (e.g. metadata_options { http_endpoint = "enabled" }) are classified correctly.
+func TestOriginHints_NestedBlocks(t *testing.T) {
+	doc := model.Document{
+		"format_version":    "1.0",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"child_modules": []interface{}{
+					map[string]interface{}{
+						"address": "module.ec2",
+						"resources": []interface{}{
+							map[string]interface{}{
+								"address": "module.ec2.aws_instance.this",
+								"mode":    "managed",
+								"type":    "aws_instance",
+								"name":    "this",
+								"values":  map[string]interface{}{"ami": "ami-123"},
+							},
+						},
+					},
+				},
+			},
+		},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"module_calls": map[string]interface{}{
+					"ec2": map[string]interface{}{
+						"source": "./modules/ec2",
+						"expressions": map[string]interface{}{
+							"ami":         map[string]interface{}{"constant_value": "ami-123"},
+							"http_tokens": map[string]interface{}{"constant_value": "required"},
+						},
+						"module": map[string]interface{}{
+							"resources": []interface{}{
+								map[string]interface{}{
+									"address": "aws_instance.this",
+									"type":    "aws_instance",
+									"name":    "this",
+									"expressions": map[string]interface{}{
+										"ami": map[string]interface{}{
+											"references": []interface{}{"var.ami"},
+										},
+										// metadata_options is a nested block — expressed as a list of maps
+										"metadata_options": []interface{}{
+											map[string]interface{}{
+												"http_endpoint": map[string]interface{}{
+													"constant_value": "enabled",
+												},
+												"http_tokens": map[string]interface{}{
+													"references": []interface{}{"var.http_tokens"},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	resourceSection := got["resource"].(map[string]interface{})
+	instanceSection := resourceSection["aws_instance"].(map[string]interface{})
+
+	var attrs map[string]interface{}
+	for _, v := range instanceSection {
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if addr, _ := m["_dd_tf_address"].(string); addr == "module.ec2.aws_instance.this" {
+			attrs = m
+			break
+		}
+	}
+	require.NotNil(t, attrs)
+
+	originMap := attrs["_dd_tf_origin"].(map[string]interface{})
+
+	// ami is set by call
+	amiHint := originMap["ami"].(map[string]interface{})
+	require.Equal(t, "call", amiHint["origin"])
+
+	// metadata_options.http_endpoint is hardcoded in the module
+	httpEndpointHint := originMap["metadata_options.http_endpoint"].(map[string]interface{})
+	require.Equal(t, "module_hardcoded", httpEndpointHint["origin"])
+	require.Equal(t, "./modules/ec2", httpEndpointHint["moduleDir"])
+
+	// metadata_options.http_tokens is set by call
+	httpTokensHint := originMap["metadata_options.http_tokens"].(map[string]interface{})
+	require.Equal(t, "call", httpTokensHint["origin"])
+}
