@@ -742,3 +742,54 @@ test_is_iam_policy_principal_scoped_specific_cidr if {
 	}
 	is_iam_policy_principal_scoped_by_condition(statement)
 }
+
+_wildcard_policy_json := `{"Statement":[{"Action":["iam:PassRole","sts:AssumeRole"],"Effect":"Allow","Resource":"*"}]}`
+
+test_role_dangerous_pairs_inline_policy if {
+	doc := {"document": [{"resource": {"aws_iam_role_policy": {"p": {
+		"role": "aws_iam_role.r1.name",
+		"policy": _wildcard_policy_json,
+	}}}}]}
+	role_unrecommended_permission_policy_scenarios("r1", "iam:PassRole") with input as doc
+	role_unrecommended_permission_policy_scenarios("r1", "sts:AssumeRole") with input as doc
+}
+
+# Attachment references a managed policy declared in a DIFFERENT document; the
+# precomputed name index must still resolve it.
+test_role_dangerous_pairs_attachment_cross_document if {
+	doc := {"document": [
+		{"resource": {"aws_iam_role_policy_attachment": {"a": {
+			"role": "aws_iam_role.r1.name",
+			"policy_arn": "aws_iam_policy.shared.arn",
+		}}}},
+		{"resource": {"aws_iam_policy": {"shared": {
+			"name": "shared",
+			"policy": _wildcard_policy_json,
+		}}}},
+	]}
+	role_unrecommended_permission_policy_scenarios("r1", "iam:PassRole") with input as doc
+	role_unrecommended_permission_policy_scenarios("r1", "sts:AssumeRole") with input as doc
+}
+
+test_user_dangerous_pairs_attachment_cross_document if {
+	doc := {"document": [
+		{"resource": {"aws_iam_policy_attachment": {"a": {
+			"users": ["aws_iam_user.u1.name"],
+			"policy_arn": "aws_iam_policy.shared.arn",
+		}}}},
+		{"resource": {"aws_iam_policy": {"shared": {
+			"name": "shared",
+			"policy": _wildcard_policy_json,
+		}}}},
+	]}
+	user_unrecommended_permission_policy_scenarios("u1", "iam:PassRole") with input as doc
+}
+
+# A policy scoped to a specific resource (not "*") must not produce any pair.
+test_role_dangerous_pairs_non_wildcard_resource_excluded if {
+	doc := {"document": [{"resource": {"aws_iam_role_policy": {"p": {
+		"role": "aws_iam_role.r1.name",
+		"policy": `{"Statement":[{"Action":["iam:PassRole"],"Effect":"Allow","Resource":"arn:aws:iam::123:role/x"}]}`,
+	}}}}]}
+	not role_unrecommended_permission_policy_scenarios("r1", "iam:PassRole") with input as doc
+}
