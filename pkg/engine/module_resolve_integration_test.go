@@ -198,6 +198,86 @@ resource "aws_s3_bucket" "this" {
 	require.Len(t, chains, 2, "the two callers must produce distinct module call chains")
 }
 
+// aggregateCountRule fires when two or more aws_s3_bucket resources exist in the scan.
+const aggregateCountRule = `package datadog
+
+DatadogPolicy contains result if {
+	buckets := [name | input.document[_].resource.aws_s3_bucket[name]]
+	count(buckets) >= 2
+
+	result := {
+		"documentId": input.document[0].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": "multiple",
+		"searchKey": "aws_s3_bucket",
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "at most one bucket",
+		"keyActualValue": "two or more buckets",
+	}
+}
+`
+
+// Distinct module instances in one root (bucket_a vs bucket_b) are not merged;
+// an aggregate rule still sees both buckets. Does not exercise cross-root dedup.
+func TestInspect_WithinConfigDistinctModuleInstancesNotMerged(t *testing.T) {
+	root := t.TempDir()
+
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "bucket")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+
+	rootPath := filepath.Join(rootDir, "main.tf")
+	modPath := filepath.Join(modDir, "main.tf")
+
+	// bucket_a and bucket_b share inputs but differ in module address (part of the dedup key).
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+module "bucket_a" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+
+module "bucket_b" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(modPath, []byte(`
+variable "acl" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  acl = var.acl
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootPath)...)
+	files = append(files, parseTerraform(t, modPath)...)
+
+	queries := []model.QueryMetadata{{
+		Query:       "aggregate_count_rule",
+		Content:     aggregateCountRule,
+		InputData:   "{}",
+		Platform:    "terraform",
+		Metadata:    map[string]interface{}{"id": "aggregate-count-rule"},
+		Aggregation: 1,
+	}}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	require.Len(t, vulns, 1, "aggregate rule must see both bucket instances and fire")
+}
+
 // variableTypeRule fires on a variable declaration that has no type, mirroring
 // real rules that match non-resource blocks (variable/output/data/locals).
 const variableTypeRule = `package datadog

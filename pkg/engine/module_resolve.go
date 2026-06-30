@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,7 +16,25 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/cespare/xxhash/v2"
 )
+
+// extraCallerInfo records a deduplicated module caller so its findings can be
+// cloned from the primary OPA doc after eval without adding a separate doc to input.document.
+type extraCallerInfo struct {
+	callChain string
+	docID     string
+}
+
+// moduleResolutionResult bundles all outputs of resolveModuleDocuments.
+type moduleResolutionResult struct {
+	docs           []model.Document
+	syntheticFiles []*model.FileMetadata
+	suppressed     map[string]bool
+	calledDirs     map[string]bool
+	extras         map[string][]extraCallerInfo
+	ok             bool
+}
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
 // documents. In a called module body only the resource blocks are dropped (they
@@ -34,16 +53,16 @@ import (
 func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
-) ([]model.Document, []*model.FileMetadata) {
-	moduleDocs, syntheticFiles, suppressed, calledDirs, ok := c.resolveModulesSafely(ctx, files)
-	if !ok {
-		return nil, nil
+) ([]model.Document, []*model.FileMetadata, map[string][]extraCallerInfo) {
+	res := c.resolveModulesSafely(ctx, files)
+	if !res.ok {
+		return nil, nil, nil
 	}
 	for _, f := range files {
 		if f == nil || !isTerraformFile(f.FilePath) {
 			continue
 		}
-		if suppressed[f.ID] {
+		if res.suppressed[f.ID] {
 			// Resource blocks are re-emitted as instantiated synthetic docs, so
 			// drop only those to avoid double-counting; keep the rest of the body
 			// (variable/output/data/locals) so those rules still fire.
@@ -52,15 +71,20 @@ func (c *Inspector) instantiateLocalModules(
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
-		stripLocalModuleCalls(f.Document, f.FilePath, c.repoPath, calledDirs)
+		stripLocalModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs)
 	}
 	contextLogger := logger.FromContext(ctx)
-	if len(moduleDocs) > 0 {
-		contextLogger.Info().Msgf("Instantiated %d local module resources", len(moduleDocs))
+	totalCallers := len(res.docs)
+	for _, ex := range res.extras {
+		totalCallers += len(ex)
+	}
+	if totalCallers > 0 {
+		contextLogger.Info().Msgf("Instantiated %d module resources (%d unique OPA docs, %d deduplicated callers)",
+			totalCallers, len(res.docs), totalCallers-len(res.docs))
 	} else {
 		contextLogger.Debug().Msg("Instantiated 0 local module resources")
 	}
-	return moduleDocs, syntheticFiles
+	return res.docs, res.syntheticFiles, res.extras
 }
 
 // resolveModulesSafely runs the panic-prone module evaluation under a recover so
@@ -70,14 +94,14 @@ func (c *Inspector) instantiateLocalModules(
 func (c *Inspector) resolveModulesSafely(
 	ctx context.Context,
 	files model.FileMetadatas,
-) (moduleDocs []model.Document, syntheticFiles []*model.FileMetadata, suppressed, calledDirs map[string]bool, ok bool) {
+) (res moduleResolutionResult) {
 	defer func() {
 		if r := recover(); r != nil {
 			contextLogger := logger.FromContext(ctx)
 			contextLogger.Error().Interface("panic", r).Msg(
 				"instantiateLocalModules: recovered from panic; skipping synthetic module docs",
 			)
-			moduleDocs, syntheticFiles, suppressed, calledDirs, ok = nil, nil, nil, nil, false
+			res = moduleResolutionResult{}
 		}
 	}()
 	return resolveModuleDocuments(ctx, files, c.repoPath)
@@ -96,10 +120,10 @@ func resolveModuleDocuments(
 	ctx context.Context,
 	files model.FileMetadatas,
 	repoPath string,
-) (extra []model.Document, syntheticFiles []*model.FileMetadata, suppressed, calledDirs map[string]bool, ok bool) {
+) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
-		return nil, nil, nil, nil, false
+		return moduleResolutionResult{}
 	}
 
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
@@ -113,9 +137,14 @@ func resolveModuleDocuments(
 
 	contextLogger := logger.FromContext(ctx)
 	evaluator := tfeval.New()
-	seen := make(map[string]bool)
+	// seen maps a content-based key to the primary docID so duplicate callers can
+	// be recorded in extras rather than emitted as separate OPA documents.
+	seen := make(map[string]string)
+	extras := make(map[string][]extraCallerInfo)
 	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
+	var extra []model.Document
+	var syntheticFiles []*model.FileMetadata
 
 	for dir := range dirsWithTf {
 		if staticCalledDirs[dir] {
@@ -130,9 +159,7 @@ func resolveModuleDocuments(
 		for d := range childDirs {
 			actualCalledDirs[d] = true
 		}
-		// evalRootDir distinguishes the same child module reached from different roots
-		// (different variable bindings) so synthetic documents are not incorrectly deduped.
-		docs, syn := instantiatedDocs(resources, byAbsPath, repoPath, seen, dir)
+		docs, syn := instantiatedDocs(resources, byAbsPath, repoPath, seen, extras)
 		extra = append(extra, docs...)
 		syntheticFiles = append(syntheticFiles, syn...)
 	}
@@ -140,10 +167,10 @@ func resolveModuleDocuments(
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement.
 	if !rootEvalOK {
-		return nil, nil, nil, nil, false
+		return moduleResolutionResult{}
 	}
 
-	suppressed = make(map[string]bool)
+	suppressed := make(map[string]bool)
 	for dir := range actualCalledDirs {
 		for _, f := range filesByDir[dir] {
 			suppressed[f.ID] = true
@@ -158,17 +185,26 @@ func resolveModuleDocuments(
 		}
 	}
 
-	return extra, syntheticFiles, suppressed, strippedDirs, true
+	return moduleResolutionResult{
+		docs:           extra,
+		syntheticFiles: syntheticFiles,
+		suppressed:     suppressed,
+		calledDirs:     strippedDirs,
+		extras:         extras,
+		ok:             true,
+	}
 }
 
 // instantiatedDocs builds one synthetic doc + FileMetadata per resolved module resource (skips root / out-of-scope).
-// seen dedupes across eval roots. Doc id is file id + call chain + instance; synthetic row carries ModuleCallChain for hashing.
+// Callers with identical resolved attributes share a single OPA doc; the extras map records duplicate callers so
+// their findings can be cloned after OPA eval. Doc id is file id + call chain + instance;
+// synthetic row carries ModuleCallChain for hashing.
 func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
 	repoPath string,
-	seen map[string]bool,
-	evalRootDir string,
+	seen map[string]string,
+	extras map[string][]extraCallerInfo,
 ) (docs []model.Document, synthetic []*model.FileMetadata) {
 	for i := range resources {
 		r := &resources[i]
@@ -180,14 +216,22 @@ func instantiatedDocs(
 		if !ok {
 			continue
 		}
-		key := strings.Join([]string{evalRootDir, abs, r.ModuleAddress, r.Type, r.Name, strconv.Itoa(r.DefLine)}, "\x00")
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
 
 		cck := callChainKey(r, repoPath)
 		docID := strings.Join([]string{fm.ID, cck, r.Name}, "\x00")
+
+		// Dedupe by resource content: identical resolved attributes reached through different
+		// call chains collapse to a single OPA doc (saving eval cost on quadratic rules); findings
+		// are cloned per caller after eval. The key includes ModuleAddress, so distinct module
+		// instances within one configuration (module.a vs module.b, count/for_each indices) always
+		// get distinct keys and are never merged. Cardinality is therefore preserved within a
+		// configuration; only the same module resource re-reached from another root collapses.
+		contentKey := strings.Join([]string{abs, r.ModuleAddress, r.Type, r.Name, strconv.Itoa(r.DefLine), resourceAttrKey(r)}, "\x00")
+		if primaryDocID, duplicate := seen[contentKey]; duplicate {
+			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{callChain: cck, docID: docID})
+			continue
+		}
+		seen[contentKey] = docID
 
 		// Use the bare resource label (not the expanded name like k[0]) so that
 		// Rego rules matching input.document[_].resource.TYPE.NAME find the resource.
@@ -213,6 +257,16 @@ func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *mode
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
 	return &clone
+}
+
+// resourceAttrKey hashes resolved attributes for in-scan content dedup only (not fingerprints).
+func resourceAttrKey(r *tfeval.ResolvedResource) string {
+	attrs := tfeval.AttributesToDocument(r)
+	b, err := json.Marshal(attrs)
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatUint(xxhash.Sum64(b), 16)
 }
 
 // callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).
