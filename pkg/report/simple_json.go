@@ -7,7 +7,6 @@ package report
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -15,18 +14,19 @@ import (
 
 // SimpleJSONFinding represents one finding in the simple-json report.
 type SimpleJSONFinding struct {
-	QueryName string `json:"queryName"`
-	Severity  string `json:"severity"`
-	Line      int    `json:"line"`
-	FileName  string `json:"fileName"`
+	QueryID     string `json:"queryID"`
+	QueryName   string `json:"queryName"`
+	Severity    string `json:"severity"`
+	Platform    string `json:"platform"`
+	Line        int    `json:"line"`
+	FileName    string `json:"fileName"`
+	FingerPrint string `json:"fingerPrint"`
 }
 
 // PrintSimpleJSONReport prints a flat JSON array of findings, one entry per (query × file) pair.
 func PrintSimpleJSONReport(ctx context.Context, path, filename string, body interface{}, sciInfo *model.SCIInfo) error {
-	// Strip existing extension so ExportJSONReport appends ".json" correctly
-	// (e.g. "result.sarif" → "result" → "result.json")
-	if ext := filepath.Ext(filename); ext != "" {
-		filename = strings.TrimSuffix(filename, ext)
+	if !strings.HasSuffix(filename, ".simple.json") {
+		filename += ".simple.json"
 	}
 
 	findings := []SimpleJSONFinding{}
@@ -39,10 +39,13 @@ func PrintSimpleJSONReport(ctx context.Context, path, filename string, body inte
 			q := &summary.Queries[i]
 			for j := range q.Files {
 				findings = append(findings, SimpleJSONFinding{
-					QueryName: q.QueryName,
-					Severity:  string(q.Severity),
-					Line:      q.Files[j].Line,
-					FileName:  q.Files[j].FileName,
+					QueryID:     q.QueryID,
+					QueryName:   q.QueryName,
+					Severity:    string(q.Severity),
+					Platform:    q.Platform,
+					Line:        q.Files[j].Line,
+					FileName:    q.Files[j].FileName,
+					FingerPrint: q.Files[j].Fingerprint,
 				})
 			}
 		}
