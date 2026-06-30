@@ -87,6 +87,12 @@ var scanAction = &cli.Command{
 			Value:  false,
 		},
 		&cli.BoolFlag{
+			Name:   "x-local-module-eval",
+			Hidden: true,
+			Usage:  "(experimental) resolve Terraform local module variables before scanning",
+			Value:  false,
+		},
+		&cli.BoolFlag{
 			Name:   "x-terraform-plan",
 			Hidden: true,
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
@@ -467,8 +473,10 @@ func selectPlatforms(platforms []string) []string {
 }
 
 func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
-	overrides := map[string]bool{}
-	overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
+	overrides := map[string]bool{
+		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
+		featureflags.IacEnableLocalModuleEval:         c.Bool("x-local-module-eval"),
+	}
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }
 

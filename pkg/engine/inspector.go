@@ -299,11 +299,16 @@ func (c *Inspector) Inspect(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
 
-	// Local modules: append synthetic file rows (ids match docs) for attribution and fingerprints.
-	moduleDocs, syntheticFiles, moduleExtras := c.instantiateLocalModules(ctx, files)
-	files = append(files, syntheticFiles...)
+	// Terraform local-module instantiation is gated so it can be disabled remotely.
+	var moduleDocs []model.Document
+	var moduleExtras map[string][]extraCallerInfo
+	if c.flagEvaluator != nil && c.flagEvaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
+		var syntheticFiles []*model.FileMetadata
+		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files)
+		files = append(files, syntheticFiles...)
+	}
 
-	// Must run before Combine: instantiateLocalModules clears suppressed file bodies in place.
+	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
 
 	vulnerabilities := make([]model.Vulnerability, 0)
