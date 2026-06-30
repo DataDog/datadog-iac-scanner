@@ -257,77 +257,16 @@ func (s *FileSystemSourceProvider) processFilesParallel(ctx context.Context, fil
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	contextLogger := logger.FromContext(ctx)
 
-	numWorkers := s.calculateWorkerCount()
-	contextLogger.Info().Msgf("Processing files with %d workers", numWorkers)
-
-	workerCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// Create channels for work distribution
-	filesChan := make(chan string, numWorkers*2)
-	errChan := make(chan error, numWorkers)
-	var wg sync.WaitGroup
-
-	// Start worker goroutines
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go s.processFileWorker(workerCtx, &wg, filesChan, errChan, sink)
-	}
-
-	// Feed files to workers
-	go s.feedFilesToWorkers(workerCtx, files, filesChan)
-
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	var firstErr error
-	for err := range errChan {
-		if err != nil && firstErr == nil {
-			firstErr = err
-			cancel()
-		}
-	}
-
-	return firstErr
-}
-
-// calculateWorkerCount determines the optimal number of workers for parallel processing
-func (s *FileSystemSourceProvider) calculateWorkerCount() int {
-	numWorkers := utils.AdjustNumWorkers(0) // 0 means auto-detect
-	if numWorkers < 1 {
-		numWorkers = minNumWorkers
-	}
-	if numWorkers > maxNumWorkers {
-		numWorkers = maxNumWorkers
-	}
-	return numWorkers
-}
-
-// processFileWorker is a worker goroutine that processes files from the channel
-func (s *FileSystemSourceProvider) processFileWorker(ctx context.Context, wg *sync.WaitGroup,
-	filesChan <-chan string, errChan chan<- error, sink Sink) {
-	defer wg.Done()
-	for filePath := range filesChan {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		if err := s.processFile(ctx, filePath, sink); err != nil {
-			select {
-			case errChan <- err:
-			case <-ctx.Done():
-				return
-			}
-			// Stop processing more files after encountering an error
-			return
-		}
-	}
+	// File reading is I/O-bound, so this pool does NOT draw from the shared CPU
+	// budget (it would only waste CPU slots while blocked on disk). It keeps its
+	// own wider [min,max] bound so disk parallelism is not throttled by core
+	// count. The first error cancels the rest.
+	return utils.ForEach(ctx, files,
+		utils.PoolOptions{MinWorkers: minNumWorkers, MaxWorkers: maxNumWorkers},
+		func(ctx context.Context, filePath string, _ int) error {
+			return s.processFile(ctx, filePath, sink)
+		})
 }
 
 // processFile opens and processes a single file
@@ -342,18 +281,6 @@ func (s *FileSystemSourceProvider) processFile(ctx context.Context, filePath str
 	defer c.Close() //nolint:all
 
 	return sink(ctx, filePath, c)
-}
-
-// feedFilesToWorkers sends files to the worker pool through the channel
-func (s *FileSystemSourceProvider) feedFilesToWorkers(ctx context.Context, files []string, filesChan chan<- string) {
-	defer close(filesChan)
-	for _, file := range files {
-		select {
-		case <-ctx.Done():
-			return
-		case filesChan <- file:
-		}
-	}
 }
 
 func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
