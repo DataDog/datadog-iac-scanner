@@ -39,12 +39,17 @@ func atLeastOne(n int) int {
 	return n
 }
 
-// cpuBudget is the process-wide pool of CPU-bound work slots. Every nested
-// worker pool that does CPU-heavy work (Rego eval, HCL parsing, file-type
-// detection) acquires a slot before working and releases it after. Because the
+// cpuBudget is the process-wide pool of CPU-bound work slots, sized to
+// AvailableCPUs(). Every nested worker pool that does CPU-heavy work (Rego eval,
+// HCL parsing) acquires a slot before working and releases it after. Because the
 // budget is shared, deeply nested fan-out (e.g. N services each running its own
 // query pool) can no longer oversubscribe the machine: at most AvailableCPUs()
 // CPU-bound goroutines run at once, regardless of how the pools nest.
+//
+// The budget equals the core count (no oversubscription): a benchmark sweep over
+// oversubscription factors showed >1.0 never helped and slightly hurt, because
+// the CPU-bound phase is compute-saturated and extra workers only add scheduler
+// and GC contention.
 var (
 	cpuBudgetOnce sync.Once
 	cpuBudget     *semaphore.Weighted
@@ -67,6 +72,15 @@ func CPUBound(ctx context.Context, fn func() error) error {
 	defer sem.Release(1)
 	return fn()
 }
+
+// IO worker bounds. I/O-bound pools (file open/read) fan out wider than the
+// core count because workers spend most of their time blocked on the kernel, so
+// more goroutines than cores keeps the disk/FS queue full. The floor guarantees
+// useful parallelism on tiny machines; the ceiling caps open file descriptors.
+const (
+	IOMinWorkers = 4
+	IOMaxWorkers = 64
+)
 
 // PoolOptions configures ForEach.
 type PoolOptions struct {

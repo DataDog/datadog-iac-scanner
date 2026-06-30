@@ -32,11 +32,6 @@ type FileSystemSourceProvider struct {
 	mu        sync.RWMutex
 }
 
-const (
-	minNumWorkers = 4
-	maxNumWorkers = 64
-)
-
 var (
 	queryRegexExcludeTerraCache = regexp.MustCompile(fmt.Sprintf(`^(.*?%s)?\.terra.*`, regexp.QuoteMeta(string(os.PathSeparator))))
 	// ErrNotSupportedFile - error representing when a file format is not supported by the scanner
@@ -263,7 +258,7 @@ func (s *FileSystemSourceProvider) processFilesParallel(ctx context.Context, fil
 	// own wider [min,max] bound so disk parallelism is not throttled by core
 	// count. The first error cancels the rest.
 	return utils.ForEach(ctx, files,
-		utils.PoolOptions{MinWorkers: minNumWorkers, MaxWorkers: maxNumWorkers},
+		utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
 		func(ctx context.Context, filePath string, _ int) error {
 			return s.processFile(ctx, filePath, sink)
 		})

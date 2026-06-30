@@ -27,6 +27,12 @@ func TestAvailableCPUs(t *testing.T) {
 	}
 }
 
+func TestIOWorkerBounds(t *testing.T) {
+	if IOMinWorkers < 1 || IOMaxWorkers < IOMinWorkers {
+		t.Fatalf("invalid IO bounds [%d,%d]", IOMinWorkers, IOMaxWorkers)
+	}
+}
+
 func TestForEach_AllItemsProcessedIndexAligned(t *testing.T) {
 	const n = 100
 	items := make([]int, n)

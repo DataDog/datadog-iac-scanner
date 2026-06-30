@@ -393,11 +393,12 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	// Detect each file's type with a bounded worker pool. File-type detection
 	// reads file content (I/O-bound), so it does not consume the shared CPU
-	// budget. Workers write into the results/unwanted/locCount channels, which
-	// computeValues drains concurrently below; the channels are closed once all
-	// files are processed.
+	// budget and fans out wider than the core count (same [min,max] bounds as the
+	// filesystem reader). Workers write into the results/unwanted/locCount
+	// channels, which computeValues drains concurrently below; the channels are
+	// closed once all files are processed.
 	go func() {
-		_ = utils.ForEach(ctx, files, utils.PoolOptions{Workers: a.NumWorkers},
+		_ = utils.ForEach(ctx, files, utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
 			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
 					typesFlag: typesFlag,
