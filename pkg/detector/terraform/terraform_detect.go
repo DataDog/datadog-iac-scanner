@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -25,12 +26,37 @@ const strNestedEnd = "nested-end"
 const strNestedStart = "nested-start"
 const strNestedBody = "nested-body"
 
-type DetectKindLine struct{}
+// DetectKindLine holds a per-scan HCL parse cache. Multiple findings in the
+// same file reuse the parsed body instead of re-running hclsyntax.ParseConfig
+// for each one, which is the dominant cost when a single rule fires thousands
+// of times across a large repo.
+type DetectKindLine struct {
+	// hclCache maps file path → *hclsyntax.Body, populated on first parse.
+	hclCache sync.Map
+}
+
+// cachedParseBody parses src as HCL and returns the body, reusing a previously
+// parsed result for the same filePath within this scan.
+func (d *DetectKindLine) cachedParseBody(src []byte, filePath string) (*hclsyntax.Body, error) {
+	if cached, ok := d.hclCache.Load(filePath); ok {
+		return cached.(*hclsyntax.Body), nil
+	}
+	hclFile, diagnostics := hclsyntax.ParseConfig(src, filePath, hcl.InitialPos)
+	if diagnostics.HasErrors() {
+		return nil, fmt.Errorf("failed to parse HCL: %v", diagnostics.Errs())
+	}
+	body, ok := hclFile.Body.(*hclsyntax.Body)
+	if !ok {
+		return nil, fmt.Errorf("unexpected HCL body type")
+	}
+	d.hclCache.Store(filePath, body)
+	return body, nil
+}
 
 const undetectedVulnerabilityLine = -1
 
 // DetectLine searches vulnerability line in terraform files
-func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata,
+func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata,
 	searchKey string, outputLines int) model.VulnerabilityLines {
 	contextLogger := logger.FromContext(ctx)
 	searchKey = sanitizeSearchKey(searchKey)
@@ -80,9 +106,14 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 
 	if detection.FoundAtLeastOne {
 		line := detection.CurrentLine + 1
-		vulnLines, err := locateTerraformBlock(ctx, []byte(file.OriginalData), line, lines)
+		body, parseErr := d.cachedParseBody([]byte(file.OriginalData), file.FilePath)
+		if parseErr != nil {
+			contextLogger.Error().Err(parseErr).Msgf("Failed to parse block at line %d in file %s", line, file.FilePath)
+			return buildEmptyVulnerabilityLines(file)
+		}
+		vulnLines, err := locateTerraformBlock(ctx, body, line, lines)
 		if err != nil {
-			contextLogger.Error().Err(err).Msgf("Failed to parse block at line %d in file %s", line, file.FilePath)
+			contextLogger.Error().Err(err).Msgf("Failed to locate block at line %d in file %s", line, file.FilePath)
 			return buildEmptyVulnerabilityLines(file)
 		}
 		vulnLines.Line = line
@@ -111,26 +142,19 @@ func sanitizeSearchKey(key string) string {
 	return re.ReplaceAllString(key, "[$1]")
 }
 
-func locateTerraformBlock(ctx context.Context, src []byte, identifyingLine int, strLines []string) (model.VulnerabilityLines, error) {
+// locateTerraformBlock finds the block containing identifyingLine in a pre-parsed
+// HCL body and returns its location metadata. The caller is responsible for
+// parsing (and optionally caching) the body via cachedParseBody.
+func locateTerraformBlock(
+	ctx context.Context,
+	body *hclsyntax.Body,
+	identifyingLine int,
+	strLines []string,
+) (model.VulnerabilityLines, error) {
 	contextLogger := logger.FromContext(ctx)
-	filePath := "temp.tf"
 
 	if identifyingLine <= 0 || identifyingLine > len(strLines) {
 		err := fmt.Errorf("line %d is out of range", identifyingLine)
-		contextLogger.Error().Msg(err.Error())
-		return model.VulnerabilityLines{}, err
-	}
-
-	hclFile, diagnostics := hclsyntax.ParseConfig(src, filePath, hcl.InitialPos)
-	if diagnostics.HasErrors() {
-		err := fmt.Errorf("failed to parse HCL: %v", diagnostics.Errs())
-		contextLogger.Error().Msg(err.Error())
-		return model.VulnerabilityLines{}, err
-	}
-
-	body, ok := hclFile.Body.(*hclsyntax.Body)
-	if !ok {
-		err := fmt.Errorf("unexpected HCL body type")
 		contextLogger.Error().Msg(err.Error())
 		return model.VulnerabilityLines{}, err
 	}
