@@ -1130,6 +1130,15 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 		// queryPath maps each surviving rule index to its unique query path.
 		queryPath := make(map[int]string, len(indices))
 		for _, i := range indices {
+			// A rule with custom InputData needs a per-query store that merges that
+			// data; the shared path can only offer the per-platform base store
+			// (built without any rule's InputData). Skip such rules here so the
+			// worker falls back to the isolated LoadQuery, which builds the correct
+			// store. Without this, a rule whose Rego reads its inputData would run
+			// as if that data were absent (wrong findings / false negatives).
+			if !source.IsEmptyInputData(queries[i].InputData) {
+				continue
+			}
 			renamed := pkgDatadogDecl.ReplaceAllString(queries[i].Content, fmt.Sprintf("${1}package datadog.q%d", i))
 			mod, parseErr := ast.ParseModuleWithOpts(queries[i].Query, renamed,
 				ast.ParserOptions{RegoVersion: ast.RegoV1})

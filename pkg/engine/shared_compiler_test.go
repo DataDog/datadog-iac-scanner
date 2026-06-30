@@ -117,6 +117,97 @@ resource "aws_s3_bucket" "plain" {
 		"shared-compiler mode must produce the same findings as isolated mode")
 }
 
+// customInputRule fires only when its result references data read from the
+// query's own InputData (data.expected_acl). If shared mode were to run it
+// against the per-platform base store (which lacks this rule's InputData), the
+// reference would be undefined and the rule would NOT fire — exactly the
+// false-negative the custom-input guard prevents.
+const customInputRule = `package datadog
+
+DatadogPolicy contains result if {
+	some name, i
+	bucket := input.document[i].resource.aws_s3_bucket[name]
+	bucket.acl == data.expected_acl
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": name,
+		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "acl matched the configured expected_acl",
+		"keyActualValue": sprintf("acl is %s", [bucket.acl]),
+	}
+}
+`
+
+// TestInspect_SharedCompiler_CustomInputData is the regression guard for the
+// review finding: a rule whose Rego reads its custom InputData must produce the
+// SAME findings in shared mode as in isolated mode. Shared mode must fall back
+// to the isolated per-query store for such rules instead of running them against
+// the input-data-less base store.
+func TestInspect_SharedCompiler_CustomInputData(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(mainPath, []byte(`
+resource "aws_s3_bucket" "b" {
+  acl = "public-read"
+}
+`), 0o644))
+
+	// The rule fires only if data.expected_acl == "public-read", which lives in
+	// the rule's InputData (not in any library or base store).
+	queries := []model.QueryMetadata{
+		{Query: "custom_input_rule", Content: customInputRule, InputData: `{"expected_acl":"public-read"}`,
+			Platform: "terraform", Metadata: map[string]interface{}{"id": "custom-input-rule"}, Aggregation: 1},
+	}
+
+	run := func(disableRuleIsolation bool) []model.Vulnerability {
+		files := parseTerraform(t, mainPath)
+		ins := newTestInspector(t, inspectorOpts{
+			queries:              queries,
+			repoPath:             root,
+			vb:                   DefaultVulnerabilityBuilder,
+			disableRuleIsolation: disableRuleIsolation,
+		})
+		vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+		require.NoError(t, err)
+		require.Empty(t, ins.GetFailedQueries(), "no query should fail")
+		return vulns
+	}
+
+	isolated := run(false)
+	shared := run(true)
+
+	require.NotEmpty(t, isolated, "the rule should fire when its custom InputData is present")
+	require.Equal(t, summarize(isolated), summarize(shared),
+		"a custom-InputData rule must yield identical findings in shared mode (no false negative)")
+}
+
+// TestLoadSharedQueries_ExcludesCustomInput pins the guard directly: a rule with
+// custom InputData must NOT be prepared by the shared compiler (it would use the
+// input-data-less base store); it must be absent from the returned map so the
+// worker falls back to the isolated LoadQuery. A static-input rule alongside it
+// must still be served from the shared compiler.
+func TestLoadSharedQueries_ExcludesCustomInput(t *testing.T) {
+	platform := "terraform"
+	static := staticQuery(platform, "static_rule", "DatadogPolicy contains result if { result := \"x\" }\n")
+	custom := staticQuery(platform, "custom_rule", "DatadogPolicy contains result if { result := \"y\" }\n")
+	custom.InputData = `{"expected_acl":"public-read"}`
+
+	loader := newCacheTestLoader(t, platform, []model.QueryMetadata{static, custom})
+	stores, _ := baseStoresFor(platform, "{}")
+
+	shared := loader.loadSharedQueries(context.Background(), []model.QueryMetadata{static, custom}, stores)
+
+	if _, ok := shared[0]; !ok {
+		t.Errorf("static-input rule (index 0) should be served from the shared compiler")
+	}
+	if _, ok := shared[1]; ok {
+		t.Errorf("custom-input rule (index 1) must be excluded from shared compilation so it falls back to isolated LoadQuery")
+	}
+}
+
 // summarize reduces findings to a comparable, order-independent multiset of the
 // fields a caller/SARIF actually consumes, so the comparison is robust to
 // worker ordering.
