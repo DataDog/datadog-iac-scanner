@@ -209,6 +209,52 @@ func TestAnalyze_Validation(t *testing.T) {
 	}
 }
 
+// TestConfigDefaults checks that New applies the documented defaults for the
+// configurable limits/timeouts, including the negative-WriteTimeout "disabled"
+// sentinel.
+func TestConfigDefaults(t *testing.T) {
+	s := New(&Config{})
+	if s.cfg.MaxFiles != defaultMaxFiles {
+		t.Errorf("MaxFiles default = %d, want %d", s.cfg.MaxFiles, defaultMaxFiles)
+	}
+	if s.cfg.WriteTimeout != defaultWriteTimeout {
+		t.Errorf("WriteTimeout default = %v, want %v", s.cfg.WriteTimeout, defaultWriteTimeout)
+	}
+	if s.http.WriteTimeout != defaultWriteTimeout {
+		t.Errorf("http.WriteTimeout = %v, want %v", s.http.WriteTimeout, defaultWriteTimeout)
+	}
+
+	// Negative WriteTimeout disables the timeout entirely.
+	sd := New(&Config{WriteTimeout: -1})
+	if sd.http.WriteTimeout != 0 {
+		t.Errorf("disabled WriteTimeout: http.WriteTimeout = %v, want 0", sd.http.WriteTimeout)
+	}
+
+	// Explicit values are honored.
+	sc := New(&Config{MaxFiles: 7, WriteTimeout: 42 * time.Second})
+	if sc.cfg.MaxFiles != 7 || sc.http.WriteTimeout != 42*time.Second {
+		t.Errorf("explicit config not honored: MaxFiles=%d WriteTimeout=%v", sc.cfg.MaxFiles, sc.http.WriteTimeout)
+	}
+}
+
+// TestAnalyze_MaxFilesEnforced confirms the per-server MaxFiles cap rejects an
+// over-limit request with 400.
+func TestAnalyze_MaxFilesEnforced(t *testing.T) {
+	s := New(&Config{MaxFiles: 2})
+	ts := httptest.NewServer(s.http.Handler)
+	defer ts.Close()
+
+	body := `{"files":[{"path":"a.tf","content":"x"},{"path":"b.tf","content":"x"},{"path":"c.tf","content":"x"}],"rules":[]}`
+	resp, err := http.Post(ts.URL+"/ide/v1/iac/analyze", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("3 files with MaxFiles=2: status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
 // TestLifecycle_Contract checks the SAST-mirrored lifecycle contract: /ping
 // returns "pong", standard + CORS headers are present, and /shutdown is gated by
 // --enable-shutdown.

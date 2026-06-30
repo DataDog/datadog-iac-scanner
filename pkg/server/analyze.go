@@ -27,10 +27,10 @@ import (
 )
 
 const (
-	// maxFiles / maxRules bound a single analyze request. The default rule corpus
-	// is ~1200 rules; the limits are generous headroom, not a tuning knob.
-	maxFiles = 5000
-	maxRules = 10000
+	// maxRules bounds the number of rules in a single analyze request. The
+	// default rule corpus is ~1200 rules; this is generous headroom. The file
+	// limit is configurable per-server (Config.MaxFiles), so it is passed in.
+	maxRules = defaultMaxRules
 	// metadataDefaultKeys is the number of fixed keys setDefault injects in
 	// toQueryMetadata (id, legacyId, queryName, severity, platform, category).
 	metadataDefaultKeys = 6
@@ -88,7 +88,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxRequestBytes)
 	var req analyzeRequest
 	// Deliberately not DisallowUnknownFields: tolerating unknown fields lets a
 	// newer extension talk to an older binary (forward compatibility).
@@ -102,7 +102,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validateAnalyzeRequest(&req); err != nil {
+	if err := validateAnalyzeRequest(&req, s.cfg.MaxFiles); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -116,7 +116,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func validateAnalyzeRequest(req *analyzeRequest) error {
+func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 	if len(req.Files) == 0 {
 		return errors.New("at least one file is required")
 	}
