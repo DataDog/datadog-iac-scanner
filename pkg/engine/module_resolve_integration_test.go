@@ -198,10 +198,7 @@ resource "aws_s3_bucket" "this" {
 	require.Len(t, chains, 2, "the two callers must produce distinct module call chains")
 }
 
-// aggregateCountRule fires once when two or more aws_s3_bucket resources are
-// present in the document set. It mirrors a cardinality/aggregate rule whose
-// result depends on how many matching resources exist, the class of rule the
-// content-dedup must not silently break.
+// aggregateCountRule fires when two or more aws_s3_bucket resources exist in the scan.
 const aggregateCountRule = `package datadog
 
 DatadogPolicy contains result if {
@@ -220,12 +217,9 @@ DatadogPolicy contains result if {
 }
 `
 
-// TestInspect_AggregateRuleCardinalityPreservedWithinConfig verifies that an
-// aggregate rule that counts resources still sees every distinct module instance
-// within a single configuration. Two module calls in one root resolve to the same
-// attributes but distinct module addresses, so content-dedup keeps both documents
-// and the count-based rule fires, no cardinality is lost.
-func TestInspect_AggregateRuleCardinalityPreservedWithinConfig(t *testing.T) {
+// Distinct module instances in one root (bucket_a vs bucket_b) are not merged;
+// an aggregate rule still sees both buckets. Does not exercise cross-root dedup.
+func TestInspect_WithinConfigDistinctModuleInstancesNotMerged(t *testing.T) {
 	root := t.TempDir()
 
 	rootDir := filepath.Join(root, "stack")
@@ -236,7 +230,7 @@ func TestInspect_AggregateRuleCardinalityPreservedWithinConfig(t *testing.T) {
 	rootPath := filepath.Join(rootDir, "main.tf")
 	modPath := filepath.Join(modDir, "main.tf")
 
-	// Two distinct module instances with identical inputs in the same root.
+	// bucket_a and bucket_b share inputs but differ in module address (part of the dedup key).
 	require.NoError(t, os.WriteFile(rootPath, []byte(`
 module "bucket_a" {
   source = "../modules/bucket"
@@ -281,8 +275,6 @@ resource "aws_s3_bucket" "this" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
-	// Both module instances survive dedup (distinct module addresses), so the
-	// count-based rule sees two buckets and fires.
 	require.Len(t, vulns, 1, "aggregate rule must see both bucket instances and fire")
 }
 

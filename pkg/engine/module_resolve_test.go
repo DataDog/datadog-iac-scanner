@@ -234,6 +234,85 @@ resource "aws_s3_bucket" "this" {
 	}
 }
 
+// Two roots, identical module inputs: one OPA doc, second caller in extras.
+func TestResolveModuleDocuments_CrossRootIdenticalContentDeduped(t *testing.T) {
+	root := t.TempDir()
+	modDir := filepath.Join(root, "modules", "bucket")
+	if err := os.MkdirAll(filepath.Join(root, "stack-a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "stack-b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(modDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both roots pass the same value so content dedup merges them.
+	writeFile(t, filepath.Join(root, "stack-a"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  name   = "shared"
+}
+`)
+	writeFile(t, filepath.Join(root, "stack-b"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  name   = "shared"
+}
+`)
+	modFile := writeFile(t, modDir, "main.tf", `
+variable "name" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  bucket = var.name
+}
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("a-root", filepath.Join(root, "stack-a", "main.tf")),
+		fileMeta("b-root", filepath.Join(root, "stack-b", "main.tf")),
+		fileMeta("mod-id", modFile),
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if !res.ok {
+		t.Fatalf("resolveModuleDocuments ok = false, want true")
+	}
+
+	if len(res.docs) != 1 {
+		t.Fatalf("want 1 deduplicated bucket doc, got %d: %#v", len(res.docs), res.docs)
+	}
+	primaryID, _ := res.docs[0]["id"].(string)
+	if primaryID == "" {
+		t.Fatalf("primary doc has no id: %#v", res.docs[0])
+	}
+
+	if len(res.extras) != 1 {
+		t.Fatalf("want extras for exactly 1 primary doc, got %d: %#v", len(res.extras), res.extras)
+	}
+	dupes := res.extras[primaryID]
+	if len(dupes) != 1 {
+		t.Fatalf("want 1 deduplicated caller recorded in extras, got %d: %#v", len(dupes), dupes)
+	}
+
+	if len(res.syntheticFiles) != 1 {
+		t.Fatalf("want 1 synthetic file for the primary doc, got %d", len(res.syntheticFiles))
+	}
+
+	if dupes[0].docID == primaryID {
+		t.Fatalf("deduplicated caller must have a distinct doc id from the primary")
+	}
+	if dupes[0].callChain == res.syntheticFiles[0].ModuleCallChain {
+		t.Fatalf("deduplicated caller must have a distinct call chain from the primary")
+	}
+	if dupes[0].callChain == "" {
+		t.Fatalf("deduplicated caller must carry a non-empty call chain")
+	}
+}
+
 func TestResolveModuleDocuments_AllRootsFailEvalNoSuppression(t *testing.T) {
 	root := t.TempDir()
 	stackDir := filepath.Join(root, "stack")

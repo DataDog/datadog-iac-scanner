@@ -7,8 +7,6 @@ package engine
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
 	"strconv"
@@ -18,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/cespare/xxhash/v2"
 )
 
 // extraCallerInfo records a deduplicated module caller so its findings can be
@@ -260,17 +259,14 @@ func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *mode
 	return &clone
 }
 
-// resourceAttrKey returns a SHA-256 hex digest of a resolved resource's attributes,
-// used as the content key for dedup. SHA-256 matches the hash strength used by
-// GetDatadogFingerprintHash and avoids collisions from a weaker polynomial hash.
+// resourceAttrKey hashes resolved attributes for in-scan content dedup only (not fingerprints).
 func resourceAttrKey(r *tfeval.ResolvedResource) string {
 	attrs := tfeval.AttributesToDocument(r)
 	b, err := json.Marshal(attrs)
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
+	return strconv.FormatUint(xxhash.Sum64(b), 16)
 }
 
 // callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).
