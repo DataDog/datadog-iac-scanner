@@ -102,6 +102,16 @@ type Parser struct {
 	fsys       vfs.FS
 }
 
+// FS returns the filesystem used for extension detection. The HTTP server
+// injects an in-memory FS for pushed content; the CLI defaults to the real
+// disk. Never returns nil so callers can use it directly.
+func (c *Parser) FS() vfs.FS {
+	if c.fsys == nil {
+		return vfs.DiskFS{}
+	}
+	return c.fsys
+}
+
 // ParsedDocument is a struct containing data retrieved from parsing
 type ParsedDocument struct {
 	Docs          []model.Document

@@ -16,6 +16,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/stretchr/testify/assert"
 
@@ -293,6 +294,103 @@ func TestEngine_contains(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestEngine_canonicalPlatformKey(t *testing.T) {
+	cases := map[string]string{
+		"k8s":                  "kubernetes",
+		"Kubernetes":           "kubernetes",
+		"K8S":                  "kubernetes",
+		"bicep":                "azureresourcemanager",
+		"Bicep":                "azureresourcemanager",
+		"azureResourceManager": "azureresourcemanager",
+		"cloudFormation":       "cloudformation",
+		"serverlessFW":         "serverlessfw",
+		"Ansible":              "ansible",
+		"terraform":            "terraform",
+		"common":               "common",
+	}
+	for in, want := range cases {
+		require.Equal(t, want, canonicalPlatformKey(in), "canonicalPlatformKey(%q)", in)
+	}
+}
+
+func TestEngine_platformBucketKeys(t *testing.T) {
+	cases := map[string][]string{
+		"":           nil,
+		"ansible":    {"ansible"},
+		"k8s":        {"kubernetes"},
+		"kubernetes": {"kubernetes"},
+		"bicep":      {"azureresourcemanager"},
+		"terraform":  {"terraform"},
+		"knative":    {"knative", "kubernetes"},
+		"Knative":    {"knative", "kubernetes"},
+		// Crossplane has its own queries and is classified consistently by the
+		// sink, so it maps to a single bucket (no kubernetes fan-out).
+		"crossplane":   {"crossplane"},
+		"serverlessfw": {"serverlessfw", "cloudformation"},
+		"serverlessFW": {"serverlessfw", "cloudformation"},
+	}
+	for in, want := range cases {
+		require.Equal(t, want, platformBucketKeys(in), "platformBucketKeys(%q)", in)
+	}
+}
+
+func Test_partitionDocsByPlatform(t *testing.T) {
+	filesMap := map[string]*model.FileMetadata{
+		"ansible-id":      {ID: "ansible-id", Platform: "ansible"},
+		"k8s-id":          {ID: "k8s-id", Platform: "kubernetes"},
+		"unknown-id":      {ID: "unknown-id", Platform: ""},
+		"query-k8s-id":    {ID: "query-k8s-id", Platform: "k8s"},
+		"knative-id":      {ID: "knative-id", Platform: "knative"},
+		"crossplane-id":   {ID: "crossplane-id", Platform: "crossplane"},
+		"serverlessfw-id": {ID: "serverlessfw-id", Platform: "serverlessfw"},
+	}
+	combined := []model.Document{
+		{"id": "ansible-id", "playbooks": []interface{}{}},
+		{"id": "k8s-id", "apiVersion": "v1", "kind": "Pod"},
+		{"id": "unknown-id", "foo": "bar"},
+		{"id": "query-k8s-id", "apiVersion": "v1", "kind": "Service"},
+		{"id": "knative-id", "apiVersion": "serving.knative.dev/v1", "kind": "Service"},
+		{"id": "crossplane-id", "apiVersion": "s3.aws.crossplane.io/v1beta1", "kind": "Bucket"},
+		{"id": "serverlessfw-id", "service": "my-svc", "provider": map[string]interface{}{}},
+	}
+
+	byPlatform, unknown, all := partitionDocsByPlatform(filesMap, combined, nil)
+
+	require.Len(t, all, 7)
+	require.Len(t, unknown, 1)
+	require.Equal(t, "unknown-id", unknown[0].(map[string]interface{})["id"])
+	require.Len(t, byPlatform["ansible"], 1)
+	require.Equal(t, "ansible-id", byPlatform["ansible"][0].(map[string]interface{})["id"])
+	// Knative docs are also scanned by Kubernetes rules; the kubernetes bucket
+	// holds the two k8s docs plus the knative one.
+	require.Len(t, byPlatform["knative"], 1)
+	require.Len(t, byPlatform["kubernetes"], 3)
+	// Crossplane is classified consistently and has its own queries, so it maps
+	// to a single bucket and is not mirrored into kubernetes.
+	require.Len(t, byPlatform["crossplane"], 1)
+	// Serverless Framework docs are scanned by both ServerlessFW and CloudFormation rules.
+	require.Len(t, byPlatform["serverlessfw"], 1)
+	require.Len(t, byPlatform["cloudformation"], 1)
+}
+
+func TestEngine_selectPlatformPayload(t *testing.T) {
+	full := ast.String("FULL")
+	byPlatform := map[string]ast.Value{
+		"ansible":    ast.String("ANSIBLE"),
+		"kubernetes": ast.String("K8S"),
+	}
+
+	// A query is routed to its own platform's payload.
+	require.Equal(t, ast.String("ANSIBLE"), selectPlatformPayload("ansible", byPlatform, full))
+	// "k8s" query metadata normalizes to the "kubernetes" bucket.
+	require.Equal(t, ast.String("K8S"), selectPlatformPayload("k8s", byPlatform, full))
+	// Common rules always see the full payload.
+	require.Equal(t, full, selectPlatformPayload("common", byPlatform, full))
+	require.Equal(t, full, selectPlatformPayload("Common", byPlatform, full))
+	// Defensive fallback: a platform with no built payload uses the full payload.
+	require.Equal(t, full, selectPlatformPayload("terraform", byPlatform, full))
 }
 
 func TestEngine_LenQueriesByPlat(t *testing.T) {

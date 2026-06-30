@@ -76,6 +76,10 @@ type Service struct {
 	files          model.FileMetadatas
 	filesMu        sync.Mutex
 	MaxFileSize    int
+	// Platforms is the scan's effective platform set, used to classify each
+	// parsed file's platform consistently with the analyzer so the engine can
+	// scope queries to their own platform's documents.
+	Platforms []string
 	// failedHelmChartDirsMu guards failedHelmChartDirs.
 	failedHelmChartDirsMu sync.RWMutex
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
