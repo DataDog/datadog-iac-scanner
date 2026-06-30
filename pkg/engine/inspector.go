@@ -358,6 +358,12 @@ func (c *Inspector) executeQueries(
 		return vulnerabilities, err
 	}
 
+	// A canceled scan must surface the cancellation rather than be reported as a
+	// successful scan with partial/empty results.
+	if err := ctx.Err(); err != nil {
+		return vulnerabilities, err
+	}
+
 	// Aggregate serially: processResult mutates shared state.
 	moduleVulns := make(map[string]int)
 	for i := range results {
