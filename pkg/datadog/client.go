@@ -19,6 +19,8 @@ type Client interface {
 	GetDefaultRulesetWithTests(ctx context.Context) (*Ruleset, error)
 	// GetRemoteConfig applies server-side changes to the local configuration.
 	GetRemoteConfig(ctx context.Context, repoUrl string, localConfig []byte) ([]byte, error)
+	// GetLibraries returns all Rego library modules from the backend, keyed by module name.
+	GetLibraries(ctx context.Context) (map[string]Library, error)
 }
 
 // NewDatadogClient creates a DatadogSource with the given options.
@@ -342,4 +344,35 @@ type remoteConfigRequest struct {
 type remoteConfigResponse struct {
 	ID     string `jsonapi:"primary,config" json:"id"`
 	Config []byte `jsonapi:"attribute" json:"config_base64"`
+}
+
+// Library holds the Rego code and optional JSON input data for one library module.
+type Library struct {
+	ID        string `jsonapi:"primary,iac_library" json:"id"`
+	RegoCode  string `jsonapi:"attribute" json:"rego_code"`
+	InputData string `jsonapi:"attribute" json:"input_data,omitempty"`
+}
+
+func (s *datadogClient) GetLibraries(ctx context.Context) (map[string]Library, error) {
+	response, err := s.sendRequest(ctx, http.MethodGet, "iac/libraries", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close() // nolint:errcheck
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("the Datadog API returned status %d", response.StatusCode)
+	}
+	b, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	var libraries []*Library
+	if err := jsonapi.Unmarshal(b, &libraries); err != nil {
+		return nil, err
+	}
+	out := make(map[string]Library, len(libraries))
+	for _, lib := range libraries {
+		out[lib.ID] = *lib
+	}
+	return out, nil
 }
