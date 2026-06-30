@@ -191,6 +191,136 @@ func TestHelpers_GenerateReport(t *testing.T) {
 	}
 }
 
+// TestHelpers_GenerateReport_SimpleJSON covers registry wiring for the simple-json format.
+func TestHelpers_GenerateReport_SimpleJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx := context.Background()
+
+	require.NoError(t, GenerateReport(ctx, tmpDir, "result", test.SummaryMock, []string{"simple-json"}, &model.SCIInfo{}))
+
+	raw, err := os.ReadFile(filepath.Join(tmpDir, "result.simple.json"))
+	require.NoError(t, err)
+
+	var findings []map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &findings))
+	require.NotEmpty(t, findings)
+
+	for i, f := range findings {
+		require.Contains(t, f, "queryID", "finding %d missing queryID", i)
+		require.Contains(t, f, "queryName", "finding %d missing queryName", i)
+		require.Contains(t, f, "severity", "finding %d missing severity", i)
+		require.Contains(t, f, "fileName", "finding %d missing fileName", i)
+		require.Contains(t, f, "line", "finding %d missing line", i)
+		require.Contains(t, f, "fingerPrint", "finding %d missing fingerPrint", i)
+	}
+}
+
+// TestHelpers_GenerateReport_SimpleJSON_FiltersSuppressed ensures suppressed findings
+// are excluded from simple-json output (same filtering as other non-SARIF formats).
+func TestHelpers_GenerateReport_SimpleJSON_FiltersSuppressed(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx := context.Background()
+
+	loc := model.ResourceLocation{
+		Start: model.ResourceLine{Line: 1, Col: 1},
+		End:   model.ResourceLine{Line: 1, Col: 1},
+	}
+	summary := &model.Summary{
+		Queries: model.QueryResultSlice{
+			{
+				QueryID:   "active-rule",
+				QueryName: "active-rule",
+				Severity:  model.SeverityHigh,
+				Files: []model.VulnerableFile{
+					{FileName: "active.tf", Line: 10, ResourceLocation: loc},
+				},
+			},
+			{
+				QueryID:   "suppressed-rule",
+				QueryName: "suppressed-rule",
+				Severity:  model.SeverityHigh,
+				Files: []model.VulnerableFile{
+					{
+						FileName:                 "suppressed.tf",
+						Line:                     20,
+						ResourceLocation:         loc,
+						IsSuppressed:             true,
+						SuppressionKind:          model.SuppressionKindInSource,
+						SuppressionJustification: model.SuppressionJustificationIgnoreComment,
+					},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, GenerateReport(ctx, tmpDir, "result", summary, []string{"simple-json"}, &model.SCIInfo{}))
+
+	raw, err := os.ReadFile(filepath.Join(tmpDir, "result.simple.json"))
+	require.NoError(t, err)
+
+	var findings []map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &findings))
+
+	require.Len(t, findings, 1, "only the non-suppressed finding should appear")
+	require.Equal(t, "active-rule", findings[0]["queryID"])
+	require.Equal(t, "active.tf", findings[0]["fileName"])
+
+	// Caller's summary must not be mutated
+	require.Len(t, summary.Queries, 2)
+	require.True(t, summary.Queries[1].Files[0].IsSuppressed)
+}
+
+// TestHelpers_GenerateReport_SimpleJSON_Filenames verifies that PrintSimpleJSONReport
+// produces the correct output filename for a variety of input filename shapes.
+func TestHelpers_GenerateReport_SimpleJSON_Filenames(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		inputFilename    string
+		expectedFilename string
+	}{
+		// Plain stem: suffix appended normally.
+		{"result", "result.simple.json"},
+		// Stem containing a dot: suffix still appended (dot is not an extension separator here).
+		{"result.v2", "result.v2.simple.json"},
+		// Already carries the full suffix: must not double-append.
+		{"result.simple.json", "result.simple.json"},
+		// Foreign extension (e.g. default output-name): appended after, not replacing.
+		{"result.sarif", "result.sarif.simple.json"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.inputFilename, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, GenerateReport(ctx, dir, tc.inputFilename, test.SummaryMock, []string{"simple-json"}, &model.SCIInfo{}))
+			require.FileExists(t, filepath.Join(dir, tc.expectedFilename))
+		})
+	}
+}
+
+// TestHelpers_GenerateReport_SimpleJSON_MultiFormat verifies that requesting both sarif
+// and simple-json in a single GenerateReport call produces both output files.
+func TestHelpers_GenerateReport_SimpleJSON_MultiFormat(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	require.NoError(t, GenerateReport(ctx, dir, "result", test.SummaryMock, []string{"sarif", "simple-json"}, &model.SCIInfo{}))
+
+	require.FileExists(t, filepath.Join(dir, "result.sarif"))
+	require.FileExists(t, filepath.Join(dir, "result.simple.json"))
+
+	// Both files should be non-empty valid JSON.
+	sarifBytes, err := os.ReadFile(filepath.Join(dir, "result.sarif"))
+	require.NoError(t, err)
+	require.True(t, json.Valid(sarifBytes), "result.sarif is not valid JSON")
+
+	simpleBytes, err := os.ReadFile(filepath.Join(dir, "result.simple.json"))
+	require.NoError(t, err)
+	var findings []map[string]interface{}
+	require.NoError(t, json.Unmarshal(simpleBytes, &findings))
+	require.NotEmpty(t, findings)
+}
+
 // TestHelpers_GenerateReport_FiltersSuppressedForNonSarif ensures that
 // suppressed VulnerableFile entries do not leak into non-SARIF report formats
 // (json, csv, gitlab_sast, etc.), while SARIF still receives them so it can
