@@ -168,6 +168,10 @@ type FileMetadata struct {
 	IsMinified        bool
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
+	// Platform is the lowercased platform the file was classified as (e.g.
+	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
+	// engine to evaluate each query only against documents of its own platform.
+	Platform string
 }
 
 // QueryMetadata is a representation of general information about a query

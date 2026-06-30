@@ -244,7 +244,7 @@ func (c *Inspector) createInspectionJobs(jobs chan<- InspectionJob, queries []mo
 
 // This function performs an inspection job and sends the result to the results channel
 func (c *Inspector) performInspection(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
-	astPayload ast.Value,
+	payloadByPlatform map[string]ast.Value, fullPayload ast.Value,
 	jobs <-chan InspectionJob, results chan<- QueryResult, queries []model.QueryMetadata,
 	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store) {
 	for job := range jobs {
@@ -269,12 +269,16 @@ func (c *Inspector) performInspection(ctx context.Context, scanID string, filesM
 			Metadata: queries[job.queryID],
 		}
 
+		// Evaluate each query only against documents of its own platform. The
+		// payload is read-only, so sharing the per-platform ast.Value across jobs
+		// is safe.
+		payload := selectPlatformPayload(query.Metadata.Platform, payloadByPlatform, fullPayload)
 		queryContext := &QueryContext{
 			Ctx:           ctx,
 			scanID:        scanID,
 			Files:         filesMap,
 			Query:         query,
-			payload:       &astPayload,
+			payload:       &payload,
 			FlagEvaluator: c.flagEvaluator,
 		}
 
@@ -311,8 +315,6 @@ func (c *Inspector) Inspect(
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
 
-	vulnerabilities := make([]model.Vulnerability, 0)
-
 	// Step 1: Parse Terraform modules
 	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
 	if err != nil {
@@ -324,86 +326,81 @@ func (c *Inspector) Inspect(
 	rootDir := c.repoPath
 	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, rootDir)
 
-	// Convert combined documents directly to OPA AST, skipping the
-	// json.Marshal -> UnmarshalJSON round-trip to avoid intermediate copies.
-	docs := make([]interface{}, 0, len(combinedFiles.Documents))
-	for _, d := range combinedFiles.Documents {
-		docs = append(docs, map[string]interface{}(d))
-	}
-	for _, d := range moduleDocs {
-		docs = append(docs, map[string]interface{}(d))
-	}
-	astPayload, err := ast.InterfaceToValue(map[string]interface{}{
-		"document": docs,
-	})
-	if err != nil {
-		return vulnerabilities, err
-	}
-
-	// Transform jsonencode in payload once before running queries
-	// This avoids redundant transformations and prevents race conditions
-	astPayload = c.TransformJsonencodeInPayload(ctx, astPayload)
-
 	queries := c.getQueriesByPlat(platforms)
+
+	// Compute the file map once and share it (read-only) across all workers and
+	// payload partitioning.
+	filesMap := files.ToMap()
+
+	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries)
+	if err != nil {
+		return nil, err
+	}
 
 	// Pre-build one inmem.Store per platform so LoadQuery does not re-parse the
 	// same payload for every PrepareForEval call.
 	baseStores := precomputeBaseStores(c.QueryLoader.precomputeBaseInputData(ctx, enrichedModules))
 
-	// Compute the file map once and share it (read-only) across all workers
-	filesMap := files.ToMap()
+	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries, enrichedModules, baseStores)
+	if err != nil {
+		return nil, err
+	}
+	return expandModuleFindings(vulnerabilities, moduleExtras), nil
+}
 
-	// Create a channel to collect the results
+// executeQueries runs all prepared queries concurrently and collects vulnerabilities.
+func (c *Inspector) executeQueries(
+	ctx context.Context,
+	scanID string,
+	filesMap map[string]*model.FileMetadata,
+	payloads platformPayloads,
+	queries []model.QueryMetadata,
+	enrichedModules []tfmodules.ParsedModule,
+	baseStores map[string]storage.Store,
+) ([]model.Vulnerability, error) {
 	results := make(chan QueryResult, len(queries))
-
-	// Create a channel for inspection jobs
 	jobs := make(chan InspectionJob, len(queries))
 
 	var wg sync.WaitGroup
-
-	// Start a goroutine for each worker
 	for w := 0; w < c.numWorkers; w++ {
 		wg.Add(1)
-
 		go func() {
-			// Decrement the counter when the goroutine completes
 			defer wg.Done()
-			c.performInspection(ctx, scanID, filesMap, astPayload, jobs, results, queries, enrichedModules, baseStores)
+			c.performInspection(ctx, scanID, filesMap, payloads.byPlatform, payloads.full, jobs, results, queries, enrichedModules, baseStores)
 		}()
 	}
-	// Start a goroutine to create inspection jobs
 	go c.createInspectionJobs(jobs, queries)
-
 	go func() {
-		// Wait for all jobs to finish
 		wg.Wait()
-		// Then close the results channel
 		close(results)
 	}()
 
-	// Collect all the results
+	return c.drainQueryResults(ctx, results, queries)
+}
+
+// drainQueryResults reads query results until the channel closes or the context is canceled.
+func (c *Inspector) drainQueryResults(
+	ctx context.Context,
+	results <-chan QueryResult,
+	queries []model.QueryMetadata,
+) ([]model.Vulnerability, error) {
+	contextLogger := logger.FromContext(ctx)
+	vulnerabilities := make([]model.Vulnerability, 0)
 	moduleVulns := make(map[string]int)
-loop:
 	for {
 		select {
 		case <-ctx.Done():
 			return vulnerabilities, ctx.Err()
 		case result, ok := <-results:
 			if !ok {
-				// Channel closed, we're done
-				break loop
+				for vulnerability, number := range moduleVulns {
+					contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
+				}
+				return vulnerabilities, nil
 			}
 			processResult(ctx, &result, &vulnerabilities, &moduleVulns, queries, c)
 		}
 	}
-
-	for vulnerability, number := range moduleVulns {
-		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
-	}
-
-	vulnerabilities = expandModuleFindings(vulnerabilities, moduleExtras)
-
-	return vulnerabilities, nil
 }
 
 // expandModuleFindings clones findings from deduplicated OPA docs back to each
@@ -759,15 +756,176 @@ func checkComment(line int, ignoreLines []int) bool {
 	return false
 }
 
+// Platform keys used to bucket documents and route queries to per-platform payloads.
+const (
+	platformCommon         = "common"
+	platformK8s            = "k8s"
+	platformKubernetes     = "kubernetes"
+	platformBicep          = "bicep"
+	platformAzureRM        = "azureresourcemanager"
+	platformKnative        = "knative"
+	platformServerlessFW   = "serverlessfw"
+	platformCloudFormation = "cloudformation"
+)
+
+// platformPayloads holds per-platform OPA input payloads built once per scan.
+type platformPayloads struct {
+	byPlatform map[string]ast.Value
+	full       ast.Value
+}
+
+// partitionDocsByPlatform groups parsed documents by their file's platform
+// bucket(s); multi-platform files (Knative, Serverless Framework) land in both
+// their own and their parent platform's bucket via platformBucketKeys.
+// Documents with an undetermined platform are collected separately and later
+// merged into every platform's payload so no rule loses coverage.
+func partitionDocsByPlatform(
+	filesMap map[string]*model.FileMetadata,
+	combinedDocs, moduleDocs []model.Document,
+) (byPlatform map[string][]interface{}, unknown, all []interface{}) {
+	byPlatform = make(map[string][]interface{})
+	all = make([]interface{}, 0, len(combinedDocs)+len(moduleDocs))
+	addDoc := func(d model.Document) {
+		m := map[string]interface{}(d)
+		all = append(all, m)
+		id, _ := d["id"].(string)
+		var platform string
+		if fm := filesMap[id]; fm != nil {
+			platform = fm.Platform
+		}
+		keys := platformBucketKeys(platform)
+		if len(keys) == 0 {
+			unknown = append(unknown, m)
+			return
+		}
+		for _, key := range keys {
+			byPlatform[key] = append(byPlatform[key], m)
+		}
+	}
+	for _, d := range combinedDocs {
+		addDoc(d)
+	}
+	for _, d := range moduleDocs {
+		addDoc(d)
+	}
+	return byPlatform, unknown, all
+}
+
+// buildPlatformPayloads partitions documents by platform and builds one OPA
+// payload per queried platform. Common-platform queries receive the full
+// cross-platform payload.
+func (c *Inspector) buildPlatformPayloads(
+	ctx context.Context,
+	filesMap map[string]*model.FileMetadata,
+	combinedDocs, moduleDocs []model.Document,
+	queries []model.QueryMetadata,
+) (platformPayloads, error) {
+	docsByPlatform, unknownDocs, allDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
+
+	makePayload := func(ds []interface{}) (ast.Value, error) {
+		v, err := ast.InterfaceToValue(map[string]interface{}{"document": ds})
+		if err != nil {
+			return nil, err
+		}
+		return c.TransformJsonencodeInPayload(ctx, v), nil
+	}
+
+	needFullPayload := false
+	neededPlatforms := make(map[string]bool)
+	for i := range queries {
+		key := canonicalPlatformKey(queries[i].Platform)
+		if key == platformCommon {
+			needFullPayload = true
+			continue
+		}
+		neededPlatforms[key] = true
+	}
+
+	out := platformPayloads{
+		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
+	}
+	for key := range neededPlatforms {
+		ds := docsByPlatform[key]
+		if len(unknownDocs) > 0 {
+			combined := make([]interface{}, 0, len(ds)+len(unknownDocs))
+			combined = append(combined, ds...)
+			combined = append(combined, unknownDocs...)
+			ds = combined
+		}
+		pv, err := makePayload(ds)
+		if err != nil {
+			return platformPayloads{}, err
+		}
+		out.byPlatform[key] = pv
+	}
+
+	if needFullPayload {
+		pv, err := makePayload(allDocs)
+		if err != nil {
+			return platformPayloads{}, err
+		}
+		out.full = pv
+	}
+
+	return out, nil
+}
+
+// canonicalPlatformKey maps a query- or file-level platform name to the single
+// lowercased key used to bucket documents and select per-platform payloads.
+// Kubernetes is keyed "kubernetes" (query metadata uses "k8s"), and Bicep is
+// scanned by the Azure Resource Manager rules (Bicep transpiles to ARM).
+func canonicalPlatformKey(p string) string {
+	p = strings.ToLower(p)
+	switch p {
+	case platformK8s:
+		return platformKubernetes
+	case platformBicep:
+		return platformAzureRM
+	}
+	return p
+}
+
+// platformBucketKeys returns every payload bucket a document of the given
+// platform must belong to. Knative manifests are also scanned by the Kubernetes
+// rules and Serverless Framework manifests by the CloudFormation rules; these
+// fan-outs mirror multiPlatformTypeCheck in the analyzer (which force-loads the
+// parent platform's queries), so those documents are placed in both their own
+// bucket and their parent platform's bucket. Every other platform (including
+// Crossplane, which is classified consistently by the sink and has its own
+// queries) maps to a single bucket. Returns nil for an undetermined platform so
+// the caller can treat it as unknown.
+func platformBucketKeys(platform string) []string {
+	key := canonicalPlatformKey(platform)
+	switch key {
+	case "":
+		return nil
+	case platformKnative:
+		return []string{platformKnative, platformKubernetes}
+	case platformServerlessFW:
+		return []string{platformServerlessFW, platformCloudFormation}
+	}
+	return []string{key}
+}
+
+// selectPlatformPayload returns the document payload a query should evaluate
+// against: its own platform's payload, or the full payload for common rules
+// (and as a defensive fallback when a platform payload was not built).
+func selectPlatformPayload(queryPlatform string, byPlatform map[string]ast.Value, full ast.Value) ast.Value {
+	if key := canonicalPlatformKey(queryPlatform); key != platformCommon {
+		if p, ok := byPlatform[key]; ok {
+			return p
+		}
+	}
+	return full
+}
+
 // contains is a simple method to check if a slice
 // contains an entry
 func contains(s []string, e string) bool {
-	if e == "common" {
+	if canonicalPlatformKey(e) == platformCommon {
 		return true
 	}
-	if e == "k8s" {
-		e = "kubernetes"
-	}
+	e = canonicalPlatformKey(e)
 	for _, a := range s {
 		if strings.EqualFold(a, e) {
 			return true

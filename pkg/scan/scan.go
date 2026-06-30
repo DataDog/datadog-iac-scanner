@@ -317,6 +317,7 @@ func (c *Client) createService(
 				Tracker:        t,
 				Resolver:       combinedResolver,
 				MaxFileSize:    c.ScanParams.MaxFileSizeFlag,
+				Platforms:      types,
 			},
 		)
 	}
