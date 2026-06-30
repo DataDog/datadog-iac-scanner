@@ -56,10 +56,15 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	jLine := initializeJSONLine(resolved)
 	jsonDoc := jLine.setLineInfo(r)
 
+	if !looksLikeTerraformPlan(fileContent) {
+		// JSON is not a tf plan
+		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
+	}
+
 	// Try to parse JSON as Terraform plan
 	tfPlan, err := parseTFPlan(jsonDoc)
 	if err != nil {
-		// JSON is not a tf plan
+		// Fallback to regular json
 		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
 	}
 
