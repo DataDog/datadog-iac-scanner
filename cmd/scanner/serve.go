@@ -58,9 +58,10 @@ var serveAction = &cli.Command{
 		&cli.BoolFlag{
 			Name:   "x-use-rules-cache",
 			Hidden: true,
-			Usage: "(experimental, will be removed soon) cache compiled rules across requests so " +
-				"warm scans skip recompilation (faster repeat scans at the cost of retained memory)",
-			Value: false,
+			Value:  false,
+			Usage: "(experimental, will be removed soon) cache compiled rules and co-compile them " +
+				"into a shared compiler (rules cache + disabled rule isolation), for faster repeat " +
+				"scans at low memory",
 		},
 		&cli.StringFlag{
 			Name:  "libraries-path",
@@ -71,14 +72,6 @@ var serveAction = &cli.Command{
 			Name:  "queries-path",
 			Value: "./assets/queries",
 			Usage: "path to the default rule corpus (used only when a request omits its own rules)",
-		},
-		&cli.BoolFlag{
-			Name:   "x-disable-rule-isolation",
-			Hidden: true,
-			Usage: "(experimental, will be removed soon) co-compile all rules and libraries into a " +
-				"shared compiler instead of isolating each rule; greatly reduces memory at the cost " +
-				"of per-rule compile-failure isolation",
-			Value: false,
 		},
 		&cli.BoolFlag{
 			Name:   "x-parallelparsing",
@@ -101,6 +94,11 @@ func serve(ctx context.Context, c *cli.Command) error {
 		writeTimeout = -1
 	}
 
+	// --x-use-rules-cache is a single toggle for the rules-caching mode: it both
+	// caches compiled rules across requests and co-compiles them into a shared
+	// compiler. The two are deliberately not separately configurable.
+	useRulesCache := c.Bool("x-use-rules-cache")
+
 	cfg := server.Config{
 		Address:              c.String("address"),
 		Port:                 c.Int("port"),
@@ -112,9 +110,9 @@ func serve(ctx context.Context, c *cli.Command) error {
 		MaxFiles:             c.Int("max-files"),
 		MaxRequestBytes:      int64(c.Int("max-request-mib")) << 20,
 		WriteTimeout:         writeTimeout,
-		DisableRuleIsolation: c.Bool("x-disable-rule-isolation"),
 		ParallelParsing:      c.Bool("x-parallelparsing"),
-		UseRulesCache:        c.Bool("x-use-rules-cache"),
+		UseRulesCache:        useRulesCache,
+		DisableRuleIsolation: useRulesCache,
 	}
 	return server.New(&cfg).ListenAndServe(ctx)
 }
