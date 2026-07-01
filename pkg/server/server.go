@@ -56,14 +56,25 @@ const (
 	// keepAlivePollInterval matches the static-analyzer server's idle-check
 	// cadence: it polls for inactivity every 5s.
 	keepAlivePollInterval = 5 * time.Second
-	// maxRequestBytes caps a single request body (applied by body-reading
-	// handlers via http.MaxBytesReader). 32 MiB comfortably fits a directory of
-	// IaC files plus the pushed rule corpus.
-	maxRequestBytes = 32 << 20
+	// defaultMaxRequestBytes caps a single request body (applied by body-reading
+	// handlers via http.MaxBytesReader). 32 MiB comfortably fits most directories
+	// of IaC files plus the pushed rule corpus; raise it via Config.MaxRequestBytes
+	// for very large monorepos. Note the cap is on the JSON-encoded body, which is
+	// larger than the raw file bytes (escaping).
+	defaultMaxRequestBytes = 32 << 20
 	// defaultMaxConcurrentAnalyze bounds how many /analyze scans run at once.
 	// Each scan buffers up to maxRequestBytes and spins worker goroutines, so an
 	// unbounded burst could exhaust memory/goroutines.
 	defaultMaxConcurrentAnalyze = 4
+	// defaultWriteTimeout bounds how long a response write may take, so a client
+	// that stops reading cannot pin a handler goroutine indefinitely. It is
+	// generous because a cold scan recompiles the whole rule corpus (seconds) and
+	// can be larger still on huge repos; tune via Config.WriteTimeout. 0 disables.
+	defaultWriteTimeout = 10 * time.Minute
+	// defaultMaxFiles bounds the number of files in a single /analyze request.
+	defaultMaxFiles = 50000
+	// defaultMaxRules bounds the number of rules in a single /analyze request.
+	defaultMaxRules = 10000
 )
 
 // Config holds the server's runtime settings, populated from the serve command's
@@ -78,6 +89,29 @@ type Config struct {
 	// MaxConcurrentAnalyze caps simultaneous /analyze scans. <= 0 applies
 	// defaultMaxConcurrentAnalyze.
 	MaxConcurrentAnalyze int
+	// DisableRuleIsolation opts into the engine's shared-compiler mode (rules +
+	// libraries co-compiled once) instead of isolating each rule. Lowers memory
+	// substantially at the cost of per-rule compile-failure isolation.
+	DisableRuleIsolation bool
+	// UseRulesCache enables the process-global compiled-query cache so repeated
+	// /analyze scans reuse compiled rules (warm scans skip recompilation, at the
+	// cost of retained memory). Maps to the --use-rules-cache server flag.
+	UseRulesCache bool
+	// ParallelParsing fans the per-file parse across CPUs for pushed content.
+	// Measured ~26% faster wall-clock on a 950-file push; same CPU total. Maps
+	// to the experimental --x-parallelparsing server flag.
+	ParallelParsing bool
+	// WriteTimeout bounds how long writing a response may take, so a client that
+	// stops reading cannot hold a handler goroutine indefinitely. Zero applies
+	// defaultWriteTimeout; a NEGATIVE value disables the timeout entirely (mapped
+	// to http.Server.WriteTimeout = 0). Maps to the --write-timeout server flag.
+	WriteTimeout time.Duration
+	// MaxFiles caps the number of files in a single /analyze request. <= 0
+	// applies defaultMaxFiles. Maps to the --max-files server flag.
+	MaxFiles int
+	// MaxRequestBytes caps the JSON-encoded /analyze request body. <= 0 applies
+	// defaultMaxRequestBytes. Maps to the --max-request-mib server flag.
+	MaxRequestBytes int64
 }
 
 // Server is the IaC analysis HTTP server.
@@ -126,6 +160,18 @@ func New(cfg *Config) *Server {
 	if cfg.MaxConcurrentAnalyze <= 0 {
 		cfg.MaxConcurrentAnalyze = defaultMaxConcurrentAnalyze
 	}
+	switch {
+	case cfg.WriteTimeout == 0:
+		cfg.WriteTimeout = defaultWriteTimeout
+	case cfg.WriteTimeout < 0:
+		cfg.WriteTimeout = 0 // explicitly disabled
+	}
+	if cfg.MaxFiles <= 0 {
+		cfg.MaxFiles = defaultMaxFiles
+	}
+	if cfg.MaxRequestBytes <= 0 {
+		cfg.MaxRequestBytes = defaultMaxRequestBytes
+	}
 	s := &Server{
 		cfg:          *cfg,
 		analyzeSem:   make(chan struct{}, cfg.MaxConcurrentAnalyze),
@@ -152,8 +198,7 @@ func New(cfg *Config) *Server {
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		IdleTimeout:       idleTimeout,
-		// No WriteTimeout: a cold scan recompiles the rule corpus and can take
-		// several seconds until the prepared-query cache lands.
+		WriteTimeout:      cfg.WriteTimeout,
 	}
 	return s
 }

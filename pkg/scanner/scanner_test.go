@@ -48,6 +48,8 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 		t, &source.QueryInspectorParameters{}, nil, ".", true, true, 1,
 		featureflags.NewLocalEvaluator(),
 		vfs.DiskFS{},
+		false,
+		false,
 	)
 	if err != nil {
 		return nil, nil, err

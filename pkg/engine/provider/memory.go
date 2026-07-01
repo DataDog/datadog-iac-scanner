@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
@@ -75,11 +76,42 @@ func (m *MemorySourceProvider) GetSources(ctx context.Context,
 	return nil
 }
 
-// GetParallelSources has no I/O to parallelize over in-memory content, so it
-// delegates to GetSources.
+// GetParallelSources fans the per-file sink (which parses the content into a
+// document tree — the CPU-heavy step) across a bounded worker pool. There is no
+// I/O to parallelize for in-memory content, but parsing is CPU-bound and a
+// non-trivial share of a warm server scan, so this can speed up large pushes.
+// It draws from the shared process-wide CPU budget (CPUBound) like the engine's
+// other CPU-heavy pools, so concurrent scans don't oversubscribe the cores. The
+// same sink is called concurrently by the disk provider, so it is safe for
+// concurrent use.
 func (m *MemorySourceProvider) GetParallelSources(ctx context.Context,
-	extensions model.Extensions, sink Sink, resolverSink ResolverSink) error {
-	return m.GetSources(ctx, extensions, sink, resolverSink)
+	extensions model.Extensions, sink Sink, _ ResolverSink) error {
+	contextLogger := logger.FromContext(ctx)
+
+	// Select the eligible files first (cheap; no parsing yet).
+	eligible := make([]string, 0, len(m.paths))
+	for _, p := range m.paths {
+		if !extensions.Include(memExtension(p)) {
+			continue
+		}
+		if pathutil.Excluded(p, m.ignorePaths, m.onlyPaths) {
+			continue
+		}
+		eligible = append(eligible, p)
+	}
+
+	// Parse the eligible files in parallel. A file that cannot be read is logged
+	// and skipped (not an error); the first sink error cancels the rest.
+	return utils.ForEach(ctx, eligible,
+		utils.PoolOptions{CPUBound: true},
+		func(ctx context.Context, p string, _ int) error {
+			content, err := m.fsys.ReadFile(p)
+			if err != nil {
+				contextLogger.Warn().Msgf("memory source provider: could not read pushed file %s: %v", p, err)
+				return nil
+			}
+			return sink(ctx, p, io.NopCloser(bytes.NewReader(content)))
+		})
 }
 
 // memExtension determines a pushed file's extension token from its path alone

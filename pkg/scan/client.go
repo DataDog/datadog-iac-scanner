@@ -56,6 +56,8 @@ type Parameters struct {
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
 	ShouldScanTfPlans           bool
+	DisableRuleIsolation        bool
+	UseRulesCache               bool
 }
 
 func (p *Parameters) GetEffectivePlatforms() []string {

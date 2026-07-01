@@ -8,7 +8,10 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -88,4 +91,51 @@ func collect(t *testing.T, p *MemorySourceProvider, exts model.Extensions) map[s
 		t.Fatalf("GetSources: %v", err)
 	}
 	return got
+}
+
+// TestMemorySourceProvider_ParallelMatchesSequential asserts the parallel parse
+// path emits exactly the same file set/content as the sequential path. The
+// parallel sink is mutex-guarded since it is called from multiple workers.
+func TestMemorySourceProvider_ParallelMatchesSequential(t *testing.T) {
+	files := map[string][]byte{}
+	for i := 0; i < 200; i++ {
+		files[fmt.Sprintf("dir%d/main.tf", i)] = []byte(fmt.Sprintf("content-%d", i))
+	}
+	mem := vfs.NewMemFS(files)
+	p := NewMemorySourceProvider(mem, mem.Paths(), nil, nil)
+	exts := model.Extensions{".tf": {}}
+
+	collectConc := func(parallel bool) map[string]string {
+		var mu sync.Mutex
+		got := map[string]string{}
+		sink := func(_ context.Context, filename string, content io.ReadCloser) error {
+			b, _ := io.ReadAll(content)
+			_ = content.Close()
+			mu.Lock()
+			got[filename] = string(b)
+			mu.Unlock()
+			return nil
+		}
+		noop := func(_ context.Context, _ string) ([]string, error) { return nil, nil }
+		var err error
+		if parallel {
+			err = p.GetParallelSources(context.Background(), exts, sink, noop)
+		} else {
+			err = p.GetSources(context.Background(), exts, sink, noop)
+		}
+		if err != nil {
+			t.Fatalf("get sources (parallel=%v): %v", parallel, err)
+		}
+		return got
+	}
+
+	seq := collectConc(false)
+	par := collectConc(true)
+
+	if len(par) != 200 {
+		t.Fatalf("parallel emitted %d files, want 200", len(par))
+	}
+	if !reflect.DeepEqual(seq, par) {
+		t.Fatalf("parallel result differs from sequential")
+	}
 }
