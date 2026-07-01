@@ -530,7 +530,7 @@ func TestDetectTerraformLine(t *testing.T) { //nolint
 
 	ctx := context.Background()
 	for i, testCase := range testCases {
-		detector := DetectKindLine{}
+		detector := &DetectKindLine{}
 		t.Run(fmt.Sprintf("detectTerraformLine-%d", i), func(t *testing.T) {
 			v := detector.DetectLine(ctx, testCase.file, testCase.searchKey, 3)
 			require.Equal(t, testCase.expected, v)
@@ -820,7 +820,7 @@ func TestDetectTerraformLineRemediations(t *testing.T) {
 
 	ctx := context.Background()
 	for i, testCase := range testCases {
-		detector := DetectKindLine{}
+		detector := &DetectKindLine{}
 		t.Run(fmt.Sprintf("detectTerraformLine-%d", i), func(t *testing.T) {
 			v := detector.DetectLine(ctx, testCase.file, testCase.searchKey, 3)
 			require.Equal(t, testCase.expected, v)
@@ -985,7 +985,7 @@ func TestDetectLinePolicyStatementPrincipalJsonencode(t *testing.T) {
 		OriginalData:      policyStatementPrincipalJSONEncode,
 		LinesOriginalData: utils.SplitLines(policyStatementPrincipalJSONEncode),
 	}
-	got := DetectKindLine{}.DetectLine(ctx, file, `aws_s3_bucket_policy[x].policy.Statement[0].Principal`, 3)
+	got := (&DetectKindLine{}).DetectLine(ctx, file, `aws_s3_bucket_policy[x].policy.Statement[0].Principal`, 3)
 	require.Equal(t, 8, got.Line)
 	// The remediation/region anchor must stay on the identifying line inside the
 	// jsonencode(...) body rather than being pushed past the wrapping `})`,
@@ -1003,6 +1003,6 @@ func TestDetectLinePolicyStatementPrincipalHeredocJSON(t *testing.T) {
 		OriginalData:      policyStatementPrincipalHeredocJSON,
 		LinesOriginalData: utils.SplitLines(policyStatementPrincipalHeredocJSON),
 	}
-	got := DetectKindLine{}.DetectLine(ctx, file, `aws_ecr_repository_policy[x].policy.Statement[0].Principal`, 3)
+	got := (&DetectKindLine{}).DetectLine(ctx, file, `aws_ecr_repository_policy[x].policy.Statement[0].Principal`, 3)
 	require.Equal(t, 9, got.Line)
 }
