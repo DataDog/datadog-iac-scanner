@@ -793,3 +793,47 @@ test_role_dangerous_pairs_non_wildcard_resource_excluded if {
 	}}}}]}
 	not role_unrecommended_permission_policy_scenarios("r1", "iam:PassRole") with input as doc
 }
+
+test_user_dangerous_pairs_inline_policy if {
+	doc := {"document": [{"resource": {"aws_iam_user_policy": {"p": {
+		"user": "aws_iam_user.u1.name",
+		"policy": _wildcard_policy_json,
+	}}}}]}
+	user_unrecommended_permission_policy_scenarios("u1", "iam:PassRole") with input as doc
+	user_unrecommended_permission_policy_scenarios("u1", "sts:AssumeRole") with input as doc
+}
+
+test_group_dangerous_pairs_inline_policy if {
+	doc := {"document": [{"resource": {"aws_iam_group_policy": {"p": {
+		"group": "aws_iam_group.g1.name",
+		"policy": _wildcard_policy_json,
+	}}}}]}
+	group_unrecommended_permission_policy_scenarios("g1", "iam:PassRole") with input as doc
+	group_unrecommended_permission_policy_scenarios("g1", "sts:AssumeRole") with input as doc
+}
+
+# Group attachment references a managed policy in a DIFFERENT document; the
+# precomputed name index must still resolve it.
+test_group_dangerous_pairs_attachment_cross_document if {
+	doc := {"document": [
+		{"resource": {"aws_iam_group_policy_attachment": {"a": {
+			"group": "aws_iam_group.g1.name",
+			"policy_arn": "aws_iam_policy.shared.arn",
+		}}}},
+		{"resource": {"aws_iam_policy": {"shared": {
+			"name": "shared",
+			"policy": _wildcard_policy_json,
+		}}}},
+	]}
+	group_unrecommended_permission_policy_scenarios("g1", "iam:PassRole") with input as doc
+	group_unrecommended_permission_policy_scenarios("g1", "sts:AssumeRole") with input as doc
+}
+
+# A group with a policy scoped to a specific resource (not "*") must not fire.
+test_group_dangerous_pairs_non_wildcard_resource_excluded if {
+	doc := {"document": [{"resource": {"aws_iam_group_policy": {"p": {
+		"group": "aws_iam_group.g1.name",
+		"policy": `{"Statement":[{"Action":["iam:PassRole"],"Effect":"Allow","Resource":"arn:aws:iam::123:role/x"}]}`,
+	}}}}]}
+	not group_unrecommended_permission_policy_scenarios("g1", "iam:PassRole") with input as doc
+}
