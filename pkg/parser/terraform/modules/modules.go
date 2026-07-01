@@ -96,7 +96,7 @@ func parseHCLBodyCached(cache *sync.Map, content, filePath string) (*hclsyntax.B
 	return body, diags
 }
 
-func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers int) map[string]*hclsyntax.Body {
+func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers int) (map[string]*hclsyntax.Body, error) {
 	contextLogger := logger.FromContext(ctx)
 	parsedBodies := make(map[string]*hclsyntax.Body)
 
@@ -107,14 +107,16 @@ func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers i
 		}
 	}
 	if len(tfFiles) == 0 {
-		return parsedBodies
+		return parsedBodies, nil
 	}
 
 	bodyCache := &sync.Map{}
 
 	bodies := make([]*hclsyntax.Body, len(tfFiles))
 	// HCL parsing is CPU-bound, so the pool draws from the shared CPU budget.
-	_ = utils.ForEach(ctx, tfFiles, utils.PoolOptions{Workers: numWorkers, CPUBound: true},
+	// Individual HCL parse errors are logged and skipped (not fatal); ForEach
+	// only returns an error on context cancellation, which the caller surfaces.
+	err := utils.ForEach(ctx, tfFiles, utils.PoolOptions{Workers: numWorkers, CPUBound: true},
 		func(_ context.Context, file *model.FileMetadata, i int) error {
 			content := getFileContent(file)
 			body, diags := parseHCLBodyCached(bodyCache, content, file.FilePath)
@@ -129,13 +131,16 @@ func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers i
 			bodies[i] = body
 			return nil
 		})
+	if err != nil {
+		return parsedBodies, err
+	}
 
 	for i, file := range tfFiles {
 		if bodies[i] != nil {
 			parsedBodies[file.FilePath] = bodies[i]
 		}
 	}
-	return parsedBodies
+	return parsedBodies, nil
 }
 
 func collectLocalsAndVars(body *hclsyntax.Body, localsMap, varsMap map[string]string) {
@@ -225,7 +230,10 @@ func extractModuleBlocks(
 // ParseTerraformModules parses HCL content and extracts module source/version.
 // numWorkers: 0 means auto-detect (GOMAXPROCS).
 func ParseTerraformModules(ctx context.Context, fsys vfs.FS, files model.FileMetadatas, numWorkers int) (map[string]ParsedModule, error) {
-	parsedBodies := parseHCLBodies(ctx, files, numWorkers)
+	parsedBodies, err := parseHCLBodies(ctx, files, numWorkers)
+	if err != nil {
+		return nil, err
+	}
 	modules := make(map[string]ParsedModule)
 
 	// Group files by directory so locals/vars are scoped per Terraform module root,

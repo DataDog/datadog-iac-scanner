@@ -85,6 +85,25 @@ module "local_bucket" {
 	}
 }
 
+// TestParseTerraformModules_CanceledContext guards the cancellation contract:
+// a canceled scan must surface ctx.Err() rather than silently return partial
+// module data. HCL parse workers skip individual failures, so without an
+// explicit propagation a canceled parse would return (partial, nil).
+func TestParseTerraformModules_CanceledContext(t *testing.T) {
+	files := model.FileMetadatas{
+		&model.FileMetadata{
+			FilePath:     filepath.Join(t.TempDir(), "main.tf"),
+			OriginalData: `module "m" { source = "./x" }`,
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // canceled scan
+
+	_, err := ParseTerraformModules(ctx, vfs.DiskFS{}, files, 0)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestParseTerraformModules(t *testing.T) {
 	tests := []struct {
 		name     string

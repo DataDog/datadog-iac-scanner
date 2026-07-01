@@ -120,6 +120,16 @@ func (o PoolOptions) resolveWorkers(items int) int {
 // If opts.CPUBound is set, each invocation of fn is wrapped in CPUBound so the
 // work draws from the shared process-wide CPU budget. The first non-nil error
 // cancels the remaining work and is returned.
+//
+// SetLimit and CPUBound are two distinct limits and both are needed:
+//   - g.SetLimit caps goroutines for THIS pool. It bounds fan-out width and
+//     memory per pool, and applies to I/O-bound pools too (where it can exceed
+//     the core count, e.g. [4,64], so blocked file reads keep the disk busy).
+//   - CPUBound draws from a single semaphore shared by ALL pools process-wide.
+//     It bounds how much CPU-heavy work runs at once regardless of how pools
+//     nest — N per-platform scans each running their own query pool cannot
+//     collectively oversubscribe the cores. SetLimit alone can't do this: each
+//     pool's limit is independent, so nesting would multiply (N x limit).
 func ForEach[T any](ctx context.Context, items []T, opts PoolOptions, fn func(ctx context.Context, item T, index int) error) error {
 	if len(items) == 0 {
 		return nil
@@ -128,6 +138,8 @@ func ForEach[T any](ctx context.Context, items []T, opts PoolOptions, fn func(ct
 	numWorkers := opts.resolveWorkers(len(items))
 
 	g, gctx := errgroup.WithContext(ctx)
+	// Per-pool goroutine cap (fan-out width / memory). The cross-pool CPU cap is
+	// the shared semaphore applied via CPUBound below, not this limit.
 	g.SetLimit(numWorkers)
 
 	for i := range items {

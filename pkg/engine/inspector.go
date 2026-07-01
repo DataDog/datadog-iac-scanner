@@ -296,9 +296,14 @@ func (c *Inspector) Inspect(
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
 
-	// Step 1: Parse Terraform modules
+	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
+	// non-fatal (logged, scan continues), but a context cancellation must abort
+	// the scan rather than proceed with partial module data.
 	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
 	}
 	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
