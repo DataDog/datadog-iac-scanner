@@ -17,8 +17,10 @@ import (
 
 const (
 	undetectedVulnerabilityLine = -1
-	// resource, type, name, and at least one attribute segment.
-	tfPlanMinAttributePathLen = 4
+	// resource, type, and name; the resource block's own header line is now
+	// injected into the remapped plan document (see pkg/parser/json/tfplan.go),
+	// so a bare resource-level searchKey can resolve structurally too.
+	tfPlanMinAttributePathLen = 3
 )
 
 type defaultDetectLine struct {
@@ -156,15 +158,22 @@ func detectTerraformPlanLine(
 
 // terraformPlanPath turns a plan searchKey into structural path components for
 // GetLineBySearchLine. It expands bracket groups ("type[name]" -> type, name;
-// "list[0]" -> list, 0), drops value anchors (key=value -> key), and ensures the
-// path is rooted at the plan's top-level "resource" key.
+// "list[0]" -> list, 0), drops value anchors (key=value -> key), strips the
+// "{{ }}" templating some Rego rules wrap the name in, and ensures the path
+// is rooted at the plan's top-level "resource" key.
+//
+// Bracket contents can contain dots (module-prefixed keys, e.g.
+// "type[module.foo.name]") and/or a count/for_each suffix bracket (e.g.
+// "type[this[0]]"), so the top-level dot-split ignores dots inside an
+// unclosed "[...]" (see splitTopLevelDots), and a group's closing bracket is
+// its LAST "]", not the first one found after "[".
 func terraformPlanPath(searchKey string) ([]string, bool) {
 	// Drop the value anchor (key=value) up front; the value may contain dots.
 	if eq := strings.Index(searchKey, "="); eq >= 0 {
 		searchKey = searchKey[:eq]
 	}
 	var comps []string
-	for _, seg := range strings.Split(searchKey, ".") {
+	for _, seg := range splitTopLevelDots(searchKey) {
 		seg = strings.TrimSpace(seg)
 		if seg == "" {
 			continue
@@ -180,11 +189,14 @@ func terraformPlanPath(searchKey string) ([]string, bool) {
 			if head := seg[:open]; head != "" {
 				comps = append(comps, head)
 			}
-			closeIdx := strings.Index(seg, "]")
+			closeIdx := strings.LastIndex(seg, "]")
 			if closeIdx < 0 || closeIdx < open {
 				break
 			}
-			if inner := seg[open+1 : closeIdx]; inner != "" {
+			inner := seg[open+1 : closeIdx]
+			inner = strings.TrimPrefix(inner, "{{")
+			inner = strings.TrimSuffix(inner, "}}")
+			if inner != "" {
 				comps = append(comps, inner)
 			}
 			seg = seg[closeIdx+1:]
@@ -195,6 +207,30 @@ func terraformPlanPath(searchKey string) ([]string, bool) {
 		comps = comps[1:]
 	}
 	return append([]string{"resource"}, comps...), explicitResourcePath
+}
+
+// splitTopLevelDots splits s on "." like strings.Split, except dots inside an
+// unclosed "[...]" group aren't treated as separators, e.g.
+// "type[module.foo.name].attr" splits into ["type[module.foo.name]", "attr"].
+func splitTopLevelDots(s string) []string {
+	var segs []string
+	depth, start := 0, 0
+	for i, c := range s {
+		switch c {
+		case '[':
+			depth++
+		case ']':
+			if depth > 0 {
+				depth--
+			}
+		case '.':
+			if depth == 0 {
+				segs = append(segs, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(segs, s[start:])
 }
 
 // handleArrayIndex handles paths that contain numeric segments. It first attempts a

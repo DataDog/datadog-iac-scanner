@@ -201,6 +201,41 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 			want:    4,
 			wantErr: false,
 		},
+		{ //nolint
+			// The final path component (targetObj) must be dot-escaped too, or
+			// gjson misreads a dotted key as nested paths.
+			name: "test with dots on final path component",
+			args: args{
+				pathComponents: []string{"father", "module.staging.web"},
+				file: &model.FileMetadata{
+					LineInfoDocument: map[string]any{
+						"_dd_lines": map[string]any{
+							"_dd__default": map[string]any{
+								"_dd_line": 0,
+							},
+							"_dd_father": map[string]any{
+								"_dd_line": 2,
+							},
+						},
+						"father": map[string]any{
+							"_dd_lines": map[string]any{
+								"_dd__default": map[string]any{
+									"_dd_line": 2,
+								},
+								"_dd_module.staging.web": map[string]any{
+									"_dd_line": 3,
+								},
+							},
+							"module.staging.web": map[string]any{
+								"instance_type": "t2.micro",
+							},
+						},
+					},
+				},
+			},
+			want:    3,
+			wantErr: false,
+		},
 		{
 			name: "test number issue with array",
 			args: args{

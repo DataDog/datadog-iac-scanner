@@ -98,11 +98,14 @@ func (d *searchLineDetector) preparePath(pathItems []string) int {
 
 // getResult creates the paths to be used by gjson pkg to find the line in the content
 func (d *searchLineDetector) getResult() int {
+	// Escape '.' like preparePath does for every other path segment, so a dotted
+	// targetObj isn't misread by gjson as nested path segments.
+	targetObj := strings.ReplaceAll(d.targetObj, ".", "\\.")
 	pathObjects := []string{
-		d.resolvedPath + "._dd_lines._dd_" + d.targetObj + "._dd_line",
-		d.resolvedPath + "." + d.targetObj + "._dd_lines._dd__default._dd_line",
-		d.resolvedArrayPath + "." + d.targetObj + "._dd__default._dd_line",
-		d.resolvedArrayPath + "._dd_" + d.targetObj + "._dd_line",
+		d.resolvedPath + "._dd_lines._dd_" + targetObj + "._dd_line",
+		d.resolvedPath + "." + targetObj + "._dd_lines._dd__default._dd_line",
+		d.resolvedArrayPath + "." + targetObj + "._dd__default._dd_line",
+		d.resolvedArrayPath + "._dd_" + targetObj + "._dd_line",
 	}
 
 	result := -1

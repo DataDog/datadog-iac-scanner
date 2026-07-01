@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	hcl_plan "github.com/hashicorp/terraform-json"
+	"github.com/tidwall/gjson"
 )
 
 // TFPlan is an auxiliary structure for parsing tfplans as a scanner Document
@@ -18,11 +19,14 @@ type TFPlan struct {
 	Resource map[string]TFPlanResource `json:"resource"`
 }
 
-// TFPlanResource is an auxiliary structure for parsing tfplans as a scanner Document
-type TFPlanResource map[string]TFPlanNamedResource
+// TFPlanResource is an auxiliary structure for parsing tfplans as a scanner Document.
+// Values are either a TFPlanNamedResource (keyed by resource name) or, under the
+// reserved "_dd_lines" key, a map[string]*model.LineObject holding each sibling
+// resource's header line (see readModule).
+type TFPlanResource map[string]any
 
 // TFPlanNamedResource is an auxiliary structure for parsing tfplans as a scanner Document
-type TFPlanNamedResource map[string]interface{}
+type TFPlanNamedResource map[string]any
 
 // parseTFPlan unmarshals Document as a plan so it can be rebuilt with only
 // the required information
@@ -40,17 +44,54 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 		return model.Document{}, err
 	}
 
-	parsedPlan := readPlan(plan)
+	// hcl_plan.Plan is a typed struct so unmarshaling drops the injected
+	// _dd_lines keys along with each resource's "values" attribute line. Read
+	// those lines back out of the raw bytes (via gjson, keyed by resource
+	// address) before that information is lost.
+	resourceLines := extractResourceHeaderLines(b)
+
+	parsedPlan := readPlan(plan, resourceLines)
 	return parsedPlan, nil
 }
 
+// extractResourceHeaderLines walks the raw plan JSON and returns, for every
+// planned resource, the _dd_line of its "values" attribute (i.e. where the
+// resource's own attribute block starts), keyed by resource address. Array
+// elements don't carry their own _dd_lines sibling (see setSeqLines in
+// json_line.go) — that information lives positionally in the parent module's
+// "_dd_lines._dd_resources._dd_arr" instead.
+func extractResourceHeaderLines(rawPlan []byte) map[string]int {
+	lines := make(map[string]int)
+	root_module := gjson.GetBytes(rawPlan, "planned_values.root_module")
+	walkModule(&root_module, lines)
+	return lines
+}
+
+func walkModule(module *gjson.Result, lines map[string]int) {
+	resources := module.Get("resources").Array()
+	arr := module.Get("_dd_lines._dd_resources._dd_arr").Array()
+	for i, resource := range resources {
+		if i >= len(arr) {
+			break
+		}
+		address := resource.Get("address").String()
+		if line := arr[i].Get("_dd_values._dd_line").Int(); line > 0 {
+			lines[address] = int(line)
+		}
+	}
+	module.Get("child_modules").ForEach(func(_, child gjson.Result) bool {
+		walkModule(&child, lines)
+		return true
+	})
+}
+
 // readPlan extracts the information needed from a Terraform plan and converts it to a scanner Document
-func readPlan(plan *hcl_plan.Plan) model.Document {
+func readPlan(plan *hcl_plan.Plan, resourceLines map[string]int) model.Document {
 	kp := TFPlan{
 		Resource: make(map[string]TFPlanResource),
 	}
 
-	kp.readModule(plan.PlannedValues.RootModule)
+	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines)
 
 	doc := model.Document{}
 
@@ -66,25 +107,23 @@ func readPlan(plan *hcl_plan.Plan) model.Document {
 	return doc
 }
 
-// readModule will iterate over all planned_value getting the information required
-// It recursively processes all modules and accumulates resources without losing data
-func (kp *TFPlan) readModule(module *hcl_plan.StateModule) {
-	kp.readModuleWithAddress(module, "")
-}
-
-// readModuleWithAddress recursively processes a module and its children with full address path
-// to ensure unique resource identification across the module tree
-func (kp *TFPlan) readModuleWithAddress(module *hcl_plan.StateModule, moduleAddress string) {
+// readModule recursively processes a module and its children, accumulating
+// resources from every module into the same flat resource.<type>.<name> map
+// without losing data across modules. moduleAddress is the full address of
+// module (e.g. "module.staging"), or "" for the root module.
+func (kp *TFPlan) readModule(module *hcl_plan.StateModule, moduleAddress string, resourceLines map[string]int) {
 	// Process all resources in this module
 	for _, resource := range module.Resources {
 		// Ensure the resource type map exists - accumulate, don't reinitialize!
 		if kp.Resource[resource.Type] == nil {
-			kp.Resource[resource.Type] = make(map[string]TFPlanNamedResource)
+			kp.Resource[resource.Type] = make(TFPlanResource)
 		}
+		typeRes := kp.Resource[resource.Type]
 
-		// Build resource key with module path for child modules
-		// Root module resources keep simple names for backward compatibility
-		// Child module resources are prefixed with their module path
+		// Root-module resources keep their plain name. Child-module resources
+		// get their module address prefixed, so same-type-same-name resources
+		// in different modules don't collide into one map entry (which would
+		// silently drop a resource from evaluation).
 		resourceKey := resource.Name
 		if moduleAddress != "" {
 			resourceKey = moduleAddress + "." + resource.Name
@@ -97,15 +136,24 @@ func (kp *TFPlan) readModuleWithAddress(module *hcl_plan.StateModule, moduleAddr
 		}
 
 		// Accumulate the resource into the existing type map
-		kp.Resource[resource.Type][resourceKey] = resource.AttributeValues
+		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
+
+		// Inject the resource's "values" attribute line as a sibling _dd_lines
+		// entry at resource.<type>._dd_lines._dd_<name>._dd_line, matching the
+		// gjson path GetLineBySearchLine builds for a bare resource searchKey.
+		if line, ok := resourceLines[resource.Address]; ok {
+			ddLines, isMap := typeRes["_dd_lines"].(map[string]*model.LineObject)
+			if !isMap {
+				ddLines = make(map[string]*model.LineObject)
+				typeRes["_dd_lines"] = ddLines
+			}
+			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
+		}
 	}
 
-	// Recursively process child modules with their full address path
+	// Recursively process child modules, accumulating into the same map
 	for _, childModule := range module.ChildModules {
-		// The childModule.Address already contains the full path from root
-		// (e.g., "module.networking" or "module.networking.module.security")
-		// So we pass it directly without combining with parent
-		kp.readModuleWithAddress(childModule, childModule.Address)
+		kp.readModule(childModule, childModule.Address, resourceLines)
 	}
 }
 

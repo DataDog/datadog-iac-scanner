@@ -382,6 +382,37 @@ func Test_terraformPlanPath(t *testing.T) {
 			searchKey: "azurerm_sql_firewall_rule[positive1]",
 			want:      []string{"resource", "azurerm_sql_firewall_rule", "positive1"},
 		},
+		{
+			// Module resources are keyed "name[N]" (count/for_each index), so the
+			// resource-name bracket itself can contain a nested "[0]" suffix.
+			name:      "module_resource_with_count_index",
+			searchKey: "aws_dynamodb_table[this[0]].server_side_encryption",
+			want:      []string{"resource", "aws_dynamodb_table", "this[0]", "server_side_encryption"},
+		},
+		{
+			// Module-prefixed keys contain dots inside the bracket.
+			name:      "module_prefixed_resource",
+			searchKey: "aws_s3_bucket[module.app1.data].bucket",
+			want:      []string{"resource", "aws_s3_bucket", "module.app1.data", "bucket"},
+		},
+		{
+			// Module-prefixed key combined with a for_each index suffix.
+			name:      "module_prefixed_resource_with_for_each_index",
+			searchKey: `aws_s3_bucket[module.app1.data["prod"]].bucket`,
+			want:      []string{"resource", "aws_s3_bucket", `module.app1.data["prod"]`, "bucket"},
+		},
+		{
+			// Some Rego rules wrap the resource name in "{{ }}" templating.
+			name:      "curly_brace_wrapped_name",
+			searchKey: "aws_s3_bucket_object[{{this[0]}}]",
+			want:      []string{"resource", "aws_s3_bucket_object", "this[0]"},
+		},
+		{
+			// Curly-brace templating combined with a module-prefixed name.
+			name:      "curly_brace_wrapped_module_prefixed_name",
+			searchKey: "aws_s3_bucket_object[{{module.s3_object.this[0]}}]",
+			want:      []string{"resource", "aws_s3_bucket_object", "module.s3_object.this[0]"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -436,6 +467,7 @@ func Test_detectLineTerraformPlan(t *testing.T) {
 
 func Test_detectLineTerraformPlanResourceLevel(t *testing.T) {
 	plan := `{
+  "format_version": "1.0",
   "planned_values": {
     "root_module": {
       "resources": [{
@@ -460,7 +492,106 @@ func Test_detectLineTerraformPlanResourceLevel(t *testing.T) {
 		LinesOriginalData: utils.SplitLines(plan),
 	}
 	got := defaultDetectLine{}.DetectLine(context.Background(), file, "resource.aws_api_gateway_deployment[positive1]", 0)
-	require.Equal(t, 5, got.Line)
+	// The resource's "values" attribute line is injected structurally now,
+	// instead of falling back to a text match on the resource address.
+	require.Equal(t, 9, got.Line)
+}
+
+func Test_detectLineTerraformPlanModuleResourceWithCountIndex(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [],
+      "child_modules": [{
+        "address": "module.dynamodb_table",
+        "resources": [{
+          "address": "module.dynamodb_table.aws_dynamodb_table.this[0]",
+          "type": "aws_dynamodb_table",
+          "name": "this",
+          "index": 0,
+          "values": {
+            "name": "my-table",
+            "server_side_encryption": {
+              "enabled": true
+            }
+          }
+        }]
+      }]
+    }
+  }
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+	// Child-module keys are module-prefixed plus the index suffix, so the
+	// searchKey bracket contents contain dots and a nested "[0]".
+	got := defaultDetectLine{}.DetectLine(
+		context.Background(), file, "aws_dynamodb_table[module.dynamodb_table.this[0]].server_side_encryption", 0,
+	)
+	require.Equal(t, 15, got.Line)
+}
+
+func Test_detectLineTerraformPlanSiblingModulesSameTypeAndName(t *testing.T) {
+	// Two resources sharing type+name in sibling modules must both stay
+	// resolvable via distinct module-prefixed keys, not collide.
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [],
+      "child_modules": [
+        {
+          "address": "module.app1",
+          "resources": [{
+            "address": "module.app1.aws_s3_bucket.data",
+            "type": "aws_s3_bucket",
+            "name": "data",
+            "values": {
+              "bucket": "app1-data",
+              "acl": "private"
+            }
+          }]
+        },
+        {
+          "address": "module.app2",
+          "resources": [{
+            "address": "module.app2.aws_s3_bucket.data",
+            "type": "aws_s3_bucket",
+            "name": "data",
+            "values": {
+              "bucket": "app2-data",
+              "acl": "public-read"
+            }
+          }]
+        }
+      ]
+    }
+  }
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+
+	d := defaultDetectLine{}
+	app1 := d.DetectLine(context.Background(), file, "aws_s3_bucket[module.app1.data].acl", 0)
+	app2 := d.DetectLine(context.Background(), file, "aws_s3_bucket[module.app2.data].acl", 0)
+
+	require.Greater(t, app1.Line, 1)
+	require.Greater(t, app2.Line, 1)
+	require.NotEqual(t, app1.Line, app2.Line)
 }
 
 func Test_detectLineTerraformPlanMinified(t *testing.T) {
