@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/open-policy-agent/opa/v1/storage"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
@@ -1216,4 +1217,33 @@ func TestInspector_FailedQueriesConcurrentWrites(t *testing.T) {
 
 	// Sanity: the failures were actually recorded
 	require.NotEmpty(t, ins.GetFailedQueries())
+}
+
+// TestExecuteQueries_CanceledContextReturnsError guards the cancellation
+// contract: a scan whose context is canceled must surface ctx.Err() rather than
+// be reported as a successful scan with partial/empty results.
+func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: io.Discard})
+
+	queries := []model.QueryMetadata{
+		{Query: "query-0", Platform: "terraform"},
+		{Query: "query-1", Platform: "terraform"},
+	}
+	inspector := newTestInspector(t, inspectorOpts{numWorkers: len(queries), queries: queries})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // canceled scan
+
+	vulns, err := inspector.executeQueries(
+		ctx,
+		"scan-id",
+		map[string]*model.FileMetadata{},
+		platformPayloads{},
+		queries,
+		nil,
+		map[string]storage.Store{},
+	)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, vulns)
 }

@@ -7,6 +7,7 @@ import (
 	"maps"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -31,11 +32,6 @@ type ParsedModule struct {
 	SourceType     string // local, git, registry, etc.
 	RegistryScope  string // public, private, or "" (non-registry)
 	AttributesData map[string]ModuleAttributesInfo
-}
-
-type ModuleParseResult struct {
-	Module ParsedModule
-	Error  error
 }
 
 type ModuleAttributesInfo struct {
@@ -100,7 +96,7 @@ func parseHCLBodyCached(cache *sync.Map, content, filePath string) (*hclsyntax.B
 	return body, diags
 }
 
-func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers int) map[string]*hclsyntax.Body {
+func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers int) (map[string]*hclsyntax.Body, error) {
 	contextLogger := logger.FromContext(ctx)
 	parsedBodies := make(map[string]*hclsyntax.Body)
 
@@ -111,51 +107,40 @@ func parseHCLBodies(ctx context.Context, files model.FileMetadatas, numWorkers i
 		}
 	}
 	if len(tfFiles) == 0 {
-		return parsedBodies
+		return parsedBodies, nil
 	}
 
 	bodyCache := &sync.Map{}
 
 	bodies := make([]*hclsyntax.Body, len(tfFiles))
-	numWorkers = utils.AdjustNumWorkers(numWorkers)
-	if numWorkers > len(tfFiles) {
-		numWorkers = len(tfFiles)
-	}
-
-	indices := make(chan int)
-	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range indices {
-				file := tfFiles[i]
-				content := getFileContent(file)
-				body, diags := parseHCLBodyCached(bodyCache, content, file.FilePath)
-				if diags.HasErrors() {
-					contextLogger.Warn().Msgf("Skipping file %s due to HCL parse errors: %s", file.FilePath, diags.Error())
-					continue
-				}
-				if body == nil {
-					contextLogger.Error().Msgf("Unexpected body type in %s", file.FilePath)
-					continue
-				}
-				bodies[i] = body
+	// HCL parsing is CPU-bound, so the pool draws from the shared CPU budget.
+	// Individual HCL parse errors are logged and skipped (not fatal); ForEach
+	// only returns an error on context cancellation, which the caller surfaces.
+	err := utils.ForEach(ctx, tfFiles, utils.PoolOptions{Workers: numWorkers, CPUBound: true},
+		func(_ context.Context, file *model.FileMetadata, i int) error {
+			content := getFileContent(file)
+			body, diags := parseHCLBodyCached(bodyCache, content, file.FilePath)
+			if diags.HasErrors() {
+				contextLogger.Warn().Msgf("Skipping file %s due to HCL parse errors: %s", file.FilePath, diags.Error())
+				return nil
 			}
-		}()
+			if body == nil {
+				contextLogger.Error().Msgf("Unexpected body type in %s", file.FilePath)
+				return nil
+			}
+			bodies[i] = body
+			return nil
+		})
+	if err != nil {
+		return parsedBodies, err
 	}
-	for i := range tfFiles {
-		indices <- i
-	}
-	close(indices)
-	wg.Wait()
 
 	for i, file := range tfFiles {
 		if bodies[i] != nil {
 			parsedBodies[file.FilePath] = bodies[i]
 		}
 	}
-	return parsedBodies
+	return parsedBodies, nil
 }
 
 func collectLocalsAndVars(body *hclsyntax.Body, localsMap, varsMap map[string]string) {
@@ -245,7 +230,10 @@ func extractModuleBlocks(
 // ParseTerraformModules parses HCL content and extracts module source/version.
 // numWorkers: 0 means auto-detect (GOMAXPROCS).
 func ParseTerraformModules(ctx context.Context, fsys vfs.FS, files model.FileMetadatas, numWorkers int) (map[string]ParsedModule, error) {
-	parsedBodies := parseHCLBodies(ctx, files, numWorkers)
+	parsedBodies, err := parseHCLBodies(ctx, files, numWorkers)
+	if err != nil {
+		return nil, err
+	}
 	modules := make(map[string]ParsedModule)
 
 	// Group files by directory so locals/vars are scoped per Terraform module root,
@@ -594,82 +582,48 @@ func DetectModuleSourceType(source string) (string, string) {
 	return stringUnknown, ""
 }
 
-func ParseAllModuleVariables(ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string) []ParsedModule {
+func ParseAllModuleVariables(ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string) ([]ParsedModule, error) {
 	contextLogger := logger.FromContext(ctx)
-	numWorkers := 4
 
-	input := make(chan ParsedModule)
-	output := make(chan ModuleParseResult)
-
-	var wg sync.WaitGroup
-
-	// Fan-out: Start workers
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case mod, ok := <-input:
-					if !ok {
-						// Channel closed, we’re done
-						return
-					}
-					if !mod.IsLocal {
-						output <- ModuleParseResult{Module: mod}
-						continue
-					}
-					modulePath := resolveModulePath(mod.AbsSource, rootDir)
-
-					attributesData, err := generateEquivalentMap(ctx, fsys, modulePath)
-					if err != nil {
-						contextLogger.Warn().Msg("Failed to generate equivalent map")
-					} else {
-						mod.AttributesData = attributesData
-					}
-					output <- ModuleParseResult{Module: mod, Error: err}
-				}
-			}
-		}()
+	// Iterate in a stable key order so the result slice is deterministic across
+	// scans (map ranging is randomized, which previously made the output order
+	// vary and could defeat the downstream compiled-query cache).
+	keys := make([]string, 0, len(modules))
+	for k := range modules {
+		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 
-	// Fan-in: Close output when all workers are done
-	go func() {
-		wg.Wait()
-		close(output)
-	}()
-
-	// Feed input channel
-	go func() {
-		defer close(input)
-		for _, mod := range modules {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				input <- mod
+	finalModules := make([]ParsedModule, len(keys))
+	// Each module's equivalent-map generation reads files and parses HCL
+	// (CPU-bound), so the pool draws from the shared CPU budget. Results are
+	// written index-aligned, no shared mutable state between workers.
+	//
+	// A per-module equivalent-map failure is non-fatal (logged, the module is
+	// kept without attributes data). ForEach only returns an error on context
+	// cancellation; we surface it so the caller aborts rather than proceeding
+	// with a partially-filled slice (unwritten slots would be zero-value holes).
+	err := utils.ForEach(ctx, keys, utils.PoolOptions{CPUBound: true},
+		func(ctx context.Context, key string, i int) error {
+			mod := modules[key]
+			if !mod.IsLocal {
+				finalModules[i] = mod
+				return nil
 			}
-		}
-	}()
-
-	// Collect results
-	finalModules := make([]ParsedModule, 0, len(modules))
-	for {
-		select {
-		case <-ctx.Done():
-			return finalModules
-		case res, ok := <-output:
-			if !ok {
-				return finalModules
+			modulePath := resolveModulePath(mod.AbsSource, rootDir)
+			attributesData, err := generateEquivalentMap(ctx, fsys, modulePath)
+			if err != nil {
+				contextLogger.Warn().Msgf("Failed to parse module %s: %v", mod.Name, err)
+			} else {
+				mod.AttributesData = attributesData
 			}
-			if res.Error != nil {
-				contextLogger.Warn().Msgf("Failed to parse module %s: %v", res.Module.Name, res.Error)
-			}
-			finalModules = append(finalModules, res.Module)
-		}
+			finalModules[i] = mod
+			return nil
+		})
+	if err != nil {
+		return nil, err
 	}
+	return finalModules, nil
 }
 
 func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) (map[string]ModuleAttributesInfo, error) {

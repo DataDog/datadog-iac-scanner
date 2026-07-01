@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
@@ -338,7 +337,6 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	var err error
 	var files []string
-	var wg sync.WaitGroup
 	// results is the channel shared by the workers that contains the types found
 	results := make(chan string)
 	locCount := make(chan int)
@@ -393,54 +391,39 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	typesFlag := typesLower(a.Types)
 
-	// Use a worker pool to limit concurrent file analysis
-	numWorkers := utils.AdjustNumWorkers(a.NumWorkers)
-
-	// Create a job channel for files to analyze
-	jobs := make(chan string, len(files))
-
-	// Start worker pool
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for filePath := range jobs {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-
+	// Detect each file's type with a bounded worker pool. File-type detection
+	// reads file content (I/O-bound), so it does not consume the shared CPU
+	// budget and fans out wider than the core count (same [min,max] bounds as the
+	// filesystem reader). Workers write into the results/unwanted/locCount
+	// channels, which computeValues drains concurrently below; the channels are
+	// closed once all files are processed.
+	//
+	// forEachErr is written by the goroutine before it closes the channels and
+	// read only after computeValues has drained them to completion; the channel
+	// close/receive ordering guarantees the write is visible here without a race.
+	var forEachErr error
+	go func() {
+		forEachErr = utils.ForEach(ctx, files,
+			utils.PoolOptions{Workers: a.NumWorkers, MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
+			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
 					typesFlag: typesFlag,
 					filePath:  filePath,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
-			}
-		}()
-	}
-
-	// Feed jobs to workers
-	go func() {
-		defer close(jobs)
-		for _, file := range files {
-			select {
-			case <-ctx.Done():
-				return
-			case jobs <- file:
-			}
-		}
-	}()
-
-	go func() {
-		wg.Wait()
-		// close channel results when the worker has finished writing into it
+				return nil
+			})
 		close(unwanted)
 		close(results)
 		close(locCount)
 	}()
 
 	availableTypes, unwantedPaths, loc := computeValues(results, unwanted, locCount)
+	// A canceled scan must surface the cancellation rather than be reported as a
+	// successful analysis with partial results.
+	if forEachErr != nil {
+		return returnAnalyzedPaths, forEachErr
+	}
 	multiPlatformTypeCheck(&availableTypes)
 	unwantedPaths = append(unwantedPaths, ignoreFiles...)
 	unwantedPaths = append(unwantedPaths, projectConfigFiles...)

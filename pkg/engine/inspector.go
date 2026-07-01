@@ -224,75 +224,56 @@ func getPlatformLibraries(ctx context.Context, queriesSource source.QueriesSourc
 	return platformLibraries
 }
 
-type InspectionJob struct {
-	queryID int
-}
-
 type QueryResult struct {
 	vulnerabilities []model.Vulnerability
 	err             error
 	queryID         int
 }
 
-// This function creates an inspection task and sends it to the jobs channel
-func (c *Inspector) createInspectionJobs(jobs chan<- InspectionJob, queries []model.QueryMetadata) {
-	defer close(jobs)
-	for i := range queries {
-		jobs <- InspectionJob{queryID: i}
+// evalQuery loads and evaluates a single query, returning its result. A load
+// failure yields an empty result (the query is skipped, matching the previous
+// behavior); an eval failure yields a result carrying the error so the serial
+// aggregation can record it.
+func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
+	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
+	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store) QueryResult {
+	contextLogger := logger.FromContext(ctx)
+
+	loadStart := time.Now()
+	queryOpa, err := c.QueryLoader.LoadQuery(ctx, &queries[queryID], modules, baseStores)
+	loadDur := time.Since(loadStart)
+	if err != nil {
+		contextLogger.Warn().Err(err).Msgf("failed to load query %s", queries[queryID].Query)
+		return QueryResult{queryID: queryID}
 	}
-}
 
-// This function performs an inspection job and sends the result to the results channel
-func (c *Inspector) performInspection(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
-	payloadByPlatform map[string]ast.Value, fullPayload ast.Value,
-	jobs <-chan InspectionJob, results chan<- QueryResult, queries []model.QueryMetadata,
-	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store) {
-	for job := range jobs {
-		select {
-		case <-ctx.Done():
-			// Stop accepting job and return on context cancellation
-			return
-		default:
-		}
-
-		loadStart := time.Now()
-		queryOpa, err := c.QueryLoader.LoadQuery(ctx, &queries[job.queryID], modules, baseStores)
-		loadDur := time.Since(loadStart)
-		if err != nil {
-			contextLogger := logger.FromContext(ctx)
-			contextLogger.Warn().Err(err).Msgf("failed to load query %s", queries[job.queryID].Query)
-			continue
-		}
-
-		query := &PreparedQuery{
-			OpaQuery: *queryOpa,
-			Metadata: queries[job.queryID],
-		}
-
-		// Evaluate each query only against documents of its own platform. The
-		// payload is read-only, so sharing the per-platform ast.Value across jobs
-		// is safe.
-		payload := selectPlatformPayload(query.Metadata.Platform, payloadByPlatform, fullPayload)
-		queryContext := &QueryContext{
-			Ctx:           ctx,
-			scanID:        scanID,
-			Files:         filesMap,
-			Query:         query,
-			payload:       &payload,
-			FlagEvaluator: c.flagEvaluator,
-		}
-
-		evalStart := time.Now()
-		vuls, err := c.doRun(ctx, queryContext)
-		evalDur := time.Since(evalStart)
-		contextLogger := logger.FromContext(ctx)
-		contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
-			loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[job.queryID].Query)
-		if err == nil {
-			c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
-		}
-		results <- QueryResult{vulnerabilities: vuls, err: err, queryID: job.queryID}
+	query := &PreparedQuery{
+		OpaQuery: *queryOpa,
+		Metadata: queries[queryID],
 	}
+
+	// Evaluate each query only against documents of its own platform. The
+	// payload is read-only, so sharing the per-platform ast.Value across workers
+	// is safe.
+	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
+	queryContext := &QueryContext{
+		Ctx:           ctx,
+		scanID:        scanID,
+		Files:         filesMap,
+		Query:         query,
+		payload:       &payload,
+		FlagEvaluator: c.flagEvaluator,
+	}
+
+	evalStart := time.Now()
+	vuls, err := c.doRun(ctx, queryContext)
+	evalDur := time.Since(evalStart)
+	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
+		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
+	if err == nil {
+		c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
+	}
+	return QueryResult{vulnerabilities: vuls, err: err, queryID: queryID}
 }
 
 func (c *Inspector) Inspect(
@@ -315,16 +296,26 @@ func (c *Inspector) Inspect(
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
 
-	// Step 1: Parse Terraform modules
+	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
+	// non-fatal (logged, scan continues), but a context cancellation must abort
+	// the scan rather than proceed with partial module data.
 	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
 	}
 	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
 
-	// Step 2: Enrich modules with parsed variables
+	// Step 2: Enrich modules with parsed variables. As with Step 1, a context
+	// cancellation must abort the scan rather than proceed with partial module
+	// data; per-module parse failures are non-fatal and handled internally.
 	rootDir := c.repoPath
-	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, rootDir)
+	enrichedModules, err := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, rootDir)
+	if err != nil {
+		return nil, err
+	}
 
 	queries := c.getQueriesByPlat(platforms)
 
@@ -358,49 +349,37 @@ func (c *Inspector) executeQueries(
 	enrichedModules []tfmodules.ParsedModule,
 	baseStores map[string]storage.Store,
 ) ([]model.Vulnerability, error) {
-	results := make(chan QueryResult, len(queries))
-	jobs := make(chan InspectionJob, len(queries))
-
-	var wg sync.WaitGroup
-	for w := 0; w < c.numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c.performInspection(ctx, scanID, filesMap, payloads.byPlatform, payloads.full, jobs, results, queries, enrichedModules, baseStores)
-		}()
-	}
-	go c.createInspectionJobs(jobs, queries)
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	return c.drainQueryResults(ctx, results, queries)
-}
-
-// drainQueryResults reads query results until the channel closes or the context is canceled.
-func (c *Inspector) drainQueryResults(
-	ctx context.Context,
-	results <-chan QueryResult,
-	queries []model.QueryMetadata,
-) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
-	moduleVulns := make(map[string]int)
-	for {
-		select {
-		case <-ctx.Done():
-			return vulnerabilities, ctx.Err()
-		case result, ok := <-results:
-			if !ok {
-				for vulnerability, number := range moduleVulns {
-					contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
-				}
-				return vulnerabilities, nil
-			}
-			processResult(ctx, &result, &vulnerabilities, &moduleVulns, queries, c)
-		}
+
+	// Evaluate each query in parallel. Eval is CPU-bound (Rego), so the pool
+	// draws from the process-wide CPU budget: when this scan runs as one of N
+	// concurrent per-platform services, all their query pools share the same
+	// budget and cannot oversubscribe the machine. Results land in an
+	// index-aligned slice (no shared mutable state between workers); the actual
+	// aggregation happens serially below.
+	results := make([]QueryResult, len(queries))
+	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
+		func(ctx context.Context, _ model.QueryMetadata, i int) error {
+			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores)
+			return nil
+		})
+	// The closure never returns a non-nil error itself, so ForEach only reports
+	// context cancellation here; surfacing it keeps a canceled scan from being
+	// reported as a successful scan with partial/empty results.
+	if err != nil {
+		return vulnerabilities, err
 	}
+
+	// Aggregate serially: processResult mutates shared state.
+	moduleVulns := make(map[string]int)
+	for i := range results {
+		processResult(ctx, &results[i], &vulnerabilities, &moduleVulns, queries, c)
+	}
+	for vulnerability, number := range moduleVulns {
+		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
+	}
+	return vulnerabilities, nil
 }
 
 // expandModuleFindings clones findings from deduplicated OPA docs back to each
