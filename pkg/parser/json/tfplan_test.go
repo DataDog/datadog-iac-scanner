@@ -138,7 +138,8 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"main": map[string]interface{}{
-							"bucket": "main-bucket",
+							"bucket":         "main-bucket",
+							"_dd_tf_address": "aws_s3_bucket.main",
 						},
 					},
 				},
@@ -768,8 +769,9 @@ func TestJson_parseTFPlan(t *testing.T) {
 							"_dd_prod_db": map[string]any{"_dd_line": (float64)(7)},
 						},
 						"prod_db": map[string]any{
-							"name": "Production DB",
-							"size": (float64)(256),
+							"name":           "Production DB",
+							"size":           (float64)(256),
+							"_dd_tf_address": "fakewebservices_database.prod_db",
 						},
 					},
 				},

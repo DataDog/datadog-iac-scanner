@@ -76,6 +76,7 @@ func New(reg *registry.AddressRegistry) *Parser {
 	return &Parser{
 		numOfRetries: RetriesDefaultValue,
 		convertFunc:  converter.DefaultConverted,
+		fsys:         vfs.DiskFS{},
 		registry:     reg,
 	}
 }
@@ -94,13 +95,18 @@ func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.S
 
 // NewWithParams creates a parser with registry, vars path, and sci info
 func NewWithParams(fsys vfs.FS, reg *registry.AddressRegistry, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
-	return &Parser{
+	p := &Parser{
 		numOfRetries:      RetriesDefaultValue,
 		convertFunc:       converter.DefaultConverted,
+		fsys:              vfs.DiskFS{},
 		registry:          reg,
 		terraformVarsPath: terraformVarsPath,
 		sciInfo:           sciInfo,
 	}
+	if fsys != nil {
+		p.fsys = fsys
+	}
+	return p
 }
 
 // Resolve - replace or modifies in-memory content before parsing
