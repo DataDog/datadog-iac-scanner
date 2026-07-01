@@ -50,9 +50,6 @@ var resultShape = struct {
 	Required: []string{
 		"documentId",
 		"searchKey",
-		"issueType",
-		"keyExpectedValue",
-		"keyActualValue",
 	},
 	ResourceKeys: []string{"resourceType", "resourceName"},
 }

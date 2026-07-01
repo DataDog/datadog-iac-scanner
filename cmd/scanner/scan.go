@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
+	"github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
@@ -86,6 +87,12 @@ var scanAction = &cli.Command{
 			Value:  false,
 		},
 		&cli.BoolFlag{
+			Name:   "x-local-module-eval",
+			Hidden: true,
+			Usage:  "(experimental) resolve Terraform local module variables before scanning",
+			Value:  false,
+		},
+		&cli.BoolFlag{
 			Name:   "x-terraform-plan",
 			Hidden: true,
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
@@ -103,6 +110,11 @@ var scanAction = &cli.Command{
 			Name:    "queries-path",
 			Aliases: []string{"q"},
 			Usage:   "a list of query directories paths",
+		},
+		&cli.StringSliceFlag{
+			Name:  "report-format",
+			Usage: "output report formats (valid: sarif, simple-json)",
+			Value: []string{"sarif"},
 		},
 
 		// NOTE: --x-parallelparsing flag disabled due to pre-existing race conditions
@@ -123,6 +135,21 @@ const (
 	filePerms = 0644
 	dirPerms  = 0755
 )
+
+func validateReportFormats(formats []string) error {
+	valid := map[string]struct{}{}
+	validReportFormats := helpers.GetSupportedReportFormats()
+	for _, f := range validReportFormats {
+		valid[f] = struct{}{}
+	}
+	for _, f := range formats {
+		if _, ok := valid[strings.ToLower(f)]; !ok {
+			return fmt.Errorf("unknown report format %q; valid formats: %s",
+				f, strings.Join(validReportFormats, ", "))
+		}
+	}
+	return nil
+}
 
 func validateQueriesPaths(paths []string) ([]string, error) {
 	absolutePaths, err := getAbsolutePaths(paths)
@@ -215,6 +242,11 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		cfg.RuleConfigs[ruleID] = rc
 	}
 
+	reportFormats := c.StringSlice("report-format")
+	if err := validateReportFormats(reportFormats); err != nil {
+		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
+	}
+
 	queriesPath := c.StringSlice("queries-path")
 	queriesPath, err = validateQueriesPaths(queriesPath)
 	if err != nil {
@@ -236,7 +268,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		QueriesPath:             queriesPath,
 		ChangedDefaultQueryPath: changedDefaultQueryPath,
 		LibrariesPath:           "./assets/libraries",
-		ReportFormats:           []string{"sarif"},
+		ReportFormats:           reportFormats,
 		Platform:                selectPlatforms(c.StringSlice("type")),
 		DisableSecrets:          true,
 		ScanID:                  "console",
@@ -450,8 +482,10 @@ func selectPlatforms(platforms []string) []string {
 }
 
 func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
-	overrides := map[string]bool{}
-	overrides[featureflags.IaCEnableKicsParallelFileParsing] = c.Bool("x-parallelparsing")
+	overrides := map[string]bool{
+		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
+		featureflags.IacEnableLocalModuleEval:         c.Bool("x-local-module-eval"),
+	}
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }
 

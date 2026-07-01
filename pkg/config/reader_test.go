@@ -338,3 +338,7 @@ func (f *fakeDatadogClient) GetRemoteConfig(_ context.Context, repoUrl string, l
 	assert.Equal(f.t, string(f.expectedSentConfig), string(localConfig))
 	return f.remoteConfig, nil
 }
+
+func (f *fakeDatadogClient) GetLibraries(_ context.Context) (map[string]datadog.Library, error) {
+	return map[string]datadog.Library{}, nil
+}

@@ -7,6 +7,8 @@ const (
 	IacEnableKicsPlatform            = "k9-iac-enable-kics-platform"
 	IacEnableKicsHelmResolver        = "k9-iac-enable-kics-helm-resolver"
 	IaCEnableKicsParallelFileParsing = "k9-iac-enable-kics-parallel-file-parsing"
+	// IacEnableLocalModuleEval gates Terraform local-module instantiation.
+	IacEnableLocalModuleEval = "k9-iac-enable-local-module-eval"
 )
 
 type FlagEvaluator interface {

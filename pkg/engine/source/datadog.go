@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -22,7 +23,7 @@ func NewDatadogSource(client datadog.Client, options ...DatadogSourceOption) (Qu
 	for _, option := range options {
 		option(out)
 	}
-	if out.librarySource == nil {
+	if out.libraryFallback == nil {
 		librarySource := NewFilesystemSource(
 			context.Background(),
 			[]string{""},
@@ -31,7 +32,7 @@ func NewDatadogSource(client datadog.Client, options ...DatadogSourceOption) (Qu
 			"./assets/libraries",
 			true,
 		)
-		WithLibrarySource(librarySource)(out)
+		WithLibraryFallback(librarySource)(out)
 	}
 	return out, nil
 }
@@ -52,8 +53,14 @@ func WithWantedCloudProviders(providers []string) DatadogSourceOption {
 	}
 }
 
-// WithLibrarySource lets you specify the QueriesSource instance that library data will be read from.
-// If unspecified, a FilesystemSource with equivalent options will be used.
+// WithLibraryFallback overrides the QueriesSource used when the backend library endpoint is unreachable.
+func WithLibraryFallback(source QueriesSource) DatadogSourceOption {
+	return func(ds *DatadogSource) {
+		ds.libraryFallback = source
+	}
+}
+
+// WithLibrarySource specifies the QueriesSource that should be used for libraries.
 func WithLibrarySource(source QueriesSource) DatadogSourceOption {
 	return func(ds *DatadogSource) {
 		ds.librarySource = source
@@ -63,12 +70,15 @@ func WithLibrarySource(source QueriesSource) DatadogSourceOption {
 type DatadogSourceOption func(source *DatadogSource)
 
 // DatadogSource is a QueriesSource that reads queries from the Datadog API.
-// Libraries are fetched via another QueriesSource.
+// Libraries are fetched from the backend at first use and fall back to the embedded assets when unreachable.
 type DatadogSource struct {
 	client               datadog.Client
 	librarySource        QueriesSource
+	libraryFallback      QueriesSource
 	wantedPlatforms      []string
 	wantedCloudProviders []string
+	libraries            map[string]RegoLibraries
+	librariesOnce        sync.Once
 }
 
 func (s *DatadogSource) GetQueries(ctx context.Context, querySelection *QueryInspectorParameters) ([]model.QueryMetadata, error) {
@@ -79,8 +89,35 @@ func (s *DatadogSource) GetQueries(ctx context.Context, querySelection *QueryIns
 	return s.filterRules(defaultRuleset, querySelection)
 }
 
+func (s *DatadogSource) loadLibraries(ctx context.Context) {
+	s.librariesOnce.Do(func() {
+		libs, err := s.client.GetLibraries(ctx)
+		if err != nil {
+			// backend unreachable; embedded fallback will be used
+			return
+		}
+		converted := make(map[string]RegoLibraries, len(libs))
+		for id, lib := range libs {
+			converted[id] = RegoLibraries{
+				LibraryCode:      lib.RegoCode,
+				LibraryInputData: lib.InputData,
+			}
+		}
+		s.libraries = converted
+	})
+}
+
 func (s *DatadogSource) GetQueryLibrary(ctx context.Context, platform string) (RegoLibraries, error) {
-	return s.librarySource.GetQueryLibrary(ctx, platform)
+	if s.librarySource != nil {
+		return s.librarySource.GetQueryLibrary(ctx, platform)
+	}
+	s.loadLibraries(ctx)
+	if s.libraries != nil {
+		if lib, ok := s.libraries[platform]; ok {
+			return lib, nil
+		}
+	}
+	return s.libraryFallback.GetQueryLibrary(ctx, platform)
 }
 
 // filterRules selects the rules from the given ruleset according to the selection criteria.

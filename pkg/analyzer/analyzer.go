@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
@@ -21,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
 	ignore "github.com/sabhiram/go-gitignore"
 
@@ -83,21 +83,21 @@ var (
 	listKeywordsGoogleDeployment = []string{"resources"}
 	armRegexTypes                = []string{"blueprint", "templateArtifact", "roleAssignmentArtifact", "policyAssignmentArtifact"}
 	possibleFileTypes            = map[string]bool{
-		".yml":        true,
-		".yaml":       true,
-		".json":       true,
-		".dockerfile": true,
-		"Dockerfile":  true,
-		".debian":     true,
-		".ubi8":       true,
-		".tf":         true,
-		"tfvars":      true,
-		".proto":      true,
-		".sh":         true,
-		".cfg":        true,
-		".conf":       true,
-		".ini":        true,
-		".bicep":      true,
+		yml:            true,
+		yaml:           true,
+		json:           true,
+		sh:             true,
+		extDockerfile:  true,
+		nameDockerfile: true,
+		extDebian:      true,
+		extUbi8:        true,
+		extTf:          true,
+		extTfvars:      true,
+		extProto:       true,
+		extCfg:         true,
+		extConf:        true,
+		extIni:         true,
+		extBicepFile:   true,
 	}
 	supportedRegexes = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
@@ -133,25 +133,37 @@ func PossibleFileTypes() []string {
 }
 
 const (
-	cdkTf        = "cdkTf"
-	yml          = ".yml"
-	yaml         = ".yaml"
-	json         = ".json"
-	sh           = ".sh"
-	arm          = "azureresourcemanager"
-	bicep        = "bicep"
-	kubernetes   = "kubernetes"
-	terraform    = "terraform"
-	gdm          = "googledeploymentmanager"
-	ansible      = "ansible"
-	grpc         = "grpc"
-	dockerfile   = "dockerfile"
-	crossplane   = "crossplane"
-	knative      = "knative"
-	cicd         = "cicd"
-	dependabot   = "dependabot"
-	githubAction = "githubAction"
-	sizeMb       = 1048576
+	cdkTf                 = "cdkTf"
+	yml                   = ".yml"
+	yaml                  = ".yaml"
+	json                  = ".json"
+	sh                    = ".sh"
+	arm                   = "azureresourcemanager"
+	bicep                 = "bicep"
+	kubernetes            = "kubernetes"
+	terraform             = "terraform"
+	gdm                   = "googledeploymentmanager"
+	ansible               = "ansible"
+	grpc                  = "grpc"
+	dockerfile            = "dockerfile"
+	crossplane            = "crossplane"
+	knative               = "knative"
+	cicd                  = "cicd"
+	dependabot            = "dependabot"
+	githubAction          = "githubAction"
+	sizeMb                = 1048576
+	extDockerfile         = ".dockerfile"
+	nameDockerfile        = "Dockerfile"
+	extPossibleDockerfile = "possibleDockerfile"
+	extUbi8               = ".ubi8"
+	extDebian             = ".debian"
+	extTf                 = ".tf"
+	extTfvars             = "tfvars"
+	extBicepFile          = ".bicep"
+	extProto              = ".proto"
+	extCfg                = ".cfg"
+	extConf               = ".conf"
+	extIni                = ".ini"
 )
 
 type Parameters struct {
@@ -325,7 +337,6 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	var err error
 	var files []string
-	var wg sync.WaitGroup
 	// results is the channel shared by the workers that contains the types found
 	results := make(chan string)
 	locCount := make(chan int)
@@ -380,54 +391,39 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	typesFlag := typesLower(a.Types)
 
-	// Use a worker pool to limit concurrent file analysis
-	numWorkers := utils.AdjustNumWorkers(a.NumWorkers)
-
-	// Create a job channel for files to analyze
-	jobs := make(chan string, len(files))
-
-	// Start worker pool
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for filePath := range jobs {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-
+	// Detect each file's type with a bounded worker pool. File-type detection
+	// reads file content (I/O-bound), so it does not consume the shared CPU
+	// budget and fans out wider than the core count (same [min,max] bounds as the
+	// filesystem reader). Workers write into the results/unwanted/locCount
+	// channels, which computeValues drains concurrently below; the channels are
+	// closed once all files are processed.
+	//
+	// forEachErr is written by the goroutine before it closes the channels and
+	// read only after computeValues has drained them to completion; the channel
+	// close/receive ordering guarantees the write is visible here without a race.
+	var forEachErr error
+	go func() {
+		forEachErr = utils.ForEach(ctx, files,
+			utils.PoolOptions{Workers: a.NumWorkers, MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
+			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
 					typesFlag: typesFlag,
 					filePath:  filePath,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
-			}
-		}()
-	}
-
-	// Feed jobs to workers
-	go func() {
-		defer close(jobs)
-		for _, file := range files {
-			select {
-			case <-ctx.Done():
-				return
-			case jobs <- file:
-			}
-		}
-	}()
-
-	go func() {
-		wg.Wait()
-		// close channel results when the worker has finished writing into it
+				return nil
+			})
 		close(unwanted)
 		close(results)
 		close(locCount)
 	}()
 
 	availableTypes, unwantedPaths, loc := computeValues(results, unwanted, locCount)
+	// A canceled scan must surface the cancellation rather than be reported as a
+	// successful analysis with partial results.
+	if forEachErr != nil {
+		return returnAnalyzedPaths, forEachErr
+	}
 	multiPlatformTypeCheck(&availableTypes)
 	unwantedPaths = append(unwantedPaths, ignoreFiles...)
 	unwantedPaths = append(unwantedPaths, projectConfigFiles...)
@@ -440,56 +436,40 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 // worker determines the type of the file by ext (dockerfile and terraform)/content and
 // writes the answer to the results channel
 // if no types were found, the worker will write the path of the file in the unwanted channel
-func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- string, locCount chan<- int) { //nolint: gocyclo
+func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- string, locCount chan<- int) {
+	contextLogger := logger.FromContext(ctx)
 	ext, errExt := utils.GetExtension(ctx, a.filePath)
-	if errExt == nil {
-		linesCount, _ := utils.LineCounter(ctx, a.filePath)
+	if errExt != nil {
+		return
+	}
 
-		switch ext {
-		// Dockerfile (direct identification)
-		case ".dockerfile", "Dockerfile":
-			if a.isAvailableType(dockerfile) {
-				results <- dockerfile
-				locCount <- linesCount
-			}
-		// Dockerfile (indirect identification)
-		case "possibleDockerfile", ".ubi8", ".debian":
-			if a.isAvailableType(dockerfile) && isDockerfile(ctx, a.filePath) {
-				results <- dockerfile
-				locCount <- linesCount
-			} else {
-				unwanted <- a.filePath
-			}
-		// Terraform
-		case ".tf", "tfvars":
-			if a.isAvailableType(terraform) {
-				results <- terraform
-				locCount <- linesCount
-			}
-		// Bicep
-		case ".bicep":
-			if a.isAvailableType(bicep) {
-				results <- bicep
-				locCount <- linesCount
-			}
-		// GRPC
-		case ".proto":
-			if a.isAvailableType(grpc) {
-				results <- grpc
-				locCount <- linesCount
-			}
-		// It could be Ansible Config or Ansible Inventory
-		case ".cfg", ".conf", ".ini":
-			if a.isAvailableType(ansible) {
-				results <- ansible
-				locCount <- linesCount
-			}
-		/* It could be Ansible, Buildah, CICD, CloudFormation, Crossplane, OpenAPI, Azure Resource Manager
-		Docker Compose, Knative, Kubernetes, Pulumi, ServerlessFW or Google Deployment Manager*/
-		case yaml, yml, json, sh:
-			a.checkContent(ctx, results, unwanted, locCount, linesCount, ext)
+	linesCount, _ := utils.LineCounter(ctx, a.filePath)
+
+	var content []byte
+	if ext == yaml || ext == yml || ext == json || ext == sh {
+		var err error
+		content, err = os.ReadFile(a.filePath)
+		if err != nil {
+			contextLogger.Error().Msgf("failed to analyze file: %s", err)
+			return
 		}
 	}
+
+	platform := ClassifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag)
+	if platform == "" {
+		unwanted <- a.filePath
+		return
+	}
+	if !a.isAvailableType(platform) {
+		// Content-detected files that do not match the requested platforms are
+		// excluded; extension-only types (e.g. .tf) are ignored silently.
+		if ext == yaml || ext == yml || ext == json || ext == sh {
+			unwanted <- a.filePath
+		}
+		return
+	}
+	results <- platform
+	locCount <- linesCount
 }
 
 func isDockerfile(ctx context.Context, path string) bool {
@@ -527,18 +507,12 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 	return false
 }
 
-// checkContent will determine the file type by content when worker was unable to
-// determine by ext, if no type was determined checkContent adds it to unwanted channel
-func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<- string, locCount chan<- int, linesCount int, ext string) {
-	contextLogger := logger.FromContext(ctx)
-	typesFlag := a.typesFlag
-	// get file content
-	content, err := os.ReadFile(a.filePath)
-	if err != nil {
-		contextLogger.Error().Msgf("failed to analyze file: %s", err)
-		return
-	}
-
+// classifyByContent determines the platform of a content-detected file (yaml,
+// yml, json, sh) using the type regexes and the post-processing in
+// checkReturnType. It returns the platform string (lowercased) or "" when none
+// matches or the file is a non-Terraform JSON (which the scanner does not scan).
+// typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
+func classifyByContent(ctx context.Context, path string, content []byte, ext string, typesFlag []string) string {
 	returnType := ""
 
 	// Sort map so that CloudFormation (type that as less requireds) goes last
@@ -547,7 +521,7 @@ func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<
 		keys = append(keys, k)
 	}
 
-	if typesFlag[0] != "" {
+	if len(typesFlag) > 0 && typesFlag[0] != "" {
 		keys = getKeysFromTypesFlag(typesFlag)
 	}
 
@@ -569,24 +543,84 @@ func (a *analyzerInfo) checkContent(ctx context.Context, results, unwanted chan<
 		}
 	}
 
-	endReturnType := checkReturnType(ctx, a.filePath, returnType, ext, content)
+	endReturnType := checkReturnType(ctx, path, returnType, ext, content)
 
 	// Only process JSON files if they are Terraform plans
 	// This will be the case until other platforms support json scanning
 	if ext == json && (endReturnType != "terraform" || returnType == cdkTf) {
-		unwanted <- a.filePath
-		return
+		return ""
 	}
 
-	if endReturnType != "" {
-		if a.isAvailableType(endReturnType) {
-			results <- endReturnType
-			locCount <- linesCount
-			return
-		}
+	return endReturnType
+}
+
+// ClassifyFile returns the platform a file would be classified as (lowercased,
+// e.g. "ansible", "kubernetes", "terraform", "bicep"), or "" when undetermined.
+// It mirrors the per-file detection used during analysis so callers (e.g. the
+// parsing sink) can attribute each parsed document to its platform without
+// re-running the full analyzer. content is the raw file bytes; typesFlag
+// restricts candidate platforms (case-insensitive; pass nil to consider all).
+// Passing the same platform set the analyzer used keeps the sink's
+// classification consistent with the analyzer's. fsys is the filesystem used
+// for extension detection; pass the in-memory FS for pushed content that never
+// touches disk, or nil to default to the real disk.
+func ClassifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string) string {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
 	}
-	// No type was determined (ignore on parser)
-	unwanted <- a.filePath
+	typesFlag = typesLower(typesFlag)
+	ext, err := utils.GetExtensionWithFS(ctx, fsys, path)
+	if err != nil {
+		return ""
+	}
+	switch ext {
+	case extDockerfile, nameDockerfile:
+		return dockerfile
+	case extPossibleDockerfile, extUbi8, extDebian:
+		if isDockerfile(ctx, path) {
+			return dockerfile
+		}
+		return ""
+	case extTf, extTfvars:
+		return terraform
+	case extBicepFile:
+		return bicep
+	case extProto:
+		return grpc
+	case extCfg, extConf, extIni:
+		return ansible
+	case yaml, yml, json, sh:
+		return classifyByContent(ctx, path, content, ext, typesFlag)
+	}
+	return ""
+}
+
+// ClassifyParsedFile attributes a parsed file to its platform for payload
+// bucketing. FileKind overrides extension/content detection for unambiguous
+// types (Helm rendered manifests are Kubernetes, etc.). Returns "" when
+// undetermined. platforms is the scan's effective platform set, forwarded to
+// ClassifyFile so the sink classifies ambiguous files with the same candidate
+// set the analyzer used (e.g. a Crossplane file is "kubernetes" in a default
+// scan, "crossplane" only when Crossplane is enabled). fsys is forwarded for
+// extension detection so the server's in-memory pushed content (not on disk) is
+// classified correctly.
+func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, kind model.FileKind, path string, content []byte) string {
+	switch kind {
+	case model.KindHELM:
+		return kubernetes
+	case model.KindTerraform, model.KindTerraformPlan:
+		return terraform
+	case model.KindDOCKER:
+		return dockerfile
+	case model.KindBICEP:
+		return arm
+	case model.KindPROTO:
+		return grpc
+	case model.KindINI, model.KindCFG:
+		return ansible
+	default:
+		return ClassifyFile(ctx, fsys, path, content, platforms)
+	}
 }
 
 func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte) string {

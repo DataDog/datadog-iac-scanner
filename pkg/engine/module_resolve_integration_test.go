@@ -12,12 +12,20 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
+
+// moduleEvalEnabled returns a FlagEvaluator with local module evaluation turned on.
+func moduleEvalEnabled() featureflags.FlagEvaluator {
+	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
+		featureflags.IacEnableLocalModuleEval: true,
+	})
+}
 
 // aclRule fires when an aws_s3_bucket has acl == "public-read". It only matches
 // after a module is instantiated with that concrete value.
@@ -110,9 +118,10 @@ resource "aws_s3_bucket" "this" {
 	}}
 
 	ins := newTestInspector(t, inspectorOpts{
-		queries:  queries,
-		repoPath: root,
-		vb:       DefaultVulnerabilityBuilder,
+		queries:       queries,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: moduleEvalEnabled(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -177,9 +186,10 @@ resource "aws_s3_bucket" "this" {
 	}}
 
 	ins := newTestInspector(t, inspectorOpts{
-		queries:  queries,
-		repoPath: root,
-		vb:       DefaultVulnerabilityBuilder,
+		queries:       queries,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: moduleEvalEnabled(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -196,6 +206,87 @@ resource "aws_s3_bucket" "this" {
 		chains[v.ModuleCallChain] = true
 	}
 	require.Len(t, chains, 2, "the two callers must produce distinct module call chains")
+}
+
+// aggregateCountRule fires when two or more aws_s3_bucket resources exist in the scan.
+const aggregateCountRule = `package datadog
+
+DatadogPolicy contains result if {
+	buckets := [name | input.document[_].resource.aws_s3_bucket[name]]
+	count(buckets) >= 2
+
+	result := {
+		"documentId": input.document[0].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": "multiple",
+		"searchKey": "aws_s3_bucket",
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "at most one bucket",
+		"keyActualValue": "two or more buckets",
+	}
+}
+`
+
+// Distinct module instances in one root (bucket_a vs bucket_b) are not merged;
+// an aggregate rule still sees both buckets. Does not exercise cross-root dedup.
+func TestInspect_WithinConfigDistinctModuleInstancesNotMerged(t *testing.T) {
+	root := t.TempDir()
+
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "bucket")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+
+	rootPath := filepath.Join(rootDir, "main.tf")
+	modPath := filepath.Join(modDir, "main.tf")
+
+	// bucket_a and bucket_b share inputs but differ in module address (part of the dedup key).
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+module "bucket_a" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+
+module "bucket_b" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(modPath, []byte(`
+variable "acl" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  acl = var.acl
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootPath)...)
+	files = append(files, parseTerraform(t, modPath)...)
+
+	queries := []model.QueryMetadata{{
+		Query:       "aggregate_count_rule",
+		Content:     aggregateCountRule,
+		InputData:   "{}",
+		Platform:    "terraform",
+		Metadata:    map[string]interface{}{"id": "aggregate-count-rule"},
+		Aggregation: 1,
+	}}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries:       queries,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: moduleEvalEnabled(),
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	require.Len(t, vulns, 1, "aggregate rule must see both bucket instances and fire")
 }
 
 // variableTypeRule fires on a variable declaration that has no type, mirroring
@@ -263,9 +354,10 @@ resource "aws_s3_bucket" "this" {
 	}}
 
 	ins := newTestInspector(t, inspectorOpts{
-		queries:  queries,
-		repoPath: root,
-		vb:       DefaultVulnerabilityBuilder,
+		queries:       queries,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: moduleEvalEnabled(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -363,9 +455,10 @@ resource "aws_s3_bucket" "this" {
 	}}
 
 	ins := newTestInspector(t, inspectorOpts{
-		queries:  queries,
-		repoPath: root,
-		vb:       DefaultVulnerabilityBuilder,
+		queries:       queries,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: moduleEvalEnabled(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -415,4 +508,49 @@ resource "aws_s3_bucket" "this" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, numQueries)
+}
+
+// TestInspect_LocalModuleEvalDisabled_FlagOff confirms that when the flag is off
+// (default) the module body is scanned as-is with no synthetic docs injected.
+func TestInspect_LocalModuleEvalDisabled_FlagOff(t *testing.T) {
+	root := t.TempDir()
+	rootPath := filepath.Join(root, "main.tf")
+	modDir := filepath.Join(root, "modules", "s3")
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+	modPath := filepath.Join(modDir, "main.tf")
+
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+module "s3" {
+  source = "./modules/s3"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(modPath, []byte(`
+variable "acl" {}
+resource "aws_s3_bucket" "this" { acl = var.acl }
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootPath)...)
+	files = append(files, parseTerraform(t, modPath)...)
+
+	queries := []model.QueryMetadata{{
+		Query:       "acl_rule",
+		Content:     aclRule,
+		InputData:   "{}",
+		Platform:    "terraform",
+		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Aggregation: 1,
+	}}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Empty(t, vulns, "module eval disabled: rule must not fire on unresolved module reference")
 }

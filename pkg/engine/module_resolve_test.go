@@ -65,30 +65,30 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	extra, synthetic, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
-	if !ok {
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
 
-	if len(extra) != 1 {
-		t.Fatalf("expected 1 instantiated resource document, got %d: %#v", len(extra), extra)
+	if len(res.docs) != 1 {
+		t.Fatalf("expected 1 instantiated resource document, got %d: %#v", len(res.docs), res.docs)
 	}
-	doc := extra[0]
+	doc := res.docs[0]
 	if got := docFileID(doc["id"]); got != "mod-id" {
 		t.Fatalf("instantiated doc id prefix = %v, want mod-id (resource definition file)", got)
 	}
 
 	// A synthetic file backs the document under the same id and carries the call chain.
-	if len(synthetic) != 1 {
-		t.Fatalf("expected 1 synthetic file, got %d", len(synthetic))
+	if len(res.syntheticFiles) != 1 {
+		t.Fatalf("expected 1 synthetic file, got %d", len(res.syntheticFiles))
 	}
-	if synthetic[0].ID != doc["id"] {
-		t.Fatalf("synthetic file id = %v, want doc id %v", synthetic[0].ID, doc["id"])
+	if res.syntheticFiles[0].ID != doc["id"] {
+		t.Fatalf("synthetic file id = %v, want doc id %v", res.syntheticFiles[0].ID, doc["id"])
 	}
-	if synthetic[0].ModuleCallChain == "" {
+	if res.syntheticFiles[0].ModuleCallChain == "" {
 		t.Fatalf("synthetic file should carry a non-empty module call chain")
 	}
-	if len(synthetic[0].Document) != 0 {
+	if len(res.syntheticFiles[0].Document) != 0 {
 		t.Fatalf("synthetic file Document must be empty so Combine skips it")
 	}
 
@@ -101,10 +101,10 @@ resource "aws_s3_bucket" "this" {
 
 	// The module body must be suppressed (so it isn't scanned standalone), but
 	// the root file must still be scanned.
-	if !suppressed["mod-id"] {
+	if !res.suppressed["mod-id"] {
 		t.Fatalf("module file should be suppressed")
 	}
-	if suppressed["root-id"] {
+	if res.suppressed["root-id"] {
 		t.Fatalf("root file should not be suppressed")
 	}
 }
@@ -137,19 +137,19 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", filepath.Join("modules", "bucket", "main.tf")),
 	}
 
-	extra, _, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
-	if !ok {
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
 
-	if len(extra) != 1 {
-		t.Fatalf("expected 1 instantiated resource document, got %d: %#v", len(extra), extra)
+	if len(res.docs) != 1 {
+		t.Fatalf("expected 1 instantiated resource document, got %d: %#v", len(res.docs), res.docs)
 	}
-	if doc := extra[0]; docFileID(doc["id"]) != "mod-id" {
+	if doc := res.docs[0]; docFileID(doc["id"]) != "mod-id" {
 		t.Fatalf("instantiated doc id prefix = %v, want mod-id", docFileID(doc["id"]))
 	}
-	if !suppressed["mod-id"] || suppressed["root-id"] {
-		t.Fatalf("unexpected suppression map: %#v", suppressed)
+	if !res.suppressed["mod-id"] || res.suppressed["root-id"] {
+		t.Fatalf("unexpected suppression map: %#v", res.suppressed)
 	}
 }
 
@@ -194,22 +194,22 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	extra, synthetic, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
-	if !ok {
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
-	if len(extra) != 2 {
-		t.Fatalf("want 2 instantiated bucket docs (one per root), got %d: %#v", len(extra), extra)
+	if len(res.docs) != 2 {
+		t.Fatalf("want 2 instantiated bucket docs (one per root), got %d: %#v", len(res.docs), res.docs)
 	}
 	names := make(map[string]int)
 	docIDs := make(map[string]bool)
-	for _, doc := range extra {
+	for _, doc := range res.docs {
 		if got := docFileID(doc["id"]); got != "mod-id" {
 			t.Fatalf("doc id prefix = %v, want mod-id", got)
 		}
 		docIDs[doc["id"].(string)] = true
-		res, _ := doc["resource"].(map[string]interface{})
-		bt, _ := res["aws_s3_bucket"].(map[string]interface{})
+		docRes, _ := doc["resource"].(map[string]interface{})
+		bt, _ := docRes["aws_s3_bucket"].(map[string]interface{})
 		th, _ := bt["this"].(map[string]interface{})
 		b, _ := th["bucket"].(string)
 		names[b]++
@@ -223,14 +223,93 @@ resource "aws_s3_bucket" "this" {
 		t.Fatalf("want 2 distinct per-caller doc ids, got %d: %#v", len(docIDs), docIDs)
 	}
 	chains := make(map[string]bool)
-	for _, sf := range synthetic {
+	for _, sf := range res.syntheticFiles {
 		chains[sf.ModuleCallChain] = true
 	}
 	if len(chains) != 2 {
 		t.Fatalf("want 2 distinct module call chains (one per root), got %d: %#v", len(chains), chains)
 	}
-	if !suppressed["mod-id"] {
+	if !res.suppressed["mod-id"] {
 		t.Fatalf("shared module file should be suppressed")
+	}
+}
+
+// Two roots, identical module inputs: one OPA doc, second caller in extras.
+func TestResolveModuleDocuments_CrossRootIdenticalContentDeduped(t *testing.T) {
+	root := t.TempDir()
+	modDir := filepath.Join(root, "modules", "bucket")
+	if err := os.MkdirAll(filepath.Join(root, "stack-a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "stack-b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(modDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both roots pass the same value so content dedup merges them.
+	writeFile(t, filepath.Join(root, "stack-a"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  name   = "shared"
+}
+`)
+	writeFile(t, filepath.Join(root, "stack-b"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  name   = "shared"
+}
+`)
+	modFile := writeFile(t, modDir, "main.tf", `
+variable "name" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  bucket = var.name
+}
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("a-root", filepath.Join(root, "stack-a", "main.tf")),
+		fileMeta("b-root", filepath.Join(root, "stack-b", "main.tf")),
+		fileMeta("mod-id", modFile),
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if !res.ok {
+		t.Fatalf("resolveModuleDocuments ok = false, want true")
+	}
+
+	if len(res.docs) != 1 {
+		t.Fatalf("want 1 deduplicated bucket doc, got %d: %#v", len(res.docs), res.docs)
+	}
+	primaryID, _ := res.docs[0]["id"].(string)
+	if primaryID == "" {
+		t.Fatalf("primary doc has no id: %#v", res.docs[0])
+	}
+
+	if len(res.extras) != 1 {
+		t.Fatalf("want extras for exactly 1 primary doc, got %d: %#v", len(res.extras), res.extras)
+	}
+	dupes := res.extras[primaryID]
+	if len(dupes) != 1 {
+		t.Fatalf("want 1 deduplicated caller recorded in extras, got %d: %#v", len(dupes), dupes)
+	}
+
+	if len(res.syntheticFiles) != 1 {
+		t.Fatalf("want 1 synthetic file for the primary doc, got %d", len(res.syntheticFiles))
+	}
+
+	if dupes[0].docID == primaryID {
+		t.Fatalf("deduplicated caller must have a distinct doc id from the primary")
+	}
+	if dupes[0].callChain == res.syntheticFiles[0].ModuleCallChain {
+		t.Fatalf("deduplicated caller must have a distinct call chain from the primary")
+	}
+	if dupes[0].callChain == "" {
+		t.Fatalf("deduplicated caller must carry a non-empty call chain")
 	}
 }
 
@@ -253,15 +332,15 @@ module "bucket" {
 		fileMeta("root-id", filepath.Join("stack", "main.tf")),
 	}
 
-	extra, _, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
-	if ok {
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if res.ok {
 		t.Fatalf("resolveModuleDocuments ok = true, want false when all roots fail")
 	}
-	if len(extra) != 0 {
-		t.Fatalf("want no instantiation when root eval fails, got %#v", extra)
+	if len(res.docs) != 0 {
+		t.Fatalf("want no instantiation when root eval fails, got %#v", res.docs)
 	}
-	if len(suppressed) != 0 {
-		t.Fatalf("want no suppression when all root evals fail, got %#v", suppressed)
+	if len(res.suppressed) != 0 {
+		t.Fatalf("want no suppression when all root evals fail, got %#v", res.suppressed)
 	}
 }
 
@@ -280,14 +359,14 @@ resource "aws_s3_bucket" "this" {
 
 	files := model.FileMetadatas{fileMeta("orphan-id", orphanFile)}
 
-	extra, _, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
-	if !ok {
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
-	if len(extra) != 0 {
-		t.Fatalf("orphan module should not instantiate resources, got %#v", extra)
+	if len(res.docs) != 0 {
+		t.Fatalf("orphan module should not instantiate resources, got %#v", res.docs)
 	}
-	if suppressed["orphan-id"] {
+	if res.suppressed["orphan-id"] {
 		t.Fatalf("orphan module should not be suppressed")
 	}
 }
@@ -323,15 +402,15 @@ resource "aws_s3_bucket" "leaf" {
 		fileMeta("leaf-id", leafFile),
 	}
 
-	extra, _, suppressed, _, ok := resolveModuleDocuments(context.Background(), files, root)
-	if !ok {
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
 
-	if len(extra) != 1 {
-		t.Fatalf("expected 1 instantiated resource, got %d: %#v", len(extra), extra)
+	if len(res.docs) != 1 {
+		t.Fatalf("expected 1 instantiated resource, got %d: %#v", len(res.docs), res.docs)
 	}
-	doc := extra[0]
+	doc := res.docs[0]
 	if got := docFileID(doc["id"]); got != "leaf-id" {
 		t.Fatalf("doc id prefix = %v, want leaf-id", got)
 	}
@@ -342,10 +421,10 @@ resource "aws_s3_bucket" "leaf" {
 		t.Fatalf("leaf bucket = %#v, want deep", leaf["bucket"])
 	}
 
-	if !suppressed["a-id"] || !suppressed["leaf-id"] {
-		t.Fatalf("intermediate and leaf module files should be suppressed: %#v", suppressed)
+	if !res.suppressed["a-id"] || !res.suppressed["leaf-id"] {
+		t.Fatalf("intermediate and leaf module files should be suppressed: %#v", res.suppressed)
 	}
-	if suppressed["root-id"] {
+	if res.suppressed["root-id"] {
 		t.Fatalf("root file should not be suppressed")
 	}
 }
@@ -377,8 +456,8 @@ module "bucket" {
 	ins := newTestInspector(t, inspectorOpts{
 		repoPath: root,
 	})
-	if docs, synthetic := ins.instantiateLocalModules(context.Background(), files); docs != nil || synthetic != nil {
-		t.Fatalf("instantiateLocalModules = (%#v, %#v), want nil when resolve aborts", docs, synthetic)
+	if docs, synthetic, extras := ins.instantiateLocalModules(context.Background(), files); docs != nil || synthetic != nil || extras != nil {
+		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {
 		t.Fatalf("expected module block preserved on root when evaluation failed")

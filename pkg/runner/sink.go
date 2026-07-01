@@ -12,6 +12,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
@@ -99,6 +100,7 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 			ResolvedFiles:     documents.ResolvedFiles,
 			LinesOriginalData: utils.SplitLines(documents.Content),
 			IsMinified:        documents.IsMinified,
+			Platform:          analyzer.ClassifyParsedFile(ctx, s.Parser.FS(), s.Platforms, documents.Kind, filename, *content),
 		}
 
 		s.saveToFile(ctx, &file)

@@ -17,6 +17,12 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
+// contentKindParser is an optional parser capability to refine the file kind
+// based on the resolved content (e.g. JSON that is actually a Terraform plan).
+type contentKindParser interface {
+	KindForContent(content []byte) (model.FileKind, bool)
+}
+
 type kindParser interface {
 	GetKind() model.FileKind
 	GetCommentToken() string
@@ -96,6 +102,16 @@ type Parser struct {
 	fsys       vfs.FS
 }
 
+// FS returns the filesystem used for extension detection. The HTTP server
+// injects an in-memory FS for pushed content; the CLI defaults to the real
+// disk. Never returns nil so callers can use it directly.
+func (c *Parser) FS() vfs.FS {
+	if c.fsys == nil {
+		return vfs.DiskFS{}
+	}
+	return c.fsys
+}
+
 // ParsedDocument is a struct containing data retrieved from parsing
 type ParsedDocument struct {
 	Docs          []model.Document
@@ -166,9 +182,16 @@ func (c *Parser) Parse(
 			cont = string(fileContent)
 		}
 
+		kind := c.Parsers.GetKind()
+		if ck, ok := c.Parsers.(contentKindParser); ok {
+			if refined, override := ck.KindForContent(resolved); override {
+				kind = refined
+			}
+		}
+
 		return ParsedDocument{
 			Docs:          obj,
-			Kind:          c.Parsers.GetKind(),
+			Kind:          kind,
 			Content:       cont,
 			IgnoreLines:   igLines,
 			CountLines:    bytes.Count(resolved, []byte{'\n'}) + 1,

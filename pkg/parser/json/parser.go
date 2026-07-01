@@ -76,6 +76,15 @@ func (p *Parser) GetKind() model.FileKind {
 	return model.KindJSON
 }
 
+// KindForContent overrides the static kind for Terraform plan JSON so line
+// detection can resolve plan resources structurally instead of by text match.
+func (p *Parser) KindForContent(content []byte) (model.FileKind, bool) {
+	if looksLikeTerraformPlan(content) {
+		return model.KindTerraformPlan, true
+	}
+	return "", false
+}
+
 // SupportedTypes returns types supported by this parser, which are cloudFormation
 func (p *Parser) SupportedTypes() map[string]bool {
 	return map[string]bool{
@@ -95,7 +104,7 @@ func (p *Parser) GetCommentToken() string {
 
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
-	if contentIsTerraformPlan(content) {
+	if looksLikeTerraformPlan(content) {
 		var out bytes.Buffer
 		if err := json.Indent(&out, content, "", "  "); err != nil {
 			return "", err
@@ -105,21 +114,11 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
-// contentIsTerraformPlan reports whether content parses as a Terraform plan,
-// using the same check as Parse. Stateless and per-call. Recovers from panics
-// in plan parsing (malformed/partial plans) and treats them as "not a plan".
-func contentIsTerraformPlan(content []byte) (isPlan bool) {
-	defer func() {
-		if recover() != nil {
-			isPlan = false
-		}
-	}()
-	var doc model.Document
-	if err := json.Unmarshal(content, &doc); err != nil {
-		return false
-	}
-	if _, err := parseTFPlan(doc); err != nil {
-		return false
-	}
-	return true
+// looksLikeTerraformPlan is a fast byte-level heuristic that avoids a full
+// JSON parse. Both keys are required by the Terraform plan JSON spec, so their
+// co-presence is a reliable signal. Used by KindForContent and StringifyContent
+// where a full parseTFPlan call would be redundant (Parse already does it).
+func looksLikeTerraformPlan(content []byte) bool {
+	return bytes.Contains(content, []byte(`"format_version"`)) &&
+		bytes.Contains(content, []byte(`"planned_values"`))
 }

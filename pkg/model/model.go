@@ -17,18 +17,19 @@ import (
 
 // Constants to describe what kind of file refers
 const (
-	KindTerraform FileKind = "TF"
-	KindBICEP     FileKind = "BICEP"
-	KindDOCKER    FileKind = "DOCKER"
-	KindJSON      FileKind = "JSON"
-	KindYAML      FileKind = "YAML"
-	KindYML       FileKind = "YML"
-	KindPROTO     FileKind = "PROTO"
-	KindCOMMON    FileKind = "*"
-	KindHELM      FileKind = "HELM"
-	KindBUILDAH   FileKind = "SH"
-	KindCFG       FileKind = "CFG"
-	KindINI       FileKind = "INI"
+	KindTerraform     FileKind = "TF"
+	KindTerraformPlan FileKind = "TFPLAN"
+	KindBICEP         FileKind = "BICEP"
+	KindDOCKER        FileKind = "DOCKER"
+	KindJSON          FileKind = "JSON"
+	KindYAML          FileKind = "YAML"
+	KindYML           FileKind = "YML"
+	KindPROTO         FileKind = "PROTO"
+	KindCOMMON        FileKind = "*"
+	KindHELM          FileKind = "HELM"
+	KindBUILDAH       FileKind = "SH"
+	KindCFG           FileKind = "CFG"
+	KindINI           FileKind = "INI"
 )
 
 // Constants to describe commands given from comments
@@ -167,6 +168,10 @@ type FileMetadata struct {
 	IsMinified        bool
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
+	// Platform is the lowercased platform the file was classified as (e.g.
+	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
+	// engine to evaluate each query only against documents of its own platform.
+	Platform string
 }
 
 // QueryMetadata is a representation of general information about a query
