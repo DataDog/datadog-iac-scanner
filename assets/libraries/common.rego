@@ -738,6 +738,18 @@ _policy_wildcard_actions(policyObj) := {lower(a) |
 	a := _to_action_array(statement.Action)[_]
 }
 
+_managed_policy_types := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
+
+# [policyResourceName, wildcardAction] pairs across every managed policy type,
+# built in one document pass. Only policies granting an Allow on "*" contribute,
+# so this set stays small. The attachment branches below resolve a policy_arn
+# reference via membership here instead of rescanning every document per
+# attachment (previously O(attachments × docs)).
+_policy_name_wildcard_perms := {[name, permission] |
+	policyObj := input.document[_].resource[_managed_policy_types[_]][name]
+	permission := _policy_wildcard_actions(policyObj)[_]
+}
+
 # Pre-computed sets of [principalName, permission] pairs, one per principal type.
 #
 # Using complete set rules (not incremental/partial rules) guarantees that OPA
@@ -755,9 +767,9 @@ _role_dangerous_pairs := {[roleName, permission] |
 	attachment := input.document[_].resource[attachments[_]][_]
 	roleName := get_role_from_policy_attachment(attachment)
 	policyName := split(attachment.policy_arn, ".")[1]
-	policies := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
-	resourcePolicy := input.document[_].resource[policies[_]][policyName]
-	permission := _policy_wildcard_actions(resourcePolicy)[_]
+	some pair in _policy_name_wildcard_perms
+	pair[0] == policyName
+	permission := pair[1]
 }
 
 _user_dangerous_pairs := {[userName, permission] |
@@ -769,9 +781,9 @@ _user_dangerous_pairs := {[userName, permission] |
 	attachment := input.document[_].resource[attachments[_]][_]
 	userName := get_user_from_policy_attachment(attachment)
 	policyName := split(attachment.policy_arn, ".")[1]
-	policies := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
-	resourcePolicy := input.document[_].resource[policies[_]][policyName]
-	permission := _policy_wildcard_actions(resourcePolicy)[_]
+	some pair in _policy_name_wildcard_perms
+	pair[0] == policyName
+	permission := pair[1]
 }
 
 _group_dangerous_pairs := {[groupName, permission] |
@@ -783,9 +795,9 @@ _group_dangerous_pairs := {[groupName, permission] |
 	attachment := input.document[_].resource[attachments[_]][_]
 	groupName := get_group_from_policy_attachment(attachment)
 	policyName := split(attachment.policy_arn, ".")[1]
-	policies := {"aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy", "aws_iam_policy"}
-	resourcePolicy := input.document[_].resource[policies[_]][policyName]
-	permission := _policy_wildcard_actions(resourcePolicy)[_]
+	some pair in _policy_name_wildcard_perms
+	pair[0] == policyName
+	permission := pair[1]
 }
 
 group_unrecommended_permission_policy_scenarios(targetGroup, permission) if {
