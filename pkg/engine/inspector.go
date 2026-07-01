@@ -308,9 +308,14 @@ func (c *Inspector) Inspect(
 	}
 	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
 
-	// Step 2: Enrich modules with parsed variables
+	// Step 2: Enrich modules with parsed variables. As with Step 1, a context
+	// cancellation must abort the scan rather than proceed with partial module
+	// data; per-module parse failures are non-fatal and handled internally.
 	rootDir := c.repoPath
-	enrichedModules := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, rootDir)
+	enrichedModules, err := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, rootDir)
+	if err != nil {
+		return nil, err
+	}
 
 	queries := c.getQueriesByPlat(platforms)
 
@@ -359,13 +364,10 @@ func (c *Inspector) executeQueries(
 			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores)
 			return nil
 		})
+	// The closure never returns a non-nil error itself, so ForEach only reports
+	// context cancellation here; surfacing it keeps a canceled scan from being
+	// reported as a successful scan with partial/empty results.
 	if err != nil {
-		return vulnerabilities, err
-	}
-
-	// A canceled scan must surface the cancellation rather than be reported as a
-	// successful scan with partial/empty results.
-	if err := ctx.Err(); err != nil {
 		return vulnerabilities, err
 	}
 

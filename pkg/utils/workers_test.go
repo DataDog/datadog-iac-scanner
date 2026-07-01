@@ -87,6 +87,44 @@ func TestForEach_FirstErrorReturnedAndCancels(t *testing.T) {
 	}
 }
 
+func TestResolveWorkers_ExplicitCountNotFlooredByMinWorkers(t *testing.T) {
+	// An explicit low Workers count is a deliberate concurrency limit and must
+	// be honored rather than raised to MinWorkers.
+	if got := (PoolOptions{Workers: 2, MinWorkers: IOMinWorkers, MaxWorkers: IOMaxWorkers}).resolveWorkers(100); got != 2 {
+		t.Fatalf("explicit low count should be honored, got %d, want 2", got)
+	}
+	// The floor still lifts an auto-detected count on tiny machines.
+	if got := (PoolOptions{Workers: 0, MinWorkers: IOMinWorkers}).resolveWorkers(100); got < IOMinWorkers {
+		t.Fatalf("auto-detected count should be floored to %d, got %d", IOMinWorkers, got)
+	}
+	// The ceiling still caps an explicit count that exceeds it.
+	if got := (PoolOptions{Workers: 1000, MaxWorkers: IOMaxWorkers}).resolveWorkers(10000); got != IOMaxWorkers {
+		t.Fatalf("explicit count above ceiling should be capped to %d, got %d", IOMaxWorkers, got)
+	}
+}
+
+func TestForEach_CanceledContextStopsSchedulingAndSurfacesErr(t *testing.T) {
+	// A pre-canceled context must surface ctx.Err() and run few (ideally zero)
+	// items rather than scheduling a no-op goroutine per element.
+	items := make([]int, 10000)
+	var ran atomic.Int64
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := ForEach(ctx, items, PoolOptions{Workers: 4},
+		func(context.Context, int, int) error {
+			ran.Add(1)
+			return nil
+		})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if n := ran.Load(); n > int64(len(items)/2) {
+		t.Fatalf("canceled run scheduled too many items: %d of %d", n, len(items))
+	}
+}
+
 func TestForEach_WorkerCapBound(t *testing.T) {
 	// CPUBound work must never exceed the shared budget concurrently.
 	budget := AvailableCPUs()

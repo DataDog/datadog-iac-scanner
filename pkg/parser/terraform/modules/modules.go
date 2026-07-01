@@ -582,7 +582,7 @@ func DetectModuleSourceType(source string) (string, string) {
 	return stringUnknown, ""
 }
 
-func ParseAllModuleVariables(ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string) []ParsedModule {
+func ParseAllModuleVariables(ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string) ([]ParsedModule, error) {
 	contextLogger := logger.FromContext(ctx)
 
 	// Iterate in a stable key order so the result slice is deterministic across
@@ -598,7 +598,12 @@ func ParseAllModuleVariables(ctx context.Context, fsys vfs.FS, modules map[strin
 	// Each module's equivalent-map generation reads files and parses HCL
 	// (CPU-bound), so the pool draws from the shared CPU budget. Results are
 	// written index-aligned, no shared mutable state between workers.
-	_ = utils.ForEach(ctx, keys, utils.PoolOptions{CPUBound: true},
+	//
+	// A per-module equivalent-map failure is non-fatal (logged, the module is
+	// kept without attributes data). ForEach only returns an error on context
+	// cancellation; we surface it so the caller aborts rather than proceeding
+	// with a partially-filled slice (unwritten slots would be zero-value holes).
+	err := utils.ForEach(ctx, keys, utils.PoolOptions{CPUBound: true},
 		func(ctx context.Context, key string, i int) error {
 			mod := modules[key]
 			if !mod.IsLocal {
@@ -615,7 +620,10 @@ func ParseAllModuleVariables(ctx context.Context, fsys vfs.FS, modules map[strin
 			finalModules[i] = mod
 			return nil
 		})
-	return finalModules
+	if err != nil {
+		return nil, err
+	}
+	return finalModules, nil
 }
 
 func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) (map[string]ModuleAttributesInfo, error) {

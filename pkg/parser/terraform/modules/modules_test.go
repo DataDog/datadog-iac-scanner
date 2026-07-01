@@ -104,6 +104,24 @@ func TestParseTerraformModules_CanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// TestParseAllModuleVariables_CanceledContext guards the cancellation contract:
+// results are written into an index-aligned slice, so a canceled scan must
+// surface ctx.Err() rather than return a slice padded with zero-value holes for
+// the modules whose workers never ran.
+func TestParseAllModuleVariables_CanceledContext(t *testing.T) {
+	modules := map[string]ParsedModule{
+		"a": {Name: "a", IsLocal: true, AbsSource: t.TempDir()},
+		"b": {Name: "b", IsLocal: true, AbsSource: t.TempDir()},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // canceled scan
+
+	got, err := ParseAllModuleVariables(ctx, vfs.DiskFS{}, modules, t.TempDir())
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, got)
+}
+
 func TestParseTerraformModules(t *testing.T) {
 	tests := []struct {
 		name     string

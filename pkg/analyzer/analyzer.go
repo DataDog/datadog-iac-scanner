@@ -397,8 +397,14 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	// filesystem reader). Workers write into the results/unwanted/locCount
 	// channels, which computeValues drains concurrently below; the channels are
 	// closed once all files are processed.
+	//
+	// forEachErr is written by the goroutine before it closes the channels and
+	// read only after computeValues has drained them to completion; the channel
+	// close/receive ordering guarantees the write is visible here without a race.
+	var forEachErr error
 	go func() {
-		_ = utils.ForEach(ctx, files, utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
+		forEachErr = utils.ForEach(ctx, files,
+			utils.PoolOptions{Workers: a.NumWorkers, MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
 			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
 					typesFlag: typesFlag,
@@ -413,6 +419,11 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	}()
 
 	availableTypes, unwantedPaths, loc := computeValues(results, unwanted, locCount)
+	// A canceled scan must surface the cancellation rather than be reported as a
+	// successful analysis with partial results.
+	if forEachErr != nil {
+		return returnAnalyzedPaths, forEachErr
+	}
 	multiPlatformTypeCheck(&availableTypes)
 	unwantedPaths = append(unwantedPaths, ignoreFiles...)
 	unwantedPaths = append(unwantedPaths, projectConfigFiles...)

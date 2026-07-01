@@ -29,14 +29,7 @@ func AdjustNumWorkers(workers int) int {
 // it updated), so in a container it already reflects the CPU quota rather than
 // the host core count.
 func AvailableCPUs() int {
-	return atLeastOne(runtime.GOMAXPROCS(-1))
-}
-
-func atLeastOne(n int) int {
-	if n < 1 {
-		return 1
-	}
-	return n
+	return max(runtime.GOMAXPROCS(-1), 1)
 }
 
 // cpuBudget is the process-wide pool of CPU-bound work slots, sized to
@@ -50,6 +43,14 @@ func atLeastOne(n int) int {
 // oversubscription factors showed >1.0 never helped and slightly hurt, because
 // the CPU-bound phase is compute-saturated and extra workers only add scheduler
 // and GC contention.
+//
+// Sizing is lazy and one-shot (sync.Once): the semaphore is created on the first
+// CPU-bound scan, by which point GOMAXPROCS has stabilized to the cgroup quota
+// (init happens long before any scan). We intentionally do NOT resize if
+// GOMAXPROCS later grows — semaphore.Weighted has no resize API, and the only
+// case this matters is a long-lived server (serve mode) that captured a
+// transient low quota straddling its very first scan. That is a known, accepted
+// limitation; a resizable gate was judged not worth the hand-rolled concurrency.
 var (
 	cpuBudgetOnce sync.Once
 	cpuBudget     *semaphore.Weighted
@@ -86,9 +87,12 @@ const (
 type PoolOptions struct {
 	// Workers is the desired fan-out width. 0 means auto-detect (AvailableCPUs).
 	Workers int
-	// MinWorkers, when > 0, raises Workers up to this floor.
+	// MinWorkers, when > 0, raises an AUTO-DETECTED worker count up to this floor.
+	// It does not apply when Workers is set explicitly: an explicit low count is
+	// a deliberate concurrency limit and must be honored, not floored.
 	MinWorkers int
-	// MaxWorkers, when > 0, caps Workers at this ceiling.
+	// MaxWorkers, when > 0, caps Workers at this ceiling (applies to both
+	// auto-detected and explicit counts; e.g. an open-file-descriptor cap).
 	MaxWorkers int
 	// CPUBound, when true, makes each item acquire one slot of the shared CPU
 	// budget before running. Leave false for I/O-bound work (file reads, network)
@@ -98,7 +102,9 @@ type PoolOptions struct {
 
 func (o PoolOptions) resolveWorkers(items int) int {
 	w := AdjustNumWorkers(o.Workers)
-	if o.MinWorkers > 0 && w < o.MinWorkers {
+	// The floor lifts a small auto-detected count on tiny machines, but an
+	// explicit Workers value is a caller-imposed limit we must not raise.
+	if o.Workers == 0 && o.MinWorkers > 0 && w < o.MinWorkers {
 		w = o.MinWorkers
 	}
 	if o.MaxWorkers > 0 && w > o.MaxWorkers {
@@ -107,7 +113,7 @@ func (o PoolOptions) resolveWorkers(items int) int {
 	if items > 0 && w > items {
 		w = items
 	}
-	return atLeastOne(w)
+	return max(w, 1)
 }
 
 // ForEach runs fn over every item using a bounded worker pool. It replaces the
@@ -143,7 +149,16 @@ func ForEach[T any](ctx context.Context, items []T, opts PoolOptions, fn func(ct
 	g.SetLimit(numWorkers)
 
 	for i := range items {
+		// Stop scheduling once the group is canceled (first error or parent
+		// cancellation). g.SetLimit throttles launches but does not halt this
+		// producer, so without this check a canceled run over a large slice would
+		// still queue O(len(items)) no-op goroutines before g.Wait returns.
+		if gctx.Err() != nil {
+			break
+		}
 		g.Go(func() error {
+			// A goroutine may have been queued behind the SetLimit gate before the
+			// group was canceled; skip its work rather than run it needlessly.
 			if gctx.Err() != nil {
 				return gctx.Err()
 			}
@@ -155,5 +170,15 @@ func ForEach[T any](ctx context.Context, items []T, opts PoolOptions, fn func(ct
 		})
 	}
 
-	return g.Wait()
+	err := g.Wait()
+	if err == nil {
+		// Breaking out of the loop above (or launching zero error-returning
+		// goroutines) can leave g.Wait with nothing to report even though the run
+		// was canceled. Surface the cancellation so callers do not mistake a
+		// canceled run for a complete one.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+	}
+	return err
 }
