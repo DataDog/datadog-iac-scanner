@@ -435,6 +435,61 @@ func TestAnalyze_ConcurrencyLimit(t *testing.T) {
 	}
 }
 
+// TestAnalyze_HCLCacheIsolatedBetweenRequests verifies that the per-scan HCL
+// parse cache does not bleed between server analyze calls. If the cache were
+// reused across requests, the second request's line-detection would use stale
+// block ranges from the first parse and report an incorrect finding line.
+func TestAnalyze_HCLCacheIsolatedBetweenRequests(t *testing.T) {
+	s := newTestServer(t)
+	rule := teamTagRule(t)
+
+	// Request 1: resource is at line 1.
+	req1 := analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: "resource \"aws_s3_bucket\" \"b\" {\n  bucket = \"x\"\n}\n"}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+	}
+	out1, _ := postAnalyze(t, s, req1)
+	if len(out1.Findings) == 0 {
+		t.Fatalf("request 1: expected at least one finding, got none")
+	}
+	var line1 int
+	for _, f := range out1.Findings {
+		if f.QueryID == rule.ID {
+			line1 = f.Line
+		}
+	}
+	if line1 == 0 {
+		t.Fatalf("request 1: rule did not fire")
+	}
+
+	// Request 2: same path, resource pushed down by 3 blank lines. A stale
+	// cached body from request 1 would return the old block range (line 1),
+	// not the updated one.
+	req2 := analyzeRequest{
+		Files:    []analyzeFile{{Path: "infra/main.tf", Content: "\n\n\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"x\"\n}\n"}},
+		Rules:    []analyzeRule{rule},
+		Platform: []string{"terraform"},
+	}
+	out2, _ := postAnalyze(t, s, req2)
+	if len(out2.Findings) == 0 {
+		t.Fatalf("request 2: expected at least one finding, got none")
+	}
+	var line2 int
+	for _, f := range out2.Findings {
+		if f.QueryID == rule.ID {
+			line2 = f.Line
+		}
+	}
+	if line2 == 0 {
+		t.Fatalf("request 2: rule did not fire")
+	}
+
+	if line2 <= line1 {
+		t.Errorf("request 2 finding line = %d, want > %d (resource was pushed down by 3 lines; stale HCL cache would return the old position)", line2, line1)
+	}
+}
+
 func readAll(resp *http.Response) ([]byte, error) {
 	defer resp.Body.Close()
 	var buf bytes.Buffer
