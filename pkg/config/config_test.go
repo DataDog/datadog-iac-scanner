@@ -125,7 +125,7 @@ iac:
 	rc := cfg.RuleConfigs["terraform-aws-s3-unencrypted"]
 	assert.Equal(t, []string{"test/"}, rc.IgnorePaths)
 	require.NotNil(t, rc.Severity)
-	assert.Equal(t, "low", *rc.Severity)	
+	assert.Equal(t, "low", *rc.Severity)
 	require.NotNil(t, rc.Arguments)
 	assert.Equal(t, []interface {}([]interface {}{"Env"}), rc.Arguments["required_tags"])
 }

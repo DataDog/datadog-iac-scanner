@@ -1,9 +1,10 @@
 package test
 
-// Comprehensive local tests for code-security.datadog.yaml v1.3 features:
+// Comprehensive local tests for code-security.datadog.yaml v1.4 features:
 //   - per-rule ignore-paths / only-paths
 //   - per-rule severity override
 //   - global-config only-platforms / ignore-platforms
+//   - per-rule arguments
 
 import (
 	"context"
