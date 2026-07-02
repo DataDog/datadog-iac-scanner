@@ -233,16 +233,6 @@ func createResultsTable(m pdf.Maroto, query *model.QueryResult) {
 				})
 			})
 		})
-		expectedValue := fmt.Sprintf("Expected: %s", query.Files[idx].KeyExpectedValue)
-		m.Row(colFive, func() {
-			m.Col(colFullPage, func() {
-				m.Text(expectedValue, props.Text{
-					Size:        smallTextSize,
-					Align:       consts.Left,
-					Extrapolate: false,
-				})
-			})
-		})
 	}
 	m.SetBackgroundColor(color.NewWhite())
 	m.Line(1.0)

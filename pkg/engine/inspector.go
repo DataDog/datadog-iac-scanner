@@ -55,7 +55,6 @@ const (
 	DefaultQueryDescription     = utils.DefaultQueryDescription
 	DefaultQueryDescriptionID   = utils.DefaultQueryDescriptionID
 	DefaultQueryURI             = utils.DefaultQueryURI
-	DefaultIssueType            = model.IssueTypeIncorrectValue
 	unresolvedPlaceholder       = utils.UnresolvedPlaceholder
 
 	regoQuery = utils.RegoQuery

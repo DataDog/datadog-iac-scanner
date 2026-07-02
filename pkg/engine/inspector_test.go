@@ -711,9 +711,6 @@ func TestInspector_DecodeQueryResults(t *testing.T) {
 func newResultset() rego.ResultSet {
 	myValue := make(map[string]interface{})
 	myValue["documentId"] = "3a3be8f7-896e-4ef8-9db3-d6c19e60510b"
-	myValue["issueType"] = "IncorrectValue"
-	myValue["keyActualValue"] = "COPY --from referencesthe current FROM alias"
-	myValue["keyExpectedValue"] = "COPY --from should not references the current FROM alias"
 	myValue["searchKey"] = "{{ADD ${JAR_FILE} app.jar}}"
 
 	myBinding := make([]interface{}, 1)

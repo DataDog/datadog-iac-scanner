@@ -8,8 +8,5 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": "",
-		"issueType": "RedundantAttribute",
-		"keyExpectedValue": "",
-		"keyActualValue": "",
 	}
 }

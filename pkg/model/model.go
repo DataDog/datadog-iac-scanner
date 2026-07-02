@@ -63,13 +63,6 @@ const (
 	SeverityTrace    = "TRACE"
 )
 
-// Constants to describe issue's type
-const (
-	IssueTypeMissingAttribute   IssueType = "MissingAttribute"
-	IssueTypeRedundantAttribute IssueType = "RedundantAttribute"
-	IssueTypeIncorrectValue     IssueType = "IncorrectValue"
-)
-
 // Arrays to group all constants of one type
 var (
 	AllSeverities = []Severity{
@@ -79,12 +72,6 @@ var (
 		SeverityLow,
 		SeverityInfo,
 		SeverityTrace,
-	}
-
-	AllIssueTypesAsString = []string{
-		string(IssueTypeMissingAttribute),
-		string(IssueTypeRedundantAttribute),
-		string(IssueTypeIncorrectValue),
 	}
 )
 
@@ -118,9 +105,6 @@ type FileKind string
 
 // Severity of the vulnerability
 type Severity string
-
-// IssueType is the issue's type string representation
-type IssueType string
 
 // CodeLine is the lines containing and adjacent to the vulnerability line with their respective positions
 type CodeLine struct {
@@ -211,12 +195,9 @@ type Vulnerability struct {
 	VulnLines             *[]CodeLine      `json:"vulnLines"`
 	ResourceType          string           `db:"resource_type" json:"resourceType"`
 	ResourceName          string           `db:"resource_name" json:"resourceName"`
-	IssueType             IssueType        `db:"issue_type" json:"issueType"`
 	SearchKey             string           `db:"search_key" json:"searchKey"`
 	SearchLine            int              `db:"search_line" json:"searchLine"`
 	SearchValue           string           `db:"search_value" json:"searchValue"`
-	KeyExpectedValue      string           `db:"key_expected_value" json:"expectedValue"`
-	KeyActualValue        string           `db:"key_actual_value" json:"actualValue"`
 	Value                 *string          `db:"value" json:"value"`
 	Output                string           `json:"-"`
 	CloudProvider         string           `json:"cloud_provider"`

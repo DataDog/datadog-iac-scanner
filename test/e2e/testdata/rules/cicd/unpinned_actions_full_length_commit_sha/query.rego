@@ -17,9 +17,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": doc.id,
 		"searchKey": sprintf("uses={{%s}}", [uses]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Action pinned to a full length commit SHA.",
-		"keyActualValue": "Action is not pinned to a full length commit SHA.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "uses"], []),
 		"resourceType": "github_action",
 		"resourceName": get_object_name(doc.jobs[j].steps[k], "step", k),
@@ -38,9 +35,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": doc.id,
 		"searchKey": sprintf("uses={{%s}}", [uses]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Action pinned to a full length commit SHA.",
-		"keyActualValue": "Action is not pinned to a full length commit SHA.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "uses"], []),
 		"resourceType": "github_action",
 		"resourceName": get_object_name(doc.jobs[j], "job", j),
@@ -63,9 +57,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": doc.id,
 		"searchKey": sprintf("uses={{%s}}", [uses]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Action pinned to a full length commit SHA.",
-		"keyActualValue": "Action is not pinned to a full length commit SHA.",
 		"searchLine": common_lib.build_search_line(["runs", "steps", k, "uses"], []),
 		"resourceType": "github_action",
 		"resourceName": object.get(step, "name", sprintf("step-%d", [k])),

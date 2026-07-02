@@ -62,9 +62,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": name,
 		"searchKey": sprintf("aws_s3_bucket[%s]", [name]),
-		"issueType": "MissingAttribute",
-		"keyExpectedValue": "versioning should be set",
-		"keyActualValue": "versioning is not set",
 	}
 }
 `
@@ -134,9 +131,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": name,
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "acl matched the configured expected_acl",
-		"keyActualValue": sprintf("acl is %s", [bucket.acl]),
 	}
 }
 `
@@ -214,7 +208,7 @@ func TestLoadSharedQueries_ExcludesCustomInput(t *testing.T) {
 func summarize(vulns []model.Vulnerability) map[string]int {
 	m := make(map[string]int)
 	for _, v := range vulns {
-		key := v.QueryID + "|" + v.QueryName + "|" + v.ResourceType + "|" + v.ResourceName + "|" + v.KeyActualValue
+		key := v.QueryID + "|" + v.QueryName + "|" + v.ResourceType + "|" + v.ResourceName
 		m[key]++
 	}
 	return m

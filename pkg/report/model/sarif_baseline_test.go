@@ -91,7 +91,6 @@ func TestSarifOutputValidation(t *testing.T) {
 				{
 					FileName:       "main.tf",
 					Line:           10,
-					KeyActualValue: "security issue found",
 					ResourceType:   "aws_s3_bucket",
 					ResourceName:   "my-bucket",
 					ResourceLocation: model.ResourceLocation{
@@ -114,7 +113,6 @@ func TestSarifOutputValidation(t *testing.T) {
 				{
 					FileName:       "Dockerfile",
 					Line:           5,
-					KeyActualValue: "best practice violation",
 					ResourceType:   "RUN",
 					ResourceName:   "install-packages",
 					ResourceLocation: model.ResourceLocation{

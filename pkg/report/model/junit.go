@@ -8,7 +8,6 @@ package model
 import (
 	"encoding/xml"
 	"fmt"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -81,13 +80,11 @@ func (jUnit *junitTestSuites) GenerateTestEntry(query *model.QueryResult) {
 		failedTest := junitFailure{
 			Type: queryDescription,
 			Message: fmt.Sprintf(
-				"[Severity: %s, Query description: %s] Problem found on '%s' file in line %d. Expected value: %s. Actual value: %s.",
+				"[Severity: %s, Query description: %s] Problem found on '%s' file in line %d.",
 				query.Severity,
 				queryDescription,
 				query.Files[idx].FileName,
 				query.Files[idx].Line,
-				strings.TrimRight(query.Files[idx].KeyExpectedValue, "."),
-				strings.TrimRight(query.Files[idx].KeyActualValue, "."),
 			),
 		}
 

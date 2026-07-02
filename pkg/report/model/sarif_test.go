@@ -104,7 +104,6 @@ var sarifTests = []sarifTest{
 				},
 				Files: []model.VulnerableFile{
 					{
-						KeyActualValue: "test",
 						FileName:       "test.tf",
 						Line:           1,
 						ResourceType:   "aws_ami_launch_permission",
@@ -208,7 +207,6 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						KeyActualValue: "test",
 						FileName:       "test.json",
 						Line:           1,
 						ResourceType:   "test_resource_type",
@@ -342,7 +340,6 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						KeyActualValue: "test",
 						FileName:       "",
 						Line:           1,
 						ResourceType:   "test_resource_type",
@@ -365,7 +362,6 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityInfo,
 				Files: []model.VulnerableFile{
 					{
-						KeyActualValue: "test",
 						FileName:       "",
 						Line:           1,
 						ResourceType:   "test_resource_type_2",
@@ -580,7 +576,6 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						KeyActualValue: "test",
 						FileName:       "test.json",
 						Line:           1,
 						ResourceType:   "test_resource_type",
@@ -717,7 +712,6 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						KeyActualValue: "test",
 						FileName:       "test.json",
 						Line:           1,
 						ResourceType:   "test_resource_type",
@@ -859,7 +853,6 @@ var sarifTests = []sarifTest{
 				Category:      "Security",
 				Files: []model.VulnerableFile{
 					{
-						KeyActualValue:        "test dockerfile issue",
 						FileName:              "Dockerfile",
 						Line:                  5,
 						LineWithVulnerability: "RUN apt-get install -y python",
@@ -948,7 +941,6 @@ var sarifTests = []sarifTest{
 				Category:      "Security",
 				Files: []model.VulnerableFile{
 					{
-						KeyActualValue:        "test dockerfile issue",
 						FileName:              "Dockerfile",
 						Line:                  5,
 						LineWithVulnerability: "RUN apt-get install -y python",
@@ -1128,7 +1120,6 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 		},
 		Files: []model.VulnerableFile{
 			{
-				KeyActualValue: "AMI sharing issue found",
 				FileName:       "main.tf",
 				Line:           5,
 				ResourceType:   "aws_ami_launch_permission",

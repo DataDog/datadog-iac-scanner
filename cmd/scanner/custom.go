@@ -93,7 +93,6 @@ func runEvaluateCustom(ctx context.Context, c *cli.Command) error {
 			EndLine:      endLine,
 			ResourceType: v.ResourceType,
 			ResourceName: v.ResourceName,
-			Message:      v.KeyExpectedValue,
 		})
 	}
 

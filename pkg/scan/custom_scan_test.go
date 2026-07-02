@@ -65,9 +65,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "'acl' should be 'private'",
-		"keyActualValue": sprintf("'acl' is '%s'", [resource.acl]),
 		"searchLine": common_lib.build_search_line(["resource", "aws_s3_bucket", name, "acl"], []),
 	}
 }
