@@ -141,12 +141,20 @@ func (c *Client) createQuerySource(ctx context.Context, paramsPlatforms []string
 		c.ScanParams.LibrariesPath,
 		c.ScanParams.ExperimentalQueries)
 	if c.ScanParams.ChangedDefaultQueryPath {
-		return fss, nil
+		if c.ScanParams.ChangedDefaultLibrariesPath {
+			// Explicit --libraries-path provided: use local libraries from disk.
+			return fss, nil
+		}
+		// Local query path but no explicit libraries path: fetch libraries from the backend.
+		libSource, err := source.NewDatadogSource(datadog.NewDatadogClient())
+		if err != nil {
+			return nil, err
+		}
+		return source.NewFilesystemSourceWithLibraryOverride(fss, libSource), nil
 	}
 	options := []source.DatadogSourceOption{
 		source.WithWantedPlatforms(paramsPlatforms),
 		source.WithWantedCloudProviders(c.ScanParams.CloudProvider),
-		source.WithLibraryFallback(fss),
 	}
 	if c.ScanParams.ChangedDefaultLibrariesPath {
 		options = append(options, source.WithLibrarySource(fss))

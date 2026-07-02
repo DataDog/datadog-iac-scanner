@@ -112,6 +112,11 @@ func runTestRules(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("fetching rules with tests: %w", err)
 	}
 
+	libSource, err := source.NewDatadogSource(client)
+	if err != nil {
+		return fmt.Errorf("preparing library source: %w", err)
+	}
+
 	ruleFilter := c.StringSlice("rule")
 	platformFilter := c.StringSlice("type")
 
@@ -123,7 +128,7 @@ func runTestRules(ctx context.Context, c *cli.Command) error {
 			continue
 		}
 
-		mismatches, err := runRule(ctx, rule)
+		mismatches, err := runRule(ctx, rule, libSource)
 		if err != nil {
 			return fmt.Errorf("testing rule %s: %w", rule.ID, err)
 		}
@@ -184,7 +189,7 @@ func finishTests(results []ruleOutcome, allPass bool) error {
 }
 
 // runRule materializes a rule's fixtures into a temp directory and runs them.
-func runRule(ctx context.Context, rule *datadog.Rule) ([]string, error) {
+func runRule(ctx context.Context, rule *datadog.Rule, libSource source.QueriesSource) ([]string, error) {
 	// Bound each rule's test run so a non-terminating or pathologically slow rule
 	// is canceled instead of hanging CI. rego eval runs on this context, so the
 	// deadline propagates into the engine without any engine-level timeout knob.
@@ -233,11 +238,11 @@ func runRule(ctx context.Context, rule *datadog.Rule) ([]string, error) {
 
 	var mismatches []string
 
-	positiveGot, positiveShape, err := runFiles(ctx, tmpDir, rule.ID, &query, positiveFiles)
+	positiveGot, positiveShape, err := runFiles(ctx, tmpDir, rule.ID, &query, positiveFiles, libSource)
 	if err != nil {
 		return nil, err
 	}
-	negativeGot, negativeShape, err := runFiles(ctx, tmpDir, rule.ID, &query, negativeFiles)
+	negativeGot, negativeShape, err := runFiles(ctx, tmpDir, rule.ID, &query, negativeFiles, libSource)
 	if err != nil {
 		return nil, err
 	}
@@ -257,6 +262,7 @@ func runFiles(
 	rootPath, ruleID string,
 	query *model.QueryMetadata,
 	files []string,
+	libSource source.QueriesSource,
 ) ([]ruleFinding, []string, error) {
 	var allFiles model.FileMetadatas
 	platformStr, _ := query.Metadata["platform"].(string)
@@ -276,7 +282,7 @@ func runFiles(
 	)
 
 	inspector, err := engine.NewInspector(ctx,
-		&singleRuleSource{query: query},
+		&singleRuleSource{query: query, librarySource: libSource},
 		builder,
 		&noopTracker{},
 		&source.QueryInspectorParameters{
@@ -468,25 +474,16 @@ func getFixtureParsers(ctx context.Context) ([]*parser.Parser, error) {
 }
 
 type singleRuleSource struct {
-	query *model.QueryMetadata
+	query         *model.QueryMetadata
+	librarySource source.QueriesSource
 }
 
 func (s *singleRuleSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
 	return []model.QueryMetadata{*s.query}, nil
 }
 
-func (s *singleRuleSource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
-	// Import assets here to avoid a circular init between the scanner packages.
-	// The embedded libraries live in the assets package and are needed for evaluation.
-	from := source.NewFilesystemSource(
-		context.Background(),
-		[]string{""},
-		[]string{strings.ToLower(platform)},
-		[]string{""},
-		"./assets/libraries",
-		true,
-	)
-	return from.GetQueryLibrary(context.Background(), platform)
+func (s *singleRuleSource) GetQueryLibrary(ctx context.Context, platform string) (source.RegoLibraries, error) {
+	return s.librarySource.GetQueryLibrary(ctx, platform)
 }
 
 type noopTracker struct{}

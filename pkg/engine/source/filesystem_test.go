@@ -15,138 +15,31 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/DataDog/datadog-iac-scanner/test"
 )
 
-// TestFilesystemSource_GetQueryLibrary tests the functions [GetQueryLibrary()] and all the methods called by them
+// TestFilesystemSource_GetQueryLibrary verifies that GetQueryLibrary reads library files from disk.
 func TestFilesystemSource_GetQueryLibrary(t *testing.T) { //nolint
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
-	}
-	type fields struct {
-		Source              []string
-		Library             string
-		ExperimentalQueries bool
-	}
-	type args struct {
-		platform string
-	}
-	tests := []struct {
-		name     string
-		fields   fields
-		args     args
-		contains string
-		wantErr  bool
-	}{
-		{
-			name: "get_generic_query_terraform",
-			fields: fields{
-				Source:              []string{"./assets/queries/template"},
-				Library:             "./assets/libraries",
-				ExperimentalQueries: true,
-			},
-			args: args{
-				platform: "terraform",
-			},
-			contains: "generic.terraform",
-			wantErr:  false,
-		},
-		{
-			name: "get_generic_query_common",
-			fields: fields{
-				Source:              []string{"./assets/queries/template"},
-				Library:             "./assets/libraries",
-				ExperimentalQueries: true,
-			},
-			args: args{
-				platform: "common",
-			},
-			contains: "generic.common",
-			wantErr:  false,
-		},
-		{
-			name: "get_generic_query_cloudformation",
-			fields: fields{
-				Source:              []string{"./assets/queries/template"},
-				Library:             "./assets/libraries",
-				ExperimentalQueries: true,
-			},
-			args: args{
-				platform: "cloudFormation",
-			},
-			contains: "generic.cloudformation",
-			wantErr:  false,
-		},
-		{
-			name: "get_generic_query_ansible",
-			fields: fields{
-				Source:              []string{"./assets/queries/template"},
-				Library:             "./assets/libraries",
-				ExperimentalQueries: true,
-			},
-			args: args{
-				platform: "ansible",
-			},
-			contains: "generic.ansible",
-			wantErr:  false,
-		},
-		{
-			name: "get_generic_query_k8s",
-			fields: fields{
-				Source:              []string{"./assets/queries/template"},
-				Library:             "./assets/libraries",
-				ExperimentalQueries: true,
-			},
-			args: args{
-				platform: "k8s",
-			},
-			contains: "generic.k8s",
-			wantErr:  false,
-		},
-		{
-			name: "get_generic_query_cicd",
-			fields: fields{
-				Source:              []string{"./assets/queries/template"},
-				Library:             "./assets/libraries",
-				ExperimentalQueries: true,
-			},
-			args: args{
-				platform: "cicd",
-			},
-			contains: "generic.cicd",
-			wantErr:  false,
-		},
-		{
-			name: "get_generic_query_unknown",
-			fields: fields{
-				Source:              []string{"./assets/queries/template"},
-				Library:             "./assets/libraries",
-				ExperimentalQueries: true,
-			},
-			args: args{
-				platform: "unknown",
-			},
-			contains: "",
-			wantErr:  true,
-		},
+	libDir := t.TempDir()
+	for _, platform := range []string{"terraform", "common", "cloudformation", "ansible", "k8s", "cicd"} {
+		content := []byte("package generic." + platform + "\n")
+		require.NoError(t, os.WriteFile(filepath.Join(libDir, platform+".rego"), content, 0600))
 	}
 
 	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := NewFilesystemSource(ctx, tt.fields.Source, []string{""}, []string{""}, tt.fields.Library, tt.fields.ExperimentalQueries)
-
-			got, err := s.GetQueryLibrary(ctx, tt.args.platform)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("FilesystemSource.GetQueryLibrary() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !strings.Contains(got.LibraryCode, tt.contains) {
-				t.Errorf("FilesystemSource.GetQueryLibrary() = %v, doesn't contains %v", got, tt.contains)
-			}
+	for _, platform := range []string{"terraform", "common", "cloudFormation", "ansible", "k8s", "cicd"} {
+		t.Run("get_generic_query_"+strings.ToLower(platform), func(t *testing.T) {
+			s := NewFilesystemSource(ctx, []string{"."}, []string{""}, []string{""}, libDir, false)
+			got, err := s.GetQueryLibrary(ctx, platform)
+			require.NoError(t, err)
+			assert.Contains(t, got.LibraryCode, "generic."+strings.ToLower(platform))
 		})
 	}
+
+	t.Run("get_generic_query_unknown", func(t *testing.T) {
+		s := NewFilesystemSource(ctx, []string{"."}, []string{""}, []string{""}, libDir, false)
+		_, err := s.GetQueryLibrary(ctx, "unknown")
+		require.Error(t, err)
+	})
 }
 
 // Test_getPlatform tests the functions [getPlatform()] and all the methods called by them
@@ -276,45 +169,21 @@ func TestSource_validateMetadata(t *testing.T) {
 }
 
 func TestSource_getLibraryInDir(t *testing.T) {
-	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
-		t.Fatal(err)
-	}
-
-	type args struct {
-		platform       string
-		libraryDirPath string
-	}
-
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "test get library in dir for terraform",
-			args: args{
-				platform:       "terraform",
-				libraryDirPath: filepath.FromSlash("./assets/libraries"),
-			},
-			want: filepath.FromSlash("assets/libraries/terraform.rego"),
-		},
-		{
-			name: "test get library in dir error",
-			args: args{
-				platform:       "",
-				libraryDirPath: filepath.FromSlash("./assets/libraries"),
-			},
-			want: "",
-		},
-	}
+	libDir := t.TempDir()
+	regoPath := filepath.Join(libDir, "terraform.rego")
+	require.NoError(t, os.WriteFile(regoPath, []byte("package generic.terraform\n"), 0600))
 
 	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := getLibraryInDir(ctx, tt.args.platform, tt.args.libraryDirPath)
-			require.Equal(t, tt.want, got)
-		})
-	}
+
+	t.Run("test get library in dir for terraform", func(t *testing.T) {
+		got := getLibraryInDir(ctx, "terraform", libDir)
+		require.Equal(t, regoPath, got)
+	})
+
+	t.Run("test get library in dir error", func(t *testing.T) {
+		got := getLibraryInDir(ctx, "", libDir)
+		require.Equal(t, "", got)
+	})
 }
 
 func TestFilesystemSource_ReadLocalFile(t *testing.T) {

@@ -23,17 +23,6 @@ func NewDatadogSource(client datadog.Client, options ...DatadogSourceOption) (Qu
 	for _, option := range options {
 		option(out)
 	}
-	if out.libraryFallback == nil {
-		librarySource := NewFilesystemSource(
-			context.Background(),
-			[]string{""},
-			out.wantedPlatforms,
-			out.wantedCloudProviders,
-			"./assets/libraries",
-			true,
-		)
-		WithLibraryFallback(librarySource)(out)
-	}
 	return out, nil
 }
 
@@ -53,10 +42,10 @@ func WithWantedCloudProviders(providers []string) DatadogSourceOption {
 	}
 }
 
-// WithLibraryFallback overrides the QueriesSource used when the backend library endpoint is unreachable.
-func WithLibraryFallback(source QueriesSource) DatadogSourceOption {
+// WithLibraryOverride sets a QueriesSource to use for libraries when the user supplies --libraries-path.
+func WithLibraryOverride(source QueriesSource) DatadogSourceOption {
 	return func(ds *DatadogSource) {
-		ds.libraryFallback = source
+		ds.libraryOverride = source
 	}
 }
 
@@ -69,16 +58,16 @@ func WithLibrarySource(source QueriesSource) DatadogSourceOption {
 
 type DatadogSourceOption func(source *DatadogSource)
 
-// DatadogSource is a QueriesSource that reads queries from the Datadog API.
-// Libraries are fetched from the backend at first use and fall back to the embedded assets when unreachable.
+// DatadogSource is a QueriesSource that reads queries and libraries from the Datadog API.
+// An optional local override (WithLibraryOverride) is used only when --libraries-path is specified.
 type DatadogSource struct {
 	client               datadog.Client
 	librarySource        QueriesSource
-	libraryFallback      QueriesSource
+	libraryOverride      QueriesSource
 	wantedPlatforms      []string
 	wantedCloudProviders []string
-	libraries            map[string]RegoLibraries
-	librariesOnce        sync.Once
+	mu                   sync.RWMutex
+	libraries            map[string]RegoLibraries // nil until a successful fetch; errors are not cached
 }
 
 func (s *DatadogSource) GetQueries(ctx context.Context, querySelection *QueryInspectorParameters) ([]model.QueryMetadata, error) {
@@ -89,35 +78,50 @@ func (s *DatadogSource) GetQueries(ctx context.Context, querySelection *QueryIns
 	return s.filterRules(defaultRuleset, querySelection)
 }
 
-func (s *DatadogSource) loadLibraries(ctx context.Context) {
-	s.librariesOnce.Do(func() {
-		libs, err := s.client.GetLibraries(ctx)
-		if err != nil {
-			// backend unreachable; embedded fallback will be used
-			return
+func (s *DatadogSource) loadLibraries(ctx context.Context) (map[string]RegoLibraries, error) {
+	s.mu.RLock()
+	if s.libraries != nil {
+		libs := s.libraries
+		s.mu.RUnlock()
+		return libs, nil
+	}
+	s.mu.RUnlock()
+
+	libs, err := s.client.GetLibraries(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("backend libraries unavailable: %w", err)
+	}
+	converted := make(map[string]RegoLibraries, len(libs))
+	for id, lib := range libs {
+		converted[strings.ToLower(id)] = RegoLibraries{
+			LibraryCode:      lib.RegoCode,
+			LibraryInputData: lib.InputData,
 		}
-		converted := make(map[string]RegoLibraries, len(libs))
-		for id, lib := range libs {
-			converted[id] = RegoLibraries{
-				LibraryCode:      lib.RegoCode,
-				LibraryInputData: lib.InputData,
-			}
-		}
-		s.libraries = converted
-	})
+	}
+	s.mu.Lock()
+	s.libraries = converted
+	s.mu.Unlock()
+	return converted, nil
 }
 
 func (s *DatadogSource) GetQueryLibrary(ctx context.Context, platform string) (RegoLibraries, error) {
 	if s.librarySource != nil {
 		return s.librarySource.GetQueryLibrary(ctx, platform)
 	}
-	s.loadLibraries(ctx)
-	if s.libraries != nil {
-		if lib, ok := s.libraries[platform]; ok {
-			return lib, nil
+	libs, err := s.loadLibraries(ctx)
+	if err != nil {
+		if s.libraryOverride != nil {
+			return s.libraryOverride.GetQueryLibrary(ctx, platform)
 		}
+		return RegoLibraries{}, err
 	}
-	return s.libraryFallback.GetQueryLibrary(ctx, platform)
+	if lib, ok := libs[strings.ToLower(platform)]; ok {
+		return lib, nil
+	}
+	if s.libraryOverride != nil {
+		return s.libraryOverride.GetQueryLibrary(ctx, platform)
+	}
+	return RegoLibraries{}, fmt.Errorf("library %q not found in backend", platform)
 }
 
 // filterRules selects the rules from the given ruleset according to the selection criteria.

@@ -38,6 +38,8 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/rs/zerolog/log"
 )
@@ -137,6 +139,11 @@ type Server struct {
 	// keepAlivePollInterval and is overridable in tests.
 	pollInterval time.Duration
 
+	// libSource is the QueriesSource used for library lookups across all requests.
+	// When --libraries-path is set it reads from disk; otherwise it fetches from
+	// the backend once and caches the result via DatadogSource.librariesOnce.
+	libSource source.QueriesSource
+
 	// shutdownCh is closed exactly once to trigger graceful shutdown (by
 	// /shutdown, the keep-alive monitor, or a canceled context).
 	shutdownCh   chan struct{}
@@ -150,9 +157,6 @@ func New(cfg *Config) *Server {
 	}
 	if cfg.Port == 0 {
 		cfg.Port = 8000
-	}
-	if cfg.LibrariesPath == "" {
-		cfg.LibrariesPath = "./assets/libraries"
 	}
 	if cfg.QueriesPath == "" {
 		cfg.QueriesPath = "./assets/queries"
@@ -172,8 +176,16 @@ func New(cfg *Config) *Server {
 	if cfg.MaxRequestBytes <= 0 {
 		cfg.MaxRequestBytes = defaultMaxRequestBytes
 	}
+	var libSource source.QueriesSource
+	if cfg.LibrariesPath != "" {
+		libSource = source.NewFilesystemSource(context.Background(), []string{}, []string{}, []string{}, cfg.LibrariesPath, false)
+	} else {
+		libSource, _ = source.NewDatadogSource(datadog.NewDatadogClient())
+	}
+
 	s := &Server{
 		cfg:          *cfg,
+		libSource:    libSource,
 		analyzeSem:   make(chan struct{}, cfg.MaxConcurrentAnalyze),
 		pollInterval: keepAlivePollInterval,
 		shutdownCh:   make(chan struct{}),

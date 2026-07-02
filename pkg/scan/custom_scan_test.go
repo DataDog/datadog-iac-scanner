@@ -2,12 +2,53 @@ package scan
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
+
+// stubLibSource returns minimal Rego stubs sufficient for OPA compilation in tests.
+type stubLibSource struct{}
+
+func (s *stubLibSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
+	return nil, nil
+}
+
+func (s *stubLibSource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
+	switch strings.ToLower(platform) {
+	case "terraform":
+		return source.RegoLibraries{
+			LibraryCode: `package generic.terraform
+import rego.v1
+resolve_s3_bucket_name(resource, name) := name
+`,
+			LibraryInputData: "{}",
+		}, nil
+	case "common":
+		return source.RegoLibraries{
+			LibraryCode: `package generic.common
+import rego.v1
+build_search_line(keys, obj) := keys
+`,
+			LibraryInputData: "{}",
+		}, nil
+	case "k8s", "kubernetes":
+		return source.RegoLibraries{
+			LibraryCode:      "package generic.k8s\nimport rego.v1\n",
+			LibraryInputData: "{}",
+		}, nil
+	default:
+		return source.RegoLibraries{}, fmt.Errorf("no stub library for platform %q", platform)
+	}
+}
+
+func testLibSource() source.QueriesSource { return &stubLibSource{} }
 
 // validTerraformRego is a minimal DatadogPolicy rule that passes all validation phases.
 const validTerraformRego = `
@@ -82,7 +123,7 @@ func TestParseImportAliases_NoAlias(t *testing.T) {
 // ── parse phase ───────────────────────────────────────────────────────────────
 
 func TestValidateCustomRegoQuery_Valid(t *testing.T) {
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", validTerraformRego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", validTerraformRego, testLibSource())
 	require.NoError(t, err)
 	assert.Empty(t, errs, "valid rule should produce no errors")
 }
@@ -90,7 +131,7 @@ func TestValidateCustomRegoQuery_Valid(t *testing.T) {
 func TestValidateCustomRegoQuery_MissingPackage(t *testing.T) {
 	rego := strings.TrimPrefix(strings.Replace(validTerraformRego, "package datadog\n\n", "", 1), "\n")
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 	assert.Equal(t, codeMissingPackage, errs[0].Code)
@@ -104,7 +145,7 @@ func TestValidateCustomRegoQuery_MissingPackageRecovery(t *testing.T) {
 	rego := strings.TrimPrefix(strings.Replace(validTerraformRego, "package datadog\n\n", "", 1), "\n")
 	rego = strings.Replace(rego, `"resourceType": "aws_s3_bucket",`+"\n", "", 1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 
@@ -116,7 +157,7 @@ func TestValidateCustomRegoQuery_MissingPackageRecovery(t *testing.T) {
 func TestValidateCustomRegoQuery_MissingIf(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "DatadogPolicy contains result if {", "DatadogPolicy contains result {", 1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs, "missing 'if' should produce a parse error")
 
@@ -132,7 +173,7 @@ func TestValidateCustomRegoQuery_MissingInputRoot(t *testing.T) {
 		1,
 	)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 
@@ -149,7 +190,7 @@ func TestValidateCustomRegoQuery_MissingComma(t *testing.T) {
 		1,
 	)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 	assert.Contains(t, errs[0].Message, `expected ',' after field "documentId"`)
@@ -163,7 +204,7 @@ func TestValidateCustomRegoQuery_MissingCommaAfterMiddleField(t *testing.T) {
 		1,
 	)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 	assert.Contains(t, errs[0].Message, `expected ',' after field "resourceType"`)
@@ -175,7 +216,7 @@ func TestValidateCustomRegoQuery_TwoMissingCommas(t *testing.T) {
 	rego = strings.Replace(rego, `"documentId": input.document[i].id,`, `"documentId": input.document[i].id`, 1)
 	rego = strings.Replace(rego, `"resourceType": "aws_s3_bucket",`, `"resourceType": "aws_s3_bucket"`, 1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(errs), 2, "all missing commas should be reported in one pass")
 	assert.Contains(t, errorLines(errs), 11)
@@ -189,7 +230,7 @@ func TestValidateCustomRegoQuery_MissingClosingParen(t *testing.T) {
 		1,
 	)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 	assert.Equal(t, "rego_parse_error", errs[0].Code)
@@ -200,7 +241,7 @@ func TestValidateCustomRegoQuery_MissingClosingParen(t *testing.T) {
 func TestValidateCustomRegoQuery_UnbalancedBrace(t *testing.T) {
 	rego := validTerraformRego[:strings.LastIndex(validTerraformRego, "}")]
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs, "removing closing brace should produce a parse error")
 
@@ -213,7 +254,7 @@ func TestValidateCustomRegoQuery_UnbalancedBrace(t *testing.T) {
 func TestValidateCustomRegoQuery_ExtraClosingBrace(t *testing.T) {
 	rego := validTerraformRego + "}\n"
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 
@@ -228,7 +269,7 @@ func TestValidateCustomRegoQuery_ExtraClosingBrace(t *testing.T) {
 func TestValidateCustomRegoQuery_WrongPackage(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "package datadog", "package mycompany", 1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 
@@ -241,7 +282,7 @@ func TestValidateCustomRegoQuery_WrongPackage(t *testing.T) {
 func TestValidateCustomRegoQuery_WrongRuleName(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "DatadogPolicy", "MyPolicy", -1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 
 	e, ok := firstWithCode(errs, "missing_rule")
@@ -257,7 +298,7 @@ func TestValidateCustomRegoQuery_SprintfArityMismatch(t *testing.T) {
 		1,
 	)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 
 	e, ok := firstWithCode(errs, "sprintf_arity")
@@ -273,7 +314,7 @@ func TestValidateCustomRegoQuery_MissingResultField(t *testing.T) {
 		1,
 	)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 
 	e, ok := firstWithCode(errs, "missing_result_field")
@@ -289,7 +330,7 @@ func TestValidateCustomRegoQuery_MultipleResultFieldsMissing(t *testing.T) {
 	rego = strings.Replace(rego, `"resourceType": "aws_s3_bucket",`+"\n", "", 1)
 	rego = strings.Replace(rego, `"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),`+"\n", "", 1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 
 	missing := make([]string, 0)
@@ -306,7 +347,7 @@ func TestValidateCustomRegoQuery_MultipleResultFieldsMissing(t *testing.T) {
 func TestValidateCustomRegoQuery_MissingTfLibImport(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "import data.generic.terraform as tf_lib\n", "", 1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 
 	e, ok := firstWithCode(errs, "missing_import")
@@ -324,7 +365,7 @@ func TestValidateCustomRegoQuery_MissingTfLibImport(t *testing.T) {
 func TestValidateCustomRegoQuery_MissingCommonLibImport(t *testing.T) {
 	rego := strings.Replace(validTerraformRego, "import data.generic.common as common_lib\n", "", 1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 
 	e, ok := firstWithCode(errs, "missing_import")
@@ -348,7 +389,7 @@ func TestValidateCustomRegoQuery_UndefinedLibraryFunction(t *testing.T) {
 		1,
 	)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 
@@ -372,7 +413,7 @@ func TestValidateCustomRegoQuery_MissingResourceBinding(t *testing.T) {
 		1,
 	)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.NotEmpty(t, errs)
 
@@ -408,7 +449,7 @@ func TestValidateCustomRegoQuery_AllErrorsInOneCall(t *testing.T) {
 	rego = strings.Replace(rego, "package datadog", "package mycompany", 1)
 	rego = strings.Replace(rego, `sprintf("aws_s3_bucket[%s].acl", [name])`, `sprintf("aws_s3_bucket[%s].acl=%s", [name])`, 1)
 
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(errs), 2)
 
@@ -437,7 +478,7 @@ DatadogPolicy contains result if {
 	}
 }
 `
-	errs, err := ValidateCustomRegoQuery(context.Background(), "kubernetes", k8sRego)
+	errs, err := ValidateCustomRegoQuery(context.Background(), "kubernetes", k8sRego, testLibSource())
 	require.NoError(t, err, "kubernetes platform must not fail with a library-load error")
 	// Content errors are fine; what matters is no internal "unable to get libraries" error.
 	for _, e := range errs {
