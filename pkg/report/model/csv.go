@@ -25,12 +25,9 @@ type CSVReport struct {
 	FileName                    string `csv:"file_name"`
 	Fingerprint                 string `csv:"fingerprint"`
 	Line                        int    `csv:"line"`
-	IssueType                   string `csv:"issue_type"`
 	SearchKey                   string `csv:"search_key"`
 	SearchLine                  int    `csv:"search_line"`
 	SearchValue                 string `csv:"search_value"`
-	ExpectedValue               string `csv:"expected_value"`
-	ActualValue                 string `csv:"actual_value"`
 }
 
 // BuildCSVReport builds the CSV report
@@ -56,12 +53,9 @@ func BuildCSVReport(summary *model.Summary) []CSVReport {
 				FileName:                    summary.Queries[i].Files[j].FileName,
 				Fingerprint:                 summary.Queries[i].Files[j].Fingerprint,
 				Line:                        summary.Queries[i].Files[j].Line,
-				IssueType:                   string(summary.Queries[i].Files[j].IssueType),
 				SearchKey:                   summary.Queries[i].Files[j].SearchKey,
 				SearchLine:                  summary.Queries[i].Files[j].SearchLine,
 				SearchValue:                 summary.Queries[i].Files[j].SearchValue,
-				ExpectedValue:               summary.Queries[i].Files[j].KeyExpectedValue,
-				ActualValue:                 summary.Queries[i].Files[j].KeyActualValue,
 			})
 		}
 	}

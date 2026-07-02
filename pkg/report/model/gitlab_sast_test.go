@@ -59,12 +59,11 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityHigh,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, Fingerprint: "similarity"},
+				{FileName: "test.json", Line: 1, Fingerprint: "similarity"},
 			},
 			CWE: "",
 		},
 		file: model.VulnerableFile{
-			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
 			Fingerprint:    "similarity",
@@ -107,12 +106,11 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityHigh,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, Fingerprint: "similarity"},
+				{FileName: "test.json", Line: 1, Fingerprint: "similarity"},
 			},
 			CWE: "22",
 		},
 		file: model.VulnerableFile{
-			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
 			Fingerprint:    "similarity",
@@ -155,11 +153,10 @@ var tests = []gitlabSASTTest{
 			QueryURI:    "https://www.test.com",
 			Severity:    model.SeverityCritical,
 			Files: []model.VulnerableFile{
-				{KeyActualValue: "test", FileName: "test.json", Line: 1, Fingerprint: "similarity"},
+				{FileName: "test.json", Line: 1, Fingerprint: "similarity"},
 			},
 		},
 		file: model.VulnerableFile{
-			KeyActualValue: "test",
 			FileName:       "test.json",
 			Line:           1,
 			Fingerprint:    "similarity",

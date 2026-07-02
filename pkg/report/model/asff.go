@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -142,11 +141,9 @@ func (a *AwsAccountInfo) getFinding(query *model.QueryResult, file *model.Vulner
 		Remediation: Remediation{
 			Recommendation: AsffRecommendation{
 				Text: *aws.String(fmt.Sprintf(
-					"Problem found on '%s' file in line %d. Expected value: %s. Actual value: %s.",
+					"Problem found on '%s' file in line %d.",
 					file.FileName,
 					file.Line,
-					strings.TrimRight(file.KeyExpectedValue, "."),
-					strings.TrimRight(file.KeyActualValue, "."),
 				)),
 			},
 		},

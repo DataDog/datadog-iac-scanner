@@ -54,13 +54,6 @@ var resultShape = struct {
 	ResourceKeys: []string{"resourceType", "resourceName"},
 }
 
-// allowedIssueTypes is the set of issueType values a rule result may emit.
-var allowedIssueTypes = map[string]struct{}{
-	"MissingAttribute":   {},
-	"IncorrectValue":     {},
-	"RedundantAttribute": {},
-}
-
 // platformsRequiringResourceKeys is the set of platforms whose Rego results
 // must include resourceType and resourceName.
 var platformsRequiringResourceKeys = map[string]struct{}{
@@ -346,11 +339,6 @@ func validateResultShape(m map[string]interface{}, platform, ruleID string) []st
 	_, hasRemediationType := m["remediationType"]
 	if hasRemediation != hasRemediationType {
 		errs = append(errs, "Result has remediation/remediationType only on one side; both must be set together")
-	}
-	if issueType, _ := m["issueType"].(string); issueType != "" {
-		if _, ok := allowedIssueTypes[issueType]; !ok {
-			errs = append(errs, fmt.Sprintf("Result issueType %q is not in the allowed set", issueType))
-		}
 	}
 	return errs
 }

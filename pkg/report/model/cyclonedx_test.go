@@ -148,14 +148,11 @@ func TestBuildCycloneDxReport(t *testing.T) {
 		descTags  = "[Terraform].[Resource Not Using Tags]: AWS services resource tags are an essential part of managing components"
 		descGD    = "[Terraform].[GuardDuty Detector Disabled]: Make sure that Amazon GuardDuty is Enabled"
 		descAMQ   = "[].[AmazonMQ Broker Encryption Disabled]: testCISDescription"
-		recGDOn   = "Problem found in line 2. Expected value: GuardDuty Detector should be Enabled. Actual value: GuardDuty Detector is not Enabled."
-		recAMQTLS = "Problem found in line 6. Expected value: 'default_action.redirect.protocol' is equal 'HTTPS'. Actual value: 'default_action.redirect.protocol' is missing."
+		recGDOn   = "Problem found in line 2."
+		recAMQTLS = "Problem found in line 6."
 	)
-	recTagsFor := func(resource string) string {
-		return fmt.Sprintf(
-			"Problem found in line 1. Expected value: aws_guardduty_detector[{{%s}}].tags is defined and not null. Actual value: aws_guardduty_detector[{{%s}}].tags is undefined or null.",
-			resource, resource,
-		)
+	recTagsFor := func(_ string) string {
+		return "Problem found in line 1."
 	}
 
 	v1 := vulnFor(positivePath, positiveSha, idInfo, "None", "", descTags, recTagsFor("positive1"))

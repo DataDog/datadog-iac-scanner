@@ -100,10 +100,6 @@
               <strong>File: {{ .FileName }}</strong>
               <span>Line {{ $vulLine }}</span>
             </div>
-            <div class="vulnerable-info-details">
-              <span><strong>Expected:</strong> {{ .KeyExpectedValue }}</span>
-              <span><strong>Found:</strong> {{ .KeyActualValue }}</span>
-            </div>
             <div class="code-box">
               {{- range .VulnLines -}}
               <div class="code-line {{ if eq .Position $vulLine }}error{{ end }}">

@@ -214,7 +214,7 @@ func TestLoadSharedQueries_ExcludesCustomInput(t *testing.T) {
 func summarize(vulns []model.Vulnerability) map[string]int {
 	m := make(map[string]int)
 	for _, v := range vulns {
-		key := v.QueryID + "|" + v.QueryName + "|" + v.ResourceType + "|" + v.ResourceName + "|" + v.KeyActualValue
+		key := v.QueryID + "|" + v.QueryName + "|" + v.ResourceType + "|" + v.ResourceName
 		m[key]++
 	}
 	return m

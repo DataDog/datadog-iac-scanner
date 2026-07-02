@@ -53,13 +53,12 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
+					{FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
 				},
 				CWE: "",
 			},
 		},
 		file: model.VulnerableFile{
-			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
 			Fingerprint:    "similarity",
@@ -85,7 +84,7 @@ var junitTests = []junitTest{
 							Failures: []junitFailure{
 								{
 									Type:    "test description",
-									Message: "[Severity: HIGH, Query description: test description] Problem found on 'test.tf' file in line 1. Expected value: expected. Actual value: actual.",
+									Message: "[Severity: HIGH, Query description: test description] Problem found on 'test.tf' file in line 1.",
 								},
 							},
 						},
@@ -106,13 +105,12 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
+					{FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
 				},
 				CWE: "22",
 			},
 		},
 		file: model.VulnerableFile{
-			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
 			Fingerprint:    "similarity",
@@ -138,7 +136,7 @@ var junitTests = []junitTest{
 							Failures: []junitFailure{
 								{
 									Type:    "test description",
-									Message: "[Severity: HIGH, Query description: test description] Problem found on 'test.tf' file in line 1. Expected value: expected. Actual value: actual.",
+									Message: "[Severity: HIGH, Query description: test description] Problem found on 'test.tf' file in line 1.",
 								},
 							},
 						},
@@ -159,12 +157,11 @@ var junitTests = []junitTest{
 				Category:    "junit",
 				Platform:    "Terraform",
 				Files: []model.VulnerableFile{
-					{KeyActualValue: "actual", KeyExpectedValue: "expected", FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
+					{FileName: "test.tf", Line: 1, Fingerprint: "similarity"},
 				},
 			},
 		},
 		file: model.VulnerableFile{
-			KeyActualValue: "test",
 			FileName:       "test.xml",
 			Line:           1,
 			Fingerprint:    "similarity",
@@ -189,7 +186,7 @@ var junitTests = []junitTest{
 							Failures: []junitFailure{
 								{
 									Type:    "test description",
-									Message: "[Severity: CRITICAL, Query description: test description] Problem found on 'test.tf' file in line 1. Expected value: expected. Actual value: actual.",
+									Message: "[Severity: CRITICAL, Query description: test description] Problem found on 'test.tf' file in line 1.",
 								},
 							},
 						},
