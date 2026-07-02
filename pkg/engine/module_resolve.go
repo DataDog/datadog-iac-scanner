@@ -8,7 +8,9 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -195,10 +197,14 @@ func resolveModuleDocuments(
 	}
 }
 
-// instantiatedDocs builds one synthetic doc + FileMetadata per resolved module resource (skips root / out-of-scope).
-// Callers with identical resolved attributes share a single OPA doc; the extras map records duplicate callers so
-// their findings can be cloned after OPA eval. Doc id is file id + call chain + instance;
-// synthetic row carries ModuleCallChain for hashing.
+// moduleRefEntry holds resolved resource data for _refs injection and dedup.
+type moduleRefEntry struct {
+	typ, name, definedIn, defLine string
+	attrs                         interface{}
+}
+
+// instantiatedDocs emits one synthetic OPA doc per resolved module resource instance.
+// Identical callers are recorded in extras for post-eval finding cloning.
 func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
@@ -206,6 +212,24 @@ func instantiatedDocs(
 	seen map[string]string,
 	extras map[string][]extraCallerInfo,
 ) (docs []model.Document, synthetic []*model.FileMetadata) {
+	// Pass 1: index resources per call chain.
+	cckRefs := make(map[string][]moduleRefEntry)
+	for i := range resources {
+		r := &resources[i]
+		if r.ModuleAddress == "" {
+			continue
+		}
+		cck := callChainKey(r, repoPath)
+		cckRefs[cck] = append(cckRefs[cck], moduleRefEntry{
+			typ:       r.Type,
+			name:      r.Name,
+			definedIn: absPath(r.DefinedIn, repoPath),
+			defLine:   strconv.Itoa(r.DefLine),
+			attrs:     tfeval.AttributesToDocument(r),
+		})
+	}
+
+	// Pass 2: emit one doc per instance.
 	for i := range resources {
 		r := &resources[i]
 		if r.ModuleAddress == "" {
@@ -218,24 +242,18 @@ func instantiatedDocs(
 		}
 
 		cck := callChainKey(r, repoPath)
-		docID := strings.Join([]string{fm.ID, cck, r.Name}, "\x00")
+		docID := fm.ID + "\x00" + cck + "\x00" + r.Name
 
-		// Dedupe by resource content: identical resolved attributes reached through different
-		// call chains collapse to a single OPA doc (saving eval cost on quadratic rules); findings
-		// are cloned per caller after eval. The key includes ModuleAddress, so distinct module
-		// instances within one configuration (module.a vs module.b, count/for_each indices) always
-		// get distinct keys and are never merged. Cardinality is therefore preserved within a
-		// configuration; only the same module resource re-reached from another root collapses.
-		contentKey := strings.Join([]string{abs, r.ModuleAddress, r.Type, r.Name, strconv.Itoa(r.DefLine), resourceAttrKey(r)}, "\x00")
-		if primaryDocID, duplicate := seen[contentKey]; duplicate {
+		contentKey := moduleCallContentKey(r, cckRefs[cck], repoPath)
+		if primaryDocID, dup := seen[contentKey]; dup {
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{callChain: cck, docID: docID})
 			continue
 		}
 		seen[contentKey] = docID
 
-		// Use the bare resource label (not the expanded name like k[0]) so that
-		// Rego rules matching input.document[_].resource.TYPE.NAME find the resource.
-		docs = append(docs, model.Document{
+		refsMap := buildRefsMap(r, cckRefs[cck])
+
+		doc := model.Document{
 			"id":   docID,
 			"file": fm.FilePath,
 			"resource": map[string]interface{}{
@@ -243,30 +261,75 @@ func instantiatedDocs(
 					tfeval.ResourceBaseName(r.Name): tfeval.AttributesToDocument(r),
 				},
 			},
-		})
+		}
+		if len(refsMap) > 0 {
+			doc["_refs"] = map[string]interface{}{"resource": refsMap}
+		}
+		docs = append(docs, doc)
 		synthetic = append(synthetic, newInstanceFileMetadata(fm, docID, cck))
 	}
 	return docs, synthetic
 }
 
-// newInstanceFileMetadata is a clone with empty Document (Combine skips it); same path/source/
-// LineInfoDocument as fm for line detection; id and ModuleCallChain match the synthetic doc.
+// moduleCallContentKey hashes the resource and every resolved resource in its module call.
+func moduleCallContentKey(self *tfeval.ResolvedResource, allInCall []moduleRefEntry, repoPath string) string {
+	type row struct{ typ, name, definedIn, defLine, attrKey string }
+	rows := make([]row, 0, len(allInCall))
+	for _, e := range allInCall {
+		b, _ := json.Marshal(e.attrs)
+		rows = append(rows, row{e.typ, e.name, e.definedIn, e.defLine, strconv.FormatUint(xxhash.Sum64(b), 16)})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		for _, pair := range [][2]string{
+			{rows[i].typ, rows[j].typ},
+			{rows[i].name, rows[j].name},
+			{rows[i].definedIn, rows[j].definedIn},
+			{rows[i].defLine, rows[j].defLine},
+			{rows[i].attrKey, rows[j].attrKey},
+		} {
+			if pair[0] != pair[1] {
+				return pair[0] < pair[1]
+			}
+		}
+		return false
+	})
+	parts := []string{
+		self.ModuleAddress, self.Type, self.Name,
+		absPath(self.DefinedIn, repoPath), strconv.Itoa(self.DefLine),
+	}
+	for _, r := range rows {
+		parts = append(parts, r.typ, r.name, r.definedIn, r.defLine, r.attrKey)
+	}
+	return strings.Join(parts, "\x00")
+}
+
+// buildRefsMap returns sibling resources in the same module call (for walk-based rules).
+func buildRefsMap(self *tfeval.ResolvedResource, allInCall []moduleRefEntry) map[string]interface{} {
+	refs := make(map[string]interface{})
+	for _, e := range allInCall {
+		if e.typ == self.Type && e.name == self.Name {
+			continue
+		}
+		inner, _ := refs[e.typ].(map[string]interface{})
+		if inner == nil {
+			inner = make(map[string]interface{})
+			refs[e.typ] = inner
+		}
+		inner[e.name] = e.attrs
+	}
+	return refs
+}
+
+// newInstanceFileMetadata clones fm for a synthetic doc (empty Document so Combine skips it).
 func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *model.FileMetadata {
 	clone := *fm
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
-	return &clone
-}
-
-// resourceAttrKey hashes resolved attributes for in-scan content dedup only (not fingerprints).
-func resourceAttrKey(r *tfeval.ResolvedResource) string {
-	attrs := tfeval.AttributesToDocument(r)
-	b, err := json.Marshal(attrs)
-	if err != nil {
-		return ""
+	if fm.LineInfoDocument != nil {
+		clone.LineInfoDocument = maps.Clone(fm.LineInfoDocument)
 	}
-	return strconv.FormatUint(xxhash.Sum64(b), 16)
+	return &clone
 }
 
 // callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).
