@@ -24,9 +24,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
-		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
 		"searchValue": matched[m],
 	}
@@ -46,9 +43,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
-		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
 		"searchValue": matched[m],
 	}
@@ -69,9 +63,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
-		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
 		"searchValue": matched[m],
 	}
@@ -91,9 +82,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
-		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
 		"searchValue": matched[m],
 	}
@@ -114,9 +102,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
-		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
 		"searchValue": matched[m],
 	}
@@ -140,9 +125,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
-		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
 		"searchValue": matched[m],
 	}
@@ -162,9 +144,6 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "Run block does not contain dangerous input controlled by user.",
-		"keyActualValue": "Run block contains dangerous input controlled by user.",
 		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
 		"searchValue": matched[m],
 	}

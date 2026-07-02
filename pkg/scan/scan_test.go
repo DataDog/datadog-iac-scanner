@@ -42,9 +42,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": name,
 		"searchKey": sprintf("aws_s3_bucket[%s]", [name]),
-		"issueType": "MissingAttribute",
-		"keyExpectedValue": "aws_s3_bucket should be encrypted",
-		"keyActualValue": "aws_s3_bucket is not encrypted",
 	}
 }
 `

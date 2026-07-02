@@ -35,9 +35,6 @@ DatadogPolicy contains result if {
 		"resourceType": resource_name,
 		"resourceName": tf_lib.get_specific_resource_name(resource_type, resource_name, name),
 		"searchKey": sprintf("%s[%s].tags", [resource_name, name]),
-		"issueType": "MissingAttribute",
-		"keyExpectedValue": sprintf("Every resource should have tags: %v", [required_tags]),
-		"keyActualValue": sprintf("Missing tags: %v", [missing_labels]),
 		"searchLine": common_lib.build_search_line(["resource", resource_name, name, "tags"], []),
 	}
 }
@@ -58,9 +55,6 @@ DatadogPolicy contains result if {
 		"resourceType": resource_type,
 		"resourceName": tf_lib.get_specific_resource_name(resource, resource_type, name),
 		"searchKey": sprintf("%s[%s].tags", [resource_type, name]),
-		"issueType": "MissingAttribute",
-		"keyExpectedValue": sprintf("Every resource should have a 'tags' block containing: %v", [required_tags]),
-		"keyActualValue": "'tags' block is missing",
 		"searchLine": common_lib.build_search_line(["resource", resource_type, name], []),
 	}
 }

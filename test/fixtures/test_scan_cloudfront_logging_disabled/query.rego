@@ -20,8 +20,5 @@ DatadogPolicy contains result if {
 		"resourceType": resource.Type,
 		"resourceName": cf_lib.get_resource_name(resource, name),
 		"searchKey": sprintf("%s%s.Properties", [cf_lib.getPath(path), name]),
-		"issueType": "MissingAttribute",
-		"keyExpectedValue": sprintf("Resources.%s.Properties.DistributionConfig.Logging should be defined", [name]),
-		"keyActualValue": sprintf("Resources.%s.Properties.DistributionConfig.Logging is undefined", [name]),
 	}
 }

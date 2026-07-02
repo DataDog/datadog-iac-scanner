@@ -12,9 +12,6 @@ DatadogPolicy contains result if {
 		"resourceName": get_specific_resource_name(resource, "aws_elasticache_cluster", name),
 		"searchKey": sprintf("resource.aws_elasticache_cluster[%s].engine", [name]),
 		"searchLine": build_search_line(["resource", "aws_elasticache_cluster", name, "engine"], []),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": sprintf("resource.aws_elasticache_cluster[%s].engine should have Redis enabled", [name]),
-		"keyActualValue": sprintf("resource.aws_elasticache_cluster[%s].engine doesn't enable Redis", [name]),
 		"remediation": json.marshal({
 			"before": "memcached",
 			"after": "redis",

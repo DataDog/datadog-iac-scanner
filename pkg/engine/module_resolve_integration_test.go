@@ -41,9 +41,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": name,
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "acl should not be public-read",
-		"keyActualValue": "acl is public-read",
 	}
 }
 `
@@ -220,9 +217,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": "multiple",
 		"searchKey": "aws_s3_bucket",
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "at most one bucket",
-		"keyActualValue": "two or more buckets",
 	}
 }
 `
@@ -303,9 +297,6 @@ DatadogPolicy contains result if {
 		"resourceType": "variable",
 		"resourceName": name,
 		"searchKey": sprintf("variable[%s]", [name]),
-		"issueType": "MissingAttribute",
-		"keyExpectedValue": "variable should declare a type",
-		"keyActualValue": "variable has no type",
 	}
 }
 `
@@ -387,9 +378,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": name,
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "acl should not be public-read",
-		"keyActualValue": "acl is public-read",
 	}
 }
 
@@ -404,9 +392,6 @@ DatadogPolicy contains result if {
 		"resourceType": "module",
 		"resourceName": name,
 		"searchKey": sprintf("module[%s].acl", [name]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "acl should not be public-read",
-		"keyActualValue": "acl is public-read",
 	}
 }
 `

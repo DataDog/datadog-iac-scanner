@@ -62,9 +62,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": name,
 		"searchKey": sprintf("aws_s3_bucket[%s]", [name]),
-		"issueType": "MissingAttribute",
-		"keyExpectedValue": "versioning should be set",
-		"keyActualValue": "versioning is not set",
 	}
 }
 `
@@ -134,9 +131,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": name,
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "acl matched the configured expected_acl",
-		"keyActualValue": sprintf("acl is %s", [bucket.acl]),
 	}
 }
 `

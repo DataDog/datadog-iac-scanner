@@ -19,9 +19,6 @@ DatadogPolicy contains result if {
 		"resourceType": modules[m],
 		"resourceName": task.name,
 		"searchKey": sprintf("name={{%s}}.{{%s}}", [task.name, modules[m]]),
-		"issueType": "MissingAttribute",
-		"keyExpectedValue": "aws_api_gateway.validate_certs should be set",
-		"keyActualValue": "aws_api_gateway.validate_certs is undefined",
 	}
 }
 
@@ -37,8 +34,5 @@ DatadogPolicy contains result if {
 		"resourceType": modules[m],
 		"resourceName": task.name,
 		"searchKey": sprintf("name={{%s}}.{{%s}}.validate_certs", [task.name, modules[m]]),
-		"issueType": "IncorrectValue",
-		"keyExpectedValue": "aws_api_gateway.validate_certs should be set to yes",
-		"keyActualValue": "aws_api_gateway.validate_certs is not set to yes",
 	}
 }
