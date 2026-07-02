@@ -56,17 +56,9 @@ func listQueries(ctx context.Context, c *cli.Command) error {
 	return nil
 }
 
-func getQuerySource(ctx context.Context, _ *cli.Command) (source.QueriesSource, error) {
-	librarySource := source.NewFilesystemSource(
-		ctx,
-		nil,
-		platforms.Supported,
-		[]string{""},
-		"./assets/libraries",
-		false)
+func getQuerySource(_ context.Context, _ *cli.Command) (source.QueriesSource, error) {
 	return source.NewDatadogSource(
 		datadog.NewDatadogClient(),
 		source.WithWantedPlatforms(platforms.Supported),
-		source.WithLibrarySource(librarySource),
 	)
 }

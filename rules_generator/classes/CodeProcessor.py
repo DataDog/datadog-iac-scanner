@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-import sys
 from typing import Optional, Any
 
 
@@ -34,40 +33,13 @@ class CodeProcessor:
             print(e)
 
     def load_common(self) -> Any:
-        common = self.__read_file("assets/libraries/common.json")
-        try:
-            return json.loads(common)
-        except Exception as e:
-            sys.exit(f"Failed to load common.json: {e}")
+        raise NotImplementedError("common.json has been removed; library content is now managed in the default-rules repository")
 
     def update_common(self, common: Any, update: Any) -> Any:
-        for source in update["common_lib"]["modules"]["aws"]:
-            if not source in common["common_lib"]["modules"]["aws"]:
-                common["common_lib"]["modules"]["aws"][source] = {
-                    "resources": [],
-                    "inputs": {},
-                }
-            for resource in update["common_lib"]["modules"]["aws"][source]["resources"]:
-                if (
-                    not resource
-                    in common["common_lib"]["modules"]["aws"][source]["resources"]
-                ):
-                    common["common_lib"]["modules"]["aws"][source]["resources"].append(
-                        resource
-                    )
-            for key, value in update["common_lib"]["modules"]["aws"][source][
-                "inputs"
-            ].items():
-                common["common_lib"]["modules"]["aws"][source]["inputs"][key] = value
-            return common
+        raise NotImplementedError("common.json has been removed; library content is now managed in the default-rules repository")
 
     def write_common(self, common: Any) -> None:
-        try:
-            with open("assets/libraries/common.json", "w") as f:
-                json.dump(common, f, indent=2, ensure_ascii=False)
-                print("Succesfully wrote common.json")
-        except Exception as e:
-            print(f"Failed to write common.json: {e}")
+        raise NotImplementedError("common.json has been removed; library content is now managed in the default-rules repository")
 
     def write_rule_snippet(self, path: Path, snippet: str) -> Optional[Any]:
         splitAt = snippet.split("@@@@@")

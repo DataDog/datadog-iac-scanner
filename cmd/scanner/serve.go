@@ -65,8 +65,8 @@ var serveAction = &cli.Command{
 		},
 		&cli.StringFlag{
 			Name:  "libraries-path",
-			Value: "./assets/libraries",
-			Usage: "path to the Rego support libraries",
+			Value: "",
+			Usage: "path to local Rego support libraries (default: fetch from backend)",
 		},
 		&cli.StringFlag{
 			Name:  "queries-path",

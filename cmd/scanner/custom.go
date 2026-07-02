@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	cli "github.com/urfave/cli/v3"
 )
@@ -58,8 +60,12 @@ func runEvaluateCustom(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("decoding --file: %w", err)
 	}
 
+	libSource, err := source.NewDatadogSource(datadog.NewDatadogClient())
+	if err != nil {
+		return fmt.Errorf("creating library source: %w", err)
+	}
 	// Validate before scanning: compile errors would otherwise produce empty findings with no explanation.
-	validationErrs, err := scan.ValidateCustomRegoQuery(ctx, platform, string(regoBytes))
+	validationErrs, err := scan.ValidateCustomRegoQuery(ctx, platform, string(regoBytes), libSource)
 	if err != nil {
 		return fmt.Errorf("validating custom query: %w", err)
 	}
@@ -122,7 +128,11 @@ func runValidateCustom(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("decoding --rego: %w", err)
 	}
 
-	validationErrors, err := scan.ValidateCustomRegoQuery(ctx, c.String("platform"), string(regoBytes))
+	libSource, err := source.NewDatadogSource(datadog.NewDatadogClient())
+	if err != nil {
+		return fmt.Errorf("creating library source: %w", err)
+	}
+	validationErrors, err := scan.ValidateCustomRegoQuery(ctx, c.String("platform"), string(regoBytes), libSource)
 	if err != nil {
 		return fmt.Errorf("validating custom query: %w", err)
 	}

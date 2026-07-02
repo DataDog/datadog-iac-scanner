@@ -11,6 +11,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
@@ -21,6 +22,17 @@ import (
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 )
+
+// emptyQuerySource serves no queries and returns a minimal common library stub.
+type emptyQuerySource struct{}
+
+func (e *emptyQuerySource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
+	return nil, nil
+}
+
+func (e *emptyQuerySource) GetQueryLibrary(_ context.Context, _ string) (source.RegoLibraries, error) {
+	return source.RegoLibraries{LibraryCode: "package generic.common\n", LibraryInputData: "{}"}, nil
+}
 
 // TestScanner_StartScan checks StartScan returns nil on an uncancelled ctx when rules are served by the backend.
 func TestScanner_StartScan(t *testing.T) {
@@ -41,7 +53,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 	if err != nil {
 		return nil, nil, err
 	}
-	querySource := source.NewFilesystemSource(ctx, []string{"../../test"}, types, cloudProviders, filepath.FromSlash("../../assets/libraries"), true)
+	querySource := &emptyQuerySource{}
 
 	inspector, err := engine.NewInspector(context.Background(),
 		querySource, engine.DefaultVulnerabilityBuilder,

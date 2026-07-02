@@ -498,7 +498,7 @@ func TestGetQueryLibraryUsesBackendWithFallback(t *testing.T) {
 				},
 			},
 		},
-		WithLibraryFallback(stubLibrarySource{
+		WithLibraryOverride(stubLibrarySource{
 			libraries: map[string]RegoLibraries{
 				"k8s": {
 					LibraryCode:      "fallback code",

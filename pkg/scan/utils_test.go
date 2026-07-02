@@ -342,6 +342,7 @@ func Test_CombinePaths(t *testing.T) {
 }
 
 func Test_GetLibraryPath(t *testing.T) {
+	tmpLibDir := t.TempDir()
 
 	tests := []struct {
 		name           string
@@ -359,7 +360,7 @@ func Test_GetLibraryPath(t *testing.T) {
 		{
 			name: "default with flag",
 			scanParameters: Parameters{
-				LibrariesPath:               filepath.Join("..", "..", "assets", "libraries"),
+				LibrariesPath:               tmpLibDir,
 				ChangedDefaultLibrariesPath: true,
 			},
 			expectedError: false,
@@ -385,6 +386,7 @@ func Test_GetLibraryPath(t *testing.T) {
 }
 
 func Test_PreparePaths(t *testing.T) {
+	tmpLibDir := t.TempDir()
 
 	tests := []struct {
 		name            string
@@ -409,7 +411,7 @@ func Test_PreparePaths(t *testing.T) {
 		{
 			name: "default with flag",
 			scanParameters: Parameters{
-				LibrariesPath:               filepath.Join("..", "..", "assets", "libraries"),
+				LibrariesPath:               tmpLibDir,
 				ChangedDefaultLibrariesPath: true,
 				QueriesPath: []string{
 					filepath.Join("..", "..", "assets", "queries", "terraform", "aws"),

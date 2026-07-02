@@ -245,18 +245,19 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 
 // querySourceFactory returns a factory that serves the request's rules (with
 // libraries loaded from the embedded corpus). When no rules are pushed it falls
-// back to the filesystem corpus directly — never the network-backed Datadog
-// source, keeping the request path pure.
+// back to the filesystem corpus directly.
+// Libraries are fetched from the backend unless --libraries-path was explicitly set.
 func (s *Server) querySourceFactory(
 	params *scan.Parameters, rules []analyzeRule,
 ) func(context.Context, []string) (source.QueriesSource, error) {
 	return func(ctx context.Context, plats []string) (source.QueriesSource, error) {
 		fsSource := source.NewFilesystemSource(ctx, params.QueriesPath, plats,
 			params.CloudProvider, params.LibrariesPath, params.ExperimentalQueries)
+
 		if len(rules) == 0 {
-			return fsSource, nil
+			return source.NewFilesystemSourceWithLibraryOverride(fsSource, s.libSource), nil
 		}
-		return &requestQuerySource{queries: toQueryMetadata(rules), libraries: fsSource}, nil
+		return &requestQuerySource{queries: toQueryMetadata(rules), libraries: s.libSource}, nil
 	}
 }
 

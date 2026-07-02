@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/DataDog/datadog-iac-scanner/assets"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -36,15 +35,30 @@ const (
 	QueryFileName = "query.rego"
 	// MetadataFileName The default metadata file name
 	MetadataFileName = "metadata.json"
-	// LibrariesDefaultBasePath the path to rego libraries
+	// LibrariesDefaultBasePath is the conventional local path for Rego libraries.
+	// It is used as the default value for --libraries-path when that flag is provided.
 	LibrariesDefaultBasePath = "./assets/libraries"
 
 	emptyInputData = "{}"
 
 	common = "Common"
-
-	defaultLibrary = "default"
 )
+
+// filesystemSourceWithLibraryOverride wraps a FilesystemSource and delegates GetQueryLibrary to a separate source.
+type filesystemSourceWithLibraryOverride struct {
+	*FilesystemSource
+	libSource QueriesSource
+}
+
+func (f *filesystemSourceWithLibraryOverride) GetQueryLibrary(ctx context.Context, platform string) (RegoLibraries, error) {
+	return f.libSource.GetQueryLibrary(ctx, platform)
+}
+
+// NewFilesystemSourceWithLibraryOverride returns a QueriesSource that loads queries from fs
+// but delegates library lookups to libSource (typically a DatadogSource).
+func NewFilesystemSourceWithLibraryOverride(fs *FilesystemSource, libSource QueriesSource) QueriesSource {
+	return &filesystemSourceWithLibraryOverride{FilesystemSource: fs, libSource: libSource}
+}
 
 // NewFilesystemSource initializes a NewFilesystemSource with source to queries and types of queries to load
 func NewFilesystemSource(ctx context.Context, source, types, cloudProviders []string,
@@ -91,54 +105,37 @@ func getLibraryInDir(ctx context.Context, platform, libraryDirPath string) strin
 	return libraryFilePath
 }
 
-func isDefaultLibrary(libraryPath string) bool {
-	return filepath.FromSlash(libraryPath) == filepath.FromSlash(LibrariesDefaultBasePath)
+// GetPathToCustomLibrary returns the path to the library file for the given platform
+// within libraryDirPath, or an empty string if not found.
+func GetPathToCustomLibrary(ctx context.Context, platform, libraryDirPath string) string {
+	return getLibraryInDir(ctx, platform, libraryDirPath)
 }
 
-// GetPathToCustomLibrary - returns the libraries path for a given platform
-func GetPathToCustomLibrary(ctx context.Context, platform, libraryPathFlag string) string {
-	contextLogger := logger.FromContext(ctx)
-	libraryFilePath := defaultLibrary
-
-	if !isDefaultLibrary(libraryPathFlag) {
-		contextLogger.Debug().Msgf("Trying to load custom libraries from %s", libraryPathFlag)
-
-		library := getLibraryInDir(ctx, platform, libraryPathFlag)
-		// found a library named according to the platform
-		if library != "" {
-			libraryFilePath = library
-		}
-	}
-
-	return libraryFilePath
-}
-
-// GetQueryLibrary returns the library.rego for the platform passed in the argument
+// GetQueryLibrary returns the library.rego for the platform by reading it from disk.
 func (s *FilesystemSource) GetQueryLibrary(ctx context.Context, platform string) (RegoLibraries, error) {
 	contextLogger := logger.FromContext(ctx)
-	library := GetPathToCustomLibrary(ctx, platform, s.Library)
-
-	if library == "" {
-		return RegoLibraries{}, errors.New("unable to get libraries path")
+	libraryFilePath := getLibraryInDir(ctx, strings.ToLower(platform), s.Library)
+	if libraryFilePath == "" {
+		return RegoLibraries{}, fmt.Errorf("no library found for platform %q in %q", platform, s.Library)
 	}
 
-	// getting embedded library
-	embeddedLibraryCode, errGettingEmbeddedLibrary := assets.GetEmbeddedLibrary(strings.ToLower(platform))
-	if errGettingEmbeddedLibrary != nil {
-		return RegoLibraries{}, errGettingEmbeddedLibrary
+	libraryCode, err := os.ReadFile(filepath.Clean(libraryFilePath))
+	if err != nil {
+		return RegoLibraries{}, fmt.Errorf("reading library %q: %w", libraryFilePath, err)
 	}
 
-	embeddedLibraryData, errGettingEmbeddedLibraryCode := assets.GetEmbeddedLibraryData(strings.ToLower(platform))
-	if errGettingEmbeddedLibraryCode != nil {
-		contextLogger.Debug().Msgf("Could not open embedded library data for %s platform", platform)
-		embeddedLibraryData = emptyInputData
+	inputData := emptyInputData
+	jsonPath := strings.TrimSuffix(libraryFilePath, ".rego") + ".json"
+	if jsonBytes, err := os.ReadFile(filepath.Clean(jsonPath)); err == nil {
+		inputData = string(jsonBytes)
+	} else {
+		contextLogger.Debug().Msgf("No input data file found for %s library", platform)
 	}
 
-	regoLibrary := RegoLibraries{
-		LibraryCode:      embeddedLibraryCode,
-		LibraryInputData: embeddedLibraryData,
-	}
-	return regoLibrary, nil
+	return RegoLibraries{
+		LibraryCode:      string(libraryCode),
+		LibraryInputData: inputData,
+	}, nil
 }
 
 // CheckType checks if the queries have the type passed as an argument in '--type' flag to be loaded

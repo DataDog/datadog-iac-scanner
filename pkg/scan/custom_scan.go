@@ -16,6 +16,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -102,8 +103,12 @@ func RunCustomRegoQuery(
 	c.analyzerOverride = func(_ context.Context) (model.AnalyzedPaths, error) {
 		return model.AnalyzedPaths{Types: []string{platform}}, nil
 	}
+	libSource, err := source.NewDatadogSource(datadog.NewDatadogClient())
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating library source: %w", err)
+	}
 	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
-		return &customRegoSource{platform: platform, regoContent: regoContent}, nil
+		return &customRegoSource{platform: platform, regoContent: regoContent, libSource: libSource}, nil
 	}
 
 	results, err := c.executeScan(ctx)
@@ -132,6 +137,7 @@ func ValidateCustomRegoQuery(
 	ctx context.Context,
 	platform string,
 	regoContent string,
+	libSource source.QueriesSource,
 ) ([]RegoValidationError, error) {
 	module, parseErrs := parseRegoModule(regoContent)
 	if module == nil {
@@ -146,14 +152,13 @@ func ValidateCustomRegoQuery(
 	}
 
 	allErrs := staticChecks(module)
-	fs := libraryFilesystemSource(ctx, platform)
 
-	commonLib, err := fs.GetQueryLibrary(ctx, "common")
+	commonLib, err := libSource.GetQueryLibrary(ctx, "common")
 	if err != nil {
 		return nil, fmt.Errorf("loading common library: %w", err)
 	}
 
-	platformLib, err := fs.GetQueryLibrary(ctx, source.LibraryName(platform))
+	platformLib, err := libSource.GetQueryLibrary(ctx, source.LibraryName(platform))
 	if err != nil {
 		return nil, fmt.Errorf("loading platform library: %w", err)
 	}
@@ -860,10 +865,6 @@ func narrowToAttributeLocation(vulns []model.Vulnerability) {
 	}
 }
 
-func libraryFilesystemSource(ctx context.Context, platform string) *source.FilesystemSource {
-	return source.NewFilesystemSource(ctx, []string{"."}, []string{platform}, []string{""}, source.LibrariesDefaultBasePath, false)
-}
-
 func regoValidationErrorFromAST(e *ast.Error) RegoValidationError {
 	ve := RegoValidationError{
 		Code:    e.Code,
@@ -885,6 +886,7 @@ func regoValidationErrorFromAST(e *ast.Error) RegoValidationError {
 type customRegoSource struct {
 	platform    string
 	regoContent string
+	libSource   source.QueriesSource
 }
 
 func (s *customRegoSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
@@ -907,5 +909,5 @@ func (s *customRegoSource) GetQueries(_ context.Context, _ *source.QueryInspecto
 }
 
 func (s *customRegoSource) GetQueryLibrary(ctx context.Context, libPlatform string) (source.RegoLibraries, error) {
-	return libraryFilesystemSource(ctx, s.platform).GetQueryLibrary(ctx, source.LibraryName(libPlatform))
+	return s.libSource.GetQueryLibrary(ctx, source.LibraryName(libPlatform))
 }
