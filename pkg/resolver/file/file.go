@@ -1,7 +1,6 @@
 package file
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -60,38 +59,6 @@ func isOpenAPI(fileContent []byte) bool {
 	return true
 }
 
-// yamlResolveNeeded reports whether yamlResolve may change the document stream.
-func yamlResolveNeeded(content []byte, resolveReferences bool) bool {
-	if resolveReferences {
-		return true
-	}
-	if yamlDocumentCount(content) > 1 {
-		return true
-	}
-	if bytes.Contains(content, []byte("$ref")) ||
-		bytes.Contains(content, []byte("include_vars")) ||
-		bytes.Contains(content, []byte("include_tasks")) ||
-		bytes.Contains(content, []byte("file://")) ||
-		bytes.Contains(content, []byte("!ref")) ||
-		bytes.Contains(content, []byte("{{")) {
-		return true
-	}
-	return false
-}
-
-func yamlDocumentCount(content []byte) int {
-	dec := yaml.NewDecoder(bytes.NewReader(content))
-	count := 0
-	for {
-		var doc yaml.Node
-		if err := dec.Decode(&doc); err != nil {
-			break
-		}
-		count++
-	}
-	return count
-}
-
 // Resolve - replace or modifies in-memory content before parsing
 func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	resolveCount, maxResolverDepth int, resolvedFilesCache map[string]ResolvedFile,
@@ -110,9 +77,6 @@ func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	}
 
 	if utils.Contains(filepath.Ext(path), []string{".yml", ".yaml"}) {
-		if !yamlResolveNeeded(fileContent, resolveReferences) {
-			return fileContent
-		}
 		return r.yamlResolve(ctx, fileContent, path, resolveCount, maxResolverDepth, resolvedFilesCache, resolveReferences)
 	}
 	var obj any

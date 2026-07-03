@@ -10,7 +10,7 @@ DatadogPolicy contains result if {
 	document := input.document[i]
 	metadata := document.metadata
 
-	specInfo := k8sLib.getSpecInfo(document)
+	specInfo := k8sLib.spec_info(document)
 	container := specInfo.spec[types[x]][_]
 
 	container.securityContext.privileged == true

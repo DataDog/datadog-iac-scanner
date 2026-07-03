@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -411,6 +412,14 @@ func TestAnalyzer_Analyze(t *testing.T) {
 			sort.Strings(tt.wantExclude)
 			sort.Strings(got.Types)
 			sort.Strings(got.Exc)
+			for i := range tt.wantExclude {
+				tt.wantExclude[i] = filepath.ToSlash(tt.wantExclude[i])
+			}
+			for i := range got.Exc {
+				got.Exc[i] = filepath.ToSlash(got.Exc[i])
+			}
+			sort.Strings(tt.wantExclude)
+			sort.Strings(got.Exc)
 
 			require.Equal(t, tt.wantTypes, got.Types, "wrong types from analyzer")
 			require.Equal(t, tt.wantExclude, got.Exc, "wrong excludes from analyzer")
@@ -435,6 +444,36 @@ func Test_checkYamlPlatform_emptyFile(t *testing.T) {
 			require.Equal(t, "", got)
 		})
 	}
+}
+
+func TestClassifyFile_SwaggerOpenAPI(t *testing.T) {
+	content := []byte("swagger: \"2.0\"\ninfo:\n  title: api\n  version: v1\npaths: {}\n")
+	path := filepath.Join(t.TempDir(), "swagger.yaml")
+	require.NoError(t, os.WriteFile(path, content, 0o600))
+
+	got := ClassifyFile(context.Background(), nil, path, content, []string{""})
+
+	require.Equal(t, "openapi", got)
+}
+
+func TestAnalyze_ValidSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.tf")
+	link := filepath.Join(dir, "linked.tf")
+	require.NoError(t, os.WriteFile(target, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+	require.NoError(t, os.Symlink(target, link))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{link},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{terraform}, got.Types)
+	require.Contains(t, got.Inventory, filepath.ToSlash(link))
+	require.Empty(t, got.Exc)
 }
 
 func Test_checkHelm(t *testing.T) {

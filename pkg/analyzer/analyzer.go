@@ -79,7 +79,6 @@ var (
 	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
 	dependabotUpdatesRegex                          = regexp.MustCompile(`\s*updates:\s*`)
 	dependabotPackageEcosystemRegex                 = regexp.MustCompile(`\s*package-ecosystem:\s*`)
-	queryRegexPathsAnsible                          = regexp.MustCompile(fmt.Sprintf(`^.*?%s(?:group|host)_vars%s.*$`, regexp.QuoteMeta(string(os.PathSeparator)), regexp.QuoteMeta(string(os.PathSeparator)))) //nolint:lll
 )
 
 var (
@@ -325,25 +324,24 @@ var types = map[string]regexSlice{
 
 var defaultConfigSuffixes = []string{"pnpm-lock.yaml"}
 
-// Required substring per platform; skip regex when absent.
-var contentHints = map[string][]byte{
-	"kubernetes":               []byte("apiVersion"),
-	"crossplane":               []byte("crossplane.io"),
-	"knative":                  []byte("knative.dev"),
-	"cloudformation":           []byte("Resources"),
-	"openapi":                  []byte("openapi"),
-	"azureresourcemanager":     []byte("contentVersion"),
-	"terraform":                []byte("planned_values"),
-	"cdkTf":                    []byte("stackName"),
-	"policyAssignmentArtifact": []byte("policyDefinitionId"),
-	"roleAssignmentArtifact":   []byte("principalIds"),
-	"blueprint":                []byte("targetScope"),
-	"buildah":                  []byte("buildah"),
-	"dependabot":               []byte("package-ecosystem"),
-	"githubAction":             []byte("using:"),
-	"cicd":                     []byte("jobs:"),
+// Required substrings per platform; skip regex when none are present.
+var contentHints = map[string][][]byte{
+	"kubernetes":               {[]byte("apiVersion")},
+	"crossplane":               {[]byte("crossplane.io")},
+	"knative":                  {[]byte("knative.dev")},
+	"cloudformation":           {[]byte("Resources")},
+	"openapi":                  {[]byte("openapi"), []byte("swagger")},
+	"azureresourcemanager":     {[]byte("contentVersion")},
+	"terraform":                {[]byte("planned_values")},
+	"cdkTf":                    {[]byte("stackName")},
+	"policyAssignmentArtifact": {[]byte("policyDefinitionId")},
+	"roleAssignmentArtifact":   {[]byte("principalIds")},
+	"blueprint":                {[]byte("targetScope")},
+	"buildah":                  {[]byte("buildah")},
+	"dependabot":               {[]byte("package-ecosystem")},
+	"githubAction":             {[]byte("using:")},
+	"cicd":                     {[]byte("jobs:")},
 }
-
 
 // nolint:gocyclo
 // Analyze will go through the slice paths given and determine what type of queries should be loaded
@@ -387,7 +385,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return err
 			}
 			if path == gitDir {
-				a.Exc = append(a.Exc, path)
+				a.Exc = append(a.Exc, filepath.ToSlash(path))
 				return filepath.SkipDir
 			}
 
@@ -405,10 +403,11 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 			if d.Type()&fs.ModeSymlink != 0 {
 				if _, statErr := os.Stat(path); statErr != nil {
-					ignoreFiles = append(ignoreFiles, path)
-					a.Exc = append(a.Exc, path)
+					norm := filepath.ToSlash(path)
+					ignoreFiles = append(ignoreFiles, norm)
+					a.Exc = append(a.Exc, norm)
+					return nil
 				}
-				return nil
 			}
 
 			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
@@ -417,14 +416,16 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			}
 
 			if hasGitIgnoreFile && gitIgnore.MatchesPath(trimmedPath) {
-				ignoreFiles = append(ignoreFiles, path)
-				a.Exc = append(a.Exc, path)
+				norm := filepath.ToSlash(path)
+				ignoreFiles = append(ignoreFiles, norm)
+				a.Exc = append(a.Exc, norm)
 				return nil
 			}
 
 			if isConfigFile(path, defaultConfigSuffixes) {
-				projectConfigFiles = append(projectConfigFiles, path)
-				a.Exc = append(a.Exc, path)
+				norm := filepath.ToSlash(path)
+				projectConfigFiles = append(projectConfigFiles, norm)
+				a.Exc = append(a.Exc, norm)
 				return nil
 			}
 
@@ -443,8 +444,9 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				if info, infoErr := d.Info(); infoErr == nil {
 					if float64(info.Size())/float64(sizeMb) > float64(a.MaxFileSize) {
 						contextLogger.Warn().Msgf("file %s exceeds maximum file size of %d Mb", path, a.MaxFileSize)
-						ignoreFiles = append(ignoreFiles, path)
-						a.Exc = append(a.Exc, path)
+						norm := filepath.ToSlash(path)
+						ignoreFiles = append(ignoreFiles, norm)
+						a.Exc = append(a.Exc, norm)
 						return nil
 					}
 				}
@@ -545,7 +547,6 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 // writes the answer to the results channel
 // if no types were found, the worker will write the path of the file in the unwanted channel
 func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- string, locCount chan<- int) {
-	contextLogger := logger.FromContext(ctx)
 	ext := utils.ExtensionFromPath(a.filePath)
 	if ext == "" {
 		return
@@ -553,14 +554,9 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 
 	linesCount, _ := utils.LineCounter(ctx, a.filePath)
 
-	var content []byte
-	if ext == yaml || ext == yml || ext == json || ext == sh {
-		var err error
-		content, err = os.ReadFile(a.filePath)
-		if err != nil {
-			contextLogger.Error().Msgf("failed to analyze file: %s", err)
-			return
-		}
+	content, ok := a.readClassifyContent(ctx, ext)
+	if !ok {
+		return
 	}
 
 	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache)
@@ -569,21 +565,40 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 	if !a.isAvailableType(platform) {
-		// Content-detected files that do not match the requested platforms are
-		// excluded; extension-only types (e.g. .tf) are ignored silently.
-		if ext == yaml || ext == yml || ext == json || ext == sh {
+		if isContentClassifiedExt(ext) {
 			unwanted <- a.filePath
 		}
 		return
 	}
+	a.persistWorkerState(content, platform)
+	results <- platform
+	locCount <- linesCount
+}
+
+func isContentClassifiedExt(ext string) bool {
+	return ext == yaml || ext == yml || ext == json || ext == sh
+}
+
+func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) ([]byte, bool) {
+	if !isContentClassifiedExt(ext) {
+		return nil, true
+	}
+	content, err := os.ReadFile(a.filePath)
+	if err != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Error().Msgf("failed to analyze file: %s", err)
+		return nil, false
+	}
+	return content, true
+}
+
+func (a *analyzerInfo) persistWorkerState(content []byte, platform string) {
 	if a.contentCache != nil && len(content) > 0 {
 		a.contentCache.Store(a.filePath, content)
 	}
 	if a.filePlatformMap != nil {
 		a.filePlatformMap.Store(a.filePath, platform)
 	}
-	results <- platform
-	locCount <- linesCount
 }
 
 func isDockerfile(ctx context.Context, path string) bool {
@@ -642,7 +657,7 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
 
 	for _, key := range keys {
-		if hint, ok := contentHints[key]; ok && !bytes.Contains(content, hint) {
+		if hints, ok := contentHints[key]; ok && !containsAny(content, hints) {
 			continue
 		}
 		check := true
@@ -669,6 +684,15 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 	}
 
 	return endReturnType
+}
+
+func containsAny(content []byte, needles [][]byte) bool {
+	for _, needle := range needles {
+		if bytes.Contains(content, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // ClassifyFile returns the platform a file would be classified as (lowercased,
@@ -875,7 +899,8 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 }
 
 func checkForAnsibleByPaths(path string) bool {
-	return queryRegexPathsAnsible.MatchString(path)
+	path = filepath.ToSlash(path)
+	return strings.Contains(path, "/group_vars/") || strings.Contains(path, "/host_vars/")
 }
 
 // isInsideAnsibleTemplatesDir reports whether path is inside an Ansible templates directory.
