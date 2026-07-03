@@ -68,6 +68,7 @@ func TestJSONParserRegistration(t *testing.T) {
 				platforms,
 				cloudProviders,
 				client.FlagEvaluator,
+				nil,
 			)
 
 			require.NoError(t, err)
@@ -129,6 +130,7 @@ func TestJSONParserBuilder(t *testing.T) {
 		platforms,
 		cloudProviders,
 		clientWithoutFlag.FlagEvaluator,
+		nil,
 	)
 
 	require.NoError(t, err)
@@ -173,6 +175,7 @@ func TestJSONParserBuilder(t *testing.T) {
 		platforms,
 		cloudProviders,
 		clientWithFlag.FlagEvaluator,
+		nil,
 	)
 
 	require.NoError(t, err)
@@ -226,6 +229,7 @@ func TestCreateServiceWithTfPlanFlag(t *testing.T) {
 			[]string{"terraform"},
 			[]string{""},
 			client.FlagEvaluator,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -259,6 +263,7 @@ func TestCreateServiceWithTfPlanFlag(t *testing.T) {
 			[]string{"terraform"},
 			[]string{""},
 			client.FlagEvaluator,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -311,6 +316,7 @@ func TestJSONParserNotDoubleRegistered(t *testing.T) {
 			[]string{"terraform"},
 			[]string{""},
 			client.FlagEvaluator,
+			nil,
 		)
 
 		require.NoError(t, err)

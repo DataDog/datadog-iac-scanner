@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"path/filepath"
 	"sort"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
@@ -34,13 +35,21 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 	rc io.Reader, data []byte,
 	openAPIResolveReferences bool,
 	maxResolverDepth int) error {
+	c, err := getContent(rc, data, s.MaxFileSize, filename)
+	return s.sinkContent(ctx, filename, scanID, c, err, openAPIResolveReferences, maxResolverDepth)
+}
+
+// sinkContent parses already-read file content; used when one read feeds several parsers.
+func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
+	c *Content, getErr error,
+	openAPIResolveReferences bool,
+	maxResolverDepth int) error {
 	contextLogger := logger.FromContext(ctx)
 	s.Tracker.TrackFileFound(filename)
 
-	c, err := getContent(rc, data, s.MaxFileSize, filename)
-
 	*c.Content = resolveCRLFFile(*c.Content)
 	content := c.Content
+	err := getErr
 
 	s.Tracker.TrackFileFoundCountLines(c.CountLines)
 	s.Tracker.TrackFileFoundCountResources(c.CountResources)
@@ -50,11 +59,7 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 	}
 	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
-		// failedHelmChartDirs is fully populated by collectFiles (Phase 1) before
-		// processFilesParallel (Phase 2) dispatches workers, so the map is always
-		// complete when this check runs.
-		// Raw templates inside a failed chart are not valid YAML; parse failures
-		// there are expected. Everything else stays at Error.
+		// Raw templates inside a failed chart are not valid YAML; parse failures there are expected.
 		if s.isUnderFailedHelmChart(filename) {
 			contextLogger.Debug().Err(err).Msgf("skipping unparseable raw Helm template: %s", filename)
 		} else {
@@ -100,7 +105,7 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 			ResolvedFiles:     documents.ResolvedFiles,
 			LinesOriginalData: utils.SplitLines(documents.Content),
 			IsMinified:        documents.IsMinified,
-			Platform:          analyzer.ClassifyParsedFile(ctx, s.Parser.FS(), s.Platforms, documents.Kind, filename, *content),
+			Platform:          s.classifyPlatform(ctx, documents.Kind, filename, *content),
 		}
 
 		s.saveToFile(ctx, &file)
@@ -111,6 +116,14 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 	s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))
 
 	return nil
+}
+
+// classifyPlatform applies the analyzer path cache, then ClassifyParsedFile.
+func (s *Service) classifyPlatform(ctx context.Context, kind model.FileKind, filename string, content []byte) string {
+	if platform, ok := s.FilePlatform[filepath.ToSlash(filename)]; ok {
+		return platform
+	}
+	return analyzer.ClassifyParsedFile(ctx, s.Parser.FS(), s.Platforms, kind, filename, content)
 }
 
 func resolveCRLFFile(fileContent []byte) []byte {

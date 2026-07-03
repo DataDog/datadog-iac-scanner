@@ -80,6 +80,8 @@ type Service struct {
 	// parsed file's platform consistently with the analyzer so the engine can
 	// scope queries to their own platform's documents.
 	Platforms []string
+	// FilePlatform is the analyzer path → platform map, reused in the sink.
+	FilePlatform map[string]string
 	// failedHelmChartDirsMu guards failedHelmChartDirs.
 	failedHelmChartDirsMu sync.RWMutex
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
@@ -252,6 +254,26 @@ func getContent(rc io.Reader, data []byte, maxSizeMB int, filename string) (*Con
 
 	c.IsMinified = minified.IsMinified(filename, content)
 	return c, nil
+}
+
+func contentFromBytes(content []byte, maxSizeMB int, filename string) (*Content, error) {
+	copied := append([]byte(nil), content...)
+	if maxSizeMB >= 0 {
+		limit := (maxSizeMB + 1) * mbConst
+		if len(copied) > limit {
+			return nil, errors.New("file size limit exceeded")
+		}
+	}
+	countLines := bytes.Count(copied, []byte{'\n'})
+	if len(copied) > 0 && copied[len(copied)-1] != '\n' {
+		countLines++
+	}
+	return &Content{
+		Content:        &copied,
+		CountLines:     countLines,
+		IsMinified:     minified.IsMinified(filename, copied),
+		CountResources: GetCountTerraformResources(copied),
+	}, nil
 }
 
 // GetVulnerabilities returns a list of scan detected vulnerabilities

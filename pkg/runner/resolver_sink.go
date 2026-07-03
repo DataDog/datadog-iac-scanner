@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -26,17 +25,40 @@ func (s *Service) resolverSink(
 	filename, scanID string,
 	openAPIResolveReferences bool,
 	maxResolverDepth int) ([]string, error) {
-	contextLogger := logger.FromContext(ctx)
-	kind := s.Resolver.GetType(filename)
+	resFiles, kind, err := s.resolveOnly(ctx, filename)
 	if kind == model.KindCOMMON {
 		return []string{}, nil
 	}
-	resFiles, err := s.Resolver.Resolve(ctx, filename, kind)
 	if err != nil {
 		s.logResolverResolveError(ctx, kind, filename, err)
 		return []string{}, err
 	}
+	s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
+	return resFiles.Excluded, nil
+}
 
+// resolveOnly renders a chart without parsing or storing it.
+func (s *Service) resolveOnly(ctx context.Context, filename string) (model.ResolvedFiles, model.FileKind, error) {
+	kind := s.Resolver.GetType(filename)
+	if kind == model.KindCOMMON {
+		return model.ResolvedFiles{}, kind, nil
+	}
+	resFiles, err := s.Resolver.Resolve(ctx, filename, kind)
+	if err != nil {
+		return model.ResolvedFiles{}, kind, err
+	}
+	return resFiles, kind, nil
+}
+
+// storeResolvedFiles parses and stores already-rendered files for this service.
+func (s *Service) storeResolvedFiles(
+	ctx context.Context,
+	resFiles model.ResolvedFiles,
+	kind model.FileKind,
+	scanID string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int) {
+	contextLogger := logger.FromContext(ctx)
 	for _, rfile := range resFiles.File {
 		s.Tracker.TrackFileFound(rfile.FileName)
 
@@ -44,7 +66,7 @@ func (s *Service) resolverSink(
 		documents, err := s.Parser.Parse(ctx, rfile.FileName, rfile.Content, openAPIResolveReferences, isMinified, maxResolverDepth)
 		if err != nil {
 			if documents.Kind == "break" {
-				return []string{}, nil
+				return
 			}
 			// A Helm template may render to only comments when all range iterations are
 			// conditionally skipped (e.g. a service disabled in prod). That's expected;
@@ -53,7 +75,7 @@ func (s *Service) resolverSink(
 				continue
 			}
 			contextLogger.Error().Err(err).Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
-			return []string{}, nil
+			return
 		}
 
 		if kind == model.KindHELM {
@@ -103,7 +125,7 @@ func (s *Service) resolverSink(
 				ResolvedFiles:     documents.ResolvedFiles,
 				LinesOriginalData: utils.SplitLines(string(rfile.OriginalData)),
 				IsMinified:        documents.IsMinified,
-				Platform:          analyzer.ClassifyParsedFile(ctx, s.Parser.FS(), s.Platforms, kind, rfile.FileName, rfile.Content),
+				Platform:          s.classifyPlatform(ctx, kind, rfile.FileName, rfile.Content),
 			}
 			s.saveToFile(ctx, &file)
 		}
@@ -117,7 +139,6 @@ func (s *Service) resolverSink(
 			s.Tracker.TrackFileFoundCountResources(resourceCount)
 		}
 	}
-	return resFiles.Excluded, nil
 }
 
 // logResolverResolveError logs a Helm resolve/render failure as debug when it

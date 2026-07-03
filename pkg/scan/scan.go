@@ -53,6 +53,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	contextLogger := logger.FromContext(ctx)
 
 	var extractedPaths provider.ExtractedPath
+	var filePlatform map[string]string
 	if c.inMemory {
 		// Content-push (server) mode: the file set is the pushed paths. Skip the
 		// disk walk + analyzer.Analyze the CLI path runs (it reads the repo from
@@ -60,12 +61,13 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		// (ScanParams.Platform); content is read through c.fsys.
 		extractedPaths = provider.ExtractedPath{Path: c.inMemoryPaths}
 	} else {
-		paths, err := c.prepareAndAnalyzePaths(ctx)
+		paths, fp, err := c.prepareAndAnalyzePaths(ctx)
 		if err != nil {
 			contextLogger.Err(err).Msgf("failed to prepare and analyze paths %v", err)
 			return nil, err
 		}
 		extractedPaths = paths
+		filePlatform = fp
 	}
 
 	if len(extractedPaths.Path) == 0 {
@@ -116,6 +118,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		paramsPlatforms,
 		c.ScanParams.CloudProvider,
 		c.FlagEvaluator,
+		filePlatform,
 	)
 	if err != nil {
 		contextLogger.Err(err).Msgf("failed to create service %v", err)
@@ -266,7 +269,8 @@ func (c *Client) createService(
 	store runner.Storage,
 	types []string,
 	cloudProviders []string,
-	flagEvaluator featureflags.FlagEvaluator) ([]*runner.Service, error) {
+	flagEvaluator featureflags.FlagEvaluator,
+	filePlatform map[string]string) ([]*runner.Service, error) {
 	var filesSource provider.SourceProvider
 	if c.inMemory {
 		// Content-push mode: serve the pushed files from the in-memory FS instead
@@ -278,6 +282,9 @@ func (c *Client) createService(
 		fsSource, err := c.getFileSystemSourceProvider(ctx, paths)
 		if err != nil {
 			return nil, err
+		}
+		if len(c.walkInventory) > 0 {
+			fsSource.SetPrebuiltWalk(c.walkInventory, c.chartRoots, c.contentCache)
 		}
 		filesSource = fsSource
 	}
@@ -328,6 +335,7 @@ func (c *Client) createService(
 				Resolver:       combinedResolver,
 				MaxFileSize:    c.ScanParams.MaxFileSizeFlag,
 				Platforms:      types,
+				FilePlatform:   filePlatform,
 			},
 		)
 	}

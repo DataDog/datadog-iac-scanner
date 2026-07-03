@@ -26,6 +26,16 @@ func PrepareAndScan(
 	flagEvaluator featureflags.FlagEvaluator,
 ) error {
 	metrics.Metric.Start("prepare_sources")
+
+	if fsp, ok := runner.SharedWalkProvider(services); ok {
+		err := runner.PrepareSharedWalk(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth)
+		metrics.Metric.Stop()
+		if err != nil {
+			return err
+		}
+		return StartScan(ctx, scanID, services)
+	}
+
 	var wg sync.WaitGroup
 	wgDone := make(chan bool)
 	errCh := make(chan error)
