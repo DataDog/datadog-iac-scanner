@@ -264,28 +264,29 @@ type Ruleset struct {
 
 // Rule defines the structure of a rule that's stored in Datadog.
 type Rule struct {
-	ID                string         `jsonapi:"primary,iac_rule" json:"id"`
-	Name              string         `jsonapi:"attribute" json:"name"`
-	LegacyId          *string        `jsonapi:"attribute" json:"legacy_id,omitempty"`
-	ShortDescription  string         `jsonapi:"attribute" json:"short_description"`
-	Description       string         `jsonapi:"attribute" json:"description"`
-	DescriptionId     *string        `jsonapi:"attribute" json:"description_id,omitempty"`
-	Platform          string         `jsonapi:"attribute" json:"platform"`
-	Type              string         `jsonapi:"attribute" json:"type"`
-	RegoQuery         []byte         `jsonapi:"attribute" json:"rego_query"`
-	Severity          string         `jsonapi:"attribute" json:"severity"`
-	Category          string         `jsonapi:"attribute" json:"category"`
-	Provider          *string        `jsonapi:"attribute" json:"provider,omitempty"`
-	Cwe               *string        `jsonapi:"attribute" json:"cwe,omitempty"`
-	DocumentationUrl  *string        `jsonapi:"attribute" json:"documentation_url,omitempty"`
-	ProviderUrl       *string        `jsonapi:"attribute" json:"provider_url,omitempty"`
-	Aggregation       *int           `jsonapi:"attribute" json:"aggregation,omitempty"`
-	Overrides         []RuleOverride `jsonapi:"attribute" json:"overrides,omitempty"`
-	DefaultFrameworks []Framework    `jsonapi:"attribute" json:"default_frameworks,omitempty"`
-	CustomFrameworks  []Framework    `jsonapi:"attribute" json:"custom_frameworks,omitempty"`
-	Tests             *RuleTests     `jsonapi:"attribute" json:"tests,omitempty"`
-	IsTesting         bool           `jsonapi:"attribute" json:"is_testing"`
-	IsPublished       bool           `jsonapi:"attribute" json:"is_published"`
+	ID                string            `jsonapi:"primary,iac_rule" json:"id"`
+	Name              string            `jsonapi:"attribute" json:"name"`
+	LegacyId          *string           `jsonapi:"attribute" json:"legacy_id,omitempty"`
+	ShortDescription  string            `jsonapi:"attribute" json:"short_description"`
+	Description       string            `jsonapi:"attribute" json:"description"`
+	DescriptionId     *string           `jsonapi:"attribute" json:"description_id,omitempty"`
+	Platform          string            `jsonapi:"attribute" json:"platform"`
+	Type              string            `jsonapi:"attribute" json:"type"`
+	RegoQuery         []byte            `jsonapi:"attribute" json:"rego_query"`
+	Severity          string            `jsonapi:"attribute" json:"severity"`
+	Category          string            `jsonapi:"attribute" json:"category"`
+	Provider          *string           `jsonapi:"attribute" json:"provider,omitempty"`
+	Cwe               *string           `jsonapi:"attribute" json:"cwe,omitempty"`
+	Arguments         map[string]string `jsonapi:"attribute" json:"arguments,omitempty"`
+	DocumentationUrl  *string           `jsonapi:"attribute" json:"documentation_url,omitempty"`
+	ProviderUrl       *string           `jsonapi:"attribute" json:"provider_url,omitempty"`
+	Aggregation       *int              `jsonapi:"attribute" json:"aggregation,omitempty"`
+	Overrides         []RuleOverride    `jsonapi:"attribute" json:"overrides,omitempty"`
+	DefaultFrameworks []Framework       `jsonapi:"attribute" json:"default_frameworks,omitempty"`
+	CustomFrameworks  []Framework       `jsonapi:"attribute" json:"custom_frameworks,omitempty"`
+	Tests             *RuleTests        `jsonapi:"attribute" json:"tests,omitempty"`
+	IsTesting         bool              `jsonapi:"attribute" json:"is_testing"`
+	IsPublished       bool              `jsonapi:"attribute" json:"is_published"`
 }
 
 // RuleTests holds the test suite stored alongside a rule in the backend.

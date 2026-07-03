@@ -252,6 +252,9 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 	} else {
 		out.Metadata["cwe"] = ""
 	}
+	if len(rule.Arguments) > 0 {
+		out.Metadata["arguments"] = rule.Arguments
+	}
 	if rule.Aggregation != nil {
 		out.Metadata["aggregation"] = *rule.Aggregation
 		out.Aggregation = *rule.Aggregation
