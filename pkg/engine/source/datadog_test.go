@@ -341,6 +341,32 @@ func TestSourceWithWantedProviders(t *testing.T) {
 	}
 }
 
+func TestConvertRuleIncludesArgumentsInMetadata(t *testing.T) {
+	rule := &datadog.Rule{
+		ID:               "terraform-aws-required-tags",
+		Name:             "required_tags",
+		ShortDescription: "Required tags are missing",
+		Description:      "Ensure required tags are present",
+		DescriptionId:    ptr("required-tags"),
+		Platform:         "Terraform",
+		Type:             "rego",
+		RegoQuery:        []byte("package datadog"),
+		Severity:         "HIGH",
+		Category:         "Best Practices",
+		Provider:         ptr("aws"),
+		Arguments: map[string]string{
+			"required_tags": `["Env"]`,
+		},
+		IsPublished: true,
+	}
+
+	query := ConvertRule(rule)
+
+	assert.Equal(t, map[string]string{
+		"required_tags": `["Env"]`,
+	}, query.Metadata["arguments"])
+}
+
 var rules = []*datadog.Rule{
 	{
 		ID:               "dockerfile-gcp-rule-1",
