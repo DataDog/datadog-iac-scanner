@@ -111,6 +111,10 @@ var scanAction = &cli.Command{
 			Aliases: []string{"q"},
 			Usage:   "a list of query directories paths",
 		},
+		&cli.StringFlag{
+			Name:  "libraries-path",
+			Usage: "path to local Rego support libraries (default: fetch from backend when using local queries-path)",
+		},
 		&cli.StringSliceFlag{
 			Name:  "report-format",
 			Usage: "output report formats (valid: sarif, simple-json)",
@@ -258,28 +262,40 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		queriesPath = []string{"./assets/queries"}
 	}
 
+	librariesPath := "./assets/libraries"
+	changedDefaultLibrariesPath := false
+	if lp := c.String("libraries-path"); lp != "" {
+		validated, err := validateQueriesPaths([]string{lp})
+		if err != nil {
+			return errorWithExitCode(fmt.Errorf("libraries path parsing exited with error: %q", err), constants.InvalidConfigErrorCode)
+		}
+		librariesPath = validated[0]
+		changedDefaultLibrariesPath = true
+	}
+
 	params := &scan.Parameters{
-		CloudProvider:           []string{""},
-		OutputPath:              outputPath,
-		OutputName:              c.String("output-name"),
-		PreviewLines:            3,
-		RepoPath:                repoDir,
-		Path:                    inputPaths,
-		QueriesPath:             queriesPath,
-		ChangedDefaultQueryPath: changedDefaultQueryPath,
-		LibrariesPath:           "./assets/libraries",
-		ReportFormats:           reportFormats,
-		Platform:                selectPlatforms(c.StringSlice("type")),
-		DisableSecrets:          true,
-		ScanID:                  "console",
-		MaxFileSizeFlag:         c.Int("max-file-size"),
-		MaxResolverDepth:        c.Int("max-resolver-depth"),
-		PayloadPath:             payloadPath,
-		SCIInfo:                 model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
-		FlagEvaluator:           getFeatureFlagEvaluator(c),
-		Config:                  *cfg,
-		ShouldScanTfPlans:       c.Bool("x-terraform-plan"),
-		DisableRuleIsolation:    c.Bool("x-disable-rule-isolation"),
+		CloudProvider:               []string{""},
+		OutputPath:                  outputPath,
+		OutputName:                  c.String("output-name"),
+		PreviewLines:                3,
+		RepoPath:                    repoDir,
+		Path:                        inputPaths,
+		QueriesPath:                 queriesPath,
+		ChangedDefaultQueryPath:     changedDefaultQueryPath,
+		LibrariesPath:               librariesPath,
+		ChangedDefaultLibrariesPath: changedDefaultLibrariesPath,
+		ReportFormats:               reportFormats,
+		Platform:                    selectPlatforms(c.StringSlice("type")),
+		DisableSecrets:              true,
+		ScanID:                      "console",
+		MaxFileSizeFlag:             c.Int("max-file-size"),
+		MaxResolverDepth:            c.Int("max-resolver-depth"),
+		PayloadPath:                 payloadPath,
+		SCIInfo:                     model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
+		FlagEvaluator:               getFeatureFlagEvaluator(c),
+		Config:                      *cfg,
+		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
+		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 	}
 
 	metadata, err := console.ExecuteScan(ctx, params)
