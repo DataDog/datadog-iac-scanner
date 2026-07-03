@@ -330,9 +330,14 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 
 // AnalyzedPaths is a slice of types and excluded files obtained from the Analyzer
 type AnalyzedPaths struct {
-	Types       []string
-	Exc         []string
-	ExpectedLOC int
+	Types        []string
+	Exc          []string
+	ExpectedLOC  int
+	FilePlatform map[string]string
+	Inventory    []string
+	ChartRoots   []string
+	TotalFiles   int
+	ContentCache map[string][]byte
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file

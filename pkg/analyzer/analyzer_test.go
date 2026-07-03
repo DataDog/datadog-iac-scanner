@@ -469,7 +469,7 @@ func Test_checkHelm(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, checkHelm(ctx, tt.path))
+			require.Equal(t, tt.want, checkHelm(ctx, tt.path, nil))
 		})
 	}
 }
