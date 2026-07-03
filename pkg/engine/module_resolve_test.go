@@ -15,7 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
-// docFileID is the prefix of synthetic doc ids: fileID\x00callChain\x00name.
+// docFileID is the prefix of synthetic doc ids: fileID\x00callChain.
 func docFileID(id interface{}) string {
 	s, _ := id.(string)
 	return strings.SplitN(s, "\x00", 2)[0]
@@ -310,6 +310,86 @@ resource "aws_s3_bucket" "this" {
 	}
 	if dupes[0].callChain == "" {
 		t.Fatalf("deduplicated caller must carry a non-empty call chain")
+	}
+}
+
+func TestNewInstanceFileMetadata_LineInfoDocumentNotAliased(t *testing.T) {
+	fm := &model.FileMetadata{
+		ID: "mod-id",
+		LineInfoDocument: map[string]interface{}{
+			"resource": map[string]interface{}{
+				"aws_s3_bucket": map[string]interface{}{"this": map[string]interface{}{}},
+			},
+		},
+	}
+	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x")
+	delete(fm.LineInfoDocument, "resource")
+	if _, ok := synth.LineInfoDocument["resource"]; !ok {
+		t.Fatal("synthetic LineInfoDocument must keep resource after suppression on parent")
+	}
+}
+
+func TestResolveModuleDocuments_DifferentSourcesSameAttrsNotDeduped(t *testing.T) {
+	root := t.TempDir()
+	modA := filepath.Join(root, "modules", "bucket-a")
+	modB := filepath.Join(root, "modules", "bucket-b")
+	if err := os.MkdirAll(filepath.Join(root, "stack-a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "stack-b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(modA, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(modB, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFile(t, filepath.Join(root, "stack-a"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket-a"
+  name   = "shared"
+}
+`)
+	writeFile(t, filepath.Join(root, "stack-b"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket-b"
+  name   = "shared"
+}
+`)
+	modAFile := writeFile(t, modA, "main.tf", `
+variable "name" { type = string }
+resource "aws_s3_bucket" "this" { bucket = var.name }
+`)
+	modBFile := writeFile(t, modB, "main.tf", `
+variable "name" { type = string }
+resource "aws_s3_bucket" "this" { bucket = var.name }
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("a-root", filepath.Join(root, "stack-a", "main.tf")),
+		fileMeta("b-root", filepath.Join(root, "stack-b", "main.tf")),
+		fileMeta("mod-a", modAFile),
+		fileMeta("mod-b", modBFile),
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root)
+	if !res.ok {
+		t.Fatalf("resolveModuleDocuments ok = false, want true")
+	}
+	if len(res.docs) != 2 {
+		t.Fatalf("want 2 docs (different module sources), got %d: %#v", len(res.docs), res.docs)
+	}
+	if len(res.extras) != 0 {
+		t.Fatalf("want no dedup extras for distinct module sources, got %#v", res.extras)
+	}
+	docIDs := make(map[string]bool)
+	for _, doc := range res.docs {
+		docIDs[doc["id"].(string)] = true
+	}
+	if len(docIDs) != 2 {
+		t.Fatalf("want 2 distinct doc ids, got %d: %#v", len(docIDs), docIDs)
 	}
 }
 

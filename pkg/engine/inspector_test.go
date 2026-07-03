@@ -1250,3 +1250,31 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, vulns)
 }
+
+func TestExpandModuleFindings_NoExtrasUnchanged(t *testing.T) {
+	vulns := []model.Vulnerability{{FileID: "primary", QueryName: "rule-a"}}
+	got := expandModuleFindings(vulns, nil)
+	require.Equal(t, vulns, got)
+}
+
+func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
+	primaryID := "primary\x00stack-a|module.app\x00this"
+	extraID := "extra\x00stack-b|module.app\x00this"
+	extras := map[string][]extraCallerInfo{
+		primaryID: {{callChain: "stack-b|module.app", docID: extraID}},
+	}
+	vulns := []model.Vulnerability{{
+		FileID:    primaryID,
+		FileName:  "modules/app/main.tf",
+		Line:      5,
+		QueryName: "rule-a",
+	}}
+	got := expandModuleFindings(vulns, extras)
+	require.Len(t, got, 2)
+	require.Equal(t, primaryID, got[0].FileID)
+	require.Equal(t, extraID, got[1].FileID)
+	require.Equal(t, "stack-b|module.app", got[1].ModuleCallChain)
+	require.Equal(t, got[0].Line, got[1].Line)
+	require.Equal(t, got[0].FileName, got[1].FileName)
+	require.Equal(t, got[0].QueryName, got[1].QueryName)
+}
