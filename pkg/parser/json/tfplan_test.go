@@ -149,7 +149,7 @@ func TestJson_parseTFPlan(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "test - same resource name in different modules",
+			name: "test - same resource name in different modules is preserved with module-prefixed keys",
 			args: args{
 				doc: model.Document{
 					"format_version":    "1.2",
@@ -193,6 +193,8 @@ func TestJson_parseTFPlan(t *testing.T) {
 					},
 				},
 			},
+			// Child-module resources are module-prefixed, so they no longer
+			// collide with the root-module resource of the same type+name.
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_instance": map[string]interface{}{
@@ -290,7 +292,7 @@ func TestJson_parseTFPlan(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "test - multiple sibling modules with same resource types",
+			name: "test - multiple sibling modules with same resource types is preserved with module-prefixed keys",
 			args: args{
 				doc: model.Document{
 					"format_version":    "1.2",
@@ -332,6 +334,7 @@ func TestJson_parseTFPlan(t *testing.T) {
 					},
 				},
 			},
+			// Distinct module-prefixed keys, so both remain visible.
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
@@ -492,6 +495,61 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"data[\"dev\"]": map[string]interface{}{
 							"bucket": "dev-data-bucket",
 							"acl":    "private",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			// Mirrors what initializeJSONLine/setLineInfo injects: the resources
+			// array element's own line lives in the parent's
+			// "_dd_lines._dd_resources._dd_arr", not on the element itself.
+			name: "test - injects resource values line from _dd_lines",
+			args: args{
+				doc: model.Document{
+					"format_version":    "0.2",
+					"terraform_version": "1.0.5",
+					"variables":         map[string]any{},
+					"planned_values": map[string]any{
+						"root_module": map[string]any{
+							"_dd_lines": map[string]any{
+								"_dd_resources": map[string]any{
+									"_dd_arr": []map[string]any{
+										{
+											"_dd__default": map[string]any{"_dd_line": 5},
+											"_dd_values":   map[string]any{"_dd_line": 7},
+										},
+									},
+								},
+							},
+							"resources": []map[string]any{
+								{
+									"address": "fakewebservices_database.prod_db",
+									"mode":    "managed",
+									"type":    "fakewebservices_database",
+									"name":    "prod_db",
+									"values": map[string]any{
+										"name": "Production DB",
+										"size": 256,
+									},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]any{},
+					"configuration":    map[string]any{},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]any{
+					"fakewebservices_database": map[string]any{
+						"_dd_lines": map[string]any{
+							"_dd_prod_db": map[string]any{"_dd_line": (float64)(7)},
+						},
+						"prod_db": map[string]any{
+							"name": "Production DB",
+							"size": (float64)(256),
 						},
 					},
 				},
