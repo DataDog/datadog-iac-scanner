@@ -96,7 +96,8 @@ func Test_GetSummary(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	for _, tt := range tests {
+	for i := range tests {
+		tt := &tests[i]
 		t.Run(tt.name, func(t *testing.T) {
 			c := Client{}
 			c.Tracker = &tt.tracker
@@ -289,7 +290,8 @@ func Test_resolveOutputs(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	for _, tt := range tests {
+	for i := range tests {
+		tt := &tests[i]
 		t.Run(tt.name, func(t *testing.T) {
 			c := Client{}
 			c.Tracker = &tt.tracker
@@ -433,7 +435,8 @@ func Test_GetScanMetadata(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	for _, tt := range tests {
+	for i := range tests {
+		tt := &tests[i]
 		t.Run(tt.name, func(t *testing.T) {
 			c := Client{}
 			c.Tracker = &tt.tracker

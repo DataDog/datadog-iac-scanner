@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
 	"github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
@@ -127,6 +128,37 @@ var scanAction = &cli.Command{
 		// 	Usage:  "(experimental, will be removed soon) parse files in parallel",
 		// 	Value:  false,
 		// },
+		&cli.StringFlag{
+			Name:  "modules-manifest",
+			Usage: "path to JSON manifest mapping module sources to prefetched local directories",
+		},
+		&cli.BoolFlag{
+			Name:  "no-remote-modules",
+			Usage: "skip network module fetches; still resolve local, manifest, and .terraform/modules sources",
+			Value: true,
+		},
+		&cli.IntFlag{
+			Name:  "module-max-depth",
+			Usage: "maximum depth for traversing nested module calls (0 skips module traversal entirely)",
+			Value: 8,
+		},
+		&cli.IntFlag{
+			Name:   "module-fetch-timeout",
+			Usage:  "per-module network fetch timeout in seconds",
+			Value:  30,
+			Hidden: true,
+		},
+		&cli.IntFlag{
+			Name:   "max-module-bytes-total",
+			Usage:  "total remote module download size limit in MiB (0 = no limit)",
+			Value:  200,
+			Hidden: true,
+		},
+		&cli.StringSliceFlag{
+			Name:   "module-host-allowlist",
+			Usage:  "restrict remote module fetching to these hostnames (empty = allow all)",
+			Hidden: true,
+		},
 	},
 	Action: runScan,
 }
@@ -280,6 +312,12 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		Config:                  *cfg,
 		ShouldScanTfPlans:       c.Bool("x-terraform-plan"),
 		DisableRuleIsolation:    c.Bool("x-disable-rule-isolation"),
+		ModulesManifestPath:     c.String("modules-manifest"),
+		NoRemoteModules:         c.Bool("no-remote-modules"),
+		ModuleMaxDepth:          c.Int("module-max-depth"),
+		ModuleFetchTimeout:      time.Duration(c.Int("module-fetch-timeout")) * time.Second,
+		MaxModuleBytesTotal:     int64(c.Int("max-module-bytes-total")) * 1024 * 1024,
+		ModuleHostAllowlist:     c.StringSlice("module-host-allowlist"),
 	}
 
 	metadata, err := console.ExecuteScan(ctx, params)

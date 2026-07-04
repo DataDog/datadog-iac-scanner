@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime/debug"
@@ -182,7 +184,25 @@ type Inspector struct {
 	// fsys is the filesystem used for Terraform module resolution. Defaults to
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
 	// content.
-	fsys vfs.FS
+	fsys              vfs.FS
+	remoteModuleDirs  map[string]string
+	externalPathRoots map[string]bool
+}
+
+func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]string) {
+	c.remoteModuleDirs = sourceToDir
+}
+
+func (c *Inspector) SetExternalModulePaths(paths []string) {
+	if len(paths) == 0 {
+		c.externalPathRoots = nil
+		return
+	}
+	roots := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		roots[filepath.Clean(p)] = true
+	}
+	c.externalPathRoots = roots
 }
 
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
@@ -380,14 +400,9 @@ func (c *Inspector) Inspect(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
 
-	// Terraform local-module instantiation is gated so it can be disabled remotely.
-	var moduleDocs []model.Document
-	var moduleExtras map[string][]extraCallerInfo
-	if c.flagEvaluator != nil && c.flagEvaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
-		var syntheticFiles []*model.FileMetadata
-		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files)
-		files = append(files, syntheticFiles...)
-	}
+	// Local modules: append synthetic file rows (ids match docs) for attribution and fingerprints.
+	moduleDocs, syntheticFiles, moduleExtras := c.instantiateLocalModules(ctx, files)
+	files = append(files, syntheticFiles...)
 
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
@@ -395,7 +410,7 @@ func (c *Inspector) Inspect(
 	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
 	// non-fatal (logged, scan continues), but a context cancellation must abort
 	// the scan rather than proceed with partial module data.
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
+	parsedModules, err := tfmodules.ParseTerraformModules(ctx, files, c.numWorkers)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
@@ -408,9 +423,9 @@ func (c *Inspector) Inspect(
 	// cancellation must abort the scan rather than proceed with partial module
 	// data; per-module parse failures are non-fatal and handled internally.
 	rootDir := c.repoPath
-	enrichedModules, err := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, rootDir)
-	if err != nil {
-		return nil, err
+	enrichedModules, unresolvedModules := tfmodules.ParseAllModuleVariables(ctx, parsedModules, rootDir, c.buildModuleMetadataResolver())
+	if len(unresolvedModules) > 0 {
+		contextLogger.Debug().Msgf("%d module(s) could not be resolved and will be skipped", len(unresolvedModules))
 	}
 
 	queries := c.getQueriesByPlat(platforms)
@@ -494,6 +509,7 @@ func (c *Inspector) executeQueries(
 	for vulnerability, number := range moduleVulns {
 		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
 	}
+
 	return vulnerabilities, nil
 }
 
@@ -778,7 +794,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		if rc.Severity != nil {
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
-		if rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+		if !c.isExternalModulePath(file.FilePath) && rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
 			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
 				file.FilePath, vulnerability.QueryID)
 			return nil, false
@@ -827,6 +843,16 @@ func lookupRuleConfig(ruleConfigs map[string]config.IacRuleConfig, queryID, lega
 // based on its ignore-paths and only-paths lists.
 func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
 	return pathutil.Excluded(filePath, ignorePaths, onlyPaths)
+}
+
+func (c *Inspector) isExternalModulePath(filePath string) bool {
+	for root := range c.externalPathRoots {
+		rel, err := filepath.Rel(root, filepath.Clean(filePath))
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // markSuppressed records the first suppression decision; later gates are

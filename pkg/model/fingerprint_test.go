@@ -11,6 +11,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetDatadogFingerprintHash_RemoteModuleVersionStripping(t *testing.T) {
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
+
+	v1 := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws@1.0.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	v2 := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws@2.0.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.Equal(t, v1, v2, "upgrading a remote module must not change the fingerprint")
+
+	constraint := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws@~> 3.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	concrete := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws@3.2.1/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.Equal(t, constraint, concrete, "constraint string and resolved version must hash identically")
+
+	noVersion := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.Equal(t, v1, noVersion, "explicit version and no-version path must hash identically")
+
+	other := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/eks/aws@1.0.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.NotEqual(t, v1, other, "different module sources must produce distinct fingerprints")
+
+	local := GetDatadogFingerprintHash(sci, "modules/vpc/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.NotEqual(t, v1, local, "local and remote module paths must differ")
+}
+
 // Empty chain adds no segment; a chain changes the hash for Terraform and is ignored elsewhere.
 func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}

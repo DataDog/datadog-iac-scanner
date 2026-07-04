@@ -58,6 +58,12 @@ type Parameters struct {
 	ShouldScanTfPlans           bool
 	DisableRuleIsolation        bool
 	UseRulesCache               bool
+	ModulesManifestPath         string
+	NoRemoteModules             bool
+	ModuleMaxDepth              int
+	ModuleFetchTimeout          time.Duration
+	MaxModuleBytesTotal         int64
+	ModuleHostAllowlist         []string
 }
 
 func (p *Parameters) GetEffectivePlatforms() []string {
@@ -158,6 +164,9 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxFileSizeFlag:             5,
 		UseOldSeverities:            false,
 		MaxResolverDepth:            15,
+		ModuleMaxDepth:              8,
+		ModuleFetchTimeout:          30 * time.Second,
+		MaxModuleBytesTotal:         200 * 1024 * 1024,
 	}, logCtx
 }
 

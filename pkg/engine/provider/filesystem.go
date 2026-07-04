@@ -150,6 +150,42 @@ func (s *FileSystemSourceProvider) ExcludePaths(ctx context.Context, paths []str
 	return s.addExcluded(ctx, paths)
 }
 
+func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range paths {
+		s.paths = append(s.paths, filepath.FromSlash(p))
+	}
+}
+
+func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string, error) {
+	files := make([]string, 0)
+	extensions := model.Extensions{".tf": {}}
+	for _, scanPath := range s.paths {
+		fileInfo, err := os.Stat(scanPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to open path")
+		}
+		if !fileInfo.IsDir() {
+			if shouldSkip, _ := s.checkConditions(ctx, fileInfo, extensions, scanPath, nil); shouldSkip {
+				continue
+			}
+			files = append(files, strings.ReplaceAll(scanPath, "\\", "/"))
+			continue
+		}
+		collected, err := s.collectFiles(ctx, scanPath, noopResolverSink, extensions)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to collect files")
+		}
+		files = append(files, collected...)
+	}
+	return files, nil
+}
+
+func noopResolverSink(context.Context, string) ([]string, error) {
+	return nil, errors.New("resolver unavailable")
+}
+
 // ignoreDamagedFiles checks whether we should ignore a damaged file from a scan or not.
 func ignoreDamagedFiles(ctx context.Context, path string) bool {
 	contextLogger := logger.FromContext(ctx)

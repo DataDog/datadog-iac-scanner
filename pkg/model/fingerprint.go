@@ -8,6 +8,7 @@ package model
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"regexp"
 	"strings"
 )
 
@@ -16,6 +17,12 @@ const (
 	terraformPlatform  = "Terraform"
 )
 
+var moduleVersionRE = regexp.MustCompile(`@[^/]+`)
+
+func stripModuleVersion(path string) string {
+	return moduleVersionRE.ReplaceAllString(path, "")
+}
+
 // GetDatadogFingerprintHash is the single source of truth for a finding's
 // stable identity. It is computed once when the summary is built and reused by
 // every report format, so the fingerprint never diverges across outputs.
@@ -23,7 +30,7 @@ const (
 func GetDatadogFingerprintHash(
 	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
 ) string {
-	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleID}
+	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, stripModuleVersion(filePath), resourceType, resourceName, ruleID}
 
 	switch platform {
 	case dockerfilePlatform:
