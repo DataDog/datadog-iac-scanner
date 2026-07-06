@@ -101,25 +101,21 @@ func (c *moduleCache) store(source, version, srcDir string) (string, error) {
 	return v.(string), nil
 }
 
-// copyDir copies all regular files from src into dst using simple read/write
-// operations that don't hold directory handles across the rename on Windows.
+// copyDir recursively copies src into dst using simple read/write operations
+// that don't hold directory handles across the rename on Windows.
 func copyDir(dst, src string) error {
-	srcFS := os.DirFS(src)
-	entries, err := fs.ReadDir(srcFS, ".")
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		data, err := fs.ReadFile(srcFS, e.Name())
+	return fs.WalkDir(os.DirFS(src), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(dst, e.Name()), data, cacheFilePerms); err != nil {
+		target := filepath.Join(dst, filepath.FromSlash(path))
+		if d.IsDir() {
+			return os.MkdirAll(target, cacheDirPerms)
+		}
+		data, err := fs.ReadFile(os.DirFS(src), path)
+		if err != nil {
 			return err
 		}
-	}
-	return nil
+		return os.WriteFile(target, data, cacheFilePerms)
+	})
 }
