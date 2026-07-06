@@ -27,7 +27,11 @@ func PrepareAndScan(
 ) error {
 	metrics.Metric.Start("prepare_sources")
 
-	if fsp, ok := runner.SharedWalkProvider(services); ok {
+	// The shared walk parses every file concurrently, so it is gated behind the
+	// same flag as parallel per-service parsing; when the flag is off we keep the
+	// legacy per-service prepare path.
+	if fsp, ok := runner.SharedWalkProvider(services); ok &&
+		flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing) {
 		err := runner.PrepareSharedWalk(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth)
 		metrics.Metric.Stop()
 		if err != nil {

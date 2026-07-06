@@ -6,16 +6,19 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
@@ -148,6 +151,113 @@ func TestPrepareSharedWalk_MatchesPerService(t *testing.T) {
 		"shared walk and per-service walk must prepare the same documents")
 	require.Equal(t, perService, shared,
 		"shared walk and per-service walk must prepare the same document multiset")
+}
+
+// TestPrepareSharedWalk_PrebuiltWalk_MatchesPerService drives the CLI hot path:
+// the analyzer walks once, the provider reuses that inventory (SetPrebuiltWalk)
+// and content cache, and services classify via the analyzer's path→platform map.
+// The prepared documents must still match the legacy per-service walk.
+func TestPrepareSharedWalk_PrebuiltWalk_MatchesPerService(t *testing.T) {
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "deploy.yaml"),
+		"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: c\n          image: nginx:latest\n")
+	writeFile(t, filepath.Join(dir, "main.tf"),
+		"resource \"aws_s3_bucket\" \"b\" {\n  bucket = \"my-bucket\"\n}\n")
+	writeFile(t, filepath.Join(dir, "variables.tf"),
+		"variable \"env\" {\n  type = string\n}\n")
+	writeFile(t, filepath.Join(dir, "terraform.tfvars"),
+		"env = \"prod\"\n")
+	writeFile(t, filepath.Join(dir, "extra.auto.tfvars"),
+		"env = \"staging\"\n")
+	writeFile(t, filepath.Join(dir, "Dockerfile"),
+		"FROM alpine:3.19\nRUN echo hi\n")
+
+	paths := []string{dir}
+	for _, rel := range []string{
+		"../../test/fixtures/test_helm",
+		"../../test/fixtures/test_helm_subchart",
+	} {
+		abs, absErr := filepath.Abs(filepath.FromSlash(rel))
+		require.NoError(t, absErr)
+		paths = append(paths, abs)
+	}
+
+	analyzed, err := analyzer.Analyze(ctx, &analyzer.Analyzer{
+		RepoPath:    dir,
+		Paths:       paths,
+		Types:       []string{""},
+		MaxFileSize: 100,
+	})
+	require.NoError(t, err)
+
+	tfvarsPath := filepath.ToSlash(filepath.Join(dir, "terraform.tfvars"))
+	require.Contains(t, analyzed.Inventory, tfvarsPath,
+		"tfvars files must be part of the analyzer inventory (regression guard)")
+
+	sharedServices, sharedStore := buildParityServices(t, ctx, paths)
+	fsp, ok := SharedWalkProvider(sharedServices)
+	require.True(t, ok, "shared walk provider should apply")
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	for _, s := range sharedServices {
+		s.FilePlatform = analyzed.FilePlatform
+	}
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, sharedServices, "parity", false, 5))
+
+	perServiceServices, perServiceStore := buildParityServices(t, ctx, paths)
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(perServiceServices))
+	for _, s := range perServiceServices {
+		wg.Add(1)
+		go s.PrepareSources(ctx, "parity", false, 5, &wg, errCh, featureflags.NewLocalEvaluatorWithOverrides(nil))
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	shared := documentFingerprint(t, sharedStore)
+	perService := documentFingerprint(t, perServiceStore)
+
+	require.Equal(t, keysSorted(perService), keysSorted(shared),
+		"prebuilt shared walk and per-service walk must prepare the same documents")
+	require.Equal(t, perService, shared,
+		"prebuilt shared walk and per-service walk must prepare the same document multiset")
+
+	tfvarsPrepared := false
+	for key := range shared {
+		if strings.Contains(key, "terraform.tfvars") {
+			tfvarsPrepared = true
+			break
+		}
+	}
+	require.True(t, tfvarsPrepared, "tfvars document should be prepared by the shared walk")
+}
+
+// TestContentLineCountParity guards that chunked reads (getContent) and cached
+// bytes (contentFromBytes) report identical line counts, including large files
+// with no trailing newline that span multiple read chunks.
+func TestContentLineCountParity(t *testing.T) {
+	cases := map[string][]byte{
+		"empty":             {},
+		"no trailing nl":    []byte("a\nb\nc"),
+		"trailing nl":       []byte("a\nb\nc\n"),
+		"multi-mb no nl":    bytes.Repeat([]byte("x"), 3*mbConst+123),
+		"multi-mb with nls": bytes.Repeat([]byte("line\n"), mbConst),
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			buf := make([]byte, mbConst)
+			chunked, err := getContent(bytes.NewReader(content), buf, 100, name)
+			require.NoError(t, err)
+			cached, err := contentFromBytes(content, 100, name)
+			require.NoError(t, err)
+			require.Equal(t, cached.CountLines, chunked.CountLines,
+				"cached and chunked line counts must match")
+		})
+	}
 }
 
 func writeFile(t *testing.T, path, content string) {

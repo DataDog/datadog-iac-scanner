@@ -160,7 +160,7 @@ const (
 	extUbi8               = ".ubi8"
 	extDebian             = ".debian"
 	extTf                 = ".tf"
-	extTfvars             = "tfvars"
+	extTfvars             = ".tfvars"
 	extBicepFile          = ".bicep"
 	extProto              = ".proto"
 	extCfg                = ".cfg"

@@ -225,7 +225,6 @@ to prevent resource exhaustion and return its content
 */
 func getContent(rc io.Reader, data []byte, maxSizeMB int, filename string) (*Content, error) {
 	var content []byte
-	countLines := 0
 
 	c := &Content{
 		Content:    &[]byte{},
@@ -244,16 +243,28 @@ func getContent(rc io.Reader, data []byte, maxSizeMB int, filename string) (*Con
 			}
 			return c, err
 		}
-		countLines += bytes.Count(data[:n], []byte{'\n'}) + 1
 		content = append(content, data[:n]...)
 		maxSizeMB--
 	}
 	c.Content = &content
-	c.CountLines = countLines
+	// Count lines from the assembled content so chunked reads match a single
+	// read (contentFromBytes); the previous per-chunk +1 over-counted.
+	c.CountLines = countContentLines(content)
 	c.CountResources = GetCountTerraformResources(content)
 
 	c.IsMinified = minified.IsMinified(filename, content)
 	return c, nil
+}
+
+// countContentLines counts lines the way an editor does: one per newline, plus a
+// trailing line when the file does not end in a newline. Shared by getContent
+// and contentFromBytes so cached and freshly read files report identical counts.
+func countContentLines(content []byte) int {
+	count := bytes.Count(content, []byte{'\n'})
+	if len(content) > 0 && content[len(content)-1] != '\n' {
+		count++
+	}
+	return count
 }
 
 func contentFromBytes(content []byte, maxSizeMB int, filename string) (*Content, error) {
@@ -264,13 +275,9 @@ func contentFromBytes(content []byte, maxSizeMB int, filename string) (*Content,
 			return nil, errors.New("file size limit exceeded")
 		}
 	}
-	countLines := bytes.Count(copied, []byte{'\n'})
-	if len(copied) > 0 && copied[len(copied)-1] != '\n' {
-		countLines++
-	}
 	return &Content{
 		Content:        &copied,
-		CountLines:     countLines,
+		CountLines:     countContentLines(copied),
 		IsMinified:     minified.IsMinified(filename, copied),
 		CountResources: GetCountTerraformResources(copied),
 	}, nil
