@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -17,7 +18,17 @@ const (
 	bundleConfigFileName    = "config.yaml"
 	bundleRulesFileName     = "rules.json"
 	bundleLibrariesFileName = "libraries.json"
+	bundleManifestFileName  = "manifest.json"
 )
+
+// bundleManifest records when and for which repository an offline bundle was
+// fetched, so that `scan --offline-bundle-path` can warn about a stale bundle
+// instead of silently running against outdated rules.
+type bundleManifest struct {
+	RepoURL        string    `json:"repo_url"`
+	FetchedAt      time.Time `json:"fetched_at"`
+	ScannerVersion string    `json:"scanner_version"`
+}
 
 var fetchBundleAction = &cli.Command{
 	Name: "fetch-bundle",
@@ -91,6 +102,33 @@ func fetchBundle(ctx context.Context, c *cli.Command) error {
 		return errorWithExitCode(fmt.Errorf("error writing the libraries bundle: %w", err), constants.EngineErrorCode)
 	}
 
+	manifest := bundleManifest{
+		RepoURL:        c.String("repo-url"),
+		FetchedAt:      time.Now().UTC(),
+		ScannerVersion: constants.Version,
+	}
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		return errorWithExitCode(fmt.Errorf("error marshaling the bundle manifest: %w", err), constants.EngineErrorCode)
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, bundleManifestFileName), manifestBytes, filePerms); err != nil {
+		return errorWithExitCode(fmt.Errorf("error writing the bundle manifest: %w", err), constants.EngineErrorCode)
+	}
+
 	fmt.Printf("Wrote offline bundle (%d rules, %d libraries) to %s\n", len(ruleset.Rules), len(libraries), outputDir)
 	return nil
+}
+
+// readBundleManifest reads and parses the manifest written by fetchBundle,
+// used by `scan --offline-bundle-path` to warn about a stale bundle.
+func readBundleManifest(bundleDir string) (*bundleManifest, error) {
+	b, err := os.ReadFile(filepath.Clean(filepath.Join(bundleDir, bundleManifestFileName)))
+	if err != nil {
+		return nil, err
+	}
+	var manifest bundleManifest
+	if err := json.Unmarshal(b, &manifest); err != nil {
+		return nil, err
+	}
+	return &manifest, nil
 }
