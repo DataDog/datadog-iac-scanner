@@ -32,11 +32,34 @@ type ParsedModule struct {
 	SourceType     string // local, git, registry, etc.
 	RegistryScope  string // public, private, or "" (non-registry)
 	AttributesData map[string]ModuleAttributesInfo
+	FileName       string
+	DefLine        int
 }
 
 type ModuleAttributesInfo struct {
 	Resources []string          `json:"resources"`
 	Inputs    map[string]string `json:"inputs"`
+}
+
+type UnresolvedModule struct {
+	Module ParsedModule
+	Reason string
+}
+
+// UnresolvedError is returned by a Resolver when a module source cannot be
+// mapped to a local directory.
+type UnresolvedError struct {
+	Reason string
+}
+
+func (e *UnresolvedError) Error() string {
+	return "module unresolved: " + e.Reason
+}
+
+// IsUnresolved reports whether err wraps an UnresolvedError.
+func IsUnresolved(err error) bool {
+	var e *UnresolvedError
+	return errors.As(err, &e)
 }
 
 var registryPattern = regexp.MustCompile(`^[a-z0-9\-]+/[a-z0-9\-]+/[a-z0-9\-]+$`)
