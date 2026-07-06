@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -115,6 +116,11 @@ var scanAction = &cli.Command{
 			Name:  "libraries-path",
 			Usage: "path to local Rego support libraries (default: fetch from backend when using local queries-path)",
 		},
+		&cli.StringFlag{
+			Name: "offline-bundle-path",
+			Usage: "directory containing rules, libraries and configuration previously written by " +
+				"`fetch-bundle`; when set, the scan makes no network calls",
+		},
 		&cli.StringSliceFlag{
 			Name:  "report-format",
 			Usage: "output report formats (valid: sarif, simple-json)",
@@ -212,13 +218,30 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("error retrieving repository commit information: %w", err)
 	}
 
-	cfg, _, err := config.ReadConfiguration(ctx, repoDir, config.WithDatadog(datadog.NewDatadogClient(), repoInfo.RepositoryUrl))
-	if err != nil {
-		outErr := fmt.Errorf("error reading the configuration: %w", err)
-		if te := (*config.InvalidLocalConfigError)(nil); errors.As(err, &te) {
-			outErr = errorWithExitCode(outErr, constants.InvalidConfigErrorCode)
+	offlineBundlePath := c.String("offline-bundle-path")
+
+	var cfg *config.IacConfig
+	if offlineBundlePath != "" {
+		cfgBytes, err := os.ReadFile(filepath.Join(offlineBundlePath, bundleConfigFileName)) // nolint:gosec
+		if err != nil {
+			return errorWithExitCode(fmt.Errorf("error reading the offline configuration bundle: %w", err), constants.InvalidConfigErrorCode)
 		}
-		return outErr
+		cfg, err = config.ParseConfig(cfgBytes)
+		if err != nil {
+			return errorWithExitCode(fmt.Errorf("error parsing the offline configuration bundle: %w", err), constants.InvalidConfigErrorCode)
+		}
+		if cfg == nil {
+			cfg = &config.IacConfig{}
+		}
+	} else {
+		cfg, _, err = config.ReadConfiguration(ctx, repoDir, config.WithDatadog(datadog.NewDatadogClient(), repoInfo.RepositoryUrl))
+		if err != nil {
+			outErr := fmt.Errorf("error reading the configuration: %w", err)
+			if te := (*config.InvalidLocalConfigError)(nil); errors.As(err, &te) {
+				outErr = errorWithExitCode(outErr, constants.InvalidConfigErrorCode)
+			}
+			return outErr
+		}
 	}
 	excludePaths, err := getRepoRelativePaths(repoDir, cfg.IgnorePaths)
 	if err != nil {
@@ -298,7 +321,25 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 	}
 
-	metadata, err := console.ExecuteScan(ctx, params)
+	var opts []scan.ClientOption
+	if offlineBundlePath != "" {
+		offlineClient, err := datadog.NewLocalFileClient(
+			filepath.Join(offlineBundlePath, bundleRulesFileName),
+			filepath.Join(offlineBundlePath, bundleLibrariesFileName),
+		)
+		if err != nil {
+			return errorWithExitCode(fmt.Errorf("error loading the offline bundle: %w", err), constants.InvalidConfigErrorCode)
+		}
+		opts = append(opts, scan.WithQuerySourceFactory(func(_ context.Context, paramsPlatforms []string) (source.QueriesSource, error) {
+			return source.NewDatadogSource(
+				offlineClient,
+				source.WithWantedPlatforms(paramsPlatforms),
+				source.WithWantedCloudProviders(params.CloudProvider),
+			)
+		}))
+	}
+
+	metadata, err := console.ExecuteScan(ctx, params, opts...)
 	if err != nil {
 		return errorWithExitCode(fmt.Errorf("error during IaC scan: %w", err), constants.EngineErrorCode)
 	}
