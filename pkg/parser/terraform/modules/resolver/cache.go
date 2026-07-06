@@ -9,17 +9,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 
 	"golang.org/x/sync/singleflight"
 )
 
-const (
-	cacheDirPerms  = 0o700
-	cacheFilePerms = 0o600
-)
+const cacheDirPerms = 0o700
 
 // moduleCache is a content-addressed on-disk module store ($XDG_CACHE_HOME/.../modules).
 type moduleCache struct {
@@ -82,7 +78,7 @@ func (c *moduleCache) store(source, version, srcDir string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("creating cache temp dir: %w", err)
 		}
-		if err := copyDir(tmp, srcDir); err != nil {
+		if err := os.CopyFS(tmp, os.DirFS(srcDir)); err != nil {
 			_ = os.RemoveAll(tmp)
 			return "", fmt.Errorf("copying to cache: %w", err)
 		}
@@ -99,23 +95,4 @@ func (c *moduleCache) store(source, version, srcDir string) (string, error) {
 		return "", err
 	}
 	return v.(string), nil
-}
-
-// copyDir recursively copies src into dst using simple read/write operations
-// that don't hold directory handles across the rename on Windows.
-func copyDir(dst, src string) error {
-	return fs.WalkDir(os.DirFS(src), ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, filepath.FromSlash(path))
-		if d.IsDir() {
-			return os.MkdirAll(target, cacheDirPerms)
-		}
-		data, err := fs.ReadFile(os.DirFS(src), path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, cacheFilePerms)
-	})
 }

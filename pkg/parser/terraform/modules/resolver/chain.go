@@ -25,17 +25,13 @@ func (c *ChainResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule
 	if len(c.resolvers) == 0 {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "no resolvers configured"}
 	}
-	var lastErr error
+	var errs []error
 	for _, r := range c.resolvers {
 		res, err := r.Resolve(ctx, mod)
 		if err == nil {
 			return res, nil
 		}
-		lastErr = err
+		errs = append(errs, err)
 	}
-	var ue *tfmodules.UnresolvedError
-	if errors.As(lastErr, &ue) {
-		return Resolution{}, lastErr
-	}
-	return Resolution{}, &tfmodules.UnresolvedError{Reason: lastErr.Error()}
+	return Resolution{}, &tfmodules.UnresolvedError{Reason: errors.Join(errs...).Error()}
 }

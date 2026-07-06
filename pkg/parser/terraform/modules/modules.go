@@ -41,11 +41,6 @@ type ModuleAttributesInfo struct {
 	Inputs    map[string]string `json:"inputs"`
 }
 
-type UnresolvedModule struct {
-	Module ParsedModule
-	Reason string
-}
-
 // UnresolvedError is returned by a Resolver when a module source cannot be
 // mapped to a local directory.
 type UnresolvedError struct {
