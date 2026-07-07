@@ -74,20 +74,20 @@ func gitInDir(ctx context.Context, gitDir string, args ...string) *exec.Cmd {
 	cmdArgs := make([]string, 0, 2+len(args))
 	cmdArgs = append(cmdArgs, "--git-dir", gitSafePath(gitDir))
 	cmdArgs = append(cmdArgs, args...)
-	return exec.CommandContext(ctx, "git", cmdArgs...)
+	return exec.CommandContext(ctx, "git", cmdArgs...) //nolint:gosec
 }
 
 func gitInWorktree(ctx context.Context, root string, args ...string) *exec.Cmd {
 	cmdArgs := make([]string, 0, 2+len(args))
 	cmdArgs = append(cmdArgs, "-C", gitSafePath(root))
 	cmdArgs = append(cmdArgs, args...)
-	return exec.CommandContext(ctx, "git", cmdArgs...)
+	return exec.CommandContext(ctx, "git", cmdArgs...) //nolint:gosec
 }
 
 func gitCloneBare(ctx context.Context, remoteURL, dest string) *exec.Cmd {
-	return exec.CommandContext(ctx, "git", "clone", "--bare", "--filter=blob:none", remoteURL, gitSafePath(dest))
+	return exec.CommandContext(ctx, "git", "clone", "--bare", "--filter=blob:none", remoteURL, gitSafePath(dest)) //nolint:gosec
 }
 
 func tarExtract(ctx context.Context, dest string) *exec.Cmd {
-	return exec.CommandContext(ctx, "tar", "-x", "-C", gitSafePath(dest))
+	return exec.CommandContext(ctx, "tar", "-x", "-C", gitSafePath(dest)) //nolint:gosec
 }

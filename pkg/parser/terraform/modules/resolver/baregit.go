@@ -170,96 +170,109 @@ func (repo *bareRepo) ensureClone(ctx context.Context) error {
 		if repo.cloneFailed.Load() {
 			return nil, repo.cachedCloneError()
 		}
-		if info, err := os.Stat(repo.barePath); err == nil && info.IsDir() {
-			// Validate that the directory is a real bare repo, not a partial clone
-			// left by a killed process. This is a local-only read (no network, no
-			// pack-file I/O) so it intentionally bypasses the acquireGitProc semaphore,
-			// which is reserved for operations that meaningfully consume system resources.
-			if gitInDir(ctx, repo.barePath, "rev-parse", "--git-dir").Run() == nil {
-				repo.cloneOK.Store(true)
-				return nil, nil
-			}
-			// Partial or corrupt clone — remove and reclone.
-			_ = os.RemoveAll(repo.barePath)
-		}
-		var lastErr error
-		for attempt := 0; attempt < bareCloneAttempts; attempt++ {
-			if attempt > 0 {
-				backoff := time.Duration(attempt) * 500 * time.Millisecond
-				select {
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-time.After(backoff):
-				}
-			}
-			if err := os.MkdirAll(filepath.Dir(repo.barePath), dirPerm); err != nil {
-				lastErr = err
-				continue
-			}
-			_ = os.RemoveAll(repo.barePath)
-			release, err := acquireGitProc(ctx)
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			cloneURL, urlErr := gitSafeArg(repo.cloneURL)
-			if urlErr != nil {
-				lastErr = urlErr
-				continue
-			}
-			cmd := gitCloneBare(ctx, cloneURL, repo.barePath)
-			out, cloneErr := cmd.CombinedOutput()
-			release()
-			if cloneErr == nil {
-				repo.cloneOK.Store(true)
-				return nil, nil
-			}
-			_ = os.RemoveAll(repo.barePath)
-			lastErr = fmt.Errorf("git clone --bare %s: %w\n%s", repo.cloneURL, cloneErr, bytes.TrimSpace(out))
-		}
-		repo.setCloneError(lastErr)
-		log := logger.FromContext(ctx)
-		log.Warn().Err(lastErr).Msgf("BareGitResolver: failed to clone %s after %d attempts", repo.cloneURL, bareCloneAttempts)
-		return nil, lastErr
+		return nil, repo.doClone(ctx)
 	})
 	return err
+}
+
+// doClone checks for an existing bare clone, validates it, and attempts a fresh
+// clone with retries if needed. It is always called inside the cloneSF singleflight.
+func (repo *bareRepo) doClone(ctx context.Context) error {
+	if info, err := os.Stat(repo.barePath); err == nil && info.IsDir() {
+		// Validate that the directory is a real bare repo, not a partial clone
+		// left by a killed process. This is a local-only read (no network, no
+		// pack-file I/O) so it intentionally bypasses the acquireGitProc semaphore,
+		// which is reserved for operations that meaningfully consume system resources.
+		if gitInDir(ctx, repo.barePath, "rev-parse", "--git-dir").Run() == nil {
+			repo.cloneOK.Store(true)
+			return nil
+		}
+		// Partial or corrupt clone — remove and reclone.
+		_ = os.RemoveAll(repo.barePath)
+	}
+	var lastErr error
+	for attempt := 0; attempt < bareCloneAttempts; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(attempt) * 500 * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+		if err := os.MkdirAll(filepath.Dir(repo.barePath), dirPerm); err != nil {
+			lastErr = err
+			continue
+		}
+		_ = os.RemoveAll(repo.barePath)
+		release, err := acquireGitProc(ctx)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		cloneURL, urlErr := gitSafeArg(repo.cloneURL)
+		if urlErr != nil {
+			lastErr = urlErr
+			continue
+		}
+		cmd := gitCloneBare(ctx, cloneURL, repo.barePath)
+		out, cloneErr := cmd.CombinedOutput()
+		release()
+		if cloneErr == nil {
+			repo.cloneOK.Store(true)
+			return nil
+		}
+		_ = os.RemoveAll(repo.barePath)
+		lastErr = fmt.Errorf("git clone --bare %s: %w\n%s", repo.cloneURL, cloneErr, bytes.TrimSpace(out))
+	}
+	repo.setCloneError(lastErr)
+	log := logger.FromContext(ctx)
+	log.Warn().Err(lastErr).Msgf("BareGitResolver: failed to clone %s after %d attempts", repo.cloneURL, bareCloneAttempts)
+	return lastErr
 }
 
 // fetchRef ensures ref is present and returns its canonical commit SHA.
 func (repo *bareRepo) fetchRef(ctx context.Context, ref string) (string, error) {
 	if looksLikeSHA(ref) {
-		// Fast path: SHA is stable; check locally first.
-		v, err, _ := repo.fetchSF.Do(ref, func() (interface{}, error) {
-			release, acqErr := acquireGitProc(ctx)
-			if acqErr != nil {
-				return "", acqErr
-			}
-			defer release()
-			safeRef, refErr := gitSafeArg(ref)
-			if refErr != nil {
-				return "", refErr
-			}
-			check := gitInDir(ctx, repo.barePath, "cat-file", "-t", safeRef)
-			if check.Run() == nil {
-				return ref, nil // already present
-			}
-			cmd := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "origin", safeRef)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				return "", fmt.Errorf("git fetch origin %s: %w\n%s", ref, err, bytes.TrimSpace(out))
-			}
-			return ref, nil
-		})
-		if err != nil {
-			return "", err
-		}
-		return v.(string), nil
+		return repo.fetchSHARef(ctx, ref)
 	}
+	return repo.fetchNamedRef(ctx, ref)
+}
 
-	// Branch/tag ref: fetch and resolve to SHA. Key on "ref:<name>" so it
-	// doesn't conflict with SHA keys.
+// fetchSHARef handles the case where ref is already a full 40-char SHA.
+// It checks that the object is locally present, fetching it from origin if not.
+func (repo *bareRepo) fetchSHARef(ctx context.Context, ref string) (string, error) {
+	v, err, _ := repo.fetchSF.Do(ref, func() (interface{}, error) {
+		release, acqErr := acquireGitProc(ctx)
+		if acqErr != nil {
+			return "", acqErr
+		}
+		defer release()
+		safeRef, refErr := gitSafeArg(ref)
+		if refErr != nil {
+			return "", refErr
+		}
+		if gitInDir(ctx, repo.barePath, "cat-file", "-t", safeRef).Run() == nil {
+			return ref, nil // already present
+		}
+		cmd := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "origin", safeRef)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("git fetch origin %s: %w\n%s", ref, err, bytes.TrimSpace(out))
+		}
+		return ref, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return v.(string), nil
+}
+
+// fetchNamedRef handles branch/tag refs: it resolves the name to a commit SHA,
+// using an in-memory and on-disk cache to avoid unnecessary network fetches.
+func (repo *bareRepo) fetchNamedRef(ctx context.Context, ref string) (string, error) {
+	// Key on "ref:<name>" so SHA keys and name keys never collide in fetchSF.
 	v, err, _ := repo.fetchSF.Do("ref:"+ref, func() (interface{}, error) {
-		// Fast path: return the cached SHA from a previous run, skipping the network entirely.
-		// The archive extraction has its own on-disk cache keyed by SHA, so the result is stable.
+		// In-process cache: skip the network if we resolved this ref earlier.
 		repo.refMu.RLock()
 		if cachedSHA, ok := repo.refCache[ref]; ok {
 			repo.refMu.RUnlock()
@@ -302,8 +315,7 @@ func (repo *bareRepo) fetchRef(ctx context.Context, ref string) (string, error) 
 			}
 		}
 		// Resolve FETCH_HEAD to the commit SHA.
-		resolve := gitInDir(ctx, repo.barePath, "rev-parse", "FETCH_HEAD")
-		sha, revErr := resolve.Output()
+		sha, revErr := gitInDir(ctx, repo.barePath, "rev-parse", "FETCH_HEAD").Output()
 		if revErr != nil {
 			return "", fmt.Errorf("git rev-parse FETCH_HEAD: %w", revErr)
 		}
