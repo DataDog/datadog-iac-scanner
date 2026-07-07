@@ -7,7 +7,11 @@ package resolver
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -49,4 +53,41 @@ func looksLikeSHA(ref string) bool {
 		}
 	}
 	return true
+}
+
+func gitSafePath(path string) string {
+	return filepath.Clean(path)
+}
+
+func gitSafeArg(arg string) (string, error) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return "", fmt.Errorf("empty git argument")
+	}
+	if strings.HasPrefix(arg, "-") {
+		return "", fmt.Errorf("invalid git argument %q", arg)
+	}
+	return arg, nil
+}
+
+func gitInDir(ctx context.Context, gitDir string, args ...string) *exec.Cmd {
+	cmdArgs := make([]string, 0, 2+len(args))
+	cmdArgs = append(cmdArgs, "--git-dir", gitSafePath(gitDir))
+	cmdArgs = append(cmdArgs, args...)
+	return exec.CommandContext(ctx, "git", cmdArgs...)
+}
+
+func gitInWorktree(ctx context.Context, root string, args ...string) *exec.Cmd {
+	cmdArgs := make([]string, 0, 2+len(args))
+	cmdArgs = append(cmdArgs, "-C", gitSafePath(root))
+	cmdArgs = append(cmdArgs, args...)
+	return exec.CommandContext(ctx, "git", cmdArgs...)
+}
+
+func gitCloneBare(ctx context.Context, remoteURL, dest string) *exec.Cmd {
+	return exec.CommandContext(ctx, "git", "clone", "--bare", "--filter=blob:none", remoteURL, gitSafePath(dest))
+}
+
+func tarExtract(ctx context.Context, dest string) *exec.Cmd {
+	return exec.CommandContext(ctx, "tar", "-x", "-C", gitSafePath(dest))
 }

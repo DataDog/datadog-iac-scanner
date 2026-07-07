@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -52,8 +51,8 @@ type bareRepo struct {
 	cloneErrMu  sync.Mutex
 	cloneErr    error
 	cloneSF     singleflight.Group
-	fetchSF   singleflight.Group
-	extractSF singleflight.Group
+	fetchSF     singleflight.Group
+	extractSF   singleflight.Group
 
 	refMu    sync.RWMutex
 	refCache map[string]string // tag/branch ref → resolved SHA (warm from disk on init)
@@ -113,7 +112,7 @@ func (r *BareGitResolver) getOrInitRepo(repoURL string) *bareRepo {
 
 // loadBareRefCache reads the persistent ref→SHA map for a bare clone.
 func loadBareRefCache(path string) map[string]string {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return make(map[string]string)
 	}
@@ -195,7 +194,12 @@ func (repo *bareRepo) ensureClone(ctx context.Context) error {
 				lastErr = err
 				continue
 			}
-			cmd := exec.CommandContext(ctx, "git", "clone", "--bare", "--filter=blob:none", repo.cloneURL, repo.barePath) //nolint:gosec
+			cloneURL, urlErr := gitSafeArg(repo.cloneURL)
+			if urlErr != nil {
+				lastErr = urlErr
+				continue
+			}
+			cmd := gitCloneBare(ctx, cloneURL, repo.barePath)
 			out, cloneErr := cmd.CombinedOutput()
 			release()
 			if cloneErr == nil {
@@ -223,12 +227,15 @@ func (repo *bareRepo) fetchRef(ctx context.Context, ref string) (string, error) 
 				return "", acqErr
 			}
 			defer release()
-			check := exec.CommandContext(ctx, "git", "--git-dir="+repo.barePath, "cat-file", "-t", ref) //nolint:gosec
+			safeRef, refErr := gitSafeArg(ref)
+			if refErr != nil {
+				return "", refErr
+			}
+			check := gitInDir(ctx, repo.barePath, "cat-file", "-t", safeRef)
 			if check.Run() == nil {
 				return ref, nil // already present
 			}
-			cmd := exec.CommandContext(ctx, "git", "--git-dir="+repo.barePath, //nolint:gosec
-				"fetch", "--filter=blob:none", "origin", ref)
+			cmd := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "origin", safeRef)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				return "", fmt.Errorf("git fetch origin %s: %w\n%s", ref, err, bytes.TrimSpace(out))
 			}
@@ -257,20 +264,22 @@ func (repo *bareRepo) fetchRef(ctx context.Context, ref string) (string, error) 
 			return "", acqErr
 		}
 		defer release()
+		safeRef, refErr := gitSafeArg(ref)
+		if refErr != nil {
+			return "", refErr
+		}
 		// Shallow fetch the named ref.
-		cmd := exec.CommandContext(ctx, "git", "--git-dir="+repo.barePath, //nolint:gosec
-			"fetch", "--filter=blob:none", "--depth=1", "origin", ref)
+		cmd := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "--depth=1", "origin", safeRef)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			// Retry without --depth in case the server rejects shallow fetches.
-			cmd2 := exec.CommandContext(ctx, "git", "--git-dir="+repo.barePath, //nolint:gosec
-				"fetch", "--filter=blob:none", "origin", ref)
+			cmd2 := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "origin", safeRef)
 			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
 				return "", fmt.Errorf("git fetch origin %s: %w\n%s\n%s", ref, err2, bytes.TrimSpace(out), bytes.TrimSpace(out2))
 			}
 		}
 		// Resolve FETCH_HEAD to the commit SHA.
-		resolve := exec.CommandContext(ctx, "git", "--git-dir="+repo.barePath, "rev-parse", "FETCH_HEAD") //nolint:gosec
+		resolve := gitInDir(ctx, repo.barePath, "rev-parse", "FETCH_HEAD")
 		sha, revErr := resolve.Output()
 		if revErr != nil {
 			return "", fmt.Errorf("git rev-parse FETCH_HEAD: %w", revErr)
@@ -330,12 +339,16 @@ func archiveExtract(ctx context.Context, gitDir, extractBase, sha, subdir string
 	defer release()
 
 	// Stream to tar to avoid buffering the archive in memory.
-	archiveArg := sha
+	archiveArg, argErr := gitSafeArg(sha)
 	if subdir != "" {
-		archiveArg = sha + ":" + subdir
+		archiveArg, argErr = gitSafeArg(sha + ":" + subdir)
 	}
-	archive := exec.CommandContext(ctx, "git", "--git-dir="+gitDir, "archive", "--format=tar", archiveArg) //nolint:gosec
-	untar := exec.CommandContext(ctx, "tar", "-x", "-C", dest)                                             //nolint:gosec
+	if argErr != nil {
+		_ = os.RemoveAll(dest)
+		return argErr
+	}
+	archive := gitInDir(ctx, gitDir, "archive", "--format=tar", archiveArg)
+	untar := tarExtract(ctx, dest)
 
 	pr, pw := io.Pipe()
 	archive.Stdout = pw
@@ -434,8 +447,8 @@ func normalizeSCPGitSource(source string) (string, bool) {
 	if atIdx < 0 {
 		return "", false
 	}
-	user := source[:atIdx]    // e.g. "git"
-	rest := source[atIdx+1:]  // host:org/repo//subdir?ref=tag
+	user := source[:atIdx]   // e.g. "git"
+	rest := source[atIdx+1:] // host:org/repo//subdir?ref=tag
 	colonIdx := strings.IndexByte(rest, ':')
 	if colonIdx < 0 {
 		return "", false

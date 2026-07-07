@@ -20,16 +20,3 @@ func GitModuleResolveKey(source, version string) (string, bool) {
 	}
 	return normalizeGitRepoURL(repoURL) + "\x00" + ref + "\x00" + subdir, true
 }
-
-// bareGitOwnsSource reports whether BareGitResolver handles this module source.
-func bareGitOwnsSource(source string) bool {
-	repoURL, _, ref, ok := parseGitGetterSource(source)
-	if !ok || ref == "" {
-		return false
-	}
-	// Local file:// git repos stay on go-getter (small, used in unit tests).
-	if strings.HasPrefix(repoURL, "file://") {
-		return false
-	}
-	return true
-}

@@ -48,15 +48,3 @@ func TestGitModuleResolveKeyDifferentSubdirs(t *testing.T) {
 		t.Fatal("different subdirs must not share a resolve key")
 	}
 }
-
-func TestBareGitOwnsSource(t *testing.T) {
-	if !bareGitOwnsSource("git::https://github.com/org/repo//sub?ref=v1") {
-		t.Fatal("git:: with ref should be bare-git owned")
-	}
-	if bareGitOwnsSource("git::https://github.com/org/repo//sub") {
-		t.Fatal("git:: without ref is not bare-git owned")
-	}
-	if bareGitOwnsSource("registry.terraform.io/org/name/aws") {
-		t.Fatal("registry source is not bare-git owned")
-	}
-}

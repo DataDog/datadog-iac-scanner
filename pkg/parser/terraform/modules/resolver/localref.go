@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -76,7 +75,7 @@ func (r *LocalGitRefResolver) init(ctx context.Context) {
 		contextLogger := logger.FromContext(ctx)
 		seen := make(map[string]bool) // deduplicate gitDirs
 		for _, root := range r.ScanRoots {
-			gitDir, err := detectGitDir(root)
+			gitDir, err := detectGitDir(ctx, root)
 			if err != nil || seen[gitDir] {
 				continue
 			}
@@ -107,8 +106,7 @@ func (r *LocalGitRefResolver) init(ctx context.Context) {
 }
 
 func loadRefMap(ctx context.Context, gitDir string) map[string]string {
-	cmd := exec.CommandContext(ctx, "git", "--git-dir="+gitDir, //nolint:gosec
-		"for-each-ref", "--format=%(objectname) %(refname)", "refs/tags", "refs/heads")
+	cmd := gitInDir(ctx, gitDir, "for-each-ref", "--format=%(objectname) %(refname)", "refs/tags", "refs/heads")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil
@@ -127,8 +125,8 @@ func loadRefMap(ctx context.Context, gitDir string) map[string]string {
 	return refs
 }
 
-func detectGitDir(root string) (string, error) {
-	cmd := exec.Command("git", "-C", root, "rev-parse", "--git-dir") //nolint:gosec
+func detectGitDir(ctx context.Context, root string) (string, error) {
+	cmd := gitInWorktree(ctx, root, "rev-parse", "--git-dir")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("not a git repo: %w", err)
@@ -141,7 +139,7 @@ func detectGitDir(root string) (string, error) {
 }
 
 func listRemoteURLs(ctx context.Context, gitDir string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", "--git-dir="+gitDir, "remote", "-v") //nolint:gosec
+	cmd := gitInDir(ctx, gitDir, "remote", "-v")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -185,14 +183,22 @@ func resolveLocalRef(ctx context.Context, info *localRepoInfo, ref string) (sha 
 	}
 	defer release()
 	if looksLikeSHA(ref) {
-		cmd := exec.CommandContext(ctx, "git", "--git-dir="+info.gitDir, "cat-file", "-t", ref) //nolint:gosec
+		safeRef, refErr := gitSafeArg(ref)
+		if refErr != nil {
+			return "", false
+		}
+		cmd := gitInDir(ctx, info.gitDir, "cat-file", "-t", safeRef)
 		if cmd.Run() == nil {
 			return ref, true
 		}
 		return "", false
 	}
+	safeRef, refErr := gitSafeArg(ref)
+	if refErr != nil {
+		return "", false
+	}
 	// Ref not in the prebuilt map (e.g. remote-tracking ref): ask git directly.
-	cmd := exec.CommandContext(ctx, "git", "--git-dir="+info.gitDir, "rev-parse", "--verify", ref) //nolint:gosec
+	cmd := gitInDir(ctx, info.gitDir, "rev-parse", "--verify", safeRef)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", false
