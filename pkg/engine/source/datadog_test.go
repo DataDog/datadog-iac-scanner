@@ -354,16 +354,22 @@ func TestConvertRuleIncludesArgumentsInMetadata(t *testing.T) {
 		Severity:         "HIGH",
 		Category:         "Best Practices",
 		Provider:         ptr("aws"),
-		Arguments: map[string]string{
-			"required_tags": `["Env"]`,
+		Arguments: []datadog.RuleArgument{
+			{
+				Name:        "required_tags",
+				Description: "Tags that must exist on the resource",
+			},
 		},
 		IsPublished: true,
 	}
 
 	query := ConvertRule(rule)
 
-	assert.Equal(t, map[string]string{
-		"required_tags": `["Env"]`,
+	assert.Equal(t, []any{
+		map[string]any{
+			"name":        "required_tags",
+			"description": "Tags that must exist on the resource",
+		},
 	}, query.Metadata["arguments"])
 }
 
