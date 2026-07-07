@@ -458,9 +458,6 @@ func getRepositoryCommitInfo(repoPaths []string) (*model.RepositoryCommitInfo, s
 			}
 		}
 	}
-	if out.Branch == "" {
-		return nil, "", errors.New("could not determine the branch name for HEAD")
-	}
 
 	return out, repoDir, nil
 }
