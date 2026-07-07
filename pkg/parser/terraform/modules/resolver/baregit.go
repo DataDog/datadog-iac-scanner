@@ -259,15 +259,30 @@ func (repo *bareRepo) fetchRef(ctx context.Context, ref string) (string, error) 
 		}
 		repo.refMu.RUnlock()
 
+		safeRef, refErr := gitSafeArg(ref)
+		if refErr != nil {
+			return "", refErr
+		}
+
+		// Local fast path: if the bare clone already contains this ref (e.g. a
+		// pre-populated clone or a prior fetch), resolve it without hitting the network.
+		if tryLocal := gitInDir(ctx, repo.barePath, "rev-parse", "--verify", safeRef); tryLocal != nil {
+			if out, localErr := tryLocal.Output(); localErr == nil {
+				if resolved := strings.TrimSpace(string(out)); looksLikeSHA(resolved) {
+					repo.refMu.Lock()
+					repo.refCache[ref] = resolved
+					repo.refMu.Unlock()
+					go repo.saveBareRefCache()
+					return resolved, nil
+				}
+			}
+		}
+
 		release, acqErr := acquireGitProc(ctx)
 		if acqErr != nil {
 			return "", acqErr
 		}
 		defer release()
-		safeRef, refErr := gitSafeArg(ref)
-		if refErr != nil {
-			return "", refErr
-		}
 		// Shallow fetch the named ref.
 		cmd := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "--depth=1", "origin", safeRef)
 		out, err := cmd.CombinedOutput()
@@ -319,36 +334,43 @@ func cachedArchiveDir(extractBase, sha, subdir string) (string, bool) {
 }
 
 // archiveExtract materializes sha:subdir into a persistent local directory.
+// It extracts into a temp dir and renames atomically so a partial extraction
+// from a prior crash is never mistaken for a complete cache entry.
 func archiveExtract(ctx context.Context, gitDir, extractBase, sha, subdir string) error {
 	key := archiveCacheKey(sha, subdir)
-
 	dest := filepath.Join(extractBase, key)
+
 	if info, err := os.Stat(dest); err == nil && info.IsDir() {
-		return nil // cache hit from previous scan
+		return nil // cache hit from a previous scan
 	}
 
-	if err := os.MkdirAll(dest, dirPerm); err != nil {
+	if err := os.MkdirAll(extractBase, dirPerm); err != nil {
 		return err
+	}
+
+	// Extract into a sibling temp dir; rename to dest only on full success.
+	tmp, err := os.MkdirTemp(extractBase, ".tmp-extract-")
+	if err != nil {
+		return fmt.Errorf("creating extract temp dir: %w", err)
 	}
 
 	release, err := acquireGitProc(ctx)
 	if err != nil {
-		_ = os.RemoveAll(dest)
+		_ = os.RemoveAll(tmp)
 		return err
 	}
 	defer release()
 
-	// Stream to tar to avoid buffering the archive in memory.
 	archiveArg, argErr := gitSafeArg(sha)
 	if subdir != "" {
 		archiveArg, argErr = gitSafeArg(sha + ":" + subdir)
 	}
 	if argErr != nil {
-		_ = os.RemoveAll(dest)
+		_ = os.RemoveAll(tmp)
 		return argErr
 	}
 	archive := gitInDir(ctx, gitDir, "archive", "--format=tar", archiveArg)
-	untar := tarExtract(ctx, dest)
+	untar := tarExtract(ctx, tmp)
 
 	pr, pw := io.Pipe()
 	archive.Stdout = pw
@@ -369,12 +391,20 @@ func archiveExtract(ctx context.Context, gitDir, extractBase, sha, subdir string
 	wg.Wait()
 
 	if archiveErr != nil {
-		_ = os.RemoveAll(dest)
+		_ = os.RemoveAll(tmp)
 		return fmt.Errorf("git archive %s: %w", archiveArg, archiveErr)
 	}
 	if untarErr != nil {
-		_ = os.RemoveAll(dest)
+		_ = os.RemoveAll(tmp)
 		return fmt.Errorf("tar extract: %w", untarErr)
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		_ = os.RemoveAll(tmp)
+		// Another process may have won the race; accept if dest is now present.
+		if info, statErr := os.Stat(dest); statErr == nil && info.IsDir() {
+			return nil
+		}
+		return fmt.Errorf("publishing extract cache entry: %w", err)
 	}
 	return nil
 }
