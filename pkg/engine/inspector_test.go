@@ -1014,6 +1014,27 @@ func TestExpressionToAST_TemplateJoin(t *testing.T) {
 	}
 }
 
+func TestExpressionToAST_TemplateExpr_WithFor(t *testing.T) {
+	// Exercises the full real-world path: a string attribute with a %{for}
+	// directive parses as TemplateExpr → TemplateJoinExpr → ForExpr → inner
+	// TemplateExpr(ScopeTraversalExpr).  With the recursive fix, the template
+	// parts are rendered by expressionToAST instead of collapsing to "${...}".
+	f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for v in var.list}${v}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		t.Fatalf("parse failed: %v", diags)
+	}
+	attr := f.Body.(*hclsyntax.Body).Attributes["x"]
+	val, err := expressionToAST(attr.Expr)
+	if err != nil {
+		t.Fatalf("expressionToAST error: %v", err)
+	}
+	// The for-loop body ${v} is a TemplateExpr wrapping ScopeTraversalExpr(v),
+	// which now renders as "v", giving "[for v in var.list : v]".
+	if got := val.String(); got != `"[for v in var.list : v]"` {
+		t.Errorf("expressionToAST = %s", got)
+	}
+}
+
 func TestExpressionToAST_ForExpr(t *testing.T) {
 	t.Run("tuple_for", func(t *testing.T) {
 		expr, diags := hclsyntax.ParseExpression([]byte(`[for x in var.list : x]`), "test.hcl", hcl.Pos{Line: 1, Column: 1})

@@ -1461,13 +1461,11 @@ func (v *inspectorExprVisitor) VisitDefault(e hclsyntax.Expression) (ast.Value, 
 func expressionToASTTemplateExpr(e *hclsyntax.TemplateExpr) ast.Value {
 	result := ""
 	for _, part := range e.Parts {
-		switch p := part.(type) {
-		case *hclsyntax.LiteralValueExpr:
-			if p.Val.Type().Equals(cty.String) {
-				result += p.Val.AsString()
-			}
-		default:
+		v, err := expressionToAST(part)
+		if err != nil || v == nil {
 			result += "${...}"
+		} else {
+			result += astValueToSimpleString(v)
 		}
 	}
 	return ast.String(result)
