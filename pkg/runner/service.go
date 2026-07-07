@@ -80,6 +80,8 @@ type Service struct {
 	// parsed file's platform consistently with the analyzer so the engine can
 	// scope queries to their own platform's documents.
 	Platforms []string
+	// FilePlatform is the analyzer path → platform map, reused in the sink.
+	FilePlatform map[string]string
 	// failedHelmChartDirsMu guards failedHelmChartDirs.
 	failedHelmChartDirsMu sync.RWMutex
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
@@ -223,7 +225,6 @@ to prevent resource exhaustion and return its content
 */
 func getContent(rc io.Reader, data []byte, maxSizeMB int, filename string) (*Content, error) {
 	var content []byte
-	countLines := 0
 
 	c := &Content{
 		Content:    &[]byte{},
@@ -242,16 +243,44 @@ func getContent(rc io.Reader, data []byte, maxSizeMB int, filename string) (*Con
 			}
 			return c, err
 		}
-		countLines += bytes.Count(data[:n], []byte{'\n'}) + 1
 		content = append(content, data[:n]...)
 		maxSizeMB--
 	}
 	c.Content = &content
-	c.CountLines = countLines
+	// Count lines from the assembled content so chunked reads match a single
+	// read (contentFromBytes); the previous per-chunk +1 over-counted.
+	c.CountLines = countContentLines(content)
 	c.CountResources = GetCountTerraformResources(content)
 
 	c.IsMinified = minified.IsMinified(filename, content)
 	return c, nil
+}
+
+// countContentLines counts lines the way an editor does: one per newline, plus a
+// trailing line when the file does not end in a newline. Shared by getContent
+// and contentFromBytes so cached and freshly read files report identical counts.
+func countContentLines(content []byte) int {
+	count := bytes.Count(content, []byte{'\n'})
+	if len(content) > 0 && content[len(content)-1] != '\n' {
+		count++
+	}
+	return count
+}
+
+func contentFromBytes(content []byte, maxSizeMB int, filename string) (*Content, error) {
+	copied := append([]byte(nil), content...)
+	if maxSizeMB >= 0 {
+		limit := (maxSizeMB + 1) * mbConst
+		if len(copied) > limit {
+			return nil, errors.New("file size limit exceeded")
+		}
+	}
+	return &Content{
+		Content:        &copied,
+		CountLines:     countContentLines(copied),
+		IsMinified:     minified.IsMinified(filename, copied),
+		CountResources: GetCountTerraformResources(copied),
+	}, nil
 }
 
 // GetVulnerabilities returns a list of scan detected vulnerabilities

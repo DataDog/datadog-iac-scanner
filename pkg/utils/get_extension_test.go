@@ -14,6 +14,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestExtensionFromPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "/repo/main.tf", want: ".tf"},
+		{path: "/repo/Dockerfile", want: "Dockerfile"},
+		{path: "/repo/vars.tfvars", want: ".tfvars"},
+		{path: "/repo/terraform.tfvars", want: ".tfvars"},
+		{path: "/repo/pnpm-lock.yaml", want: ".yaml"},
+		{path: "/repo/Makefile", want: ""},
+		{path: "/repo/bin/aws", want: ""},
+	}
+	for _, tt := range tests {
+		if got := ExtensionFromPath(tt.path); got != tt.want {
+			t.Errorf("ExtensionFromPath(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
 func TestGetExtension(t *testing.T) {
 	tests := []struct {
 		name     string

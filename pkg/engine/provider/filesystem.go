@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -30,6 +31,10 @@ type FileSystemSourceProvider struct {
 	excludes  map[string][]os.FileInfo
 	onlyPaths []string
 	mu        sync.RWMutex
+
+	prebuiltPaths []string
+	chartRoots    []string
+	contentCache  map[string][]byte
 }
 
 var (
@@ -127,6 +132,24 @@ func (s *FileSystemSourceProvider) GetBasePaths() []string {
 	return s.paths
 }
 
+// IgnoreDamagedFile reports whether a damaged or inaccessible file should be skipped.
+func IgnoreDamagedFile(ctx context.Context, path string) bool {
+	return ignoreDamagedFiles(ctx, path)
+}
+
+// IsTerraformCacheDir reports whether path is a Terraform/Terragrunt cache directory
+// that should be skipped during repository walks.
+func IsTerraformCacheDir(path string) bool {
+	return queryRegexExcludeTerraCache.MatchString(path)
+}
+
+// ExcludePaths registers paths to skip during later walks (e.g. rendered Helm templates).
+func (s *FileSystemSourceProvider) ExcludePaths(ctx context.Context, paths []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.addExcluded(ctx, paths)
+}
+
 // ignoreDamagedFiles checks whether we should ignore a damaged file from a scan or not.
 func ignoreDamagedFiles(ctx context.Context, path string) bool {
 	contextLogger := logger.FromContext(ctx)
@@ -219,12 +242,169 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 	return s.processFilesParallel(ctx, filesToProcess, sink)
 }
 
-// collectFiles walks the directory tree and collects file paths without processing them, except Helm files
-func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
-	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
-	var resolvedChartPaths []string
+// InventoryFile is a discovered file and its matched extension token.
+type InventoryFile struct {
+	Path string
+	Ext  string
+}
 
-	err = filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
+// SetPrebuiltWalk reuses analyzer walk inventory to skip a second tree walk.
+func (s *FileSystemSourceProvider) SetPrebuiltWalk(paths, chartRoots []string, contentCache map[string][]byte) {
+	s.prebuiltPaths = paths
+	s.chartRoots = chartRoots
+	s.contentCache = contentCache
+}
+
+// ContentCache returns bytes read during analyzer classification, keyed by path.
+func (s *FileSystemSourceProvider) ContentCache() map[string][]byte {
+	return s.contentCache
+}
+
+// BuildInventoryFromPrebuilt renders Helm charts and filters pre-collected paths.
+func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
+	extensions model.Extensions,
+	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
+	// Shallow-first; skip nested roots after parent chart renders.
+	renderedRoots := make([]string, 0, len(s.chartRoots))
+	chartRoots := chartRootsShallowFirst(s.chartRoots)
+	for _, root := range chartRoots {
+		normRoot := strings.ReplaceAll(root, "\\", "/")
+		if isUnderChartRoot(normRoot, renderedRoots) {
+			continue
+		}
+		if chartFn(ctx, normRoot) {
+			renderedRoots = append(renderedRoots, normRoot)
+		}
+	}
+
+	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
+	for _, path := range s.prebuiltPaths {
+		norm := strings.ReplaceAll(path, "\\", "/")
+		if isUnderChartRoot(norm, renderedRoots) {
+			continue
+		}
+		excluded, err := s.isPathExcluded(norm)
+		if err != nil || excluded {
+			continue
+		}
+		ext := utils.ExtensionFromPath(norm)
+		if ext == "" {
+			if resolved, err := utils.GetExtension(ctx, norm); err == nil {
+				ext = resolved
+			}
+		}
+		if ext == "" || !extensions.Include(ext) {
+			continue
+		}
+		files = append(files, InventoryFile{Path: norm, Ext: ext})
+	}
+	return files, nil
+}
+
+func isUnderChartRoot(path string, chartRoots []string) bool {
+	for _, root := range chartRoots {
+		if path == root ||
+			strings.HasPrefix(path, root+string(os.PathSeparator)) ||
+			strings.HasPrefix(path, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func chartRootsShallowFirst(roots []string) []string {
+	if len(roots) == 0 {
+		return nil
+	}
+	sorted := append([]string(nil), roots...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return len(sorted[i]) < len(sorted[j])
+	})
+	return sorted
+}
+
+func (s *FileSystemSourceProvider) isPathExcluded(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, errors.Wrap(err, "failed to stat inventory path")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
+		return true, nil
+	}
+	if s.onlyPaths != nil {
+		underOnlyPath := false
+		for _, op := range s.onlyPaths {
+			if path == op || strings.HasPrefix(path, op+string(os.PathSeparator)) ||
+				strings.HasPrefix(path, op+"/") {
+				underOnlyPath = true
+				break
+			}
+		}
+		if !underOnlyPath {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// WalkInventory collects matching files, calling chartFn at each Helm chart root.
+func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
+	extensions model.Extensions,
+	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
+	if len(s.prebuiltPaths) > 0 {
+		return s.BuildInventoryFromPrebuilt(ctx, extensions, chartFn)
+	}
+	var files []InventoryFile
+
+	for _, scanPath := range s.paths {
+		fileInfo, err := os.Stat(scanPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to open path")
+		}
+
+		if !fileInfo.IsDir() {
+			if _, openFileErr := openScanFile(ctx, scanPath, extensions); openFileErr != nil {
+				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
+					continue
+				}
+				return nil, openFileErr
+			}
+			ext, _ := utils.GetExtension(ctx, scanPath)
+			files = append(files, InventoryFile{Path: strings.ReplaceAll(scanPath, "\\", "/"), Ext: ext})
+			continue
+		}
+
+		walkErr := s.walkDirectory(ctx, scanPath, extensions,
+			func(ctx context.Context, path string, resolved *[]string) error {
+				if chartFn(ctx, strings.ReplaceAll(path, "\\", "/")) {
+					*resolved = append(*resolved, path)
+					return filepath.SkipDir
+				}
+				return nil
+			},
+			func(ctx context.Context, path string) error {
+				ext, _ := utils.GetExtension(ctx, path)
+				files = append(files, InventoryFile{Path: strings.ReplaceAll(path, "\\", "/"), Ext: ext})
+				return nil
+			})
+		if walkErr != nil {
+			return nil, errors.Wrap(walkErr, "failed to walk directory")
+		}
+	}
+
+	return files, nil
+}
+
+func (s *FileSystemSourceProvider) walkDirectory(ctx context.Context, scanPath string, extensions model.Extensions,
+	onChart func(ctx context.Context, path string, resolvedChartPaths *[]string) error,
+	onFile func(ctx context.Context, path string) error) error {
+	var resolvedChartPaths []string
+	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -233,17 +413,24 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 			return skipFolder
 		}
 
-		// ------------------ Helm resolver --------------------------------
 		if info.IsDir() {
-			return s.resolveChartDir(ctx, path, resolverSink, &resolvedChartPaths)
+			return onChart(ctx, path, &resolvedChartPaths)
 		}
-		// -----------------------------------------------------------------
 
-		// Just collect the file path, don't open or process it yet
-		files = append(files, strings.ReplaceAll(path, "\\", "/"))
-		return nil
+		return onFile(ctx, path)
 	})
+}
 
+func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
+	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
+	err = s.walkDirectory(ctx, scanPath, extensions,
+		func(ctx context.Context, path string, resolved *[]string) error {
+			return s.resolveChartDir(ctx, path, resolverSink, resolved)
+		},
+		func(ctx context.Context, path string) error {
+			files = append(files, strings.ReplaceAll(path, "\\", "/"))
+			return nil
+		})
 	return files, err
 }
 
@@ -280,35 +467,24 @@ func (s *FileSystemSourceProvider) processFile(ctx context.Context, filePath str
 
 func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 	sink Sink, resolverSink ResolverSink, extensions model.Extensions) error {
-	var resolvedChartPaths []string
-	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedChartPaths); shouldSkip {
-			return skipFolder
-		}
-
-		// ------------------ Helm resolver --------------------------------
-		if info.IsDir() {
-			return s.resolveChartDir(ctx, path, resolverSink, &resolvedChartPaths)
-		}
-		// -----------------------------------------------------------------
-
-		c, err := os.Open(filepath.Clean(path)) // nolint:gosec
-		if err != nil {
-			if ignoreDamagedFiles(ctx, filepath.Clean(path)) {
-				return nil
+	return s.walkDirectory(ctx, scanPath, extensions,
+		func(ctx context.Context, path string, resolved *[]string) error {
+			return s.resolveChartDir(ctx, path, resolverSink, resolved)
+		},
+		func(ctx context.Context, path string) error {
+			c, err := os.Open(filepath.Clean(path)) // nolint:gosec
+			if err != nil {
+				if ignoreDamagedFiles(ctx, filepath.Clean(path)) {
+					return nil
+				}
+				return errors.Wrap(err, "failed to open file")
 			}
-			return errors.Wrap(err, "failed to open file")
-		}
-		defer func(c *os.File) {
-			_ = c.Close()
-		}(c)
+			defer func(c *os.File) {
+				_ = c.Close()
+			}(c)
 
-		return sink(ctx, strings.ReplaceAll(path, "\\", "/"), c)
-	})
+			return sink(ctx, strings.ReplaceAll(path, "\\", "/"), c)
+		})
 }
 
 func openScanFile(ctx context.Context, scanPath string, extensions model.Extensions) (*os.File, error) {
@@ -390,11 +566,9 @@ func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path str
 		contextLogger.Debug().Msgf("Scanning raw files of Helm chart '%s' as a fallback after render failure", path)
 		return nil
 	}
-	s.mu.Lock()
-	if errAdd := s.addExcluded(ctx, excluded); errAdd != nil {
+	if errAdd := s.ExcludePaths(ctx, excluded); errAdd != nil {
 		contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", filepath.Base(path))
 	}
-	s.mu.Unlock()
 	*resolvedChartPaths = append(*resolvedChartPaths, path)
 	return filepath.SkipDir
 }

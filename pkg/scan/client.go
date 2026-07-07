@@ -86,6 +86,9 @@ type Client struct {
 	// from inMemoryPaths instead of walking the disk via the analyzer.
 	inMemory      bool
 	inMemoryPaths []string
+	walkInventory []string
+	chartRoots    []string
+	contentCache  map[string][]byte
 }
 
 // ClientOption customizes a Client at construction time.

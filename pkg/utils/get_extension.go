@@ -10,11 +10,30 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"golang.org/x/tools/godoc/util"
 )
+
+var extensionNameTargets = []string{"tfvars", "Dockerfile", "possibleDockerfile"}
+
+// ExtensionFromPath returns the extension from path alone (no stat/read).
+func ExtensionFromPath(path string) string {
+	ext := filepath.Ext(path)
+	if ext != "" {
+		return ext
+	}
+	base := filepath.Base(path)
+	if Contains(base, extensionNameTargets) {
+		return base
+	}
+	if strings.HasSuffix(base, "tfvars") {
+		return "tfvars"
+	}
+	return ""
+}
 
 // GetExtension gets the extension of a file path on the real filesystem.
 func GetExtension(ctx context.Context, path string) (string, error) {
@@ -27,7 +46,7 @@ func GetExtension(ctx context.Context, path string) (string, error) {
 // real disk (the default, via GetExtension), preserving existing behavior.
 func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, error) {
 	contextLogger := logger.FromContext(ctx)
-	targets := []string{"tfvars", "Dockerfile", "possibleDockerfile"}
+	targets := extensionNameTargets
 
 	// Get file information
 	fileInfo, err := fsys.Stat(path)

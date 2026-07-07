@@ -8,7 +8,6 @@ package scan
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -26,35 +25,33 @@ var (
 	kuberneterRegex = regexp.MustCompile(`^kuberneter::`)
 )
 
-func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.ExtractedPath, error) {
+func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.ExtractedPath, map[string]string, error) {
 	contextLogger := logger.FromContext(ctx)
 	queryExPaths, libExPaths, err := c.preparePaths(ctx)
 	if err != nil {
-		return provider.ExtractedPath{}, err
+		return provider.ExtractedPath{}, nil, err
 	}
 
 	regularPaths, kuberneterPaths := extractPathType(c.ScanParams.Path)
 
 	kuberneterExPaths, err := provider.GetKuberneterSources(ctx, kuberneterPaths, c.ScanParams.OutputPath)
 	if err != nil {
-		return provider.ExtractedPath{}, err
+		return provider.ExtractedPath{}, nil, err
 	}
 
 	regularExPaths, err := provider.GetSources(ctx, regularPaths, c.ScanParams.OutputPath)
 	if err != nil {
-		return provider.ExtractedPath{}, err
+		return provider.ExtractedPath{}, nil, err
 	}
 
 	allPaths := combinePaths(kuberneterExPaths, regularExPaths, queryExPaths, libExPaths)
 	if len(allPaths.Path) == 0 {
-		return provider.ExtractedPath{}, nil
+		return provider.ExtractedPath{}, nil, nil
 	}
 	platforms := c.ScanParams.GetEffectivePlatforms()
 	if len(platforms) == 0 {
-		return provider.ExtractedPath{}, nil
+		return provider.ExtractedPath{}, nil, nil
 	}
-
-	contextLogger.Info().Msgf("Total files in the project: %d", getTotalFiles(ctx, allPaths.Path))
 
 	a := &analyzer.Analyzer{
 		RepoPath:          c.ScanParams.RepoPath,
@@ -76,18 +73,23 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		pathTypes, errAnalyze = analyzePaths(ctx, a)
 	}
 	if errAnalyze != nil {
-		return provider.ExtractedPath{}, errAnalyze
+		return provider.ExtractedPath{}, nil, errAnalyze
 	}
 
 	if len(pathTypes.Types) == 0 {
-		return provider.ExtractedPath{}, nil
+		return provider.ExtractedPath{}, nil, nil
 	}
+
+	contextLogger.Info().Msgf("Total files in the project: %d", pathTypes.TotalFiles)
 
 	c.ScanParams.Platform = pathTypes.Types
 	c.ScanParams.PreAnalysisExcludePaths = c.ScanParams.Config.IgnorePaths
 	c.ScanParams.Config.IgnorePaths = pathTypes.Exc
+	c.walkInventory = pathTypes.Inventory
+	c.chartRoots = pathTypes.ChartRoots
+	c.contentCache = pathTypes.ContentCache
 
-	return allPaths, nil
+	return allPaths, pathTypes.FilePlatform, nil
 }
 
 func combinePaths(kuberneter, regular, query, library provider.ExtractedPath) provider.ExtractedPath {
@@ -237,25 +239,4 @@ func extractPathType(paths []string) (regular, kuberneter []string) {
 
 func usingCustomQueries(queriesPath []string) bool {
 	return !utils.ContainsInString(filepath.Join("assets", "queries"), queriesPath)
-}
-
-func getTotalFiles(ctx context.Context, paths []string) int {
-	contextLogger := logger.FromContext(ctx)
-	files := 0
-	for _, path := range paths {
-		if err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-
-			if !info.IsDir() {
-				files++
-			}
-
-			return nil
-		}); err != nil {
-			contextLogger.Error().Msgf("failed to walk path %s: %s", path, err)
-		}
-	}
-	return files
 }

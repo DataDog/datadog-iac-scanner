@@ -6,13 +6,16 @@
 package analyzer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
@@ -76,7 +79,6 @@ var (
 	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
 	dependabotUpdatesRegex                          = regexp.MustCompile(`\s*updates:\s*`)
 	dependabotPackageEcosystemRegex                 = regexp.MustCompile(`\s*package-ecosystem:\s*`)
-	queryRegexPathsAnsible                          = regexp.MustCompile(fmt.Sprintf(`^.*?%s(?:group|host)_vars%s.*$`, regexp.QuoteMeta(string(os.PathSeparator)), regexp.QuoteMeta(string(os.PathSeparator)))) //nolint:lll
 )
 
 var (
@@ -158,7 +160,7 @@ const (
 	extUbi8               = ".ubi8"
 	extDebian             = ".debian"
 	extTf                 = ".tf"
-	extTfvars             = "tfvars"
+	extTfvars             = ".tfvars"
 	extBicepFile          = ".bicep"
 	extProto              = ".proto"
 	extCfg                = ".cfg"
@@ -178,8 +180,11 @@ type regexSlice struct {
 }
 
 type analyzerInfo struct {
-	typesFlag []string
-	filePath  string
+	typesFlag       []string
+	filePath        string
+	filePlatformMap *sync.Map
+	contentCache    *sync.Map
+	helmCache       *sync.Map
 }
 
 // Analyzer keeps all the relevant info for the function Analyze
@@ -317,7 +322,26 @@ var types = map[string]regexSlice{
 	},
 }
 
-var defaultConfigFiles = []string{"pnpm-lock.yaml"}
+var defaultConfigSuffixes = []string{"pnpm-lock.yaml"}
+
+// Required substrings per platform; skip regex when none are present.
+var contentHints = map[string][][]byte{
+	"kubernetes":               {[]byte("apiVersion")},
+	"crossplane":               {[]byte("crossplane.io")},
+	"knative":                  {[]byte("knative.dev")},
+	"cloudformation":           {[]byte("Resources")},
+	"openapi":                  {[]byte("openapi"), []byte("swagger")},
+	"azureresourcemanager":     {[]byte("contentVersion")},
+	"terraform":                {[]byte("planned_values")},
+	"cdkTf":                    {[]byte("stackName")},
+	"policyAssignmentArtifact": {[]byte("policyDefinitionId")},
+	"roleAssignmentArtifact":   {[]byte("principalIds")},
+	"blueprint":                {[]byte("targetScope")},
+	"buildah":                  {[]byte("buildah")},
+	"dependabot":               {[]byte("package-ecosystem")},
+	"githubAction":             {[]byte("using:")},
+	"cicd":                     {[]byte("jobs:")},
+}
 
 // nolint:gocyclo
 // Analyze will go through the slice paths given and determine what type of queries should be loaded
@@ -337,6 +361,8 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	var err error
 	var files []string
+	var chartRoots []string
+	var totalFiles int
 	// results is the channel shared by the workers that contains the types found
 	results := make(chan string)
 	locCount := make(chan int)
@@ -354,32 +380,79 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 		if _, err := os.Stat(path); err != nil {
 			return returnAnalyzedPaths, errors.Wrap(err, "failed to analyze path")
 		}
-		if err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+		if err := filepath.WalkDir(path, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 			if path == gitDir {
-				a.Exc = append(a.Exc, path)
+				a.Exc = append(a.Exc, filepath.ToSlash(path))
 				return filepath.SkipDir
 			}
 
-			ext, errExt := utils.GetExtension(ctx, path)
-			if errExt == nil {
-				trimmedPath, err := filepath.Rel(a.RepoPath, path)
-				if err != nil {
-					return err
+			if d.IsDir() {
+				if provider.IsTerraformCacheDir(path) {
+					return filepath.SkipDir
 				}
-				ignoreFiles = a.checkIgnore(ctx, info.Size(), hasGitIgnoreFile, gitIgnore, path, trimmedPath, ignoreFiles)
-
-				if isConfigFile(ctx, path, defaultConfigFiles) {
-					projectConfigFiles = append(projectConfigFiles, path)
-					a.Exc = append(a.Exc, path)
+				if _, statErr := os.Stat(filepath.Join(path, "Chart.yaml")); statErr == nil {
+					chartRoots = append(chartRoots, filepath.ToSlash(path))
 				}
+				return nil
+			}
 
-				if _, ok := possibleFileTypes[ext]; ok && !isExcludedFile(path, a.Exc) && isIncludedFile(path, a.Only) {
-					files = append(files, path)
+			totalFiles++
+
+			if d.Type()&fs.ModeSymlink != 0 {
+				if _, statErr := os.Stat(path); statErr != nil {
+					norm := filepath.ToSlash(path)
+					ignoreFiles = append(ignoreFiles, norm)
+					a.Exc = append(a.Exc, norm)
+					return nil
 				}
 			}
+
+			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
+			if relErr != nil {
+				return relErr
+			}
+
+			if hasGitIgnoreFile && gitIgnore.MatchesPath(trimmedPath) {
+				norm := filepath.ToSlash(path)
+				ignoreFiles = append(ignoreFiles, norm)
+				a.Exc = append(a.Exc, norm)
+				return nil
+			}
+
+			if isConfigFile(path, defaultConfigSuffixes) {
+				norm := filepath.ToSlash(path)
+				projectConfigFiles = append(projectConfigFiles, norm)
+				a.Exc = append(a.Exc, norm)
+				return nil
+			}
+
+			ext := utils.ExtensionFromPath(path)
+			if ext == "" {
+				return nil
+			}
+			if _, ok := possibleFileTypes[ext]; !ok {
+				return nil
+			}
+			if isExcludedFile(path, a.Exc) || !isIncludedFile(path, a.Only) {
+				return nil
+			}
+
+			if a.MaxFileSize >= 0 {
+				if info, infoErr := d.Info(); infoErr == nil {
+					if float64(info.Size())/float64(sizeMb) > float64(a.MaxFileSize) {
+						contextLogger.Warn().Msgf("file %s exceeds maximum file size of %d Mb", path, a.MaxFileSize)
+						norm := filepath.ToSlash(path)
+						ignoreFiles = append(ignoreFiles, norm)
+						a.Exc = append(a.Exc, norm)
+						return nil
+					}
+				}
+			}
+
+			files = append(files, filepath.ToSlash(path))
 			return nil
 		}); err != nil {
 			contextLogger.Error().Msgf("failed to analyze path %s: %s", path, err)
@@ -390,6 +463,10 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	unwanted := make(chan string, len(files))
 
 	typesFlag := typesLower(a.Types)
+
+	var filePlatformMap sync.Map
+	var contentCache sync.Map
+	var helmCacheLocal sync.Map
 
 	// Detect each file's type with a bounded worker pool. File-type detection
 	// reads file content (I/O-bound), so it does not consume the shared CPU
@@ -407,8 +484,11 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			utils.PoolOptions{Workers: a.NumWorkers, MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
 			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
-					typesFlag: typesFlag,
-					filePath:  filePath,
+					typesFlag:       typesFlag,
+					filePath:        filePath,
+					filePlatformMap: &filePlatformMap,
+					contentCache:    &contentCache,
+					helmCache:       &helmCacheLocal,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
 				return nil
@@ -430,6 +510,36 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	returnAnalyzedPaths.Types = availableTypes
 	returnAnalyzedPaths.Exc = unwantedPaths
 	returnAnalyzedPaths.ExpectedLOC = loc
+
+	fp := make(map[string]string, len(files))
+	filePlatformMap.Range(func(k, v interface{}) bool {
+		fp[k.(string)] = v.(string)
+		return true
+	})
+	returnAnalyzedPaths.FilePlatform = fp
+	returnAnalyzedPaths.TotalFiles = totalFiles
+	returnAnalyzedPaths.ChartRoots = chartRoots
+
+	unwantedSet := make(map[string]struct{}, len(unwantedPaths))
+	for _, p := range unwantedPaths {
+		unwantedSet[p] = struct{}{}
+	}
+	inventory := make([]string, 0, len(files))
+	for _, f := range files {
+		if _, skip := unwantedSet[f]; skip {
+			continue
+		}
+		inventory = append(inventory, f)
+	}
+	returnAnalyzedPaths.Inventory = inventory
+
+	cacheOut := make(map[string][]byte)
+	contentCache.Range(func(k, v interface{}) bool {
+		cacheOut[k.(string)] = v.([]byte)
+		return true
+	})
+	returnAnalyzedPaths.ContentCache = cacheOut
+
 	return returnAnalyzedPaths, nil
 }
 
@@ -437,39 +547,58 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 // writes the answer to the results channel
 // if no types were found, the worker will write the path of the file in the unwanted channel
 func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- string, locCount chan<- int) {
-	contextLogger := logger.FromContext(ctx)
-	ext, errExt := utils.GetExtension(ctx, a.filePath)
-	if errExt != nil {
+	ext := utils.ExtensionFromPath(a.filePath)
+	if ext == "" {
 		return
 	}
 
 	linesCount, _ := utils.LineCounter(ctx, a.filePath)
 
-	var content []byte
-	if ext == yaml || ext == yml || ext == json || ext == sh {
-		var err error
-		content, err = os.ReadFile(a.filePath)
-		if err != nil {
-			contextLogger.Error().Msgf("failed to analyze file: %s", err)
-			return
-		}
+	content, ok := a.readClassifyContent(ctx, ext)
+	if !ok {
+		return
 	}
 
-	platform := ClassifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag)
+	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache)
 	if platform == "" {
 		unwanted <- a.filePath
 		return
 	}
 	if !a.isAvailableType(platform) {
-		// Content-detected files that do not match the requested platforms are
-		// excluded; extension-only types (e.g. .tf) are ignored silently.
-		if ext == yaml || ext == yml || ext == json || ext == sh {
+		if isContentClassifiedExt(ext) {
 			unwanted <- a.filePath
 		}
 		return
 	}
+	a.persistWorkerState(content, platform)
 	results <- platform
 	locCount <- linesCount
+}
+
+func isContentClassifiedExt(ext string) bool {
+	return ext == yaml || ext == yml || ext == json || ext == sh
+}
+
+func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) ([]byte, bool) {
+	if !isContentClassifiedExt(ext) {
+		return nil, true
+	}
+	content, err := os.ReadFile(a.filePath)
+	if err != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Error().Msgf("failed to analyze file: %s", err)
+		return nil, false
+	}
+	return content, true
+}
+
+func (a *analyzerInfo) persistWorkerState(content []byte, platform string) {
+	if a.contentCache != nil && len(content) > 0 {
+		a.contentCache.Store(a.filePath, content)
+	}
+	if a.filePlatformMap != nil {
+		a.filePlatformMap.Store(a.filePath, platform)
+	}
 }
 
 func isDockerfile(ctx context.Context, path string) bool {
@@ -512,7 +641,7 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 // checkReturnType. It returns the platform string (lowercased) or "" when none
 // matches or the file is a non-Terraform JSON (which the scanner does not scan).
 // typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
-func classifyByContent(ctx context.Context, path string, content []byte, ext string, typesFlag []string) string {
+func classifyByContent(ctx context.Context, path string, content []byte, ext string, typesFlag []string, hc *sync.Map) string {
 	returnType := ""
 
 	// Sort map so that CloudFormation (type that as less requireds) goes last
@@ -528,6 +657,9 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
 
 	for _, key := range keys {
+		if hints, ok := contentHints[key]; ok && !containsAny(content, hints) {
+			continue
+		}
 		check := true
 		for _, typeRegex := range types[key].regex {
 			if !typeRegex.Match(content) {
@@ -543,7 +675,7 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 		}
 	}
 
-	endReturnType := checkReturnType(ctx, path, returnType, ext, content)
+	endReturnType := checkReturnType(ctx, path, returnType, ext, content, hc)
 
 	// Only process JSON files if they are Terraform plans
 	// This will be the case until other platforms support json scanning
@@ -552,6 +684,15 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 	}
 
 	return endReturnType
+}
+
+func containsAny(content []byte, needles [][]byte) bool {
+	for _, needle := range needles {
+		if bytes.Contains(content, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // ClassifyFile returns the platform a file would be classified as (lowercased,
@@ -565,6 +706,12 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 // for extension detection; pass the in-memory FS for pushed content that never
 // touches disk, or nil to default to the real disk.
 func ClassifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string) string {
+	return classifyFile(ctx, fsys, path, content, typesFlag, nil)
+}
+
+// classifyFile is the internal implementation; hc is the per-scan helm cache
+// (nil disables caching, which is safe for the server/sink path).
+func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string, hc *sync.Map) string {
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}
@@ -590,7 +737,7 @@ func ClassifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	case extCfg, extConf, extIni:
 		return ansible
 	case yaml, yml, json, sh:
-		return classifyByContent(ctx, path, content, ext, typesFlag)
+		return classifyByContent(ctx, path, content, ext, typesFlag, hc)
 	}
 	return ""
 }
@@ -605,25 +752,33 @@ func ClassifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 // extension detection so the server's in-memory pushed content (not on disk) is
 // classified correctly.
 func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, kind model.FileKind, path string, content []byte) string {
+	if platform, ok := PlatformForKind(kind); ok {
+		return platform
+	}
+	return ClassifyFile(ctx, fsys, path, content, platforms)
+}
+
+// PlatformForKind returns the fixed platform for kind when known.
+func PlatformForKind(kind model.FileKind) (string, bool) {
 	switch kind {
 	case model.KindHELM:
-		return kubernetes
+		return kubernetes, true
 	case model.KindTerraform, model.KindTerraformPlan:
-		return terraform
+		return terraform, true
 	case model.KindDOCKER:
-		return dockerfile
+		return dockerfile, true
 	case model.KindBICEP:
-		return arm
+		return arm, true
 	case model.KindPROTO:
-		return grpc
+		return grpc, true
 	case model.KindINI, model.KindCFG:
-		return ansible
+		return ansible, true
 	default:
-		return ClassifyFile(ctx, fsys, path, content, platforms)
+		return "", false
 	}
 }
 
-func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte) string {
+func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte, hc *sync.Map) string {
 	if returnType != "" {
 		switch returnType {
 		case cdkTf:
@@ -637,7 +792,7 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 			return arm
 		}
 	} else if ext == yaml || ext == yml {
-		if checkHelm(ctx, path) {
+		if checkHelm(ctx, path, hc) {
 			return kubernetes
 		}
 		platform := checkYamlPlatform(ctx, content, path)
@@ -651,12 +806,21 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 // checkHelm reports whether the file belongs to a Helm chart by looking for a
 // Chart.yaml in any ancestor directory, since templates can be nested below the
 // chart root (e.g. templates/sub/ or charts/<subchart>/templates/).
-func checkHelm(ctx context.Context, path string) bool {
+// hc is the scan-scoped cache; when nil the lookup always hits the filesystem.
+func checkHelm(ctx context.Context, path string, hc *sync.Map) bool {
 	contextLogger := logger.FromContext(ctx)
 	dir := filepath.Dir(path)
 	for {
+		if hc != nil {
+			if v, ok := hc.Load(dir); ok {
+				return v.(bool)
+			}
+		}
 		_, err := os.Stat(filepath.Join(dir, "Chart.yaml"))
 		if err == nil {
+			if hc != nil {
+				hc.Store(dir, true)
+			}
 			return true
 		}
 		if !errors.Is(err, os.ErrNotExist) {
@@ -664,6 +828,9 @@ func checkHelm(ctx context.Context, path string) bool {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
+			if hc != nil {
+				hc.Store(dir, false)
+			}
 			return false
 		}
 		dir = parent
@@ -732,7 +899,8 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 }
 
 func checkForAnsibleByPaths(path string) bool {
-	return queryRegexPathsAnsible.MatchString(path)
+	path = filepath.ToSlash(path)
+	return strings.Contains(path, "/group_vars/") || strings.Contains(path, "/host_vars/")
 }
 
 // isInsideAnsibleTemplatesDir reports whether path is inside an Ansible templates directory.
@@ -793,11 +961,11 @@ func checkForAnsibleHost(yamlContent model.Document) bool {
 }
 
 // computeValues computes expected Lines of Code to be scanned from locCount channel
-// and creates the types and unwanted slices from the channels removing any duplicates
+// and creates the types and unwanted slices from the channels removing any duplicates.
 func computeValues(types, unwanted chan string, locCount chan int) (typesS, unwantedS []string, locTotal int) {
 	var val int
-	unwantedSlice := make([]string, 0)
-	typeSlice := make([]string, 0)
+	unwantedSet := make(map[string]struct{})
+	typeSet := make(map[string]struct{})
 	for locCount != nil || unwanted != nil || types != nil {
 		select {
 		case i, ok := <-locCount:
@@ -808,21 +976,25 @@ func computeValues(types, unwanted chan string, locCount chan int) (typesS, unwa
 			}
 		case i, ok := <-unwanted:
 			if ok {
-				if !utils.Contains(i, unwantedSlice) {
-					unwantedSlice = append(unwantedSlice, i)
-				}
+				unwantedSet[i] = struct{}{}
 			} else {
 				unwanted = nil
 			}
 		case i, ok := <-types:
 			if ok {
-				if !utils.Contains(i, typeSlice) {
-					typeSlice = append(typeSlice, i)
-				}
+				typeSet[i] = struct{}{}
 			} else {
 				types = nil
 			}
 		}
+	}
+	typeSlice := make([]string, 0, len(typeSet))
+	for k := range typeSet {
+		typeSlice = append(typeSlice, k)
+	}
+	unwantedSlice := make([]string, 0, len(unwantedSet))
+	for k := range unwantedSet {
+		unwantedSlice = append(unwantedSlice, k)
 	}
 	return typeSlice, unwantedSlice, val
 }
@@ -888,28 +1060,10 @@ func isExcludedFile(path string, expandedExc []string) bool {
 	return false
 }
 
-func isDeadSymlink(path string) bool {
-	fileInfo, _ := os.Stat(path)
-	return fileInfo == nil
-}
-
-func isConfigFile(ctx context.Context, path string, exc []string) bool {
-	contextLogger := logger.FromContext(ctx)
-	for i := range exc {
-		exclude, err := provider.GetExcludePaths(ctx, exc[i])
-		if err != nil {
-			contextLogger.Err(err).Msg("failed to get exclude paths")
-		}
-		for j := range exclude {
-			fileInfo, _ := os.Stat(path)
-			if fileInfo != nil && fileInfo.IsDir() {
-				continue
-			}
-
-			if len(path)-len(exclude[j]) > 0 && path[len(path)-len(exclude[j]):] == exclude[j] && exclude[j] != "" {
-				contextLogger.Info().Msgf("Excluded file %s from analyzer", path)
-				return true
-			}
+func isConfigFile(path string, suffixes []string) bool {
+	for _, suffix := range suffixes {
+		if suffix != "" && strings.HasSuffix(path, suffix) {
+			return true
 		}
 	}
 	return false
@@ -948,23 +1102,6 @@ func (a *analyzerInfo) isAvailableType(typeName string) bool {
 	}
 	// type flag is set
 	return utils.Contains(typeName, a.typesFlag)
-}
-
-func (a *Analyzer) checkIgnore(ctx context.Context, fileSize int64, hasGitIgnoreFile bool,
-	gitIgnore *ignore.GitIgnore,
-	fullPath string, trimmedPath string, ignoreFiles []string) []string {
-	contextLogger := logger.FromContext(ctx)
-	exceededFileSize := a.MaxFileSize >= 0 && float64(fileSize)/float64(sizeMb) > float64(a.MaxFileSize)
-
-	if (hasGitIgnoreFile && gitIgnore.MatchesPath(trimmedPath)) || isDeadSymlink(fullPath) || exceededFileSize {
-		ignoreFiles = append(ignoreFiles, fullPath)
-		a.Exc = append(a.Exc, fullPath)
-
-		if exceededFileSize {
-			contextLogger.Warn().Msgf("file %s exceeds maximum file size of %d Mb", fullPath, a.MaxFileSize)
-		}
-	}
-	return ignoreFiles
 }
 
 func typesLower(types []string) []string {

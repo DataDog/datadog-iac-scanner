@@ -119,45 +119,6 @@ func Test_ContributionAppeal(t *testing.T) {
 
 }
 
-func Test_GetTotalFiles(t *testing.T) {
-	tests := []struct {
-		name           string
-		paths          []string
-		expectedOutput int
-	}{
-		{
-			name:           "count utils folder files",
-			paths:          []string{filepath.Join("..", "..", "pkg", "utils")},
-			expectedOutput: 21,
-		},
-		{
-			name:           "count analyzer folder files",
-			paths:          []string{filepath.Join("..", "..", "pkg", "analyzer")},
-			expectedOutput: 2,
-		},
-		{
-			name:           "count analyzer and utils folder files",
-			paths:          []string{filepath.Join("..", "..", "pkg", "analyzer"), filepath.Join("..", "..", "pkg", "utils")},
-			expectedOutput: 23,
-		},
-		{
-			name:           "count invalid folder",
-			paths:          []string{filepath.Join("pkg", "nonexistent")},
-			expectedOutput: 0,
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-
-			v := getTotalFiles(ctx, tt.paths)
-			require.Equal(t, tt.expectedOutput, v)
-
-		})
-	}
-}
-
 func Test_LogLoadingQueriesType(t *testing.T) {
 	tests := []struct {
 		name           string
