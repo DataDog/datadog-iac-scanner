@@ -1430,7 +1430,9 @@ func (v *inspectorExprVisitor) VisitObjectCons(e *hclsyntax.ObjectConsExpr) (ast
 	return expressionToASTObjectConsExpr(e), nil
 }
 func (v *inspectorExprVisitor) VisitTemplateJoin(e *hclsyntax.TemplateJoinExpr) (ast.Value, error) {
-	return ast.String("__UNSUPPORTED_EXPR__"), nil
+	// A template join wraps the for-loop of a %{for}...%{endfor} template
+	// directive; render the underlying for-expression.
+	return expressionToAST(e.Tuple)
 }
 func (v *inspectorExprVisitor) VisitBinaryOp(e *hclsyntax.BinaryOpExpr) (ast.Value, error) {
 	return expressionToASTBinaryOpExpr(e), nil
@@ -1443,6 +1445,14 @@ func (v *inspectorExprVisitor) VisitForExpr(e *hclsyntax.ForExpr) (ast.Value, er
 }
 func (v *inspectorExprVisitor) VisitSplatExpr(e *hclsyntax.SplatExpr) (ast.Value, error) {
 	return expressionToASTSplatExpr(e), nil
+}
+func (v *inspectorExprVisitor) VisitAnonSymbol(e *hclsyntax.AnonSymbolExpr) (ast.Value, error) {
+	// The anonymous splat item renders as an empty string so that a trailing
+	// traversal (e.g. .id) composes onto the splat base in VisitSplatExpr.
+	return ast.String(""), nil
+}
+func (v *inspectorExprVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSyntaxError) (ast.Value, error) {
+	return ast.String("__UNSUPPORTED_EXPR__"), nil
 }
 func (v *inspectorExprVisitor) VisitDefault(e hclsyntax.Expression) (ast.Value, error) {
 	return ast.String("__UNSUPPORTED_EXPR__"), nil
@@ -1605,13 +1615,13 @@ func expressionToASTForExpr(e *hclsyntax.ForExpr) ast.Value {
 func expressionToASTSplatExpr(e *hclsyntax.SplatExpr) ast.Value {
 	sourceV, _ := expressionToAST(e.Source)
 	base := astValueToSimpleString(sourceV) + "[*]"
+	// e.Each is a traversal rooted at the anonymous item symbol (which renders
+	// as an empty string), so rendering it yields just the trailing traversal
+	// (e.g. ".id" for var.list[*].id, or "" for a bare var.list[*]).
 	if e.Each != nil && e.Each != e.Source {
 		eachV, err := expressionToAST(e.Each)
 		if err == nil {
-			eachStr := astValueToSimpleString(eachV)
-			if eachStr == base || strings.HasPrefix(eachStr, base) {
-				return ast.String(eachStr)
-			}
+			return ast.String(base + astValueToSimpleString(eachV))
 		}
 	}
 	return ast.String(base)

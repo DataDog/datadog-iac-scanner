@@ -27,11 +27,19 @@ type Visitor[T any] interface {
 	VisitUnaryOp(e *hclsyntax.UnaryOpExpr) (T, error)
 	VisitForExpr(e *hclsyntax.ForExpr) (T, error)
 	VisitSplatExpr(e *hclsyntax.SplatExpr) (T, error)
+	// VisitAnonSymbol handles the synthetic placeholder for the current item
+	// inside a splat's Each expression (e.g. the item in var.list[*].id).
+	VisitAnonSymbol(e *hclsyntax.AnonSymbolExpr) (T, error)
+	// VisitExprSyntaxError handles the placeholder produced for invalid or
+	// incomplete expressions that could not be parsed.
+	VisitExprSyntaxError(e *hclsyntax.ExprSyntaxError) (T, error)
 	VisitDefault(e hclsyntax.Expression) (T, error)
 }
 
 // Dispatch unwraps expr then dispatches to the appropriate Visitor method.
-// Add new expression types here and to the Visitor interface so all sites stay in sync.
+// Add new expression types here (or in dispatchComposite) and to the Visitor
+// interface so all sites stay in sync. The dispatch is split across two
+// functions purely to keep each below the cyclomatic complexity limit.
 func Dispatch[T any](expr hclsyntax.Expression, v Visitor[T]) (T, error) {
 	expr = Unwrap(expr)
 	switch e := expr.(type) {
@@ -49,6 +57,15 @@ func Dispatch[T any](expr hclsyntax.Expression, v Visitor[T]) (T, error) {
 		return v.VisitFunctionCall(e)
 	case *hclsyntax.ConditionalExpr:
 		return v.VisitConditional(e)
+	default:
+		return dispatchComposite(expr, v)
+	}
+}
+
+// dispatchComposite handles the composite, operator, and synthetic expression
+// types. It receives an already-unwrapped expression from Dispatch.
+func dispatchComposite[T any](expr hclsyntax.Expression, v Visitor[T]) (T, error) {
+	switch e := expr.(type) {
 	case *hclsyntax.TupleConsExpr:
 		return v.VisitTupleCons(e)
 	case *hclsyntax.ObjectConsExpr:
@@ -63,6 +80,10 @@ func Dispatch[T any](expr hclsyntax.Expression, v Visitor[T]) (T, error) {
 		return v.VisitForExpr(e)
 	case *hclsyntax.SplatExpr:
 		return v.VisitSplatExpr(e)
+	case *hclsyntax.AnonSymbolExpr:
+		return v.VisitAnonSymbol(e)
+	case *hclsyntax.ExprSyntaxError:
+		return v.VisitExprSyntaxError(e)
 	default:
 		return v.VisitDefault(expr)
 	}

@@ -61,7 +61,9 @@ func (v *engineVisitor) VisitObjectCons(e *hclsyntax.ObjectConsExpr) (string, er
 	return v.e.expToStringObjectConsExpr(v.ctx, e)
 }
 func (v *engineVisitor) VisitTemplateJoin(e *hclsyntax.TemplateJoinExpr) (string, error) {
-	return "", fmt.Errorf("can't convert expression %T to string", e)
+	// A template join wraps the for-loop of a %{for}...%{endfor} template
+	// directive; render the underlying for-expression.
+	return v.e.ExpToString(v.ctx, e.Tuple)
 }
 func (v *engineVisitor) VisitBinaryOp(e *hclsyntax.BinaryOpExpr) (string, error) {
 	lhs, err := v.e.ExpToString(v.ctx, e.LHS)
@@ -140,13 +142,24 @@ func (v *engineVisitor) VisitSplatExpr(e *hclsyntax.SplatExpr) (string, error) {
 		return "", err
 	}
 	base := sourceStr + "[*]"
+	// e.Each is a traversal rooted at the anonymous item symbol (which renders
+	// as an empty string), so rendering it yields just the trailing traversal
+	// (e.g. ".id" for var.list[*].id, or "" for a bare var.list[*]).
 	if e.Each != nil && e.Each != e.Source {
 		eachStr, err := v.e.ExpToString(v.ctx, e.Each)
-		if err == nil && (eachStr == base || strings.HasPrefix(eachStr, base)) {
-			return eachStr, nil
+		if err == nil {
+			return base + eachStr, nil
 		}
 	}
 	return base, nil
+}
+func (v *engineVisitor) VisitAnonSymbol(e *hclsyntax.AnonSymbolExpr) (string, error) {
+	// The anonymous splat item renders as an empty string so that a trailing
+	// traversal (e.g. .id) composes onto the splat base in VisitSplatExpr.
+	return "", nil
+}
+func (v *engineVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSyntaxError) (string, error) {
+	return "", fmt.Errorf("can't convert invalid expression %T to string", e)
 }
 func (v *engineVisitor) VisitDefault(e hclsyntax.Expression) (string, error) {
 	log := logger.FromContext(v.ctx)

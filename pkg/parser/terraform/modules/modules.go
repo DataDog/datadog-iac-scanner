@@ -372,16 +372,25 @@ func (v *resolveExprVisitor) VisitSplatExpr(e *hclsyntax.SplatExpr) (string, err
 		return unresolvedPlaceholder, nil
 	}
 	base := sourceStr + "[*]"
+	// e.Each is a traversal rooted at the anonymous item symbol (which resolves
+	// to an empty string), so resolving it yields just the trailing traversal
+	// (e.g. ".id" for var.list[*].id, or "" for a bare var.list[*]).
 	if e.Each != nil && e.Each != e.Source {
 		eachStr := resolveExpr(e.Each, v.locals, v.vars)
 		if strings.HasPrefix(eachStr, "__") {
 			return unresolvedPlaceholder, nil
 		}
-		if eachStr == base || strings.HasPrefix(eachStr, base) {
-			return eachStr, nil
-		}
+		return base + eachStr, nil
 	}
 	return base, nil
+}
+func (v *resolveExprVisitor) VisitAnonSymbol(e *hclsyntax.AnonSymbolExpr) (string, error) {
+	// The anonymous splat item resolves to an empty string so that a trailing
+	// traversal (e.g. .id) composes onto the splat base in VisitSplatExpr.
+	return "", nil
+}
+func (v *resolveExprVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSyntaxError) (string, error) {
+	return unresolvedPlaceholder, nil
 }
 func (v *resolveExprVisitor) VisitDefault(e hclsyntax.Expression) (string, error) {
 	return resolveExprDefault(e), nil
