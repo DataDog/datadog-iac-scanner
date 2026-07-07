@@ -172,9 +172,10 @@ func (repo *bareRepo) ensureClone(ctx context.Context) error {
 		}
 		if info, err := os.Stat(repo.barePath); err == nil && info.IsDir() {
 			// Validate that the directory is a real bare repo, not a partial clone
-			// left by a killed process. gitInDir is not available here since it
-			// uses the gitexec helpers; use exec.Command directly for this one check.
-			if check := gitInDir(ctx, repo.barePath, "rev-parse", "--git-dir"); check.Run() == nil {
+			// left by a killed process. This is a local-only read (no network, no
+			// pack-file I/O) so it intentionally bypasses the acquireGitProc semaphore,
+			// which is reserved for operations that meaningfully consume system resources.
+			if gitInDir(ctx, repo.barePath, "rev-parse", "--git-dir").Run() == nil {
 				repo.cloneOK.Store(true)
 				return nil, nil
 			}
@@ -273,15 +274,15 @@ func (repo *bareRepo) fetchRef(ctx context.Context, ref string) (string, error) 
 
 		// Local fast path: if the bare clone already contains this ref (e.g. a
 		// pre-populated clone or a prior fetch), resolve it without hitting the network.
-		if tryLocal := gitInDir(ctx, repo.barePath, "rev-parse", "--verify", safeRef); tryLocal != nil {
-			if out, localErr := tryLocal.Output(); localErr == nil {
-				if resolved := strings.TrimSpace(string(out)); looksLikeSHA(resolved) {
-					repo.refMu.Lock()
-					repo.refCache[ref] = resolved
-					repo.refMu.Unlock()
-					go repo.saveBareRefCache()
-					return resolved, nil
-				}
+		// This is a local-only read so it intentionally bypasses acquireGitProc;
+		// the semaphore is acquired below only when a network fetch is needed.
+		if out, localErr := gitInDir(ctx, repo.barePath, "rev-parse", "--verify", safeRef).Output(); localErr == nil {
+			if resolved := strings.TrimSpace(string(out)); looksLikeSHA(resolved) {
+				repo.refMu.Lock()
+				repo.refCache[ref] = resolved
+				repo.refMu.Unlock()
+				go repo.saveBareRefCache()
+				return resolved, nil
 			}
 		}
 
