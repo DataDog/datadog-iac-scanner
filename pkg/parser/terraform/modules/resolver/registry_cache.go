@@ -8,7 +8,9 @@ package resolver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,6 +25,19 @@ import (
 
 // deadHostTTL is how long a registry discovery failure is remembered across runs.
 const deadHostTTL = 24 * time.Hour
+
+// isNetworkUnreachable reports whether err represents a genuine network-level
+// failure (DNS, connection refused, timeout) as opposed to an HTTP-level error
+// like 401/403/500, which means the host is reachable and should not be cached
+// as dead across runs.
+func isNetworkUnreachable(err error) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	return errors.As(err, &dnsErr)
+}
 
 func deadHostsFilePath() string {
 	base := os.Getenv("XDG_CACHE_HOME")
@@ -145,7 +160,13 @@ func (c *registryCache) modulesV1(ctx context.Context, host string) (string, err
 			c.discMu.Lock()
 			c.discErrMap[host] = err
 			c.discMu.Unlock()
-			go persistDeadHost(host) // async, non-critical
+			// Only persist hosts that are network-unreachable (DNS failures, connection
+			// refused, timeouts). HTTP-level errors (401, 500, etc.) mean the host is
+			// reachable — persisting those would ban the registry for 24 h even after
+			// fixing credentials or waiting for a recovery.
+			if isNetworkUnreachable(err) {
+				go persistDeadHost(host)
+			}
 			return "", err
 		}
 		c.discMu.Lock()

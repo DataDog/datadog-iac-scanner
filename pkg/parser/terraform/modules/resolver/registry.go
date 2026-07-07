@@ -91,8 +91,11 @@ func discoverModulesEndpoint(ctx context.Context, client *http.Client, baseURL s
 	if !strings.HasSuffix(sd.ModulesV1, "/") {
 		sd.ModulesV1 += "/"
 	}
-	if strings.HasPrefix(sd.ModulesV1, "/") {
-		return baseURL + sd.ModulesV1, nil
+	// Resolve relative service URLs (e.g. "terraform/modules/v1/" or "/api/modules/v1/")
+	// against the discovery base URL per the Terraform registry protocol spec.
+	if ref, err := url.Parse(sd.ModulesV1); err == nil && !ref.IsAbs() {
+		base, _ := url.Parse(baseURL)
+		return base.ResolveReference(ref).String(), nil
 	}
 	return sd.ModulesV1, nil
 }
