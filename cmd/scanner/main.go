@@ -39,6 +39,7 @@ func main() {
 			showConfigAction,
 			testRulesAction,
 			serveAction,
+			fetchBundleAction,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{

@@ -9,12 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
 	"github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -115,6 +117,11 @@ var scanAction = &cli.Command{
 			Name:  "libraries-path",
 			Usage: "path to local Rego support libraries (default: fetch from backend when using local queries-path)",
 		},
+		&cli.StringFlag{
+			Name: "offline-bundle-path",
+			Usage: "directory containing rules, libraries and configuration previously written by " +
+				"`fetch-bundle`; when set, the scan makes no network calls",
+		},
 		&cli.StringSliceFlag{
 			Name:  "report-format",
 			Usage: "output report formats (valid: sarif, simple-json)",
@@ -138,7 +145,30 @@ var scanAction = &cli.Command{
 const (
 	filePerms = 0644
 	dirPerms  = 0755
+
+	// staleBundleWarningAge is how old an offline bundle can be before
+	// runScan warns that it may no longer reflect the latest rules.
+	staleBundleWarningAge = 7 * 24 * time.Hour
 )
+
+// warnIfBundleStale logs a warning if the offline bundle at bundleDir has no
+// manifest, or was fetched more than staleBundleWarningAge ago, so that
+// running with stale rules is never silent.
+func warnIfBundleStale(ctx context.Context, bundleDir string) {
+	contextLogger := logger.FromContext(ctx)
+	manifest, err := readBundleManifest(bundleDir)
+	if err != nil {
+		contextLogger.Warn().Err(err).Msg(
+			"could not read the offline bundle manifest; the bundle's age cannot be verified")
+		return
+	}
+	age := time.Since(manifest.FetchedAt)
+	if age > staleBundleWarningAge {
+		contextLogger.Warn().Msgf(
+			"the offline bundle was fetched %s ago (on %s); run `fetch-bundle` again to pick up rule updates",
+			age.Round(time.Hour), manifest.FetchedAt.Format(time.RFC3339))
+	}
+}
 
 func validateReportFormats(formats []string) error {
 	valid := map[string]struct{}{}
@@ -212,13 +242,31 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("error retrieving repository commit information: %w", err)
 	}
 
-	cfg, _, err := config.ReadConfiguration(ctx, repoDir, config.WithDatadog(datadog.NewDatadogClient(), repoInfo.RepositoryUrl))
-	if err != nil {
-		outErr := fmt.Errorf("error reading the configuration: %w", err)
-		if te := (*config.InvalidLocalConfigError)(nil); errors.As(err, &te) {
-			outErr = errorWithExitCode(outErr, constants.InvalidConfigErrorCode)
+	offlineBundlePath := c.String("offline-bundle-path")
+
+	var cfg *config.IacConfig
+	if offlineBundlePath != "" {
+		cfgBytes, err := os.ReadFile(filepath.Clean(filepath.Join(offlineBundlePath, bundleConfigFileName)))
+		if err != nil {
+			return errorWithExitCode(fmt.Errorf("error reading the offline configuration bundle: %w", err), constants.InvalidConfigErrorCode)
 		}
-		return outErr
+		cfg, err = config.ParseConfig(cfgBytes)
+		if err != nil {
+			return errorWithExitCode(fmt.Errorf("error parsing the offline configuration bundle: %w", err), constants.InvalidConfigErrorCode)
+		}
+		if cfg == nil {
+			cfg = &config.IacConfig{}
+		}
+		warnIfBundleStale(ctx, offlineBundlePath)
+	} else {
+		cfg, _, err = config.ReadConfiguration(ctx, repoDir, config.WithDatadog(datadog.NewDatadogClient(), repoInfo.RepositoryUrl))
+		if err != nil {
+			outErr := fmt.Errorf("error reading the configuration: %w", err)
+			if te := (*config.InvalidLocalConfigError)(nil); errors.As(err, &te) {
+				outErr = errorWithExitCode(outErr, constants.InvalidConfigErrorCode)
+			}
+			return outErr
+		}
 	}
 	excludePaths, err := getRepoRelativePaths(repoDir, cfg.IgnorePaths)
 	if err != nil {
@@ -298,7 +346,25 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 	}
 
-	metadata, err := console.ExecuteScan(ctx, params)
+	var opts []scan.ClientOption
+	if offlineBundlePath != "" {
+		offlineClient, err := datadog.NewLocalFileClient(
+			filepath.Join(offlineBundlePath, bundleRulesFileName),
+			filepath.Join(offlineBundlePath, bundleLibrariesFileName),
+		)
+		if err != nil {
+			return errorWithExitCode(fmt.Errorf("error loading the offline bundle: %w", err), constants.InvalidConfigErrorCode)
+		}
+		opts = append(opts, scan.WithQuerySourceFactory(func(_ context.Context, paramsPlatforms []string) (source.QueriesSource, error) {
+			return source.NewDatadogSource(
+				offlineClient,
+				source.WithWantedPlatforms(paramsPlatforms),
+				source.WithWantedCloudProviders(params.CloudProvider),
+			)
+		}))
+	}
+
+	metadata, err := console.ExecuteScan(ctx, params, opts...)
 	if err != nil {
 		return errorWithExitCode(fmt.Errorf("error during IaC scan: %w", err), constants.EngineErrorCode)
 	}

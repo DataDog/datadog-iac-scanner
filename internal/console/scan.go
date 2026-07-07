@@ -12,14 +12,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func ExecuteScan(ctx context.Context, scanParams *scan.Parameters) (scan.ScanMetadata, error) {
+func ExecuteScan(ctx context.Context, scanParams *scan.Parameters, opts ...scan.ClientOption) (scan.ScanMetadata, error) {
 	log.Debug().Msg("console.scan()")
 
 	console := newConsole()
 
 	console.preScan(scanParams)
 
-	client, err := scan.NewClient(ctx, scanParams, console.Printer)
+	client, err := scan.NewClient(ctx, scanParams, console.Printer, opts...)
 
 	if err != nil {
 		log.Err(err).Msgf("failed to create scan client%v", err)
