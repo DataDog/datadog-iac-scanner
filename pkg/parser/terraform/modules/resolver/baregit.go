@@ -171,8 +171,15 @@ func (repo *bareRepo) ensureClone(ctx context.Context) error {
 			return nil, repo.cachedCloneError()
 		}
 		if info, err := os.Stat(repo.barePath); err == nil && info.IsDir() {
-			repo.cloneOK.Store(true)
-			return nil, nil
+			// Validate that the directory is a real bare repo, not a partial clone
+			// left by a killed process. gitInDir is not available here since it
+			// uses the gitexec helpers; use exec.Command directly for this one check.
+			if check := gitInDir(ctx, repo.barePath, "rev-parse", "--git-dir"); check.Run() == nil {
+				repo.cloneOK.Store(true)
+				return nil, nil
+			}
+			// Partial or corrupt clone — remove and reclone.
+			_ = os.RemoveAll(repo.barePath)
 		}
 		var lastErr error
 		for attempt := 0; attempt < bareCloneAttempts; attempt++ {
