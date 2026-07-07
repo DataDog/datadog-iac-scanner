@@ -20,7 +20,7 @@ const cacheDirPerms = 0o700
 // moduleCache is a content-addressed on-disk module store ($XDG_CACHE_HOME/.../modules).
 type moduleCache struct {
 	dir string
-	sf  singleflight.Group
+	sf  singleflight.Group //nolint:unused
 }
 
 // NewModuleCache creates ~/.cache/.../modules (or XDG_CACHE_HOME) and returns it.
@@ -41,7 +41,8 @@ func NewModuleCache() (*moduleCache, error) {
 }
 
 // moduleCacheKey is sha256(source + NUL + version) hex.
-func moduleCacheKey(source, version string) string {
+// Used by lookup and store, which are wired in the gogetter resolver (next stacked PR).
+func moduleCacheKey(source, version string) string { //nolint:unused
 	h := sha256.New()
 	_, _ = h.Write([]byte(source))
 	_, _ = h.Write([]byte{0})
@@ -50,7 +51,7 @@ func moduleCacheKey(source, version string) string {
 }
 
 // lookup returns a cache hit directory for (source, version), if any.
-func (c *moduleCache) lookup(source, version string) (localDir string, ok bool) {
+func (c *moduleCache) lookup(source, version string) (localDir string, ok bool) { //nolint:unused
 	dir := filepath.Join(c.dir, moduleCacheKey(source, version))
 	if info, err := os.Stat(dir); err == nil && info.IsDir() {
 		return dir, true
@@ -63,7 +64,7 @@ func (c *moduleCache) lookup(source, version string) (localDir string, ok bool) 
 // concurrent callers with the same key wait and share the result, which avoids the
 // Windows file-locking errors that arise when multiple goroutines race to rename
 // different temp dirs onto the same destination directory.
-func (c *moduleCache) store(source, version, srcDir string) (string, error) {
+func (c *moduleCache) store(source, version, srcDir string) (string, error) { //nolint:unused
 	key := moduleCacheKey(source, version)
 	dst := filepath.Join(c.dir, key)
 	if info, err := os.Stat(dst); err == nil && info.IsDir() {

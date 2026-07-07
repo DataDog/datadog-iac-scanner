@@ -104,15 +104,15 @@ func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (strin
 	}
 
 	// Iterate through generated module mappings and merge their data.
-	for _, module := range modules {
-		for provider, attrData := range module.AttributesData {
+	for i := range modules {
+		for provider, attrData := range modules[i].AttributesData {
 			providersMap, ok := commonModules[provider].(map[string]any)
 			if !ok || providersMap == nil {
 				providersMap = map[string]any{}
 				commonModules[provider] = providersMap
 			}
 
-			providersMap[module.Source] = attrData
+			providersMap[modules[i].Source] = attrData
 		}
 	}
 
