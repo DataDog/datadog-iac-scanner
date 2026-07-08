@@ -13,6 +13,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	pulumi "github.com/DataDog/datadog-iac-scanner/pkg/parser/pulumi"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/pulumi/projectindex"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
 )
@@ -54,6 +56,18 @@ func PrepareSharedWalk(ctx context.Context,
 	}
 
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
+
+	// Build the Pulumi cross-file symbol index once and attach it to the shared
+	// context so all language parsers can resolve relative imports without an
+	// extra repo walk.
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.Path)
+	}
+	idx := projectindex.Build(paths, fsp.ContentCache())
+	if len(idx.ByFile) > 0 {
+		ctx = pulumi.WithProjectIndex(ctx, idx)
+	}
 
 	routing := buildExtensionRouting(services)
 

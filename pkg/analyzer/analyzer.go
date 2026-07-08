@@ -70,6 +70,14 @@ var (
 	pulumiNameRegex                                 = regexp.MustCompile(`name\s*:`)
 	pulumiRuntimeRegex                              = regexp.MustCompile(`runtime\s*:`)
 	pulumiResourcesRegex                            = regexp.MustCompile(`resources\s*:`)
+	// Anchored to start-of-line so comments like "# import pulumi_aws" are
+	// not matched.
+	pulumiSrcPythonRegex = regexp.MustCompile(`(?m)^(?:import|from)\s+pulumi`)
+	// Leading quote ensures we match only actual Go import path strings, not
+	// comments that mention the URL.
+	pulumiSrcGoRegex = regexp.MustCompile(`"github\.com/pulumi/pulumi-`)
+	// Anchored import statement; avoids matching "// uses @pulumi/aws" comments.
+	pulumiSrcTSRegex = regexp.MustCompile(`(?m)^import\s[^@\n]*@pulumi/`)
 	serverlessServiceRegex                          = regexp.MustCompile(`service\s*:`)
 	serverlessProviderRegex                         = regexp.MustCompile(`(^|\n)provider\s*:`)
 	cicdOnRegex                                     = regexp.MustCompile(`\s*on:\s*`)
@@ -100,6 +108,10 @@ var (
 		extConf:        true,
 		extIni:         true,
 		extBicepFile:   true,
+		extPy:          true,
+		extTs:          true,
+		extJs:          true,
+		extGo:          true,
 	}
 	supportedRegexes = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
@@ -166,6 +178,10 @@ const (
 	extCfg                = ".cfg"
 	extConf               = ".conf"
 	extIni                = ".ini"
+	extPy                 = ".py"
+	extTs                 = ".ts"
+	extJs                 = ".js"
+	extGo                 = ".go"
 )
 
 type Parameters struct {
@@ -738,6 +754,18 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 		return ansible
 	case yaml, yml, json, sh:
 		return classifyByContent(ctx, path, content, ext, typesFlag, hc)
+	case extPy:
+		if pulumiSrcPythonRegex.Match(content) {
+			return "pulumi"
+		}
+	case extTs, extJs:
+		if pulumiSrcTSRegex.Match(content) {
+			return "pulumi"
+		}
+	case extGo:
+		if pulumiSrcGoRegex.Match(content) {
+			return "pulumi"
+		}
 	}
 	return ""
 }
@@ -773,6 +801,10 @@ func PlatformForKind(kind model.FileKind) (string, bool) {
 		return grpc, true
 	case model.KindINI, model.KindCFG:
 		return ansible, true
+	case model.KindPulumiPython, model.KindPulumiTypeScript, model.KindPulumiJS, model.KindPulumiGo:
+		// All Pulumi source-language parsers produce the same document schema and
+		// are evaluated by the same Rego rules as Pulumi YAML.
+		return "pulumi", true
 	default:
 		return "", false
 	}

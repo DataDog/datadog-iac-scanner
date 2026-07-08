@@ -27,9 +27,13 @@ const (
 	KindPROTO         FileKind = "PROTO"
 	KindCOMMON        FileKind = "*"
 	KindHELM          FileKind = "HELM"
-	KindBUILDAH       FileKind = "SH"
-	KindCFG           FileKind = "CFG"
-	KindINI           FileKind = "INI"
+	KindBUILDAH          FileKind = "SH"
+	KindCFG              FileKind = "CFG"
+	KindINI              FileKind = "INI"
+	KindPulumiPython     FileKind = "PULUMI_PY"
+	KindPulumiTypeScript FileKind = "PULUMI_TS"
+	KindPulumiJS         FileKind = "PULUMI_JS"
+	KindPulumiGo         FileKind = "PULUMI_GO"
 )
 
 // Constants to describe commands given from comments

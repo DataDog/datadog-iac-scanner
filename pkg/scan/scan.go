@@ -26,6 +26,10 @@ import (
 	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
+	pulumiGoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/pulumi/golang"
+	pulumiJSParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/pulumi/javascript"
+	pulumiPyParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/pulumi/python"
+	pulumiTSParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/pulumi/typescript"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
@@ -299,7 +303,11 @@ func (c *Client) createService(
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).
 		Add(&ansibleConfigParser.Parser{}).
-		Add(&ansibleHostsParser.Parser{})
+		Add(&ansibleHostsParser.Parser{}).
+		Add(&pulumiPyParser.Parser{}).
+		Add(&pulumiTSParser.Parser{}).
+		Add(&pulumiJSParser.Parser{}).
+		Add(&pulumiGoParser.Parser{})
 
 	if c.ScanParams.ShouldScanTfPlans {
 		combinedParserBuilder.Add(&jsonParser.Parser{})
