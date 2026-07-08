@@ -150,6 +150,45 @@ func (s *FileSystemSourceProvider) ExcludePaths(ctx context.Context, paths []str
 	return s.addExcluded(ctx, paths)
 }
 
+// AddUnfilteredPaths appends paths that bypass the ignore/exclude filters — used to
+// inject resolved remote module directories without accidentally stripping them.
+func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range paths {
+		s.paths = append(s.paths, filepath.FromSlash(p))
+	}
+}
+
+// TerraformFiles returns the sorted list of .tf file paths covered by this provider,
+// used by the module graph-walker to discover module call sites before scanning.
+func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string, error) {
+	extensions := model.Extensions{".tf": {}}
+	var files []string
+	for _, scanPath := range s.paths {
+		fileInfo, err := os.Stat(scanPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to open path")
+		}
+		if !fileInfo.IsDir() {
+			if shouldSkip, _ := s.checkConditions(ctx, fileInfo, extensions, scanPath, nil); shouldSkip {
+				continue
+			}
+			files = append(files, strings.ReplaceAll(scanPath, "\\", "/"))
+			continue
+		}
+		noopSink := func(context.Context, string) ([]string, error) {
+			return nil, errors.New("resolver unavailable")
+		}
+		collected, err := s.collectFiles(ctx, scanPath, noopSink, extensions)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to collect files")
+		}
+		files = append(files, collected...)
+	}
+	return files, nil
+}
+
 // ignoreDamagedFiles checks whether we should ignore a damaged file from a scan or not.
 func ignoreDamagedFiles(ctx context.Context, path string) bool {
 	contextLogger := logger.FromContext(ctx)

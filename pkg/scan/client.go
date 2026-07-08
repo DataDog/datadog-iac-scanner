@@ -61,6 +61,10 @@ type Parameters struct {
 	EnableRemoteModules         bool
 	RemoteModulesManifestPath   string
 	RemoteModulesHostAllowlist  []string
+	// ModuleMaxDepth caps the BFS depth of the remote-module graph walker (0 disables traversal entirely).
+	ModuleMaxDepth      int
+	ModuleFetchTimeout  time.Duration
+	MaxModuleBytesTotal int64
 }
 
 func (p *Parameters) GetEffectivePlatforms() []string {
@@ -162,6 +166,9 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxFileSizeFlag:             5,
 		UseOldSeverities:            false,
 		MaxResolverDepth:            15,
+		ModuleMaxDepth:              8,
+		ModuleFetchTimeout:          30 * time.Second,
+		MaxModuleBytesTotal:         200 * 1024 * 1024,
 	}, logCtx
 }
 

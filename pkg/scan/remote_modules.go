@@ -9,226 +9,654 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	tfresolver "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 )
 
-type moduleResolverAdapter struct {
-	resolver tfresolver.Resolver
-	mu       sync.Mutex
-	cleanups []func()
-	once     sync.Once
-}
+const seedGroupConcurrencyFactor = 4
 
-func (r *moduleResolverAdapter) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (string, error) {
-	res, err := r.resolver.Resolve(ctx, mod)
-	if err != nil {
-		return "", err
-	}
-	if res.Cleanup != nil {
-		r.mu.Lock()
-		r.cleanups = append(r.cleanups, res.Cleanup)
-		r.mu.Unlock()
-	}
-	return res.LocalPath, nil
-}
-
-func (r *moduleResolverAdapter) cleanup() {
-	r.once.Do(func() {
-		r.mu.Lock()
-		cleanups := append([]func(){}, r.cleanups...)
-		r.cleanups = nil
-		r.mu.Unlock()
-		for i := len(cleanups) - 1; i >= 0; i-- {
-			cleanups[i]()
-		}
-	})
-}
-
-func (c *Client) prepareRemoteModules(
-	ctx context.Context, paths []string, inspector *engine.Inspector,
-) (cleanup func(), err error) {
-	noCleanup := func() {}
-	if !c.ScanParams.EnableRemoteModules {
-		return noCleanup, nil
-	}
-	files, roots, err := c.collectTerraformModuleFiles(paths)
-	if err != nil {
-		return noCleanup, err
-	}
-	if len(files) == 0 {
-		return noCleanup, nil
+// resolveTerraformModulesForScan runs the bounded module graph-walker and wires its
+// results into extractedPaths so the scanner sees resolved remote module files.
+func (c *Client) resolveTerraformModulesForScan(
+	ctx context.Context,
+	paramsPlatforms []string,
+	extractedPaths *provider.ExtractedPath,
+) (moduleCleanups []func(), remoteModulePaths []string, remoteSourceDirs map[string]string, err error) {
+	if !platformsIncludeTerraform(paramsPlatforms) || !c.shouldPreScanTerraformModules(extractedPaths.Path) {
+		return nil, nil, nil, nil
 	}
 
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.ScanParams.ParallelScanFlag)
-	if err != nil {
-		return noCleanup, err
-	}
-	if len(parsedModules) == 0 {
-		return noCleanup, nil
-	}
-
-	resolver, err := c.buildTerraformModuleResolver(roots)
-	if err != nil {
-		return noCleanup, err
-	}
-	adapter := &moduleResolverAdapter{resolver: resolver}
-	enriched, err := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, c.ScanParams.RepoPath,
-		adapter)
-	if err != nil {
-		adapter.cleanup()
-		return noCleanup, err
-	}
-
-	dirs := make(map[string]string)
-	for i := range enriched {
-		mod := &enriched[i]
-		if mod.IsLocal || mod.AbsSource == "" {
-			continue
-		}
-		root := moduleRoot(mod.FileName, c.ScanParams.RepoPath)
-		dirs[engine.RemoteModuleKey(root, mod.Source, mod.Version)] = mod.AbsSource
-		dirs[engine.RemoteModuleCallKey(root, mod.Source, mod.Version, mod.Name)] = mod.AbsSource
-	}
-	if len(dirs) == 0 {
-		return adapter.cleanup, nil
-	}
-	inspector.SetRemoteModuleDirectories(dirs)
-	remotePaths := mapValues(dirs)
-	inspector.SetExternalModulePaths(remotePaths)
-	c.remoteModulePaths = remotePaths
-	if err := c.addRemoteModuleFilesToInventory(remotePaths); err != nil {
-		adapter.cleanup()
-		return noCleanup, err
-	}
 	contextLogger := logger.FromContext(ctx)
-	contextLogger.Info().Msgf("Resolved %d Terraform remote module directories", len(dirs))
-	return adapter.cleanup, nil
+	filteredFilesSource, err := c.getFileSystemSourceProvider(ctx, extractedPaths.Path, nil)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	moduleDiscoveryPaths, err := filteredFilesSource.TerraformFiles(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	chain := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
+
+	if c.ScanParams.NoRemoteModulesFlag() {
+		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
+	} else {
+		contextLogger.Info().Msg("Resolving remote Terraform modules...")
+	}
+
+	maxDepth := c.ScanParams.ModuleMaxDepth
+	if maxDepth == 0 {
+		maxDepth = 8 // default when unset
+	}
+	moduleScanPaths, moduleExtractions, sourceDirs, cleanups := c.resolveRemoteModuleScanPaths(
+		ctx, extractedPaths.Path, moduleDiscoveryPaths, chain, maxDepth)
+	if len(moduleScanPaths) > 0 {
+		contextLogger.Info().Msgf("Adding %d remote module file(s) to scan", len(moduleScanPaths))
+		remoteModulePaths = moduleScanPaths
+		for k, v := range moduleExtractions {
+			extractedPaths.ExtractionMap[k] = v
+		}
+	}
+	return cleanups, remoteModulePaths, sourceDirs, nil
 }
 
-func (c *Client) buildTerraformModuleResolver(roots []string) (tfresolver.Resolver, error) {
-	resolvers := []tfresolver.Resolver{
-		&tfresolver.DotTerraformResolver{RootDirs: roots},
-		tfresolver.NewLocalGitRefResolver(roots, ""),
-		tfresolver.NewBareGitResolver(""),
+// NoRemoteModulesFlag reports whether remote network fetches should be skipped.
+// It stays as a method on Parameters so callers outside this package can query it too.
+func (p *Parameters) NoRemoteModulesFlag() bool {
+	return !p.EnableRemoteModules
+}
+
+func (c *Client) shouldPreScanTerraformModules(scanPaths []string) bool {
+	// EnableRemoteModules is the primary gate; without it nothing is resolved.
+	if !c.ScanParams.EnableRemoteModules {
+		return false
 	}
+	// When enabled, also run the walker if a manifest or .terraform/modules data is present
+	// (covers offline / pre-fetched scenarios without requiring network access).
+	if c.ScanParams.RemoteModulesManifestPath != "" {
+		return true
+	}
+	for _, root := range dotTerraformRootDirs(scanPaths) {
+		if hasTerraformModulesManifest(root) {
+			return true
+		}
+	}
+	return true
+}
+
+// buildModuleResolverChain returns: local → .terraform/modules → manifest → LocalGitRef → BareGit → GoGetter
+func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPaths []string) *tfresolver.ChainResolver {
+	contextLogger := logger.FromContext(ctx)
+
+	resolvers := []tfresolver.Resolver{
+		tfresolver.LocalResolver{},
+		&tfresolver.DotTerraformResolver{RootDirs: dotTerraformRootDirs(moduleDiscoveryPaths)},
+	}
+
 	if c.ScanParams.RemoteModulesManifestPath != "" {
 		manifest, err := tfresolver.LoadManifest(c.ScanParams.RemoteModulesManifestPath)
 		if err != nil {
-			return nil, err
+			contextLogger.Warn().Err(err).
+				Msgf("Failed to load modules manifest %q; remote modules from manifest will be unresolved",
+					c.ScanParams.RemoteModulesManifestPath)
+		} else {
+			resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
 		}
-		resolvers = append([]tfresolver.Resolver{tfresolver.NewPrefetchedResolver(manifest)}, resolvers...)
 	}
-	cfg := tfresolver.NewGoGetterConfig()
-	cfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
-	cache, err := tfresolver.NewModuleCache()
-	if err != nil {
-		return nil, err
+
+	if c.ScanParams.EnableRemoteModules {
+		resolvers = append(resolvers,
+			tfresolver.NewLocalGitRefResolver(c.ScanParams.Path, ""),
+			tfresolver.NewBareGitResolver(""),
+		)
 	}
-	cfg.Cache = cache
-	resolvers = append(resolvers, tfresolver.NewGoGetterResolver(cfg))
-	return tfresolver.NewChainResolver(resolvers...), nil
+
+	ggCfg := tfresolver.NewGoGetterConfig()
+	ggCfg.Disabled = !c.ScanParams.EnableRemoteModules
+	if t := c.ScanParams.ModuleFetchTimeout; t > 0 {
+		ggCfg.FetchTimeout = t
+		ggCfg.RegistryCache = tfresolver.NewRegistryCache(ggCfg.FetchTimeout)
+	}
+	ggCfg.MaxTotalBytes = c.ScanParams.MaxModuleBytesTotal
+	ggCfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
+
+	if !ggCfg.Disabled {
+		cache, err := tfresolver.NewModuleCache()
+		if err != nil {
+			contextLogger.Warn().Err(err).Msg("Module disk cache unavailable; fetched modules will not be cached")
+		} else {
+			ggCfg.Cache = cache
+		}
+	}
+
+	resolvers = append(resolvers, tfresolver.NewGoGetterResolver(ggCfg))
+	return tfresolver.NewChainResolver(resolvers...)
 }
 
-func (c *Client) collectTerraformModuleFiles(paths []string) (model.FileMetadatas, []string, error) {
-	files := newTerraformModuleFiles(c.contentCache, c.ScanParams.RepoPath)
-	if len(c.walkInventory) > 0 {
-		for _, path := range c.walkInventory {
-			if err := files.add(path); err != nil {
-				return nil, nil, err
+// ── graph-walker ──────────────────────────────────────────────────────────────
+
+type resolvedEntry struct {
+	res tfresolver.Resolution
+	err error
+}
+
+type moduleGraphWalker struct {
+	mu          sync.Mutex
+	visited     map[string]bool
+	resolved    map[string]resolvedEntry
+	paths       []string
+	extractions map[string]model.ExtractedPathObject
+	sourceDirs  map[string]string
+	cleanups    []func()
+
+	sf       singleflight.Group
+	chain    tfresolver.Resolver
+	maxDepth int
+	fsys     interface{ Abs(string) (string, error) } // vfs.FS subset needed for path resolution
+
+	parseMu    sync.Mutex
+	parseCache map[string]map[string]tfmodules.ParsedModule
+}
+
+func (c *Client) newModuleGraphWalker(chain tfresolver.Resolver, maxDepth int) *moduleGraphWalker {
+	return &moduleGraphWalker{
+		visited:     make(map[string]bool),
+		resolved:    make(map[string]resolvedEntry),
+		extractions: make(map[string]model.ExtractedPathObject),
+		sourceDirs:  make(map[string]string),
+		chain:       chain,
+		maxDepth:    maxDepth,
+		fsys:        c.fsys,
+		parseCache:  make(map[string]map[string]tfmodules.ParsedModule),
+	}
+}
+
+func (w *moduleGraphWalker) parseModulesInDir(
+	ctx context.Context, dir string, allowedFiles map[string]bool,
+) map[string]tfmodules.ParsedModule {
+	key := filepath.Clean(dir) + "\x00" + allowedFilesCacheKey(allowedFiles)
+
+	w.parseMu.Lock()
+	if mods, ok := w.parseCache[key]; ok {
+		w.parseMu.Unlock()
+		return mods
+	}
+	w.parseMu.Unlock()
+
+	var mods map[string]tfmodules.ParsedModule
+	files, err := tfmodules.LoadTFFilesFromDir(dir)
+	if err == nil && len(files) > 0 {
+		withModuleParseSlot(ctx, func() {
+			if fsys, ok := w.fsys.(interface {
+				Abs(string) (string, error)
+			}); ok {
+				_ = fsys // vfs.FS is threaded through ParseTerraformModulesFromFiles
+			}
+			if parsed, parseErr := tfmodules.ParseTerraformModulesFromFiles(ctx, nil, files, allowedFiles); parseErr == nil {
+				mods = parsed
+			}
+		})
+	}
+
+	w.parseMu.Lock()
+	w.parseCache[key] = mods
+	w.parseMu.Unlock()
+	return mods
+}
+
+func allowedFilesCacheKey(allowed map[string]bool) string {
+	if allowed == nil {
+		return "all"
+	}
+	paths := make([]string, 0, len(allowed))
+	for p := range allowed {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	return strings.Join(paths, "\x00")
+}
+
+func (w *moduleGraphWalker) tryVisit(localPath string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.visited[localPath] {
+		return false
+	}
+	w.visited[localPath] = true
+	return true
+}
+
+func (w *moduleGraphWalker) addPaths(paths ...string) {
+	if len(paths) == 0 {
+		return
+	}
+	w.mu.Lock()
+	w.paths = append(w.paths, paths...)
+	w.mu.Unlock()
+}
+
+func (w *moduleGraphWalker) addExtraction(key string, val model.ExtractedPathObject) {
+	w.mu.Lock()
+	w.extractions[key] = val
+	w.mu.Unlock()
+}
+
+func (w *moduleGraphWalker) addSourceDirs(entries map[string]string) {
+	if len(entries) == 0 {
+		return
+	}
+	w.mu.Lock()
+	for k, v := range entries {
+		w.sourceDirs[k] = v
+	}
+	w.mu.Unlock()
+}
+
+func (w *moduleGraphWalker) addCleanup(fn func()) {
+	w.mu.Lock()
+	w.cleanups = append(w.cleanups, fn)
+	w.mu.Unlock()
+}
+
+func (w *moduleGraphWalker) resolveRemote(ctx context.Context, mod *tfmodules.ParsedModule) (tfresolver.Resolution, error) {
+	resolveID := remoteResolveIdentity(mod)
+
+	w.mu.Lock()
+	if entry, ok := w.resolved[resolveID]; ok {
+		w.mu.Unlock()
+		return entry.res, entry.err
+	}
+	w.mu.Unlock()
+
+	v, err, _ := w.sf.Do(resolveID, func() (interface{}, error) {
+		w.mu.Lock()
+		if entry, ok := w.resolved[resolveID]; ok {
+			w.mu.Unlock()
+			return entry.res, entry.err
+		}
+		w.mu.Unlock()
+
+		res, resolveErr := w.chain.Resolve(ctx, mod)
+		w.mu.Lock()
+		w.resolved[resolveID] = resolvedEntry{res: res, err: resolveErr}
+		w.mu.Unlock()
+		return res, resolveErr
+	})
+	if err != nil {
+		return tfresolver.Resolution{}, err
+	}
+	return v.(tfresolver.Resolution), nil
+}
+
+var moduleParseSem = make(chan struct{}, max(1, runtime.GOMAXPROCS(0)))
+
+func withModuleParseSlot(ctx context.Context, fn func()) {
+	select {
+	case moduleParseSem <- struct{}{}:
+		defer func() { <-moduleParseSem }()
+		fn()
+	case <-ctx.Done():
+	}
+}
+
+func (c *Client) resolveRemoteModuleScanPaths(
+	ctx context.Context,
+	rootPaths []string,
+	moduleDiscoveryPaths []string,
+	chain tfresolver.Resolver,
+	maxDepth int,
+) (
+	moduleScanPaths []string,
+	moduleExtractions map[string]model.ExtractedPathObject,
+	remoteSourceDirs map[string]string,
+	cleanups []func(),
+) {
+	if maxDepth < 0 {
+		return nil, nil, nil, nil
+	}
+	walker := c.newModuleGraphWalker(chain, maxDepth)
+	seedGroups := walker.tfSeedGroups(ctx, rootPaths, moduleDiscoveryPaths)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(runtime.GOMAXPROCS(0) * seedGroupConcurrencyFactor)
+	for seedDir, allowedFiles := range seedGroups {
+		g.Go(func() error {
+			walker.traverse(gCtx, seedDir, allowedFiles, seedGroups, 0, false)
+			return nil
+		})
+	}
+	_ = g.Wait()
+
+	return walker.paths, walker.extractions, walker.sourceDirs, walker.cleanups
+}
+
+func (w *moduleGraphWalker) tfSeedGroups(ctx context.Context, paths, moduleDiscoveryPaths []string) map[string]map[string]bool {
+	allowedByDir := make(map[string]map[string]bool)
+	for _, path := range moduleDiscoveryPaths {
+		if !strings.HasSuffix(strings.ToLower(path), ".tf") {
+			continue
+		}
+		dir := filepath.Dir(path)
+		if allowedByDir[dir] == nil {
+			allowedByDir[dir] = make(map[string]bool)
+		}
+		allowedByDir[dir][path] = true
+	}
+	groups := make(map[string]map[string]bool)
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if !info.IsDir() {
+			if !strings.HasSuffix(strings.ToLower(path), ".tf") {
+				continue
+			}
+			dir := filepath.Dir(path)
+			if groups[dir] == nil {
+				groups[dir] = make(map[string]bool)
+			}
+			groups[dir][path] = true
+			continue
+		}
+		if len(moduleDiscoveryPaths) == 0 {
+			groups[path] = nil
+			continue
+		}
+		for dir, allowedFiles := range allowedByDir {
+			if pathContainsDir(path, dir) {
+				groups[dir] = allowedFiles
 			}
 		}
-		return files.sorted()
 	}
-	for _, scanPath := range paths {
-		if err := files.addScanPath(scanPath); err != nil {
-			return nil, nil, err
+	for child := range w.localModuleChildDirs(ctx, groups) {
+		delete(groups, child)
+	}
+	return groups
+}
+
+func pathContainsDir(root, dir string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(dir))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
+func (w *moduleGraphWalker) localModuleChildDirs(ctx context.Context, groups map[string]map[string]bool) map[string]bool {
+	children := make(map[string]bool)
+	for dir, allowedFiles := range groups {
+		mods := w.parseModulesInDir(ctx, dir, allowedFiles)
+		for src := range mods {
+			if mods[src].IsLocal && groups[filepath.Clean(mods[src].AbsSource)] != nil {
+				children[filepath.Clean(mods[src].AbsSource)] = true
+			}
 		}
 	}
-	return files.sorted()
+	return children
 }
 
-type terraformModuleFiles struct {
-	contentCache map[string][]byte
-	repoPath     string
-	filesByPath  map[string]*model.FileMetadata
-	roots        map[string]struct{}
-}
-
-func newTerraformModuleFiles(contentCache map[string][]byte, repoPath string) *terraformModuleFiles {
-	return &terraformModuleFiles{
-		contentCache: contentCache,
-		repoPath:     repoPath,
-		filesByPath:  make(map[string]*model.FileMetadata),
-		roots:        make(map[string]struct{}),
+func (w *moduleGraphWalker) traverse(
+	ctx context.Context,
+	seed string,
+	allowedFiles map[string]bool,
+	repoAllowedDirs map[string]map[string]bool,
+	depth int,
+	inRemoteTree bool,
+) {
+	if w.maxDepth <= 0 || depth >= w.maxDepth {
+		return
 	}
+	mods := w.parseModulesInDir(ctx, seed, allowedFiles)
+	if mods == nil {
+		return
+	}
+
+	for src := range mods {
+		if !mods[src].IsLocal {
+			continue
+		}
+		localDir := mods[src].AbsSource
+		if localDir == "" {
+			continue
+		}
+		childAllowedFiles := map[string]bool(nil)
+		if !inRemoteTree {
+			var ok bool
+			childAllowedFiles, ok = repoAllowedDirs[filepath.Clean(localDir)]
+			if !ok {
+				continue
+			}
+		}
+		if !w.tryVisit(localDir) {
+			continue
+		}
+		if inRemoteTree {
+			w.addPaths(flatTFFilePaths(localDir)...)
+		}
+		w.traverse(ctx, localDir, childAllowedFiles, repoAllowedDirs, depth+1, inRemoteTree)
+	}
+
+	w.traverseRemoteMods(ctx, mods, repoAllowedDirs, depth)
 }
 
-func (f *terraformModuleFiles) add(path string) error {
-	if !strings.EqualFold(filepath.Ext(path), ".tf") {
+type remoteModGroup struct {
+	representative *tfmodules.ParsedModule
+	callers        []*tfmodules.ParsedModule
+}
+
+func (w *moduleGraphWalker) traverseRemoteMods(
+	ctx context.Context,
+	mods map[string]tfmodules.ParsedModule,
+	repoAllowedDirs map[string]map[string]bool,
+	depth int,
+) {
+	groups := make(map[string]*remoteModGroup)
+	for src := range mods {
+		if mods[src].IsLocal {
+			continue
+		}
+		m := mods[src]
+		id := remoteResolveIdentity(&m)
+
+		w.mu.Lock()
+		cached, hit := w.resolved[id]
+		w.mu.Unlock()
+		if hit {
+			if cached.err == nil && cached.res.LocalPath != "" {
+				root := moduleCallRoot(&m)
+				w.addSourceDirs(map[string]string{
+					engine.RemoteModuleKey(root, m.Source, m.Version):             cached.res.LocalPath,
+					engine.RemoteModuleCallKey(root, m.Source, m.Version, m.Name): cached.res.LocalPath,
+					engine.RemoteModuleCallKey(root, m.Source, "", m.Name):        cached.res.LocalPath,
+				})
+			}
+			continue
+		}
+
+		if g, ok := groups[id]; ok {
+			g.callers = append(g.callers, &m)
+		} else {
+			groups[id] = &remoteModGroup{representative: &m, callers: []*tfmodules.ParsedModule{&m}}
+		}
+	}
+	if len(groups) == 0 {
+		return
+	}
+
+	contextLogger := logger.FromContext(ctx)
+	eg, gCtx := errgroup.WithContext(ctx)
+	eg.SetLimit(tfresolver.FetchConcurrency)
+	for _, grp := range groups {
+		eg.Go(func() error {
+			rep := grp.representative
+			contextLogger.Debug().Msgf("Fetching remote Terraform module %q", rep.Source)
+			res, resolveErr := w.resolveRemote(gCtx, rep)
+			if resolveErr != nil {
+				contextLogger.Warn().Err(resolveErr).Msgf("Failed to resolve remote Terraform module %q", rep.Source)
+				return nil
+			}
+			if res.LocalPath == "" {
+				contextLogger.Warn().Msgf("Resolved remote Terraform module %q without a local path", rep.Source)
+				return nil
+			}
+			contextLogger.Info().Msgf("Fetched remote Terraform module %q", rep.Source)
+
+			sourceDirs := make(map[string]string, len(grp.callers)*3)
+			for _, mod := range grp.callers {
+				root := moduleCallRoot(mod)
+				sourceDirs[engine.RemoteModuleKey(root, mod.Source, mod.Version)] = res.LocalPath
+				sourceDirs[engine.RemoteModuleCallKey(root, mod.Source, mod.Version, mod.Name)] = res.LocalPath
+				sourceDirs[engine.RemoteModuleCallKey(root, mod.Source, "", mod.Name)] = res.LocalPath
+			}
+			w.addSourceDirs(sourceDirs)
+
+			if !w.tryVisit(res.LocalPath) {
+				return nil
+			}
+			if res.Cleanup != nil {
+				w.addCleanup(res.Cleanup)
+			}
+			w.addPaths(flatTFFilePaths(res.LocalPath)...)
+			w.addExtraction(res.LocalPath, model.ExtractedPathObject{
+				Path:      canonicalModuleURL(rep.Source, rep.Version),
+				LocalPath: false,
+			})
+			w.traverse(gCtx, res.LocalPath, nil, repoAllowedDirs, depth+1, true)
+			return nil
+		})
+	}
+	_ = eg.Wait()
+}
+
+func moduleCallRoot(mod *tfmodules.ParsedModule) string {
+	if mod.FileName == "" {
+		return "."
+	}
+	return filepath.Clean(filepath.Dir(mod.FileName))
+}
+
+func remoteResolveIdentity(mod *tfmodules.ParsedModule) string {
+	sourceType, _ := tfmodules.DetectModuleSourceType(mod.Source)
+	if sourceType == "registry" && mod.Version == "" {
+		return engine.RemoteModuleCallKey(moduleCallRoot(mod), mod.Source, mod.Version, mod.Name)
+	}
+	if key, ok := tfresolver.GitModuleResolveKey(mod.Source, mod.Version); ok {
+		return key
+	}
+	return canonicalGitModuleSource(mod.Source) + "\x00" + strings.TrimSpace(mod.Version)
+}
+
+func flatTFFilePaths(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
 		return nil
 	}
-	data, ok := f.contentCache[path]
-	if !ok {
-		var err error
-		data, err = os.ReadFile(filepath.Clean(path))
-		if err != nil {
-			return err
+	var paths []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasSuffix(strings.ToLower(name), ".tf") {
+			paths = append(paths, filepath.Join(dir, name))
 		}
 	}
-	f.filesByPath[path] = &model.FileMetadata{FilePath: path, OriginalData: string(data)}
-	f.roots[moduleRoot(path, f.repoPath)] = struct{}{}
-	return nil
+	return paths
 }
 
-func (f *terraformModuleFiles) addScanPath(scanPath string) error {
-	info, err := os.Stat(scanPath)
-	if err != nil {
-		return err
+func canonicalGitModuleSource(moduleSource string) string {
+	s := strings.TrimSpace(moduleSource)
+	switch {
+	case strings.Contains(s, ".git//"):
+		return strings.Replace(s, ".git//", "//", 1)
+	case strings.Contains(s, ".git?"):
+		return strings.Replace(s, ".git?", "?", 1)
+	case strings.HasSuffix(s, ".git"):
+		return strings.TrimSuffix(s, ".git")
 	}
-	if !info.IsDir() {
-		return f.add(scanPath)
-	}
-	return filepath.WalkDir(scanPath, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() && strings.HasPrefix(d.Name(), ".terra") {
-			return filepath.SkipDir
-		}
-		if d.IsDir() {
-			return nil
-		}
-		return f.add(path)
-	})
+	return s
 }
 
-func (f *terraformModuleFiles) sorted() (model.FileMetadatas, []string, error) {
-	pathsSorted := make([]string, 0, len(f.filesByPath))
-	for path := range f.filesByPath {
-		pathsSorted = append(pathsSorted, path)
+func canonicalModuleURL(moduleSource, version string) string {
+	out := canonicalGitModuleSource(moduleSource)
+	st, scope := tfmodules.DetectModuleSourceType(out)
+	if st == "registry" && scope == "public" {
+		if !strings.HasPrefix(out, "registry.terraform.io/") {
+			out = "registry.terraform.io/" + out
+		}
 	}
-	sort.Strings(pathsSorted)
-	files := make(model.FileMetadatas, 0, len(pathsSorted))
-	for _, path := range pathsSorted {
-		files = append(files, f.filesByPath[path])
+	if idx := strings.Index(out, "@"); idx != -1 {
+		if schemeEnd := strings.Index(out, "://"); schemeEnd != -1 && schemeEnd < idx {
+			out = out[:schemeEnd+3] + out[idx+1:]
+		}
 	}
-
-	rootsSorted := make([]string, 0, len(f.roots))
-	for root := range f.roots {
-		rootsSorted = append(rootsSorted, root)
+	if version != "" {
+		out = out + "@" + version
 	}
-	sort.Strings(rootsSorted)
-	return files, rootsSorted, nil
+	return out
 }
 
+// ── .terraform discovery helpers ─────────────────────────────────────────────
+
+func dotTerraformRootDirs(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	roots := make([]string, 0, len(paths))
+	for _, p := range paths {
+		root := terraformRootDir(p)
+		if root == "" || seen[root] {
+			continue
+		}
+		seen[root] = true
+		roots = append(roots, root)
+	}
+	return roots
+}
+
+func terraformRootDir(path string) string {
+	info, err := os.Stat(path)
+	if err == nil && !info.IsDir() {
+		path = filepath.Dir(path)
+	}
+	clean := filepath.Clean(path)
+	for {
+		if hasTerraformModulesManifest(clean) {
+			return clean
+		}
+		parent := filepath.Dir(clean)
+		if parent == clean {
+			return filepath.Clean(path)
+		}
+		clean = parent
+	}
+}
+
+func hasTerraformModulesManifest(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".terraform", "modules", "modules.json"))
+	return err == nil
+}
+
+func platformsIncludeTerraform(platforms []string) bool {
+	for _, p := range platforms {
+		if strings.EqualFold(p, "terraform") {
+			return true
+		}
+	}
+	return false
+}
+
+// ── legacy helpers kept for the prebuilt-walk (server) path ──────────────────
+
+// addRemoteModuleFilesToInventory appends newly-resolved remote module files to the
+// prebuilt walk inventory and content cache (server / prebuilt-walk mode only).
 func (c *Client) addRemoteModuleFilesToInventory(moduleDirs []string) error {
 	if len(c.walkInventory) == 0 {
 		return nil
@@ -238,7 +666,7 @@ func (c *Client) addRemoteModuleFilesToInventory(moduleDirs []string) error {
 		seen[path] = struct{}{}
 	}
 	for _, dir := range moduleDirs {
-		moduleFiles := make([]string, 0)
+		var moduleFiles []string
 		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
