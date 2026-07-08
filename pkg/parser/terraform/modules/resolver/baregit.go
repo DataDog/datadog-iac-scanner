@@ -549,8 +549,9 @@ func normalizeHTTPGitToSSH(source string) (string, bool) {
 	return "", false
 }
 
-// normalizeGitModuleSource applies all git source normalizations used by resolvers.
-func normalizeGitModuleSource(source string) (string, bool) {
+// normalizeGitModuleSourceForGetter applies SCP and implicit GitHub normalization
+// without rewriting git::https sources to SSH (go-getter should keep HTTPS).
+func normalizeGitModuleSourceForGetter(source string) (string, bool) {
 	if source == "" {
 		return "", false
 	}
@@ -558,6 +559,18 @@ func normalizeGitModuleSource(source string) (string, bool) {
 	if normalized, ok := normalizeSCPGitSource(source); ok {
 		source = normalized
 	} else if normalized, ok := normalizeImplicitGitHubSource(source); ok {
+		source = normalized
+	}
+	return source, source != original
+}
+
+// normalizeGitModuleSource applies all git source normalizations used by resolvers.
+func normalizeGitModuleSource(source string) (string, bool) {
+	if source == "" {
+		return "", false
+	}
+	original := source
+	if normalized, ok := normalizeGitModuleSourceForGetter(source); ok {
 		source = normalized
 	}
 	if strings.HasPrefix(source, "git::") {

@@ -7,6 +7,8 @@ package resolver
 
 import (
 	"testing"
+
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
 func TestGitModuleResolveKeyFoldsTransport(t *testing.T) {
@@ -46,5 +48,31 @@ func TestGitModuleResolveKeyDifferentSubdirs(t *testing.T) {
 	}
 	if a == b {
 		t.Fatal("different subdirs must not share a resolve key")
+	}
+}
+
+func TestBareGitOwnsSource(t *testing.T) {
+	if !bareGitOwnsSource("git::https://github.com/org/repo//sub?ref=v1") {
+		t.Fatal("git:: with ref should be bare-git owned")
+	}
+	if bareGitOwnsSource("git::https://github.com/org/repo//sub") {
+		t.Fatal("git:: without ref is not bare-git owned")
+	}
+	if bareGitOwnsSource("registry.terraform.io/org/name/aws") {
+		t.Fatal("registry source is not bare-git owned")
+	}
+}
+
+func TestGoGetterRejectsBareGitSources(t *testing.T) {
+	r := NewGoGetterResolver(NewGoGetterConfig())
+	_, err := r.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source:  "git::https://github.com/org/repo.git//sub?ref=v1.0.0",
+		IsLocal: false,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !tfmodules.IsUnresolved(err) {
+		t.Fatalf("expected UnresolvedError, got %v", err)
 	}
 }

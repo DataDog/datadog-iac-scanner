@@ -130,6 +130,17 @@ func TestNormalizeImplicitGitHubSource(t *testing.T) {
 	}
 }
 
+func TestNormalizeGitModuleSourceForGetterPreservesHTTPS(t *testing.T) {
+	https := "git::https://github.com/DataDog/vault-platform.git//terraform/aws/external-iam?ref=v1.9.4-17"
+	if got, ok := normalizeGitModuleSourceForGetter(https); ok {
+		t.Fatalf("getter normalization must not rewrite git::https, got %q", got)
+	}
+	full, ok := normalizeGitModuleSource(https)
+	if !ok || !strings.Contains(full, "ssh://") {
+		t.Fatalf("baregit resolver should still rewrite HTTPS to SSH, got %q ok=%v", full, ok)
+	}
+}
+
 func TestNormalizeGitModuleSource(t *testing.T) {
 	scp := "git@github.com:DataDog/vault-platform//terraform/aws/external-iam?ref=v1.8.2-17"
 	got, ok := normalizeGitModuleSource(scp)

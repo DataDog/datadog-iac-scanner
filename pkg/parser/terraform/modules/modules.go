@@ -587,18 +587,20 @@ func DetectModuleSourceType(source string) (string, string) {
 		return "git", ""
 	}
 
+	base, _, _ := strings.Cut(source, "//")
+
 	// Recognize public registry hostname
-	if strings.HasPrefix(source, "registry.terraform.io/") {
+	if strings.HasPrefix(base, "registry.terraform.io/") {
 		return stringRegistry, stringPublic
 	}
 
 	// Recognize private registries by fully qualified domain with 3 parts
-	if strings.Count(source, "/") == 3 && strings.Contains(source, ".") {
+	if strings.Count(base, "/") == 3 && strings.Contains(base, ".") {
 		return stringRegistry, stringPrivate
 	}
 
 	// Recognize implicit public registry format (namespace/name/provider)
-	if isValidRegistryFormat(source) {
+	if isValidRegistryFormat(base) {
 		return stringRegistry, stringPublic
 	}
 
