@@ -1015,33 +1015,36 @@ func TestExpressionToAST_TemplateJoin(t *testing.T) {
 }
 
 func TestExpressionToAST_TemplateExpr_WithFor(t *testing.T) {
-	f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for v in var.list}${v}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
-		t.Fatalf("parse failed: %v", diags)
-	}
-	attr := f.Body.(*hclsyntax.Body).Attributes["x"]
-	val, err := expressionToAST(attr.Expr)
-	if err != nil {
-		t.Fatalf("expressionToAST error: %v", err)
-	}
-	if got := val.String(); got != `"[for v in var.list : v]"` {
-		t.Errorf("expressionToAST = %s", got)
-	}
-}
-
-func TestExpressionToAST_TemplateExpr_WithFor_TwoVars(t *testing.T) {
-	f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for k, v in var.map}${k}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
-		t.Fatalf("parse failed: %v", diags)
-	}
-	attr := f.Body.(*hclsyntax.Body).Attributes["x"]
-	val, err := expressionToAST(attr.Expr)
-	if err != nil {
-		t.Fatalf("expressionToAST error: %v", err)
-	}
-	if got := val.String(); got != `"[for k, v in var.map : k]"` {
-		t.Errorf("expressionToAST = %s", got)
-	}
+	t.Run("one_var", func(t *testing.T) {
+		f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for v in var.list}${v}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		attr := f.Body.(*hclsyntax.Body).Attributes["x"]
+		val, err := expressionToAST(attr.Expr)
+		if err != nil {
+			t.Fatalf("expressionToAST error: %v", err)
+		}
+		if got := val.String(); got != `"[for v in var.list : v]"` {
+			t.Errorf("expressionToAST = %s", got)
+		}
+	})
+	t.Run("template_for_two_vars", func(t *testing.T) {
+		f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for k, v in var.map}${k}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		attr := f.Body.(*hclsyntax.Body).Attributes["x"]
+		val, err := expressionToAST(attr.Expr)
+		if err != nil {
+			t.Fatalf("expressionToAST error: %v", err)
+		}
+		got := val.String()
+		want := `"[for k, v in var.map : k]"`
+		if got != want {
+			t.Errorf("expressionToAST = %s, want %s", got, want)
+		}
+	})
 }
 
 func TestExpressionToAST_TemplateExpr_UnsupportedPartFallback(t *testing.T) {
