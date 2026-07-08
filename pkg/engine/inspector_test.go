@@ -1375,3 +1375,14 @@ func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
 	require.Equal(t, got[0].FileName, got[1].FileName)
 	require.Equal(t, got[0].QueryName, got[1].QueryName)
 }
+
+func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
+	ins := &Inspector{
+		externalPathRoots: map[string]bool{"/tmp/remote-module": true},
+	}
+
+	require.True(t, ins.isExternalModulePath("/tmp/remote-module/main.tf"))
+	require.True(t, rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
+	require.False(t, !ins.isExternalModulePath("/tmp/remote-module/main.tf") &&
+		rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
+}

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +23,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
+	"golang.org/x/sync/singleflight"
 )
 
 type ParsedModule struct {
@@ -36,13 +39,6 @@ type ParsedModule struct {
 	DefLine        int
 }
 
-type ModuleAttributesInfo struct {
-	Resources []string          `json:"resources"`
-	Inputs    map[string]string `json:"inputs"`
-}
-
-// UnresolvedError is returned by a Resolver when a module source cannot be
-// mapped to a local directory.
 type UnresolvedError struct {
 	Reason string
 }
@@ -51,10 +47,29 @@ func (e *UnresolvedError) Error() string {
 	return "module unresolved: " + e.Reason
 }
 
-// IsUnresolved reports whether err wraps an UnresolvedError.
 func IsUnresolved(err error) bool {
 	var e *UnresolvedError
 	return errors.As(err, &e)
+}
+
+type RemoteResolver interface {
+	Resolve(ctx context.Context, mod *ParsedModule) (localPath string, err error)
+}
+
+type ModuleParseResult struct {
+	Index  int
+	Module ParsedModule
+	Error  error
+}
+
+type moduleWorkItem struct {
+	index int
+	key   string
+}
+
+type ModuleAttributesInfo struct {
+	Resources []string          `json:"resources"`
+	Inputs    map[string]string `json:"inputs"`
 }
 
 var registryPattern = regexp.MustCompile(`^[a-z0-9\-]+/[a-z0-9\-]+/[a-z0-9\-]+$`)
@@ -186,68 +201,12 @@ func collectLocalsAndVars(body *hclsyntax.Body, localsMap, varsMap map[string]st
 	}
 }
 
-func extractModuleBlocks(
-	ctx context.Context,
-	fsys vfs.FS,
-	filePath string,
-	body *hclsyntax.Body,
-	localsMap, varsMap map[string]string,
-	modules map[string]ParsedModule,
-) {
-	contextLogger := logger.FromContext(ctx)
-	baseDir := filepath.Dir(filePath)
-	for _, block := range body.Blocks {
-		if block.Type != "module" || len(block.Labels) == 0 {
-			continue
-		}
-
-		mod := ParsedModule{Name: block.Labels[0]}
-
-		for key, attr := range block.Body.Attributes {
-			resolved := resolveExpr(attr.Expr, localsMap, varsMap)
-
-			switch key {
-			case "source":
-				mod.Source = resolved
-				mod.SourceType, mod.RegistryScope = DetectModuleSourceType(resolved)
-				mod.IsLocal = LooksLikeLocalModuleSource(strings.TrimPrefix(resolved, "git::"))
-
-				if mod.IsLocal {
-					absPath := filepath.Join(baseDir, strings.TrimPrefix(resolved, "file://"))
-					var err error
-					mod.AbsSource, err = fsys.Abs(absPath)
-					if err != nil {
-						contextLogger.Warn().Msgf("Could not compute absolute path name for %v: %v", absPath, err)
-						mod.AbsSource = filepath.Clean(absPath)
-					}
-					err = validateModuleSource(ctx, fsys, mod.AbsSource)
-					if err != nil {
-						contextLogger.Warn().Msgf("Invalid local module source %q: %v", mod.Source, err)
-						continue
-					}
-				}
-
-			case "version":
-				mod.Version = resolved
-			}
-		}
-
-		// Use the resolved absolute path as the key for local modules so that
-		// two roots with identical relative sources (e.g. "./module") are stored
-		// as separate entries rather than one silently overwriting the other.
-		key := mod.Source
-		if mod.IsLocal && mod.AbsSource != "" {
-			key = mod.AbsSource
-		}
-		if _, exists := modules[key]; !exists {
-			modules[key] = mod
-		}
-	}
-}
-
 // ParseTerraformModules parses HCL content and extracts module source/version.
 // numWorkers: 0 means auto-detect (GOMAXPROCS).
 func ParseTerraformModules(ctx context.Context, fsys vfs.FS, files model.FileMetadatas, numWorkers int) (map[string]ParsedModule, error) {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
 	parsedBodies, err := parseHCLBodies(ctx, files, numWorkers)
 	if err != nil {
 		return nil, err
@@ -269,7 +228,7 @@ func ParseTerraformModules(ctx context.Context, fsys vfs.FS, files model.FileMet
 			continue
 		}
 		dir := filepath.Dir(file.FilePath)
-		byDir[dir] = append(byDir[dir], dirEntry{file: file, body: body})
+		byDir[dir] = append(byDir[dir], dirEntry{file, body})
 	}
 
 	for _, entries := range byDir {
@@ -285,17 +244,76 @@ func ParseTerraformModules(ctx context.Context, fsys vfs.FS, files model.FileMet
 	return modules, nil
 }
 
+func extractModuleBlocks(
+	ctx context.Context,
+	fsys vfs.FS,
+	filePath string,
+	body *hclsyntax.Body,
+	localsMap, varsMap map[string]string,
+	modules map[string]ParsedModule,
+) {
+	baseDir := filepath.Dir(filePath)
+	for _, block := range body.Blocks {
+		if block.Type != "module" || len(block.Labels) == 0 {
+			continue
+		}
+		mod := ParsedModule{
+			Name:     block.Labels[0],
+			FileName: filePath,
+			DefLine:  block.TypeRange.Start.Line,
+		}
+		fillModuleAttrs(ctx, fsys, &mod, block, baseDir, localsMap, varsMap)
+		key := moduleIdentityKey(&mod)
+		if _, exists := modules[key]; !exists {
+			modules[key] = mod
+		}
+	}
+}
+
+func fillModuleAttrs(
+	ctx context.Context,
+	fsys vfs.FS,
+	mod *ParsedModule,
+	block *hclsyntax.Block,
+	baseDir string,
+	localsMap, varsMap map[string]string,
+) {
+	log := logger.FromContext(ctx)
+	for key, attr := range block.Body.Attributes {
+		resolved := resolveExpr(attr.Expr, localsMap, varsMap)
+		switch key {
+		case "source":
+			mod.Source = resolved
+			mod.SourceType, mod.RegistryScope = DetectModuleSourceType(resolved)
+			mod.IsLocal = LooksLikeLocalModuleSource(strings.TrimPrefix(resolved, "git::"))
+			if mod.IsLocal {
+				absPath := filepath.Join(baseDir, strings.TrimPrefix(resolved, "file://"))
+				var err error
+				mod.AbsSource, err = fsys.Abs(absPath)
+				if err != nil {
+					log.Warn().Msgf("Could not compute absolute path name for %v: %v", absPath, err)
+					mod.AbsSource = filepath.Clean(absPath)
+				}
+				if err = validateModuleSource(ctx, fsys, mod.AbsSource); err != nil {
+					log.Warn().Msgf("Invalid local module source %q: %v", mod.Source, err)
+				}
+			}
+		case "version":
+			mod.Version = resolved
+		}
+	}
+}
+
+func moduleIdentityKey(mod *ParsedModule) string {
+	return mod.Source + "\x00" + mod.Version + "\x00" + mod.Name + "\x00" + mod.FileName
+}
+
 func validateModuleSource(ctx context.Context, fsys vfs.FS, absPath string) error {
-	contextLogger := logger.FromContext(ctx)
-	// Attempt to read the directory contents
 	entries, err := fsys.ReadDir(absPath)
 	if err != nil {
-		err := fmt.Errorf("module source path %q is not accessible: %w", absPath, err)
-		contextLogger.Error().Msg(err.Error())
-		return err
+		return fmt.Errorf("module source path %q is not accessible: %w", absPath, err)
 	}
 
-	// Check for at least one .tf file
 	valid := false
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".tf") {
@@ -306,6 +324,7 @@ func validateModuleSource(ctx context.Context, fsys vfs.FS, absPath string) erro
 
 	if !valid {
 		wrn := fmt.Errorf("module at %s does not contain any .tf files", absPath)
+		contextLogger := logger.FromContext(ctx)
 		contextLogger.Warn().Msg(wrn.Error())
 		return wrn
 	}
@@ -313,6 +332,11 @@ func validateModuleSource(ctx context.Context, fsys vfs.FS, absPath string) erro
 }
 
 func getFileContent(file *model.FileMetadata) string {
+	// Avoid allocating a full copy when there are no carriage returns to strip
+	// (the common case on Linux/CI); ReplaceAll always allocates otherwise.
+	if strings.IndexByte(file.OriginalData, '\r') < 0 {
+		return file.OriginalData
+	}
 	return strings.ReplaceAll(file.OriginalData, "\r", "")
 }
 
@@ -390,24 +414,21 @@ func (v *resolveExprVisitor) VisitSplatExpr(e *hclsyntax.SplatExpr) (string, err
 		return unresolvedPlaceholder, nil
 	}
 	base := sourceStr + "[*]"
-	// e.Each is a traversal rooted at the anonymous item symbol (which resolves
-	// to an empty string), so resolving it yields just the trailing traversal
-	// (e.g. ".id" for var.list[*].id, or "" for a bare var.list[*]).
 	if e.Each != nil && e.Each != e.Source {
 		eachStr := resolveExpr(e.Each, v.locals, v.vars)
 		if strings.HasPrefix(eachStr, "__") {
 			return unresolvedPlaceholder, nil
 		}
-		return base + eachStr, nil
+		if eachStr == base || strings.HasPrefix(eachStr, base) {
+			return eachStr, nil
+		}
 	}
 	return base, nil
 }
-func (v *resolveExprVisitor) VisitAnonSymbol(e *hclsyntax.AnonSymbolExpr) (string, error) {
-	// The anonymous splat item resolves to an empty string so that a trailing
-	// traversal (e.g. .id) composes onto the splat base in VisitSplatExpr.
-	return "", nil
+func (v *resolveExprVisitor) VisitAnonSymbol(_ *hclsyntax.AnonSymbolExpr) (string, error) {
+	return unresolvedPlaceholder, nil
 }
-func (v *resolveExprVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSyntaxError) (string, error) {
+func (v *resolveExprVisitor) VisitExprSyntaxError(_ *hclsyntax.ExprSyntaxError) (string, error) {
 	return unresolvedPlaceholder, nil
 }
 func (v *resolveExprVisitor) VisitDefault(e hclsyntax.Expression) (string, error) {
@@ -570,12 +591,15 @@ func LooksLikeLocalModuleSource(source string) bool {
 		strings.HasPrefix(slashed, "../")
 }
 
-// nolint:gocritic
-func DetectModuleSourceType(source string) (string, string) {
+func DetectModuleSourceType(source string) (sourceType, registryScope string) {
 	source = strings.TrimSpace(source)
 
 	if source == "" {
 		return stringUnknown, ""
+	}
+	registrySource := source
+	if idx := strings.Index(registrySource, "//"); idx != -1 {
+		registrySource = registrySource[:idx]
 	}
 
 	if strings.HasPrefix(source, "data_ref:") {
@@ -587,20 +611,18 @@ func DetectModuleSourceType(source string) (string, string) {
 		return "git", ""
 	}
 
-	base, _, _ := strings.Cut(source, "//")
-
 	// Recognize public registry hostname
-	if strings.HasPrefix(base, "registry.terraform.io/") {
+	if strings.HasPrefix(registrySource, "registry.terraform.io/") {
 		return stringRegistry, stringPublic
 	}
 
 	// Recognize private registries by fully qualified domain with 3 parts
-	if strings.Count(base, "/") == 3 && strings.Contains(base, ".") {
+	if strings.Count(registrySource, "/") == 3 && strings.Contains(registrySource, ".") {
 		return stringRegistry, stringPrivate
 	}
 
 	// Recognize implicit public registry format (namespace/name/provider)
-	if isValidRegistryFormat(base) {
+	if isValidRegistryFormat(registrySource) {
 		return stringRegistry, stringPublic
 	}
 
@@ -611,48 +633,185 @@ func DetectModuleSourceType(source string) (string, string) {
 	return stringUnknown, ""
 }
 
-func ParseAllModuleVariables(ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string) ([]ParsedModule, error) {
-	contextLogger := logger.FromContext(ctx)
-
-	// Iterate in a stable key order so the result slice is deterministic across
-	// scans (map ranging is randomized, which previously made the output order
-	// vary and could defeat the downstream compiled-query cache).
-	keys := make([]string, 0, len(modules))
-	for k := range modules {
-		keys = append(keys, k)
+// resolveModuleToLocalPath maps mod to a local directory, or returns ("", nil) when the module
+// should be silently skipped (no resolver, or remote with nil resolver).
+func resolveModuleToLocalPath(
+	ctx context.Context, mod *ParsedModule, rootDir string, resolver RemoteResolver,
+) (string, error) {
+	if mod.IsLocal {
+		return resolveModulePath(mod.AbsSource, rootDir), nil
 	}
-	sort.Strings(keys)
+	if resolver == nil {
+		return "", nil // no resolver: skip remote silently
+	}
+	p, err := resolver.Resolve(ctx, mod)
+	if err != nil {
+		return "", err
+	}
+	return p, nil
+}
 
-	finalModules := make([]ParsedModule, len(keys))
-	// Each module's equivalent-map generation reads files and parses HCL
-	// (CPU-bound), so the pool draws from the shared CPU budget. Results are
-	// written index-aligned, no shared mutable state between workers.
-	//
-	// A per-module equivalent-map failure is non-fatal (logged, the module is
-	// kept without attributes data). ForEach only returns an error on context
-	// cancellation; we surface it so the caller aborts rather than proceeding
-	// with a partially-filled slice (unwritten slots would be zero-value holes).
-	err := utils.ForEach(ctx, keys, utils.PoolOptions{CPUBound: true},
-		func(ctx context.Context, key string, i int) error {
-			mod := modules[key]
-			if !mod.IsLocal {
-				finalModules[i] = mod
-				return nil
-			}
-			modulePath := resolveModulePath(mod.AbsSource, rootDir)
-			attributesData, err := generateEquivalentMap(ctx, fsys, modulePath)
-			if err != nil {
-				contextLogger.Warn().Msgf("Failed to parse module %s: %v", mod.Name, err)
-			} else {
-				mod.AttributesData = attributesData
-			}
-			finalModules[i] = mod
-			return nil
-		})
+// moduleEnrichCache shares equivalent-map parsing across call sites of the same directory.
+type moduleEnrichCache struct {
+	fsys vfs.FS
+	sf   singleflight.Group
+	mu   sync.Mutex
+	m    map[string]map[string]ModuleAttributesInfo
+}
+
+func newModuleEnrichCache(fsys vfs.FS) *moduleEnrichCache {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
+	return &moduleEnrichCache{fsys: fsys, m: make(map[string]map[string]ModuleAttributesInfo)}
+}
+
+func (c *moduleEnrichCache) attributesFor(ctx context.Context, modulePath string) (map[string]ModuleAttributesInfo, error) {
+	c.mu.Lock()
+	if v, ok := c.m[modulePath]; ok {
+		c.mu.Unlock()
+		return v, nil
+	}
+	c.mu.Unlock()
+
+	v, err, _ := c.sf.Do(modulePath, func() (interface{}, error) {
+		res, genErr := generateEquivalentMap(ctx, c.fsys, modulePath)
+		if genErr != nil {
+			return nil, genErr
+		}
+		c.mu.Lock()
+		c.m[modulePath] = res
+		c.mu.Unlock()
+		return res, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	return finalModules, nil
+	return v.(map[string]ModuleAttributesInfo), nil
+}
+
+func enrichModule(
+	ctx context.Context, mod *ParsedModule, rootDir string, resolver RemoteResolver, cache *moduleEnrichCache,
+) ModuleParseResult {
+	contextLogger := logger.FromContext(ctx)
+	localPath, err := resolveModuleToLocalPath(ctx, mod, rootDir, resolver)
+	if err != nil {
+		contextLogger.Warn().Msgf("Skipping module %s: %v", mod.Name, err)
+		return ModuleParseResult{Module: *mod}
+	}
+	if localPath == "" {
+		return ModuleParseResult{Module: *mod}
+	}
+	attributesData, enrichErr := cache.attributesFor(ctx, localPath)
+	if enrichErr != nil {
+		contextLogger.Warn().Msg("Failed to generate equivalent map")
+	} else {
+		mod.AttributesData = attributesData
+	}
+	return ModuleParseResult{Module: *mod, Error: enrichErr}
+}
+
+const minParseWorkers = 4
+
+// ParseAllModuleVariables resolves modules to disk and fills AttributesData.
+// Resolution failures for individual modules are non-fatal and logged; only a
+// context cancellation returns an error.
+func ParseAllModuleVariables(
+	ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string, resolver RemoteResolver,
+) ([]ParsedModule, error) {
+	numWorkers := runtime.GOMAXPROCS(0)
+	if numWorkers < minParseWorkers {
+		numWorkers = minParseWorkers
+	}
+
+	keys := make([]string, 0, len(modules))
+	for key := range modules {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	input := make(chan moduleWorkItem)
+	output := make(chan ModuleParseResult)
+	enrichCache := newModuleEnrichCache(fsys)
+
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runModuleEnrichWorker(ctx, input, output, modules, rootDir, resolver, enrichCache)
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(output)
+	}()
+	go func() {
+		defer close(input)
+		for i, key := range keys {
+			select {
+			case <-ctx.Done():
+				return
+			case input <- moduleWorkItem{index: i, key: key}:
+			}
+		}
+	}()
+
+	result := collectModuleResults(ctx, output, len(keys))
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func runModuleEnrichWorker(
+	ctx context.Context,
+	input <-chan moduleWorkItem,
+	output chan<- ModuleParseResult,
+	modules map[string]ParsedModule,
+	rootDir string,
+	resolver RemoteResolver,
+	cache *moduleEnrichCache,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case item, ok := <-input:
+			if !ok {
+				return
+			}
+			mod := modules[item.key]
+			result := enrichModule(ctx, &mod, rootDir, resolver, cache)
+			result.Index = item.index
+			select {
+			case <-ctx.Done():
+				return
+			case output <- result:
+			}
+		}
+	}
+}
+
+func collectModuleResults(
+	ctx context.Context, output <-chan ModuleParseResult, moduleCount int,
+) []ParsedModule {
+	contextLogger := logger.FromContext(ctx)
+	finalModules := make([]ParsedModule, moduleCount)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case res, ok := <-output:
+			if !ok {
+				return finalModules
+			}
+			if res.Error == nil {
+				contextLogger.Debug().Msgf("Enriched module %s", res.Module.Name)
+			}
+			finalModules[res.Index] = res.Module
+		}
+	}
 }
 
 func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) (map[string]ModuleAttributesInfo, error) {
@@ -662,73 +821,24 @@ func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) 
 
 	entries, err := fsys.ReadDir(modulePath)
 	if err != nil {
-		contextLogger.Error().Msgf("Failed to read module source directory: %s", modulePath)
+		if os.IsNotExist(err) {
+			contextLogger.Debug().Msgf("module source directory not found, skipping enrichment: %s", modulePath)
+		} else {
+			contextLogger.Warn().Msgf("cannot read module source directory: %s: %v", modulePath, err)
+		}
 		return nil, err
 	}
 
 	for _, entry := range entries {
-		path := filepath.Join(modulePath, entry.Name())
-
 		if entry.IsDir() {
-			contextLogger.Debug().Msgf("Skipping directory: %s", path)
 			continue
 		}
-
 		if !isTerraformFile(entry.Name()) {
-			contextLogger.Debug().Msgf("Skipping non-Terraform file: %s", path)
 			continue
 		}
-
-		contents, err := fsys.ReadFile(filepath.Clean(path))
-		if err != nil {
-			contextLogger.Error().Msgf("Failed to read file: %s", path)
+		path := filepath.Join(modulePath, entry.Name())
+		if err := processEquivalentMapFile(ctx, fsys, path, equivalentMap, resourceTypesMap); err != nil {
 			return nil, err
-		}
-
-		hclFile, diag := hclwrite.ParseConfig(contents, "", hcl.InitialPos)
-		if diag.HasErrors() {
-			err := fmt.Errorf("error parsing input Terraform block in file %s: %s", path, diag.Error())
-			contextLogger.Error().Msg(err.Error())
-			return nil, err
-		}
-
-		for _, block := range hclFile.Body().Blocks() {
-			if block.Type() != "resource" {
-				continue
-			}
-
-			if len(block.Labels()) < 1 {
-				contextLogger.Warn().Msgf("Skipping malformed resource block with no labels in file %s", path)
-				continue
-			}
-
-			resourceType := block.Labels()[0]
-			provider, err := GetProviderFromResourceType(resourceType)
-			if err != nil {
-				contextLogger.Warn().Msgf("Failed to get provider from resource type '%s' in file %s: %v", resourceType, path, err)
-				continue
-			}
-
-			// Store resource type to the set
-			if _, ok := resourceTypesMap[provider]; !ok {
-				resourceTypesMap[provider] = make(map[string]bool)
-			}
-			resourceTypesMap[provider][resourceType] = true
-
-			// Create or update the module info object for current provider
-			modInfo, ok := equivalentMap[provider]
-			if !ok {
-				modInfo = ModuleAttributesInfo{
-					Resources: []string{},
-					Inputs:    make(map[string]string),
-				}
-			}
-
-			// Update inputs mapping with all attributes referencing a variable
-			maps.Copy(modInfo.Inputs, getVariableAttributes(block))
-
-			// Assign the updated modInfo back to the map
-			equivalentMap[provider] = modInfo
 		}
 	}
 
@@ -745,8 +855,58 @@ func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) 
 		sort.Strings(modInfo.Resources)
 		equivalentMap[provider] = modInfo
 	}
-
 	return equivalentMap, nil
+}
+
+func processEquivalentMapFile(
+	ctx context.Context,
+	fsys vfs.FS,
+	path string,
+	equivalentMap map[string]ModuleAttributesInfo,
+	resourceTypesMap map[string]map[string]bool,
+) error {
+	contextLogger := logger.FromContext(ctx)
+
+	contents, err := fsys.ReadFile(filepath.Clean(path))
+	if err != nil {
+		contextLogger.Error().Msgf("Failed to read file: %s", path)
+		return err
+	}
+
+	hclFile, diag := hclwrite.ParseConfig(contents, "", hcl.InitialPos)
+	if diag.HasErrors() {
+		parseErr := fmt.Errorf("error parsing input Terraform block in file %s: %s", path, diag.Error())
+		contextLogger.Error().Msg(parseErr.Error())
+		return parseErr
+	}
+
+	for _, block := range hclFile.Body().Blocks() {
+		if block.Type() != "resource" {
+			continue
+		}
+		if len(block.Labels()) < 1 {
+			contextLogger.Warn().Msgf("Skipping malformed resource block with no labels in file %s", path)
+			continue
+		}
+		resourceType := block.Labels()[0]
+		provider, err := GetProviderFromResourceType(resourceType)
+		if err != nil {
+			contextLogger.Warn().Msgf("Failed to get provider from resource type '%s' in file %s: %v", resourceType, path, err)
+			continue
+		}
+		if _, ok := resourceTypesMap[provider]; !ok {
+			resourceTypesMap[provider] = make(map[string]bool)
+		}
+		resourceTypesMap[provider][resourceType] = true
+
+		modInfo, ok := equivalentMap[provider]
+		if !ok {
+			modInfo = ModuleAttributesInfo{Resources: []string{}, Inputs: make(map[string]string)}
+		}
+		maps.Copy(modInfo.Inputs, getVariableAttributes(block))
+		equivalentMap[provider] = modInfo
+	}
+	return nil
 }
 
 func getVariableAttributes(block *hclwrite.Block) map[string]string {

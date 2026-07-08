@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/stretchr/testify/require"
 )
@@ -210,4 +211,69 @@ func TestMergeInputData(t *testing.T) {
 			require.Equal(t, wantJSON, gotJSON)
 		})
 	}
+}
+
+func TestMergeModulesDataKeepsVersionedKeys(t *testing.T) {
+	modules := []tfmodules.ParsedModule{
+		{
+			Source:  "terraform-aws-modules/vpc/aws",
+			Version: "1.0.0",
+			AttributesData: map[string]tfmodules.ModuleAttributesInfo{
+				"aws_s3_bucket": {Resources: []string{"aws_s3_bucket.old"}},
+			},
+		},
+		{
+			Source:  "terraform-aws-modules/vpc/aws",
+			Version: "2.0.0",
+			AttributesData: map[string]tfmodules.ModuleAttributesInfo{
+				"aws_s3_bucket": {Resources: []string{"aws_s3_bucket.new"}},
+			},
+		},
+	}
+
+	got, err := MergeModulesData(modules, `{"common_lib":{"modules":{}}}`)
+	require.NoError(t, err)
+
+	var data map[string]any
+	require.NoError(t, json.Unmarshal([]byte(got), &data))
+	commonLib := data["common_lib"].(map[string]any)
+	commonModules := commonLib["modules"].(map[string]any)
+	providerModules := commonModules["aws_s3_bucket"].(map[string]any)
+
+	require.Contains(t, providerModules, "terraform-aws-modules/vpc/aws@1.0.0")
+	require.Contains(t, providerModules, "terraform-aws-modules/vpc/aws@2.0.0")
+	require.NotContains(t, providerModules, "terraform-aws-modules/vpc/aws")
+}
+
+func TestMergeModulesDataDropsSourceAliasForDuplicateInstances(t *testing.T) {
+	modules := []tfmodules.ParsedModule{
+		{
+			Name:    "a",
+			Source:  "terraform-aws-modules/vpc/aws",
+			Version: "1.0.0",
+			AttributesData: map[string]tfmodules.ModuleAttributesInfo{
+				"aws_s3_bucket": {Resources: []string{"aws_s3_bucket.a"}},
+			},
+		},
+		{
+			Name:    "b",
+			Source:  "terraform-aws-modules/vpc/aws",
+			Version: "1.0.0",
+			AttributesData: map[string]tfmodules.ModuleAttributesInfo{
+				"aws_s3_bucket": {Resources: []string{"aws_s3_bucket.b"}},
+			},
+		},
+	}
+
+	got, err := MergeModulesData(modules, `{"common_lib":{"modules":{}}}`)
+	require.NoError(t, err)
+
+	var data map[string]any
+	require.NoError(t, json.Unmarshal([]byte(got), &data))
+	commonLib := data["common_lib"].(map[string]any)
+	commonModules := commonLib["modules"].(map[string]any)
+	providerModules := commonModules["aws_s3_bucket"].(map[string]any)
+
+	require.Contains(t, providerModules, "terraform-aws-modules/vpc/aws@1.0.0")
+	require.NotContains(t, providerModules, "terraform-aws-modules/vpc/aws")
 }

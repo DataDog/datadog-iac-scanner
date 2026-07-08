@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
@@ -54,7 +53,7 @@ module "local_bucket" {
 		},
 	}
 
-	gotMap, err := ParseTerraformModules(ctx, vfs.DiskFS{}, files, 0)
+	gotMap, err := ParseTerraformModules(ctx, nil, files, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -100,14 +99,12 @@ func TestParseTerraformModules_CanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // canceled scan
 
-	_, err := ParseTerraformModules(ctx, vfs.DiskFS{}, files, 0)
+	_, err := ParseTerraformModules(ctx, nil, files, 0)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
 // TestParseAllModuleVariables_CanceledContext guards the cancellation contract:
-// results are written into an index-aligned slice, so a canceled scan must
-// surface ctx.Err() rather than return a slice padded with zero-value holes for
-// the modules whose workers never ran.
+// a canceled context should return an empty slice without blocking.
 func TestParseAllModuleVariables_CanceledContext(t *testing.T) {
 	modules := map[string]ParsedModule{
 		"a": {Name: "a", IsLocal: true, AbsSource: t.TempDir()},
@@ -117,9 +114,9 @@ func TestParseAllModuleVariables_CanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // canceled scan
 
-	got, err := ParseAllModuleVariables(ctx, vfs.DiskFS{}, modules, t.TempDir())
+	got, err := ParseAllModuleVariables(ctx, nil, modules, t.TempDir(), nil)
 	require.ErrorIs(t, err, context.Canceled)
-	require.Nil(t, got)
+	require.Empty(t, got)
 }
 
 func TestParseTerraformModules(t *testing.T) {
@@ -360,7 +357,7 @@ module "three" {
 					}},
 			}
 
-			gotMap, err := ParseTerraformModules(ctx, vfs.DiskFS{}, files, 0)
+			gotMap, err := ParseTerraformModules(ctx, nil, files, 0)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -380,6 +377,11 @@ module "three" {
 					}
 					tt.expected[i].AbsSource = expectedAbs
 				}
+			}
+			// Strip location fields — these tests verify source/type detection, not source positions.
+			for i := range got {
+				got[i].FileName = ""
+				got[i].DefLine = 0
 			}
 			sort.Slice(got, func(i, j int) bool {
 				return got[i].Name < got[j].Name

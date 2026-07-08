@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
@@ -69,6 +70,16 @@ type Evaluator struct {
 	// module calls — entries with the same key represent the same module called with the
 	// same resolved inputs from the same structural position in the module tree.
 	cache map[evalCacheKey]*evalCacheEntry
+	// When set, non-local module sources resolve here and recurse with caller inputs.
+	remoteResolver RemoteResolver
+
+	parseMu  sync.Mutex
+	dirCache map[string]dirParse
+}
+
+type dirParse struct {
+	bodies []*hclsyntax.Body
+	err    error
 }
 
 func New() *Evaluator {
@@ -76,7 +87,30 @@ func New() *Evaluator {
 		funcs:    tffunctions.TerraformFuncs,
 		maxDepth: defaultMaxDepth,
 		cache:    make(map[evalCacheKey]*evalCacheEntry),
+		dirCache: make(map[string]dirParse),
 	}
+}
+
+func (e *Evaluator) parseDir(dir string) ([]*hclsyntax.Body, error) {
+	key := filepath.Clean(dir)
+
+	e.parseMu.Lock()
+	if dp, ok := e.dirCache[key]; ok {
+		e.parseMu.Unlock()
+		return dp.bodies, dp.err
+	}
+	e.parseMu.Unlock()
+
+	bodies, err := parseDir(dir)
+
+	e.parseMu.Lock()
+	e.dirCache[key] = dirParse{bodies: bodies, err: err}
+	e.parseMu.Unlock()
+	return bodies, err
+}
+
+func (e *Evaluator) SetRemoteResolver(r RemoteResolver) {
+	e.remoteResolver = r
 }
 
 // EvaluateModule evaluates the module rooted at dir with the given inputs and
@@ -141,7 +175,7 @@ func (e *Evaluator) evaluate(
 		prevAllVisited[k] = true
 	}
 
-	bodies, err := parseDir(dir)
+	bodies, err := e.parseDir(dir)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -268,11 +302,15 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			continue
 		}
 		source := knownString(mb.Body.Attributes["source"], evalCtx)
-		if source == "" || !tfmodules.LooksLikeLocalModuleSource(StripGetterPrefix(source)) {
+		if source == "" {
 			continue
 		}
 
-		childDir := resolveLocalDir(dir, source)
+		version := knownString(mb.Body.Attributes["version"], evalCtx)
+		childDir, ok := e.resolveModuleDir(dir, source, version, mb.TypeRange.Filename, label)
+		if !ok {
+			continue
+		}
 
 		if isLiteralZero(mb.Body.Attributes["count"], evalCtx) {
 			continue
@@ -306,6 +344,18 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
 	}
 	return childResources, moduleOutputs
+}
+
+func (e *Evaluator) resolveModuleDir(callerDir, source, version, callerFile, moduleName string) (dir string, ok bool) {
+	cleanSource := StripGetterPrefix(source)
+	if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
+		return resolveLocalDir(callerDir, source), true
+	}
+	if e.remoteResolver != nil {
+		d, resolved := e.remoteResolver(source, version, callerFile, moduleName)
+		return d, resolved
+	}
+	return "", false
 }
 
 func (e *Evaluator) rootResourcesWithRefPasses(
@@ -679,7 +729,12 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			continue
 		}
 		source := knownString(mb.Body.Attributes["source"], evalCtx)
-		if source == "" || !tfmodules.LooksLikeLocalModuleSource(StripGetterPrefix(source)) {
+		if source == "" {
+			continue
+		}
+		version := knownString(mb.Body.Attributes["version"], evalCtx)
+		childDir, ok := e.resolveModuleDir(dir, source, version, mb.TypeRange.Filename, label)
+		if !ok {
 			continue
 		}
 		if isLiteralZero(mb.Body.Attributes["count"], evalCtx) {
@@ -688,7 +743,6 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		if isEmptyCollection(mb.Body.Attributes["for_each"], evalCtx) {
 			continue
 		}
-		childDir := resolveLocalDir(dir, source)
 		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
 		site := CallSite{
 			ModuleName: label,

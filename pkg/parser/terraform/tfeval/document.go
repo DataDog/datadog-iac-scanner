@@ -11,6 +11,7 @@ import (
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -86,23 +87,52 @@ func ctyMapToDocument(v cty.Value) map[string]interface{} {
 	return obj
 }
 
-// CalledLocalDirs returns the resolved directories of every local module called
-// from dir. Remote/registry sources are ignored.
-func CalledLocalDirs(dir string) []string {
+// RemoteResolver maps a non-local module call to its materialized directory on disk.
+type RemoteResolver func(source, version, callerFile, moduleName string) (dir string, ok bool)
+
+func CalledModuleDirs(dir string, resolver RemoteResolver) []string {
 	bodies, err := parseDir(dir)
 	if err != nil {
 		return nil
 	}
+	return calledModuleDirs(dir, bodies, resolver)
+}
+
+func (e *Evaluator) CalledModuleDirs(dir string) []string {
+	bodies, err := e.parseDir(dir)
+	if err != nil {
+		return nil
+	}
+	return calledModuleDirs(dir, bodies, e.remoteResolver)
+}
+
+func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResolver) []string {
 	moduleBlocks := collectModuleBlocks(bodies)
 
 	emptyCtx := &hcl.EvalContext{}
 	var dirs []string
 	for _, mb := range moduleBlocks {
 		source := knownString(mb.Body.Attributes["source"], emptyCtx)
-		if source == "" || !tfmodules.LooksLikeLocalModuleSource(StripGetterPrefix(source)) {
+		if source == "" {
 			continue
 		}
-		dirs = append(dirs, resolveLocalDir(dir, source))
+		cleanSource := StripGetterPrefix(source)
+		if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
+			dirs = append(dirs, resolveLocalDir(dir, source))
+			continue
+		}
+		if resolver != nil {
+			version := knownString(mb.Body.Attributes["version"], emptyCtx)
+			if d, ok := resolver(source, version, mb.TypeRange.Filename, blockLabel(mb)); ok {
+				dirs = append(dirs, d)
+			}
+		}
 	}
 	return dirs
+}
+
+// CalledLocalDirs returns the resolved directories of every local module called
+// from dir. Remote/registry sources are ignored.
+func CalledLocalDirs(dir string) []string {
+	return CalledModuleDirs(dir, nil)
 }

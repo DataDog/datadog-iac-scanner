@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime/debug"
@@ -182,7 +184,25 @@ type Inspector struct {
 	// fsys is the filesystem used for Terraform module resolution. Defaults to
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
 	// content.
-	fsys vfs.FS
+	fsys              vfs.FS
+	remoteModuleDirs  map[string]string
+	externalPathRoots map[string]bool
+}
+
+func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]string) {
+	c.remoteModuleDirs = sourceToDir
+}
+
+func (c *Inspector) SetExternalModulePaths(paths []string) {
+	if len(paths) == 0 {
+		c.externalPathRoots = nil
+		return
+	}
+	roots := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		roots[filepath.Clean(p)] = true
+	}
+	c.externalPathRoots = roots
 }
 
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
@@ -408,7 +428,8 @@ func (c *Inspector) Inspect(
 	// cancellation must abort the scan rather than proceed with partial module
 	// data; per-module parse failures are non-fatal and handled internally.
 	rootDir := c.repoPath
-	enrichedModules, err := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, rootDir)
+	enrichedModules, err := tfmodules.ParseAllModuleVariables(
+		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver())
 	if err != nil {
 		return nil, err
 	}
@@ -494,6 +515,7 @@ func (c *Inspector) executeQueries(
 	for vulnerability, number := range moduleVulns {
 		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
 	}
+
 	return vulnerabilities, nil
 }
 
@@ -778,7 +800,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		if rc.Severity != nil {
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
-		if rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+		if !c.isExternalModulePath(file.FilePath) && rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
 			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
 				file.FilePath, vulnerability.QueryID)
 			return nil, false
@@ -827,6 +849,16 @@ func lookupRuleConfig(ruleConfigs map[string]config.IacRuleConfig, queryID, lega
 // based on its ignore-paths and only-paths lists.
 func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
 	return pathutil.Excluded(filePath, ignorePaths, onlyPaths)
+}
+
+func (c *Inspector) isExternalModulePath(filePath string) bool {
+	for root := range c.externalPathRoots {
+		rel, err := filepath.Rel(root, filepath.Clean(filePath))
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // markSuppressed records the first suppression decision; later gates are
@@ -1446,12 +1478,12 @@ func (v *inspectorExprVisitor) VisitForExpr(e *hclsyntax.ForExpr) (ast.Value, er
 func (v *inspectorExprVisitor) VisitSplatExpr(e *hclsyntax.SplatExpr) (ast.Value, error) {
 	return expressionToASTSplatExpr(e), nil
 }
-func (v *inspectorExprVisitor) VisitAnonSymbol(e *hclsyntax.AnonSymbolExpr) (ast.Value, error) {
+func (v *inspectorExprVisitor) VisitAnonSymbol(_ *hclsyntax.AnonSymbolExpr) (ast.Value, error) {
 	// The anonymous splat item renders as an empty string so that a trailing
 	// traversal (e.g. .id) composes onto the splat base in VisitSplatExpr.
 	return ast.String(""), nil
 }
-func (v *inspectorExprVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSyntaxError) (ast.Value, error) {
+func (v *inspectorExprVisitor) VisitExprSyntaxError(_ *hclsyntax.ExprSyntaxError) (ast.Value, error) {
 	return ast.String("__UNSUPPORTED_EXPR__"), nil
 }
 func (v *inspectorExprVisitor) VisitDefault(e hclsyntax.Expression) (ast.Value, error) {

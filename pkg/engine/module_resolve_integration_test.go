@@ -764,9 +764,9 @@ resource "aws_s3_bucket" "this" {
 	require.Len(t, vulns, numQueries)
 }
 
-// TestInspect_LocalModuleEvalDisabled_FlagOff confirms that when the flag is off
-// (default) the module body is scanned as-is with no synthetic docs injected.
-func TestInspect_LocalModuleEvalDisabled_FlagOff(t *testing.T) {
+// TestInspect_LocalModuleEvalWithFlagEnabled confirms that local module evaluation
+// runs when the feature flag is on and synthetic docs are injected for resolved modules.
+func TestInspect_LocalModuleEvalAlwaysRuns(t *testing.T) {
 	root := t.TempDir()
 	rootPath := filepath.Join(root, "main.tf")
 	modDir := filepath.Join(root, "modules", "s3")
@@ -801,10 +801,13 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 		queries:  queries,
 		repoPath: root,
 		vb:       DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
+			featureflags.IacEnableLocalModuleEval: true,
+		}),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
-	require.Empty(t, vulns, "module eval disabled: rule must not fire on unresolved module reference")
+	require.NotEmpty(t, vulns, "module eval with flag enabled: rule should fire on resolved module resource")
 }
