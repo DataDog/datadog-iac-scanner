@@ -49,10 +49,10 @@ func (c *Client) resolveTerraformModulesForScan(
 	}
 	chain := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
 
-	if c.ScanParams.NoRemoteModulesFlag() {
-		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
-	} else {
+	if c.ScanParams.EnableRemoteModules {
 		contextLogger.Info().Msg("Resolving remote Terraform modules...")
+	} else {
+		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
 	maxDepth := c.ScanParams.ModuleMaxDepth
@@ -69,12 +69,6 @@ func (c *Client) resolveTerraformModulesForScan(
 		}
 	}
 	return cleanups, remoteModulePaths, sourceDirs, nil
-}
-
-// NoRemoteModulesFlag reports whether remote network fetches should be skipped.
-// It stays as a method on Parameters so callers outside this package can query it too.
-func (p *Parameters) NoRemoteModulesFlag() bool {
-	return !p.EnableRemoteModules
 }
 
 func (c *Client) shouldPreScanTerraformModules(scanPaths []string) bool {
@@ -269,17 +263,20 @@ func (w *moduleGraphWalker) addCleanup(fn func()) {
 	w.mu.Unlock()
 }
 
-func (w *moduleGraphWalker) resolveRemote(ctx context.Context, mod *tfmodules.ParsedModule) (tfresolver.Resolution, error) {
+// resolveRemote resolves a module and returns the result plus a shared flag.
+// shared=true means this goroutine was a singleflight follower (another goroutine
+// already did the work); callers should suppress duplicate log lines when shared=true.
+func (w *moduleGraphWalker) resolveRemote(ctx context.Context, mod *tfmodules.ParsedModule) (tfresolver.Resolution, bool, error) {
 	resolveID := remoteResolveIdentity(mod)
 
 	w.mu.Lock()
 	if entry, ok := w.resolved[resolveID]; ok {
 		w.mu.Unlock()
-		return entry.res, entry.err
+		return entry.res, true, entry.err
 	}
 	w.mu.Unlock()
 
-	v, err, _ := w.sf.Do(resolveID, func() (interface{}, error) {
+	v, err, shared := w.sf.Do(resolveID, func() (interface{}, error) {
 		w.mu.Lock()
 		if entry, ok := w.resolved[resolveID]; ok {
 			w.mu.Unlock()
@@ -294,9 +291,9 @@ func (w *moduleGraphWalker) resolveRemote(ctx context.Context, mod *tfmodules.Pa
 		return res, resolveErr
 	})
 	if err != nil {
-		return tfresolver.Resolution{}, err
+		return tfresolver.Resolution{}, shared, err
 	}
-	return v.(tfresolver.Resolution), nil
+	return v.(tfresolver.Resolution), shared, nil
 }
 
 var moduleParseSem = make(chan struct{}, max(1, runtime.GOMAXPROCS(0)))
@@ -499,16 +496,24 @@ func (w *moduleGraphWalker) traverseRemoteMods(
 		eg.Go(func() error {
 			rep := grp.representative
 			contextLogger.Debug().Msgf("Fetching remote Terraform module %q", rep.Source)
-			res, resolveErr := w.resolveRemote(gCtx, rep)
+			res, shared, resolveErr := w.resolveRemote(gCtx, rep)
 			if resolveErr != nil {
-				contextLogger.Warn().Err(resolveErr).Msgf("Failed to resolve remote Terraform module %q", rep.Source)
+				// Only log from the singleflight leader; followers share the same error
+				// but there is nothing additional to report.
+				if !shared {
+					contextLogger.Warn().Err(resolveErr).Msgf("Failed to resolve remote Terraform module %q", rep.Source)
+				}
 				return nil
 			}
 			if res.LocalPath == "" {
-				contextLogger.Warn().Msgf("Resolved remote Terraform module %q without a local path", rep.Source)
+				if !shared {
+					contextLogger.Warn().Msgf("Resolved remote Terraform module %q without a local path", rep.Source)
+				}
 				return nil
 			}
-			contextLogger.Info().Msgf("Fetched remote Terraform module %q", rep.Source)
+			if !shared {
+				contextLogger.Info().Msgf("Fetched remote Terraform module %q", rep.Source)
+			}
 
 			sourceDirs := make(map[string]string, len(grp.callers)*3)
 			for _, mod := range grp.callers {
@@ -575,6 +580,9 @@ func flatTFFilePaths(dir string) []string {
 
 func canonicalGitModuleSource(moduleSource string) string {
 	s := strings.TrimSpace(moduleSource)
+	// Normalize triple-slash subdirectory separators (typos in source URLs) before
+	// other folding so that "repo///path" and "repo//path" share the same identity.
+	s = strings.ReplaceAll(s, "///", "//")
 	switch {
 	case strings.Contains(s, ".git//"):
 		return strings.Replace(s, ".git//", "//", 1)
