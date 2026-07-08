@@ -40,6 +40,22 @@ func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
 	require.Equal(t, filepath.Join(moduleDir, "main.tf"), results.Results[0].FileName)
 }
 
+func TestAddRemoteModuleFilesToPrebuiltInventory(t *testing.T) {
+	root := t.TempDir()
+	moduleDir, _ := writeRemoteModuleFixture(t, root)
+	rootFile := filepath.Join(root, "main.tf")
+	moduleFile := filepath.Join(moduleDir, "main.tf")
+	client := &Client{
+		walkInventory: []string{rootFile},
+		contentCache:  map[string][]byte{rootFile: []byte("root")},
+	}
+
+	require.NoError(t, client.addRemoteModuleFilesToInventory([]string{moduleDir}))
+
+	require.ElementsMatch(t, []string{rootFile, moduleFile}, client.walkInventory)
+	require.Contains(t, client.contentCache, moduleFile)
+}
+
 func writeRemoteModuleFixture(t *testing.T, root string) (string, string) {
 	t.Helper()
 	moduleDir := filepath.Join(filepath.Dir(root), "downloaded-vpc")

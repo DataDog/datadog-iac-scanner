@@ -78,6 +78,9 @@ func (c *Client) prepareRemoteModules(ctx context.Context, paths []string, inspe
 	remotePaths := mapValues(dirs)
 	inspector.SetExternalModulePaths(remotePaths)
 	c.remoteModulePaths = remotePaths
+	if err := c.addRemoteModuleFilesToInventory(remotePaths); err != nil {
+		return err
+	}
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Info().Msgf("Resolved %d Terraform remote module directories", len(dirs))
 	return nil
@@ -179,6 +182,50 @@ func (c *Client) collectTerraformModuleFiles(paths []string) (model.FileMetadata
 	}
 	sort.Strings(rootsSorted)
 	return files, rootsSorted, nil
+}
+
+func (c *Client) addRemoteModuleFilesToInventory(moduleDirs []string) error {
+	if len(c.walkInventory) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(c.walkInventory))
+	for _, path := range c.walkInventory {
+		seen[path] = struct{}{}
+	}
+	for _, dir := range moduleDirs {
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !strings.EqualFold(filepath.Ext(path), ".tf") {
+				return nil
+			}
+			norm := strings.ReplaceAll(path, "\\", "/")
+			if _, ok := seen[norm]; ok {
+				return nil
+			}
+			seen[norm] = struct{}{}
+			c.walkInventory = append(c.walkInventory, norm)
+			if c.contentCache != nil {
+				if _, ok := c.contentCache[norm]; !ok {
+					data, readErr := os.ReadFile(filepath.Clean(path))
+					if readErr != nil {
+						return readErr
+					}
+					c.contentCache[norm] = data
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	sort.Strings(c.walkInventory)
+	return nil
 }
 
 func moduleRoot(fileName, repoPath string) string {
