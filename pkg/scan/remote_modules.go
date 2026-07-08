@@ -111,73 +111,91 @@ func (c *Client) buildTerraformModuleResolver(roots []string) (tfresolver.Resolv
 }
 
 func (c *Client) collectTerraformModuleFiles(paths []string) (model.FileMetadatas, []string, error) {
-	filesByPath := make(map[string]*model.FileMetadata)
-	roots := make(map[string]struct{})
-	addPath := func(path string) error {
-		if !strings.EqualFold(filepath.Ext(path), ".tf") {
-			return nil
-		}
-		data, ok := c.contentCache[path]
-		if !ok {
-			var err error
-			data, err = os.ReadFile(filepath.Clean(path))
-			if err != nil {
-				return err
-			}
-		}
-		filesByPath[path] = &model.FileMetadata{FilePath: path, OriginalData: string(data)}
-		roots[moduleRoot(path, c.ScanParams.RepoPath)] = struct{}{}
-		return nil
-	}
-
+	files := newTerraformModuleFiles(c.contentCache, c.ScanParams.RepoPath)
 	if len(c.walkInventory) > 0 {
 		for _, path := range c.walkInventory {
-			if err := addPath(path); err != nil {
+			if err := files.add(path); err != nil {
 				return nil, nil, err
 			}
 		}
-	} else {
-		for _, scanPath := range paths {
-			info, err := os.Stat(scanPath)
-			if err != nil {
-				return nil, nil, err
-			}
-			if !info.IsDir() {
-				if err := addPath(scanPath); err != nil {
-					return nil, nil, err
-				}
-				continue
-			}
-			err = filepath.WalkDir(scanPath, func(path string, d os.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if d.IsDir() && strings.HasPrefix(d.Name(), ".terra") {
-					return filepath.SkipDir
-				}
-				if d.IsDir() {
-					return nil
-				}
-				return addPath(path)
-			})
-			if err != nil {
-				return nil, nil, err
-			}
+		return files.sorted()
+	}
+	for _, scanPath := range paths {
+		if err := files.addScanPath(scanPath); err != nil {
+			return nil, nil, err
 		}
 	}
+	return files.sorted()
+}
 
-	pathsSorted := make([]string, 0, len(filesByPath))
-	for path := range filesByPath {
+type terraformModuleFiles struct {
+	contentCache map[string][]byte
+	repoPath     string
+	filesByPath  map[string]*model.FileMetadata
+	roots        map[string]struct{}
+}
+
+func newTerraformModuleFiles(contentCache map[string][]byte, repoPath string) *terraformModuleFiles {
+	return &terraformModuleFiles{
+		contentCache: contentCache,
+		repoPath:     repoPath,
+		filesByPath:  make(map[string]*model.FileMetadata),
+		roots:        make(map[string]struct{}),
+	}
+}
+
+func (f *terraformModuleFiles) add(path string) error {
+	if !strings.EqualFold(filepath.Ext(path), ".tf") {
+		return nil
+	}
+	data, ok := f.contentCache[path]
+	if !ok {
+		var err error
+		data, err = os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			return err
+		}
+	}
+	f.filesByPath[path] = &model.FileMetadata{FilePath: path, OriginalData: string(data)}
+	f.roots[moduleRoot(path, f.repoPath)] = struct{}{}
+	return nil
+}
+
+func (f *terraformModuleFiles) addScanPath(scanPath string) error {
+	info, err := os.Stat(scanPath)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return f.add(scanPath)
+	}
+	return filepath.WalkDir(scanPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && strings.HasPrefix(d.Name(), ".terra") {
+			return filepath.SkipDir
+		}
+		if d.IsDir() {
+			return nil
+		}
+		return f.add(path)
+	})
+}
+
+func (f *terraformModuleFiles) sorted() (model.FileMetadatas, []string, error) {
+	pathsSorted := make([]string, 0, len(f.filesByPath))
+	for path := range f.filesByPath {
 		pathsSorted = append(pathsSorted, path)
 	}
 	sort.Strings(pathsSorted)
 	files := make(model.FileMetadatas, 0, len(pathsSorted))
 	for _, path := range pathsSorted {
-		files = append(files, filesByPath[path])
+		files = append(files, f.filesByPath[path])
 	}
 
-	rootsSorted := make([]string, 0, len(roots))
-	for root := range roots {
+	rootsSorted := make([]string, 0, len(f.roots))
+	for root := range f.roots {
 		rootsSorted = append(rootsSorted, root)
 	}
 	sort.Strings(rootsSorted)
@@ -193,6 +211,7 @@ func (c *Client) addRemoteModuleFilesToInventory(moduleDirs []string) error {
 		seen[path] = struct{}{}
 	}
 	for _, dir := range moduleDirs {
+		moduleFiles := make([]string, 0)
 		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -204,24 +223,27 @@ func (c *Client) addRemoteModuleFilesToInventory(moduleDirs []string) error {
 				return nil
 			}
 			norm := strings.ReplaceAll(path, "\\", "/")
-			if _, ok := seen[norm]; ok {
-				return nil
-			}
-			seen[norm] = struct{}{}
-			c.walkInventory = append(c.walkInventory, norm)
-			if c.contentCache != nil {
-				if _, ok := c.contentCache[norm]; !ok {
-					data, readErr := os.ReadFile(filepath.Clean(path))
-					if readErr != nil {
-						return readErr
-					}
-					c.contentCache[norm] = data
-				}
-			}
+			moduleFiles = append(moduleFiles, norm)
 			return nil
 		})
 		if err != nil {
 			return err
+		}
+		for _, path := range moduleFiles {
+			if _, ok := seen[path]; ok {
+				continue
+			}
+			seen[path] = struct{}{}
+			c.walkInventory = append(c.walkInventory, path)
+			if c.contentCache != nil {
+				if _, ok := c.contentCache[path]; !ok {
+					data, readErr := os.ReadFile(filepath.Clean(path))
+					if readErr != nil {
+						return readErr
+					}
+					c.contentCache[path] = data
+				}
+			}
 		}
 	}
 	sort.Strings(c.walkInventory)

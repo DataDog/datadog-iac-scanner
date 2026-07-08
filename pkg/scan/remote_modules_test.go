@@ -37,7 +37,7 @@ func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
 
 	results := executeRemoteModuleScan(t, params)
 	require.NotEmpty(t, results.Results)
-	require.Equal(t, filepath.Join(moduleDir, "main.tf"), results.Results[0].FileName)
+	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
 }
 
 func TestAddRemoteModuleFilesToPrebuiltInventory(t *testing.T) {
@@ -52,8 +52,16 @@ func TestAddRemoteModuleFilesToPrebuiltInventory(t *testing.T) {
 
 	require.NoError(t, client.addRemoteModuleFilesToInventory([]string{moduleDir}))
 
-	require.ElementsMatch(t, []string{rootFile, moduleFile}, client.walkInventory)
-	require.Contains(t, client.contentCache, moduleFile)
+	require.ElementsMatch(t, []string{filepath.ToSlash(rootFile), filepath.ToSlash(moduleFile)}, toSlashPaths(client.walkInventory))
+	require.Contains(t, client.contentCache, filepath.ToSlash(moduleFile))
+}
+
+func toSlashPaths(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		out = append(out, filepath.ToSlash(path))
+	}
+	return out
 }
 
 func writeRemoteModuleFixture(t *testing.T, root string) (string, string) {
