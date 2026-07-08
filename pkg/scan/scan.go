@@ -106,6 +106,10 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := c.prepareRemoteModules(ctx, extractedPaths.Path, inspector); err != nil {
+		contextLogger.Err(err).Msg("failed to prepare Terraform remote modules")
+		return nil, err
+	}
 
 	contextLogger.Info().Msgf("Finshed inspect query source %v", querySource)
 
@@ -272,6 +276,7 @@ func (c *Client) createService(
 	flagEvaluator featureflags.FlagEvaluator,
 	filePlatform map[string]string) ([]*runner.Service, error) {
 	var filesSource provider.SourceProvider
+	paths = append(paths, c.remoteModulePaths...)
 	if c.inMemory {
 		// Content-push mode: serve the pushed files from the in-memory FS instead
 		// of walking the disk. No symlink/SameFile handling and no Helm chart

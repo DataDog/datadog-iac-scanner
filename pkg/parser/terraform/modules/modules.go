@@ -702,6 +702,7 @@ func enrichModule(
 	if localPath == "" {
 		return ModuleParseResult{Module: *mod}
 	}
+	mod.AbsSource = localPath
 	attributesData, enrichErr := cache.attributesFor(ctx, localPath)
 	if enrichErr != nil {
 		contextLogger.Warn().Msg("Failed to generate equivalent map")

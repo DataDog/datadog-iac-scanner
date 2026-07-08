@@ -95,6 +95,23 @@ var scanAction = &cli.Command{
 			Value:  false,
 		},
 		&cli.BoolFlag{
+			Name:   "x-remote-modules",
+			Hidden: true,
+			Usage:  "(experimental) resolve Terraform remote modules before scanning",
+			Value:  false,
+		},
+		&cli.StringFlag{
+			Name:   "x-remote-modules-manifest",
+			Hidden: true,
+			Usage:  "(experimental) JSON manifest mapping Terraform module sources to local directories",
+		},
+		&cli.StringSliceFlag{
+			Name:   "x-remote-modules-allowed-host",
+			Hidden: true,
+			Usage:  "(experimental) host allowed for Terraform remote module downloads",
+			Value:  []string{},
+		},
+		&cli.BoolFlag{
 			Name:   "x-terraform-plan",
 			Hidden: true,
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
@@ -298,6 +315,14 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err := validateReportFormats(reportFormats); err != nil {
 		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
 	}
+	if !c.Bool("x-remote-modules") &&
+		(c.String("x-remote-modules-manifest") != "" ||
+			len(c.StringSlice("x-remote-modules-allowed-host")) > 0) {
+		return errorWithExitCode(
+			errors.New("remote module resolver options require --x-remote-modules"),
+			constants.InvalidConfigErrorCode,
+		)
+	}
 
 	queriesPath := c.StringSlice("queries-path")
 	queriesPath, err = validateQueriesPaths(queriesPath)
@@ -344,6 +369,9 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
+		EnableRemoteModules:         c.Bool("x-remote-modules"),
+		RemoteModulesManifestPath:   c.String("x-remote-modules-manifest"),
+		RemoteModulesHostAllowlist:  c.StringSlice("x-remote-modules-allowed-host"),
 	}
 
 	var opts []scan.ClientOption
@@ -563,7 +591,7 @@ func selectPlatforms(platforms []string) []string {
 func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
 	overrides := map[string]bool{
 		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
-		featureflags.IacEnableLocalModuleEval:         c.Bool("x-local-module-eval"),
+		featureflags.IacEnableLocalModuleEval:         c.Bool("x-local-module-eval") || c.Bool("x-remote-modules"),
 	}
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }
