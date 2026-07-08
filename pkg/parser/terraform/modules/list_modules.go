@@ -25,7 +25,6 @@ func ListModuleEntries(modules map[string]ParsedModule, includeLocal bool) []Lis
 		if mod.IsLocal && !includeLocal {
 			continue
 		}
-		// Sources prefixed with "__" are synthetic/internal (e.g. virtual root modules) and should not be listed.
 		if strings.HasPrefix(mod.Source, "__") || mod.Source == "" {
 			continue
 		}
