@@ -417,6 +417,19 @@ func TestExpToString_ForExpr(t *testing.T) {
 			t.Errorf("ExpToString = %q, want %q", got, want)
 		}
 	})
+	t.Run("tuple_for_two_vars", func(t *testing.T) {
+		expr, diags := hclsyntax.ParseExpression([]byte(`[for k, v in var.map : k]`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		got, err := e.ExpToString(ctx, expr)
+		if err != nil {
+			t.Fatalf("ExpToString error: %v", err)
+		}
+		if want := "[for k, v in var.map : k]"; got != want {
+			t.Errorf("ExpToString = %q, want %q", got, want)
+		}
+	})
 }
 
 func TestExpToString_UnaryOpExpr(t *testing.T) {

@@ -119,6 +119,10 @@ func (v *engineVisitor) VisitForExpr(e *hclsyntax.ForExpr) (string, error) {
 		b.WriteString("}")
 	} else {
 		b.WriteString("[for ")
+		if e.KeyVar != "" {
+			b.WriteString(e.KeyVar)
+			b.WriteString(", ")
+		}
 		b.WriteString(e.ValVar)
 		b.WriteString(" in ")
 		b.WriteString(collStr)
