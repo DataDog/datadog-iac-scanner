@@ -73,6 +73,14 @@ func (r *recordingVisitor) VisitSplatExpr(_ *hclsyntax.SplatExpr) (string, error
 	r.called = "SplatExpr"
 	return r.called, nil
 }
+func (r *recordingVisitor) VisitAnonSymbol(_ *hclsyntax.AnonSymbolExpr) (string, error) {
+	r.called = "AnonSymbol"
+	return r.called, nil
+}
+func (r *recordingVisitor) VisitExprSyntaxError(_ *hclsyntax.ExprSyntaxError) (string, error) {
+	r.called = "ExprSyntaxError"
+	return r.called, nil
+}
 func (r *recordingVisitor) VisitDefault(_ hclsyntax.Expression) (string, error) {
 	r.called = "Default"
 	return r.called, nil
@@ -107,18 +115,25 @@ func TestDispatch(t *testing.T) {
 		{"UnaryOp", `-1`, "UnaryOp"},
 		{"ForExpr", `[for x in var.list : x]`, "ForExpr"},
 		{"SplatExpr", `var.list[*]`, "SplatExpr"},
+		{"AnonSymbol", ``, "AnonSymbol"},           // synthetic; expr built in loop below
+		{"ExprSyntaxError", ``, "ExprSyntaxError"}, // synthetic; expr built in loop below
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var expr hclsyntax.Expression
-			if tt.name == "TemplateJoin" {
+			switch tt.name {
+			case "TemplateJoin":
 				forExpr, diags := hclsyntax.ParseExpression([]byte(`[for x in var.list : x]`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
 				if diags.HasErrors() {
 					t.Fatalf("parse for-expr failed: %v", diags)
 				}
 				expr = &hclsyntax.TemplateJoinExpr{Tuple: forExpr}
-			} else {
+			case "AnonSymbol":
+				expr = &hclsyntax.AnonSymbolExpr{}
+			case "ExprSyntaxError":
+				expr = &hclsyntax.ExprSyntaxError{}
+			default:
 				expr = parse(t, tt.src)
 			}
 			v := &recordingVisitor{}
@@ -175,7 +190,11 @@ func TestDispatch_UnwrapsBeforeDispatch(t *testing.T) {
 }
 
 func TestDispatch_UnknownExprType(t *testing.T) {
-	expr := &hclsyntax.AnonSymbolExpr{}
+	// A wrapper with no inner expression unwraps to nil, which no case matches,
+	// so Dispatch must fall through to VisitDefault. (A custom hclsyntax.Expression
+	// cannot be constructed outside the package, and every concrete exported type
+	// is now handled explicitly.)
+	expr := &hclsyntax.ParenthesesExpr{}
 	v := &recordingVisitor{}
 	got, _ := Dispatch[string](expr, v)
 	if got != "Default" {

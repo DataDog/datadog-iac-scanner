@@ -975,12 +975,94 @@ func TestExpressionToAST_SplatExpr(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expressionToAST error: %v", err)
 		}
-		// When SplatExpr is dispatched, we get source[*]. Until then we get __UNSUPPORTED_EXPR__.
 		got := val.String()
-		if got != `"var.list[*]"` && got != `"__UNSUPPORTED_EXPR__"` {
+		if got != `"var.list[*]"` {
 			t.Errorf("expressionToAST = %s", got)
 		}
 	})
+	t.Run("splat_with_traversal", func(t *testing.T) {
+		expr, diags := hclsyntax.ParseExpression([]byte(`var.list[*].id`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		val, err := expressionToAST(expr)
+		if err != nil {
+			t.Fatalf("expressionToAST error: %v", err)
+		}
+		// The anonymous splat item renders empty, so the trailing traversal
+		// composes onto the base to yield the full path.
+		if got := val.String(); got != `"var.list[*].id"` {
+			t.Errorf("expressionToAST = %s", got)
+		}
+	})
+}
+
+func TestExpressionToAST_TemplateJoin(t *testing.T) {
+	// A TemplateJoinExpr wraps the for-loop of a %{for}...%{endfor} directive.
+	// Build one directly (the parser nests it inside a TemplateExpr part) and
+	// verify it renders the underlying for-expression instead of __UNSUPPORTED_EXPR__.
+	forExpr, diags := hclsyntax.ParseExpression([]byte(`[for v in var.list : v]`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		t.Fatalf("parse failed: %v", diags)
+	}
+	val, err := expressionToAST(&hclsyntax.TemplateJoinExpr{Tuple: forExpr})
+	if err != nil {
+		t.Fatalf("expressionToAST error: %v", err)
+	}
+	if got := val.String(); got != `"[for v in var.list : v]"` {
+		t.Errorf("expressionToAST = %s", got)
+	}
+}
+
+func TestExpressionToAST_TemplateExpr_WithFor(t *testing.T) {
+	t.Run("one_var", func(t *testing.T) {
+		f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for v in var.list}${v}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		attr := f.Body.(*hclsyntax.Body).Attributes["x"]
+		val, err := expressionToAST(attr.Expr)
+		if err != nil {
+			t.Fatalf("expressionToAST error: %v", err)
+		}
+		if got := val.String(); got != `"[for v in var.list : v]"` {
+			t.Errorf("expressionToAST = %s", got)
+		}
+	})
+	t.Run("template_for_two_vars", func(t *testing.T) {
+		f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for k, v in var.map}${k}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		attr := f.Body.(*hclsyntax.Body).Attributes["x"]
+		val, err := expressionToAST(attr.Expr)
+		if err != nil {
+			t.Fatalf("expressionToAST error: %v", err)
+		}
+		got := val.String()
+		want := `"[for k, v in var.map : k]"`
+		if got != want {
+			t.Errorf("expressionToAST = %s, want %s", got, want)
+		}
+	})
+}
+
+func TestExpressionToAST_TemplateExpr_UnsupportedPartFallback(t *testing.T) {
+	// ExprSyntaxError in a template part must collapse to "${...}", not leak the sentinel string.
+	// Parse a template with a literal prefix followed by a syntax error placeholder.
+	f, diags := hclsyntax.ParseConfig([]byte(`x = "prefix-${"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+	if !diags.HasErrors() {
+		t.Fatal("expected parse error")
+	}
+	_ = f
+	// Construct the template manually to avoid parse-level rejection.
+	errExpr := &hclsyntax.ExprSyntaxError{}
+	val := expressionToASTTemplateExpr(&hclsyntax.TemplateExpr{
+		Parts: []hclsyntax.Expression{errExpr},
+	})
+	if got := val.String(); got != `"${...}"` {
+		t.Errorf("expressionToASTTemplateExpr = %s, want \"${...}\"", got)
+	}
 }
 
 func TestExpressionToAST_ForExpr(t *testing.T) {
@@ -995,6 +1077,21 @@ func TestExpressionToAST_ForExpr(t *testing.T) {
 		}
 		got := val.String()
 		want := `"[for x in var.list : x]"`
+		if got != want {
+			t.Errorf("expressionToAST = %s, want %s", got, want)
+		}
+	})
+	t.Run("tuple_for_two_vars", func(t *testing.T) {
+		expr, diags := hclsyntax.ParseExpression([]byte(`[for k, v in var.map : k]`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		val, err := expressionToAST(expr)
+		if err != nil {
+			t.Fatalf("expressionToAST error: %v", err)
+		}
+		got := val.String()
+		want := `"[for k, v in var.map : k]"`
 		if got != want {
 			t.Errorf("expressionToAST = %s, want %s", got, want)
 		}

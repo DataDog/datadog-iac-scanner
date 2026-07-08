@@ -356,13 +356,33 @@ func TestExpToString_SplatExpr(t *testing.T) {
 		}
 		got, err := e.ExpToString(ctx, expr)
 		if err != nil {
-			return
+			t.Fatalf("ExpToString error: %v", err)
 		}
-		// AST may be SplatExpr (then we get "var.list[*]") or RelativeTraversalExpr (then "var.list[*].id")
-		if got != "var.list[*].id" && got != "var.list[*]" {
-			t.Errorf("ExpToString = %q", got)
+		// The anonymous splat item renders empty, so the trailing traversal
+		// composes onto the base to yield the full path.
+		if want := "var.list[*].id"; got != want {
+			t.Errorf("ExpToString = %q, want %q", got, want)
 		}
 	})
+}
+
+func TestExpToString_TemplateJoin(t *testing.T) {
+	e := &Engine{}
+	ctx := context.Background()
+	// A %{for}...%{endfor} template directive parses to a TemplateExpr whose
+	// single part is a TemplateJoinExpr wrapping a ForExpr.
+	f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for v in var.list}${v}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		t.Fatalf("parse failed: %v", diags)
+	}
+	attr := f.Body.(*hclsyntax.Body).Attributes["x"]
+	got, err := e.ExpToString(ctx, attr.Expr)
+	if err != nil {
+		t.Fatalf("ExpToString error: %v", err)
+	}
+	if want := "[for v in var.list : v]"; got != want {
+		t.Errorf("ExpToString = %q, want %q", got, want)
+	}
 }
 
 func TestExpToString_ForExpr(t *testing.T) {
@@ -394,6 +414,33 @@ func TestExpToString_ForExpr(t *testing.T) {
 			t.Fatalf("ExpToString error: %v", err)
 		}
 		if want := "{for k, v in var.map : k => v}"; got != want {
+			t.Errorf("ExpToString = %q, want %q", got, want)
+		}
+	})
+	t.Run("tuple_for_two_vars", func(t *testing.T) {
+		expr, diags := hclsyntax.ParseExpression([]byte(`[for k, v in var.map : k]`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		got, err := e.ExpToString(ctx, expr)
+		if err != nil {
+			t.Fatalf("ExpToString error: %v", err)
+		}
+		if want := "[for k, v in var.map : k]"; got != want {
+			t.Errorf("ExpToString = %q, want %q", got, want)
+		}
+	})
+	t.Run("template_for_two_vars", func(t *testing.T) {
+		f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for k, v in var.map}${k}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		attr := f.Body.(*hclsyntax.Body).Attributes["x"]
+		got, err := e.ExpToString(ctx, attr.Expr)
+		if err != nil {
+			t.Fatalf("ExpToString error: %v", err)
+		}
+		if want := "[for k, v in var.map : k]"; got != want {
 			t.Errorf("ExpToString = %q, want %q", got, want)
 		}
 	})

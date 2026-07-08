@@ -270,6 +270,12 @@ func (v *converterExprVisitor) VisitForExpr(e *hclsyntax.ForExpr) (interface{}, 
 func (v *converterExprVisitor) VisitSplatExpr(e *hclsyntax.SplatExpr) (interface{}, error) {
 	return v.c.tryEvalExpression(e)
 }
+func (v *converterExprVisitor) VisitAnonSymbol(e *hclsyntax.AnonSymbolExpr) (interface{}, error) {
+	return v.c.tryEvalExpression(e)
+}
+func (v *converterExprVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSyntaxError) (interface{}, error) {
+	return v.c.tryEvalExpression(e)
+}
 func (v *converterExprVisitor) VisitDefault(e hclsyntax.Expression) (interface{}, error) {
 	return v.c.tryEvalExpression(e)
 }
@@ -411,6 +417,12 @@ func (v *converterStringPartVisitor) VisitForExpr(e *hclsyntax.ForExpr) (string,
 }
 func (v *converterStringPartVisitor) VisitSplatExpr(e *hclsyntax.SplatExpr) (string, error) {
 	return v.c.tryEvalToString(e)
+}
+func (v *converterStringPartVisitor) VisitAnonSymbol(e *hclsyntax.AnonSymbolExpr) (string, error) {
+	return v.VisitDefault(e)
+}
+func (v *converterStringPartVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSyntaxError) (string, error) {
+	return v.VisitDefault(e)
 }
 func (v *converterStringPartVisitor) VisitDefault(e hclsyntax.Expression) (string, error) {
 	val, _ := e.Value(&hcl.EvalContext{Variables: v.c.inputVars})
