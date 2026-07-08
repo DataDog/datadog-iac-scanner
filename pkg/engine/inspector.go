@@ -1462,10 +1462,11 @@ func expressionToASTTemplateExpr(e *hclsyntax.TemplateExpr) ast.Value {
 	result := ""
 	for _, part := range e.Parts {
 		v, err := expressionToAST(part)
-		if err != nil || v == nil {
+		s := astValueToSimpleString(v)
+		if err != nil || v == nil || s == "__UNSUPPORTED_EXPR__" || s == "__UNSUPPORTED_LITERAL__" {
 			result += "${...}"
 		} else {
-			result += astValueToSimpleString(v)
+			result += s
 		}
 	}
 	return ast.String(result)
@@ -1595,6 +1596,10 @@ func expressionToASTForExpr(e *hclsyntax.ForExpr) ast.Value {
 		b.WriteString("}")
 	} else {
 		b.WriteString("[for ")
+		if e.KeyVar != "" {
+			b.WriteString(e.KeyVar)
+			b.WriteString(", ")
+		}
 		b.WriteString(e.ValVar)
 		b.WriteString(" in ")
 		b.WriteString(collStr)

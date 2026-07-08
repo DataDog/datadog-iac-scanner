@@ -1015,10 +1015,6 @@ func TestExpressionToAST_TemplateJoin(t *testing.T) {
 }
 
 func TestExpressionToAST_TemplateExpr_WithFor(t *testing.T) {
-	// Exercises the full real-world path: a string attribute with a %{for}
-	// directive parses as TemplateExpr → TemplateJoinExpr → ForExpr → inner
-	// TemplateExpr(ScopeTraversalExpr).  With the recursive fix, the template
-	// parts are rendered by expressionToAST instead of collapsing to "${...}".
 	f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for v in var.list}${v}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
 		t.Fatalf("parse failed: %v", diags)
@@ -1028,10 +1024,41 @@ func TestExpressionToAST_TemplateExpr_WithFor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expressionToAST error: %v", err)
 	}
-	// The for-loop body ${v} is a TemplateExpr wrapping ScopeTraversalExpr(v),
-	// which now renders as "v", giving "[for v in var.list : v]".
 	if got := val.String(); got != `"[for v in var.list : v]"` {
 		t.Errorf("expressionToAST = %s", got)
+	}
+}
+
+func TestExpressionToAST_TemplateExpr_WithFor_TwoVars(t *testing.T) {
+	f, diags := hclsyntax.ParseConfig([]byte(`x = "%{for k, v in var.map}${k}%{endfor}"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		t.Fatalf("parse failed: %v", diags)
+	}
+	attr := f.Body.(*hclsyntax.Body).Attributes["x"]
+	val, err := expressionToAST(attr.Expr)
+	if err != nil {
+		t.Fatalf("expressionToAST error: %v", err)
+	}
+	if got := val.String(); got != `"[for k, v in var.map : k]"` {
+		t.Errorf("expressionToAST = %s", got)
+	}
+}
+
+func TestExpressionToAST_TemplateExpr_UnsupportedPartFallback(t *testing.T) {
+	// ExprSyntaxError in a template part must collapse to "${...}", not leak the sentinel string.
+	// Parse a template with a literal prefix followed by a syntax error placeholder.
+	f, diags := hclsyntax.ParseConfig([]byte(`x = "prefix-${"`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+	if !diags.HasErrors() {
+		t.Fatal("expected parse error")
+	}
+	_ = f
+	// Construct the template manually to avoid parse-level rejection.
+	errExpr := &hclsyntax.ExprSyntaxError{}
+	val := expressionToASTTemplateExpr(&hclsyntax.TemplateExpr{
+		Parts: []hclsyntax.Expression{errExpr},
+	})
+	if got := val.String(); got != `"${...}"` {
+		t.Errorf("expressionToASTTemplateExpr = %s, want \"${...}\"", got)
 	}
 }
 
@@ -1047,6 +1074,21 @@ func TestExpressionToAST_ForExpr(t *testing.T) {
 		}
 		got := val.String()
 		want := `"[for x in var.list : x]"`
+		if got != want {
+			t.Errorf("expressionToAST = %s, want %s", got, want)
+		}
+	})
+	t.Run("tuple_for_two_vars", func(t *testing.T) {
+		expr, diags := hclsyntax.ParseExpression([]byte(`[for k, v in var.map : k]`), "test.hcl", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			t.Fatalf("parse failed: %v", diags)
+		}
+		val, err := expressionToAST(expr)
+		if err != nil {
+			t.Fatalf("expressionToAST error: %v", err)
+		}
+		got := val.String()
+		want := `"[for k, v in var.map : k]"`
 		if got != want {
 			t.Errorf("expressionToAST = %s, want %s", got, want)
 		}
