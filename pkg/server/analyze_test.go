@@ -325,6 +325,14 @@ func TestValidateAnalyzeRequest_Libraries(t *testing.T) {
 			},
 			wantError: "invalid library input data for common",
 		},
+		{
+			name: "non-object input data",
+			libraries: []analyzeLibrary{
+				{ID: "common", Content: "package generic.common", InputData: "null"},
+				{ID: "terraform", Content: "package generic.terraform"},
+			},
+			wantError: "invalid library input data for common",
+		},
 	}
 
 	for _, tt := range tests {
@@ -340,6 +348,24 @@ func TestValidateAnalyzeRequest_Libraries(t *testing.T) {
 			}
 			if err == nil || err.Error() != tt.wantError {
 				t.Fatalf("validateAnalyzeRequest() error = %v, want %q", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateAnalyzeRequest_RuleInputDataMustBeObject(t *testing.T) {
+	for _, inputData := range []string{"null", "[]", "1", `"value"`} {
+		t.Run(inputData, func(t *testing.T) {
+			req := analyzeRequest{
+				Files: []analyzeFile{{Path: "main.tf", Content: "resource"}},
+				Rules: []analyzeRule{{
+					ID: "test-rule", Platform: "terraform", Content: "package datadog", InputData: inputData,
+				}},
+				Libraries: testLibraries(true),
+			}
+			err := validateAnalyzeRequest(&req, defaultMaxFiles)
+			if err == nil || err.Error() != "invalid rule input data for test-rule" {
+				t.Fatalf("validateAnalyzeRequest() error = %v", err)
 			}
 		})
 	}

@@ -190,6 +190,7 @@ func TestMergeInputData(t *testing.T) {
 		customData  string
 		defaultData string
 		want        string
+		wantError   bool
 	}{
 		{
 			name:        "Should merge input data strings",
@@ -197,10 +198,18 @@ func TestMergeInputData(t *testing.T) {
 			customData:  `{"test": "merge", "merge": "success"}`,
 			want:        `{"test": "merge","merge": "success"}`,
 		},
+		{name: "Reject null default", defaultData: "null", customData: `{"test":true}`, wantError: true},
+		{name: "Reject null custom", defaultData: `{"test":true}`, customData: "null", wantError: true},
+		{name: "Reject array", defaultData: "[]", customData: "{}", wantError: true},
+		{name: "Reject scalar", defaultData: "{}", customData: "1", wantError: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := MergeInputData(tt.defaultData, tt.customData)
+			if tt.wantError {
+				require.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 			wantJSON := map[string]interface{}{}
 			gotJSON := map[string]interface{}{}
@@ -209,6 +218,15 @@ func TestMergeInputData(t *testing.T) {
 			err = json.Unmarshal([]byte(got), &gotJSON)
 			require.NoError(t, err)
 			require.Equal(t, wantJSON, gotJSON)
+		})
+	}
+}
+
+func TestMergeModulesDataRejectsNonObjectInput(t *testing.T) {
+	for _, inputData := range []string{"null", "[]", "1", `"value"`} {
+		t.Run(inputData, func(t *testing.T) {
+			_, err := MergeModulesData(nil, inputData)
+			require.Error(t, err)
 		})
 	}
 }

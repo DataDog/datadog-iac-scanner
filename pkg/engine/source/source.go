@@ -55,19 +55,25 @@ func MergeInputData(defaultInputData, customInputData string) (string, error) {
 		return emptyInputData, nil
 	}
 	if checkEmptyInputdata(defaultInputData) {
+		if _, err := parseInputDataObject(customInputData); err != nil {
+			return "", err
+		}
 		return customInputData, nil
 	}
 	if checkEmptyInputdata(customInputData) {
+		if _, err := parseInputDataObject(defaultInputData); err != nil {
+			return "", err
+		}
 		return defaultInputData, nil
 	}
 
-	dataJSON := map[string]interface{}{}
-	customDataJSON := map[string]interface{}{}
-	if unmarshalError := json.Unmarshal([]byte(defaultInputData), &dataJSON); unmarshalError != nil {
-		return "", errors.Wrapf(unmarshalError, "failed to merge query input data")
+	dataJSON, err := parseInputDataObject(defaultInputData)
+	if err != nil {
+		return "", err
 	}
-	if unmarshalError := json.Unmarshal([]byte(customInputData), &customDataJSON); unmarshalError != nil {
-		return "", errors.Wrapf(unmarshalError, "failed to merge query input data")
+	customDataJSON, err := parseInputDataObject(customInputData)
+	if err != nil {
+		return "", err
 	}
 
 	for key, value := range customDataJSON {
@@ -85,9 +91,9 @@ func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (strin
 		inputData = emptyInputData
 	}
 
-	dataJSON := map[string]any{}
-	if unmarshalError := json.Unmarshal([]byte(inputData), &dataJSON); unmarshalError != nil {
-		return "", errors.Wrapf(unmarshalError, "failed to merge query input data")
+	dataJSON, err := parseInputDataObject(inputData)
+	if err != nil {
+		return "", err
 	}
 	// Ensure "common_lib" exists and is a map.
 	commonLib, ok := dataJSON["common_lib"].(map[string]any)
@@ -126,6 +132,17 @@ func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (strin
 		return "", errors.Wrapf(mergeErr, "failed to merge query input data")
 	}
 	return string(mergedJSON), nil
+}
+
+func parseInputDataObject(inputData string) (map[string]any, error) {
+	data := map[string]any{}
+	if err := json.Unmarshal([]byte(inputData), &data); err != nil {
+		return nil, errors.Wrap(err, "failed to merge query input data")
+	}
+	if data == nil {
+		return nil, errors.New("failed to merge query input data: expected a JSON object")
+	}
+	return data, nil
 }
 
 func moduleEquivalentKey(source, version string) string {

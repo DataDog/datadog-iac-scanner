@@ -7,6 +7,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -142,6 +143,11 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 	if len(req.Rules) > maxRules {
 		return errors.New("too many rules")
 	}
+	for _, rule := range req.Rules {
+		if !isInputDataObject(rule.InputData) {
+			return errors.New("invalid rule input data for " + rule.ID)
+		}
+	}
 	if err := validateLibraries(req.Libraries, req.Rules); err != nil {
 		return err
 	}
@@ -173,7 +179,7 @@ func validateLibraries(libraries []analyzeLibrary, rules []analyzeRule) error {
 		if strings.TrimSpace(library.Content) == "" {
 			return errors.New("empty library content for " + library.ID)
 		}
-		if library.InputData != "" && !json.Valid([]byte(library.InputData)) {
+		if !isInputDataObject(library.InputData) {
 			return errors.New("invalid library input data for " + library.ID)
 		}
 		if _, exists := available[id]; exists {
@@ -201,6 +207,17 @@ func normalizeLibraryInputData(inputData string) string {
 		return emptyInputData
 	}
 	return inputData
+}
+
+func isInputDataObject(inputData string) bool {
+	if inputData == "" {
+		return true
+	}
+	data := bytes.TrimSpace([]byte(inputData))
+	// json.Valid checks the complete payload without allocating an unmarshalled
+	// map; the leading brace additionally requires the top-level value to be an
+	// object, excluding valid JSON values such as null, arrays, and scalars.
+	return len(data) > 0 && data[0] == '{' && json.Valid(data)
 }
 
 func normalizePlatform(platform string) string {
