@@ -41,6 +41,27 @@ func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
 	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
 }
 
+func TestRemoteModuleMaxDepthZeroDisablesTraversal(t *testing.T) {
+	root := t.TempDir()
+	_, manifestPath := writeRemoteModuleFixture(t, root)
+
+	params := remoteModuleScanParams(root)
+	params.EnableRemoteModules = true
+	params.RemoteModulesManifestPath = manifestPath
+	params.ModuleMaxDepth = 0
+
+	results := executeRemoteModuleScan(t, params)
+	require.Empty(t, results.Results)
+}
+
+func TestDotTerraformRootDirsUsesFileParent(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(file, nil, 0o644))
+
+	require.Equal(t, []string{root}, dotTerraformRootDirs([]string{file}))
+}
+
 func TestRemoteModuleFilesBypassPrebuiltInventoryFilters(t *testing.T) {
 	root := t.TempDir()
 	moduleDir, _ := writeRemoteModuleFixture(t, root)
@@ -111,6 +132,7 @@ func remoteModuleScanParams(root string) *Parameters {
 		ScanID:                  "remote-module-test",
 		MaxFileSizeFlag:         100,
 		MaxResolverDepth:        15,
+		ModuleMaxDepth:          DefaultRemoteModuleMaxDepth,
 		FlagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
 			featureflags.IacEnableLocalModuleEval: true,
 		}),

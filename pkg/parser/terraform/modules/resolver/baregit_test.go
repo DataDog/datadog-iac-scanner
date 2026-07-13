@@ -6,9 +6,22 @@
 package resolver
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
+
+func TestBareGitResolverRejectsDisallowedHost(t *testing.T) {
+	r := NewBareGitResolver(t.TempDir(), "allowed.example")
+	_, err := r.Resolve(context.Background(), &tfmodules.ParsedModule{
+		Source: "git::https://disallowed.example/org/repo.git?ref=main",
+	})
+	if err == nil || !strings.Contains(err.Error(), `module host "disallowed.example" is not in --module-host-allowlist`) {
+		t.Fatalf("expected host allowlist error, got %v", err)
+	}
+}
 
 func TestNormalizeGitRepoURL(t *testing.T) {
 	cases := []struct {

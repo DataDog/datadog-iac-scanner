@@ -22,6 +22,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// DefaultRemoteModuleMaxDepth bounds network work while covering typical nested module stacks.
+const DefaultRemoteModuleMaxDepth = 8
+
 // Parameters represents all available scan parameters
 type Parameters struct {
 	CloudProvider               []string
@@ -165,7 +168,7 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxFileSizeFlag:             5,
 		UseOldSeverities:            false,
 		MaxResolverDepth:            15,
-		ModuleMaxDepth:              8,
+		ModuleMaxDepth:              DefaultRemoteModuleMaxDepth,
 		ModuleFetchTimeout:          30 * time.Second,
 		MaxModuleBytesTotal:         200 * 1024 * 1024,
 	}, logCtx

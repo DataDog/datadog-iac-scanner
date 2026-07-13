@@ -56,8 +56,20 @@ type resolvedEntry struct {
 	err error
 }
 
+type remoteModuleGroup struct {
+	representative *tfmodules.ParsedModule
+	callers        []*tfmodules.ParsedModule
+}
+
+type walkerSnapshot struct {
+	paths          []string
+	modules        []ResolvedModule
+	sourceMappings map[string]string
+	cleanups       []func()
+}
+
 type walker struct {
-	mu             sync.Mutex
+	mu             sync.RWMutex
 	visited        map[string]bool
 	resolved       map[string]resolvedEntry
 	paths          []string
@@ -70,7 +82,7 @@ type walker struct {
 	maxDepth int
 	fsys     vfs.FS
 
-	parseMu    sync.Mutex
+	parseMu    sync.RWMutex
 	parseCache map[string]map[string]tfmodules.ParsedModule
 }
 
@@ -104,14 +116,10 @@ func Resolve(ctx context.Context, request *Request) Result {
 	}
 	_ = g.Wait()
 
-	w.mu.Lock()
-	result.ScanPaths = append(result.ScanPaths, w.paths...)
-	result.Modules = append(result.Modules, w.modules...)
-	for localPath, source := range w.sourceMappings {
-		result.SourceMappings[localPath] = source
-	}
-	cleanups := append([]func(){}, w.cleanups...)
-	w.mu.Unlock()
+	snapshot := w.snapshot()
+	result.ScanPaths = snapshot.paths
+	result.Modules = snapshot.modules
+	result.SourceMappings = snapshot.sourceMappings
 
 	sort.Strings(result.ScanPaths)
 	sort.Slice(result.Modules, func(i, j int) bool {
@@ -122,7 +130,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	var once sync.Once
 	result.Cleanup = func() {
 		once.Do(func() {
-			for _, cleanup := range cleanups {
+			for _, cleanup := range snapshot.cleanups {
 				cleanup()
 			}
 		})
@@ -135,12 +143,12 @@ func (w *walker) parseModulesInDir(
 ) map[string]tfmodules.ParsedModule {
 	key := filepath.Clean(dir) + "\x00" + allowedFilesCacheKey(allowedFiles)
 
-	w.parseMu.Lock()
+	w.parseMu.RLock()
 	if mods, ok := w.parseCache[key]; ok {
-		w.parseMu.Unlock()
+		w.parseMu.RUnlock()
 		return mods
 	}
-	w.parseMu.Unlock()
+	w.parseMu.RUnlock()
 
 	var mods map[string]tfmodules.ParsedModule
 	files, err := tfmodules.LoadTFFilesFromDir(dir)
@@ -154,8 +162,8 @@ func (w *walker) parseModulesInDir(
 	}
 
 	w.parseMu.Lock()
+	defer w.parseMu.Unlock()
 	w.parseCache[key] = mods
-	w.parseMu.Unlock()
 	return mods
 }
 
@@ -186,12 +194,13 @@ func (w *walker) addPaths(paths ...string) {
 		return
 	}
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.paths = append(w.paths, paths...)
-	w.mu.Unlock()
 }
 
 func (w *walker) addResolvedModule(mod *tfmodules.ParsedModule, localPath string) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.modules = append(w.modules, ResolvedModule{
 		CallerRoot:      moduleCallRoot(mod),
 		Source:          mod.Source,
@@ -200,19 +209,46 @@ func (w *walker) addResolvedModule(mod *tfmodules.ParsedModule, localPath string
 		LocalPath:       localPath,
 		CanonicalSource: canonicalModuleURL(mod.Source, mod.Version),
 	})
-	w.mu.Unlock()
 }
 
 func (w *walker) addSourceMapping(localPath, source string) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.sourceMappings[localPath] = source
-	w.mu.Unlock()
 }
 
 func (w *walker) addCleanup(cleanup func()) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.cleanups = append(w.cleanups, cleanup)
-	w.mu.Unlock()
+}
+
+func (w *walker) snapshot() walkerSnapshot {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	sourceMappings := make(map[string]string, len(w.sourceMappings))
+	for localPath, source := range w.sourceMappings {
+		sourceMappings[localPath] = source
+	}
+	return walkerSnapshot{
+		paths:          append([]string(nil), w.paths...),
+		modules:        append([]ResolvedModule(nil), w.modules...),
+		sourceMappings: sourceMappings,
+		cleanups:       append([]func(){}, w.cleanups...),
+	}
+}
+
+func (w *walker) getResolved(resolveID string) (resolvedEntry, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	entry, ok := w.resolved[resolveID]
+	return entry, ok
+}
+
+func (w *walker) setResolved(resolveID string, entry resolvedEntry) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.resolved[resolveID] = entry
 }
 
 func (w *walker) resolveRemote(
@@ -220,25 +256,17 @@ func (w *walker) resolveRemote(
 ) (resolver.Resolution, bool, error) {
 	resolveID := remoteResolveIdentity(mod)
 
-	w.mu.Lock()
-	if entry, ok := w.resolved[resolveID]; ok {
-		w.mu.Unlock()
+	if entry, ok := w.getResolved(resolveID); ok {
 		return entry.res, true, entry.err
 	}
-	w.mu.Unlock()
 
 	value, err, shared := w.sf.Do(resolveID, func() (interface{}, error) {
-		w.mu.Lock()
-		if entry, ok := w.resolved[resolveID]; ok {
-			w.mu.Unlock()
+		if entry, ok := w.getResolved(resolveID); ok {
 			return entry.res, entry.err
 		}
-		w.mu.Unlock()
 
 		resolution, resolveErr := w.resolver.Resolve(ctx, mod)
-		w.mu.Lock()
-		w.resolved[resolveID] = resolvedEntry{res: resolution, err: resolveErr}
-		w.mu.Unlock()
+		w.setResolved(resolveID, resolvedEntry{res: resolution, err: resolveErr})
 		return resolution, resolveErr
 	})
 	if err != nil {
@@ -374,11 +402,6 @@ func (w *walker) traverse(
 	w.traverseRemoteModules(ctx, mods, repoAllowedDirs, depth)
 }
 
-type remoteModuleGroup struct {
-	representative *tfmodules.ParsedModule
-	callers        []*tfmodules.ParsedModule
-}
-
 func (w *walker) traverseRemoteModules(
 	ctx context.Context,
 	mods map[string]tfmodules.ParsedModule,
@@ -393,9 +416,7 @@ func (w *walker) traverseRemoteModules(
 		}
 		id := remoteResolveIdentity(&mod)
 
-		w.mu.Lock()
-		cached, hit := w.resolved[id]
-		w.mu.Unlock()
+		cached, hit := w.getResolved(id)
 		if hit {
 			if cached.err == nil && cached.res.LocalPath != "" {
 				w.addResolvedModule(&mod, cached.res.LocalPath)
@@ -439,20 +460,20 @@ func (w *walker) traverseRemoteModuleGroup(
 	resolution, shared, err := w.resolveRemote(ctx, representative)
 	if err != nil {
 		if !shared {
-			contextLogger.Warn().Err(err).
+			contextLogger.Debug().Err(err).
 				Msgf("Failed to resolve remote Terraform module %q", representative.Source)
 		}
 		return
 	}
 	if resolution.LocalPath == "" {
 		if !shared {
-			contextLogger.Warn().
+			contextLogger.Debug().
 				Msgf("Resolved remote Terraform module %q without a local path", representative.Source)
 		}
 		return
 	}
 	if !shared {
-		contextLogger.Info().Msgf("Fetched remote Terraform module %q", representative.Source)
+		contextLogger.Debug().Msgf("Fetched remote Terraform module %q", representative.Source)
 	}
 
 	for _, mod := range group.callers {

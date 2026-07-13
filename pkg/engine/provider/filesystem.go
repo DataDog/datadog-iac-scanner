@@ -181,19 +181,20 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 			if shouldSkip, _ := s.checkConditions(ctx, fileInfo, extensions, scanPath, nil); shouldSkip {
 				continue
 			}
-			files = append(files, strings.ReplaceAll(scanPath, "\\", "/"))
+			files = append(files, filepath.ToSlash(scanPath))
 			continue
 		}
-		noopSink := func(context.Context, string) ([]string, error) {
-			return nil, errors.New("resolver unavailable")
-		}
-		collected, err := s.collectFiles(ctx, scanPath, noopSink, extensions)
+		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, extensions)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to collect files")
 		}
 		files = append(files, collected...)
 	}
 	return files, nil
+}
+
+func unavailableResolverSink(context.Context, string) ([]string, error) {
+	return nil, errors.New("resolver unavailable")
 }
 
 // ignoreDamagedFiles checks whether we should ignore a damaged file from a scan or not.
@@ -263,7 +264,7 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 
 		if !fileInfo.IsDir() {
 			// Single file - validate and add to queue
-			_, openFileErr := openScanFile(ctx, scanPath, extensions)
+			openFileErr := validateScanFile(ctx, scanPath, extensions)
 			if openFileErr != nil {
 				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
 					continue
@@ -415,7 +416,7 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 		}
 
 		if !fileInfo.IsDir() {
-			if _, openFileErr := openScanFile(ctx, scanPath, extensions); openFileErr != nil {
+			if openFileErr := validateScanFile(ctx, scanPath, extensions); openFileErr != nil {
 				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
 					continue
 				}
@@ -546,6 +547,14 @@ func openScanFile(ctx context.Context, scanPath string, extensions model.Extensi
 		return nil, errors.Wrap(errOpenFile, "failed to open path")
 	}
 	return c, nil
+}
+
+func validateScanFile(ctx context.Context, scanPath string, extensions model.Extensions) error {
+	file, err := openScanFile(ctx, scanPath, extensions)
+	if err != nil {
+		return err
+	}
+	return file.Close()
 }
 
 // nolint:gocyclo

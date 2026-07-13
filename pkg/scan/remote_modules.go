@@ -45,15 +45,11 @@ func (c *Client) resolveTerraformModulesForScan(
 		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
-	maxDepth := c.ScanParams.ModuleMaxDepth
-	if maxDepth == 0 {
-		maxDepth = 8
-	}
 	result := modulegraph.Resolve(ctx, &modulegraph.Request{
 		RootPaths:      extractedPaths.Path,
 		DiscoveryPaths: moduleDiscoveryPaths,
 		Resolver:       chain,
-		MaxDepth:       maxDepth,
+		MaxDepth:       c.ScanParams.ModuleMaxDepth,
 		FS:             c.fsys,
 	})
 	if len(result.ScanPaths) > 0 {
@@ -116,8 +112,8 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 
 	if c.ScanParams.EnableRemoteModules {
 		resolvers = append(resolvers,
-			tfresolver.NewLocalGitRefResolver(c.ScanParams.Path, ""),
-			tfresolver.NewBareGitResolver(""),
+			tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), ""),
+			tfresolver.NewBareGitResolver("", c.ScanParams.RemoteModulesHostAllowlist...),
 		)
 	}
 

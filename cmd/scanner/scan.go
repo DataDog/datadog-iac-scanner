@@ -115,7 +115,7 @@ var scanAction = &cli.Command{
 			Name:   "x-remote-modules-max-depth",
 			Hidden: true,
 			Usage:  "(experimental) maximum BFS depth for the remote module graph walker (default 8)",
-			Value:  8,
+			Value:  scan.DefaultRemoteModuleMaxDepth,
 		},
 		&cli.DurationFlag{
 			Name:   "x-remote-modules-fetch-timeout",

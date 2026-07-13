@@ -512,11 +512,15 @@ func withoutDepth(rawURL string) string {
 }
 
 func (r *GoGetterResolver) checkAllowlist(source string) error {
-	if len(r.cfg.HostAllowlist) == 0 {
+	return checkHostAllowlist(source, r.cfg.HostAllowlist)
+}
+
+func checkHostAllowlist(source string, allowlist []string) error {
+	if len(allowlist) == 0 {
 		return nil
 	}
 	host := extractSourceHost(source)
-	for _, allowed := range r.cfg.HostAllowlist {
+	for _, allowed := range allowlist {
 		if host == allowed || strings.HasSuffix(host, "."+allowed) {
 			return nil
 		}
