@@ -68,22 +68,38 @@ type walkerSnapshot struct {
 	cleanups       []func()
 }
 
-type walker struct {
+type visitedSet struct {
+	mu    sync.Mutex
+	paths map[string]bool
+}
+
+type resolutionCache struct {
+	mu      sync.RWMutex
+	entries map[string]resolvedEntry
+}
+
+type resultCollector struct {
 	mu             sync.RWMutex
-	visited        map[string]bool
-	resolved       map[string]resolvedEntry
 	paths          []string
 	modules        []ResolvedModule
 	sourceMappings map[string]string
 	cleanups       []func()
+}
 
-	sf       singleflight.Group
-	resolver resolver.Resolver
-	maxDepth int
-	fsys     vfs.FS
+type moduleParseCache struct {
+	mu      sync.RWMutex
+	entries map[string]map[string]tfmodules.ParsedModule
+}
 
-	parseMu    sync.RWMutex
-	parseCache map[string]map[string]tfmodules.ParsedModule
+type walker struct {
+	visited     visitedSet
+	resolutions resolutionCache
+	results     resultCollector
+	parseCache  moduleParseCache
+	sf          singleflight.Group
+	resolver    resolver.Resolver
+	maxDepth    int
+	fsys        vfs.FS
 }
 
 func Resolve(ctx context.Context, request *Request) Result {
@@ -96,13 +112,21 @@ func Resolve(ctx context.Context, request *Request) Result {
 	}
 
 	w := &walker{
-		visited:        make(map[string]bool),
-		resolved:       make(map[string]resolvedEntry),
-		sourceMappings: make(map[string]string),
-		resolver:       request.Resolver,
-		maxDepth:       request.MaxDepth,
-		fsys:           request.FS,
-		parseCache:     make(map[string]map[string]tfmodules.ParsedModule),
+		visited: visitedSet{
+			paths: make(map[string]bool),
+		},
+		resolutions: resolutionCache{
+			entries: make(map[string]resolvedEntry),
+		},
+		results: resultCollector{
+			sourceMappings: make(map[string]string),
+		},
+		parseCache: moduleParseCache{
+			entries: make(map[string]map[string]tfmodules.ParsedModule),
+		},
+		resolver: request.Resolver,
+		maxDepth: request.MaxDepth,
+		fsys:     request.FS,
 	}
 	seedGroups, repositoryGroups := w.seedGroups(ctx, request.RootPaths, request.DiscoveryPaths)
 
@@ -116,7 +140,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	}
 	_ = g.Wait()
 
-	snapshot := w.snapshot()
+	snapshot := w.results.snapshot()
 	result.ScanPaths = snapshot.paths
 	result.Modules = snapshot.modules
 	result.SourceMappings = snapshot.sourceMappings
@@ -143,12 +167,9 @@ func (w *walker) parseModulesInDir(
 ) map[string]tfmodules.ParsedModule {
 	key := filepath.Clean(dir) + "\x00" + allowedFilesCacheKey(allowedFiles)
 
-	w.parseMu.RLock()
-	if mods, ok := w.parseCache[key]; ok {
-		w.parseMu.RUnlock()
+	if mods, ok := w.parseCache.get(key); ok {
 		return mods
 	}
-	w.parseMu.RUnlock()
 
 	var mods map[string]tfmodules.ParsedModule
 	files, err := tfmodules.LoadTFFilesFromDir(dir)
@@ -161,9 +182,7 @@ func (w *walker) parseModulesInDir(
 		})
 	}
 
-	w.parseMu.Lock()
-	defer w.parseMu.Unlock()
-	w.parseCache[key] = mods
+	w.parseCache.set(key, mods)
 	return mods
 }
 
@@ -179,29 +198,29 @@ func allowedFilesCacheKey(allowed map[string]bool) string {
 	return strings.Join(paths, "\x00")
 }
 
-func (w *walker) tryVisit(localPath string) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.visited[localPath] {
+func (s *visitedSet) tryAdd(localPath string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.paths[localPath] {
 		return false
 	}
-	w.visited[localPath] = true
+	s.paths[localPath] = true
 	return true
 }
 
-func (w *walker) addPaths(paths ...string) {
+func (c *resultCollector) addPaths(paths ...string) {
 	if len(paths) == 0 {
 		return
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.paths = append(w.paths, paths...)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.paths = append(c.paths, paths...)
 }
 
-func (w *walker) addResolvedModule(mod *tfmodules.ParsedModule, localPath string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.modules = append(w.modules, ResolvedModule{
+func (c *resultCollector) addResolvedModule(mod *tfmodules.ParsedModule, localPath string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.modules = append(c.modules, ResolvedModule{
 		CallerRoot:      moduleCallRoot(mod),
 		Source:          mod.Source,
 		Version:         mod.Version,
@@ -211,44 +230,57 @@ func (w *walker) addResolvedModule(mod *tfmodules.ParsedModule, localPath string
 	})
 }
 
-func (w *walker) addSourceMapping(localPath, source string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.sourceMappings[localPath] = source
+func (c *resultCollector) addSourceMapping(localPath, source string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sourceMappings[localPath] = source
 }
 
-func (w *walker) addCleanup(cleanup func()) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.cleanups = append(w.cleanups, cleanup)
+func (c *resultCollector) addCleanup(cleanup func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cleanups = append(c.cleanups, cleanup)
 }
 
-func (w *walker) snapshot() walkerSnapshot {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-	sourceMappings := make(map[string]string, len(w.sourceMappings))
-	for localPath, source := range w.sourceMappings {
+func (c *resultCollector) snapshot() walkerSnapshot {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	sourceMappings := make(map[string]string, len(c.sourceMappings))
+	for localPath, source := range c.sourceMappings {
 		sourceMappings[localPath] = source
 	}
 	return walkerSnapshot{
-		paths:          append([]string(nil), w.paths...),
-		modules:        append([]ResolvedModule(nil), w.modules...),
+		paths:          append([]string(nil), c.paths...),
+		modules:        append([]ResolvedModule(nil), c.modules...),
 		sourceMappings: sourceMappings,
-		cleanups:       append([]func(){}, w.cleanups...),
+		cleanups:       append([]func(){}, c.cleanups...),
 	}
 }
 
-func (w *walker) getResolved(resolveID string) (resolvedEntry, bool) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-	entry, ok := w.resolved[resolveID]
+func (c *resolutionCache) get(resolveID string) (resolvedEntry, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	entry, ok := c.entries[resolveID]
 	return entry, ok
 }
 
-func (w *walker) setResolved(resolveID string, entry resolvedEntry) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.resolved[resolveID] = entry
+func (c *resolutionCache) set(resolveID string, entry resolvedEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries[resolveID] = entry
+}
+
+func (c *moduleParseCache) get(key string) (map[string]tfmodules.ParsedModule, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	mods, ok := c.entries[key]
+	return mods, ok
+}
+
+func (c *moduleParseCache) set(key string, mods map[string]tfmodules.ParsedModule) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries[key] = mods
 }
 
 func (w *walker) resolveRemote(
@@ -256,17 +288,17 @@ func (w *walker) resolveRemote(
 ) (resolver.Resolution, bool, error) {
 	resolveID := remoteResolveIdentity(mod)
 
-	if entry, ok := w.getResolved(resolveID); ok {
+	if entry, ok := w.resolutions.get(resolveID); ok {
 		return entry.res, true, entry.err
 	}
 
 	value, err, shared := w.sf.Do(resolveID, func() (interface{}, error) {
-		if entry, ok := w.getResolved(resolveID); ok {
+		if entry, ok := w.resolutions.get(resolveID); ok {
 			return entry.res, entry.err
 		}
 
 		resolution, resolveErr := w.resolver.Resolve(ctx, mod)
-		w.setResolved(resolveID, resolvedEntry{res: resolution, err: resolveErr})
+		w.resolutions.set(resolveID, resolvedEntry{res: resolution, err: resolveErr})
 		return resolution, resolveErr
 	})
 	if err != nil {
@@ -390,11 +422,11 @@ func (w *walker) traverse(
 				continue
 			}
 		}
-		if !w.tryVisit(localDir) {
+		if !w.visited.tryAdd(localDir) {
 			continue
 		}
 		if inRemoteTree {
-			w.addPaths(flatTerraformFilePaths(localDir)...)
+			w.results.addPaths(flatTerraformFilePaths(localDir)...)
 		}
 		w.traverse(ctx, localDir, childAllowedFiles, repoAllowedDirs, depth+1, inRemoteTree)
 	}
@@ -416,10 +448,10 @@ func (w *walker) traverseRemoteModules(
 		}
 		id := remoteResolveIdentity(&mod)
 
-		cached, hit := w.getResolved(id)
+		cached, hit := w.resolutions.get(id)
 		if hit {
 			if cached.err == nil && cached.res.LocalPath != "" {
-				w.addResolvedModule(&mod, cached.res.LocalPath)
+				w.results.addResolvedModule(&mod, cached.res.LocalPath)
 			}
 			continue
 		}
@@ -477,16 +509,16 @@ func (w *walker) traverseRemoteModuleGroup(
 	}
 
 	for _, mod := range group.callers {
-		w.addResolvedModule(mod, resolution.LocalPath)
+		w.results.addResolvedModule(mod, resolution.LocalPath)
 	}
-	if !w.tryVisit(resolution.LocalPath) {
+	if !w.visited.tryAdd(resolution.LocalPath) {
 		return
 	}
 	if resolution.Cleanup != nil {
-		w.addCleanup(resolution.Cleanup)
+		w.results.addCleanup(resolution.Cleanup)
 	}
-	w.addPaths(flatTerraformFilePaths(resolution.LocalPath)...)
-	w.addSourceMapping(
+	w.results.addPaths(flatTerraformFilePaths(resolution.LocalPath)...)
+	w.results.addSourceMapping(
 		resolution.LocalPath,
 		canonicalModuleURL(representative.Source, representative.Version),
 	)

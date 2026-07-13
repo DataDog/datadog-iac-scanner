@@ -233,8 +233,13 @@ func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 				}
 				return openFileErr
 			}
-			if sinkErr := sink(ctx, scanPath, c); sinkErr != nil {
+			sinkErr := sink(ctx, scanPath, c)
+			closeErr := c.Close()
+			if sinkErr != nil {
 				return sinkErr
+			}
+			if closeErr != nil {
+				return errors.Wrap(closeErr, "failed to close path")
 			}
 			continue
 		}
