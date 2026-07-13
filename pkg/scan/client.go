@@ -58,6 +58,9 @@ type Parameters struct {
 	ShouldScanTfPlans           bool
 	DisableRuleIsolation        bool
 	UseRulesCache               bool
+	EnableRemoteModules         bool
+	RemoteModulesManifestPath   string
+	RemoteModulesHostAllowlist  []string
 }
 
 func (p *Parameters) GetEffectivePlatforms() []string {
@@ -84,11 +87,12 @@ type Client struct {
 	fsys vfs.FS
 	// inMemory marks a server (content-push) scan: initScan builds its file set
 	// from inMemoryPaths instead of walking the disk via the analyzer.
-	inMemory      bool
-	inMemoryPaths []string
-	walkInventory []string
-	chartRoots    []string
-	contentCache  map[string][]byte
+	inMemory          bool
+	inMemoryPaths     []string
+	walkInventory     []string
+	chartRoots        []string
+	contentCache      map[string][]byte
+	remoteModulePaths []string
 }
 
 // ClientOption customizes a Client at construction time.
