@@ -252,6 +252,9 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 	} else {
 		out.Metadata["cwe"] = ""
 	}
+	if len(rule.Arguments) > 0 {
+		out.Metadata["arguments"] = ruleArgumentsToMeta(rule.Arguments)
+	}
 	if rule.Aggregation != nil {
 		out.Metadata["aggregation"] = *rule.Aggregation
 		out.Aggregation = *rule.Aggregation
@@ -298,6 +301,17 @@ func frameworksToMeta(fs []datadog.Framework) []any {
 			"framework_version": f.Version,
 			"requirement":       f.Requirement,
 			"control":           f.Control,
+		}
+	}
+	return result
+}
+
+func ruleArgumentsToMeta(args []datadog.RuleArgument) []any {
+	result := make([]any, len(args))
+	for i, arg := range args {
+		result[i] = map[string]any{
+			"name":        arg.Name,
+			"description": arg.Description,
 		}
 	}
 	return result

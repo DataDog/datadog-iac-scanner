@@ -277,6 +277,7 @@ type Rule struct {
 	Category          string         `jsonapi:"attribute" json:"category"`
 	Provider          *string        `jsonapi:"attribute" json:"provider,omitempty"`
 	Cwe               *string        `jsonapi:"attribute" json:"cwe,omitempty"`
+	Arguments         []RuleArgument `jsonapi:"attribute" json:"arguments,omitempty"`
 	DocumentationUrl  *string        `jsonapi:"attribute" json:"documentation_url,omitempty"`
 	ProviderUrl       *string        `jsonapi:"attribute" json:"provider_url,omitempty"`
 	Aggregation       *int           `jsonapi:"attribute" json:"aggregation,omitempty"`
@@ -286,6 +287,12 @@ type Rule struct {
 	Tests             *RuleTests     `jsonapi:"attribute" json:"tests,omitempty"`
 	IsTesting         bool           `jsonapi:"attribute" json:"is_testing"`
 	IsPublished       bool           `jsonapi:"attribute" json:"is_published"`
+}
+
+// RuleArgument describes one configurable argument exposed by a rule.
+type RuleArgument struct {
+	Name        string `jsonapi:"attribute" json:"name"`
+	Description string `jsonapi:"attribute" json:"description"`
 }
 
 // RuleTests holds the test suite stored alongside a rule in the backend.
