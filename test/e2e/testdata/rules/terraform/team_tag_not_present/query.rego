@@ -6,7 +6,7 @@ import data.generic.common as common_lib
 import data.generic.terraform as tf_lib
 
 # Required tags to be enforced across all Terraform resources
-required_tags := {"Team"}
+required_default_tags := {"Team"}
 
 # Case where "tags" block exists but required tags are missing (including merge({...}, {...}))
 DatadogPolicy contains result if {
@@ -20,6 +20,7 @@ DatadogPolicy contains result if {
 
 	# Determine all tag keys (including merge scenarios)
 	all_tag_keys := get_all_tag_keys(tags)
+	required_tags := get_required_tags
 
 	missing_labels := {
 	req_lower |
@@ -49,6 +50,8 @@ DatadogPolicy contains result if {
 
 	resource := input.document[i].resource[resource_type][name]
 	not common_lib.valid_key(resource, "tags")
+
+	required_tags := get_required_tags
 
 	result := {
 		"documentId": input.document[i].id,
@@ -86,4 +89,19 @@ is_merge_call(tags) if {
 key_in_set_ignore_case(key, keyset) if {
 	k := keyset[_]
 	lower(k) == lower(key)
+}
+
+required_tags_configured if {
+	args_required = input.arguments.required_tags
+	count(args_required) > 0
+}
+
+get_required_tags := req if {
+	required_tags_configured
+	req := input.arguments.required_tags
+}
+
+get_required_tags := req if {
+	not required_tags_configured
+	req := required_default_tags
 }

@@ -1,9 +1,10 @@
 package test
 
-// Comprehensive local tests for code-security.datadog.yaml v1.3 features:
+// Comprehensive local tests for code-security.datadog.yaml v1.4 features:
 //   - per-rule ignore-paths / only-paths
 //   - per-rule severity override
 //   - global-config only-platforms / ignore-platforms
+//   - per-rule arguments
 
 import (
 	"context"
@@ -31,10 +32,10 @@ const (
 	ruleCicdPinned      = "cicd-github-unpinned-actions-full-length-commit-sha"
 )
 
-// Fixture root under test/e2e/fixtures/v13/
+// Fixture root under test/e2e/fixtures/v14/
 // Paths are relative to the test/e2e working directory so that file.FilePath
 // inside the engine stays relative and matches the filter patterns in RuleConfigs.
-const fixtureV13 = "fixtures/v13"
+const fixtureV14 = "fixtures/v14"
 
 func strPtr(s string) *string { return &s }
 
@@ -209,7 +210,7 @@ func (s *scanResult) sarifLevels(t *testing.T, ruleID string) map[string]bool {
 	return levelsFor(parseSARIF(t, s.sarifDir), ruleID, s.nameMap)
 }
 
-func runV13Scan(t *testing.T, cfg config.IacConfig, scanDirs ...string) scanResult {
+func runV14Scan(t *testing.T, cfg config.IacConfig, scanDirs ...string) scanResult {
 	t.Helper()
 
 	// Keep paths relative (like the existing e2e tests), so file.FilePath inside
@@ -246,11 +247,11 @@ func runV13Scan(t *testing.T, cfg config.IacConfig, scanDirs ...string) scanResu
 	return scanResult{metadata: meta, sarifDir: outDir, nameMap: sarifRuleIDMap(t)}
 }
 
-// relFixture returns the path relative to test/e2e/ for a path under fixtures/v13.
+// relFixture returns the path relative to test/e2e/ for a path under fixtures/v14.
 // Relative paths are required so that file.FilePath inside the engine stays
 // relative and can be matched by the filter patterns we put in RuleConfigs.
 func relFixture(rel string) string {
-	return filepath.Join(fixtureV13, rel)
+	return filepath.Join(fixtureV14, rel)
 }
 
 // allFixtureDirs returns relative paths for all three platform fixture dirs.
@@ -263,11 +264,11 @@ func allFixtureDirs() []string {
 }
 
 // -----------------------------------------------------------------------------
-// TestV13_Baseline — confirm all rules fire before any v1.3 config
+// TestV14_Baseline — confirm all rules fire before any v1.4 config
 // -----------------------------------------------------------------------------
 
-func TestV13_Baseline(t *testing.T) {
-	res := runV13Scan(t, config.IacConfig{}, allFixtureDirs()...)
+func TestV14_Baseline(t *testing.T) {
+	res := runV14Scan(t, config.IacConfig{}, allFixtureDirs()...)
 
 	assert.True(t, res.ruleHasFindings(ruleTeamTag), "terraform rule should fire")
 	assert.True(t, res.ruleHasFindings(rulePrivileged), "k8s rule should fire")
@@ -284,13 +285,13 @@ func TestV13_Baseline(t *testing.T) {
 // Per-rule ignore-paths
 // -----------------------------------------------------------------------------
 
-func TestV13_RuleConfig_IgnorePaths_DropsMatchingDir(t *testing.T) {
+func TestV14_RuleConfig_IgnorePaths_DropsMatchingDir(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {IgnorePaths: []string{relFixture("terraform/prod")}},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	// prod/ should not appear in any finding for this rule
 	assert.False(t,
@@ -299,13 +300,13 @@ func TestV13_RuleConfig_IgnorePaths_DropsMatchingDir(t *testing.T) {
 	)
 }
 
-func TestV13_RuleConfig_IgnorePaths_KeepsOtherDir(t *testing.T) {
+func TestV14_RuleConfig_IgnorePaths_KeepsOtherDir(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {IgnorePaths: []string{relFixture("terraform/prod")}},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	// test/ should still have findings
 	assert.True(t,
@@ -314,7 +315,7 @@ func TestV13_RuleConfig_IgnorePaths_KeepsOtherDir(t *testing.T) {
 	)
 }
 
-func TestV13_RuleConfig_IgnorePaths_DropAll(t *testing.T) {
+func TestV14_RuleConfig_IgnorePaths_DropAll(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {
@@ -325,12 +326,12 @@ func TestV13_RuleConfig_IgnorePaths_DropAll(t *testing.T) {
 			},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	assert.Zero(t, res.countForRule(ruleTeamTag), "all findings should be dropped")
 }
 
-func TestV13_RuleConfig_IgnorePaths_OtherRulesUnaffected(t *testing.T) {
+func TestV14_RuleConfig_IgnorePaths_OtherRulesUnaffected(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {
@@ -341,7 +342,7 @@ func TestV13_RuleConfig_IgnorePaths_OtherRulesUnaffected(t *testing.T) {
 			},
 		},
 	}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 
 	assert.Zero(t, res.countForRule(ruleTeamTag), "tf rule should be fully dropped")
 	assert.Positive(t, res.countForRule(rulePrivileged), "k8s rule unaffected")
@@ -352,13 +353,13 @@ func TestV13_RuleConfig_IgnorePaths_OtherRulesUnaffected(t *testing.T) {
 // Per-rule only-paths
 // -----------------------------------------------------------------------------
 
-func TestV13_RuleConfig_OnlyPaths_RestrictsToDir(t *testing.T) {
+func TestV14_RuleConfig_OnlyPaths_RestrictsToDir(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {OnlyPaths: []string{relFixture("terraform/prod")}},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 	findings := res.sarifFindings(t, ruleTeamTag)
 
 	require.NotEmpty(t, findings, "prod/ findings should remain")
@@ -368,18 +369,18 @@ func TestV13_RuleConfig_OnlyPaths_RestrictsToDir(t *testing.T) {
 	)
 }
 
-func TestV13_RuleConfig_OnlyPaths_DropAll_WhenNothingMatches(t *testing.T) {
+func TestV14_RuleConfig_OnlyPaths_DropAll_WhenNothingMatches(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {OnlyPaths: []string{"/no/such/path"}},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	assert.Zero(t, res.countForRule(ruleTeamTag), "no findings expected when only-paths matches nothing")
 }
 
-func TestV13_RuleConfig_OnlyPaths_MultipleAllowed(t *testing.T) {
+func TestV14_RuleConfig_OnlyPaths_MultipleAllowed(t *testing.T) {
 	// both prod/ and test/ are in only-paths → all findings survive
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
@@ -391,8 +392,8 @@ func TestV13_RuleConfig_OnlyPaths_MultipleAllowed(t *testing.T) {
 			},
 		},
 	}
-	baseline := runV13Scan(t, config.IacConfig{}, relFixture("terraform"))
-	withFilter := runV13Scan(t, cfg, relFixture("terraform"))
+	baseline := runV14Scan(t, config.IacConfig{}, relFixture("terraform"))
+	withFilter := runV14Scan(t, cfg, relFixture("terraform"))
 
 	assert.Equal(t, baseline.countForRule(ruleTeamTag), withFilter.countForRule(ruleTeamTag),
 		"all dirs in only-paths → same count as no filter")
@@ -402,7 +403,7 @@ func TestV13_RuleConfig_OnlyPaths_MultipleAllowed(t *testing.T) {
 // ignore-paths takes precedence over only-paths on the same rule
 // -----------------------------------------------------------------------------
 
-func TestV13_RuleConfig_IgnorePathsPrecedenceOverOnlyPaths(t *testing.T) {
+func TestV14_RuleConfig_IgnorePathsPrecedenceOverOnlyPaths(t *testing.T) {
 	prod := relFixture("terraform/prod")
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
@@ -412,7 +413,7 @@ func TestV13_RuleConfig_IgnorePathsPrecedenceOverOnlyPaths(t *testing.T) {
 			},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	assert.False(t,
 		locationsContain(res.sarifFindings(t, ruleTeamTag), "prod"),
@@ -424,27 +425,27 @@ func TestV13_RuleConfig_IgnorePathsPrecedenceOverOnlyPaths(t *testing.T) {
 // Per-rule severity override
 // -----------------------------------------------------------------------------
 
-func TestV13_RuleConfig_SeverityOverride_DefaultIsHigh(t *testing.T) {
+func TestV14_RuleConfig_SeverityOverride_DefaultIsHigh(t *testing.T) {
 	// Confirm baseline severity before overriding
-	res := runV13Scan(t, config.IacConfig{}, relFixture("k8s"))
+	res := runV14Scan(t, config.IacConfig{}, relFixture("k8s"))
 	sevs := res.severitiesForRule(rulePrivileged)
 	assert.True(t, sevs["HIGH"], "baseline k8s rule severity should be HIGH, got: %v", sevs)
 }
 
-func TestV13_RuleConfig_SeverityOverride_ToLow(t *testing.T) {
+func TestV14_RuleConfig_SeverityOverride_ToLow(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			rulePrivileged: {Severity: strPtr("low")},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("k8s"))
+	res := runV14Scan(t, cfg, relFixture("k8s"))
 	sevs := res.severitiesForRule(rulePrivileged)
 
 	assert.True(t, sevs["LOW"], "severity should be overridden to LOW: %v", sevs)
 	assert.False(t, sevs["HIGH"], "original HIGH should not appear: %v", sevs)
 }
 
-func TestV13_RuleConfig_SeverityOverride_AllLevels(t *testing.T) {
+func TestV14_RuleConfig_SeverityOverride_AllLevels(t *testing.T) {
 	for _, level := range []string{"critical", "high", "medium", "low", "info"} {
 		level := level
 		t.Run(level, func(t *testing.T) {
@@ -453,7 +454,7 @@ func TestV13_RuleConfig_SeverityOverride_AllLevels(t *testing.T) {
 					ruleTeamTag: {Severity: strPtr(level)},
 				},
 			}
-			res := runV13Scan(t, cfg, relFixture("terraform"))
+			res := runV14Scan(t, cfg, relFixture("terraform"))
 			sevs := res.severitiesForRule(ruleTeamTag)
 			require.NotEmpty(t, sevs, "should have findings for rule")
 			assert.True(t, sevs[strings.ToUpper(level)], "expected %s in severities, got: %v", strings.ToUpper(level), sevs)
@@ -461,8 +462,8 @@ func TestV13_RuleConfig_SeverityOverride_AllLevels(t *testing.T) {
 	}
 }
 
-func TestV13_RuleConfig_SeverityOverride_DoesNotChangeCount(t *testing.T) {
-	baseline := runV13Scan(t, config.IacConfig{}, relFixture("terraform"))
+func TestV14_RuleConfig_SeverityOverride_DoesNotChangeCount(t *testing.T) {
+	baseline := runV14Scan(t, config.IacConfig{}, relFixture("terraform"))
 	baseCount := baseline.countForRule(ruleTeamTag)
 
 	cfg := config.IacConfig{
@@ -470,18 +471,18 @@ func TestV13_RuleConfig_SeverityOverride_DoesNotChangeCount(t *testing.T) {
 			ruleTeamTag: {Severity: strPtr("medium")},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	assert.Equal(t, baseCount, res.countForRule(ruleTeamTag), "severity override must not change finding count")
 }
 
-func TestV13_RuleConfig_SeverityOverride_DoesNotAffectOtherRules(t *testing.T) {
+func TestV14_RuleConfig_SeverityOverride_DoesNotAffectOtherRules(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {Severity: strPtr("critical")},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"), relFixture("k8s"))
+	res := runV14Scan(t, cfg, relFixture("terraform"), relFixture("k8s"))
 
 	tfSevs := res.severitiesForRule(ruleTeamTag)
 	assert.True(t, tfSevs["CRITICAL"], "terraform rule should be CRITICAL: %v", tfSevs)
@@ -491,7 +492,7 @@ func TestV13_RuleConfig_SeverityOverride_DoesNotAffectOtherRules(t *testing.T) {
 }
 
 // Verify the SARIF level reflects the overridden severity.
-func TestV13_RuleConfig_SeverityOverride_SARIFLevel(t *testing.T) {
+func TestV14_RuleConfig_SeverityOverride_SARIFLevel(t *testing.T) {
 	for sev, wantLevel := range sarifmodel.SeverityLevelEquivalence {
 		sev, wantLevel := sev, wantLevel
 		t.Run(string(sev), func(t *testing.T) {
@@ -500,7 +501,7 @@ func TestV13_RuleConfig_SeverityOverride_SARIFLevel(t *testing.T) {
 					rulePrivileged: {Severity: strPtr(strings.ToLower(string(sev)))},
 				},
 			}
-			res := runV13Scan(t, cfg, relFixture("k8s"))
+			res := runV14Scan(t, cfg, relFixture("k8s"))
 			levels := res.sarifLevels(t, rulePrivileged)
 			assert.True(t, levels[wantLevel],
 				"severity %s should map to SARIF level %q, got: %v", sev, wantLevel, levels)
@@ -512,7 +513,7 @@ func TestV13_RuleConfig_SeverityOverride_SARIFLevel(t *testing.T) {
 // Severity + ignore-paths combined on the same rule
 // -----------------------------------------------------------------------------
 
-func TestV13_RuleConfig_SeverityAndIgnorePaths_Combined(t *testing.T) {
+func TestV14_RuleConfig_SeverityAndIgnorePaths_Combined(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTag: {
@@ -521,7 +522,7 @@ func TestV13_RuleConfig_SeverityAndIgnorePaths_Combined(t *testing.T) {
 			},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 	findings := res.sarifFindings(t, ruleTeamTag)
 
 	require.NotEmpty(t, findings, "test/ findings should survive")
@@ -534,41 +535,64 @@ func TestV13_RuleConfig_SeverityAndIgnorePaths_Combined(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// Rule config arguments are passed to the rule
+// -----------------------------------------------------------------------------
+
+func TestV14_RuleConfig_Arguments_ArePassedToRule(t *testing.T) {
+	baseline := runV14Scan(t, config.IacConfig{}, relFixture("terraform"))
+
+	cfg := config.IacConfig{
+		RuleConfigs: map[string]config.IacRuleConfig{
+			ruleTeamTag: {
+				Arguments: map[string]any{
+					"required_tags": []any{"Env"},
+				},
+			},
+		},
+	}
+
+	res := runV14Scan(t, cfg, relFixture("terraform"))
+
+	assert.Positive(t, baseline.countForRule(ruleTeamTag), "baseline should fail because Team is missing")
+	assert.Zero(t, res.countForRule(ruleTeamTag), "configured required tag Env exists in fixtures")
+}
+
+// -----------------------------------------------------------------------------
 // Global platform filters — only-platforms
 // -----------------------------------------------------------------------------
 
-func TestV13_OnlyPlatforms_SinglePlatform_Terraform(t *testing.T) {
+func TestV14_OnlyPlatforms_SinglePlatform_Terraform(t *testing.T) {
 	cfg := config.IacConfig{OnlyPlatforms: []string{"Terraform"}}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 
 	assert.True(t, res.ruleHasFindings(ruleTeamTag), "Terraform rule should fire")
 	assert.False(t, res.ruleHasFindings(rulePrivileged), "Kubernetes rule should not fire")
 	assert.False(t, res.ruleHasFindings(ruleCicdPinned), "CICD rule should not fire")
 }
 
-func TestV13_OnlyPlatforms_SinglePlatform_Kubernetes(t *testing.T) {
+func TestV14_OnlyPlatforms_SinglePlatform_Kubernetes(t *testing.T) {
 	cfg := config.IacConfig{OnlyPlatforms: []string{"Kubernetes"}}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 
 	assert.False(t, res.ruleHasFindings(ruleTeamTag))
 	assert.True(t, res.ruleHasFindings(rulePrivileged))
 	assert.False(t, res.ruleHasFindings(ruleCicdPinned))
 }
 
-func TestV13_OnlyPlatforms_MultiPlatform(t *testing.T) {
+func TestV14_OnlyPlatforms_MultiPlatform(t *testing.T) {
 	cfg := config.IacConfig{OnlyPlatforms: []string{"Terraform", "Kubernetes"}}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 
 	assert.True(t, res.ruleHasFindings(ruleTeamTag))
 	assert.True(t, res.ruleHasFindings(rulePrivileged))
 	assert.False(t, res.ruleHasFindings(ruleCicdPinned), "CICD excluded by only-platforms")
 }
 
-func TestV13_OnlyPlatforms_AllPlatforms_EquivalentToNoFilter(t *testing.T) {
-	baseline := runV13Scan(t, config.IacConfig{}, allFixtureDirs()...)
+func TestV14_OnlyPlatforms_AllPlatforms_EquivalentToNoFilter(t *testing.T) {
+	baseline := runV14Scan(t, config.IacConfig{}, allFixtureDirs()...)
 
 	cfg := config.IacConfig{OnlyPlatforms: []string{"Terraform", "Kubernetes", "CICD"}}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 
 	assert.Equal(t, baseline.countForRule(ruleTeamTag), res.countForRule(ruleTeamTag))
 	assert.Equal(t, baseline.countForRule(rulePrivileged), res.countForRule(rulePrivileged))
@@ -579,27 +603,27 @@ func TestV13_OnlyPlatforms_AllPlatforms_EquivalentToNoFilter(t *testing.T) {
 // Global platform filters — ignore-platforms
 // -----------------------------------------------------------------------------
 
-func TestV13_IgnorePlatforms_ExcludeKubernetes(t *testing.T) {
+func TestV14_IgnorePlatforms_ExcludeKubernetes(t *testing.T) {
 	cfg := config.IacConfig{IgnorePlatforms: []string{"Kubernetes"}}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 
 	assert.True(t, res.ruleHasFindings(ruleTeamTag))
 	assert.False(t, res.ruleHasFindings(rulePrivileged), "Kubernetes excluded")
 	assert.True(t, res.ruleHasFindings(ruleCicdPinned))
 }
 
-func TestV13_IgnorePlatforms_ExcludeMultiple(t *testing.T) {
+func TestV14_IgnorePlatforms_ExcludeMultiple(t *testing.T) {
 	cfg := config.IacConfig{IgnorePlatforms: []string{"Kubernetes", "CICD"}}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 
 	assert.True(t, res.ruleHasFindings(ruleTeamTag))
 	assert.False(t, res.ruleHasFindings(rulePrivileged))
 	assert.False(t, res.ruleHasFindings(ruleCicdPinned))
 }
 
-func TestV13_IgnorePlatforms_ExcludeAll_NoFindings(t *testing.T) {
+func TestV14_IgnorePlatforms_ExcludeAll_NoFindings(t *testing.T) {
 	cfg := config.IacConfig{IgnorePlatforms: []string{"Terraform", "Kubernetes", "CICD"}}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 
 	assert.Zero(t, res.metadata.Stats.Violations, "no violations when all platforms excluded")
 }
@@ -608,7 +632,7 @@ func TestV13_IgnorePlatforms_ExcludeAll_NoFindings(t *testing.T) {
 // Platform filter + rule config combined
 // -----------------------------------------------------------------------------
 
-func TestV13_PlatformFilter_And_RuleConfig_Combined(t *testing.T) {
+func TestV14_PlatformFilter_And_RuleConfig_Combined(t *testing.T) {
 	cfg := config.IacConfig{
 		OnlyPlatforms: []string{"Terraform"},
 		RuleConfigs: map[string]config.IacRuleConfig{
@@ -618,7 +642,7 @@ func TestV13_PlatformFilter_And_RuleConfig_Combined(t *testing.T) {
 			},
 		},
 	}
-	res := runV13Scan(t, cfg, allFixtureDirs()...)
+	res := runV14Scan(t, cfg, allFixtureDirs()...)
 	findings := res.sarifFindings(t, ruleTeamTag)
 
 	// Platform filter: k8s and cicd not running
@@ -636,13 +660,13 @@ func TestV13_PlatformFilter_And_RuleConfig_Combined(t *testing.T) {
 // k8s production vs staging path filtering
 // -----------------------------------------------------------------------------
 
-func TestV13_K8s_OnlyProductionPath(t *testing.T) {
+func TestV14_K8s_OnlyProductionPath(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			rulePrivileged: {OnlyPaths: []string{relFixture("k8s/production")}},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("k8s"))
+	res := runV14Scan(t, cfg, relFixture("k8s"))
 	findings := res.sarifFindings(t, rulePrivileged)
 
 	require.NotEmpty(t, findings, "production finding expected")
@@ -650,13 +674,13 @@ func TestV13_K8s_OnlyProductionPath(t *testing.T) {
 	assert.False(t, locationsContain(findings, "staging"), "staging should be dropped by only-paths")
 }
 
-func TestV13_K8s_IgnoreProductionPath(t *testing.T) {
+func TestV14_K8s_IgnoreProductionPath(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			rulePrivileged: {IgnorePaths: []string{relFixture("k8s/production")}},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("k8s"))
+	res := runV14Scan(t, cfg, relFixture("k8s"))
 	findings := res.sarifFindings(t, rulePrivileged)
 
 	require.NotEmpty(t, findings, "staging finding should survive")
@@ -668,7 +692,7 @@ func TestV13_K8s_IgnoreProductionPath(t *testing.T) {
 // Legacy rule ID matching
 // -----------------------------------------------------------------------------
 
-func TestV13_RuleConfig_MatchByLegacyID(t *testing.T) {
+func TestV14_RuleConfig_MatchByLegacyID(t *testing.T) {
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
 			ruleTeamTagLegacyID: {
@@ -679,7 +703,7 @@ func TestV13_RuleConfig_MatchByLegacyID(t *testing.T) {
 			},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	assert.Zero(t, res.countForRule(ruleTeamTag), "legacy ID should match and drop all findings")
 }
@@ -688,11 +712,11 @@ func TestV13_RuleConfig_MatchByLegacyID(t *testing.T) {
 // Edge case: empty RuleConfigs has no effect
 // -----------------------------------------------------------------------------
 
-func TestV13_EmptyRuleConfigs_NoEffect(t *testing.T) {
-	baseline := runV13Scan(t, config.IacConfig{}, relFixture("terraform"))
+func TestV14_EmptyRuleConfigs_NoEffect(t *testing.T) {
+	baseline := runV14Scan(t, config.IacConfig{}, relFixture("terraform"))
 
 	cfg := config.IacConfig{RuleConfigs: map[string]config.IacRuleConfig{}}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	assert.Equal(t, baseline.countForRule(ruleTeamTag), res.countForRule(ruleTeamTag),
 		"empty rule-configs should be a no-op")
@@ -702,8 +726,8 @@ func TestV13_EmptyRuleConfigs_NoEffect(t *testing.T) {
 // Edge case: rule config for non-matching rule ID has no effect
 // -----------------------------------------------------------------------------
 
-func TestV13_RuleConfig_UnknownRuleID_NoEffect(t *testing.T) {
-	baseline := runV13Scan(t, config.IacConfig{}, relFixture("terraform"))
+func TestV14_RuleConfig_UnknownRuleID_NoEffect(t *testing.T) {
+	baseline := runV14Scan(t, config.IacConfig{}, relFixture("terraform"))
 
 	cfg := config.IacConfig{
 		RuleConfigs: map[string]config.IacRuleConfig{
@@ -713,7 +737,7 @@ func TestV13_RuleConfig_UnknownRuleID_NoEffect(t *testing.T) {
 			},
 		},
 	}
-	res := runV13Scan(t, cfg, relFixture("terraform"))
+	res := runV14Scan(t, cfg, relFixture("terraform"))
 
 	assert.Equal(t, baseline.countForRule(ruleTeamTag), res.countForRule(ruleTeamTag),
 		"config for unknown rule ID should have no effect on other rules")

@@ -20,5 +20,6 @@ type IacConfig struct {
 type IacRuleConfig struct {
 	IgnorePaths []string
 	OnlyPaths   []string
+	Arguments   map[string]any `yaml:"arguments,omitempty"`
 	Severity    *string
 }
