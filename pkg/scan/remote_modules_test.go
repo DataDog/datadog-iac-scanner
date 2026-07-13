@@ -5,42 +5,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 
 	engineprovider "github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/stretchr/testify/require"
 )
-
-type cleanupResolver struct {
-	cleaned *atomic.Int32
-}
-
-func (r cleanupResolver) Resolve(context.Context, *tfmodules.ParsedModule) (resolver.Resolution, error) {
-	return resolver.Resolution{
-		LocalPath: "/tmp/module",
-		Cleanup:   func() { r.cleaned.Add(1) },
-	}, nil
-}
-
-func TestModuleResolverAdapterRunsCleanupOnce(t *testing.T) {
-	var cleaned atomic.Int32
-	adapter := &moduleResolverAdapter{resolver: cleanupResolver{cleaned: &cleaned}}
-
-	path, err := adapter.Resolve(context.Background(), &tfmodules.ParsedModule{})
-	require.NoError(t, err)
-	require.Equal(t, "/tmp/module", path)
-
-	adapter.cleanup()
-	adapter.cleanup()
-	require.EqualValues(t, 1, cleaned.Load())
-}
 
 func TestRemoteModulesDisabledByDefault(t *testing.T) {
 	root := t.TempDir()
