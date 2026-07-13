@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	engineprovider "github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -66,28 +67,30 @@ func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
 	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
 }
 
-func TestAddRemoteModuleFilesToPrebuiltInventory(t *testing.T) {
+func TestRemoteModuleFilesBypassPrebuiltInventoryFilters(t *testing.T) {
 	root := t.TempDir()
 	moduleDir, _ := writeRemoteModuleFixture(t, root)
 	rootFile := filepath.Join(root, "main.tf")
 	moduleFile := filepath.Join(moduleDir, "main.tf")
-	client := &Client{
-		walkInventory: []string{rootFile},
-		contentCache:  map[string][]byte{rootFile: []byte("root")},
+
+	files, err := engineprovider.NewFileSystemSourceProvider(
+		context.Background(), []string{root}, nil, []string{root},
+	)
+	require.NoError(t, err)
+	files.SetPrebuiltWalk([]string{rootFile}, nil, nil)
+	files.AddUnfilteredPaths([]string{moduleFile})
+
+	inventory, err := files.BuildInventoryFromPrebuilt(
+		context.Background(),
+		model.Extensions{".tf": {}},
+		func(context.Context, string) bool { return false },
+	)
+	require.NoError(t, err)
+	paths := make([]string, 0, len(inventory))
+	for _, file := range inventory {
+		paths = append(paths, file.Path)
 	}
-
-	require.NoError(t, client.addRemoteModuleFilesToInventory([]string{moduleDir}))
-
-	require.ElementsMatch(t, []string{filepath.ToSlash(rootFile), filepath.ToSlash(moduleFile)}, toSlashPaths(client.walkInventory))
-	require.Contains(t, client.contentCache, filepath.ToSlash(moduleFile))
-}
-
-func toSlashPaths(paths []string) []string {
-	out := make([]string, 0, len(paths))
-	for _, path := range paths {
-		out = append(out, filepath.ToSlash(path))
-	}
-	return out
+	require.ElementsMatch(t, []string{filepath.ToSlash(rootFile), filepath.ToSlash(moduleFile)}, paths)
 }
 
 func writeRemoteModuleFixture(t *testing.T, root string) (string, string) {

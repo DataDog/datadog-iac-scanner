@@ -35,6 +35,7 @@ type FileSystemSourceProvider struct {
 	prebuiltPaths []string
 	chartRoots    []string
 	contentCache  map[string][]byte
+	unfiltered    map[string]struct{}
 }
 
 var (
@@ -150,13 +151,19 @@ func (s *FileSystemSourceProvider) ExcludePaths(ctx context.Context, paths []str
 	return s.addExcluded(ctx, paths)
 }
 
-// AddUnfilteredPaths appends paths that bypass the ignore/exclude filters — used to
-// inject resolved remote module directories without accidentally stripping them.
 func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, p := range paths {
-		s.paths = append(s.paths, filepath.FromSlash(p))
+		normalized := filepath.ToSlash(p)
+		s.paths = append(s.paths, filepath.FromSlash(normalized))
+		if s.unfiltered == nil {
+			s.unfiltered = make(map[string]struct{})
+		}
+		s.unfiltered[normalized] = struct{}{}
+		if len(s.prebuiltPaths) > 0 {
+			s.prebuiltPaths = append(s.prebuiltPaths, normalized)
+		}
 	}
 }
 
@@ -322,9 +329,11 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 		if isUnderChartRoot(norm, renderedRoots) {
 			continue
 		}
-		excluded, err := s.isPathExcluded(norm)
-		if err != nil || excluded {
-			continue
+		if _, ok := s.unfiltered[norm]; !ok {
+			excluded, err := s.isPathExcluded(norm)
+			if err != nil || excluded {
+				continue
+			}
 		}
 		ext := utils.ExtensionFromPath(norm)
 		if ext == "" {

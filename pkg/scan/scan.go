@@ -47,7 +47,7 @@ type executeScanParameters struct {
 	services          []*runner.Service
 	inspector         *engine.Inspector
 	extractedPaths    provider.ExtractedPath
-	moduleCleanups    []func()
+	moduleCleanup     func()
 	remoteModulePaths []string
 }
 
@@ -78,7 +78,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 
 	paramsPlatforms := c.ScanParams.GetEffectivePlatforms()
 
-	moduleCleanups, remoteModulePaths, remoteSourceDirs, err := c.resolveTerraformModulesForScan(ctx, paramsPlatforms, &extractedPaths)
+	moduleCleanup, remoteModulePaths, remoteSourceDirs, err := c.resolveTerraformModulesForScan(ctx, paramsPlatforms, &extractedPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -87,8 +87,8 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		if initSucceeded {
 			return
 		}
-		for _, fn := range moduleCleanups {
-			fn()
+		if moduleCleanup != nil {
+			moduleCleanup()
 		}
 	}()
 
@@ -153,7 +153,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		services:          services,
 		inspector:         inspector,
 		extractedPaths:    extractedPaths,
-		moduleCleanups:    moduleCleanups,
+		moduleCleanup:     moduleCleanup,
 		remoteModulePaths: remoteModulePaths,
 	}, nil
 }
@@ -207,11 +207,9 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 		return nil, nil
 	}
 
-	defer func() {
-		for _, fn := range executeScanParameters.moduleCleanups {
-			fn()
-		}
-	}()
+	if executeScanParameters.moduleCleanup != nil {
+		defer executeScanParameters.moduleCleanup()
+	}
 
 	contextLogger.Info().Msg("Scan initialized")
 
@@ -306,20 +304,19 @@ func (c *Client) createService(
 	filePlatform map[string]string) ([]*runner.Service, error) {
 	var filesSource provider.SourceProvider
 	if c.inMemory {
-		// Content-push mode: serve the pushed files from the in-memory FS instead
-		// of walking the disk. Remote module paths are appended directly since the
-		// in-memory provider has no exclude-filter to bypass.
-		allPaths := append(paths, remoteModulePaths...)
+		allPaths := append([]string{}, paths...)
+		allPaths = append(allPaths, remoteModulePaths...)
 		filesSource = provider.NewMemorySourceProvider(c.fsys, allPaths,
 			c.ScanParams.Config.IgnorePaths, c.ScanParams.Config.OnlyPaths)
 	} else {
-		fsSource, err := c.getFileSystemSourceProvider(ctx, paths, remoteModulePaths)
+		fsSource, err := c.getFileSystemSourceProvider(ctx, paths)
 		if err != nil {
 			return nil, err
 		}
 		if len(c.walkInventory) > 0 {
 			fsSource.SetPrebuiltWalk(c.walkInventory, c.chartRoots, c.contentCache)
 		}
+		fsSource.AddUnfilteredPaths(remoteModulePaths)
 		filesSource = fsSource
 	}
 
@@ -376,9 +373,9 @@ func (c *Client) createService(
 	return services, nil
 }
 
-// getFileSystemSourceProvider creates the provider for repo paths. remoteModulePaths are
-// added via AddUnfilteredPaths so they bypass repo-scoped ignore/only-path filters.
-func (c *Client) getFileSystemSourceProvider(ctx context.Context, paths, remoteModulePaths []string) (*provider.FileSystemSourceProvider, error) {
+func (c *Client) getFileSystemSourceProvider(
+	ctx context.Context, paths []string,
+) (*provider.FileSystemSourceProvider, error) {
 	var excludePaths []string
 	if c.ScanParams.PayloadPath != "" {
 		excludePaths = append(excludePaths, c.ScanParams.PayloadPath)
@@ -391,9 +388,6 @@ func (c *Client) getFileSystemSourceProvider(ctx context.Context, paths, remoteM
 	filesSource, err := provider.NewFileSystemSourceProvider(ctx, paths, excludePaths, c.ScanParams.Config.OnlyPaths)
 	if err != nil {
 		return nil, err
-	}
-	if len(remoteModulePaths) > 0 {
-		filesSource.AddUnfilteredPaths(remoteModulePaths)
 	}
 	return filesSource, nil
 }
