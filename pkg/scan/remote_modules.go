@@ -7,6 +7,7 @@ package scan
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,10 @@ func (c *Client) resolveTerraformModulesForScan(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	chain := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
+	chain, err := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	if c.ScanParams.EnableRemoteModules {
 		contextLogger.Info().Msg("Resolving remote Terraform modules...")
@@ -92,24 +96,26 @@ func HasTerraformModuleCache(scanPaths []string) bool {
 	return false
 }
 
-func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPaths []string) *tfresolver.ChainResolver {
+func (c *Client) buildModuleResolverChain(
+	ctx context.Context, moduleDiscoveryPaths []string,
+) (*tfresolver.ChainResolver, error) {
 	contextLogger := logger.FromContext(ctx)
 
 	resolvers := []tfresolver.Resolver{
 		tfresolver.LocalResolver{},
-		&tfresolver.DotTerraformResolver{RootDirs: dotTerraformRootDirs(moduleDiscoveryPaths)},
 	}
 
 	if c.ScanParams.RemoteModulesManifestPath != "" {
 		manifest, err := tfresolver.LoadManifest(c.ScanParams.RemoteModulesManifestPath)
 		if err != nil {
-			contextLogger.Warn().Err(err).
-				Msgf("Failed to load modules manifest %q; remote modules from manifest will be unresolved",
-					c.ScanParams.RemoteModulesManifestPath)
-		} else {
-			resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
+			return nil, fmt.Errorf("loading modules manifest %q: %w", c.ScanParams.RemoteModulesManifestPath, err)
 		}
+		resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
 	}
+
+	resolvers = append(resolvers, &tfresolver.DotTerraformResolver{
+		RootDirs: dotTerraformRootDirs(moduleDiscoveryPaths),
+	})
 
 	if c.ScanParams.EnableRemoteModules {
 		resolvers = append(resolvers,
@@ -137,7 +143,7 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 	}
 
 	resolvers = append(resolvers, tfresolver.NewGoGetterResolver(ggCfg))
-	return tfresolver.NewChainResolver(resolvers...)
+	return tfresolver.NewChainResolver(resolvers...), nil
 }
 
 func dotTerraformRootDirs(paths []string) []string {

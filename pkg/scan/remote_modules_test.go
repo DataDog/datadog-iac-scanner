@@ -11,6 +11,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/stretchr/testify/require"
@@ -114,6 +115,56 @@ func TestShouldPreScanTerraformModules(t *testing.T) {
 		client := &Client{ScanParams: &Parameters{}}
 		require.True(t, client.shouldPreScanTerraformModules([]string{root}))
 	})
+}
+
+func TestBuildModuleResolverChainFailsOnInvalidManifest(t *testing.T) {
+	client := &Client{ScanParams: &Parameters{
+		RemoteModulesManifestPath: filepath.Join(t.TempDir(), "missing.json"),
+	}}
+
+	_, err := client.buildModuleResolverChain(context.Background(), []string{t.TempDir()})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "loading modules manifest")
+}
+
+func TestBuildModuleResolverChainPrefersExplicitManifestOverTerraformCache(t *testing.T) {
+	root := t.TempDir()
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	require.NoError(t, err)
+	staleDir := filepath.Join(resolvedRoot, "stale")
+	preferredDir := filepath.Join(resolvedRoot, "preferred")
+	for _, dir := range []string{staleDir, preferredDir} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "x" "y" {}`), 0o644))
+	}
+
+	tfModulesDir := filepath.Join(resolvedRoot, ".terraform", "modules")
+	require.NoError(t, os.MkdirAll(tfModulesDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tfModulesDir, "modules.json"), []byte(`{
+  "Modules": [{"Key":"m","Source":"terraform-aws-modules/vpc/aws","Version":"1.0.0","Dir":"stale"}]
+}`), 0o644))
+
+	manifestPath := filepath.Join(resolvedRoot, "modules.json")
+	manifestData, err := json.Marshal(resolver.Manifest{
+		Dir: resolvedRoot,
+		Modules: map[string]resolver.ManifestEntry{
+			"terraform-aws-modules/vpc/aws@1.0.0": {LocalPath: preferredDir, Version: "1.0.0"},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, manifestData, 0o644))
+
+	client := &Client{ScanParams: &Parameters{RemoteModulesManifestPath: manifestPath}}
+	chain, err := client.buildModuleResolverChain(context.Background(), []string{resolvedRoot})
+	require.NoError(t, err)
+
+	got, err := chain.Resolve(context.Background(), &tfmodules.ParsedModule{
+		Source:  "terraform-aws-modules/vpc/aws",
+		Version: "1.0.0",
+	})
+	require.NoError(t, err)
+	require.Equal(t, preferredDir, got.LocalPath)
 }
 
 func writeRemoteModuleFixture(t *testing.T, root string) (string, string) {
