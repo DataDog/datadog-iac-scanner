@@ -323,11 +323,9 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err := validateReportFormats(reportFormats); err != nil {
 		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
 	}
-	if !c.Bool("x-remote-modules") &&
-		(c.String("x-remote-modules-manifest") != "" ||
-			len(c.StringSlice("x-remote-modules-allowed-host")) > 0) {
+	if !c.Bool("x-remote-modules") && len(c.StringSlice("x-remote-modules-allowed-host")) > 0 {
 		return errorWithExitCode(
-			errors.New("remote module resolver options require --x-remote-modules"),
+			errors.New("remote module host allowlist requires --x-remote-modules"),
 			constants.InvalidConfigErrorCode,
 		)
 	}
@@ -373,7 +371,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		MaxResolverDepth:            c.Int("max-resolver-depth"),
 		PayloadPath:                 payloadPath,
 		SCIInfo:                     model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
-		FlagEvaluator:               getFeatureFlagEvaluator(c),
+		FlagEvaluator:               getFeatureFlagEvaluator(c, inputPaths),
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
@@ -698,10 +696,13 @@ func selectPlatforms(platforms []string) []string {
 	return out
 }
 
-func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
+func getFeatureFlagEvaluator(c *cli.Command, scanPaths []string) featureflags.FlagEvaluator {
 	overrides := map[string]bool{
 		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
-		featureflags.IacEnableLocalModuleEval:         c.Bool("x-local-module-eval") || c.Bool("x-remote-modules"),
+		featureflags.IacEnableLocalModuleEval: c.Bool("x-local-module-eval") ||
+			c.Bool("x-remote-modules") ||
+			c.String("x-remote-modules-manifest") != "" ||
+			scan.HasTerraformModuleCache(scanPaths),
 	}
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }

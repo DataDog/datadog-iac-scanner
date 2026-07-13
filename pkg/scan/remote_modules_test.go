@@ -18,22 +18,21 @@ import (
 
 func TestRemoteModulesDisabledByDefault(t *testing.T) {
 	root := t.TempDir()
-	_, manifestPath := writeRemoteModuleFixture(t, root)
+	writeRemoteModuleFixture(t, root)
 
 	params := remoteModuleScanParams(root)
-	params.RemoteModulesManifestPath = manifestPath
 	params.EnableRemoteModules = false
 
 	results := executeRemoteModuleScan(t, params)
 	require.Empty(t, results.Results)
 }
 
-func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
+func TestRemoteModulesManifestEnablesOfflineModuleInstantiation(t *testing.T) {
 	root := t.TempDir()
 	moduleDir, manifestPath := writeRemoteModuleFixture(t, root)
 
 	params := remoteModuleScanParams(root)
-	params.EnableRemoteModules = true
+	params.EnableRemoteModules = false
 	params.RemoteModulesManifestPath = manifestPath
 
 	results := executeRemoteModuleScan(t, params)
@@ -88,6 +87,35 @@ func TestRemoteModuleFilesBypassPrebuiltInventoryFilters(t *testing.T) {
 	require.ElementsMatch(t, []string{filepath.ToSlash(rootFile), filepath.ToSlash(moduleFile)}, paths)
 }
 
+func TestShouldPreScanTerraformModules(t *testing.T) {
+	t.Run("disabled", func(t *testing.T) {
+		root := t.TempDir()
+		client := &Client{ScanParams: &Parameters{}}
+		require.False(t, client.shouldPreScanTerraformModules([]string{root}))
+	})
+
+	t.Run("network resolution", func(t *testing.T) {
+		root := t.TempDir()
+		client := &Client{ScanParams: &Parameters{EnableRemoteModules: true}}
+		require.True(t, client.shouldPreScanTerraformModules([]string{root}))
+	})
+
+	t.Run("prefetched manifest", func(t *testing.T) {
+		root := t.TempDir()
+		client := &Client{ScanParams: &Parameters{RemoteModulesManifestPath: filepath.Join(root, "modules.json")}}
+		require.True(t, client.shouldPreScanTerraformModules([]string{root}))
+	})
+
+	t.Run("terraform cache", func(t *testing.T) {
+		root := t.TempDir()
+		manifestDir := filepath.Join(root, ".terraform", "modules")
+		require.NoError(t, os.MkdirAll(manifestDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(manifestDir, "modules.json"), []byte(`{}`), 0o644))
+		client := &Client{ScanParams: &Parameters{}}
+		require.True(t, client.shouldPreScanTerraformModules([]string{root}))
+	})
+}
+
 func writeRemoteModuleFixture(t *testing.T, root string) (string, string) {
 	t.Helper()
 	moduleDir := filepath.Join(filepath.Dir(root), "downloaded-vpc")
@@ -103,7 +131,7 @@ resource "aws_vpc" "this" {
 	require.NoError(t, os.WriteFile(rootFile, []byte(`
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "5.0.0"
+  version = "~> 5.0"
   cidr    = "10.0.0.0/16"
 }
 `), 0o644))
@@ -111,7 +139,7 @@ module "vpc" {
 	manifestPath := filepath.Join(root, "modules.json")
 	manifest := resolver.Manifest{
 		Modules: map[string]resolver.ManifestEntry{
-			"terraform-aws-modules/vpc/aws@5.0.0": {LocalPath: moduleDir, Version: "5.0.0"},
+			"terraform-aws-modules/vpc/aws@~> 5.0": {LocalPath: moduleDir, Version: "5.1.2"},
 		},
 	}
 	data, err := json.Marshal(manifest)

@@ -14,11 +14,15 @@ import (
 
 type stubResolver struct {
 	resolution resolver.Resolution
+	resolve    func(*tfmodules.ParsedModule) (resolver.Resolution, error)
 }
 
 func (r stubResolver) Resolve(
-	_ context.Context, _ *tfmodules.ParsedModule,
+	_ context.Context, module *tfmodules.ParsedModule,
 ) (resolver.Resolution, error) {
+	if r.resolve != nil {
+		return r.resolve(module)
+	}
 	return r.resolution, nil
 }
 
@@ -88,6 +92,153 @@ func TestResolveTraversesLocalModuleToRemoteModule(t *testing.T) {
 	require.Len(t, result.Modules, 1)
 	require.Equal(t, "registry.example.com/acme/network/aws", result.Modules[0].Source)
 	require.Equal(t, wrapperDir, result.Modules[0].CallerRoot)
+}
+
+func TestResolveRestrictsRepositoryCallsToDiscoveryPaths(t *testing.T) {
+	root := t.TempDir()
+	allowedDir := filepath.Join(root, "allowed")
+	excludedDir := filepath.Join(root, "excluded")
+	require.NoError(t, os.MkdirAll(allowedDir, 0o755))
+	require.NoError(t, os.MkdirAll(excludedDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(allowedDir, "main.tf"), []byte(`resource "x" "allowed" {}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(excludedDir, "main.tf"), []byte(`resource "x" "excluded" {}`), 0o644))
+	allowedFile := filepath.Join(root, "main.tf")
+	excludedFile := filepath.Join(root, "experimental.tf")
+	require.NoError(t, os.WriteFile(allowedFile, []byte(`module "allowed" { source = "allowed" }`), 0o644))
+	require.NoError(t, os.WriteFile(excludedFile, []byte(`module "excluded" { source = "excluded" }`), 0o644))
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{allowedFile},
+		Resolver: stubResolver{resolve: func(module *tfmodules.ParsedModule) (resolver.Resolution, error) {
+			if module.Source == "allowed" {
+				return resolver.Resolution{LocalPath: allowedDir}, nil
+			}
+			return resolver.Resolution{LocalPath: excludedDir}, nil
+		}},
+		MaxDepth: 1,
+	})
+
+	require.Equal(t, []string{filepath.Join(allowedDir, "main.tf")}, result.ScanPaths)
+}
+
+func TestResolveSkipsFilteredLocalModuleTrees(t *testing.T) {
+	root := t.TempDir()
+	wrapperDir := filepath.Join(root, "modules", "wrapper")
+	remoteDir := filepath.Join(root, "remote")
+	require.NoError(t, os.MkdirAll(wrapperDir, 0o755))
+	require.NoError(t, os.MkdirAll(remoteDir, 0o755))
+	rootFile := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootFile, []byte(`module "wrapper" { source = "./modules/wrapper" }`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(wrapperDir, "main.tf"), []byte(`module "remote" { source = "remote" }`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(remoteDir, "main.tf"), []byte(`resource "x" "remote" {}`), 0o644))
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{rootFile},
+		Resolver:       stubResolver{resolution: resolver.Resolution{LocalPath: remoteDir}},
+		MaxDepth:       2,
+	})
+
+	require.Empty(t, result.ScanPaths)
+}
+
+func TestResolveDeduplicatesEquivalentGitCalls(t *testing.T) {
+	root := t.TempDir()
+	remoteDir := filepath.Join(root, "remote")
+	require.NoError(t, os.MkdirAll(remoteDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(remoteDir, "main.tf"), []byte(`resource "x" "remote" {}`), 0o644))
+	rootFile := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootFile, []byte(`
+module "a" { source = "git::https://example.com/mod.git?ref=main" }
+module "b" { source = "git::https://example.com/mod.git?ref=main" }
+`), 0o644))
+	var calls atomic.Int32
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{rootFile},
+		DiscoveryPaths: []string{rootFile},
+		Resolver: stubResolver{resolve: func(*tfmodules.ParsedModule) (resolver.Resolution, error) {
+			calls.Add(1)
+			return resolver.Resolution{LocalPath: remoteDir}, nil
+		}},
+		MaxDepth: 1,
+	})
+
+	require.Equal(t, int32(1), calls.Load())
+	require.Equal(t, []string{filepath.Join(remoteDir, "main.tf")}, result.ScanPaths)
+	require.Len(t, result.Modules, 2)
+}
+
+func TestResolveKeepsUnversionedRegistryCallsDistinctByName(t *testing.T) {
+	root := t.TempDir()
+	remoteA := filepath.Join(root, "remote-a")
+	remoteB := filepath.Join(root, "remote-b")
+	for _, dir := range []string{remoteA, remoteB} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "x" "remote" {}`), 0o644))
+	}
+	rootFile := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootFile, []byte(`
+module "a" { source = "same/source/aws" }
+module "b" { source = "same/source/aws" }
+`), 0o644))
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{rootFile},
+		DiscoveryPaths: []string{rootFile},
+		Resolver: stubResolver{resolve: func(module *tfmodules.ParsedModule) (resolver.Resolution, error) {
+			if module.Name == "a" {
+				return resolver.Resolution{LocalPath: remoteA}, nil
+			}
+			return resolver.Resolution{LocalPath: remoteB}, nil
+		}},
+		MaxDepth: 1,
+	})
+
+	require.ElementsMatch(t, []string{
+		filepath.Join(remoteA, "main.tf"),
+		filepath.Join(remoteB, "main.tf"),
+	}, result.ScanPaths)
+	require.Len(t, result.Modules, 2)
+}
+
+func TestResolveCountsLocalHopsTowardDepth(t *testing.T) {
+	root, wrapperDir, remoteDir := writeNestedModuleGraphFixture(t)
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths: []string{root},
+		DiscoveryPaths: []string{
+			filepath.Join(root, "main.tf"),
+			filepath.Join(wrapperDir, "main.tf"),
+		},
+		Resolver: stubResolver{resolution: resolver.Resolution{LocalPath: remoteDir}},
+		MaxDepth: 1,
+	})
+
+	require.Empty(t, result.ScanPaths)
+}
+
+func TestCanonicalGitModuleSource(t *testing.T) {
+	require.Equal(
+		t,
+		"git::https://github.com/org/repo//sub?ref=v1",
+		canonicalGitModuleSource(" git::https://github.com/org/repo.git//sub?ref=v1 "),
+	)
+	require.Equal(
+		t,
+		canonicalModuleURL("git::https://github.com/org/repo.git//sub", "v1.2.3"),
+		canonicalModuleURL("git::https://github.com/org/repo//sub", "v1.2.3"),
+	)
+	require.Equal(
+		t,
+		remoteResolveIdentity(&tfmodules.ParsedModule{
+			Source: "git::https://github.com/org/repo.git//sub?ref=v1",
+		}),
+		remoteResolveIdentity(&tfmodules.ParsedModule{
+			Source: "git::ssh://git@github.com/org/repo//sub?ref=v1",
+		}),
+	)
 }
 
 func writeModuleGraphFixture(t *testing.T) (string, string) {

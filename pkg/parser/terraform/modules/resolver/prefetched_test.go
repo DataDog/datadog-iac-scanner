@@ -67,3 +67,34 @@ func TestPrefetchedResolverUsesManifest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, moduleDir, got.LocalPath)
 }
+
+func TestPrefetchedResolverValidatesResolvedVersionAgainstConstraint(t *testing.T) {
+	dir := t.TempDir()
+	moduleDir := filepath.Join(dir, "vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	resolver := NewPrefetchedResolver(&Manifest{
+		Dir: dir,
+		Modules: map[string]ManifestEntry{
+			"terraform-aws-modules/vpc/aws@~> 5.0": {
+				LocalPath: moduleDir,
+				Version:   "5.1.2",
+			},
+		},
+	})
+
+	_, err := resolver.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source:  "terraform-aws-modules/vpc/aws",
+		Version: "~> 5.0",
+	})
+	require.NoError(t, err)
+
+	resolver.manifest.Modules["terraform-aws-modules/vpc/aws@~> 6.0"] = ManifestEntry{
+		LocalPath: moduleDir,
+		Version:   "5.1.2",
+	}
+	_, err = resolver.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source:  "terraform-aws-modules/vpc/aws",
+		Version: "~> 6.0",
+	})
+	require.Error(t, err)
+}

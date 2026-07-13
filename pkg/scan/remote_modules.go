@@ -77,18 +77,19 @@ func (c *Client) resolveTerraformModulesForScan(
 }
 
 func (c *Client) shouldPreScanTerraformModules(scanPaths []string) bool {
-	if !c.ScanParams.EnableRemoteModules {
-		return false
-	}
-	if c.ScanParams.RemoteModulesManifestPath != "" {
+	if c.ScanParams.EnableRemoteModules || c.ScanParams.RemoteModulesManifestPath != "" {
 		return true
 	}
+	return HasTerraformModuleCache(scanPaths)
+}
+
+func HasTerraformModuleCache(scanPaths []string) bool {
 	for _, root := range dotTerraformRootDirs(scanPaths) {
 		if hasTerraformModulesManifest(root) {
 			return true
 		}
 	}
-	return true
+	return false
 }
 
 func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPaths []string) *tfresolver.ChainResolver {

@@ -23,6 +23,9 @@ const (
 func GetDatadogFingerprintHash(
 	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
 ) string {
+	if platform == terraformPlatform {
+		filePath = stripTerraformRegistryModuleVersion(filePath)
+	}
 	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleID}
 
 	switch platform {
@@ -36,6 +39,20 @@ func GetDatadogFingerprintHash(
 	}
 
 	return stringToHash(strings.Join(segments, "|"))
+}
+
+func stripTerraformRegistryModuleVersion(filePath string) string {
+	slashed := strings.ReplaceAll(filePath, `\`, "/")
+	parts := strings.Split(slashed, "/")
+	if len(parts) < 5 || !strings.Contains(parts[0], ".") {
+		return filePath
+	}
+	provider, _, hasVersion := strings.Cut(parts[3], "@")
+	if !hasVersion || provider == "" {
+		return filePath
+	}
+	parts[3] = provider
+	return strings.Join(parts, "/")
 }
 
 func stringToHash(str string) string {

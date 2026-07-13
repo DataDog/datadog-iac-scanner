@@ -11,6 +11,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetDatadogFingerprintHashRemoteModuleVersionStripping(t *testing.T) {
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
+
+	v1 := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws@1.0.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	v2 := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws@2.0.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.Equal(t, v1, v2)
+
+	constraint := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws@~> 3.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	noVersion := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.Equal(t, v1, constraint)
+	require.Equal(t, v1, noVersion)
+
+	nestedAt := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws@1.0.0/templates/@scope/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	nestedAtNoVersion := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/vpc/aws/templates/@scope/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.Equal(t, nestedAtNoVersion, nestedAt)
+
+	other := GetDatadogFingerprintHash(sci, "registry.terraform.io/hashicorp/eks/aws@1.0.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	local := GetDatadogFingerprintHash(sci, "modules/vpc@1.0.0/main.tf", terraformPlatform, "aws_vpc", "this", "rule-1", "", "")
+	require.NotEqual(t, v1, other)
+	require.NotEqual(t, v1, local)
+}
+
 // Empty chain adds no segment; a chain changes the hash for Terraform and is ignored elsewhere.
 func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}

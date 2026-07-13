@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	goversion "github.com/hashicorp/go-version"
 )
 
 // ManifestEntry is one row in a --modules-manifest JSON file.
@@ -96,12 +97,21 @@ func (r *PrefetchedResolver) Resolve(_ context.Context, mod *tfmodules.ParsedMod
 			Reason: fmt.Sprintf("module %q not found in manifest", mod.Source),
 		}
 	}
-	if entry.Version != "" && mod.Version != "" && entry.Version != mod.Version {
+	if entry.Version != "" && mod.Version != "" && !versionMatchesConstraint(entry.Version, mod.Version) {
 		return Resolution{}, &tfmodules.UnresolvedError{
 			Reason: fmt.Sprintf("module %q version %q not found in manifest", mod.Source, mod.Version),
 		}
 	}
 	return Resolution{LocalPath: entry.LocalPath}, nil
+}
+
+func versionMatchesConstraint(version, constraint string) bool {
+	constraints, err := goversion.NewConstraint(constraint)
+	if err != nil {
+		return version == constraint
+	}
+	resolved, err := goversion.NewVersion(version)
+	return err == nil && constraints.Check(resolved)
 }
 
 func manifestModuleKey(source, version string) string {
