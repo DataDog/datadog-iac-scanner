@@ -387,8 +387,7 @@ func (s *FileSystemSourceProvider) isPathExcluded(path string) (bool, error) {
 	if s.onlyPaths != nil {
 		underOnlyPath := false
 		for _, op := range s.onlyPaths {
-			if path == op || strings.HasPrefix(path, op+string(os.PathSeparator)) ||
-				strings.HasPrefix(path, op+"/") {
+			if pathWithinBase(op, path) {
 				underOnlyPath = true
 				break
 			}
@@ -584,7 +583,7 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 	if s.onlyPaths != nil {
 		underOnlyPath := false
 		for _, op := range s.onlyPaths {
-			if path == op || strings.HasPrefix(path, op+string(os.PathSeparator)) {
+			if pathWithinBase(op, path) {
 				underOnlyPath = true
 				break
 			}
@@ -598,6 +597,11 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 		return true, nil
 	}
 	return false, nil
+}
+
+func pathWithinBase(base, path string) bool {
+	rel, err := filepath.Rel(filepath.Clean(base), filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
 // resolveChartDir renders a Helm chart directory through the resolver. On success

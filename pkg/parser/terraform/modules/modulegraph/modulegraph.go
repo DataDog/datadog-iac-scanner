@@ -266,6 +266,7 @@ func (w *walker) seedGroups(
 		if !isTerraformFile(path) {
 			continue
 		}
+		path = filepath.Clean(path)
 		dir := filepath.Dir(path)
 		if allowedByDir[dir] == nil {
 			allowedByDir[dir] = make(map[string]bool)
