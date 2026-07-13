@@ -9,9 +9,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -202,11 +204,15 @@ func TestLoadSharedQueries_ExcludesCustomInput(t *testing.T) {
 	}
 }
 
-func TestLoadSharedQueriesCache_ReusesAndInvalidates(t *testing.T) {
+func clearSharedPreparedQueryCache() {
 	sharedPreparedQueryCache.Lock()
 	sharedPreparedQueryCache.key = 0
 	sharedPreparedQueryCache.queries = nil
 	sharedPreparedQueryCache.Unlock()
+}
+
+func TestLoadSharedQueriesCache_ReusesAndInvalidates(t *testing.T) {
+	clearSharedPreparedQueryCache()
 
 	platform := "terraform"
 	query := staticQuery(platform, "static_rule", "DatadogPolicy contains result if { result := \"x\" }\n")
@@ -230,6 +236,43 @@ func TestLoadSharedQueriesCache_ReusesAndInvalidates(t *testing.T) {
 		t.Context(), []model.QueryMetadata{query}, changedStores, changedHashes)
 	require.True(t, hit)
 	require.Same(t, third[0], fourth[0])
+}
+
+func TestLoadSharedQueriesCache_ConcurrentReuse(t *testing.T) {
+	clearSharedPreparedQueryCache()
+
+	platform := "terraform"
+	query := staticQuery(platform, "static_rule", "DatadogPolicy contains result if { result := \"x\" }\n")
+	loader := newCacheTestLoader(t, platform, []model.QueryMetadata{query})
+	stores, hashes := baseStoresFor(platform, "{}")
+
+	const workers = 8
+	start := make(chan struct{})
+	results := make(chan *rego.PreparedEvalQuery, workers)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			prepared, _ := loader.loadSharedQueriesCached(
+				t.Context(), []model.QueryMetadata{query}, stores, hashes)
+			results <- prepared[0]
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	var first *rego.PreparedEvalQuery
+	for prepared := range results {
+		require.NotNil(t, prepared)
+		if first == nil {
+			first = prepared
+			continue
+		}
+		require.Same(t, first, prepared)
+	}
 }
 
 // summarize reduces findings to a comparable, order-independent multiset of the

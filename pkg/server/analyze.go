@@ -167,6 +167,9 @@ func validateLibraries(libraries []analyzeLibrary, rules []analyzeRule) error {
 		if id == "" {
 			return errors.New("empty library id")
 		}
+		if library.ID != normalizePlatform(library.ID) {
+			return errors.New("library id must be canonical lowercase: " + library.ID)
+		}
 		if strings.TrimSpace(library.Content) == "" {
 			return errors.New("empty library content for " + library.ID)
 		}
@@ -182,7 +185,7 @@ func validateLibraries(libraries []analyzeLibrary, rules []analyzeRule) error {
 		return errors.New("common library is required")
 	}
 	for _, rule := range rules {
-		platform := strings.ToLower(strings.TrimSpace(rule.Platform))
+		platform := normalizePlatform(rule.Platform)
 		if platform == "" {
 			return errors.New("empty platform for rule " + rule.ID)
 		}
@@ -198,6 +201,10 @@ func normalizeLibraryInputData(inputData string) string {
 		return emptyInputData
 	}
 	return inputData
+}
+
+func normalizePlatform(platform string) string {
+	return strings.ToLower(strings.TrimSpace(platform))
 }
 
 // validateFilePath rejects paths that are empty, absolute, contain a NUL byte,
@@ -245,7 +252,10 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		}
 	}
 
-	plats := req.Platform
+	plats := make([]string, len(req.Platform))
+	for i, platform := range req.Platform {
+		plats[i] = normalizePlatform(platform)
+	}
 	if len(plats) == 0 {
 		plats = platforms.Supported
 	}
@@ -335,7 +345,7 @@ func (r *requestQuerySource) GetQueries(ctx context.Context, params *source.Quer
 }
 
 func (r *requestQuerySource) GetQueryLibrary(ctx context.Context, platform string) (source.RegoLibraries, error) {
-	library, ok := r.libraries[strings.ToLower(platform)]
+	library, ok := r.libraries[normalizePlatform(platform)]
 	if !ok {
 		return source.RegoLibraries{}, errors.New("library not found in request: " + platform)
 	}
@@ -345,7 +355,7 @@ func (r *requestQuerySource) GetQueryLibrary(ctx context.Context, platform strin
 func toRegoLibraries(libraries []analyzeLibrary) map[string]source.RegoLibraries {
 	out := make(map[string]source.RegoLibraries, len(libraries))
 	for _, library := range libraries {
-		out[strings.TrimSpace(library.ID)] = source.RegoLibraries{
+		out[library.ID] = source.RegoLibraries{
 			LibraryCode:      library.Content,
 			LibraryInputData: normalizeLibraryInputData(library.InputData),
 		}
@@ -358,6 +368,7 @@ func toRegoLibraries(libraries []analyzeLibrary) map[string]source.RegoLibraries
 func toQueryMetadata(rules []analyzeRule) []model.QueryMetadata {
 	out := make([]model.QueryMetadata, 0, len(rules))
 	for _, rule := range rules {
+		platform := normalizePlatform(rule.Platform)
 		inputData := rule.InputData
 		if inputData == "" {
 			inputData = emptyInputData
@@ -370,14 +381,14 @@ func toQueryMetadata(rules []analyzeRule) []model.QueryMetadata {
 		setDefault(metadata, "legacyId", rule.ID)
 		setDefault(metadata, "queryName", rule.ID)
 		setDefault(metadata, "severity", "INFO")
-		setDefault(metadata, "platform", rule.Platform)
+		setDefault(metadata, "platform", platform)
 		setDefault(metadata, "category", "Best Practices")
 
 		out = append(out, model.QueryMetadata{
 			Query:     rule.ID,
 			Content:   rule.Content,
 			InputData: inputData,
-			Platform:  rule.Platform,
+			Platform:  platform,
 			Metadata:  metadata,
 		})
 	}

@@ -301,6 +301,14 @@ func TestValidateAnalyzeRequest_Libraries(t *testing.T) {
 			wantError: "library is required for rule platform: Terraform",
 		},
 		{
+			name: "noncanonical id",
+			libraries: []analyzeLibrary{
+				{ID: "Common", Content: "package generic.common"},
+				{ID: "terraform", Content: "package generic.terraform"},
+			},
+			wantError: "library id must be canonical lowercase: Common",
+		},
+		{
 			name: "duplicate id",
 			libraries: []analyzeLibrary{
 				{ID: "common", Content: "package generic.common"},
@@ -334,6 +342,29 @@ func TestValidateAnalyzeRequest_Libraries(t *testing.T) {
 				t.Fatalf("validateAnalyzeRequest() error = %v, want %q", err, tt.wantError)
 			}
 		})
+	}
+}
+
+func TestAnalyze_NormalizesRuleAndScanPlatforms(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticRule()
+	rule.Platform = " Terraform "
+	req := analyzeRequest{
+		Files: []analyzeFile{{
+			Path:    "infra/main.tf",
+			Content: `resource "test_widget" "example" {}`,
+		}},
+		Rules:     []analyzeRule{rule},
+		Libraries: testLibraries(true),
+		Platform:  []string{" Terraform "},
+	}
+	if err := validateAnalyzeRequest(&req, defaultMaxFiles); err != nil {
+		t.Fatalf("validateAnalyzeRequest() error = %v", err)
+	}
+
+	out, _ := postAnalyze(t, s, req)
+	if len(out.Findings) != 1 || out.Findings[0].QueryID != syntheticRuleID {
+		t.Fatalf("normalized platform request returned findings %+v", out.Findings)
 	}
 }
 
