@@ -47,6 +47,7 @@ type executeScanParameters struct {
 	services       []*runner.Service
 	inspector      *engine.Inspector
 	extractedPaths provider.ExtractedPath
+	moduleCleanup  func()
 }
 
 func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
@@ -106,10 +107,17 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.prepareRemoteModules(ctx, extractedPaths.Path, inspector); err != nil {
+	moduleCleanup, err := c.prepareRemoteModules(ctx, extractedPaths.Path, inspector)
+	if err != nil {
 		contextLogger.Err(err).Msg("failed to prepare Terraform remote modules")
 		return nil, err
 	}
+	initSucceeded := false
+	defer func() {
+		if !initSucceeded {
+			moduleCleanup()
+		}
+	}()
 
 	contextLogger.Info().Msgf("Finshed inspect query source %v", querySource)
 
@@ -129,10 +137,12 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		return nil, err
 	}
 
+	initSucceeded = true
 	return &executeScanParameters{
 		services:       services,
 		inspector:      inspector,
 		extractedPaths: extractedPaths,
+		moduleCleanup:  moduleCleanup,
 	}, nil
 }
 
@@ -184,6 +194,7 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	if executeScanParameters == nil {
 		return nil, nil
 	}
+	defer executeScanParameters.moduleCleanup()
 
 	contextLogger.Info().Msg("Scan initialized")
 

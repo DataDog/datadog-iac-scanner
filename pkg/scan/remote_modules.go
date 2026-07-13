@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -21,44 +22,69 @@ import (
 
 type moduleResolverAdapter struct {
 	resolver tfresolver.Resolver
+	mu       sync.Mutex
+	cleanups []func()
+	once     sync.Once
 }
 
-func (r moduleResolverAdapter) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (string, error) {
+func (r *moduleResolverAdapter) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (string, error) {
 	res, err := r.resolver.Resolve(ctx, mod)
 	if err != nil {
 		return "", err
 	}
+	if res.Cleanup != nil {
+		r.mu.Lock()
+		r.cleanups = append(r.cleanups, res.Cleanup)
+		r.mu.Unlock()
+	}
 	return res.LocalPath, nil
 }
 
-func (c *Client) prepareRemoteModules(ctx context.Context, paths []string, inspector *engine.Inspector) error {
+func (r *moduleResolverAdapter) cleanup() {
+	r.once.Do(func() {
+		r.mu.Lock()
+		cleanups := append([]func(){}, r.cleanups...)
+		r.cleanups = nil
+		r.mu.Unlock()
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+	})
+}
+
+func (c *Client) prepareRemoteModules(
+	ctx context.Context, paths []string, inspector *engine.Inspector,
+) (cleanup func(), err error) {
+	noCleanup := func() {}
 	if !c.ScanParams.EnableRemoteModules {
-		return nil
+		return noCleanup, nil
 	}
 	files, roots, err := c.collectTerraformModuleFiles(paths)
 	if err != nil {
-		return err
+		return noCleanup, err
 	}
 	if len(files) == 0 {
-		return nil
+		return noCleanup, nil
 	}
 
 	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.ScanParams.ParallelScanFlag)
 	if err != nil {
-		return err
+		return noCleanup, err
 	}
 	if len(parsedModules) == 0 {
-		return nil
+		return noCleanup, nil
 	}
 
 	resolver, err := c.buildTerraformModuleResolver(roots)
 	if err != nil {
-		return err
+		return noCleanup, err
 	}
+	adapter := &moduleResolverAdapter{resolver: resolver}
 	enriched, err := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, c.ScanParams.RepoPath,
-		moduleResolverAdapter{resolver: resolver})
+		adapter)
 	if err != nil {
-		return err
+		adapter.cleanup()
+		return noCleanup, err
 	}
 
 	dirs := make(map[string]string)
@@ -72,18 +98,19 @@ func (c *Client) prepareRemoteModules(ctx context.Context, paths []string, inspe
 		dirs[engine.RemoteModuleCallKey(root, mod.Source, mod.Version, mod.Name)] = mod.AbsSource
 	}
 	if len(dirs) == 0 {
-		return nil
+		return adapter.cleanup, nil
 	}
 	inspector.SetRemoteModuleDirectories(dirs)
 	remotePaths := mapValues(dirs)
 	inspector.SetExternalModulePaths(remotePaths)
 	c.remoteModulePaths = remotePaths
 	if err := c.addRemoteModuleFilesToInventory(remotePaths); err != nil {
-		return err
+		adapter.cleanup()
+		return noCleanup, err
 	}
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Info().Msgf("Resolved %d Terraform remote module directories", len(dirs))
-	return nil
+	return adapter.cleanup, nil
 }
 
 func (c *Client) buildTerraformModuleResolver(roots []string) (tfresolver.Resolver, error) {
