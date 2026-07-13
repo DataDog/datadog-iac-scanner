@@ -202,6 +202,36 @@ func TestLoadSharedQueries_ExcludesCustomInput(t *testing.T) {
 	}
 }
 
+func TestLoadSharedQueriesCache_ReusesAndInvalidates(t *testing.T) {
+	sharedPreparedQueryCache.Lock()
+	sharedPreparedQueryCache.key = 0
+	sharedPreparedQueryCache.queries = nil
+	sharedPreparedQueryCache.Unlock()
+
+	platform := "terraform"
+	query := staticQuery(platform, "static_rule", "DatadogPolicy contains result if { result := \"x\" }\n")
+	loader := newCacheTestLoader(t, platform, []model.QueryMetadata{query})
+	stores, hashes := baseStoresFor(platform, "{}")
+
+	first, hit := loader.loadSharedQueriesCached(t.Context(), []model.QueryMetadata{query}, stores, hashes)
+	require.False(t, hit)
+	require.Contains(t, first, 0)
+	second, hit := loader.loadSharedQueriesCached(t.Context(), []model.QueryMetadata{query}, stores, hashes)
+	require.True(t, hit)
+	require.Same(t, first[0], second[0])
+
+	changedStores, changedHashes := baseStoresFor(platform, `{"library_version":2}`)
+	third, hit := loader.loadSharedQueriesCached(
+		t.Context(), []model.QueryMetadata{query}, changedStores, changedHashes)
+	require.False(t, hit)
+	require.Contains(t, third, 0)
+	require.NotSame(t, first[0], third[0])
+	fourth, hit := loader.loadSharedQueriesCached(
+		t.Context(), []model.QueryMetadata{query}, changedStores, changedHashes)
+	require.True(t, hit)
+	require.Same(t, third[0], fourth[0])
+}
+
 // summarize reduces findings to a comparable, order-independent multiset of the
 // fields a caller/SARIF actually consumes, so the comparison is robust to
 // worker ordering.

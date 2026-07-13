@@ -13,63 +13,90 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-// repoRoot returns the module root relative to this package (pkg/server).
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	return filepath.Join(wd, "..", "..")
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	root := repoRoot(t)
-	libs := filepath.Join(root, "assets", "libraries")
-	if _, err := os.Stat(libs); err != nil {
-		t.Skipf("assets/libraries not found (%v); skipping engine-backed test", err)
-	}
-	return New(&Config{
-		LibrariesPath: libs,
-		QueriesPath:   filepath.Join(root, "assets", "queries"),
-	})
+	return New(&Config{})
 }
 
-// teamTagRule loads the real Terraform "Team tag" rule from the e2e fixtures so
-// the test exercises a production-shaped rule without a network fetch.
-func teamTagRule(t *testing.T) analyzeRule {
-	t.Helper()
-	root := repoRoot(t)
-	regoPath := filepath.Join(root, "test", "e2e", "testdata", "rules", "terraform", "team_tag_not_present", "query.rego")
-	content, err := os.ReadFile(regoPath)
-	if err != nil {
-		t.Skipf("rule fixture not found (%v); skipping", err)
-	}
+const syntheticRuleID = "test-terraform-resource-missing-owner"
+
+// syntheticRule imports both test-only pushed libraries. Its identifiers and
+// behavior are deliberately unrelated to the production rule corpus.
+func syntheticRule() analyzeRule {
 	return analyzeRule{
-		ID:       "terraform-aws-team-tag-not-present",
+		ID:       syntheticRuleID,
 		Platform: "terraform",
-		Content:  string(content),
+		Content: `package datadog
+
+import rego.v1
+
+import data.generic.common as common_lib
+import data.generic.terraform as tf_lib
+
+DatadogPolicy contains result if {
+	common_lib.library_enabled
+	resource := input.document[i].resource[resource_type][name]
+	not common_lib.has_owner(resource)
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": resource_type,
+		"resourceName": tf_lib.display_name(resource_type, name),
+		"searchKey": sprintf("%s[%s].labels.owner", [resource_type, name]),
+	}
+}`,
 		Metadata: map[string]any{
-			"id":        "terraform-aws-team-tag-not-present",
-			"queryName": "Team tag missing on AWS resource",
-			"severity":  "LOW",
+			"id":        syntheticRuleID,
+			"queryName": "Synthetic missing owner label",
+			"severity":  "INFO",
 			"platform":  "Terraform",
-			"category":  "Best Practices",
+			"category":  "Test",
+		},
+	}
+}
+
+func testLibraries(enabled bool) []analyzeLibrary {
+	return []analyzeLibrary{
+		{
+			ID: "common",
+			Content: `package generic.common
+
+import rego.v1
+
+library_enabled if data.test.enabled
+
+has_owner(resource) if resource.labels.owner`,
+			InputData: fmt.Sprintf(`{"test":{"enabled":%t}}`, enabled),
+		},
+		{
+			ID: "terraform",
+			Content: `package generic.terraform
+
+import rego.v1
+
+display_name(resource_type, name) := sprintf("%s.%s", [resource_type, name])`,
 		},
 	}
 }
 
 func postAnalyze(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse, int) {
 	t.Helper()
+	if len(req.Libraries) == 0 {
+		req.Libraries = testLibraries(true)
+	}
 	out, err := s.analyze(context.Background(), &req)
 	if err != nil {
 		t.Fatalf("analyze: %v", err)
@@ -79,11 +106,11 @@ func postAnalyze(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse,
 
 // TestAnalyze_ContentPush_TerraformFinding verifies the full content-push path:
 // a pushed Terraform file plus its sibling variables file are scanned in memory
-// (no disk), a real rule fires, and same-directory siblings resolve without
+// (no disk), a synthetic rule fires, and same-directory siblings resolve without
 // being reported missing.
 func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 	s := newTestServer(t)
-	rule := teamTagRule(t)
+	rule := syntheticRule()
 
 	req := analyzeRequest{
 		Files: []analyzeFile{
@@ -99,11 +126,11 @@ func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 	out, _ := postAnalyze(t, s, req)
 
 	if len(out.Findings) == 0 {
-		t.Fatalf("expected at least one finding for an AWS resource missing a Team tag, got none")
+		t.Fatalf("expected at least one synthetic finding, got none; failed queries: %v", out.FailedQueries)
 	}
 	var found bool
 	for _, f := range out.Findings {
-		if f.QueryID == "terraform-aws-team-tag-not-present" {
+		if f.QueryID == syntheticRuleID {
 			found = true
 			if f.FileName != "infra/main.tf" {
 				t.Errorf("finding fileName = %q, want infra/main.tf", f.FileName)
@@ -111,7 +138,7 @@ func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("expected the team-tag rule to fire; findings = %+v", out.Findings)
+		t.Errorf("expected the synthetic rule to fire; findings = %+v", out.Findings)
 	}
 	// Same-directory siblings resolve via the in-memory glob, so nothing is
 	// reported missing.
@@ -125,7 +152,7 @@ func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 // workspace-relative path (the hybrid escalation signal).
 func TestAnalyze_MissingModuleEscalation(t *testing.T) {
 	s := newTestServer(t)
-	rule := teamTagRule(t)
+	rule := syntheticRule()
 
 	req := analyzeRequest{
 		Files: []analyzeFile{
@@ -159,8 +186,8 @@ resource "aws_s3_bucket" "b" { bucket = "x" }`},
 // single server serves many IDE workspaces/windows, so the result must not
 // depend on where the binary was launched.
 func TestAnalyze_MissingFilesCWDIndependent(t *testing.T) {
-	s := newTestServer(t) // resolves an absolute libraries path before we chdir
-	rule := teamTagRule(t)
+	s := newTestServer(t)
+	rule := syntheticRule()
 	req := analyzeRequest{
 		Files: []analyzeFile{{Path: "infra/main.tf", Content: `module "net" {
   source = "../modules/networking"
@@ -185,19 +212,58 @@ func TestAnalyze_Validation(t *testing.T) {
 	ts := httptest.NewServer(s.http.Handler)
 	defer ts.Close()
 
+	validRule := analyzeRule{ID: "test-rule", Platform: "terraform", Content: "package datadog"}
+	validLibraries := []analyzeLibrary{
+		{ID: "common", Content: "package generic.common"},
+		{ID: "terraform", Content: "package generic.terraform"},
+	}
 	cases := []struct {
 		name string
-		body string
+		req  analyzeRequest
+		body string // used only for malformed input
 		want int
 	}{
-		{"empty files", `{"files":[],"rules":[]}`, http.StatusBadRequest},
-		{"path traversal", `{"files":[{"path":"../escape.tf","content":"x"}],"rules":[]}`, http.StatusBadRequest},
-		{"absolute path", `{"files":[{"path":"/etc/passwd","content":"x"}],"rules":[]}`, http.StatusBadRequest},
-		{"malformed json", `{`, http.StatusBadRequest},
+		{
+			name: "empty files",
+			req:  analyzeRequest{Rules: []analyzeRule{validRule}, Libraries: validLibraries},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "empty rules",
+			req: analyzeRequest{
+				Files: []analyzeFile{{Path: "main.tf", Content: "x"}}, Libraries: validLibraries,
+			},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "path traversal",
+			req: analyzeRequest{
+				Files: []analyzeFile{{Path: "../escape.tf", Content: "x"}},
+				Rules: []analyzeRule{validRule}, Libraries: validLibraries,
+			},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "absolute path",
+			req: analyzeRequest{
+				Files: []analyzeFile{{Path: "/etc/passwd", Content: "x"}},
+				Rules: []analyzeRule{validRule}, Libraries: validLibraries,
+			},
+			want: http.StatusBadRequest,
+		},
+		{name: "malformed json", body: `{`, want: http.StatusBadRequest},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, err := http.Post(ts.URL+"/ide/v1/iac/analyze", "application/json", strings.NewReader(tc.body))
+			body := []byte(tc.body)
+			if tc.body == "" {
+				var err error
+				body, err = json.Marshal(tc.req)
+				if err != nil {
+					t.Fatalf("marshal request: %v", err)
+				}
+			}
+			resp, err := http.Post(ts.URL+"/ide/v1/iac/analyze", "application/json", bytes.NewReader(body))
 			if err != nil {
 				t.Fatalf("post: %v", err)
 			}
@@ -206,6 +272,119 @@ func TestAnalyze_Validation(t *testing.T) {
 				t.Errorf("status = %d, want %d", resp.StatusCode, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateAnalyzeRequest_Libraries(t *testing.T) {
+	base := analyzeRequest{
+		Files: []analyzeFile{{Path: "main.tf", Content: "resource"}},
+		Rules: []analyzeRule{{ID: "rule", Platform: "Terraform", Content: "package datadog"}},
+	}
+	tests := []struct {
+		name      string
+		libraries []analyzeLibrary
+		wantError string
+	}{
+		{name: "missing", wantError: "at least one library is required"},
+		{
+			name: "missing common",
+			libraries: []analyzeLibrary{
+				{ID: "terraform", Content: "package generic.terraform"},
+			},
+			wantError: "common library is required",
+		},
+		{
+			name: "missing platform",
+			libraries: []analyzeLibrary{
+				{ID: "common", Content: "package generic.common"},
+			},
+			wantError: "library is required for rule platform: Terraform",
+		},
+		{
+			name: "duplicate id",
+			libraries: []analyzeLibrary{
+				{ID: "common", Content: "package generic.common"},
+				{ID: "common", Content: "package generic.common"},
+				{ID: "terraform", Content: "package generic.terraform"},
+			},
+			wantError: "duplicate library id: common",
+		},
+		{
+			name: "invalid input data",
+			libraries: []analyzeLibrary{
+				{ID: "common", Content: "package generic.common", InputData: "{"},
+				{ID: "terraform", Content: "package generic.terraform"},
+			},
+			wantError: "invalid library input data for common",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := base
+			req.Libraries = tt.libraries
+			err := validateAnalyzeRequest(&req, defaultMaxFiles)
+			if tt.wantError == "" {
+				if err != nil {
+					t.Fatalf("validateAnalyzeRequest() error = %v", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantError {
+				t.Fatalf("validateAnalyzeRequest() error = %v, want %q", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestAnalyze_RequestLibrariesInvalidateSharedRuleCache(t *testing.T) {
+	s := New(&Config{UseRulesCache: true, DisableRuleIsolation: true})
+	req := analyzeRequest{
+		Files: []analyzeFile{{
+			Path:    "infra/main.tf",
+			Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`,
+		}},
+		Rules:     []analyzeRule{syntheticRule()},
+		Libraries: testLibraries(true),
+		Platform:  []string{"terraform"},
+	}
+
+	enabled, _ := postAnalyze(t, s, req)
+	if len(enabled.Findings) == 0 {
+		t.Fatal("expected a finding when pushed library input enables the rule")
+	}
+
+	req.Libraries = testLibraries(false)
+	disabled, _ := postAnalyze(t, s, req)
+	if len(disabled.Findings) != 0 {
+		t.Fatalf("stale cached rule used old library input; findings: %+v", disabled.Findings)
+	}
+}
+
+func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
+	originalClient := http.DefaultClient
+	var requests atomic.Int64
+	http.DefaultClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return nil, fmt.Errorf("unexpected outbound request to %s", req.URL)
+	})}
+	t.Cleanup(func() { http.DefaultClient = originalClient })
+
+	s := New(&Config{})
+	out, _ := postAnalyze(t, s, analyzeRequest{
+		Files: []analyzeFile{{
+			Path:    "infra/main.tf",
+			Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`,
+		}},
+		Rules:     []analyzeRule{syntheticRule()},
+		Libraries: testLibraries(true),
+		Platform:  []string{"terraform"},
+	})
+	if len(out.Findings) == 0 {
+		t.Fatal("expected request-supplied rules and libraries to produce a finding")
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("server mode made %d outbound HTTP requests, want 0", got)
 	}
 }
 
@@ -308,7 +487,7 @@ func TestLifecycle_Contract(t *testing.T) {
 // goroutines). Run with `go test -race` to surface data races.
 func TestAnalyze_Concurrent(t *testing.T) {
 	s := newTestServer(t)
-	rule := teamTagRule(t)
+	rule := syntheticRule()
 
 	files := make([]analyzeFile, 0, 6)
 	for i := range 6 {
@@ -327,7 +506,9 @@ func TestAnalyze_Concurrent(t *testing.T) {
 		r.ID = fmt.Sprintf("%s-%d", rule.ID, i)
 		rules = append(rules, r)
 	}
-	req := analyzeRequest{Files: files, Rules: rules, Platform: []string{"terraform"}}
+	req := analyzeRequest{
+		Files: files, Rules: rules, Libraries: testLibraries(true), Platform: []string{"terraform"},
+	}
 
 	const n = 12
 	var wg sync.WaitGroup
@@ -359,7 +540,7 @@ func TestAnalyze_Concurrent(t *testing.T) {
 // must fall back to the empty IaC config rather than dereferencing nil.
 func TestAnalyze_ConfigWithoutIacSection(t *testing.T) {
 	s := newTestServer(t)
-	rule := teamTagRule(t)
+	rule := syntheticRule()
 
 	req := analyzeRequest{
 		Files:    []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
@@ -380,18 +561,18 @@ func TestAnalyze_ConfigWithoutIacSection(t *testing.T) {
 // applies.
 func TestAnalyze_ConfigIgnoreRulePushedRule(t *testing.T) {
 	s := newTestServer(t)
-	rule := teamTagRule(t)
+	rule := syntheticRule()
 
 	req := analyzeRequest{
 		Files:    []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
 		Rules:    []analyzeRule{rule},
 		Platform: []string{"terraform"},
-		Config:   "schema-version: v1.3\niac:\n  ignore-rules:\n    - terraform-aws-team-tag-not-present\n",
+		Config:   "schema-version: v1.3\niac:\n  ignore-rules:\n    - " + syntheticRuleID + "\n",
 	}
 
 	out, _ := postAnalyze(t, s, req)
 	for _, f := range out.Findings {
-		if f.QueryID == "terraform-aws-team-tag-not-present" {
+		if f.QueryID == syntheticRuleID {
 			t.Errorf("ignore-rules should have suppressed the pushed rule, but it fired: %+v", f)
 		}
 	}
@@ -402,7 +583,7 @@ func TestAnalyze_ConfigIgnoreRulePushedRule(t *testing.T) {
 // path, mirroring the disk scanner's behavior.
 func TestAnalyze_ConfigIgnorePaths(t *testing.T) {
 	s := newTestServer(t)
-	rule := teamTagRule(t)
+	rule := syntheticRule()
 	body := `resource "aws_s3_bucket" "b" { bucket = "x" }`
 
 	// Baseline: without filters the rule fires on infra/main.tf.
@@ -487,7 +668,7 @@ func TestAnalyze_ConcurrencyLimit(t *testing.T) {
 // block ranges from the first parse and report an incorrect finding line.
 func TestAnalyze_HCLCacheIsolatedBetweenRequests(t *testing.T) {
 	s := newTestServer(t)
-	rule := teamTagRule(t)
+	rule := syntheticRule()
 
 	// Request 1: resource is at line 1.
 	req1 := analyzeRequest{

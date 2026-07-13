@@ -31,6 +31,10 @@ const (
 	// default rule corpus is ~1200 rules; this is generous headroom. The file
 	// limit is configurable per-server (Config.MaxFiles), so it is passed in.
 	maxRules = defaultMaxRules
+	// A library is expected for Common and each supported platform. Keep a
+	// generous bound while preventing an accidentally unbounded request array.
+	maxLibraries   = 100
+	emptyInputData = "{}"
 	// metadataDefaultKeys is the number of fixed keys setDefault injects in
 	// toQueryMetadata (id, legacyId, queryName, severity, platform, category).
 	metadataDefaultKeys = 6
@@ -53,14 +57,23 @@ type analyzeRule struct {
 	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
+// analyzeLibrary is one shared Rego module supplied by the caller. Callers use
+// the canonical lowercase name of either "common" or a rule platform as ID.
+type analyzeLibrary struct {
+	ID        string `json:"id"`
+	Content   string `json:"content"`
+	InputData string `json:"inputData,omitempty"`
+}
+
 // analyzeRequest is the body of POST /ide/v1/iac/analyze. Content is raw (not
-// base64). Rules are pushed by the extension; an empty list falls back to the
-// embedded corpus. Config is the raw YAML of the unified config's iac section.
+// base64). Rules and their supporting libraries are pushed by the extension.
+// Config is the raw YAML of the unified config's iac section.
 type analyzeRequest struct {
-	Files    []analyzeFile `json:"files"`
-	Rules    []analyzeRule `json:"rules"`
-	Config   string        `json:"config,omitempty"`
-	Platform []string      `json:"platform,omitempty"`
+	Files     []analyzeFile    `json:"files"`
+	Rules     []analyzeRule    `json:"rules"`
+	Libraries []analyzeLibrary `json:"libraries"`
+	Config    string           `json:"config,omitempty"`
+	Platform  []string         `json:"platform,omitempty"`
 }
 
 // analyzeResponse is the body of a successful analyze. Findings are the engine's
@@ -123,8 +136,14 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 	if len(req.Files) > maxFiles {
 		return errors.New("too many files")
 	}
+	if len(req.Rules) == 0 {
+		return errors.New("at least one rule is required")
+	}
 	if len(req.Rules) > maxRules {
 		return errors.New("too many rules")
+	}
+	if err := validateLibraries(req.Libraries, req.Rules); err != nil {
+		return err
 	}
 	for _, f := range req.Files {
 		if err := validateFilePath(f.Path); err != nil {
@@ -132,6 +151,53 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 		}
 	}
 	return nil
+}
+
+func validateLibraries(libraries []analyzeLibrary, rules []analyzeRule) error {
+	if len(libraries) == 0 {
+		return errors.New("at least one library is required")
+	}
+	if len(libraries) > maxLibraries {
+		return errors.New("too many libraries")
+	}
+
+	available := make(map[string]struct{}, len(libraries))
+	for _, library := range libraries {
+		id := strings.TrimSpace(library.ID)
+		if id == "" {
+			return errors.New("empty library id")
+		}
+		if strings.TrimSpace(library.Content) == "" {
+			return errors.New("empty library content for " + library.ID)
+		}
+		if library.InputData != "" && !json.Valid([]byte(library.InputData)) {
+			return errors.New("invalid library input data for " + library.ID)
+		}
+		if _, exists := available[id]; exists {
+			return errors.New("duplicate library id: " + library.ID)
+		}
+		available[id] = struct{}{}
+	}
+	if _, ok := available["common"]; !ok {
+		return errors.New("common library is required")
+	}
+	for _, rule := range rules {
+		platform := strings.ToLower(strings.TrimSpace(rule.Platform))
+		if platform == "" {
+			return errors.New("empty platform for rule " + rule.ID)
+		}
+		if _, ok := available[platform]; !ok {
+			return errors.New("library is required for rule platform: " + rule.Platform)
+		}
+	}
+	return nil
+}
+
+func normalizeLibraryInputData(inputData string) string {
+	if inputData == "" {
+		return emptyInputData
+	}
+	return inputData
 }
 
 // validateFilePath rejects paths that are empty, absolute, contain a NUL byte,
@@ -188,8 +254,6 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		CloudProvider:    []string{""},
 		Path:             memfs.Paths(),
 		RepoPath:         "", // no git in server mode
-		QueriesPath:      []string{s.cfg.QueriesPath},
-		LibrariesPath:    s.cfg.LibrariesPath,
 		PreviewLines:     3,
 		Platform:         plats,
 		DisableSecrets:   true,
@@ -212,7 +276,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	client, err := scan.NewClient(ctx, params, &consolePrinter.Printer{},
 		scan.WithFS(memfs),
 		scan.WithInMemoryScan(memfs.Paths()),
-		scan.WithQuerySourceFactory(s.querySourceFactory(params, req.Rules)),
+		scan.WithQuerySourceFactory(querySourceFactory(req.Rules, req.Libraries)),
 	)
 	if err != nil {
 		return nil, err
@@ -243,29 +307,24 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	return resp, nil
 }
 
-// querySourceFactory returns a factory that serves the request's rules (with
-// libraries loaded from the embedded corpus). When no rules are pushed it falls
-// back to the filesystem corpus directly.
-// Libraries are fetched from the backend unless --libraries-path was explicitly set.
-func (s *Server) querySourceFactory(
-	params *scan.Parameters, rules []analyzeRule,
-) func(context.Context, []string) (source.QueriesSource, error) {
-	return func(ctx context.Context, plats []string) (source.QueriesSource, error) {
-		fsSource := source.NewFilesystemSource(ctx, params.QueriesPath, plats,
-			params.CloudProvider, params.LibrariesPath, params.ExperimentalQueries)
-
-		if len(rules) == 0 {
-			return source.NewFilesystemSourceWithLibraryOverride(fsSource, s.libSource), nil
-		}
-		return &requestQuerySource{queries: toQueryMetadata(rules), libraries: s.libSource}, nil
+// querySourceFactory returns a factory that serves rules and libraries only
+// from the analyze request.
+func querySourceFactory(rules []analyzeRule, libraries []analyzeLibrary) func(
+	context.Context, []string,
+) (source.QueriesSource, error) {
+	return func(context.Context, []string) (source.QueriesSource, error) {
+		return &requestQuerySource{
+			queries:   toQueryMetadata(rules),
+			libraries: toRegoLibraries(libraries),
+		}, nil
 	}
 }
 
-// requestQuerySource serves the request's rules as queries while delegating
-// library loading to the embedded filesystem source.
+// requestQuerySource serves the request's rules and libraries without disk or
+// network access.
 type requestQuerySource struct {
 	queries   []model.QueryMetadata
-	libraries source.QueriesSource
+	libraries map[string]source.RegoLibraries
 }
 
 func (r *requestQuerySource) GetQueries(ctx context.Context, params *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
@@ -276,7 +335,22 @@ func (r *requestQuerySource) GetQueries(ctx context.Context, params *source.Quer
 }
 
 func (r *requestQuerySource) GetQueryLibrary(ctx context.Context, platform string) (source.RegoLibraries, error) {
-	return r.libraries.GetQueryLibrary(ctx, platform)
+	library, ok := r.libraries[strings.ToLower(platform)]
+	if !ok {
+		return source.RegoLibraries{}, errors.New("library not found in request: " + platform)
+	}
+	return library, nil
+}
+
+func toRegoLibraries(libraries []analyzeLibrary) map[string]source.RegoLibraries {
+	out := make(map[string]source.RegoLibraries, len(libraries))
+	for _, library := range libraries {
+		out[strings.TrimSpace(library.ID)] = source.RegoLibraries{
+			LibraryCode:      library.Content,
+			LibraryInputData: normalizeLibraryInputData(library.InputData),
+		}
+	}
+	return out
 }
 
 // toQueryMetadata converts request rules into engine query metadata, filling the
@@ -286,7 +360,7 @@ func toQueryMetadata(rules []analyzeRule) []model.QueryMetadata {
 	for _, rule := range rules {
 		inputData := rule.InputData
 		if inputData == "" {
-			inputData = "{}"
+			inputData = emptyInputData
 		}
 		// Copy the caller's metadata into a fresh map so this function never
 		// mutates the request value (which may be shared/read concurrently).

@@ -99,6 +99,16 @@ type QueryLoader struct {
 // safe for concurrent use.
 var preparedQueryCache sync.Map // map[uint64]*rego.PreparedEvalQuery
 
+// sharedPreparedQueryCache retains one co-compiled ruleset. A single-entry
+// cache is sufficient for the long-lived server's normal workload (the latest
+// backend rules and libraries) and bounds retained memory when rules, library
+// data, or Terraform module data changes between requests.
+var sharedPreparedQueryCache struct {
+	sync.Mutex
+	key     uint64
+	queries map[int]*rego.PreparedEvalQuery
+}
+
 // hashFields computes a fast, non-cryptographic 64-bit hash of the given strings
 // joined by a NUL separator. The NUL separator keeps the field boundaries
 // unambiguous (so e.g. ("a","bc") and ("ab","c") hash differently).
@@ -134,6 +144,33 @@ func preparedCacheKey(query *model.QueryMetadata, libBase, baseDataHash uint64) 
 	binary.LittleEndian.PutUint64(buf[0:8], libBase)
 	binary.LittleEndian.PutUint64(buf[8:16], baseDataHash)
 	_, _ = h.Write(buf[:])
+	return h.Sum64()
+}
+
+// sharedCacheKey hashes everything the co-compiled prepared queries depend on.
+// Query order is significant because the shared compiler rewrites packages to
+// data.datadog.q<index>. Library code/input and the merged base store are
+// represented by the same precomputed hashes used by the isolated cache.
+func sharedCacheKey(queries []model.QueryMetadata, libraryBases, baseDataHashes map[string]uint64) uint64 {
+	var h xxhash.Digest
+	h.Reset()
+	var words [24]byte
+	binary.LittleEndian.PutUint64(words[0:8], uint64(len(queries)))
+	_, _ = h.Write(words[0:8])
+	for i := range queries {
+		query := &queries[i]
+		_, _ = h.WriteString(query.Platform)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(query.Query)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(query.Content)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(query.InputData)
+		binary.LittleEndian.PutUint64(words[0:8], uint64(i))
+		binary.LittleEndian.PutUint64(words[8:16], libraryBases[query.Platform])
+		binary.LittleEndian.PutUint64(words[16:24], baseDataHashes[query.Platform])
+		_, _ = h.Write(words[:])
+	}
 	return h.Sum64()
 }
 
@@ -460,9 +497,17 @@ func (c *Inspector) Inspect(
 	// correctness is preserved even if shared compilation partially fails.
 	var sharedQueries map[int]*rego.PreparedEvalQuery
 	if c.disableRuleIsolation {
-		sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
+		cacheHit := false
+		if c.useRulesCache {
+			sharedQueries, cacheHit = c.QueryLoader.loadSharedQueriesCached(ctx, queries, baseStores, baseDataHashes)
+		} else {
+			sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
+		}
 		contextLogger.Info().Msgf("Rule isolation disabled: %d/%d queries served from shared compiler",
 			len(sharedQueries), len(queries))
+		if c.useRulesCache {
+			contextLogger.Info().Msgf("Shared compiler cache hit: %t", cacheHit)
+		}
 	}
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
@@ -1435,6 +1480,27 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 		}
 	}
 	return prepared
+}
+
+// loadSharedQueriesCached returns the latest matching co-compiled ruleset. The
+// lock deliberately covers a cache miss compilation so concurrent cold server
+// requests do not each build and retain an identical compiler.
+func (q *QueryLoader) loadSharedQueriesCached(ctx context.Context, queries []model.QueryMetadata,
+	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
+) (map[int]*rego.PreparedEvalQuery, bool) {
+	key := sharedCacheKey(queries, q.platformKeyBases, baseDataHashes)
+	sharedPreparedQueryCache.Lock()
+	defer sharedPreparedQueryCache.Unlock()
+	if sharedPreparedQueryCache.queries != nil && sharedPreparedQueryCache.key == key {
+		return sharedPreparedQueryCache.queries, true
+	}
+
+	prepared := q.loadSharedQueries(ctx, queries, baseStores)
+	if ctx.Err() == nil {
+		sharedPreparedQueryCache.key = key
+		sharedPreparedQueryCache.queries = prepared
+	}
+	return prepared, false
 }
 
 func parseJsonencodeHCL(ctx context.Context, input string) (ast.Value, error) {
