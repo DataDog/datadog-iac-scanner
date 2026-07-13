@@ -92,13 +92,13 @@ func Resolve(ctx context.Context, request *Request) Result {
 		fsys:           request.FS,
 		parseCache:     make(map[string]map[string]tfmodules.ParsedModule),
 	}
-	seedGroups := w.seedGroups(ctx, request.RootPaths, request.DiscoveryPaths)
+	seedGroups, repositoryGroups := w.seedGroups(ctx, request.RootPaths, request.DiscoveryPaths)
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(max(1, runtime.GOMAXPROCS(0)*seedGroupConcurrencyFactor))
 	for seedDir, allowedFiles := range seedGroups {
 		g.Go(func() error {
-			w.traverse(gCtx, seedDir, allowedFiles, seedGroups, 0, false)
+			w.traverse(gCtx, seedDir, allowedFiles, repositoryGroups, 0, false)
 			return nil
 		})
 	}
@@ -260,7 +260,7 @@ func withParseSlot(ctx context.Context, fn func()) {
 
 func (w *walker) seedGroups(
 	ctx context.Context, paths, discoveryPaths []string,
-) map[string]map[string]bool {
+) (seedGroups, repositoryGroups map[string]map[string]bool) {
 	allowedByDir := make(map[string]map[string]bool)
 	for _, path := range discoveryPaths {
 		if !isTerraformFile(path) {
@@ -300,10 +300,14 @@ func (w *walker) seedGroups(
 			}
 		}
 	}
-	for child := range w.localModuleChildDirs(ctx, groups) {
-		delete(groups, child)
+	seeds := make(map[string]map[string]bool, len(groups))
+	for dir, allowedFiles := range groups {
+		seeds[dir] = allowedFiles
 	}
-	return groups
+	for child := range w.localModuleChildDirs(ctx, groups) {
+		delete(seeds, child)
+	}
+	return seeds, groups
 }
 
 func pathContainsDir(root, dir string) bool {

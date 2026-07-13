@@ -69,6 +69,27 @@ func TestResolveCleanupIsIdempotent(t *testing.T) {
 	require.Equal(t, int32(1), cleanupCalls.Load())
 }
 
+func TestResolveTraversesLocalModuleToRemoteModule(t *testing.T) {
+	root, wrapperDir, remoteDir := writeNestedModuleGraphFixture(t)
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths: []string{root},
+		DiscoveryPaths: []string{
+			filepath.Join(root, "main.tf"),
+			filepath.Join(wrapperDir, "main.tf"),
+		},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath: remoteDir,
+		}},
+		MaxDepth: 3,
+	})
+
+	require.Equal(t, []string{filepath.Join(remoteDir, "main.tf")}, result.ScanPaths)
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, "registry.example.com/acme/network/aws", result.Modules[0].Source)
+	require.Equal(t, wrapperDir, result.Modules[0].CallerRoot)
+}
+
 func writeModuleGraphFixture(t *testing.T) (string, string) {
 	t.Helper()
 	base := t.TempDir()
@@ -86,4 +107,29 @@ module "network" {
 resource "aws_vpc" "this" {}
 `), 0o644))
 	return root, moduleDir
+}
+
+func writeNestedModuleGraphFixture(t *testing.T) (string, string, string) {
+	t.Helper()
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	wrapperDir := filepath.Join(root, "modules", "wrapper")
+	remoteDir := filepath.Join(base, "remote")
+	require.NoError(t, os.MkdirAll(wrapperDir, 0o755))
+	require.NoError(t, os.MkdirAll(remoteDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "wrapper" {
+  source = "./modules/wrapper"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(wrapperDir, "main.tf"), []byte(`
+module "network" {
+  source  = "registry.example.com/acme/network/aws"
+  version = "1.2.3"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(remoteDir, "main.tf"), []byte(`
+resource "aws_vpc" "this" {}
+`), 0o644))
+	return root, wrapperDir, remoteDir
 }
