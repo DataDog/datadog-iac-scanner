@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/internal/modulesource"
 )
 
 func TestBareGitResolverRejectsDisallowedHost(t *testing.T) {
@@ -78,7 +79,7 @@ func TestParseGitGetterSourceHTTPSGitHubToSSH(t *testing.T) {
 
 func TestNormalizeSCPGitSource(t *testing.T) {
 	in := "git@github.com:DataDog/vault-platform//terraform/aws/external-iam?ref=v1.8.2-17"
-	got, ok := normalizeSCPGitSource(in)
+	got, ok := modulesource.NormalizeGit(in)
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -129,7 +130,7 @@ func TestNormalizeHTTPGitToSSH(t *testing.T) {
 
 func TestNormalizeImplicitGitHubSource(t *testing.T) {
 	in := "github.com/oracle-quickstart/terraform-oci-cis-landing-zone-iam//identity-domains?ref=release-0.3.0"
-	got, ok := normalizeImplicitGitHubSource(in)
+	got, ok := modulesource.NormalizeGit(in)
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -137,7 +138,7 @@ func TestNormalizeImplicitGitHubSource(t *testing.T) {
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
-	_, ok = normalizeImplicitGitHubSource("aws-ia/eks-blueprints-addon/aws")
+	_, ok = modulesource.NormalizeGit("aws-ia/eks-blueprints-addon/aws")
 	if ok {
 		t.Error("registry short form should not match")
 	}
