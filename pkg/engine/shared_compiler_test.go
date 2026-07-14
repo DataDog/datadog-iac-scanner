@@ -9,8 +9,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -211,6 +213,17 @@ func clearSharedPreparedQueryCache() {
 	sharedPreparedQueryCache.Unlock()
 }
 
+type observedDoneContext struct {
+	context.Context
+	observed chan struct{}
+	once     sync.Once
+}
+
+func (c *observedDoneContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.observed) })
+	return c.Context.Done()
+}
+
 func TestLoadSharedQueriesCache_ReusesAndInvalidates(t *testing.T) {
 	clearSharedPreparedQueryCache()
 
@@ -219,21 +232,25 @@ func TestLoadSharedQueriesCache_ReusesAndInvalidates(t *testing.T) {
 	loader := newCacheTestLoader(t, platform, []model.QueryMetadata{query})
 	stores, hashes := baseStoresFor(platform, "{}")
 
-	first, hit := loader.loadSharedQueriesCached(t.Context(), []model.QueryMetadata{query}, stores, hashes)
+	first, hit, err := loader.loadSharedQueriesCached(t.Context(), []model.QueryMetadata{query}, stores, hashes)
+	require.NoError(t, err)
 	require.False(t, hit)
 	require.Contains(t, first, 0)
-	second, hit := loader.loadSharedQueriesCached(t.Context(), []model.QueryMetadata{query}, stores, hashes)
+	second, hit, err := loader.loadSharedQueriesCached(t.Context(), []model.QueryMetadata{query}, stores, hashes)
+	require.NoError(t, err)
 	require.True(t, hit)
 	require.Same(t, first[0], second[0])
 
 	changedStores, changedHashes := baseStoresFor(platform, `{"library_version":2}`)
-	third, hit := loader.loadSharedQueriesCached(
+	third, hit, err := loader.loadSharedQueriesCached(
 		t.Context(), []model.QueryMetadata{query}, changedStores, changedHashes)
+	require.NoError(t, err)
 	require.False(t, hit)
 	require.Contains(t, third, 0)
 	require.NotSame(t, first[0], third[0])
-	fourth, hit := loader.loadSharedQueriesCached(
+	fourth, hit, err := loader.loadSharedQueriesCached(
 		t.Context(), []model.QueryMetadata{query}, changedStores, changedHashes)
+	require.NoError(t, err)
 	require.True(t, hit)
 	require.Same(t, third[0], fourth[0])
 }
@@ -248,16 +265,20 @@ func TestLoadSharedQueriesCache_ConcurrentReuse(t *testing.T) {
 
 	const workers = 8
 	start := make(chan struct{})
-	results := make(chan *rego.PreparedEvalQuery, workers)
+	type workerResult struct {
+		prepared *rego.PreparedEvalQuery
+		err      error
+	}
+	results := make(chan workerResult, workers)
 	var wg sync.WaitGroup
 	for range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-start
-			prepared, _ := loader.loadSharedQueriesCached(
+			prepared, _, err := loader.loadSharedQueriesCached(
 				t.Context(), []model.QueryMetadata{query}, stores, hashes)
-			results <- prepared[0]
+			results <- workerResult{prepared: prepared[0], err: err}
 		}()
 	}
 	close(start)
@@ -265,14 +286,61 @@ func TestLoadSharedQueriesCache_ConcurrentReuse(t *testing.T) {
 	close(results)
 
 	var first *rego.PreparedEvalQuery
-	for prepared := range results {
-		require.NotNil(t, prepared)
+	for result := range results {
+		require.NoError(t, result.err)
+		require.NotNil(t, result.prepared)
 		if first == nil {
-			first = prepared
+			first = result.prepared
 			continue
 		}
-		require.Same(t, first, prepared)
+		require.Same(t, first, result.prepared)
 	}
+}
+
+func TestLoadSharedQueriesCache_CanceledWaiterReturns(t *testing.T) {
+	clearSharedPreparedQueryCache()
+
+	platform := "terraform"
+	query := staticQuery(platform, "static_rule", "DatadogPolicy contains result if { result := \"x\" }\n")
+	loader := newCacheTestLoader(t, platform, []model.QueryMetadata{query})
+	stores, hashes := baseStoresFor(platform, "{}")
+	key := sharedCacheKey([]model.QueryMetadata{query}, loader.platformKeyBases, hashes)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	flightDone := make(chan struct{})
+	go func() {
+		defer close(flightDone)
+		_, _, _ = sharedPreparedQueryCache.flight.Do(strconv.FormatUint(key, 16), func() (any, error) {
+			close(started)
+			<-release
+			return sharedQueryCacheResult{queries: map[int]*rego.PreparedEvalQuery{}}, nil
+		})
+	}()
+	<-started
+
+	baseCtx, cancel := context.WithCancel(t.Context())
+	ctx := &observedDoneContext{Context: baseCtx, observed: make(chan struct{})}
+	returned := make(chan error, 1)
+	go func() {
+		_, _, err := loader.loadSharedQueriesCached(ctx, []model.QueryMetadata{query}, stores, hashes)
+		returned <- err
+	}()
+	<-ctx.observed
+	cancel()
+
+	var waiterErr error
+	timedOut := false
+	select {
+	case waiterErr = <-returned:
+	case <-time.After(time.Second):
+		timedOut = true
+	}
+	close(release)
+	<-flightDone
+
+	require.False(t, timedOut, "canceled waiter remained blocked on the shared compilation")
+	require.ErrorIs(t, waiterErr, context.Canceled)
 }
 
 // summarize reduces findings to a comparable, order-independent multiset of the

@@ -507,7 +507,11 @@ func (c *Inspector) Inspect(
 	if c.disableRuleIsolation {
 		cacheHit := false
 		if c.useRulesCache {
-			sharedQueries, cacheHit = c.QueryLoader.loadSharedQueriesCached(ctx, queries, baseStores, baseDataHashes)
+			sharedQueries, cacheHit, err = c.QueryLoader.loadSharedQueriesCached(
+				ctx, queries, baseStores, baseDataHashes)
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
 		}
@@ -1495,17 +1499,24 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 // concurrently. The mutex protects only the bounded single-entry cache.
 func (q *QueryLoader) loadSharedQueriesCached(ctx context.Context, queries []model.QueryMetadata,
 	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
-) (map[int]*rego.PreparedEvalQuery, bool) {
+) (preparedQueries map[int]*rego.PreparedEvalQuery, cacheHit bool, err error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
 	key := sharedCacheKey(queries, q.platformKeyBases, baseDataHashes)
 	sharedPreparedQueryCache.Lock()
 	if sharedPreparedQueryCache.queries != nil && sharedPreparedQueryCache.key == key {
 		cached := sharedPreparedQueryCache.queries
 		sharedPreparedQueryCache.Unlock()
-		return cached, true
+		return cached, true, nil
 	}
 	sharedPreparedQueryCache.Unlock()
 
-	value, _, shared := sharedPreparedQueryCache.flight.Do(strconv.FormatUint(key, 16), func() (any, error) {
+	// A compilation can be shared by several requests, so it must not inherit
+	// cancellation from whichever request happens to become the singleflight
+	// leader. Each caller still stops waiting through the select below.
+	compileCtx := context.WithoutCancel(ctx)
+	resultCh := sharedPreparedQueryCache.flight.DoChan(strconv.FormatUint(key, 16), func() (any, error) {
 		// Another caller may have populated the cache between the initial check
 		// and this keyed singleflight call.
 		sharedPreparedQueryCache.Lock()
@@ -1516,17 +1527,24 @@ func (q *QueryLoader) loadSharedQueriesCached(ctx context.Context, queries []mod
 		}
 		sharedPreparedQueryCache.Unlock()
 
-		prepared := q.loadSharedQueries(ctx, queries, baseStores)
-		if ctx.Err() == nil {
-			sharedPreparedQueryCache.Lock()
-			sharedPreparedQueryCache.key = key
-			sharedPreparedQueryCache.queries = prepared
-			sharedPreparedQueryCache.Unlock()
-		}
+		prepared := q.loadSharedQueries(compileCtx, queries, baseStores)
+		sharedPreparedQueryCache.Lock()
+		sharedPreparedQueryCache.key = key
+		sharedPreparedQueryCache.queries = prepared
+		sharedPreparedQueryCache.Unlock()
 		return sharedQueryCacheResult{queries: prepared}, nil
 	})
-	result := value.(sharedQueryCacheResult)
-	return result.queries, result.cacheHit || shared
+
+	select {
+	case <-ctx.Done():
+		return nil, false, ctx.Err()
+	case call := <-resultCh:
+		if call.Err != nil {
+			return nil, false, call.Err
+		}
+		result := call.Val.(sharedQueryCacheResult)
+		return result.queries, result.cacheHit || call.Shared, nil
+	}
 }
 
 func parseJsonencodeHCL(ctx context.Context, input string) (ast.Value, error) {
