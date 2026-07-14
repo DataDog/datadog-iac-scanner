@@ -493,7 +493,7 @@ func (c *Inspector) Inspect(
 	// same payload for every PrepareForEval call. The per-platform data hash is
 	// folded into each compiled-query cache key so a compiled query is only
 	// reused by a later scan whose base data is byte-identical.
-	baseInputData := c.QueryLoader.precomputeBaseInputData(ctx, enrichedModules)
+	baseInputData := c.QueryLoader.precomputeBaseInputData(enrichedModules)
 	baseStores := precomputeBaseStores(baseInputData)
 	baseDataHashes := hashBaseInputData(baseInputData)
 
@@ -1233,25 +1233,24 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 
 // buildMergedInputData merges the platform library, common library and (when
 // present) module input data into a single JSON document for a query.
-func (q *QueryLoader) buildMergedInputData(ctx context.Context, query *model.QueryMetadata,
+func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
 	modules []tfmodules.ParsedModule) (string, error) {
-	contextLogger := logger.FromContext(ctx)
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
 	if !ok {
 		return "", errors.New("failed to get platform library")
 	}
 	mergedInputData, err := source.MergeInputData(platformGeneralQuery.LibraryInputData, query.InputData)
 	if err != nil {
-		contextLogger.Debug().Msgf("Could not merge %s library input data", query.Platform)
+		return "", errors.Wrapf(err, "could not merge %s library input data", query.Platform)
 	}
 	mergedInputData, err = source.MergeInputData(q.commonLibrary.LibraryInputData, mergedInputData)
 	if err != nil {
-		contextLogger.Debug().Msg("Could not merge common library input data")
+		return "", errors.Wrap(err, "could not merge common library input data")
 	}
 	if modules != nil {
 		mergedInputData, err = source.MergeModulesData(modules, mergedInputData)
 		if err != nil {
-			contextLogger.Debug().Msg("Could not merge modules input data")
+			return "", errors.Wrap(err, "could not merge modules input data")
 		}
 	}
 	return mergedInputData, nil
@@ -1261,11 +1260,10 @@ func (q *QueryLoader) buildMergedInputData(ctx context.Context, query *model.Que
 // queries that carry no custom InputData. The common/platform library data and
 // the module payload are identical across such queries, so doing this once
 // avoids re-serializing the (potentially large) module set for every query.
-func (q *QueryLoader) precomputeBaseInputData(ctx context.Context,
-	modules []tfmodules.ParsedModule) map[string]string {
+func (q *QueryLoader) precomputeBaseInputData(modules []tfmodules.ParsedModule) map[string]string {
 	base := make(map[string]string, len(q.platformLibraries))
 	for platform := range q.platformLibraries {
-		data, err := q.buildMergedInputData(ctx, &model.QueryMetadata{Platform: platform}, modules)
+		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform}, modules)
 		if err != nil {
 			continue
 		}
@@ -1332,7 +1330,7 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		if useCache {
 			store = prebuilt
 		} else {
-			mergedInputData, err := q.buildMergedInputData(ctx, query, modules)
+			mergedInputData, err := q.buildMergedInputData(query, modules)
 			if err != nil {
 				return nil, err
 			}

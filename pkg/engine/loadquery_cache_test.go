@@ -57,6 +57,45 @@ func clearPreparedCache() {
 	preparedQueryCache.Range(func(k, _ any) bool { preparedQueryCache.Delete(k); return true })
 }
 
+func TestBuildMergedInputData_PropagatesLibraryErrors(t *testing.T) {
+	platform := "terraform"
+	query := staticQuery(platform, "test-rule", "")
+	validLibrary := source.RegoLibraries{LibraryInputData: "{}"}
+
+	tests := []struct {
+		name       string
+		common     source.RegoLibraries
+		platform   source.RegoLibraries
+		wantErrMsg string
+	}{
+		{
+			name:       "platform library",
+			common:     validLibrary,
+			platform:   source.RegoLibraries{LibraryInputData: "null"},
+			wantErrMsg: "could not merge terraform library input data",
+		},
+		{
+			name:       "common library",
+			common:     source.RegoLibraries{LibraryInputData: "null"},
+			platform:   validLibrary,
+			wantErrMsg: "could not merge common library input data",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := QueryLoader{
+				commonLibrary: tt.common,
+				platformLibraries: map[string]source.RegoLibraries{
+					platform: tt.platform,
+				},
+			}
+			merged, err := loader.buildMergedInputData(&query, nil)
+			require.ErrorContains(t, err, tt.wantErrMsg)
+			require.Empty(t, merged)
+		})
+	}
+}
+
 // TestLoadQuery_CacheGate is the core of the --use-rules-cache wiring: with the
 // cache disabled, two loads of the same query must compile fresh each time; with
 // it enabled, the second load must return the cached pointer.
