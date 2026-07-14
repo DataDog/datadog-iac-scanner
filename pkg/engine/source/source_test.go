@@ -202,6 +202,8 @@ func TestMergeInputData(t *testing.T) {
 		{name: "Reject null custom", defaultData: `{"test":true}`, customData: "null", wantError: true},
 		{name: "Reject array", defaultData: "[]", customData: "{}", wantError: true},
 		{name: "Reject scalar", defaultData: "{}", customData: "1", wantError: true},
+		{name: "Reject malformed default with empty custom", defaultData: "{", customData: "{}", wantError: true},
+		{name: "Reject malformed custom with empty default", defaultData: "{}", customData: "{", wantError: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

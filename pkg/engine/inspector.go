@@ -383,10 +383,9 @@ type QueryResult struct {
 	queryID         int
 }
 
-// evalQuery loads and evaluates a single query, returning its result. A load
-// failure yields an empty result (the query is skipped, matching the previous
-// behavior); an eval failure yields a result carrying the error so the serial
-// aggregation can record it.
+// evalQuery loads and evaluates a single query, returning its result. Load and
+// evaluation failures both carry their error so the serial aggregation records
+// them in FailedQueries without terminating the rest of the scan.
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
 	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
@@ -405,7 +404,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	loadDur := time.Since(loadStart)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msgf("failed to load query %s", queries[queryID].Query)
-		return QueryResult{queryID: queryID}
+		return QueryResult{err: err, queryID: queryID}
 	}
 
 	query := &PreparedQuery{
@@ -505,21 +504,19 @@ func (c *Inspector) Inspect(
 	// correctness is preserved even if shared compilation partially fails.
 	var sharedQueries map[int]*rego.PreparedEvalQuery
 	if c.disableRuleIsolation {
-		cacheHit := false
 		if c.useRulesCache {
+			var cacheHit bool
 			sharedQueries, cacheHit, err = c.QueryLoader.loadSharedQueriesCached(
 				ctx, queries, baseStores, baseDataHashes)
 			if err != nil {
 				return nil, err
 			}
+			contextLogger.Info().Msgf("Shared compiler cache hit: %t", cacheHit)
 		} else {
 			sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
 		}
 		contextLogger.Info().Msgf("Rule isolation disabled: %d/%d queries served from shared compiler",
 			len(sharedQueries), len(queries))
-		if c.useRulesCache {
-			contextLogger.Info().Msgf("Shared compiler cache hit: %t", cacheHit)
-		}
 	}
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,

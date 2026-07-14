@@ -19,6 +19,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	engineSource "github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
+	"github.com/rs/zerolog"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -280,12 +283,24 @@ func TestValidateAnalyzeRequest_Libraries(t *testing.T) {
 		Files: []analyzeFile{{Path: "main.tf", Content: "resource"}},
 		Rules: []analyzeRule{{ID: "rule", Platform: "Terraform", Content: "package datadog"}},
 	}
+	tooManyLibraries := make([]analyzeLibrary, maxLibraries+1)
 	tests := []struct {
 		name      string
 		libraries []analyzeLibrary
 		wantError string
 	}{
 		{name: "missing", wantError: "at least one library is required"},
+		{name: "too many", libraries: tooManyLibraries, wantError: "too many libraries"},
+		{
+			name:      "empty id",
+			libraries: []analyzeLibrary{{Content: "package generic.common"}},
+			wantError: "empty library id",
+		},
+		{
+			name:      "empty content",
+			libraries: []analyzeLibrary{{ID: "common", Content: " "}},
+			wantError: "empty library content for common",
+		},
 		{
 			name: "missing common",
 			libraries: []analyzeLibrary{
@@ -353,6 +368,34 @@ func TestValidateAnalyzeRequest_Libraries(t *testing.T) {
 	}
 }
 
+func TestValidateAnalyzeRequest_RuleBoundaries(t *testing.T) {
+	validRequest := func() analyzeRequest {
+		return analyzeRequest{
+			Files:     []analyzeFile{{Path: "main.tf", Content: "resource"}},
+			Rules:     []analyzeRule{{ID: "test-rule", Platform: "terraform", Content: "package datadog"}},
+			Libraries: testLibraries(true),
+		}
+	}
+
+	t.Run("too many rules", func(t *testing.T) {
+		req := validRequest()
+		req.Rules = make([]analyzeRule, maxRules+1)
+		err := validateAnalyzeRequest(&req, defaultMaxFiles)
+		if err == nil || err.Error() != "too many rules" {
+			t.Fatalf("validateAnalyzeRequest() error = %v", err)
+		}
+	})
+
+	t.Run("empty rule platform", func(t *testing.T) {
+		req := validRequest()
+		req.Rules[0].Platform = " "
+		err := validateAnalyzeRequest(&req, defaultMaxFiles)
+		if err == nil || err.Error() != "empty platform for rule test-rule" {
+			t.Fatalf("validateAnalyzeRequest() error = %v", err)
+		}
+	})
+}
+
 func TestValidateAnalyzeRequest_RuleInputDataMustBeObject(t *testing.T) {
 	for _, inputData := range []string{"null", "[]", "1", `"value"`} {
 		t.Run(inputData, func(t *testing.T) {
@@ -391,6 +434,40 @@ func TestAnalyze_NormalizesRuleAndScanPlatforms(t *testing.T) {
 	out, _ := postAnalyze(t, s, req)
 	if len(out.Findings) != 1 || out.Findings[0].QueryID != syntheticRuleID {
 		t.Fatalf("normalized platform request returned findings %+v", out.Findings)
+	}
+}
+
+func TestRequestQuerySource_MissingLibrary(t *testing.T) {
+	source := &requestQuerySource{libraries: map[string]engineSource.RegoLibraries{
+		"common": {},
+	}}
+	_, err := source.GetQueryLibrary(t.Context(), "terraform")
+	if err == nil || err.Error() != "library not found in request: terraform" {
+		t.Fatalf("GetQueryLibrary() error = %v", err)
+	}
+}
+
+func TestAnalyze_MissingPlatformLibraryReportedAsFailedQuery(t *testing.T) {
+	s := newTestServer(t)
+	req := analyzeRequest{
+		Files: []analyzeFile{{
+			Path:    "infra/main.tf",
+			Content: `resource "test_widget" "example" {}`,
+		}},
+		Rules: []analyzeRule{syntheticRule()},
+		Libraries: []analyzeLibrary{
+			{ID: "common", Content: "package generic.common\nimport rego.v1"},
+		},
+		Platform: []string{"terraform"},
+	}
+
+	out, err := s.analyze(t.Context(), &req)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	failed, ok := out.FailedQueries[syntheticRuleID]
+	if !ok || !strings.Contains(failed, "failed to get platform library") {
+		t.Fatalf("failed queries = %v", out.FailedQueries)
 	}
 }
 
@@ -442,6 +519,39 @@ func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
 	}
 	if got := requests.Load(); got != 0 {
 		t.Fatalf("server mode made %d outbound HTTP requests, want 0", got)
+	}
+}
+
+func TestAnalyze_LogsFailedQueryCount(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticRule()
+	rule.Content = `package datadog
+
+import rego.v1
+
+DatadogPolicy contains "invalid-result"`
+	req := analyzeRequest{
+		Files: []analyzeFile{{
+			Path:    "infra/main.tf",
+			Content: `resource "test_widget" "example" {}`,
+		}},
+		Rules:     []analyzeRule{rule},
+		Libraries: testLibraries(true),
+		Platform:  []string{"terraform"},
+	}
+
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(t.Context())
+	out, err := s.analyze(ctx, &req)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	if len(out.FailedQueries) != 1 {
+		t.Fatalf("failed queries = %v, want one", out.FailedQueries)
+	}
+	if !strings.Contains(logs.String(), `"level":"warn"`) ||
+		!strings.Contains(logs.String(), `"failed_query_count":1`) {
+		t.Fatalf("missing failed-query warning in logs: %s", logs.String())
 	}
 }
 

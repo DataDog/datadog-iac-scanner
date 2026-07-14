@@ -202,7 +202,7 @@ func validateLibraries(libraries []analyzeLibrary, rules []analyzeRule) error {
 	return nil
 }
 
-func normalizeLibraryInputData(inputData string) string {
+func normalizeInputData(inputData string) string {
 	if inputData == "" {
 		return emptyInputData
 	}
@@ -250,6 +250,7 @@ func validateFilePath(p string) error {
 // network access. It returns the findings plus the list of files the engine
 // referenced but did not receive.
 func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResponse, error) {
+	contextLogger := logger.FromContext(ctx)
 	files := make(map[string][]byte, len(req.Files))
 	for _, f := range req.Files {
 		files[f.Path] = []byte(f.Content)
@@ -326,6 +327,9 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		resp.Findings = res.Results
 	}
 	if len(res.FailedQueries) > 0 {
+		contextLogger.Warn().
+			Int("failed_query_count", len(res.FailedQueries)).
+			Msg("IaC analysis completed with failed queries")
 		resp.FailedQueries = make(map[string]string, len(res.FailedQueries))
 		for q, e := range res.FailedQueries {
 			resp.FailedQueries[q] = e.Error()
@@ -374,7 +378,7 @@ func toRegoLibraries(libraries []analyzeLibrary) map[string]source.RegoLibraries
 	for _, library := range libraries {
 		out[library.ID] = source.RegoLibraries{
 			LibraryCode:      library.Content,
-			LibraryInputData: normalizeLibraryInputData(library.InputData),
+			LibraryInputData: normalizeInputData(library.InputData),
 		}
 	}
 	return out
@@ -386,10 +390,6 @@ func toQueryMetadata(rules []analyzeRule) []model.QueryMetadata {
 	out := make([]model.QueryMetadata, 0, len(rules))
 	for _, rule := range rules {
 		platform := normalizePlatform(rule.Platform)
-		inputData := rule.InputData
-		if inputData == "" {
-			inputData = emptyInputData
-		}
 		// Copy the caller's metadata into a fresh map so this function never
 		// mutates the request value (which may be shared/read concurrently).
 		metadata := make(map[string]any, len(rule.Metadata)+metadataDefaultKeys)
@@ -404,7 +404,7 @@ func toQueryMetadata(rules []analyzeRule) []model.QueryMetadata {
 		out = append(out, model.QueryMetadata{
 			Query:     rule.ID,
 			Content:   rule.Content,
-			InputData: inputData,
+			InputData: normalizeInputData(rule.InputData),
 			Platform:  platform,
 			Metadata:  metadata,
 		})
