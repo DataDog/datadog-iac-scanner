@@ -24,6 +24,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/internal/modulesource"
 )
 
 // dirPerm is the permission mode used for all directories created by resolvers.
@@ -483,58 +484,6 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 	return Resolution{LocalPath: dir}, nil
 }
 
-// normalizeSCPGitSource converts SCP-form git sources to git::ssh://git@... so
-// BareGitResolver can clone them using the same SSH credentials that would be
-// used by a native git client.  HTTPS is intentionally avoided here because SCP
-// sources typically point at private repositories that require SSH auth.
-//
-//	"git@github.com:org/repo//subdir?ref=tag"
-//	→ "git::ssh://git@github.com/org/repo//subdir?ref=tag", true
-//
-// Returns ("", false) if source is not SCP form.
-func normalizeSCPGitSource(source string) (string, bool) {
-	// Must not already carry a getter scheme prefix.
-	if strings.Contains(source, "::") {
-		return "", false
-	}
-	// SCP form: [user@]host:path — @ precedes a colon that comes before any slash.
-	atIdx := strings.IndexByte(source, '@')
-	if atIdx < 0 {
-		return "", false
-	}
-	user := source[:atIdx]   // e.g. "git"
-	rest := source[atIdx+1:] // host:org/repo//subdir?ref=tag
-	colonIdx := strings.IndexByte(rest, ':')
-	if colonIdx < 0 {
-		return "", false
-	}
-	// Ensure the colon is a host separator, not a path colon (no slash before it).
-	if slashIdx := strings.IndexByte(rest, '/'); slashIdx >= 0 && slashIdx < colonIdx {
-		return "", false
-	}
-	host := rest[:colonIdx]
-	path := rest[colonIdx+1:] // org/repo//subdir?ref=tag
-	return "git::ssh://" + user + "@" + host + "/" + path, true
-}
-
-// normalizeImplicitGitHubSource converts Terraform's implicit GitHub module paths to git::ssh://.
-//
-//	"github.com/org/repo//subdir?ref=tag"
-//	→ "git::ssh://git@github.com/org/repo//subdir?ref=tag", true
-func normalizeImplicitGitHubSource(source string) (string, bool) {
-	if strings.Contains(source, "::") {
-		return "", false
-	}
-	if !strings.HasPrefix(source, "github.com/") {
-		return "", false
-	}
-	// Require a subdir marker or ref= so registry short forms are not matched.
-	if !strings.Contains(source, "//") && !strings.Contains(source, "ref=") {
-		return "", false
-	}
-	return "git::ssh://git@" + source, true
-}
-
 // normalizeHTTPGitToSSH rewrites git::http(s)://host/... to git::ssh://git@host/...
 // so git clones use SSH credentials instead of unauthenticated HTTPS.
 func normalizeHTTPGitToSSH(source string) (string, bool) {
@@ -557,16 +506,11 @@ func normalizeHTTPGitToSSH(source string) (string, bool) {
 // normalizeGitModuleSourceForGetter applies SCP and implicit GitHub normalization
 // without rewriting git::https sources to SSH (go-getter should keep HTTPS).
 func normalizeGitModuleSourceForGetter(source string) (string, bool) {
-	if source == "" {
-		return "", false
+	normalized, ok := modulesource.NormalizeGit(source)
+	if !ok || normalized == strings.TrimSpace(source) {
+		return source, false
 	}
-	original := source
-	if normalized, ok := normalizeSCPGitSource(source); ok {
-		source = normalized
-	} else if normalized, ok := normalizeImplicitGitHubSource(source); ok {
-		source = normalized
-	}
-	return source, source != original
+	return normalized, true
 }
 
 // normalizeGitModuleSource applies all git source normalizations used by resolvers.

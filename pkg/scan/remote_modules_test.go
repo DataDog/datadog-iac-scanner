@@ -3,8 +3,11 @@ package scan
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	engineprovider "github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -39,6 +42,86 @@ func TestRemoteModulesManifestEnablesOfflineModuleInstantiation(t *testing.T) {
 	results := executeRemoteModuleScan(t, params)
 	require.NotEmpty(t, results.Results)
 	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
+}
+
+func TestRemoteModulesManifestSkipsMissingEntryWithoutNetworkFallback(t *testing.T) {
+	root := t.TempDir()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	t.Cleanup(server.Close)
+
+	rootFile := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootFile, []byte(`
+resource "aws_vpc" "repository" {
+  cidr_block = "10.0.0.0/16"
+}
+module "missing" {
+  source = "`+server.URL+`/module.zip"
+}
+`), 0o644))
+	manifestPath := filepath.Join(root, "modules.json")
+	data, err := json.Marshal(resolver.Manifest{Modules: map[string]resolver.ManifestEntry{}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
+
+	params := remoteModuleScanParams(root)
+	params.EnableRemoteModules = true
+	params.RemoteModulesManifestPath = manifestPath
+	results := executeRemoteModuleScan(t, params)
+
+	require.Len(t, results.Results, 1)
+	require.Equal(t, filepath.ToSlash(rootFile), filepath.ToSlash(results.Results[0].FileName))
+	require.Zero(t, requests.Load())
+}
+
+func TestRemoteModulesManifestSkipsUnresolvedEntryAndIncludesResolvedSibling(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "repository")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	moduleDir := filepath.Join(base, "resolved-vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	moduleFile := filepath.Join(moduleDir, "main.tf")
+	require.NoError(t, os.WriteFile(moduleFile, []byte(`
+resource "aws_vpc" "resolved" {
+  cidr_block = "10.0.0.0/16"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "resolved" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "1.0.0"
+}
+module "unresolved" {
+  source  = "terraform-aws-modules/subnets/aws"
+  version = "1.0.0"
+}
+`), 0o644))
+
+	manifestPath := filepath.Join(base, "modules.json")
+	data, err := json.Marshal(resolver.Manifest{
+		Dir: base,
+		Modules: map[string]resolver.ManifestEntry{
+			"terraform-aws-modules/vpc/aws@1.0.0": {
+				LocalPath: moduleDir,
+				Version:   "1.0.0",
+				Outcome:   "resolved",
+			},
+			"terraform-aws-modules/subnets/aws@1.0.0": {
+				Outcome: "unresolved",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
+
+	params := remoteModuleScanParams(root)
+	params.RemoteModulesManifestPath = manifestPath
+	results := executeRemoteModuleScan(t, params)
+
+	require.Len(t, results.Results, 1)
+	require.Equal(t, filepath.ToSlash(moduleFile), filepath.ToSlash(results.Results[0].FileName))
 }
 
 func TestRemoteModuleMaxDepthZeroDisablesTraversal(t *testing.T) {

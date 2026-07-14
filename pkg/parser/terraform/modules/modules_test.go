@@ -536,13 +536,19 @@ func TestDetectModuleSourceTypeWithScope(t *testing.T) {
 		wantScope string
 	}{
 		{"./module", "local", ""},
-		{"git::./mod", "git", ""},
+		{"../modules/network", "local", ""},
+		{"git@github.com:DataDog/repo//module?ref=v1", "git", ""},
+		{"ssh://git@github.com/DataDog/repo//module?ref=v1", "git", ""},
+		{"git::https://github.com/DataDog/repo.git//module?ref=v1", "git", ""},
+		{"git::ssh://git@github.com/DataDog/repo//module?ref=v1", "git", ""},
+		{"github.com/DataDog/repo//module?ref=v1", "git", ""},
 		{"registry.terraform.io/org/vpc/aws", "registry", "public"},
 		{"terraform-aws-modules/vpc/aws", "registry", "public"},
 		{"terraform-aws-modules/eks/aws//modules/karpenter", "registry", "public"},
 		{"company.internal.io/infra/mod/aws", "registry", "private"},
 		{"company.internal.io/infra/mod/aws//child", "registry", "private"},
 		{"https://github.com/org/repo", "unknown", ""},
+		{"https://example.com/modules/network.tar.gz", "unknown", ""},
 		{"data_ref:aws_s3.bucket.id", "data_ref", ""},
 		{"", "unknown", ""},
 	}

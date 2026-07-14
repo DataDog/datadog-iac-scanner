@@ -57,7 +57,6 @@ func (c *Client) resolveTerraformModulesForScan(
 		MaxDepth:             c.ScanParams.ModuleMaxDepth,
 		FS:                   c.fsys,
 		CallScopedResolution: hostedMode,
-		FailOnUnresolved:     hostedMode,
 	})
 	if result.Error != nil {
 		result.Cleanup()

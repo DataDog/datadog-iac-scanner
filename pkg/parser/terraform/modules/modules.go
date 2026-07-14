@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/internal/modulesource"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
@@ -712,8 +713,7 @@ func DetectModuleSourceType(source string) (sourceType, registryScope string) {
 		return "data_ref", ""
 	}
 
-	// Recognize git-based sources
-	if strings.HasPrefix(source, "git::") {
+	if _, ok := modulesource.NormalizeGit(source); ok {
 		return "git", ""
 	}
 
