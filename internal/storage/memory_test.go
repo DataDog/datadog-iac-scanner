@@ -9,7 +9,9 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -91,15 +93,15 @@ func TestMemoryStorage(t *testing.T) { //nolint
 			fields: fields{
 				vulnerabilities: []model.Vulnerability{
 					{
-						ID:               0,
-						ScanID:           "scan_id",
-						FileID:           "file_id",
-						FileName:         "file_name",
-						QueryID:          "query_id",
-						QueryName:        "query_name",
-						Line:             1,
-						SearchKey:        "search_key",
-						Output:           "-",
+						ID:        0,
+						ScanID:    "scan_id",
+						FileID:    "file_id",
+						FileName:  "file_name",
+						QueryID:   "query_id",
+						QueryName: "query_name",
+						Line:      1,
+						SearchKey: "search_key",
+						Output:    "-",
 					},
 				},
 				allFiles: model.FileMetadatas{
@@ -128,15 +130,15 @@ func TestMemoryStorage(t *testing.T) { //nolint
 				},
 				vulnerabilities: []model.Vulnerability{
 					{
-						ID:               0,
-						ScanID:           "scan_id",
-						FileID:           "file_id",
-						FileName:         "file_name",
-						QueryID:          "query_id",
-						QueryName:        "query_name",
-						Line:             1,
-						SearchKey:        "search_key",
-						Output:           "-",
+						ID:        0,
+						ScanID:    "scan_id",
+						FileID:    "file_id",
+						FileName:  "file_name",
+						QueryID:   "query_id",
+						QueryName: "query_name",
+						Line:      1,
+						SearchKey: "search_key",
+						Output:    "-",
 					},
 				},
 			},
@@ -196,15 +198,15 @@ func TestMemoryStorage_SaveVulnerabilities(t *testing.T) {
 				in0: nil,
 				vulnerabilities: []model.Vulnerability{
 					{
-						ID:               0,
-						ScanID:           "scan_id",
-						FileID:           "file_id",
-						FileName:         "file_name",
-						QueryID:          "query_id",
-						QueryName:        "query_name",
-						Line:             1,
-						SearchKey:        "search_key",
-						Output:           "-",
+						ID:        0,
+						ScanID:    "scan_id",
+						FileID:    "file_id",
+						FileName:  "file_name",
+						QueryID:   "query_id",
+						QueryName: "query_name",
+						Line:      1,
+						SearchKey: "search_key",
+						Output:    "-",
 					},
 				},
 			},
@@ -245,5 +247,50 @@ func TestNewMemoryStorage(t *testing.T) {
 				t.Errorf("NewMemoryStorage() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMemoryStorageInstancesDoNotBlockEachOther(t *testing.T) {
+	first := NewMemoryStorage()
+	second := NewMemoryStorage()
+	first.mu.Lock()
+	defer first.mu.Unlock()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- second.SaveFile(context.Background(), &model.FileMetadata{ID: "second"})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("an independent storage instance was blocked")
+	}
+}
+
+func TestMemoryStorageConcurrentInstances(t *testing.T) {
+	storages := []*MemoryStorage{NewMemoryStorage(), NewMemoryStorage()}
+	var wg sync.WaitGroup
+	for storageIndex, storage := range storages {
+		for item := 0; item < 100; item++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				id := fmt.Sprintf("%d-%d", storageIndex, item)
+				_ = storage.SaveFile(context.Background(), &model.FileMetadata{ID: id})
+				_ = storage.SaveVulnerabilities(context.Background(), []model.Vulnerability{{
+					FileName: id,
+					QueryID:  id,
+				}})
+			}()
+		}
+	}
+	wg.Wait()
+
+	for _, storage := range storages {
+		files, err := storage.GetFiles(context.Background(), "")
+		require.NoError(t, err)
+		require.Len(t, files, 100)
 	}
 }

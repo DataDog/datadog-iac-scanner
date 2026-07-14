@@ -2,6 +2,7 @@ package modulegraph
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -43,13 +44,58 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 		moduleDir: "git::https://github.com/acme/network//modules/vpc?ref=v1@1.2.3",
 	}, result.SourceMappings)
 	require.Equal(t, []ResolvedModule{{
-		CallerRoot:      root,
-		Source:          "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1",
-		Version:         "1.2.3",
-		Name:            "network",
-		LocalPath:       moduleDir,
-		CanonicalSource: "git::https://github.com/acme/network//modules/vpc?ref=v1@1.2.3",
+		CallerRoot:       root,
+		Source:           "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1",
+		Version:          "1.2.3",
+		RequestedVersion: "1.2.3",
+		Name:             "network",
+		LocalPath:        moduleDir,
+		CanonicalSource:  "git::https://github.com/acme/network//modules/vpc?ref=v1@1.2.3",
 	}}, result.Modules)
+}
+
+func TestResolveReportsUnresolvedModulesWhenRequired(t *testing.T) {
+	root, _ := writeModuleGraphFixture(t)
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolve: func(*tfmodules.ParsedModule) (resolver.Resolution, error) {
+			return resolver.Resolution{}, errors.New("missing hosted artifact")
+		}},
+		MaxDepth:         2,
+		FailOnUnresolved: true,
+	})
+
+	require.ErrorContains(t, result.Error, "missing hosted artifact")
+}
+
+func TestResolvePreservesConcreteResolutionMetadata(t *testing.T) {
+	root, moduleDir := writeModuleGraphFixture(t)
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath:        moduleDir,
+			RequestedVersion: "1.2.3",
+			ResolvedVersion:  "1.2.4",
+			CanonicalSource:  "https://example.com/acme/network@1.2.4",
+			ContentDigest:    "sha256:abc",
+			Provenance:       "prefetched",
+			Outcome:          "resolved",
+		}},
+		MaxDepth: 2,
+	})
+
+	require.Len(t, result.Modules, 1)
+	module := result.Modules[0]
+	require.Equal(t, "1.2.4", module.Version)
+	require.Equal(t, "1.2.3", module.RequestedVersion)
+	require.Equal(t, "1.2.4", module.ResolvedVersion)
+	require.Equal(t, "https://example.com/acme/network@1.2.4", module.CanonicalSource)
+	require.Equal(t, "sha256:abc", module.ContentDigest)
+	require.Equal(t, "prefetched", module.Provenance)
+	require.Equal(t, "resolved", module.Outcome)
+	require.Equal(t, module.CanonicalSource, result.SourceMappings[moduleDir])
 }
 
 func TestResolveCleanupIsIdempotent(t *testing.T) {
@@ -170,6 +216,38 @@ module "b" { source = "git::https://example.com/mod.git?ref=main" }
 	require.Len(t, result.Modules, 2)
 }
 
+func TestResolveKeepsHostedCallsDistinct(t *testing.T) {
+	root := t.TempDir()
+	remoteA, remoteB := filepath.Join(root, "remote-a"), filepath.Join(root, "remote-b")
+	for _, dir := range []string{remoteA, remoteB} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "x" "remote" {}`), 0o644))
+	}
+	rootFile := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootFile, []byte(`
+module "a" { source = "git::https://example.com/mod.git?ref=main" }
+module "b" { source = "git::https://example.com/mod.git?ref=main" }
+`), 0o644))
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{rootFile},
+		DiscoveryPaths: []string{rootFile},
+		Resolver: stubResolver{resolve: func(module *tfmodules.ParsedModule) (resolver.Resolution, error) {
+			if module.Name == "a" {
+				return resolver.Resolution{LocalPath: remoteA}, nil
+			}
+			return resolver.Resolution{LocalPath: remoteB}, nil
+		}},
+		MaxDepth:             1,
+		CallScopedResolution: true,
+	})
+
+	require.ElementsMatch(t, []string{
+		filepath.Join(remoteA, "main.tf"),
+		filepath.Join(remoteB, "main.tf"),
+	}, result.ScanPaths)
+}
+
 func TestResolveKeepsUnversionedRegistryCallsDistinctByName(t *testing.T) {
 	root := t.TempDir()
 	remoteA := filepath.Join(root, "remote-a")
@@ -234,10 +312,10 @@ func TestCanonicalGitModuleSource(t *testing.T) {
 		t,
 		remoteResolveIdentity(&tfmodules.ParsedModule{
 			Source: "git::https://github.com/org/repo.git//sub?ref=v1",
-		}),
+		}, false),
 		remoteResolveIdentity(&tfmodules.ParsedModule{
 			Source: "git::ssh://git@github.com/org/repo//sub?ref=v1",
-		}),
+		}, false),
 	)
 }
 

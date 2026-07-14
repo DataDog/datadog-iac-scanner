@@ -18,17 +18,17 @@ import (
 func TestCreateSummary(t *testing.T) {
 	vulnerabilities := []Vulnerability{
 		{
-			ID:               1,
-			ScanID:           "scanID",
-			FileID:           "fileId",
-			FileName:         "fileName",
-			QueryID:          "QueryID",
-			CWE:              "22",
-			QueryName:        "query_name",
-			Severity:         SeverityHigh,
-			Line:             1,
-			SearchKey:        "searchKey",
-			Output:           "-",
+			ID:        1,
+			ScanID:    "scanID",
+			FileID:    "fileId",
+			FileName:  "fileName",
+			QueryID:   "QueryID",
+			CWE:       "22",
+			QueryName: "query_name",
+			Severity:  SeverityHigh,
+			Line:      1,
+			SearchKey: "searchKey",
+			Output:    "-",
 		},
 	}
 
@@ -92,11 +92,11 @@ func TestCreateSummary(t *testing.T) {
 					CWE:       "22",
 					Files: []VulnerableFile{
 						{
-							FileName:         "fileName",
-							Fingerprint:      GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", ""),
-							Line:             1,
-							SearchKey:        "searchKey",
-							Value:            nil,
+							FileName:    "fileName",
+							Fingerprint: GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", ""),
+							Line:        1,
+							SearchKey:   "searchKey",
+							Value:       nil,
 						},
 					},
 				},
@@ -105,6 +105,32 @@ func TestCreateSummary(t *testing.T) {
 			FilePaths:    filePaths,
 		})
 	})
+}
+
+func TestReplaceIfTemporaryPathUsesLongestBoundaryPrefix(t *testing.T) {
+	root := filepath.Join(string(os.PathSeparator), "tmp", "modules")
+	nested := filepath.Join(root, "network")
+	mappings := map[string]ExtractedPathObject{
+		root: {
+			Path:      "https://example.com/root?token=redacted",
+			LocalPath: false,
+		},
+		nested: {
+			Path:      "https://example.com/network?token=redacted",
+			LocalPath: false,
+		},
+	}
+
+	require.Equal(
+		t,
+		filepath.FromSlash("https://example.com/network/main.tf"),
+		replaceIfTemporaryPath(filepath.Join(nested, "main.tf"), mappings),
+	)
+	require.Equal(
+		t,
+		filepath.Join(root+"-other", "main.tf"),
+		replaceIfTemporaryPath(filepath.Join(root+"-other", "main.tf"), mappings),
+	)
 }
 
 func TestModel_resolvePath(t *testing.T) {

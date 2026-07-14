@@ -49,7 +49,58 @@ func listModules(ctx context.Context, c *cli.Command) error {
 	}
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(tfmodules.ListModuleEntries(parsed, c.Bool("all")))
+	return encoder.Encode(tfmodules.ListModuleEntriesRelativeTo(
+		parsed, c.Bool("all"), moduleRepositoryRoot(paths),
+	))
+}
+
+func moduleRepositoryRoot(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	start := paths[0]
+	if info, err := os.Stat(start); err == nil && !info.IsDir() {
+		start = filepath.Dir(start)
+	}
+	for dir := filepath.Clean(start); ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil && pathsWithinRoot(dir, paths) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	return commonPathRoot(paths)
+}
+
+func pathsWithinRoot(root string, paths []string) bool {
+	for _, candidate := range paths {
+		if !pathContainsFile(root, candidate) {
+			return false
+		}
+	}
+	return true
+}
+
+func commonPathRoot(paths []string) string {
+	root := filepath.Clean(paths[0])
+	if info, err := os.Stat(root); err == nil && !info.IsDir() {
+		root = filepath.Dir(root)
+	}
+	for _, candidate := range paths[1:] {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			candidate = filepath.Dir(candidate)
+		}
+		for !pathContainsFile(root, candidate) {
+			parent := filepath.Dir(root)
+			if parent == root {
+				return root
+			}
+			root = parent
+		}
+	}
+	return root
 }
 
 func allowedModuleFiles(paths []string, files model.FileMetadatas) map[string]bool {

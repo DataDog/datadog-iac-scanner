@@ -457,6 +457,9 @@ func (s *FileSystemSourceProvider) walkDirectory(ctx context.Context, scanPath s
 	onFile func(ctx context.Context, path, ext string) error) error {
 	var resolvedChartPaths []string
 	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if err != nil {
 			return err
 		}

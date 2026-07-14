@@ -78,6 +78,22 @@ func TestNewFileSystemSourceProvider(t *testing.T) {
 	}
 }
 
+func TestWalkDirectoryStopsOnCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	provider := &FileSystemSourceProvider{excludes: make(map[string][]os.FileInfo)}
+
+	err := provider.walkDirectory(
+		ctx,
+		t.TempDir(),
+		model.Extensions{},
+		func(context.Context, string, *[]string) error { return nil },
+		func(context.Context, string) error { return nil },
+	)
+
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 // TestFileSystemSourceProvider_GetSources tests the functions [GetSources()] and all the methods called by them
 func TestFileSystemSourceProvider_GetSources(t *testing.T) { //nolint
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {

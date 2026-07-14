@@ -7,6 +7,8 @@ package modulegraph
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,20 +30,27 @@ const (
 )
 
 type Request struct {
-	RootPaths      []string
-	DiscoveryPaths []string
-	Resolver       resolver.Resolver
-	MaxDepth       int
-	FS             vfs.FS
+	RootPaths            []string
+	DiscoveryPaths       []string
+	Resolver             resolver.Resolver
+	MaxDepth             int
+	FS                   vfs.FS
+	CallScopedResolution bool
+	FailOnUnresolved     bool
 }
 
 type ResolvedModule struct {
-	CallerRoot      string
-	Source          string
-	Version         string
-	Name            string
-	LocalPath       string
-	CanonicalSource string
+	CallerRoot       string
+	Source           string
+	Version          string
+	RequestedVersion string
+	ResolvedVersion  string
+	Name             string
+	LocalPath        string
+	CanonicalSource  string
+	ContentDigest    string
+	Provenance       string
+	Outcome          string
 }
 
 type Result struct {
@@ -49,6 +58,7 @@ type Result struct {
 	Modules        []ResolvedModule
 	SourceMappings map[string]string
 	Cleanup        func()
+	Error          error
 }
 
 type resolvedEntry struct {
@@ -66,6 +76,7 @@ type walkerSnapshot struct {
 	modules        []ResolvedModule
 	sourceMappings map[string]string
 	cleanups       []func()
+	errors         []error
 }
 
 type visitedSet struct {
@@ -84,6 +95,7 @@ type resultCollector struct {
 	modules        []ResolvedModule
 	sourceMappings map[string]string
 	cleanups       []func()
+	errors         []error
 }
 
 type moduleParseCache struct {
@@ -100,6 +112,8 @@ type walker struct {
 	resolver    resolver.Resolver
 	maxDepth    int
 	fsys        vfs.FS
+	callScoped  bool
+	failOnError bool
 }
 
 func Resolve(ctx context.Context, request *Request) Result {
@@ -124,9 +138,11 @@ func Resolve(ctx context.Context, request *Request) Result {
 		parseCache: moduleParseCache{
 			entries: make(map[string]map[string]tfmodules.ParsedModule),
 		},
-		resolver: request.Resolver,
-		maxDepth: request.MaxDepth,
-		fsys:     request.FS,
+		resolver:    request.Resolver,
+		maxDepth:    request.MaxDepth,
+		fsys:        request.FS,
+		callScoped:  request.CallScopedResolution,
+		failOnError: request.FailOnUnresolved,
 	}
 	seedGroups, repositoryGroups := w.seedGroups(ctx, request.RootPaths, request.DiscoveryPaths)
 
@@ -144,6 +160,10 @@ func Resolve(ctx context.Context, request *Request) Result {
 	result.ScanPaths = snapshot.paths
 	result.Modules = snapshot.modules
 	result.SourceMappings = snapshot.sourceMappings
+	sort.Slice(snapshot.errors, func(i, j int) bool {
+		return snapshot.errors[i].Error() < snapshot.errors[j].Error()
+	})
+	result.Error = errors.Join(snapshot.errors...)
 
 	sort.Strings(result.ScanPaths)
 	sort.Slice(result.Modules, func(i, j int) bool {
@@ -217,17 +237,40 @@ func (c *resultCollector) addPaths(paths ...string) {
 	c.paths = append(c.paths, paths...)
 }
 
-func (c *resultCollector) addResolvedModule(mod *tfmodules.ParsedModule, localPath string) {
+func (c *resultCollector) addResolvedModule(mod *tfmodules.ParsedModule, resolution *resolver.Resolution) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	resolvedVersion := resolution.ResolvedVersion
+	version := resolvedVersion
+	if version == "" {
+		version = mod.Version
+	}
+	canonicalSource := resolution.CanonicalSource
+	if canonicalSource == "" {
+		canonicalSource = canonicalModuleURL(mod.Source, version)
+	}
 	c.modules = append(c.modules, ResolvedModule{
-		CallerRoot:      moduleCallRoot(mod),
-		Source:          mod.Source,
-		Version:         mod.Version,
-		Name:            mod.Name,
-		LocalPath:       localPath,
-		CanonicalSource: canonicalModuleURL(mod.Source, mod.Version),
+		CallerRoot:       moduleCallRoot(mod),
+		Source:           mod.Source,
+		Version:          version,
+		RequestedVersion: mod.Version,
+		ResolvedVersion:  resolvedVersion,
+		Name:             mod.Name,
+		LocalPath:        resolution.LocalPath,
+		CanonicalSource:  canonicalSource,
+		ContentDigest:    resolution.ContentDigest,
+		Provenance:       resolution.Provenance,
+		Outcome:          resolution.Outcome,
 	})
+}
+
+func (c *resultCollector) addError(err error) {
+	if err == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.errors = append(c.errors, err)
 }
 
 func (c *resultCollector) addSourceMapping(localPath, source string) {
@@ -254,6 +297,7 @@ func (c *resultCollector) snapshot() walkerSnapshot {
 		modules:        append([]ResolvedModule(nil), c.modules...),
 		sourceMappings: sourceMappings,
 		cleanups:       append([]func(){}, c.cleanups...),
+		errors:         append([]error(nil), c.errors...),
 	}
 }
 
@@ -264,10 +308,10 @@ func (c *resolutionCache) get(resolveID string) (resolvedEntry, bool) {
 	return entry, ok
 }
 
-func (c *resolutionCache) set(resolveID string, entry resolvedEntry) {
+func (c *resolutionCache) set(resolveID string, entry *resolvedEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[resolveID] = entry
+	c.entries[resolveID] = *entry
 }
 
 func (c *moduleParseCache) get(key string) (map[string]tfmodules.ParsedModule, bool) {
@@ -286,7 +330,7 @@ func (c *moduleParseCache) set(key string, mods map[string]tfmodules.ParsedModul
 func (w *walker) resolveRemote(
 	ctx context.Context, mod *tfmodules.ParsedModule,
 ) (resolver.Resolution, bool, error) {
-	resolveID := remoteResolveIdentity(mod)
+	resolveID := remoteResolveIdentity(mod, w.callScoped)
 
 	if entry, ok := w.resolutions.get(resolveID); ok {
 		return entry.res, true, entry.err
@@ -298,7 +342,7 @@ func (w *walker) resolveRemote(
 		}
 
 		resolution, resolveErr := w.resolver.Resolve(ctx, mod)
-		w.resolutions.set(resolveID, resolvedEntry{res: resolution, err: resolveErr})
+		w.resolutions.set(resolveID, &resolvedEntry{res: resolution, err: resolveErr})
 		return resolution, resolveErr
 	})
 	if err != nil {
@@ -446,12 +490,21 @@ func (w *walker) traverseRemoteModules(
 		if mod.IsLocal {
 			continue
 		}
-		id := remoteResolveIdentity(&mod)
+		id := remoteResolveIdentity(&mod, w.callScoped)
 
 		cached, hit := w.resolutions.get(id)
 		if hit {
 			if cached.err == nil && cached.res.LocalPath != "" {
-				w.results.addResolvedModule(&mod, cached.res.LocalPath)
+				w.results.addResolvedModule(&mod, &cached.res)
+			} else if w.failOnError {
+				resolveErr := cached.err
+				if resolveErr == nil {
+					resolveErr = errors.New("resolver returned an empty local path")
+				}
+				w.results.addError(fmt.Errorf(
+					"resolving remote module %q from %s: %w",
+					mod.Source, mod.FileName, resolveErr,
+				))
 			}
 			continue
 		}
@@ -491,6 +544,12 @@ func (w *walker) traverseRemoteModuleGroup(
 	contextLogger.Debug().Msgf("Fetching remote Terraform module %q", representative.Source)
 	resolution, shared, err := w.resolveRemote(ctx, representative)
 	if err != nil {
+		if w.failOnError {
+			w.results.addError(fmt.Errorf(
+				"resolving remote module %q from %s: %w",
+				representative.Source, representative.FileName, err,
+			))
+		}
 		if !shared {
 			contextLogger.Debug().Err(err).
 				Msgf("Failed to resolve remote Terraform module %q", representative.Source)
@@ -498,6 +557,12 @@ func (w *walker) traverseRemoteModuleGroup(
 		return
 	}
 	if resolution.LocalPath == "" {
+		if w.failOnError {
+			w.results.addError(fmt.Errorf(
+				"resolving remote module %q from %s: resolver returned an empty local path",
+				representative.Source, representative.FileName,
+			))
+		}
 		if !shared {
 			contextLogger.Debug().
 				Msgf("Resolved remote Terraform module %q without a local path", representative.Source)
@@ -509,7 +574,7 @@ func (w *walker) traverseRemoteModuleGroup(
 	}
 
 	for _, mod := range group.callers {
-		w.results.addResolvedModule(mod, resolution.LocalPath)
+		w.results.addResolvedModule(mod, &resolution)
 	}
 	if !w.visited.tryAdd(resolution.LocalPath) {
 		return
@@ -518,10 +583,15 @@ func (w *walker) traverseRemoteModuleGroup(
 		w.results.addCleanup(resolution.Cleanup)
 	}
 	w.results.addPaths(flatTerraformFilePaths(resolution.LocalPath)...)
-	w.results.addSourceMapping(
-		resolution.LocalPath,
-		canonicalModuleURL(representative.Source, representative.Version),
-	)
+	canonicalSource := resolution.CanonicalSource
+	if canonicalSource == "" {
+		version := resolution.ResolvedVersion
+		if version == "" {
+			version = representative.Version
+		}
+		canonicalSource = canonicalModuleURL(representative.Source, version)
+	}
+	w.results.addSourceMapping(resolution.LocalPath, canonicalSource)
 	w.traverse(ctx, resolution.LocalPath, nil, repoAllowedDirs, depth+1, true)
 }
 
@@ -532,7 +602,10 @@ func moduleCallRoot(mod *tfmodules.ParsedModule) string {
 	return filepath.Clean(filepath.Dir(mod.FileName))
 }
 
-func remoteResolveIdentity(mod *tfmodules.ParsedModule) string {
+func remoteResolveIdentity(mod *tfmodules.ParsedModule, callScoped bool) string {
+	if callScoped {
+		return callKey(moduleCallRoot(mod), mod.Source, mod.Version, mod.Name)
+	}
 	sourceType, _ := tfmodules.DetectModuleSourceType(mod.Source)
 	if sourceType == sourceTypeRegistry && mod.Version == "" {
 		return callKey(moduleCallRoot(mod), mod.Source, mod.Version, mod.Name)

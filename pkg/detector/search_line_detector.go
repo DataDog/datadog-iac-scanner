@@ -6,115 +6,196 @@
 package detector
 
 import (
-	"encoding/json"
+	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/tidwall/gjson"
 )
 
-// searchLineDetector is the struct used to get the line from the payload with lines information
-// content - payload with line information
-// resolvedPath - string created from pathComponents, used to create gjson paths
-// resolvedArrayPath - string created from pathComponents containing an array used to create gjson paths
-// targetObj - key of the interface{}, we want the line from
-type searchLineDetector struct {
-	content           []byte
-	resolvedPath      string
-	resolvedArrayPath string
-	targetObj         string
-}
-
-// GetLineBySearchLine makes use of the gjson pkg to find the line of a key in the original file
-// with it's path given by a slice of strings
+// GetLineBySearchLine finds a key's source line from the parser's line metadata.
 func GetLineBySearchLine(pathComponents []string, file *model.FileMetadata) (int, error) {
-	content, err := json.Marshal(file.LineInfoDocument)
-	if err != nil {
-		return -1, err
+	if len(pathComponents) == 0 {
+		return 1, nil
 	}
 
-	detector := &searchLineDetector{
-		content: content,
+	target := pathComponents[len(pathComponents)-1]
+	objectPath := pathComponents[:len(pathComponents)-1]
+	targetKey := "_dd_" + target
+	if line := lineAtJoinedPath(file.LineInfoDocument, objectPath, []string{"_dd_lines", targetKey, "_dd_line"}); line > 0 {
+		return line, nil
 	}
-
-	return detector.preparePath(pathComponents), nil
-}
-
-// preparePath resolves the path components and retrives important information
-// for the creation of the paths to search
-func (d *searchLineDetector) preparePath(pathItems []string) int {
-	if len(pathItems) == 0 {
-		return 1
+	if line := lineAtJoinedPath(file.LineInfoDocument, objectPath, []string{target, "_dd_lines", "_dd__default", "_dd_line"}); line > 0 {
+		return line, nil
 	}
-	// Escaping '.' in path components so it doesn't conflict with gjson pkg
-	objPath := strings.ReplaceAll(pathItems[0], ".", "\\.")
-	ArrPath := strings.ReplaceAll(pathItems[0], ".", "\\.")
-
-	obj := pathItems[len(pathItems)-1]
 
 	arrayObject := ""
-
-	// Iterate reversely through the path components and get the key of the last array in the path
-	// needed for cases where the fields in the array are <"key": "value"> type and not <object>
 	foundArrayIdx := false
-	for i := len(pathItems) - 1; i >= 0; i-- {
-		if _, err := strconv.Atoi(pathItems[i]); err == nil {
+	for i := len(pathComponents) - 1; i >= 0; i-- {
+		if _, err := strconv.Atoi(pathComponents[i]); err == nil {
 			foundArrayIdx = true
 			continue
 		}
 		if foundArrayIdx {
-			arrayObject = pathItems[i]
+			arrayObject = pathComponents[i]
 			break
 		}
 	}
-
-	if arrayObject == objPath {
-		ArrPath = "_dd_lines._dd_" + arrayObject + "._dd_arr"
+	arrayPath := make([]string, 1, len(pathComponents)*3)
+	arrayPath[0] = pathComponents[0]
+	if arrayObject == pathComponents[0] {
+		arrayPath = append(arrayPath[:0], "_dd_lines", "_dd_"+arrayObject, "_dd_arr")
 	}
-
-	var treatedPathItems []string
-	if len(pathItems) > 1 {
-		treatedPathItems = pathItems[1 : len(pathItems)-1]
-	}
-
-	// Create a string based on the path components so it can be later transformed in a gjson path
-	for _, pathItem := range treatedPathItems {
-		// In case of an array present
-		if pathItem == arrayObject {
-			ArrPath += "._dd_lines._dd_" + strings.ReplaceAll(pathItem, ".", "\\.") + "._dd_arr"
-		} else {
-			ArrPath += "." + strings.ReplaceAll(pathItem, ".", "\\.")
+	if len(pathComponents) > 2 {
+		for _, pathItem := range pathComponents[1 : len(pathComponents)-1] {
+			if pathItem == arrayObject {
+				arrayPath = append(arrayPath, "_dd_lines", "_dd_"+pathItem, "_dd_arr")
+			} else {
+				arrayPath = append(arrayPath, pathItem)
+			}
 		}
-		objPath += "." + strings.ReplaceAll(pathItem, ".", "\\.")
 	}
 
-	d.resolvedPath = objPath
-	d.resolvedArrayPath = ArrPath
-	d.targetObj = obj
-
-	return d.getResult()
+	if line := lineAtJoinedPath(file.LineInfoDocument, arrayPath, []string{target, "_dd__default", "_dd_line"}); line > 0 {
+		return line, nil
+	}
+	if line := lineAtJoinedPath(file.LineInfoDocument, arrayPath, []string{targetKey, "_dd_line"}); line > 0 {
+		return line, nil
+	}
+	return -1, nil
 }
 
-// getResult creates the paths to be used by gjson pkg to find the line in the content
-func (d *searchLineDetector) getResult() int {
-	// Escape '.' like preparePath does for every other path segment, so a dotted
-	// targetObj isn't misread by gjson as nested path segments.
-	targetObj := strings.ReplaceAll(d.targetObj, ".", "\\.")
-	pathObjects := []string{
-		d.resolvedPath + "._dd_lines._dd_" + targetObj + "._dd_line",
-		d.resolvedPath + "." + targetObj + "._dd_lines._dd__default._dd_line",
-		d.resolvedArrayPath + "." + targetObj + "._dd__default._dd_line",
-		d.resolvedArrayPath + "._dd_" + targetObj + "._dd_line",
-	}
-
-	result := -1
-	// run gjson pkg
-	for _, pathItem := range pathObjects {
-		if tmpResult := gjson.GetBytes(d.content, pathItem); int(tmpResult.Int()) > 0 {
-			result = int(tmpResult.Int())
-			break
+func lineAtJoinedPath(root interface{}, prefix, suffix []string) int {
+	value := root
+	for _, path := range [2][]string{prefix, suffix} {
+		for _, component := range path {
+			var ok bool
+			value, ok = pathComponent(value, component)
+			if !ok {
+				return -1
+			}
 		}
 	}
-	return result
+	return positiveInt(indirectValue(reflect.ValueOf(value)))
+}
+
+func pathComponent(value interface{}, component string) (interface{}, bool) {
+	switch current := value.(type) {
+	case map[string]interface{}:
+		next, ok := current[component]
+		return next, ok
+	case model.Document:
+		next, ok := current[component]
+		return next, ok
+	case []interface{}:
+		index, ok := pathIndex(component, len(current))
+		if !ok {
+			return nil, false
+		}
+		return current[index], true
+	case map[string]*model.LineObject:
+		next, ok := current[component]
+		return next, ok
+	case *model.LineObject:
+		if current == nil {
+			return nil, false
+		}
+		switch component {
+		case "_dd_line":
+			return current.Line, true
+		case "_dd_arr":
+			return current.Arr, true
+		}
+		return nil, false
+	case []map[string]*model.LineObject:
+		index, ok := pathIndex(component, len(current))
+		if !ok {
+			return nil, false
+		}
+		return current[index], true
+	default:
+		return reflectedPathComponent(value, component)
+	}
+}
+
+func pathIndex(component string, length int) (int, bool) {
+	index, err := strconv.Atoi(component)
+	return index, err == nil && index >= 0 && index < length
+}
+
+func reflectedPathComponent(current interface{}, component string) (interface{}, bool) {
+	value := indirectValue(reflect.ValueOf(current))
+	if !value.IsValid() {
+		return nil, false
+	}
+	switch value.Kind() {
+	case reflect.Map:
+		if value.Type().Key().Kind() != reflect.String {
+			return nil, false
+		}
+		value = value.MapIndex(reflect.ValueOf(component).Convert(value.Type().Key()))
+	case reflect.Slice, reflect.Array:
+		index, ok := pathIndex(component, value.Len())
+		if !ok {
+			return nil, false
+		}
+		value = value.Index(index)
+	case reflect.Struct:
+		value = structJSONField(value, component)
+	default:
+		return nil, false
+	}
+	value = indirectValue(value)
+	if !value.IsValid() || !value.CanInterface() {
+		return nil, false
+	}
+	return value.Interface(), true
+}
+
+func indirectValue(value reflect.Value) reflect.Value {
+	for value.IsValid() && (value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer) {
+		if value.IsNil() {
+			return reflect.Value{}
+		}
+		value = value.Elem()
+	}
+	return value
+}
+
+func structJSONField(value reflect.Value, name string) reflect.Value {
+	typ := value.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		tag := strings.Split(typ.Field(i).Tag.Get("json"), ",")[0]
+		if tag == name {
+			return value.Field(i)
+		}
+	}
+	return reflect.Value{}
+}
+
+func positiveInt(value reflect.Value) int {
+	if !value.IsValid() {
+		return -1
+	}
+	var line int64
+	switch value.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		line = value.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		line = int64(value.Uint())
+	case reflect.Float32, reflect.Float64:
+		line = int64(value.Float())
+	case reflect.String:
+		parsed, err := strconv.ParseInt(value.String(), 10, 64)
+		if err != nil {
+			return -1
+		}
+		line = parsed
+	default:
+		return -1
+	}
+	if line <= 0 {
+		return -1
+	}
+	return int(line)
 }

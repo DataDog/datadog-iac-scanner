@@ -2,6 +2,7 @@ package tfmodules
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -36,6 +37,8 @@ func TestListModuleEntriesJSONShape(t *testing.T) {
 	require.Equal(t, "public", row["registry_scope"])
 	require.Equal(t, "/repo/main.tf", row["file_name"])
 	require.Equal(t, float64(12), row["def_line"])
+	require.Equal(t, "/repo/main.tf", row["caller_path"])
+	require.NotEmpty(t, row["call_id"])
 }
 
 func TestListModuleEntriesSkipsLocalByDefault(t *testing.T) {
@@ -49,4 +52,25 @@ func TestListModuleEntriesSkipsLocalByDefault(t *testing.T) {
 	}, true)
 	require.Len(t, entries, 1)
 	require.Equal(t, "local", entries[0].Name)
+}
+
+func TestListModuleEntriesUsesStableRepositoryRelativeCallID(t *testing.T) {
+	module := ParsedModule{
+		Name:     "vpc",
+		Source:   "terraform-aws-modules/vpc/aws",
+		Version:  "~> 5.0",
+		FileName: filepath.Join("/checkout-a", "infra", "main.tf"),
+		DefLine:  12,
+	}
+	first := ListModuleEntriesRelativeTo(
+		map[string]ParsedModule{"a": module}, false, "/checkout-a",
+	)
+	module.FileName = filepath.Join("/checkout-b", "infra", "main.tf")
+	second := ListModuleEntriesRelativeTo(
+		map[string]ParsedModule{"a": module}, false, "/checkout-b",
+	)
+
+	require.Equal(t, "infra/main.tf", first[0].CallerPath)
+	require.Equal(t, first[0].CallerPath, second[0].CallerPath)
+	require.Equal(t, first[0].CallID, second[0].CallID)
 }

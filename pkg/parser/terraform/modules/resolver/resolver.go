@@ -15,8 +15,14 @@ import (
 
 // Resolution holds a resolved module directory and optional cleanup.
 type Resolution struct {
-	LocalPath string
-	Cleanup   func() // optional post-scan cleanup
+	LocalPath        string
+	RequestedVersion string
+	ResolvedVersion  string
+	CanonicalSource  string
+	ContentDigest    string
+	Provenance       string
+	Outcome          string
+	Cleanup          func() // optional post-scan cleanup
 }
 
 // Resolver maps one module call to disk; errors should wrap *tfmodules.UnresolvedError when appropriate.

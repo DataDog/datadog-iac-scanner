@@ -7,6 +7,7 @@ package model
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -190,22 +191,36 @@ func getRelativePath(basePath, filePath string) string {
 }
 
 func replaceIfTemporaryPath(filePath string, pathExtractionMap map[string]ExtractedPathObject) string {
-	prettyPath := filePath
+	cleanFilePath := filepath.Clean(filePath)
+	matchedRoot := ""
+	var matchedValue ExtractedPathObject
+	matchedSuffix := ""
 	for key, val := range pathExtractionMap {
-		if strings.Contains(filePath, key) {
-			splittedPath := strings.Split(filePath, key)
-			if !val.LocalPath {
-				// remove authentication information from the URL
-				sanitizedURL := removeURLCredentials(val.Path)
-				// remove query parameters '?key=value&key2=value'
-				return filepath.FromSlash(queryRegex.ReplaceAllString(sanitizedURL, "") + splittedPath[1])
-			}
-			prettyPath = filepath.FromSlash(filepath.Base(val.Path) + splittedPath[1])
-		} else {
-			prettyPath = filePath
+		cleanRoot := filepath.Clean(key)
+		relative, err := filepath.Rel(cleanRoot, cleanFilePath)
+		if err != nil || relative == ".." ||
+			strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+			continue
+		}
+		if len(cleanRoot) > len(matchedRoot) ||
+			(len(cleanRoot) == len(matchedRoot) && cleanRoot < matchedRoot) {
+			matchedRoot = cleanRoot
+			matchedValue = val
+			matchedSuffix = relative
 		}
 	}
-	return prettyPath
+	if matchedRoot == "" {
+		return filePath
+	}
+	suffix := ""
+	if matchedSuffix != "." {
+		suffix = "/" + filepath.ToSlash(matchedSuffix)
+	}
+	if !matchedValue.LocalPath {
+		sanitizedURL := removeURLCredentials(matchedValue.Path)
+		return filepath.FromSlash(queryRegex.ReplaceAllString(sanitizedURL, "") + suffix)
+	}
+	return filepath.FromSlash(filepath.Base(matchedValue.Path) + suffix)
 }
 
 func removeAllURLCredentials(pathExtractionMap map[string]ExtractedPathObject) []string {

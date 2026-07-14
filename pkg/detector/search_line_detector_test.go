@@ -6,6 +6,7 @@
 package detector
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -291,6 +292,25 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 			want:    7,
 			wantErr: false,
 		},
+		{
+			name: "test typed line objects",
+			args: args{
+				pathComponents: []string{"resource", "aws_instance", "name"},
+				file: &model.FileMetadata{
+					LineInfoDocument: map[string]interface{}{
+						"resource": map[string]interface{}{
+							"aws_instance": map[string]interface{}{
+								"_dd_lines": map[string]*model.LineObject{
+									"_dd_name": {Line: 12},
+								},
+								"name": "example",
+							},
+						},
+					},
+				},
+			},
+			want: 12,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -301,6 +321,36 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 			}
 			if got != tt.want {
 				t.Errorf("GetLineBySearchLine() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func BenchmarkGetLineBySearchLineFindingCardinality(b *testing.B) {
+	file := &model.FileMetadata{
+		LineInfoDocument: map[string]interface{}{
+			"resource": map[string]interface{}{
+				"aws_instance": map[string]interface{}{
+					"_dd_lines": map[string]interface{}{
+						"_dd_name": map[string]interface{}{"_dd_line": 42},
+					},
+					"name": "example",
+				},
+			},
+		},
+	}
+	path := []string{"resource", "aws_instance", "name"}
+
+	for _, count := range []int{10, 100, 500} {
+		b.Run(strconv.Itoa(count), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				for range count {
+					line, err := GetLineBySearchLine(path, file)
+					if err != nil || line != 42 {
+						b.Fatalf("line = %d, err = %v", line, err)
+					}
+				}
 			}
 		})
 	}

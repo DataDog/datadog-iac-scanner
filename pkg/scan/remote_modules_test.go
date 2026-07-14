@@ -167,6 +167,59 @@ func TestBuildModuleResolverChainPrefersExplicitManifestOverTerraformCache(t *te
 	require.Equal(t, preferredDir, got.LocalPath)
 }
 
+func TestBuildModuleResolverChainDoesNotFallBackToTerraformCache(t *testing.T) {
+	root := t.TempDir()
+	staleDir := filepath.Join(root, ".terraform", "modules", "stale")
+	require.NoError(t, os.MkdirAll(staleDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, ".terraform", "modules", "modules.json"),
+		[]byte(`{"Modules":[{"Key":"m","Source":"terraform-aws-modules/vpc/aws","Version":"1.0.0","Dir":"stale"}]}`),
+		0o644,
+	))
+	manifestPath := filepath.Join(root, "hosted-modules.json")
+	data, err := json.Marshal(resolver.Manifest{Modules: map[string]resolver.ManifestEntry{}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
+
+	client := &Client{ScanParams: &Parameters{RemoteModulesManifestPath: manifestPath}}
+	chain, err := client.buildModuleResolverChain(t.Context(), []string{root})
+	require.NoError(t, err)
+
+	_, err = chain.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Name: "m", Source: "terraform-aws-modules/vpc/aws", Version: "1.0.0",
+		FileName: filepath.Join(root, "main.tf"),
+	})
+	require.ErrorContains(t, err, "not found in manifest")
+}
+
+func TestBuildModuleResolverChainIsNetworklessWithManifest(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "modules.json")
+	data, err := json.Marshal(resolver.Manifest{
+		SchemaVersion: 2,
+		Modules:       map[string]resolver.ManifestEntry{},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
+
+	client := &Client{ScanParams: &Parameters{
+		EnableRemoteModules:       true,
+		RemoteModulesManifestPath: manifestPath,
+	}}
+	chain, err := client.buildModuleResolverChain(context.Background(), []string{root})
+	require.NoError(t, err)
+
+	_, err = chain.Resolve(context.Background(), &tfmodules.ParsedModule{
+		Source:   "git::https://127.0.0.1:1/acme/network.git?ref=v1",
+		Version:  "1.0.0",
+		FileName: filepath.Join(root, "main.tf"),
+	})
+
+	require.ErrorContains(t, err, "not found in manifest")
+	require.NotContains(t, err.Error(), "fetch failed")
+	require.NotContains(t, err.Error(), "BareGitResolver")
+}
+
 func writeRemoteModuleFixture(t *testing.T, root string) (string, string) {
 	t.Helper()
 	moduleDir := filepath.Join(filepath.Dir(root), "downloaded-vpc")

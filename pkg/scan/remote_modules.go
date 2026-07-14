@@ -49,13 +49,20 @@ func (c *Client) resolveTerraformModulesForScan(
 		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
+	hostedMode := c.ScanParams.RemoteModulesManifestPath != ""
 	result := modulegraph.Resolve(ctx, &modulegraph.Request{
-		RootPaths:      extractedPaths.Path,
-		DiscoveryPaths: moduleDiscoveryPaths,
-		Resolver:       chain,
-		MaxDepth:       c.ScanParams.ModuleMaxDepth,
-		FS:             c.fsys,
+		RootPaths:            extractedPaths.Path,
+		DiscoveryPaths:       moduleDiscoveryPaths,
+		Resolver:             chain,
+		MaxDepth:             c.ScanParams.ModuleMaxDepth,
+		FS:                   c.fsys,
+		CallScopedResolution: hostedMode,
+		FailOnUnresolved:     hostedMode,
 	})
+	if result.Error != nil {
+		result.Cleanup()
+		return nil, nil, nil, fmt.Errorf("resolving modules from manifest: %w", result.Error)
+	}
 	if len(result.ScanPaths) > 0 {
 		contextLogger.Info().Msgf("Adding %d remote module file(s) to scan", len(result.ScanPaths))
 	}
@@ -66,16 +73,26 @@ func (c *Client) resolveTerraformModulesForScan(
 		}
 	}
 	remoteSourceDirs = make(map[string]string, len(result.Modules)*3)
-	for _, module := range result.Modules {
+	for i := range result.Modules {
+		module := &result.Modules[i]
+		requestedVersion := module.RequestedVersion
+		if requestedVersion == "" {
+			requestedVersion = module.Version
+		}
 		remoteSourceDirs[engine.RemoteModuleKey(
-			module.CallerRoot, module.Source, module.Version,
+			module.CallerRoot, module.Source, requestedVersion,
 		)] = module.LocalPath
 		remoteSourceDirs[engine.RemoteModuleCallKey(
-			module.CallerRoot, module.Source, module.Version, module.Name,
+			module.CallerRoot, module.Source, requestedVersion, module.Name,
 		)] = module.LocalPath
 		remoteSourceDirs[engine.RemoteModuleCallKey(
 			module.CallerRoot, module.Source, "", module.Name,
 		)] = module.LocalPath
+		if module.ResolvedVersion != "" && module.ResolvedVersion != requestedVersion {
+			remoteSourceDirs[engine.RemoteModuleKey(
+				module.CallerRoot, module.Source, module.ResolvedVersion,
+			)] = module.LocalPath
+		}
 	}
 	return result.Cleanup, result.ScanPaths, remoteSourceDirs, nil
 }
@@ -111,13 +128,14 @@ func (c *Client) buildModuleResolverChain(
 			return nil, fmt.Errorf("loading modules manifest %q: %w", c.ScanParams.RemoteModulesManifestPath, err)
 		}
 		resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
+	} else {
+		resolvers = append(resolvers, &tfresolver.DotTerraformResolver{
+			RootDirs: dotTerraformRootDirs(moduleDiscoveryPaths),
+		})
 	}
 
-	resolvers = append(resolvers, &tfresolver.DotTerraformResolver{
-		RootDirs: dotTerraformRootDirs(moduleDiscoveryPaths),
-	})
-
-	if c.ScanParams.EnableRemoteModules {
+	hostedMode := c.ScanParams.RemoteModulesManifestPath != ""
+	if c.ScanParams.EnableRemoteModules && !hostedMode {
 		resolvers = append(resolvers,
 			tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), ""),
 			tfresolver.NewBareGitResolver("", c.ScanParams.RemoteModulesHostAllowlist...),
@@ -125,7 +143,7 @@ func (c *Client) buildModuleResolverChain(
 	}
 
 	ggCfg := tfresolver.NewGoGetterConfig()
-	ggCfg.Disabled = !c.ScanParams.EnableRemoteModules
+	ggCfg.Disabled = !c.ScanParams.EnableRemoteModules || hostedMode
 	if t := c.ScanParams.ModuleFetchTimeout; t > 0 {
 		ggCfg.FetchTimeout = t
 		ggCfg.RegistryCache = tfresolver.NewRegistryCache(ggCfg.FetchTimeout)
@@ -142,7 +160,9 @@ func (c *Client) buildModuleResolverChain(
 		}
 	}
 
-	resolvers = append(resolvers, tfresolver.NewGoGetterResolver(ggCfg))
+	if !hostedMode {
+		resolvers = append(resolvers, tfresolver.NewGoGetterResolver(ggCfg))
+	}
 	return tfresolver.NewChainResolver(resolvers...), nil
 }
 
