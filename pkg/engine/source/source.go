@@ -7,6 +7,7 @@
 package source
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 
@@ -47,6 +48,13 @@ type RegoLibraries struct {
 type QueriesSource interface {
 	GetQueries(ctx context.Context, querySelection *QueryInspectorParameters) ([]model.QueryMetadata, error)
 	GetQueryLibrary(ctx context.Context, platform string) (RegoLibraries, error)
+}
+
+// IsJSONObject reports whether inputData is valid JSON whose top-level value
+// is an object. It validates without allocating an unmarshalled map.
+func IsJSONObject(inputData string) bool {
+	data := bytes.TrimSpace([]byte(inputData))
+	return len(data) > 0 && data[0] == '{' && json.Valid(data)
 }
 
 // MergeInputData merges default input data with custom input data user defined
@@ -135,12 +143,12 @@ func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (strin
 }
 
 func parseInputDataObject(inputData string) (map[string]any, error) {
+	if !IsJSONObject(inputData) {
+		return nil, errors.New("failed to merge query input data: expected a JSON object")
+	}
 	data := map[string]any{}
 	if err := json.Unmarshal([]byte(inputData), &data); err != nil {
 		return nil, errors.Wrap(err, "failed to merge query input data")
-	}
-	if data == nil {
-		return nil, errors.New("failed to merge query input data: expected a JSON object")
 	}
 	return data, nil
 }

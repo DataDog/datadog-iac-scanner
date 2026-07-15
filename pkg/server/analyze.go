@@ -7,7 +7,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -144,7 +143,7 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 		return errors.New("too many rules")
 	}
 	for _, rule := range req.Rules {
-		if !isInputDataObject(rule.InputData) {
+		if !isOptionalInputDataObject(rule.InputData) {
 			return errors.New("invalid rule input data for " + rule.ID)
 		}
 	}
@@ -179,7 +178,7 @@ func validateLibraries(libraries []analyzeLibrary, rules []analyzeRule) error {
 		if strings.TrimSpace(library.Content) == "" {
 			return errors.New("empty library content for " + library.ID)
 		}
-		if !isInputDataObject(library.InputData) {
+		if !isOptionalInputDataObject(library.InputData) {
 			return errors.New("invalid library input data for " + library.ID)
 		}
 		if _, exists := available[id]; exists {
@@ -209,15 +208,10 @@ func normalizeInputData(inputData string) string {
 	return inputData
 }
 
-func isInputDataObject(inputData string) bool {
-	if inputData == "" {
-		return true
-	}
-	data := bytes.TrimSpace([]byte(inputData))
-	// json.Valid checks the complete payload without allocating an unmarshalled
-	// map; the leading brace additionally requires the top-level value to be an
-	// object, excluding valid JSON values such as null, arrays, and scalars.
-	return len(data) > 0 && data[0] == '{' && json.Valid(data)
+// isOptionalInputDataObject accepts an omitted input-data value because the
+// request conversion normalizes it to {} before passing it to the engine.
+func isOptionalInputDataObject(inputData string) bool {
+	return inputData == "" || source.IsJSONObject(inputData)
 }
 
 func normalizePlatform(platform string) string {

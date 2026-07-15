@@ -183,6 +183,27 @@ dummy_test(a) {
 	}
 }
 
+func TestIsJSONObject(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "object", input: `{"key":"value"}`, want: true},
+		{name: "object with whitespace", input: " \n {} \t", want: true},
+		{name: "empty", input: ""},
+		{name: "null", input: "null"},
+		{name: "array", input: "[]"},
+		{name: "scalar", input: "1"},
+		{name: "malformed object", input: "{"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsJSONObject(tt.input))
+		})
+	}
+}
+
 // TestMergeInputData tests mergeInputData function
 func TestMergeInputData(t *testing.T) {
 	tests := []struct {
