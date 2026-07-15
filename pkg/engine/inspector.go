@@ -403,7 +403,9 @@ func (c *Inspector) Inspect(
 	// Terraform local-module instantiation is gated so it can be disabled remotely.
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
-	if c.flagEvaluator != nil && c.flagEvaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
+	if shouldInstantiateLocalModules(platforms, files) &&
+		c.flagEvaluator != nil &&
+		c.flagEvaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
 		var syntheticFiles []*model.FileMetadata
 		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files)
 		files = append(files, syntheticFiles...)
@@ -517,6 +519,19 @@ func (c *Inspector) executeQueries(
 	}
 
 	return vulnerabilities, nil
+}
+
+func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas) bool {
+	for _, platform := range platforms {
+		if strings.EqualFold(platform, "Terraform") {
+			for _, file := range files {
+				if file != nil && isTerraformFile(file.FilePath) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // expandModuleFindings clones findings from deduplicated OPA docs back to each
