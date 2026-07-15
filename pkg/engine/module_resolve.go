@@ -58,6 +58,16 @@ func (c *Inspector) instantiateLocalModules(
 ) ([]model.Document, []*model.FileMetadata, map[string][]extraCallerInfo) {
 	resolver := c.buildRemoteResolver()
 	res := c.resolveModulesSafely(ctx, files, resolver)
+	totalCallers := instantiatedModuleResourceCount(&res)
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Info().
+		Int("module_resources_instantiated", totalCallers).
+		Msgf(
+			"Instantiated %d module resources (%d unique OPA docs, %d deduplicated callers)",
+			totalCallers,
+			len(res.docs),
+			totalCallers-len(res.docs),
+		)
 	if !res.ok {
 		return nil, nil, nil
 	}
@@ -76,18 +86,15 @@ func (c *Inspector) instantiateLocalModules(
 		// module blocks must remain so the corresponding Rego branches can still fire.
 		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, resolver)
 	}
-	contextLogger := logger.FromContext(ctx)
-	totalCallers := len(res.docs)
-	for _, ex := range res.extras {
-		totalCallers += len(ex)
-	}
-	if totalCallers > 0 {
-		contextLogger.Info().Msgf("Instantiated %d module resources (%d unique OPA docs, %d deduplicated callers)",
-			totalCallers, len(res.docs), totalCallers-len(res.docs))
-	} else {
-		contextLogger.Debug().Msg("Instantiated 0 local module resources")
-	}
 	return res.docs, res.syntheticFiles, res.extras
+}
+
+func instantiatedModuleResourceCount(res *moduleResolutionResult) int {
+	count := len(res.docs)
+	for _, extras := range res.extras {
+		count += len(extras)
+	}
+	return count
 }
 
 func (c *Inspector) buildRemoteResolver() tfeval.RemoteResolver {

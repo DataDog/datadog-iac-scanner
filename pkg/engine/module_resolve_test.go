@@ -6,6 +6,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/rs/zerolog"
 )
 
 // docFileID is the prefix of synthetic doc ids: fileID\x00callChain.
@@ -619,10 +621,84 @@ module "bucket" {
 	ins := newTestInspector(t, inspectorOpts{
 		repoPath: root,
 	})
-	if docs, synthetic, extras := ins.instantiateLocalModules(context.Background(), files); docs != nil || synthetic != nil || extras != nil {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+	if docs, synthetic, extras := ins.instantiateLocalModules(ctx, files); docs != nil || synthetic != nil || extras != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {
 		t.Fatalf("expected module block preserved on root when evaluation failed")
+	}
+	if !strings.Contains(logs.String(), `"module_resources_instantiated":0`) {
+		t.Fatalf("expected zero instantiated resources in structured log, got %q", logs.String())
+	}
+}
+
+func TestInstantiatedModuleResourceCountIncludesDeduplicatedCallers(t *testing.T) {
+	res := moduleResolutionResult{
+		docs: []model.Document{{}, {}},
+		extras: map[string][]extraCallerInfo{
+			"first":  {{}, {}},
+			"second": {{}},
+		},
+	}
+
+	if got := instantiatedModuleResourceCount(&res); got != 5 {
+		t.Fatalf("instantiatedModuleResourceCount() = %d, want 5", got)
+	}
+}
+
+func TestShouldInstantiateLocalModules(t *testing.T) {
+	tests := []struct {
+		name      string
+		platforms []string
+		files     model.FileMetadatas
+		want      bool
+	}{
+		{
+			name:      "Terraform configuration",
+			platforms: []string{"Terraform"},
+			files:     model.FileMetadatas{{FilePath: "main.tf"}},
+			want:      true,
+		},
+		{
+			name:      "mixed platforms",
+			platforms: []string{"Dockerfile", "Terraform"},
+			files:     model.FileMetadatas{{FilePath: "main.tf"}},
+			want:      true,
+		},
+		{
+			name:      "case insensitive",
+			platforms: []string{"terraform"},
+			files:     model.FileMetadatas{{FilePath: "main.tf"}},
+			want:      true,
+		},
+		{
+			name:      "Terraform plan JSON",
+			platforms: []string{"Terraform"},
+			files:     model.FileMetadatas{{FilePath: "plan.json"}},
+			want:      false,
+		},
+		{
+			name:      "other platform",
+			platforms: []string{"Kubernetes"},
+			files:     model.FileMetadatas{{FilePath: "main.tf"}},
+			want:      false,
+		},
+		{name: "empty", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldInstantiateLocalModules(tt.platforms, tt.files); got != tt.want {
+				t.Fatalf(
+					"shouldInstantiateLocalModules(%v, %v) = %t, want %t",
+					tt.platforms,
+					tt.files,
+					got,
+					tt.want,
+				)
+			}
+		})
 	}
 }
