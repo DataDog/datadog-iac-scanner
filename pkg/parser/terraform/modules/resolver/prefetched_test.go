@@ -263,3 +263,136 @@ func TestLoadManifestAcceptsSymlinkedRoot(t *testing.T) {
 	_, err = LoadManifest(manifestPath)
 	require.NoError(t, err)
 }
+
+func TestLoadManifestAcceptsCompleteDiscoverySnapshot(t *testing.T) {
+	root := t.TempDir()
+	moduleDir := filepath.Join(root, "vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	moduleFile := filepath.Join(moduleDir, "main.tf")
+	require.NoError(t, os.WriteFile(moduleFile, []byte(`resource "x" "y" {}`), 0o644))
+	manifest := completeDiscoveryManifest(root, moduleDir, moduleFile)
+	manifest.Discovery.Calls = append(manifest.Discovery.Calls, ManifestDiscoveryCall{
+		CallID: "a", CallerPath: "child/main.tf", Name: "child", Source: "./child",
+	})
+	manifest.Discovery.ScanPaths = []string{moduleFile}
+
+	data, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	manifestPath := filepath.Join(root, "modules.json")
+	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
+	loaded, err := LoadManifest(manifestPath)
+
+	require.NoError(t, err)
+	require.True(t, loaded.HasCompleteDiscovery())
+	require.Equal(t, []string{"a", "root"}, []string{
+		loaded.Discovery.Calls[0].CallID,
+		loaded.Discovery.Calls[1].CallID,
+	})
+}
+
+func TestCompleteDiscoveryValidationRejectsBrokenGraphs(t *testing.T) {
+	root := t.TempDir()
+	moduleDir := filepath.Join(root, "vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	moduleFile := filepath.Join(moduleDir, "main.tf")
+	require.NoError(t, os.WriteFile(moduleFile, nil, 0o644))
+
+	tests := []struct {
+		name   string
+		mutate func(*Manifest)
+		match  string
+	}{
+		{
+			name: "missing parent",
+			mutate: func(manifest *Manifest) {
+				manifest.Discovery.Calls[0].ParentCallID = "missing"
+			},
+			match: "references missing parent",
+		},
+		{
+			name: "cycle",
+			mutate: func(manifest *Manifest) {
+				manifest.Discovery.Calls = append(manifest.Discovery.Calls, ManifestDiscoveryCall{
+					CallID:       "child",
+					ParentCallID: "root",
+					CallerPath:   "vpc/main.tf",
+					Name:         "child",
+					Source:       "./child",
+				})
+				manifest.Discovery.Calls[0].ParentCallID = "child"
+			},
+			match: "contain a cycle",
+		},
+		{
+			name: "missing mapping call",
+			mutate: func(manifest *Manifest) {
+				manifest.Discovery.ModuleMappings[0].CallID = "missing"
+			},
+			match: "references missing call",
+		},
+		{
+			name: "unmapped scan path",
+			mutate: func(manifest *Manifest) {
+				manifest.Discovery.SourceMappings = nil
+			},
+			match: "has no source_mapping",
+		},
+		{
+			name: "path escape",
+			mutate: func(manifest *Manifest) {
+				outside := filepath.Join(t.TempDir(), "outside.tf")
+				require.NoError(t, os.WriteFile(outside, nil, 0o644))
+				manifest.Discovery.ScanPaths = []string{outside}
+			},
+			match: "not confined",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := completeDiscoveryManifest(root, moduleDir, moduleFile)
+			tt.mutate(manifest)
+			require.ErrorContains(t, manifest.validate(), tt.match)
+		})
+	}
+}
+
+func TestCompleteDiscoveryRequiresSchemaVersionThree(t *testing.T) {
+	root := t.TempDir()
+	moduleDir := filepath.Join(root, "vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	moduleFile := filepath.Join(moduleDir, "main.tf")
+	require.NoError(t, os.WriteFile(moduleFile, nil, 0o644))
+	manifest := completeDiscoveryManifest(root, moduleDir, moduleFile)
+	manifest.SchemaVersion = 2
+
+	require.ErrorContains(t, manifest.validate(), "requires schema_version 3")
+}
+
+func completeDiscoveryManifest(root, moduleDir, moduleFile string) *Manifest {
+	return &Manifest{
+		SchemaVersion: 3,
+		Dir:           root,
+		Modules:       map[string]ManifestEntry{},
+		Discovery: &ManifestDiscovery{
+			Complete: true,
+			Calls: []ManifestDiscoveryCall{{
+				CallID:           "root",
+				CallerPath:       "main.tf",
+				Name:             "vpc",
+				Source:           "terraform-aws-modules/vpc/aws",
+				RequestedVersion: "~> 5.0",
+			}},
+			ScanPaths: []string{moduleFile},
+			SourceMappings: map[string]string{
+				moduleDir: "registry.terraform.io/terraform-aws-modules/vpc/aws@5.1.2",
+			},
+			ModuleMappings: []ManifestModuleMapping{{
+				CallID:          "root",
+				LocalPath:       moduleDir,
+				ResolvedVersion: "5.1.2",
+				CanonicalSource: "registry.terraform.io/terraform-aws-modules/vpc/aws@5.1.2",
+				Outcome:         "resolved",
+			}},
+		},
+	}
+}

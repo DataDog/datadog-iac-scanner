@@ -297,6 +297,89 @@ func TestResolveCountsLocalHopsTowardDepth(t *testing.T) {
 	require.Empty(t, result.ScanPaths)
 }
 
+func TestFromManifestDiscoveryUsesExactSnapshotWithoutResolving(t *testing.T) {
+	repositoryRoot := t.TempDir()
+	moduleRoot := filepath.Join(t.TempDir(), "modules", "vpc")
+	moduleFile := filepath.Join(moduleRoot, "main.tf")
+	discovery := &resolver.ManifestDiscovery{
+		Complete:  true,
+		ScanPaths: []string{moduleFile},
+		Calls: []resolver.ManifestDiscoveryCall{{
+			CallID:           "vpc-call",
+			CallerPath:       "stacks/network/main.tf",
+			Name:             "vpc",
+			Source:           "terraform-aws-modules/vpc/aws",
+			RequestedVersion: "~> 5.0",
+		}},
+		SourceMappings: map[string]string{
+			moduleRoot: "registry.terraform.io/terraform-aws-modules/vpc/aws@5.1.2",
+		},
+		ModuleMappings: []resolver.ManifestModuleMapping{{
+			CallID:          "vpc-call",
+			LocalPath:       moduleRoot,
+			ResolvedVersion: "5.1.2",
+			CanonicalSource: "registry.terraform.io/terraform-aws-modules/vpc/aws@5.1.2",
+			ContentDigest:   "sha256:abc",
+			Provenance:      "prefetched",
+			Outcome:         "resolved",
+		}},
+	}
+
+	result := FromManifestDiscovery(discovery, repositoryRoot, 1)
+
+	require.NoError(t, result.Error)
+	require.Equal(t, []string{moduleFile}, result.ScanPaths)
+	require.Equal(t, discovery.SourceMappings, result.SourceMappings)
+	require.Equal(t, []ResolvedModule{{
+		CallerRoot:       filepath.Join(repositoryRoot, "stacks", "network"),
+		Source:           "terraform-aws-modules/vpc/aws",
+		Version:          "5.1.2",
+		RequestedVersion: "~> 5.0",
+		ResolvedVersion:  "5.1.2",
+		Name:             "vpc",
+		LocalPath:        moduleRoot,
+		CanonicalSource:  "registry.terraform.io/terraform-aws-modules/vpc/aws@5.1.2",
+		ContentDigest:    "sha256:abc",
+		Provenance:       "prefetched",
+		Outcome:          "resolved",
+	}}, result.Modules)
+}
+
+func TestFromManifestDiscoveryHonorsPositiveDepth(t *testing.T) {
+	root := t.TempDir()
+	parentRoot := filepath.Join(root, "parent")
+	childRoot := filepath.Join(root, "child")
+	require.NoError(t, os.MkdirAll(parentRoot, 0o755))
+	require.NoError(t, os.MkdirAll(childRoot, 0o755))
+	parentFile := filepath.Join(parentRoot, "main.tf")
+	childFile := filepath.Join(childRoot, "main.tf")
+	require.NoError(t, os.WriteFile(parentFile, nil, 0o644))
+	require.NoError(t, os.WriteFile(childFile, nil, 0o644))
+	discovery := &resolver.ManifestDiscovery{
+		Complete:  true,
+		ScanPaths: []string{childFile, parentFile},
+		Calls: []resolver.ManifestDiscoveryCall{
+			{CallID: "parent", CallerPath: "main.tf", Name: "parent", Source: "parent"},
+			{
+				CallID: "child", ParentCallID: "parent", CallerPath: filepath.Join(parentRoot, "main.tf"),
+				Name: "child", Source: "child",
+			},
+		},
+		SourceMappings: map[string]string{parentRoot: "canonical-parent", childRoot: "canonical-child"},
+		ModuleMappings: []resolver.ManifestModuleMapping{
+			{CallID: "parent", LocalPath: parentRoot, Outcome: "resolved"},
+			{CallID: "child", LocalPath: childRoot, Outcome: "resolved"},
+		},
+	}
+
+	result := FromManifestDiscovery(discovery, root, 1)
+
+	require.Equal(t, []string{parentFile}, result.ScanPaths)
+	require.Equal(t, map[string]string{parentRoot: "canonical-parent"}, result.SourceMappings)
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, "parent", result.Modules[0].Name)
+}
+
 func TestCanonicalGitModuleSource(t *testing.T) {
 	require.Equal(
 		t,

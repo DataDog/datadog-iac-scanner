@@ -30,34 +30,16 @@ func (c *Client) resolveTerraformModulesForScan(
 	}
 
 	contextLogger := logger.FromContext(ctx)
-	filteredFilesSource, err := c.getFileSystemSourceProvider(ctx, extractedPaths.Path)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	moduleDiscoveryPaths, err := filteredFilesSource.TerraformFiles(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	chain, err := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
 	if c.ScanParams.EnableRemoteModules {
 		contextLogger.Info().Msg("Resolving remote Terraform modules...")
 	} else {
 		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
-	hostedMode := c.ScanParams.RemoteModulesManifestPath != ""
-	result := modulegraph.Resolve(ctx, &modulegraph.Request{
-		RootPaths:            extractedPaths.Path,
-		DiscoveryPaths:       moduleDiscoveryPaths,
-		Resolver:             chain,
-		MaxDepth:             c.ScanParams.ModuleMaxDepth,
-		FS:                   c.fsys,
-		CallScopedResolution: hostedMode,
-	})
+	result, err := c.resolveTerraformModuleGraph(ctx, extractedPaths.Path)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	if result.Error != nil {
 		result.Cleanup()
 		return nil, nil, nil, fmt.Errorf("resolving modules from manifest: %w", result.Error)
@@ -96,6 +78,59 @@ func (c *Client) resolveTerraformModulesForScan(
 	return result.Cleanup, result.ScanPaths, remoteSourceDirs, nil
 }
 
+func (c *Client) resolveTerraformModuleGraph(
+	ctx context.Context, rootPaths []string,
+) (modulegraph.Result, error) {
+	hostedMode := c.ScanParams.RemoteModulesManifestPath != ""
+	var manifest *tfresolver.Manifest
+	if hostedMode {
+		loaded, err := tfresolver.LoadManifest(c.ScanParams.RemoteModulesManifestPath)
+		if err != nil {
+			return modulegraph.Result{}, fmt.Errorf(
+				"loading modules manifest %q: %w",
+				c.ScanParams.RemoteModulesManifestPath, err,
+			)
+		}
+		manifest = loaded
+	}
+	if manifest.HasCompleteDiscovery() {
+		if c.ScanParams.ModuleMaxDepth <= 0 {
+			return modulegraph.Result{SourceMappings: make(map[string]string), Cleanup: func() {}}, nil
+		}
+		return modulegraph.FromManifestDiscovery(
+			manifest.Discovery,
+			c.ScanParams.RepoPath,
+			c.ScanParams.ModuleMaxDepth,
+		), nil
+	}
+
+	filteredFilesSource, err := c.getFileSystemSourceProvider(ctx, rootPaths)
+	if err != nil {
+		return modulegraph.Result{}, err
+	}
+	moduleDiscoveryPaths, err := filteredFilesSource.TerraformFiles(ctx)
+	if err != nil {
+		return modulegraph.Result{}, err
+	}
+	var chain *tfresolver.ChainResolver
+	if hostedMode {
+		chain, err = c.buildModuleResolverChainWithManifest(ctx, moduleDiscoveryPaths, manifest)
+	} else {
+		chain, err = c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
+	}
+	if err != nil {
+		return modulegraph.Result{}, err
+	}
+	return modulegraph.Resolve(ctx, &modulegraph.Request{
+		RootPaths:            rootPaths,
+		DiscoveryPaths:       moduleDiscoveryPaths,
+		Resolver:             chain,
+		MaxDepth:             c.ScanParams.ModuleMaxDepth,
+		FS:                   c.fsys,
+		CallScopedResolution: hostedMode,
+	}), nil
+}
+
 func (c *Client) shouldPreScanTerraformModules(scanPaths []string) bool {
 	if c.ScanParams.EnableRemoteModules || c.ScanParams.RemoteModulesManifestPath != "" {
 		return true
@@ -115,6 +150,22 @@ func HasTerraformModuleCache(scanPaths []string) bool {
 func (c *Client) buildModuleResolverChain(
 	ctx context.Context, moduleDiscoveryPaths []string,
 ) (*tfresolver.ChainResolver, error) {
+	var manifest *tfresolver.Manifest
+	if c.ScanParams.RemoteModulesManifestPath != "" {
+		loaded, err := tfresolver.LoadManifest(c.ScanParams.RemoteModulesManifestPath)
+		if err != nil {
+			return nil, fmt.Errorf("loading modules manifest %q: %w", c.ScanParams.RemoteModulesManifestPath, err)
+		}
+		manifest = loaded
+	}
+	return c.buildModuleResolverChainWithManifest(ctx, moduleDiscoveryPaths, manifest)
+}
+
+func (c *Client) buildModuleResolverChainWithManifest(
+	ctx context.Context,
+	moduleDiscoveryPaths []string,
+	manifest *tfresolver.Manifest,
+) (*tfresolver.ChainResolver, error) {
 	contextLogger := logger.FromContext(ctx)
 
 	resolvers := []tfresolver.Resolver{
@@ -122,10 +173,6 @@ func (c *Client) buildModuleResolverChain(
 	}
 
 	if c.ScanParams.RemoteModulesManifestPath != "" {
-		manifest, err := tfresolver.LoadManifest(c.ScanParams.RemoteModulesManifestPath)
-		if err != nil {
-			return nil, fmt.Errorf("loading modules manifest %q: %w", c.ScanParams.RemoteModulesManifestPath, err)
-		}
 		resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
 	} else {
 		resolvers = append(resolvers, &tfresolver.DotTerraformResolver{

@@ -12,15 +12,16 @@ import (
 // ListModuleEntry is the JSON shape emitted by `datadog-iac-scanner list-modules`.
 // Field names are stable integration contracts for hosted scan orchestration.
 type ListModuleEntry struct {
-	Name          string `json:"name"`
-	Source        string `json:"source"`
-	Version       string `json:"version,omitempty"`
-	SourceType    string `json:"source_type"`
-	RegistryScope string `json:"registry_scope,omitempty"`
-	FileName      string `json:"file_name"`
-	DefLine       int    `json:"def_line"`
-	CallerPath    string `json:"caller_path,omitempty"`
-	CallID        string `json:"call_id,omitempty"`
+	Name           string `json:"name"`
+	Source         string `json:"source"`
+	Version        string `json:"version,omitempty"`
+	SourceType     string `json:"source_type"`
+	RegistryScope  string `json:"registry_scope,omitempty"`
+	FileName       string `json:"file_name"`
+	DefLine        int    `json:"def_line"`
+	CallerPath     string `json:"caller_path,omitempty"`
+	CallerPathBase string `json:"caller_path_base,omitempty"`
+	CallID         string `json:"call_id,omitempty"`
 }
 
 // ListModuleEntries converts parsed modules to list-modules JSON rows.
@@ -42,16 +43,21 @@ func ListModuleEntriesRelativeTo(
 			continue
 		}
 		callerPath := stableCallerPath(repositoryRoot, mod.FileName)
+		callerPathBase := ""
+		if repositoryRoot != "" {
+			callerPathBase = filepath.Clean(repositoryRoot)
+		}
 		entries = append(entries, ListModuleEntry{
-			Name:          mod.Name,
-			Source:        mod.Source,
-			Version:       mod.Version,
-			SourceType:    mod.SourceType,
-			RegistryScope: mod.RegistryScope,
-			FileName:      mod.FileName,
-			DefLine:       mod.DefLine,
-			CallerPath:    callerPath,
-			CallID:        ModuleCallID(callerPath, &mod),
+			Name:           mod.Name,
+			Source:         mod.Source,
+			Version:        mod.Version,
+			SourceType:     mod.SourceType,
+			RegistryScope:  mod.RegistryScope,
+			FileName:       mod.FileName,
+			DefLine:        mod.DefLine,
+			CallerPath:     callerPath,
+			CallerPathBase: callerPathBase,
+			CallID:         ModuleCallID(callerPath, &mod),
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool {

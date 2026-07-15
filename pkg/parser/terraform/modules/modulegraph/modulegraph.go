@@ -182,6 +182,130 @@ func Resolve(ctx context.Context, request *Request) Result {
 	return result
 }
 
+func FromManifestDiscovery(discovery *resolver.ManifestDiscovery, repositoryRoot string, maxDepth int) Result {
+	result := Result{
+		SourceMappings: make(map[string]string),
+		Cleanup:        func() {},
+	}
+	if discovery == nil || !discovery.Complete {
+		return result
+	}
+	calls := make(map[string]resolver.ManifestDiscoveryCall, len(discovery.Calls))
+	for _, call := range discovery.Calls {
+		calls[call.CallID] = call
+	}
+	depths := manifestCallDepths(calls)
+	mappingDepths := make(map[string]int)
+	for i := range discovery.ModuleMappings {
+		mapping := &discovery.ModuleMappings[i]
+		if !manifestMappingResolved(mapping.Outcome) {
+			continue
+		}
+		if existing := mappingDepths[mapping.LocalPath]; existing == 0 || depths[mapping.CallID] < existing {
+			mappingDepths[mapping.LocalPath] = depths[mapping.CallID]
+		}
+		if depths[mapping.CallID] > maxDepth {
+			continue
+		}
+		call := calls[mapping.CallID]
+		resolvedVersion := mapping.ResolvedVersion
+		if resolvedVersion == "" {
+			resolvedVersion = mapping.Version
+		}
+		version := resolvedVersion
+		if version == "" {
+			version = call.RequestedVersion
+		}
+		canonicalSource := mapping.CanonicalSource
+		if canonicalSource == "" {
+			canonicalSource = discovery.SourceMappings[mapping.LocalPath]
+		}
+		result.Modules = append(result.Modules, ResolvedModule{
+			CallerRoot:       manifestCallerRoot(call.CallerPath, repositoryRoot),
+			Source:           call.Source,
+			Version:          version,
+			RequestedVersion: call.RequestedVersion,
+			ResolvedVersion:  resolvedVersion,
+			Name:             call.Name,
+			LocalPath:        mapping.LocalPath,
+			CanonicalSource:  canonicalSource,
+			ContentDigest:    mapping.ContentDigest,
+			Provenance:       mapping.Provenance,
+			Outcome:          mapping.Outcome,
+		})
+	}
+	for localPath, source := range discovery.SourceMappings {
+		if manifestPathWithinDepth(localPath, mappingDepths, maxDepth) {
+			result.SourceMappings[localPath] = source
+		}
+	}
+	for _, scanPath := range discovery.ScanPaths {
+		if manifestPathWithinDepth(scanPath, mappingDepths, maxDepth) {
+			result.ScanPaths = append(result.ScanPaths, scanPath)
+		}
+	}
+	sort.Strings(result.ScanPaths)
+	sort.Slice(result.Modules, func(i, j int) bool {
+		left, right := result.Modules[i], result.Modules[j]
+		return strings.Join([]string{left.CallerRoot, left.Source, left.Version, left.Name}, "\x00") <
+			strings.Join([]string{right.CallerRoot, right.Source, right.Version, right.Name}, "\x00")
+	})
+	return result
+}
+
+func manifestCallDepths(calls map[string]resolver.ManifestDiscoveryCall) map[string]int {
+	depths := make(map[string]int, len(calls))
+	var depth func(string) int
+	depth = func(callID string) int {
+		if existing := depths[callID]; existing != 0 {
+			return existing
+		}
+		parent := calls[callID].ParentCallID
+		if parent == "" {
+			depths[callID] = 1
+		} else {
+			depths[callID] = depth(parent) + 1
+		}
+		return depths[callID]
+	}
+	for callID := range calls {
+		depth(callID)
+	}
+	return depths
+}
+
+func manifestPathWithinDepth(candidate string, roots map[string]int, maxDepth int) bool {
+	bestLength := -1
+	bestDepth := 0
+	for root, depth := range roots {
+		relative, err := filepath.Rel(root, candidate)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if len(root) > bestLength {
+			bestLength = len(root)
+			bestDepth = depth
+		}
+	}
+	return bestLength >= 0 && bestDepth <= maxDepth
+}
+
+func manifestCallerRoot(callerPath, repositoryRoot string) string {
+	if !filepath.IsAbs(callerPath) {
+		callerPath = filepath.Join(repositoryRoot, filepath.FromSlash(callerPath))
+	}
+	return filepath.Clean(filepath.Dir(callerPath))
+}
+
+func manifestMappingResolved(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "", "resolved", "success":
+		return true
+	default:
+		return false
+	}
+}
+
 func (w *walker) parseModulesInDir(
 	ctx context.Context, dir string, allowedFiles map[string]bool,
 ) map[string]tfmodules.ParsedModule {

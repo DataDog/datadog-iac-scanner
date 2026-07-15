@@ -71,6 +71,8 @@ func TestListModuleEntriesUsesStableRepositoryRelativeCallID(t *testing.T) {
 	)
 
 	require.Equal(t, "infra/main.tf", first[0].CallerPath)
+	require.Equal(t, "/checkout-a", first[0].CallerPathBase)
+	require.Equal(t, "/checkout-b", second[0].CallerPathBase)
 	require.Equal(t, first[0].CallerPath, second[0].CallerPath)
 	require.Equal(t, first[0].CallID, second[0].CallID)
 }

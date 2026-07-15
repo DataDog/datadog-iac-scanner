@@ -44,6 +44,86 @@ func TestRemoteModulesManifestEnablesOfflineModuleInstantiation(t *testing.T) {
 	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
 }
 
+func TestCompleteManifestUsesExactExternalScanPaths(t *testing.T) {
+	root := t.TempDir()
+	moduleDir := filepath.Join(t.TempDir(), "downloaded-vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	moduleFile := filepath.Join(moduleDir, "main.tf")
+	require.NoError(t, os.WriteFile(moduleFile, []byte(`
+resource "aws_vpc" "included" {
+  cidr_block = "10.0.0.0/16"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "example.tf"), []byte(`
+resource "aws_vpc" "excluded" {
+  cidr_block = "10.1.0.0/16"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.0"
+}
+`), 0o644))
+	manifestPath := writeCompleteRemoteManifest(t, root, moduleDir, moduleFile)
+
+	params := remoteModuleScanParams(root)
+	params.RemoteModulesManifestPath = manifestPath
+	results := executeRemoteModuleScan(t, params)
+
+	require.Len(t, results.Results, 1)
+	require.Equal(t, filepath.ToSlash(moduleFile), filepath.ToSlash(results.Results[0].FileName))
+}
+
+func TestCompleteManifestBypassesRepositoryDiscovery(t *testing.T) {
+	repositoryRoot := filepath.Join(t.TempDir(), "removed-repository")
+	moduleDir := filepath.Join(t.TempDir(), "downloaded-vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	moduleFile := filepath.Join(moduleDir, "main.tf")
+	require.NoError(t, os.WriteFile(moduleFile, nil, 0o644))
+	manifestPath := writeCompleteRemoteManifest(t, repositoryRoot, moduleDir, moduleFile)
+	params := &Parameters{
+		RepoPath:                  repositoryRoot,
+		RemoteModulesManifestPath: manifestPath,
+		ModuleMaxDepth:            DefaultRemoteModuleMaxDepth,
+	}
+	client := &Client{ScanParams: params}
+	extracted := engineprovider.ExtractedPath{
+		Path:          []string{repositoryRoot},
+		ExtractionMap: make(map[string]model.ExtractedPathObject),
+	}
+
+	cleanup, scanPaths, mappings, err := client.resolveTerraformModulesForScan(
+		t.Context(), []string{"Terraform"}, &extracted,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+	require.Equal(t, []string{moduleFile}, scanPaths)
+	require.NotEmpty(t, mappings)
+}
+
+func TestIncompleteDiscoveryManifestFallsBackToScannerTraversal(t *testing.T) {
+	root := t.TempDir()
+	moduleDir, manifestPath := writeRemoteModuleFixture(t, root)
+	data, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+	var manifest resolver.Manifest
+	require.NoError(t, json.Unmarshal(data, &manifest))
+	manifest.SchemaVersion = 3
+	manifest.Discovery = &resolver.ManifestDiscovery{Complete: false}
+	data, err = json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
+
+	params := remoteModuleScanParams(root)
+	params.RemoteModulesManifestPath = manifestPath
+	results := executeRemoteModuleScan(t, params)
+
+	require.NotEmpty(t, results.Results)
+	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
+}
+
 func TestRemoteModulesManifestSkipsMissingEntryWithoutNetworkFallback(t *testing.T) {
 	root := t.TempDir()
 	var requests atomic.Int32
@@ -333,6 +413,43 @@ module "vpc" {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
 	return moduleDir, manifestPath
+}
+
+func writeCompleteRemoteManifest(t *testing.T, repositoryRoot, moduleDir, moduleFile string) string {
+	t.Helper()
+	manifestRoot := filepath.Dir(moduleDir)
+	manifest := resolver.Manifest{
+		SchemaVersion: 3,
+		Dir:           manifestRoot,
+		Modules:       map[string]resolver.ManifestEntry{},
+		Discovery: &resolver.ManifestDiscovery{
+			Complete: true,
+			Calls: []resolver.ManifestDiscoveryCall{{
+				CallID:           "vpc-call",
+				CallerPath:       filepath.Join(repositoryRoot, "main.tf"),
+				Name:             "vpc",
+				Source:           "terraform-aws-modules/vpc/aws",
+				RequestedVersion: "~> 5.0",
+			}},
+			ScanPaths: []string{moduleFile},
+			SourceMappings: map[string]string{
+				moduleDir: "registry.terraform.io/terraform-aws-modules/vpc/aws@5.1.2",
+			},
+			ModuleMappings: []resolver.ManifestModuleMapping{{
+				CallID:          "vpc-call",
+				LocalPath:       moduleDir,
+				ResolvedVersion: "5.1.2",
+				CanonicalSource: "registry.terraform.io/terraform-aws-modules/vpc/aws@5.1.2",
+				Provenance:      "prefetched",
+				Outcome:         "resolved",
+			}},
+		},
+	}
+	data, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	manifestPath := filepath.Join(manifestRoot, "complete-modules.json")
+	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
+	return manifestPath
 }
 
 func remoteModuleScanParams(root string) *Parameters {

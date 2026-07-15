@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -30,6 +31,11 @@ var listModulesAction = &cli.Command{
 			Usage: "include local module calls",
 			Value: false,
 		},
+		&cli.BoolFlag{
+			Name:  "direct",
+			Usage: "inspect top-level Terraform files and reachable local modules only",
+			Value: false,
+		},
 	},
 	Action: listModules,
 }
@@ -39,11 +45,11 @@ func listModules(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	files, err := collectTerraformFiles(paths)
+	files, allowedFiles, err := collectModuleDiscoveryFiles(ctx, paths, c.Bool("direct"))
 	if err != nil {
 		return fmt.Errorf("collecting Terraform files: %w", err)
 	}
-	parsed, err := tfmodules.ParseTerraformModulesFromFiles(ctx, nil, files, allowedModuleFiles(paths, files))
+	parsed, err := tfmodules.ParseTerraformModulesFromFiles(ctx, nil, files, allowedFiles)
 	if err != nil {
 		return fmt.Errorf("parsing Terraform modules: %w", err)
 	}
@@ -52,6 +58,108 @@ func listModules(ctx context.Context, c *cli.Command) error {
 	return encoder.Encode(tfmodules.ListModuleEntriesRelativeTo(
 		parsed, c.Bool("all"), moduleRepositoryRoot(paths),
 	))
+}
+
+func collectModuleDiscoveryFiles(
+	ctx context.Context, paths []string, direct bool,
+) (model.FileMetadatas, map[string]bool, error) {
+	files, err := collectTerraformFiles(paths, direct)
+	if err != nil {
+		return nil, nil, err
+	}
+	allowed := allowedModuleFiles(paths, files)
+	if !direct {
+		return files, allowed, nil
+	}
+	return collectReachableModuleDiscoveryFiles(ctx, paths, files, allowed)
+}
+
+func collectReachableModuleDiscoveryFiles(
+	ctx context.Context,
+	paths []string,
+	files model.FileMetadatas,
+	allowed map[string]bool,
+) (model.FileMetadatas, map[string]bool, error) {
+	return collectReachableModuleDiscoveryFilesWithParser(
+		paths,
+		files,
+		allowed,
+		func(frontier model.FileMetadatas, frontierAllowed map[string]bool) (map[string]tfmodules.ParsedModule, error) {
+			return tfmodules.ParseTerraformModulesFromFiles(ctx, nil, frontier, frontierAllowed)
+		},
+	)
+}
+
+func collectReachableModuleDiscoveryFilesWithParser(
+	paths []string,
+	files model.FileMetadatas,
+	allowed map[string]bool,
+	parse func(model.FileMetadatas, map[string]bool) (map[string]tfmodules.ParsedModule, error),
+) (model.FileMetadatas, map[string]bool, error) {
+	repositoryRoot := moduleRepositoryRoot(paths)
+	resolvedRoot, err := filepath.EvalSymlinks(repositoryRoot)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolving repository root: %w", err)
+	}
+	seenDirs := make(map[string]bool)
+	for _, file := range files {
+		dir, resolveErr := filepath.EvalSymlinks(filepath.Dir(file.FilePath))
+		if resolveErr != nil {
+			return nil, nil, resolveErr
+		}
+		seenDirs[dir] = true
+	}
+	frontierFiles := make(model.FileMetadatas, 0, len(files))
+	for _, file := range files {
+		if allowed == nil || allowed[file.FilePath] {
+			frontierFiles = append(frontierFiles, file)
+		}
+	}
+	for len(frontierFiles) > 0 {
+		frontierAllowed := make(map[string]bool, len(frontierFiles))
+		for _, file := range frontierFiles {
+			frontierAllowed[file.FilePath] = true
+		}
+		modules, parseErr := parse(frontierFiles, frontierAllowed)
+		if parseErr != nil {
+			return nil, nil, parseErr
+		}
+		var childDirs []string
+		for key := range modules {
+			module := modules[key]
+			childDir := filepath.Clean(module.AbsSource)
+			if !module.IsLocal || childDir == "." {
+				continue
+			}
+			resolvedChild, resolveErr := filepath.EvalSymlinks(childDir)
+			if resolveErr != nil || seenDirs[resolvedChild] ||
+				!pathContainsFile(resolvedRoot, resolvedChild) {
+				continue
+			}
+			seenDirs[resolvedChild] = true
+			childDirs = append(childDirs, resolvedChild)
+		}
+		if len(childDirs) == 0 {
+			return files, allowed, nil
+		}
+		sort.Strings(childDirs)
+		frontierFiles = nil
+		for _, childDir := range childDirs {
+			childFiles, collectErr := collectTopLevelTerraformFiles(childDir)
+			if collectErr != nil {
+				return nil, nil, collectErr
+			}
+			files = append(files, childFiles...)
+			frontierFiles = append(frontierFiles, childFiles...)
+			if allowed == nil {
+				allowed = make(map[string]bool)
+			}
+			for _, file := range childFiles {
+				allowed[file.FilePath] = true
+			}
+		}
+	}
+	return files, allowed, nil
 }
 
 func moduleRepositoryRoot(paths []string) string {
@@ -133,7 +241,7 @@ func pathContainsFile(root, filePath string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
-func collectTerraformFiles(paths []string) (model.FileMetadatas, error) {
+func collectTerraformFiles(paths []string, direct bool) (model.FileMetadatas, error) {
 	var files model.FileMetadatas
 	for _, rootPath := range paths {
 		info, err := os.Stat(rootPath)
@@ -151,7 +259,12 @@ func collectTerraformFiles(paths []string) (model.FileMetadatas, error) {
 			files = append(files, dirFiles...)
 			continue
 		}
-		dirFiles, err := walkTerraformDir(rootPath)
+		var dirFiles model.FileMetadatas
+		if direct {
+			dirFiles, err = collectTopLevelTerraformFiles(rootPath)
+		} else {
+			dirFiles, err = walkTerraformDir(rootPath)
+		}
 		if err != nil {
 			return nil, err
 		}

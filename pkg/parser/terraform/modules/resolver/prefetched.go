@@ -35,12 +35,41 @@ type ManifestEntry struct {
 	Outcome          string `json:"outcome,omitempty"`
 }
 
+type ManifestDiscoveryCall struct {
+	CallID           string `json:"call_id"`
+	ParentCallID     string `json:"parent_call_id,omitempty"`
+	CallerPath       string `json:"caller_path"`
+	Name             string `json:"name"`
+	Source           string `json:"source"`
+	RequestedVersion string `json:"requested_version,omitempty"`
+}
+
+type ManifestModuleMapping struct {
+	CallID          string `json:"call_id"`
+	LocalPath       string `json:"local_path,omitempty"`
+	Version         string `json:"version,omitempty"`
+	ResolvedVersion string `json:"resolved_version,omitempty"`
+	CanonicalSource string `json:"canonical_source,omitempty"`
+	ContentDigest   string `json:"content_digest,omitempty"`
+	Provenance      string `json:"provenance,omitempty"`
+	Outcome         string `json:"outcome,omitempty"`
+}
+
+type ManifestDiscovery struct {
+	Complete       bool                    `json:"complete,omitempty"`
+	Calls          []ManifestDiscoveryCall `json:"calls,omitempty"`
+	ScanPaths      []string                `json:"scan_paths,omitempty"`
+	SourceMappings map[string]string       `json:"source_mappings,omitempty"`
+	ModuleMappings []ManifestModuleMapping `json:"module_mappings,omitempty"`
+}
+
 // Manifest is validated JSON: optional root Dir plus source or source@version → ManifestEntry.
 type Manifest struct {
 	Version       int                      `json:"version,omitempty"`
 	SchemaVersion int                      `json:"schema_version,omitempty"`
 	Dir           string                   `json:"dir"`
 	Modules       map[string]ManifestEntry `json:"modules"`
+	Discovery     *ManifestDiscovery       `json:"discovery,omitempty"`
 }
 
 // LoadManifest parses and validates manifest JSON from path.
@@ -73,20 +102,225 @@ func (m *Manifest) validate() error {
 			return err
 		}
 	}
+	if err := m.validateDiscovery(resolvedDir); err != nil {
+		return err
+	}
 	return nil
 }
 
 func validateManifestVersions(version, schemaVersion int) error {
-	if version < 0 || version > 2 {
+	if version < 0 || version > 3 {
 		return fmt.Errorf("unsupported manifest version %d", version)
 	}
-	if schemaVersion < 0 || schemaVersion > 2 {
+	if schemaVersion < 0 || schemaVersion > 3 {
 		return fmt.Errorf("unsupported schema_version %d", schemaVersion)
 	}
 	if version != 0 && schemaVersion != 0 && version != schemaVersion {
 		return fmt.Errorf("manifest version %d does not match schema_version %d", version, schemaVersion)
 	}
 	return nil
+}
+
+func (m *Manifest) HasCompleteDiscovery() bool {
+	return m != nil && m.Discovery != nil && m.Discovery.Complete
+}
+
+func (m *Manifest) validateDiscovery(resolvedDir string) error {
+	if m.Discovery == nil || !m.Discovery.Complete {
+		return nil
+	}
+	if m.SchemaVersion != 3 {
+		return fmt.Errorf("complete discovery requires schema_version 3")
+	}
+	if m.Dir == "" {
+		return fmt.Errorf("complete discovery requires dir")
+	}
+
+	calls, err := validateDiscoveryCalls(m.Discovery.Calls)
+	if err != nil {
+		return err
+	}
+	if err := validateDiscoveryPaths(m.Discovery, m.Dir, resolvedDir); err != nil {
+		return err
+	}
+	if err := validateDiscoveryMappings(m.Discovery, calls, m.Dir, resolvedDir); err != nil {
+		return err
+	}
+	sort.Slice(m.Discovery.Calls, func(i, j int) bool {
+		return m.Discovery.Calls[i].CallID < m.Discovery.Calls[j].CallID
+	})
+	sort.Strings(m.Discovery.ScanPaths)
+	sort.Slice(m.Discovery.ModuleMappings, func(i, j int) bool {
+		return m.Discovery.ModuleMappings[i].CallID < m.Discovery.ModuleMappings[j].CallID
+	})
+	return nil
+}
+
+func validateDiscoveryCalls(entries []ManifestDiscoveryCall) (map[string]ManifestDiscoveryCall, error) {
+	calls := make(map[string]ManifestDiscoveryCall, len(entries))
+	for i := range entries {
+		call := entries[i]
+		if call.CallID == "" {
+			return nil, fmt.Errorf("discovery call %d: call_id is required", i)
+		}
+		if _, exists := calls[call.CallID]; exists {
+			return nil, fmt.Errorf("discovery call %q is duplicated", call.CallID)
+		}
+		if call.CallerPath == "" || call.Name == "" || call.Source == "" {
+			return nil, fmt.Errorf("discovery call %q requires caller_path, name, and source", call.CallID)
+		}
+		calls[call.CallID] = call
+	}
+	for _, call := range calls {
+		if call.ParentCallID != "" {
+			if _, exists := calls[call.ParentCallID]; !exists {
+				return nil, fmt.Errorf(
+					"discovery call %q references missing parent %q",
+					call.CallID, call.ParentCallID,
+				)
+			}
+		}
+	}
+	if err := validateDiscoveryCycles(calls); err != nil {
+		return nil, err
+	}
+	return calls, nil
+}
+
+func validateDiscoveryPaths(discovery *ManifestDiscovery, dir, resolvedDir string) error {
+	seenScanPaths := make(map[string]bool, len(discovery.ScanPaths))
+	for _, scanPath := range discovery.ScanPaths {
+		if seenScanPaths[scanPath] {
+			return fmt.Errorf("discovery scan_path %q is duplicated", scanPath)
+		}
+		seenScanPaths[scanPath] = true
+		if err := validateDiscoveryFile(scanPath, dir, resolvedDir); err != nil {
+			return fmt.Errorf("discovery scan_path %q: %w", scanPath, err)
+		}
+	}
+	for localPath, source := range discovery.SourceMappings {
+		if source == "" {
+			return fmt.Errorf("discovery source_mapping %q has an empty source", localPath)
+		}
+		if err := validateDiscoveryPath(localPath, dir, resolvedDir); err != nil {
+			return fmt.Errorf("discovery source_mapping %q: %w", localPath, err)
+		}
+	}
+	for _, scanPath := range discovery.ScanPaths {
+		if !pathCoveredBySourceMapping(scanPath, discovery.SourceMappings) {
+			return fmt.Errorf("discovery scan_path %q has no source_mapping", scanPath)
+		}
+	}
+	return nil
+}
+
+func validateDiscoveryMappings(
+	discovery *ManifestDiscovery,
+	calls map[string]ManifestDiscoveryCall,
+	dir, resolvedDir string,
+) error {
+	mappedCalls := make(map[string]bool, len(discovery.ModuleMappings))
+	for i := range discovery.ModuleMappings {
+		mapping := discovery.ModuleMappings[i]
+		call, exists := calls[mapping.CallID]
+		if !exists {
+			return fmt.Errorf("discovery module_mapping references missing call %q", mapping.CallID)
+		}
+		if mappedCalls[mapping.CallID] {
+			return fmt.Errorf("discovery module_mapping for call %q is duplicated", mapping.CallID)
+		}
+		mappedCalls[mapping.CallID] = true
+		entry := ManifestEntry{
+			LocalPath:        mapping.LocalPath,
+			Version:          mapping.Version,
+			ResolvedVersion:  mapping.ResolvedVersion,
+			RequestedVersion: call.RequestedVersion,
+			Outcome:          mapping.Outcome,
+		}
+		if err := validateManifestEntry(mapping.CallID, &entry, dir, resolvedDir); err != nil {
+			return fmt.Errorf("discovery module_mapping: %w", err)
+		}
+		if manifestEntryResolved(mapping.Outcome) {
+			if _, exists := discovery.SourceMappings[mapping.LocalPath]; !exists {
+				return fmt.Errorf(
+					"discovery module_mapping for call %q has no source_mapping for %q",
+					mapping.CallID, mapping.LocalPath,
+				)
+			}
+		}
+	}
+	return nil
+}
+
+func validateDiscoveryCycles(calls map[string]ManifestDiscoveryCall) error {
+	const (
+		visiting = 1
+		visited  = 2
+	)
+	state := make(map[string]int, len(calls))
+	var visit func(string) error
+	visit = func(callID string) error {
+		switch state[callID] {
+		case visiting:
+			return fmt.Errorf("discovery calls contain a cycle at %q", callID)
+		case visited:
+			return nil
+		}
+		state[callID] = visiting
+		if parent := calls[callID].ParentCallID; parent != "" {
+			if err := visit(parent); err != nil {
+				return err
+			}
+		}
+		state[callID] = visited
+		return nil
+	}
+	for callID := range calls {
+		if err := visit(callID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateDiscoveryFile(filePath, dir, resolvedDir string) error {
+	if !strings.EqualFold(filepath.Ext(filePath), ".tf") {
+		return fmt.Errorf("path must identify a Terraform file")
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("cannot stat path: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("path identifies a directory")
+	}
+	return validateDiscoveryPath(filePath, dir, resolvedDir)
+}
+
+func validateDiscoveryPath(candidate, dir, resolvedDir string) error {
+	if !filepath.IsAbs(candidate) {
+		return fmt.Errorf("path must be absolute")
+	}
+	if !pathConfinedTo(dir, candidate) {
+		return fmt.Errorf("path is not confined to dir %q", dir)
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return fmt.Errorf("cannot resolve symlinks: %w", err)
+	}
+	if !pathConfinedTo(resolvedDir, resolved) {
+		return fmt.Errorf("resolved path escapes dir %q", dir)
+	}
+	return nil
+}
+
+func pathCoveredBySourceMapping(scanPath string, mappings map[string]string) bool {
+	for localPath := range mappings {
+		if pathConfinedTo(localPath, scanPath) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateManifestDir(dir string) (string, error) {
