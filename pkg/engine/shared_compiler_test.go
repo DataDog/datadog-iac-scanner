@@ -343,6 +343,52 @@ func TestLoadSharedQueriesCache_CanceledWaiterReturns(t *testing.T) {
 	require.ErrorIs(t, waiterErr, context.Canceled)
 }
 
+func TestLoadSharedQueriesCache_ActiveWaiterRetriesCanceledLeader(t *testing.T) {
+	clearSharedPreparedQueryCache()
+
+	platform := "terraform"
+	query := staticQuery(platform, "static_rule", "DatadogPolicy contains result if { result := \"x\" }\n")
+	loader := newCacheTestLoader(t, platform, []model.QueryMetadata{query})
+	stores, hashes := baseStoresFor(platform, "{}")
+	key := sharedCacheKey([]model.QueryMetadata{query}, loader.platformKeyBases, hashes)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	flightDone := make(chan struct{})
+	go func() {
+		defer close(flightDone)
+		_, _, _ = sharedPreparedQueryCache.flight.Do(strconv.FormatUint(key, 16), func() (any, error) {
+			close(started)
+			<-release
+			return nil, context.Canceled
+		})
+	}()
+	<-started
+
+	type cacheResult struct {
+		prepared map[int]*rego.PreparedEvalQuery
+		err      error
+	}
+	ctx := &observedDoneContext{Context: t.Context(), observed: make(chan struct{})}
+	returned := make(chan cacheResult, 1)
+	go func() {
+		prepared, _, err := loader.loadSharedQueriesCached(
+			ctx, []model.QueryMetadata{query}, stores, hashes)
+		returned <- cacheResult{prepared: prepared, err: err}
+	}()
+	<-ctx.observed
+	close(release)
+	<-flightDone
+
+	select {
+	case result := <-returned:
+		require.NoError(t, result.err)
+		require.Contains(t, result.prepared, 0)
+	case <-time.After(time.Second):
+		t.Fatal("active waiter did not retry after its singleflight leader was canceled")
+	}
+}
+
 // summarize reduces findings to a comparable, order-independent multiset of the
 // fields a caller/SARIF actually consumes, so the comparison is robust to
 // worker ordering.

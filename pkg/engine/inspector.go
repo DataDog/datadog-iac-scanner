@@ -1495,50 +1495,61 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 func (q *QueryLoader) loadSharedQueriesCached(ctx context.Context, queries []model.QueryMetadata,
 	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
 ) (preparedQueries map[int]*rego.PreparedEvalQuery, cacheHit bool, err error) {
-	if err := ctx.Err(); err != nil {
-		return nil, false, err
-	}
 	key := sharedCacheKey(queries, q.platformKeyBases, baseDataHashes)
-	sharedPreparedQueryCache.Lock()
-	if sharedPreparedQueryCache.queries != nil && sharedPreparedQueryCache.key == key {
-		cached := sharedPreparedQueryCache.queries
-		sharedPreparedQueryCache.Unlock()
-		return cached, true, nil
-	}
-	sharedPreparedQueryCache.Unlock()
+	flightKey := strconv.FormatUint(key, 16)
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
 
-	// A compilation can be shared by several requests, so it must not inherit
-	// cancellation from whichever request happens to become the singleflight
-	// leader. Each caller still stops waiting through the select below.
-	compileCtx := context.WithoutCancel(ctx)
-	resultCh := sharedPreparedQueryCache.flight.DoChan(strconv.FormatUint(key, 16), func() (any, error) {
-		// Another caller may have populated the cache between the initial check
-		// and this keyed singleflight call.
 		sharedPreparedQueryCache.Lock()
 		if sharedPreparedQueryCache.queries != nil && sharedPreparedQueryCache.key == key {
 			cached := sharedPreparedQueryCache.queries
 			sharedPreparedQueryCache.Unlock()
-			return sharedQueryCacheResult{queries: cached, cacheHit: true}, nil
+			return cached, true, nil
 		}
 		sharedPreparedQueryCache.Unlock()
 
-		prepared := q.loadSharedQueries(compileCtx, queries, baseStores)
-		sharedPreparedQueryCache.Lock()
-		sharedPreparedQueryCache.key = key
-		sharedPreparedQueryCache.queries = prepared
-		sharedPreparedQueryCache.Unlock()
-		return sharedQueryCacheResult{queries: prepared}, nil
-	})
+		resultCh := sharedPreparedQueryCache.flight.DoChan(flightKey, func() (any, error) {
+			// Another caller may have populated the cache between the initial check
+			// and this keyed singleflight call.
+			sharedPreparedQueryCache.Lock()
+			if sharedPreparedQueryCache.queries != nil && sharedPreparedQueryCache.key == key {
+				cached := sharedPreparedQueryCache.queries
+				sharedPreparedQueryCache.Unlock()
+				return sharedQueryCacheResult{queries: cached, cacheHit: true}, nil
+			}
+			sharedPreparedQueryCache.Unlock()
 
-	select {
-	case <-ctx.Done():
-		return nil, false, ctx.Err()
-	case call := <-resultCh:
-		if call.Err != nil {
-			return nil, false, call.Err
+			prepared := q.loadSharedQueries(ctx, queries, baseStores)
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			sharedPreparedQueryCache.Lock()
+			sharedPreparedQueryCache.key = key
+			sharedPreparedQueryCache.queries = prepared
+			sharedPreparedQueryCache.Unlock()
+			return sharedQueryCacheResult{queries: prepared}, nil
+		})
+
+		select {
+		case <-ctx.Done():
+			return nil, false, ctx.Err()
+		case call := <-resultCh:
+			if call.Err != nil {
+				if err := ctx.Err(); err != nil {
+					return nil, false, err
+				}
+				// The singleflight leader was canceled while this caller is still
+				// active. Retry so an active caller becomes the new leader.
+				if errors.Is(call.Err, context.Canceled) || errors.Is(call.Err, context.DeadlineExceeded) {
+					continue
+				}
+				return nil, false, call.Err
+			}
+			result := call.Val.(sharedQueryCacheResult)
+			return result.queries, result.cacheHit || call.Shared, nil
 		}
-		result := call.Val.(sharedQueryCacheResult)
-		return result.queries, result.cacheHit || call.Shared, nil
 	}
 }
 
