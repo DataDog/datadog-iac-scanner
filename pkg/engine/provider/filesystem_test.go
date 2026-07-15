@@ -132,6 +132,28 @@ func TestFileSystemSourceProvider_GetSources(t *testing.T) { //nolint
 	}
 }
 
+func TestFileSystemSourceProvider_GetSourcesClosesSingleFile(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "main.tf")
+	require.NoError(t, os.WriteFile(path, []byte("resource \"test\" \"main\" {}"), 0o600))
+	source, err := NewFileSystemSourceProvider(ctx, []string{path}, nil, nil)
+	require.NoError(t, err)
+
+	var openedFile *os.File
+	err = source.GetSources(ctx, model.Extensions{".tf": {}},
+		func(_ context.Context, _ string, content io.ReadCloser) error {
+			openedFile = content.(*os.File)
+			return nil
+		},
+		func(context.Context, string) ([]string, error) {
+			return nil, nil
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, openedFile)
+	require.Error(t, openedFile.Close())
+}
+
 func TestFileSystemSourceProvider_GetBasePath(t *testing.T) {
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Errorf("failed to change dir: %s", err)

@@ -22,6 +22,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// DefaultRemoteModuleMaxDepth bounds network work while covering typical nested module stacks.
+const DefaultRemoteModuleMaxDepth = 8
+
 // Parameters represents all available scan parameters
 type Parameters struct {
 	CloudProvider               []string
@@ -61,6 +64,10 @@ type Parameters struct {
 	EnableRemoteModules         bool
 	RemoteModulesManifestPath   string
 	RemoteModulesHostAllowlist  []string
+	// ModuleMaxDepth caps the BFS depth of the remote-module graph walker (0 disables traversal entirely).
+	ModuleMaxDepth      int
+	ModuleFetchTimeout  time.Duration
+	MaxModuleBytesTotal int64
 }
 
 func (p *Parameters) GetEffectivePlatforms() []string {
@@ -87,12 +94,11 @@ type Client struct {
 	fsys vfs.FS
 	// inMemory marks a server (content-push) scan: initScan builds its file set
 	// from inMemoryPaths instead of walking the disk via the analyzer.
-	inMemory          bool
-	inMemoryPaths     []string
-	walkInventory     []string
-	chartRoots        []string
-	contentCache      map[string][]byte
-	remoteModulePaths []string
+	inMemory      bool
+	inMemoryPaths []string
+	walkInventory []string
+	chartRoots    []string
+	contentCache  map[string][]byte
 }
 
 // ClientOption customizes a Client at construction time.
@@ -162,6 +168,9 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxFileSizeFlag:             5,
 		UseOldSeverities:            false,
 		MaxResolverDepth:            15,
+		ModuleMaxDepth:              DefaultRemoteModuleMaxDepth,
+		ModuleFetchTimeout:          30 * time.Second,
+		MaxModuleBytesTotal:         200 * 1024 * 1024,
 	}, logCtx
 }
 

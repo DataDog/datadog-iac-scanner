@@ -35,6 +35,7 @@ type FileSystemSourceProvider struct {
 	prebuiltPaths []string
 	chartRoots    []string
 	contentCache  map[string][]byte
+	unfiltered    map[string]struct{}
 }
 
 var (
@@ -150,6 +151,52 @@ func (s *FileSystemSourceProvider) ExcludePaths(ctx context.Context, paths []str
 	return s.addExcluded(ctx, paths)
 }
 
+func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range paths {
+		normalized := filepath.ToSlash(p)
+		s.paths = append(s.paths, filepath.FromSlash(normalized))
+		if s.unfiltered == nil {
+			s.unfiltered = make(map[string]struct{})
+		}
+		s.unfiltered[normalized] = struct{}{}
+		if len(s.prebuiltPaths) > 0 {
+			s.prebuiltPaths = append(s.prebuiltPaths, normalized)
+		}
+	}
+}
+
+// TerraformFiles returns the sorted list of .tf file paths covered by this provider,
+// used by the module graph-walker to discover module call sites before scanning.
+func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string, error) {
+	extensions := model.Extensions{".tf": {}}
+	var files []string
+	for _, scanPath := range s.paths {
+		fileInfo, err := os.Stat(scanPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to open path")
+		}
+		if !fileInfo.IsDir() {
+			if shouldSkip, _ := s.checkConditions(ctx, fileInfo, extensions, scanPath, nil); shouldSkip {
+				continue
+			}
+			files = append(files, filepath.ToSlash(scanPath))
+			continue
+		}
+		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, extensions)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to collect files")
+		}
+		files = append(files, collected...)
+	}
+	return files, nil
+}
+
+func unavailableResolverSink(context.Context, string) ([]string, error) {
+	return nil, errors.New("resolver unavailable")
+}
+
 // ignoreDamagedFiles checks whether we should ignore a damaged file from a scan or not.
 func ignoreDamagedFiles(ctx context.Context, path string) bool {
 	contextLogger := logger.FromContext(ctx)
@@ -186,8 +233,13 @@ func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 				}
 				return openFileErr
 			}
-			if sinkErr := sink(ctx, scanPath, c); sinkErr != nil {
+			sinkErr := sink(ctx, scanPath, c)
+			closeErr := c.Close()
+			if sinkErr != nil {
 				return sinkErr
+			}
+			if closeErr != nil {
+				return errors.Wrap(closeErr, "failed to close path")
 			}
 			continue
 		}
@@ -217,7 +269,7 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 
 		if !fileInfo.IsDir() {
 			// Single file - validate and add to queue
-			_, openFileErr := openScanFile(ctx, scanPath, extensions)
+			openFileErr := validateScanFile(ctx, scanPath, extensions)
 			if openFileErr != nil {
 				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
 					continue
@@ -283,9 +335,11 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 		if isUnderChartRoot(norm, renderedRoots) {
 			continue
 		}
-		excluded, err := s.isPathExcluded(norm)
-		if err != nil || excluded {
-			continue
+		if _, ok := s.unfiltered[norm]; !ok {
+			excluded, err := s.isPathExcluded(norm)
+			if err != nil || excluded {
+				continue
+			}
 		}
 		ext := utils.ExtensionFromPath(norm)
 		if ext == "" {
@@ -339,8 +393,7 @@ func (s *FileSystemSourceProvider) isPathExcluded(path string) (bool, error) {
 	if s.onlyPaths != nil {
 		underOnlyPath := false
 		for _, op := range s.onlyPaths {
-			if path == op || strings.HasPrefix(path, op+string(os.PathSeparator)) ||
-				strings.HasPrefix(path, op+"/") {
+			if pathWithinBase(op, path) {
 				underOnlyPath = true
 				break
 			}
@@ -368,7 +421,7 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 		}
 
 		if !fileInfo.IsDir() {
-			if _, openFileErr := openScanFile(ctx, scanPath, extensions); openFileErr != nil {
+			if openFileErr := validateScanFile(ctx, scanPath, extensions); openFileErr != nil {
 				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
 					continue
 				}
@@ -501,6 +554,14 @@ func openScanFile(ctx context.Context, scanPath string, extensions model.Extensi
 	return c, nil
 }
 
+func validateScanFile(ctx context.Context, scanPath string, extensions model.Extensions) error {
+	file, err := openScanFile(ctx, scanPath, extensions)
+	if err != nil {
+		return err
+	}
+	return file.Close()
+}
+
 // nolint:gocyclo
 func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.FileInfo, extensions model.Extensions,
 	path string, resolvedChartPaths []string) (bool, error) {
@@ -536,7 +597,7 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 	if s.onlyPaths != nil {
 		underOnlyPath := false
 		for _, op := range s.onlyPaths {
-			if path == op || strings.HasPrefix(path, op+string(os.PathSeparator)) {
+			if pathWithinBase(op, path) {
 				underOnlyPath = true
 				break
 			}
@@ -550,6 +611,11 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 		return true, nil
 	}
 	return false, nil
+}
+
+func pathWithinBase(base, path string) bool {
+	rel, err := filepath.Rel(filepath.Clean(base), filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
 // resolveChartDir renders a Helm chart directory through the resolver. On success

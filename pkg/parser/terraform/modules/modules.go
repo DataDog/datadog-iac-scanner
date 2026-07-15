@@ -944,6 +944,86 @@ func parseVariableReference(s string) string {
 	return ""
 }
 
+// ParseTerraformModulesFromFiles is a variant of ParseTerraformModules that accepts an
+// optional allowedFiles set to restrict which files contribute module blocks (all files
+// still contribute locals/vars for correct resolution). fsys is used for local-source
+// path validation; a nil fsys falls back to vfs.DiskFS{}.
+func ParseTerraformModulesFromFiles(
+	ctx context.Context, fsys vfs.FS, files model.FileMetadatas, allowedFiles map[string]bool,
+) (map[string]ParsedModule, error) {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
+	parsedBodies, err := parseHCLBodies(ctx, files, 0)
+	if err != nil {
+		return nil, err
+	}
+	modules := make(map[string]ParsedModule)
+
+	type dirEntry struct {
+		file *model.FileMetadata
+		body *hclsyntax.Body
+	}
+	byDir := make(map[string][]dirEntry)
+	for i := range files {
+		file := files[i]
+		body := parsedBodies[file.FilePath]
+		if body == nil {
+			continue
+		}
+		dir := filepath.Dir(file.FilePath)
+		byDir[dir] = append(byDir[dir], dirEntry{file, body})
+	}
+
+	for _, entries := range byDir {
+		localsMap := make(map[string]string)
+		varsMap := make(map[string]string)
+		for _, e := range entries {
+			collectLocalsAndVars(e.body, localsMap, varsMap)
+		}
+		for _, e := range entries {
+			if allowedFiles != nil && !allowedFiles[e.file.FilePath] {
+				continue
+			}
+			extractModuleBlocks(ctx, fsys, e.file.FilePath, e.body, localsMap, varsMap, modules)
+		}
+	}
+	return modules, nil
+}
+
+// LoadTFFilesFromDir returns FileMetadata for top-level .tf files in dir (no recursion —
+// a Terraform module is a single directory).
+func LoadTFFilesFromDir(dir string) (model.FileMetadatas, error) {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving module dir %q: %w", dir, err)
+	}
+	entries, err := os.ReadDir(absDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading module dir %q: %w", absDir, err)
+	}
+	var files model.FileMetadatas
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(strings.ToLower(name), ".tf") {
+			continue
+		}
+		absPath := filepath.Clean(filepath.Join(absDir, name))
+		data, readErr := os.ReadFile(absPath)
+		if readErr != nil {
+			return nil, fmt.Errorf("reading %q: %w", absPath, readErr)
+		}
+		files = append(files, &model.FileMetadata{
+			FilePath:     absPath,
+			OriginalData: string(data),
+		})
+	}
+	return files, nil
+}
+
 // GetProviderFromResourceType extracts the provider name from a Terraform resource type.
 // For example: "aws_s3_bucket" → "aws", "azurerm_network_interface" → "azurerm"
 func GetProviderFromResourceType(resourceType string) (string, error) {

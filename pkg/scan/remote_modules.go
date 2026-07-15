@@ -9,293 +9,178 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	tfresolver "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 )
 
-type moduleResolverAdapter struct {
-	resolver tfresolver.Resolver
-	mu       sync.Mutex
-	cleanups []func()
-	once     sync.Once
-}
-
-func (r *moduleResolverAdapter) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (string, error) {
-	res, err := r.resolver.Resolve(ctx, mod)
-	if err != nil {
-		return "", err
-	}
-	if res.Cleanup != nil {
-		r.mu.Lock()
-		r.cleanups = append(r.cleanups, res.Cleanup)
-		r.mu.Unlock()
-	}
-	return res.LocalPath, nil
-}
-
-func (r *moduleResolverAdapter) cleanup() {
-	r.once.Do(func() {
-		r.mu.Lock()
-		cleanups := append([]func(){}, r.cleanups...)
-		r.cleanups = nil
-		r.mu.Unlock()
-		for i := len(cleanups) - 1; i >= 0; i-- {
-			cleanups[i]()
-		}
-	})
-}
-
-func (c *Client) prepareRemoteModules(
-	ctx context.Context, paths []string, inspector *engine.Inspector,
-) (cleanup func(), err error) {
-	noCleanup := func() {}
-	if !c.ScanParams.EnableRemoteModules {
-		return noCleanup, nil
-	}
-	files, roots, err := c.collectTerraformModuleFiles(paths)
-	if err != nil {
-		return noCleanup, err
-	}
-	if len(files) == 0 {
-		return noCleanup, nil
+func (c *Client) resolveTerraformModulesForScan(
+	ctx context.Context,
+	paramsPlatforms []string,
+	extractedPaths *provider.ExtractedPath,
+) (moduleCleanup func(), remoteModulePaths []string, remoteSourceDirs map[string]string, err error) {
+	if !platformsIncludeTerraform(paramsPlatforms) || !c.shouldPreScanTerraformModules(extractedPaths.Path) {
+		return nil, nil, nil, nil
 	}
 
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.ScanParams.ParallelScanFlag)
-	if err != nil {
-		return noCleanup, err
-	}
-	if len(parsedModules) == 0 {
-		return noCleanup, nil
-	}
-
-	resolver, err := c.buildTerraformModuleResolver(roots)
-	if err != nil {
-		return noCleanup, err
-	}
-	adapter := &moduleResolverAdapter{resolver: resolver}
-	enriched, err := tfmodules.ParseAllModuleVariables(ctx, c.fsys, parsedModules, c.ScanParams.RepoPath,
-		adapter)
-	if err != nil {
-		adapter.cleanup()
-		return noCleanup, err
-	}
-
-	dirs := make(map[string]string)
-	for i := range enriched {
-		mod := &enriched[i]
-		if mod.IsLocal || mod.AbsSource == "" {
-			continue
-		}
-		root := moduleRoot(mod.FileName, c.ScanParams.RepoPath)
-		dirs[engine.RemoteModuleKey(root, mod.Source, mod.Version)] = mod.AbsSource
-		dirs[engine.RemoteModuleCallKey(root, mod.Source, mod.Version, mod.Name)] = mod.AbsSource
-	}
-	if len(dirs) == 0 {
-		return adapter.cleanup, nil
-	}
-	inspector.SetRemoteModuleDirectories(dirs)
-	remotePaths := mapValues(dirs)
-	inspector.SetExternalModulePaths(remotePaths)
-	c.remoteModulePaths = remotePaths
-	if err := c.addRemoteModuleFilesToInventory(remotePaths); err != nil {
-		adapter.cleanup()
-		return noCleanup, err
-	}
 	contextLogger := logger.FromContext(ctx)
-	contextLogger.Info().Msgf("Resolved %d Terraform remote module directories", len(dirs))
-	return adapter.cleanup, nil
+	filteredFilesSource, err := c.getFileSystemSourceProvider(ctx, extractedPaths.Path)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	moduleDiscoveryPaths, err := filteredFilesSource.TerraformFiles(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	chain := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
+
+	if c.ScanParams.EnableRemoteModules {
+		contextLogger.Info().Msg("Resolving remote Terraform modules...")
+	} else {
+		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
+	}
+
+	result := modulegraph.Resolve(ctx, &modulegraph.Request{
+		RootPaths:      extractedPaths.Path,
+		DiscoveryPaths: moduleDiscoveryPaths,
+		Resolver:       chain,
+		MaxDepth:       c.ScanParams.ModuleMaxDepth,
+		FS:             c.fsys,
+	})
+	if len(result.ScanPaths) > 0 {
+		contextLogger.Info().Msgf("Adding %d remote module file(s) to scan", len(result.ScanPaths))
+	}
+	for localPath, canonicalSource := range result.SourceMappings {
+		extractedPaths.ExtractionMap[localPath] = model.ExtractedPathObject{
+			Path:      canonicalSource,
+			LocalPath: false,
+		}
+	}
+	remoteSourceDirs = make(map[string]string, len(result.Modules)*3)
+	for _, module := range result.Modules {
+		remoteSourceDirs[engine.RemoteModuleKey(
+			module.CallerRoot, module.Source, module.Version,
+		)] = module.LocalPath
+		remoteSourceDirs[engine.RemoteModuleCallKey(
+			module.CallerRoot, module.Source, module.Version, module.Name,
+		)] = module.LocalPath
+		remoteSourceDirs[engine.RemoteModuleCallKey(
+			module.CallerRoot, module.Source, "", module.Name,
+		)] = module.LocalPath
+	}
+	return result.Cleanup, result.ScanPaths, remoteSourceDirs, nil
 }
 
-func (c *Client) buildTerraformModuleResolver(roots []string) (tfresolver.Resolver, error) {
-	resolvers := []tfresolver.Resolver{
-		&tfresolver.DotTerraformResolver{RootDirs: roots},
-		tfresolver.NewLocalGitRefResolver(roots, ""),
-		tfresolver.NewBareGitResolver(""),
+func (c *Client) shouldPreScanTerraformModules(scanPaths []string) bool {
+	if !c.ScanParams.EnableRemoteModules {
+		return false
 	}
+	if c.ScanParams.RemoteModulesManifestPath != "" {
+		return true
+	}
+	for _, root := range dotTerraformRootDirs(scanPaths) {
+		if hasTerraformModulesManifest(root) {
+			return true
+		}
+	}
+	return true
+}
+
+func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPaths []string) *tfresolver.ChainResolver {
+	contextLogger := logger.FromContext(ctx)
+
+	resolvers := []tfresolver.Resolver{
+		tfresolver.LocalResolver{},
+		&tfresolver.DotTerraformResolver{RootDirs: dotTerraformRootDirs(moduleDiscoveryPaths)},
+	}
+
 	if c.ScanParams.RemoteModulesManifestPath != "" {
 		manifest, err := tfresolver.LoadManifest(c.ScanParams.RemoteModulesManifestPath)
 		if err != nil {
-			return nil, err
-		}
-		resolvers = append([]tfresolver.Resolver{tfresolver.NewPrefetchedResolver(manifest)}, resolvers...)
-	}
-	cfg := tfresolver.NewGoGetterConfig()
-	cfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
-	cache, err := tfresolver.NewModuleCache()
-	if err != nil {
-		return nil, err
-	}
-	cfg.Cache = cache
-	resolvers = append(resolvers, tfresolver.NewGoGetterResolver(cfg))
-	return tfresolver.NewChainResolver(resolvers...), nil
-}
-
-func (c *Client) collectTerraformModuleFiles(paths []string) (model.FileMetadatas, []string, error) {
-	files := newTerraformModuleFiles(c.contentCache, c.ScanParams.RepoPath)
-	if len(c.walkInventory) > 0 {
-		for _, path := range c.walkInventory {
-			if err := files.add(path); err != nil {
-				return nil, nil, err
-			}
-		}
-		return files.sorted()
-	}
-	for _, scanPath := range paths {
-		if err := files.addScanPath(scanPath); err != nil {
-			return nil, nil, err
+			contextLogger.Warn().Err(err).
+				Msgf("Failed to load modules manifest %q; remote modules from manifest will be unresolved",
+					c.ScanParams.RemoteModulesManifestPath)
+		} else {
+			resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
 		}
 	}
-	return files.sorted()
-}
 
-type terraformModuleFiles struct {
-	contentCache map[string][]byte
-	repoPath     string
-	filesByPath  map[string]*model.FileMetadata
-	roots        map[string]struct{}
-}
-
-func newTerraformModuleFiles(contentCache map[string][]byte, repoPath string) *terraformModuleFiles {
-	return &terraformModuleFiles{
-		contentCache: contentCache,
-		repoPath:     repoPath,
-		filesByPath:  make(map[string]*model.FileMetadata),
-		roots:        make(map[string]struct{}),
+	if c.ScanParams.EnableRemoteModules {
+		resolvers = append(resolvers,
+			tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), ""),
+			tfresolver.NewBareGitResolver("", c.ScanParams.RemoteModulesHostAllowlist...),
+		)
 	}
-}
 
-func (f *terraformModuleFiles) add(path string) error {
-	if !strings.EqualFold(filepath.Ext(path), ".tf") {
-		return nil
+	ggCfg := tfresolver.NewGoGetterConfig()
+	ggCfg.Disabled = !c.ScanParams.EnableRemoteModules
+	if t := c.ScanParams.ModuleFetchTimeout; t > 0 {
+		ggCfg.FetchTimeout = t
+		ggCfg.RegistryCache = tfresolver.NewRegistryCache(ggCfg.FetchTimeout)
 	}
-	data, ok := f.contentCache[path]
-	if !ok {
-		var err error
-		data, err = os.ReadFile(filepath.Clean(path))
+	ggCfg.MaxTotalBytes = c.ScanParams.MaxModuleBytesTotal
+	ggCfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
+
+	if !ggCfg.Disabled {
+		cache, err := tfresolver.NewModuleCache()
 		if err != nil {
-			return err
+			contextLogger.Warn().Err(err).Msg("Module disk cache unavailable; fetched modules will not be cached")
+		} else {
+			ggCfg.Cache = cache
 		}
 	}
-	f.filesByPath[path] = &model.FileMetadata{FilePath: path, OriginalData: string(data)}
-	f.roots[moduleRoot(path, f.repoPath)] = struct{}{}
-	return nil
+
+	resolvers = append(resolvers, tfresolver.NewGoGetterResolver(ggCfg))
+	return tfresolver.NewChainResolver(resolvers...)
 }
 
-func (f *terraformModuleFiles) addScanPath(scanPath string) error {
-	info, err := os.Stat(scanPath)
-	if err != nil {
-		return err
+func dotTerraformRootDirs(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	roots := make([]string, 0, len(paths))
+	for _, p := range paths {
+		root := terraformRootDir(p)
+		if root == "" || seen[root] {
+			continue
+		}
+		seen[root] = true
+		roots = append(roots, root)
 	}
-	if !info.IsDir() {
-		return f.add(scanPath)
-	}
-	return filepath.WalkDir(scanPath, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() && strings.HasPrefix(d.Name(), ".terra") {
-			return filepath.SkipDir
-		}
-		if d.IsDir() {
-			return nil
-		}
-		return f.add(path)
-	})
+	return roots
 }
 
-func (f *terraformModuleFiles) sorted() (model.FileMetadatas, []string, error) {
-	pathsSorted := make([]string, 0, len(f.filesByPath))
-	for path := range f.filesByPath {
-		pathsSorted = append(pathsSorted, path)
+func terraformRootDir(path string) string {
+	info, err := os.Stat(path)
+	if err == nil && !info.IsDir() {
+		path = filepath.Dir(path)
 	}
-	sort.Strings(pathsSorted)
-	files := make(model.FileMetadatas, 0, len(pathsSorted))
-	for _, path := range pathsSorted {
-		files = append(files, f.filesByPath[path])
+	clean := filepath.Clean(path)
+	for {
+		if hasTerraformModulesManifest(clean) {
+			return clean
+		}
+		parent := filepath.Dir(clean)
+		if parent == clean {
+			return filepath.Clean(path)
+		}
+		clean = parent
 	}
-
-	rootsSorted := make([]string, 0, len(f.roots))
-	for root := range f.roots {
-		rootsSorted = append(rootsSorted, root)
-	}
-	sort.Strings(rootsSorted)
-	return files, rootsSorted, nil
 }
 
-func (c *Client) addRemoteModuleFilesToInventory(moduleDirs []string) error {
-	if len(c.walkInventory) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(c.walkInventory))
-	for _, path := range c.walkInventory {
-		seen[path] = struct{}{}
-	}
-	for _, dir := range moduleDirs {
-		moduleFiles := make([]string, 0)
-		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-			if !strings.EqualFold(filepath.Ext(path), ".tf") {
-				return nil
-			}
-			norm := strings.ReplaceAll(path, "\\", "/")
-			moduleFiles = append(moduleFiles, norm)
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-		for _, path := range moduleFiles {
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-			c.walkInventory = append(c.walkInventory, path)
-			if c.contentCache != nil {
-				if _, ok := c.contentCache[path]; !ok {
-					data, readErr := os.ReadFile(filepath.Clean(path))
-					if readErr != nil {
-						return readErr
-					}
-					c.contentCache[path] = data
-				}
-			}
+func hasTerraformModulesManifest(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".terraform", "modules", "modules.json"))
+	return err == nil
+}
+
+func platformsIncludeTerraform(platforms []string) bool {
+	for _, p := range platforms {
+		if strings.EqualFold(p, "terraform") {
+			return true
 		}
 	}
-	sort.Strings(c.walkInventory)
-	return nil
-}
-
-func moduleRoot(fileName, repoPath string) string {
-	if fileName == "" {
-		return filepath.Clean(repoPath)
-	}
-	if filepath.IsAbs(fileName) {
-		return filepath.Clean(filepath.Dir(fileName))
-	}
-	return filepath.Clean(filepath.Dir(filepath.Join(repoPath, fileName)))
-}
-
-func mapValues(values map[string]string) []string {
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		seen[value] = struct{}{}
-	}
-	out := make([]string, 0, len(seen))
-	for value := range seen {
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
+	return false
 }

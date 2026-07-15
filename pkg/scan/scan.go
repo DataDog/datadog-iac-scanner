@@ -44,10 +44,11 @@ type Results struct {
 }
 
 type executeScanParameters struct {
-	services       []*runner.Service
-	inspector      *engine.Inspector
-	extractedPaths provider.ExtractedPath
-	moduleCleanup  func()
+	services          []*runner.Service
+	inspector         *engine.Inspector
+	extractedPaths    provider.ExtractedPath
+	moduleCleanup     func()
+	remoteModulePaths []string
 }
 
 func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
@@ -76,6 +77,21 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	}
 
 	paramsPlatforms := c.ScanParams.GetEffectivePlatforms()
+
+	moduleCleanup, remoteModulePaths, remoteSourceDirs, err := c.resolveTerraformModulesForScan(ctx, paramsPlatforms, &extractedPaths)
+	if err != nil {
+		return nil, err
+	}
+	initSucceeded := false
+	defer func() {
+		if initSucceeded {
+			return
+		}
+		if moduleCleanup != nil {
+			moduleCleanup()
+		}
+	}()
+
 	useDifferentPlatformQueries(&paramsPlatforms)
 	querySource, err := c.createQuerySource(ctx, paramsPlatforms)
 	if err != nil {
@@ -107,24 +123,19 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	if err != nil {
 		return nil, err
 	}
-	moduleCleanup, err := c.prepareRemoteModules(ctx, extractedPaths.Path, inspector)
-	if err != nil {
-		contextLogger.Err(err).Msg("failed to prepare Terraform remote modules")
-		return nil, err
-	}
-	initSucceeded := false
-	defer func() {
-		if !initSucceeded {
-			moduleCleanup()
-		}
-	}()
 
-	contextLogger.Info().Msgf("Finshed inspect query source %v", querySource)
+	if len(remoteSourceDirs) > 0 {
+		inspector.SetRemoteModuleDirectories(remoteSourceDirs)
+	}
+	inspector.SetExternalModulePaths(remoteModulePaths)
+
+	contextLogger.Info().Msgf("Finished inspect query source %v", querySource)
 
 	services, err := c.createService(
 		ctx,
 		inspector,
 		extractedPaths.Path,
+		remoteModulePaths,
 		c.Tracker,
 		c.Storage,
 		paramsPlatforms,
@@ -139,10 +150,11 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 
 	initSucceeded = true
 	return &executeScanParameters{
-		services:       services,
-		inspector:      inspector,
-		extractedPaths: extractedPaths,
-		moduleCleanup:  moduleCleanup,
+		services:          services,
+		inspector:         inspector,
+		extractedPaths:    extractedPaths,
+		moduleCleanup:     moduleCleanup,
+		remoteModulePaths: remoteModulePaths,
 	}, nil
 }
 
@@ -194,7 +206,10 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	if executeScanParameters == nil {
 		return nil, nil
 	}
-	defer executeScanParameters.moduleCleanup()
+
+	if executeScanParameters.moduleCleanup != nil {
+		defer executeScanParameters.moduleCleanup()
+	}
 
 	contextLogger.Info().Msg("Scan initialized")
 
@@ -280,6 +295,7 @@ func (c *Client) createService(
 	ctx context.Context,
 	inspector *engine.Inspector,
 	paths []string,
+	remoteModulePaths []string,
 	t runner.Tracker,
 	store runner.Storage,
 	types []string,
@@ -287,12 +303,10 @@ func (c *Client) createService(
 	flagEvaluator featureflags.FlagEvaluator,
 	filePlatform map[string]string) ([]*runner.Service, error) {
 	var filesSource provider.SourceProvider
-	paths = append(paths, c.remoteModulePaths...)
 	if c.inMemory {
-		// Content-push mode: serve the pushed files from the in-memory FS instead
-		// of walking the disk. No symlink/SameFile handling and no Helm chart
-		// discovery occur (the resolverSink is never invoked).
-		filesSource = provider.NewMemorySourceProvider(c.fsys, paths,
+		allPaths := append([]string{}, paths...)
+		allPaths = append(allPaths, remoteModulePaths...)
+		filesSource = provider.NewMemorySourceProvider(c.fsys, allPaths,
 			c.ScanParams.Config.IgnorePaths, c.ScanParams.Config.OnlyPaths)
 	} else {
 		fsSource, err := c.getFileSystemSourceProvider(ctx, paths)
@@ -302,6 +316,7 @@ func (c *Client) createService(
 		if len(c.walkInventory) > 0 {
 			fsSource.SetPrebuiltWalk(c.walkInventory, c.chartRoots, c.contentCache)
 		}
+		fsSource.AddUnfilteredPaths(remoteModulePaths)
 		filesSource = fsSource
 	}
 
@@ -358,7 +373,9 @@ func (c *Client) createService(
 	return services, nil
 }
 
-func (c *Client) getFileSystemSourceProvider(ctx context.Context, paths []string) (*provider.FileSystemSourceProvider, error) {
+func (c *Client) getFileSystemSourceProvider(
+	ctx context.Context, paths []string,
+) (*provider.FileSystemSourceProvider, error) {
 	var excludePaths []string
 	if c.ScanParams.PayloadPath != "" {
 		excludePaths = append(excludePaths, c.ScanParams.PayloadPath)

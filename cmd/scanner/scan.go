@@ -111,6 +111,24 @@ var scanAction = &cli.Command{
 			Usage:  "(experimental) host allowed for Terraform remote module downloads",
 			Value:  []string{},
 		},
+		&cli.IntFlag{
+			Name:   "x-remote-modules-max-depth",
+			Hidden: true,
+			Usage:  "(experimental) maximum BFS depth for the remote module graph walker (default 8)",
+			Value:  scan.DefaultRemoteModuleMaxDepth,
+		},
+		&cli.DurationFlag{
+			Name:   "x-remote-modules-fetch-timeout",
+			Hidden: true,
+			Usage:  "(experimental) per-module fetch timeout (default 30s)",
+			Value:  30 * time.Second,
+		},
+		&cli.Int64Flag{
+			Name:   "x-remote-modules-max-bytes",
+			Hidden: true,
+			Usage:  "(experimental) total download size limit across all remote modules in bytes (default 200MiB)",
+			Value:  200 * 1024 * 1024,
+		},
 		&cli.BoolFlag{
 			Name:   "x-terraform-plan",
 			Hidden: true,
@@ -372,6 +390,9 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		EnableRemoteModules:         c.Bool("x-remote-modules"),
 		RemoteModulesManifestPath:   c.String("x-remote-modules-manifest"),
 		RemoteModulesHostAllowlist:  c.StringSlice("x-remote-modules-allowed-host"),
+		ModuleMaxDepth:              c.Int("x-remote-modules-max-depth"),
+		ModuleFetchTimeout:          c.Duration("x-remote-modules-fetch-timeout"),
+		MaxModuleBytesTotal:         c.Int64("x-remote-modules-max-bytes"),
 	}
 
 	var opts []scan.ClientOption

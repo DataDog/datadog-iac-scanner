@@ -34,8 +34,9 @@ type BareGitResolver struct {
 	// Defaults to <user-cache-dir>/datadog-iac-scanner/git-bare.
 	CacheDir string
 
-	mu    sync.Mutex
-	repos map[string]*bareRepo
+	hostAllowlist []string
+	mu            sync.Mutex
+	repos         map[string]*bareRepo
 }
 
 const bareCloneAttempts = 3
@@ -58,10 +59,11 @@ type bareRepo struct {
 	refCache map[string]string // tag/branch ref → resolved SHA (warm from disk on init)
 }
 
-func NewBareGitResolver(cacheDir string) *BareGitResolver {
+func NewBareGitResolver(cacheDir string, hostAllowlist ...string) *BareGitResolver {
 	return &BareGitResolver{
-		CacheDir: cacheDir,
-		repos:    make(map[string]*bareRepo),
+		CacheDir:      cacheDir,
+		hostAllowlist: hostAllowlist,
+		repos:         make(map[string]*bareRepo),
 	}
 }
 
@@ -447,6 +449,9 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 		return Resolution{}, &tfmodules.UnresolvedError{
 			Reason: "BareGitResolver: not a git:: source with a ref= parameter",
 		}
+	}
+	if err := checkHostAllowlist(mod.Source, r.hostAllowlist); err != nil {
+		return Resolution{}, err
 	}
 
 	contextLogger := logger.FromContext(ctx)
