@@ -63,16 +63,6 @@ var serveAction = &cli.Command{
 				"into a shared compiler (rules cache + disabled rule isolation), for faster repeat " +
 				"scans at low memory",
 		},
-		&cli.StringFlag{
-			Name:  "libraries-path",
-			Value: "",
-			Usage: "path to local Rego support libraries (default: fetch from backend)",
-		},
-		&cli.StringFlag{
-			Name:  "queries-path",
-			Value: "./assets/queries",
-			Usage: "path to the default rule corpus (used only when a request omits its own rules)",
-		},
 		&cli.BoolFlag{
 			Name:   "x-parallelparsing",
 			Hidden: true,
@@ -104,8 +94,6 @@ func serve(ctx context.Context, c *cli.Command) error {
 		Port:                 c.Int("port"),
 		KeepAliveTimeout:     time.Duration(c.Int("keep-alive-timeout")) * time.Second,
 		EnableShutdown:       c.Bool("enable-shutdown"),
-		LibrariesPath:        c.String("libraries-path"),
-		QueriesPath:          c.String("queries-path"),
 		MaxConcurrentAnalyze: c.Int("max-concurrent-analyze"),
 		MaxFiles:             c.Int("max-files"),
 		MaxRequestBytes:      int64(c.Int("max-request-mib")) << 20,

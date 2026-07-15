@@ -183,6 +183,27 @@ dummy_test(a) {
 	}
 }
 
+func TestIsJSONObject(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "object", input: `{"key":"value"}`, want: true},
+		{name: "object with whitespace", input: " \n {} \t", want: true},
+		{name: "empty", input: ""},
+		{name: "null", input: "null"},
+		{name: "array", input: "[]"},
+		{name: "scalar", input: "1"},
+		{name: "malformed object", input: "{"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsJSONObject(tt.input))
+		})
+	}
+}
+
 // TestMergeInputData tests mergeInputData function
 func TestMergeInputData(t *testing.T) {
 	tests := []struct {
@@ -190,6 +211,7 @@ func TestMergeInputData(t *testing.T) {
 		customData  string
 		defaultData string
 		want        string
+		wantError   bool
 	}{
 		{
 			name:        "Should merge input data strings",
@@ -197,10 +219,20 @@ func TestMergeInputData(t *testing.T) {
 			customData:  `{"test": "merge", "merge": "success"}`,
 			want:        `{"test": "merge","merge": "success"}`,
 		},
+		{name: "Reject null default", defaultData: "null", customData: `{"test":true}`, wantError: true},
+		{name: "Reject null custom", defaultData: `{"test":true}`, customData: "null", wantError: true},
+		{name: "Reject array", defaultData: "[]", customData: "{}", wantError: true},
+		{name: "Reject scalar", defaultData: "{}", customData: "1", wantError: true},
+		{name: "Reject malformed default with empty custom", defaultData: "{", customData: "{}", wantError: true},
+		{name: "Reject malformed custom with empty default", defaultData: "{}", customData: "{", wantError: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := MergeInputData(tt.defaultData, tt.customData)
+			if tt.wantError {
+				require.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 			wantJSON := map[string]interface{}{}
 			gotJSON := map[string]interface{}{}
@@ -209,6 +241,15 @@ func TestMergeInputData(t *testing.T) {
 			err = json.Unmarshal([]byte(got), &gotJSON)
 			require.NoError(t, err)
 			require.Equal(t, wantJSON, gotJSON)
+		})
+	}
+}
+
+func TestMergeModulesDataRejectsNonObjectInput(t *testing.T) {
+	for _, inputData := range []string{"null", "[]", "1", `"value"`} {
+		t.Run(inputData, func(t *testing.T) {
+			_, err := MergeModulesData(nil, inputData)
+			require.Error(t, err)
 		})
 	}
 }

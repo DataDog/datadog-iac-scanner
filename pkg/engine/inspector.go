@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +47,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/topdown"
 	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
+	"golang.org/x/sync/singleflight"
 )
 
 // Default values for inspector
@@ -99,6 +101,22 @@ type QueryLoader struct {
 // safe for concurrent use.
 var preparedQueryCache sync.Map // map[uint64]*rego.PreparedEvalQuery
 
+// sharedPreparedQueryCache retains one co-compiled ruleset. A single-entry
+// cache is sufficient for the long-lived server's normal workload (the latest
+// backend rules and libraries) and bounds retained memory when rules, library
+// data, or Terraform module data changes between requests.
+var sharedPreparedQueryCache struct {
+	sync.Mutex
+	key     uint64
+	queries map[int]*rego.PreparedEvalQuery
+	flight  singleflight.Group
+}
+
+type sharedQueryCacheResult struct {
+	queries  map[int]*rego.PreparedEvalQuery
+	cacheHit bool
+}
+
 // hashFields computes a fast, non-cryptographic 64-bit hash of the given strings
 // joined by a NUL separator. The NUL separator keeps the field boundaries
 // unambiguous (so e.g. ("a","bc") and ("ab","c") hash differently).
@@ -134,6 +152,33 @@ func preparedCacheKey(query *model.QueryMetadata, libBase, baseDataHash uint64) 
 	binary.LittleEndian.PutUint64(buf[0:8], libBase)
 	binary.LittleEndian.PutUint64(buf[8:16], baseDataHash)
 	_, _ = h.Write(buf[:])
+	return h.Sum64()
+}
+
+// sharedCacheKey hashes everything the co-compiled prepared queries depend on.
+// Query order is significant because the shared compiler rewrites packages to
+// data.datadog.q<index>. Library code/input and the merged base store are
+// represented by the same precomputed hashes used by the isolated cache.
+func sharedCacheKey(queries []model.QueryMetadata, libraryBases, baseDataHashes map[string]uint64) uint64 {
+	var h xxhash.Digest
+	h.Reset()
+	var words [24]byte
+	binary.LittleEndian.PutUint64(words[0:8], uint64(len(queries)))
+	_, _ = h.Write(words[0:8])
+	for i := range queries {
+		query := &queries[i]
+		_, _ = h.WriteString(query.Platform)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(query.Query)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(query.Content)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(query.InputData)
+		binary.LittleEndian.PutUint64(words[0:8], uint64(i))
+		binary.LittleEndian.PutUint64(words[8:16], libraryBases[query.Platform])
+		binary.LittleEndian.PutUint64(words[16:24], baseDataHashes[query.Platform])
+		_, _ = h.Write(words[:])
+	}
 	return h.Sum64()
 }
 
@@ -338,10 +383,9 @@ type QueryResult struct {
 	queryID         int
 }
 
-// evalQuery loads and evaluates a single query, returning its result. A load
-// failure yields an empty result (the query is skipped, matching the previous
-// behavior); an eval failure yields a result carrying the error so the serial
-// aggregation can record it.
+// evalQuery loads and evaluates a single query, returning its result. Load and
+// evaluation failures both carry their error so the serial aggregation records
+// them in FailedQueries without terminating the rest of the scan.
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
 	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
@@ -360,7 +404,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	loadDur := time.Since(loadStart)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msgf("failed to load query %s", queries[queryID].Query)
-		return QueryResult{queryID: queryID}
+		return QueryResult{err: err, queryID: queryID}
 	}
 
 	query := &PreparedQuery{
@@ -451,7 +495,7 @@ func (c *Inspector) Inspect(
 	// same payload for every PrepareForEval call. The per-platform data hash is
 	// folded into each compiled-query cache key so a compiled query is only
 	// reused by a later scan whose base data is byte-identical.
-	baseInputData := c.QueryLoader.precomputeBaseInputData(ctx, enrichedModules)
+	baseInputData := c.QueryLoader.precomputeBaseInputData(enrichedModules)
 	baseStores := precomputeBaseStores(baseInputData)
 	baseDataHashes := hashBaseInputData(baseInputData)
 
@@ -462,7 +506,17 @@ func (c *Inspector) Inspect(
 	// correctness is preserved even if shared compilation partially fails.
 	var sharedQueries map[int]*rego.PreparedEvalQuery
 	if c.disableRuleIsolation {
-		sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
+		if c.useRulesCache {
+			var cacheHit bool
+			sharedQueries, cacheHit, err = c.QueryLoader.loadSharedQueriesCached(
+				ctx, queries, baseStores, baseDataHashes)
+			if err != nil {
+				return nil, err
+			}
+			contextLogger.Info().Msgf("Shared compiler cache hit: %t", cacheHit)
+		} else {
+			sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
+		}
 		contextLogger.Info().Msgf("Rule isolation disabled: %d/%d queries served from shared compiler",
 			len(sharedQueries), len(queries))
 	}
@@ -1194,25 +1248,24 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 
 // buildMergedInputData merges the platform library, common library and (when
 // present) module input data into a single JSON document for a query.
-func (q *QueryLoader) buildMergedInputData(ctx context.Context, query *model.QueryMetadata,
+func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
 	modules []tfmodules.ParsedModule) (string, error) {
-	contextLogger := logger.FromContext(ctx)
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
 	if !ok {
 		return "", errors.New("failed to get platform library")
 	}
 	mergedInputData, err := source.MergeInputData(platformGeneralQuery.LibraryInputData, query.InputData)
 	if err != nil {
-		contextLogger.Debug().Msgf("Could not merge %s library input data", query.Platform)
+		return "", errors.Wrapf(err, "could not merge %s library input data", query.Platform)
 	}
 	mergedInputData, err = source.MergeInputData(q.commonLibrary.LibraryInputData, mergedInputData)
 	if err != nil {
-		contextLogger.Debug().Msg("Could not merge common library input data")
+		return "", errors.Wrap(err, "could not merge common library input data")
 	}
 	if modules != nil {
 		mergedInputData, err = source.MergeModulesData(modules, mergedInputData)
 		if err != nil {
-			contextLogger.Debug().Msg("Could not merge modules input data")
+			return "", errors.Wrap(err, "could not merge modules input data")
 		}
 	}
 	return mergedInputData, nil
@@ -1222,11 +1275,10 @@ func (q *QueryLoader) buildMergedInputData(ctx context.Context, query *model.Que
 // queries that carry no custom InputData. The common/platform library data and
 // the module payload are identical across such queries, so doing this once
 // avoids re-serializing the (potentially large) module set for every query.
-func (q *QueryLoader) precomputeBaseInputData(ctx context.Context,
-	modules []tfmodules.ParsedModule) map[string]string {
+func (q *QueryLoader) precomputeBaseInputData(modules []tfmodules.ParsedModule) map[string]string {
 	base := make(map[string]string, len(q.platformLibraries))
 	for platform := range q.platformLibraries {
-		data, err := q.buildMergedInputData(ctx, &model.QueryMetadata{Platform: platform}, modules)
+		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform}, modules)
 		if err != nil {
 			continue
 		}
@@ -1293,7 +1345,7 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		if useCache {
 			store = prebuilt
 		} else {
-			mergedInputData, err := q.buildMergedInputData(ctx, query, modules)
+			mergedInputData, err := q.buildMergedInputData(query, modules)
 			if err != nil {
 				return nil, err
 			}
@@ -1450,6 +1502,70 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 		}
 	}
 	return prepared
+}
+
+// loadSharedQueriesCached returns the latest matching co-compiled ruleset.
+// Identical cold misses are coalesced by key, while different rulesets compile
+// concurrently. The mutex protects only the bounded single-entry cache.
+func (q *QueryLoader) loadSharedQueriesCached(ctx context.Context, queries []model.QueryMetadata,
+	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
+) (preparedQueries map[int]*rego.PreparedEvalQuery, cacheHit bool, err error) {
+	key := sharedCacheKey(queries, q.platformKeyBases, baseDataHashes)
+	flightKey := strconv.FormatUint(key, 16)
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
+
+		sharedPreparedQueryCache.Lock()
+		if sharedPreparedQueryCache.queries != nil && sharedPreparedQueryCache.key == key {
+			cached := sharedPreparedQueryCache.queries
+			sharedPreparedQueryCache.Unlock()
+			return cached, true, nil
+		}
+		sharedPreparedQueryCache.Unlock()
+
+		resultCh := sharedPreparedQueryCache.flight.DoChan(flightKey, func() (any, error) {
+			// Another caller may have populated the cache between the initial check
+			// and this keyed singleflight call.
+			sharedPreparedQueryCache.Lock()
+			if sharedPreparedQueryCache.queries != nil && sharedPreparedQueryCache.key == key {
+				cached := sharedPreparedQueryCache.queries
+				sharedPreparedQueryCache.Unlock()
+				return sharedQueryCacheResult{queries: cached, cacheHit: true}, nil
+			}
+			sharedPreparedQueryCache.Unlock()
+
+			prepared := q.loadSharedQueries(ctx, queries, baseStores)
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			sharedPreparedQueryCache.Lock()
+			sharedPreparedQueryCache.key = key
+			sharedPreparedQueryCache.queries = prepared
+			sharedPreparedQueryCache.Unlock()
+			return sharedQueryCacheResult{queries: prepared}, nil
+		})
+
+		select {
+		case <-ctx.Done():
+			return nil, false, ctx.Err()
+		case call := <-resultCh:
+			if call.Err != nil {
+				if err := ctx.Err(); err != nil {
+					return nil, false, err
+				}
+				// The singleflight leader was canceled while this caller is still
+				// active. Retry so an active caller becomes the new leader.
+				if errors.Is(call.Err, context.Canceled) || errors.Is(call.Err, context.DeadlineExceeded) {
+					continue
+				}
+				return nil, false, call.Err
+			}
+			result := call.Val.(sharedQueryCacheResult)
+			return result.queries, result.cacheHit || call.Shared, nil
+		}
+	}
 }
 
 func parseJsonencodeHCL(ctx context.Context, input string) (ast.Value, error) {
