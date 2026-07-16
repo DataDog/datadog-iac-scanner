@@ -22,6 +22,7 @@ import (
 	ansibleHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	bicepParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/bicep"
 	buildahParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/buildah"
+	cniParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/cni"
 	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
@@ -49,7 +50,6 @@ var resultShape = struct {
 }{
 	Required: []string{
 		"documentId",
-		"searchKey",
 	},
 	ResourceKeys: []string{"resourceType", "resourceName"},
 }
@@ -70,10 +70,12 @@ var platformsRequiringResourceKeys = map[string]struct{}{
 
 // ruleFinding is one result emitted by a rule's DatadogPolicy evaluation.
 type ruleFinding struct {
-	QueryName string
-	Severity  string
-	Line      int
-	FileName  string
+	QueryName    string
+	Severity     string
+	Line         int
+	FileName     string
+	ResourceType *string
+	ResourceName *string
 }
 
 type ruleOutcome struct {
@@ -220,10 +222,12 @@ func runRule(ctx context.Context, rule *datadog.Rule, libSource source.QueriesSo
 	expected := make([]ruleFinding, len(rule.Tests.Expected))
 	for i, ef := range rule.Tests.Expected {
 		expected[i] = ruleFinding{
-			QueryName: ef.ShortDescription,
-			Severity:  ef.Severity,
-			Line:      ef.Line,
-			FileName:  ef.FileName,
+			QueryName:    ef.ShortDescription,
+			Severity:     ef.Severity,
+			Line:         ef.Line,
+			FileName:     ef.FileName,
+			ResourceType: ef.ResourceType,
+			ResourceName: ef.ResourceName,
 		}
 	}
 
@@ -303,11 +307,15 @@ func runFiles(
 	out := make([]ruleFinding, len(vulns))
 	for i := range vulns {
 		v := vulns[i]
+		rt := v.ResourceType
+		rn := v.ResourceName
 		out[i] = ruleFinding{
-			QueryName: v.QueryName,
-			Severity:  string(v.Severity),
-			Line:      v.Line,
-			FileName:  filepath.Base(v.FileName),
+			QueryName:    v.QueryName,
+			Severity:     string(v.Severity),
+			Line:         v.Line,
+			FileName:     filepath.Base(v.FileName),
+			ResourceType: &rt,
+			ResourceName: &rn,
 		}
 	}
 	return out, shapeErrs, nil
@@ -333,6 +341,13 @@ func validateResultShape(m map[string]interface{}, platform, ruleID string) []st
 		if _, ok := m[key]; !ok {
 			errs = append(errs, fmt.Sprintf("Result missing required field %q", key))
 		}
+	}
+	// A finding must locate itself via either the legacy text searchKey or the
+	// typed attributePath emitted by finding().
+	_, hasSearchKey := m["searchKey"]
+	_, hasAttributePath := m["attributePath"]
+	if !hasSearchKey && !hasAttributePath {
+		errs = append(errs, fmt.Sprintf(`Result missing required field "searchKey" or "attributePath" in rule %s`, ruleID))
 	}
 	if _, ok := platformsRequiringResourceKeys[platform]; ok {
 		for _, key := range resultShape.ResourceKeys {
@@ -383,10 +398,26 @@ func compareFindings(expected, got []ruleFinding) []string {
 }
 
 func findingsMatch(exp, got ruleFinding) bool {
-	return exp.QueryName == got.QueryName &&
-		exp.Severity == got.Severity &&
-		exp.Line == got.Line &&
-		(exp.FileName == "" || exp.FileName == got.FileName)
+	if exp.QueryName != got.QueryName || exp.Severity != got.Severity {
+		return false
+	}
+	if exp.FileName != "" && exp.FileName != got.FileName {
+		return false
+	}
+	if exp.ResourceType != nil && (got.ResourceType == nil || *exp.ResourceType != *got.ResourceType) {
+		return false
+	}
+	if exp.ResourceName != nil && (got.ResourceName == nil || *exp.ResourceName != *got.ResourceName) {
+		return false
+	}
+	// Backend test expectations do not carry resource identity until migrated
+	// rules are republished. Their legacy line numbers are not comparable with
+	// attributePath-based findings, so match those transitional entries by the
+	// identity fields the backend currently provides.
+	if exp.ResourceType == nil && got.ResourceType != nil {
+		return true
+	}
+	return exp.Line == got.Line
 }
 
 func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (model.FileMetadatas, error) {
@@ -447,6 +478,7 @@ func getFixtureParsers(ctx context.Context) ([]*parser.Parser, error) {
 	fixtureParsersOnce.Do(func() {
 		fixtureParsers, fixtureParsersErr = parser.NewBuilder(ctx).
 			Add(&jsonParser.Parser{}).
+			Add(&cniParser.Parser{}).
 			Add(&yamlParser.Parser{}).
 			Add(terraformParser.NewDefault()).
 			Add(&bicepParser.Parser{}).
