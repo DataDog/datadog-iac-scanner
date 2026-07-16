@@ -140,6 +140,22 @@ func TestParser_Contains(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "registry alias CF matches cloudformation parser type",
+			args: args{
+				types:          []string{"CF"},
+				supportedTypes: map[string]bool{"cloudformation": true},
+			},
+			want: true,
+		},
+		{
+			name: "registry alias k8s matches kubernetes parser type",
+			args: args{
+				types:          []string{"k8s"},
+				supportedTypes: map[string]bool{"kubernetes": true},
+			},
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {

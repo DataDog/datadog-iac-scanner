@@ -17,6 +17,7 @@ import (
 // TFPlan is an auxiliary structure for parsing tfplans as a scanner Document
 type TFPlan struct {
 	Resource map[string]TFPlanResource `json:"resource"`
+	Data     map[string]TFPlanResource `json:"data,omitempty"`
 }
 
 // TFPlanResource is an auxiliary structure for parsing tfplans as a scanner Document.
@@ -49,8 +50,10 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 	// those lines back out of the raw bytes (via gjson, keyed by resource
 	// address) before that information is lost.
 	resourceLines := extractResourceHeaderLines(b)
+	expressionLines := extractExpressionLines(b)
+	valueAttributeLines := extractValueAttributeLines(b)
 
-	parsedPlan := readPlan(plan, resourceLines)
+	parsedPlan := readPlan(plan, resourceLines, expressionLines, valueAttributeLines)
 	return parsedPlan, nil
 }
 
@@ -63,13 +66,14 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 func extractResourceHeaderLines(rawPlan []byte) map[string]int {
 	lines := make(map[string]int)
 	root_module := gjson.GetBytes(rawPlan, "planned_values.root_module")
-	walkModule(&root_module, lines)
+	rootLines := root_module.Get("_dd_lines")
+	walkModule(&root_module, &rootLines, lines)
 	return lines
 }
 
-func walkModule(module *gjson.Result, lines map[string]int) {
+func walkModule(module, moduleLines *gjson.Result, lines map[string]int) {
 	resources := module.Get("resources").Array()
-	arr := module.Get("_dd_lines._dd_resources._dd_arr").Array()
+	arr := moduleLines.Get("_dd_resources._dd_arr").Array()
 	for i, resource := range resources {
 		if i >= len(arr) {
 			break
@@ -79,19 +83,135 @@ func walkModule(module *gjson.Result, lines map[string]int) {
 			lines[address] = int(line)
 		}
 	}
+	children := module.Get("child_modules").Array()
+	childLines := moduleLines.Get("_dd_child_modules._dd_arr").Array()
+	for i, child := range children {
+		if i >= len(childLines) {
+			break
+		}
+		walkModule(&child, &childLines[i], lines)
+	}
+}
+
+func extractExpressionLines(rawPlan []byte) map[string]map[string]*model.LineObject {
+	lines := make(map[string]map[string]*model.LineObject)
+	rootModule := gjson.GetBytes(rawPlan, "configuration.root_module")
+	walkConfigurationModule(&rootModule, lines)
+	return lines
+}
+
+func extractValueAttributeLines(rawPlan []byte) map[string]map[string]*model.LineObject {
+	lines := make(map[string]map[string]*model.LineObject)
+	rootModule := gjson.GetBytes(rawPlan, "planned_values.root_module")
+	walkPlannedValuesModule(&rootModule, lines)
+	return lines
+}
+
+func walkPlannedValuesModule(module *gjson.Result, lines map[string]map[string]*model.LineObject) {
+	for _, resource := range module.Get("resources").Array() {
+		address := resource.Get("address").String()
+		if address == "" {
+			continue
+		}
+		attrs := map[string]*model.LineObject{}
+		resource.Get("values._dd_lines").ForEach(func(key, val gjson.Result) bool {
+			k := key.String()
+			if k == "_dd__default" {
+				return true
+			}
+			var attr model.LineObject
+			if err := json.Unmarshal([]byte(val.Raw), &attr); err == nil && attr.Line > 0 {
+				attrs[k] = &attr
+			}
+			return true
+		})
+		if len(attrs) > 0 {
+			lines[address] = attrs
+		}
+	}
 	module.Get("child_modules").ForEach(func(_, child gjson.Result) bool {
-		walkModule(&child, lines)
+		walkPlannedValuesModule(&child, lines)
+		return true
+	})
+}
+
+func mergeAttributeLines(expressionLines, valueLines map[string]*model.LineObject) map[string]*model.LineObject {
+	if len(expressionLines) == 0 && len(valueLines) == 0 {
+		return nil
+	}
+	keys := make(map[string]struct{}, len(expressionLines)+len(valueLines))
+	for k := range expressionLines {
+		keys[k] = struct{}{}
+	}
+	for k := range valueLines {
+		keys[k] = struct{}{}
+	}
+	merged := make(map[string]*model.LineObject, len(keys))
+	for k := range keys {
+		expr := expressionLines[k]
+		val := valueLines[k]
+		switch {
+		case expr != nil && val != nil:
+			// Planned values win for bare attribute paths (e.g. ["policy"]).
+			// Configuration constant_value is kept for nested JSON-in-string
+			// traversal (Statement, Action, Principal, …).
+			nested := make(map[string]*model.LineObject, len(val.Map)+1)
+			for key, line := range val.Map {
+				nested[key] = line
+			}
+			nested["_dd_constant_value"] = &model.LineObject{Line: expr.Line}
+			merged[k] = &model.LineObject{
+				Line: val.Line,
+				Arr:  val.Arr,
+				Map:  nested,
+			}
+		case val != nil:
+			merged[k] = val
+		default:
+			merged[k] = expr
+		}
+	}
+	return merged
+}
+
+func walkConfigurationModule(module *gjson.Result, lines map[string]map[string]*model.LineObject) {
+	for _, resource := range module.Get("resources").Array() {
+		address := resource.Get("address").String()
+		if address == "" {
+			continue
+		}
+		expressions := map[string]*model.LineObject{}
+		resource.Get("expressions").ForEach(func(key, expression gjson.Result) bool {
+			if line := expression.Get("_dd_lines._dd_constant_value._dd_line").Int(); line > 0 {
+				expressions["_dd_"+key.String()] = &model.LineObject{Line: int(line)}
+			}
+			return true
+		})
+		if len(expressions) > 0 {
+			lines[address] = expressions
+		}
+	}
+	module.Get("module_calls").ForEach(func(name, call gjson.Result) bool {
+		child := call.Get("module")
+		if child.Exists() {
+			walkConfigurationModule(&child, lines)
+		}
 		return true
 	})
 }
 
 // readPlan extracts the information needed from a Terraform plan and converts it to a scanner Document
-func readPlan(plan *hcl_plan.Plan, resourceLines map[string]int) model.Document {
+func readPlan(
+	plan *hcl_plan.Plan,
+	resourceLines map[string]int,
+	expressionLines, valueAttributeLines map[string]map[string]*model.LineObject,
+) model.Document {
 	kp := TFPlan{
 		Resource: make(map[string]TFPlanResource),
+		Data:     make(map[string]TFPlanResource),
 	}
 
-	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines)
+	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, expressionLines, valueAttributeLines)
 
 	doc := model.Document{}
 
@@ -111,14 +231,24 @@ func readPlan(plan *hcl_plan.Plan, resourceLines map[string]int) model.Document 
 // resources from every module into the same flat resource.<type>.<name> map
 // without losing data across modules. moduleAddress is the full address of
 // module (e.g. "module.staging"), or "" for the root module.
-func (kp *TFPlan) readModule(module *hcl_plan.StateModule, moduleAddress string, resourceLines map[string]int) {
+func (kp *TFPlan) readModule(
+	module *hcl_plan.StateModule,
+	moduleAddress string,
+	resourceLines map[string]int,
+	expressionLines, valueAttributeLines map[string]map[string]*model.LineObject,
+) {
 	// Process all resources in this module
 	for _, resource := range module.Resources {
-		// Ensure the resource type map exists - accumulate, don't reinitialize!
-		if kp.Resource[resource.Type] == nil {
-			kp.Resource[resource.Type] = make(TFPlanResource)
+		resourcesByType := kp.Resource
+		if resource.Mode == hcl_plan.DataResourceMode {
+			resourcesByType = kp.Data
 		}
-		typeRes := kp.Resource[resource.Type]
+
+		// Ensure the resource type map exists - accumulate, don't reinitialize!
+		if resourcesByType[resource.Type] == nil {
+			resourcesByType[resource.Type] = make(TFPlanResource)
+		}
+		typeRes := resourcesByType[resource.Type]
 
 		// Root-module resources keep their plain name. Child-module resources
 		// get their module address prefixed, so same-type-same-name resources
@@ -136,7 +266,17 @@ func (kp *TFPlan) readModule(module *hcl_plan.StateModule, moduleAddress string,
 		}
 
 		// Accumulate the resource into the existing type map
-		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
+		namedResource := TFPlanNamedResource(resource.AttributeValues)
+		if namedResource == nil {
+			namedResource = make(TFPlanNamedResource)
+		}
+		if moduleAddress != "" {
+			namedResource["_dd_module_address"] = moduleAddress
+		}
+		if lines := mergeAttributeLines(expressionLines[resource.Address], valueAttributeLines[resource.Address]); lines != nil {
+			namedResource["_dd_lines"] = lines
+		}
+		typeRes[resourceKey] = namedResource
 
 		// Inject the resource's "values" attribute line as a sibling _dd_lines
 		// entry at resource.<type>._dd_lines._dd_<name>._dd_line, matching the
@@ -153,7 +293,7 @@ func (kp *TFPlan) readModule(module *hcl_plan.StateModule, moduleAddress string,
 
 	// Recursively process child modules, accumulating into the same map
 	for _, childModule := range module.ChildModules {
-		kp.readModule(childModule, childModule.Address, resourceLines)
+		kp.readModule(childModule, childModule.Address, resourceLines, expressionLines, valueAttributeLines)
 	}
 }
 

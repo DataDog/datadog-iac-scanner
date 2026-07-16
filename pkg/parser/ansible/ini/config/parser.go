@@ -15,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/comments"
+	platformreg "github.com/DataDog/datadog-iac-scanner/pkg/platform"
 	"github.com/bigkevmcd/go-configparser"
 )
 
@@ -33,6 +34,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	if isInsideFilesDir(filePath) {
 		return fileContent, []model.Document{}, []int{}, nil, nil
 	}
+	if _, ok := platformreg.ClassifyStructuredContent(filepath.Ext(filePath), fileContent); ok {
+		return fileContent, []model.Document{}, []int{}, nil, nil
+	}
 
 	reader := strings.NewReader(string(fileContent))
 	configparser.Delimiters("=")
@@ -45,10 +49,68 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	doc := make(map[string]interface{})
 	doc["groups"] = refactorConfig(config)
+	doc["_dd_lines"] = configLineMetadata(fileContent)
 
 	ignoreLines = comments.GetIgnoreLines(strings.Split(string(fileContent), "\n"))
 
 	return fileContent, []model.Document{doc}, ignoreLines, nil, nil
+}
+
+func configLineMetadata(content []byte) map[string]*model.LineObject {
+	groupLines := make(map[string]*model.LineObject)
+	rootLine := 1
+	rootLineSet := false
+	var section *model.LineObject
+
+	for index, rawLine := range strings.Split(string(content), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		lineNumber := index + 1
+		if strings.HasPrefix(line, "[") {
+			if closingBracket := strings.IndexByte(line, ']'); closingBracket > 1 {
+				name := strings.TrimSpace(line[1:closingBracket])
+				section = &model.LineObject{
+					Line: lineNumber,
+					Map: map[string]*model.LineObject{
+						"_dd__default": {Line: lineNumber},
+					},
+				}
+				groupLines["_dd_"+name] = section
+				groupLines["_dd_"+strings.ToLower(name)] = section
+				if !rootLineSet {
+					rootLine = lineNumber
+					rootLineSet = true
+				}
+			}
+			continue
+		}
+
+		if section == nil {
+			continue
+		}
+		delimiter := strings.IndexByte(line, '=')
+		if delimiter <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:delimiter])
+		if key == "" {
+			continue
+		}
+		keyLine := &model.LineObject{Line: lineNumber}
+		section.Map["_dd_"+key] = keyLine
+		section.Map["_dd_"+strings.ToLower(key)] = keyLine
+	}
+
+	return map[string]*model.LineObject{
+		"_dd__default": {Line: rootLine},
+		"_dd_groups": {
+			Line: rootLine,
+			Map:  groupLines,
+		},
+	}
 }
 
 // refactorConfig removes all extra information and tries to convert

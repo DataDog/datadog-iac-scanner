@@ -142,14 +142,47 @@ block "label_one" "label_two" {
 					},
 					"default": [
 						{
+							"_dd_lines": {
+								"_dd__default": {
+									"_dd_line": 4
+								},
+								"_dd_attribute": {
+									"_dd_line": 6
+								},
+								"_dd_id": {
+									"_dd_line": 5
+								}
+							},
 							"attribute": "a",
 							"id": "name1"
 						},
 						{
+							"_dd_lines": {
+								"_dd__default": {
+									"_dd_line": 8
+								},
+								"_dd_attribute": {
+									"_dd_line": 10
+								},
+								"_dd_id": {
+									"_dd_line": 9
+								}
+							},
 							"attribute": "a,b",
 							"id": "name2"
 						},
 						{
+							"_dd_lines": {
+								"_dd__default": {
+									"_dd_line": 12
+								},
+								"_dd_attribute": {
+									"_dd_line": 14
+								},
+								"_dd_id": {
+									"_dd_line": 13
+								}
+							},
 							"attribute": "d",
 							"id": "name3"
 						}
@@ -507,7 +540,15 @@ block "label_one" {
 						"_dd_line": 2
 					  },
 					  "_dd_policy": {
-						"_dd_line": 3
+						"_dd_line": 3,
+						"_dd_lines": {
+						  "_dd__default": {
+							"_dd_line": 3
+						  },
+						  "_dd_Id": {
+							"_dd_line": 4
+						  }
+						}
 					  },
 					  "_dd_some_number": {
 						"_dd_line": 6
@@ -547,7 +588,15 @@ block "label_one" {
 						"_dd_line": 2
 					  },
 					  "_dd_policy": {
-						"_dd_line": 3
+						"_dd_line": 3,
+						"_dd_lines": {
+						  "_dd__default": {
+							"_dd_line": 3
+						  },
+						  "_dd_Id": {
+							"_dd_line": 4
+						  }
+						}
 					  },
 					  "_dd_some_number": {
 						"_dd_line": 6
@@ -832,6 +881,35 @@ variable "region" {
 			},
 			{
 				"other": {
+					"_dd_lines": {
+						"_dd__default": {
+							"_dd_line": 17
+						},
+						"_dd_num": {
+							"_dd_line": 18
+						},
+						"_dd_thing": {
+							"_dd_line": 19
+						},
+						"_dd_${local.test3}": {
+							"_dd_line": 20
+						},
+						"_dd_3": {
+							"_dd_line": 21
+						},
+						"_dd_local.test1": {
+							"_dd_line": 22
+						},
+						"_dd_a.b.c[\"hi\"][3].*": {
+							"_dd_line": 23
+						},
+						"_dd_loop": {
+							"_dd_line": 24
+						},
+						"_dd_a.b.c": {
+							"_dd_line": 25
+						}
+					},
 					"a.b.c": "True",
 					"num": "${local.test2 + 5}",
 					"thing": "${[for x in local.arr: x * 2]}",
@@ -889,7 +967,15 @@ variable "region" {
 							"_dd_line": 44
 						},
 						"_dd_policy": {
-							"_dd_line": 50
+							"_dd_line": 50,
+							"_dd_lines": {
+								"_dd__default": {
+									"_dd_line": 50
+								},
+								"_dd_Id": {
+									"_dd_line": 51
+								}
+							}
 						},
 						"_dd_some_number": {
 							"_dd_line": 53
@@ -897,6 +983,23 @@ variable "region" {
 					},
 					"backend": "s3",
 					"config": {
+						"_dd_lines": {
+							"_dd__default": {
+								"_dd_line": 44
+							},
+							"_dd_profile": {
+								"_dd_line": 45
+							},
+							"_dd_region": {
+								"_dd_line": 46
+							},
+							"_dd_bucket": {
+								"_dd_line": 47
+							},
+							"_dd_key": {
+								"_dd_line": 48
+							}
+						},
 						"profile": "${var.profile}",
 						"region": "${var.region}",
 						"bucket": "${var.bucket}-mybucket",

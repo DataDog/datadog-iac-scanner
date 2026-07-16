@@ -100,6 +100,7 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 			ddLines["_dd_"+key] = model.LineObject{
 				Line: value.SrcRange.Start.Line,
 				Arr:  c.getArrLines(value.Expr),
+				Map:  c.getNestedLines(value.Expr),
 			}
 			if err != nil {
 				return nil, err
@@ -159,6 +160,40 @@ func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.L
 		}
 	}
 	return arr
+}
+
+func (c *converter) getNestedLines(expr hclsyntax.Expression) map[string]*model.LineObject {
+	e, ok := expr.(*hclsyntax.FunctionCallExpr)
+	if !ok || e.Name != "jsonencode" || len(e.Args) == 0 {
+		return nil
+	}
+	return c.getExprLines(e.Args[0])
+}
+
+func (c *converter) getExprLines(expr hclsyntax.Expression) map[string]*model.LineObject {
+	obj, ok := expr.(*hclsyntax.ObjectConsExpr)
+	if !ok {
+		return nil
+	}
+	return c.getObjectLines(obj)
+}
+
+func (c *converter) getObjectLines(expr *hclsyntax.ObjectConsExpr) map[string]*model.LineObject {
+	lines := map[string]*model.LineObject{
+		"_dd__default": {Line: expr.SrcRange.Start.Line},
+	}
+	for _, item := range expr.Items {
+		key, err := c.convertKey(item.KeyExpr)
+		if err != nil {
+			return nil
+		}
+		lines["_dd_"+key] = &model.LineObject{
+			Line: item.KeyExpr.Range().Start.Line,
+			Arr:  c.getArrLines(item.ValueExpr),
+			Map:  c.getExprLines(item.ValueExpr),
+		}
+	}
+	return lines
 }
 
 func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, out model.Document, defLine int) error {
@@ -313,6 +348,8 @@ func checkDynamicKnownTypes(valueConverted cty.Value) bool {
 
 func (c *converter) objectConsExpr(value *hclsyntax.ObjectConsExpr) (model.Document, error) {
 	m := make(model.Document)
+	ddLines := make(map[string]model.LineObject)
+	ddLines["_dd__default"] = model.LineObject{Line: value.SrcRange.Start.Line}
 	for _, item := range value.Items {
 		key, err := c.convertKey(item.KeyExpr)
 		if err != nil {
@@ -322,7 +359,9 @@ func (c *converter) objectConsExpr(value *hclsyntax.ObjectConsExpr) (model.Docum
 		if err != nil {
 			return nil, err
 		}
+		ddLines["_dd_"+key] = model.LineObject{Line: item.KeyExpr.Range().Start.Line}
 	}
+	m["_dd_lines"] = ddLines
 	return m, nil
 }
 

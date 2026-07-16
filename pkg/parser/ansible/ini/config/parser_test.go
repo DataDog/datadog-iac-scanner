@@ -104,6 +104,16 @@ group:          compat cache systemd
 			wantDocuments: 0,
 			wantErr:       false,
 		},
+		{
+			name: "skip CNI conf",
+			p:    &Parser{},
+			args: args{
+				filePath: "etc/cni/net.d/10-bridge.conf",
+				content:  []byte(`{"cniVersion":"1.0.0","type":"bridge"}`),
+			},
+			wantDocuments: 0,
+			wantErr:       false,
+		},
 	}
 
 	ctx := context.Background()
@@ -122,4 +132,24 @@ group:          compat cache systemd
 			}
 		})
 	}
+}
+
+func TestParser_ParseAddsConfigKeyLineMetadata(t *testing.T) {
+	content := []byte(`[defaults]
+inventory = /etc/ansible/hosts
+
+no_log = False
+`)
+
+	_, documents, _, _, err := (&Parser{}).Parse(
+		context.Background(), content, "ansible.cfg", true, 15,
+	)
+	require.NoError(t, err)
+	require.Len(t, documents, 1)
+
+	lines, ok := documents[0]["_dd_lines"].(map[string]*model.LineObject)
+	require.True(t, ok)
+	defaults := lines["_dd_groups"].Map["_dd_defaults"]
+	require.Equal(t, 1, defaults.Line)
+	require.Equal(t, 4, defaults.Map["_dd_no_log"].Line)
 }

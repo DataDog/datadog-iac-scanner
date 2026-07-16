@@ -11,16 +11,16 @@ import (
 	"encoding/json"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	platformreg "github.com/DataDog/datadog-iac-scanner/pkg/platform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
 )
 
-// Parser defines a parser type
+// Parser parses JSON documents.
 type Parser struct{}
 
-// Resolve - replace or modifies in-memory content before parsing
+// Resolve expands file references.
 func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
 	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile, err error) {
-	// Resolve files passed as arguments with file resolver (e.g. file://)
 	res := file.NewResolver(json.Unmarshal, json.Marshal, p.SupportedExtensions())
 	resolvedFilesCache := make(map[string]file.ResolvedFile)
 	resolved = res.Resolve(ctx, fileContent, filename, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
@@ -32,9 +32,30 @@ func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename strin
 	return resolved, res.ResolvedFiles, nil
 }
 
-// Parse parses json file and returns it as a Document
+// Parse parses a JSON document.
 func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int) (
+	resolved []byte,
+	documents []model.Document,
+	ignoreLines []int,
+	resolvedFiles map[string]model.ResolvedFile,
+	err error) {
+	return p.parse(ctx, fileContent, filePath, resolveReferences, maxResolverDepth, false)
+}
+
+// ParseCNI parses structurally validated CNI JSON using the shared JSON metadata path.
+func (p *Parser) ParseCNI(ctx context.Context, fileContent []byte, filePath string,
+	resolveReferences bool, maxResolverDepth int) (
+	resolved []byte,
+	documents []model.Document,
+	ignoreLines []int,
+	resolvedFiles map[string]model.ResolvedFile,
+	err error) {
+	return p.parse(ctx, fileContent, filePath, resolveReferences, maxResolverDepth, true)
+}
+
+func (p *Parser) parse(ctx context.Context, fileContent []byte, filePath string,
+	resolveReferences bool, maxResolverDepth int, allowCNI bool) (
 	resolved []byte,
 	documents []model.Document,
 	ignoreLines []int,
@@ -51,6 +72,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		var r []model.Document
 		err = json.Unmarshal(resolved, &r)
 		return nil, r, nil, resolvedFiles, err
+	}
+	if _, ok := platformreg.ClassifyStructuredContent(".json", resolved); ok && !allowCNI {
+		return resolved, []model.Document{}, nil, resolvedFiles, nil
 	}
 
 	jLine := initializeJSONLine(resolved)

@@ -66,6 +66,43 @@ func TestJson_parseTFPlan(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "test - preserve data resource mode",
+			args: args{
+				doc: model.Document{
+					"format_version":    "0.2",
+					"terraform_version": "1.5.0",
+					"planned_values": map[string]interface{}{
+						"root_module": map[string]interface{}{
+							"resources": []map[string]interface{}{
+								{
+									"address": "data.aws_caller_identity.current",
+									"mode":    "data",
+									"type":    "aws_caller_identity",
+									"name":    "current",
+									"values": map[string]interface{}{
+										"account_id": "123456789012",
+									},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]interface{}{},
+					"configuration":    map[string]interface{}{},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]interface{}{},
+				"data": map[string]interface{}{
+					"aws_caller_identity": map[string]interface{}{
+						"current": map[string]interface{}{
+							"account_id": "123456789012",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "test - should not parse tfplan",
 			args: args{
 				doc: model.Document{
@@ -135,8 +172,9 @@ func TestJson_parseTFPlan(t *testing.T) {
 							"acl":    "private",
 						},
 						"module.storage.backup": map[string]interface{}{
-							"bucket": "backup-bucket",
-							"acl":    "private",
+							"_dd_module_address": "module.storage",
+							"bucket":             "backup-bucket",
+							"acl":                "private",
 						},
 					},
 					"aws_instance": map[string]interface{}{
@@ -205,7 +243,8 @@ func TestJson_parseTFPlan(t *testing.T) {
 							},
 						},
 						"module.staging.web": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_module_address": "module.staging",
+							"instance_type":      "t2.micro",
 							"tags": map[string]interface{}{
 								"Environment": "staging",
 							},
@@ -279,12 +318,14 @@ func TestJson_parseTFPlan(t *testing.T) {
 					},
 					"aws_subnet": map[string]interface{}{
 						"module.networking.public": map[string]interface{}{
-							"cidr_block": "10.0.1.0/24",
+							"_dd_module_address": "module.networking",
+							"cidr_block":         "10.0.1.0/24",
 						},
 					},
 					"aws_security_group": map[string]interface{}{
 						"module.networking.module.security.web": map[string]interface{}{
-							"description": "Web traffic",
+							"_dd_module_address": "module.networking.module.security",
+							"description":        "Web traffic",
 						},
 					},
 				},
@@ -339,10 +380,50 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"module.app1.data": map[string]interface{}{
-							"bucket": "app1-data",
+							"_dd_module_address": "module.app1",
+							"bucket":             "app1-data",
 						},
 						"module.app2.data": map[string]interface{}{
-							"bucket": "app2-data",
+							"_dd_module_address": "module.app2",
+							"bucket":             "app2-data",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test - child module resource with null values preserves module metadata",
+			args: args{
+				doc: model.Document{
+					"format_version":    "1.2",
+					"terraform_version": "1.5.0",
+					"planned_values": map[string]interface{}{
+						"root_module": map[string]interface{}{
+							"resources": []map[string]interface{}{},
+							"child_modules": []map[string]interface{}{
+								{
+									"address": "module.app",
+									"resources": []map[string]interface{}{
+										{
+											"address": "module.app.aws_s3_bucket.data",
+											"mode":    "managed",
+											"type":    "aws_s3_bucket",
+											"name":    "data",
+											"values":  nil,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]interface{}{
+					"aws_s3_bucket": map[string]interface{}{
+						"module.app.data": map[string]interface{}{
+							"_dd_module_address": "module.app",
 						},
 					},
 				},
@@ -556,6 +637,99 @@ func TestJson_parseTFPlan(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "test - planned_values attribute line wins over configuration expression",
+			args: args{
+				doc: model.Document{
+					"format_version":    "1.2",
+					"terraform_version": "1.0.5",
+					"planned_values": map[string]any{
+						"root_module": map[string]any{
+							"resources": []map[string]any{
+								{
+									"address": "aws_ebs_encryption_by_default.positive1",
+									"mode":    "managed",
+									"type":    "aws_ebs_encryption_by_default",
+									"name":    "positive1",
+									"values": map[string]any{
+										"enabled": false,
+										"egress": []any{
+											map[string]any{
+												"cidr_blocks": []any{"0.0.0.0/0"},
+											},
+										},
+										"_dd_lines": map[string]any{
+											"_dd_enabled": map[string]any{"_dd_line": 15},
+											"_dd_egress": map[string]any{
+												"_dd_line": 20,
+												"_dd_arr": []any{
+													map[string]any{
+														"_dd__default":    map[string]any{"_dd_line": 20},
+														"_dd_cidr_blocks": map[string]any{"_dd_line": 22},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]any{},
+					"configuration": map[string]any{
+						"root_module": map[string]any{
+							"resources": []map[string]any{
+								{
+									"address": "aws_ebs_encryption_by_default.positive1",
+									"type":    "aws_ebs_encryption_by_default",
+									"name":    "positive1",
+									"expressions": map[string]any{
+										"enabled": map[string]any{
+											"constant_value": false,
+											"_dd_lines": map[string]any{
+												"_dd_constant_value": map[string]any{"_dd_line": 83},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]any{
+					"aws_ebs_encryption_by_default": map[string]any{
+						"positive1": map[string]any{
+							"enabled": false,
+							"egress": []any{
+								map[string]any{
+									"cidr_blocks": []any{"0.0.0.0/0"},
+								},
+							},
+							"_dd_lines": map[string]any{
+								"_dd_enabled": map[string]any{
+									"_dd_line": (float64)(15),
+									"_dd_lines": map[string]any{
+										"_dd_constant_value": map[string]any{"_dd_line": (float64)(83)},
+									},
+								},
+								"_dd_egress": map[string]any{
+									"_dd_line": (float64)(20),
+									"_dd_arr": []any{
+										map[string]any{
+											"_dd__default":    map[string]any{"_dd_line": (float64)(20)},
+											"_dd_cidr_blocks": map[string]any{"_dd_line": (float64)(22)},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -569,4 +743,29 @@ func TestJson_parseTFPlan(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestExtractResourceHeaderLinesFromChildModule(t *testing.T) {
+	raw := []byte(`{
+		"planned_values": {
+			"root_module": {
+				"_dd_lines": {
+					"_dd_child_modules": {
+						"_dd_arr": [{
+							"_dd_resources": {
+								"_dd_arr": [{"_dd_values": {"_dd_line": 42}}]
+							}
+						}]
+					}
+				},
+				"child_modules": [{
+					"resources": [{"address": "module.child.aws_s3_bucket.example"}]
+				}]
+			}
+		}
+	}`)
+
+	require.Equal(t, map[string]int{
+		"module.child.aws_s3_bucket.example": 42,
+	}, extractResourceHeaderLines(raw))
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	platformreg "github.com/DataDog/datadog-iac-scanner/pkg/platform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -221,7 +222,7 @@ func contains(types []string, supportedTypes map[string]bool) bool {
 	}
 
 	for _, t := range types {
-		if _, ok := supportedTypes[strings.ToLower(t)]; ok {
+		if _, ok := supportedTypes[platformreg.CompareKey(t)]; ok {
 			return true
 		}
 	}
