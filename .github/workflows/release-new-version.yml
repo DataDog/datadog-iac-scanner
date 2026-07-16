@@ -57,6 +57,10 @@ jobs:
           set -euo pipefail
           checksum_file=$(cat dist/artifacts.json | jq -r '.[] | select (.type=="Checksum") | .path')
           echo "hashes=$(cat $checksum_file | base64 -w0)" >> "$GITHUB_OUTPUT"
+      - name: Print release checksums JSON
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/gen-checksums.sh "${{ github.ref_name }}"
   # Uncomment when repository is public
   # provenance:
   #   needs: [goreleaser]
