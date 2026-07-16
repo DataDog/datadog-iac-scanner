@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	platformreg "github.com/DataDog/datadog-iac-scanner/pkg/platform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
@@ -34,8 +36,6 @@ import (
 // openAPIRegex - Regex that finds OpenAPI defining property "openapi" or "swagger"
 // openAPIRegexInfo - Regex that finds OpenAPI defining property "info"
 // openAPIRegexPath - Regex that finds OpenAPI defining property "paths", "components", or "webhooks" (from 3.1.0)
-// cloudRegex - Regex that finds CloudFormation defining property "Resources"
-// k8sRegex - Regex that finds Kubernetes defining property "apiVersion"
 // k8sRegexKind - Regex that finds Kubernetes defining property "kind"
 // k8sRegexMetadata - Regex that finds Kubernetes defining property "metadata"
 // k8sRegexSpec - Regex that finds Kubernetes defining property "spec"
@@ -45,8 +45,6 @@ var (
 	OpenAPIRegexPath                                = regexp.MustCompile(`("(paths|components|webhooks)"|(paths|components|webhooks))\s*:`)
 	armRegexContentVersion                          = regexp.MustCompile(`"contentVersion"\s*:`)
 	armRegexResources                               = regexp.MustCompile(`"resources"\s*:`)
-	cloudRegex                                      = regexp.MustCompile(`("Resources"|Resources)\s*:`)
-	k8sRegex                                        = regexp.MustCompile(`("apiVersion"|apiVersion)\s*:`)
 	k8sRegexKind                                    = regexp.MustCompile(`("kind"|kind)\s*:`)
 	tfPlanRegexPV                                   = regexp.MustCompile(`"planned_values"\s*:`)
 	tfPlanRegexRC                                   = regexp.MustCompile(`"resource_changes"\s*:`)
@@ -72,8 +70,6 @@ var (
 	pulumiResourcesRegex                            = regexp.MustCompile(`resources\s*:`)
 	serverlessServiceRegex                          = regexp.MustCompile(`service\s*:`)
 	serverlessProviderRegex                         = regexp.MustCompile(`(^|\n)provider\s*:`)
-	cicdOnRegex                                     = regexp.MustCompile(`\s*on:\s*`)
-	cicdJobsRegex                                   = regexp.MustCompile(`\s*jobs:\s*`)
 	githubActionManifestRunsRegex                   = regexp.MustCompile(`(^|\n)runs:\s*`)
 	githubActionManifestUsingRegex                  = regexp.MustCompile(`\s*using:\s*['"]?(composite|docker|node\d+)`)
 	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
@@ -84,24 +80,8 @@ var (
 var (
 	listKeywordsGoogleDeployment = []string{"resources"}
 	armRegexTypes                = []string{"blueprint", "templateArtifact", "roleAssignmentArtifact", "policyAssignmentArtifact"}
-	possibleFileTypes            = map[string]bool{
-		yml:            true,
-		yaml:           true,
-		json:           true,
-		sh:             true,
-		extDockerfile:  true,
-		nameDockerfile: true,
-		extDebian:      true,
-		extUbi8:        true,
-		extTf:          true,
-		extTfvars:      true,
-		extProto:       true,
-		extCfg:         true,
-		extConf:        true,
-		extIni:         true,
-		extBicepFile:   true,
-	}
-	supportedRegexes = map[string][]string{
+	possibleFileTypes            = buildPossibleFileTypes()
+	supportedRegexes             = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
 		"buildah":              {"buildah"},
 		"cicd":                 {"cicd", "dependabot", "githubAction"},
@@ -168,6 +148,30 @@ const (
 	extIni                = ".ini"
 )
 
+func buildPossibleFileTypes() map[string]bool {
+	fileTypes := map[string]bool{
+		yml:            true,
+		yaml:           true,
+		json:           true,
+		sh:             true,
+		extDockerfile:  true,
+		nameDockerfile: true,
+		extDebian:      true,
+		extUbi8:        true,
+		extTf:          true,
+		extTfvars:      true,
+		extProto:       true,
+		extCfg:         true,
+		extConf:        true,
+		extIni:         true,
+		extBicepFile:   true,
+	}
+	for _, extension := range platformreg.StructuralExtensions() {
+		fileTypes[extension] = true
+	}
+	return fileTypes
+}
+
 type Parameters struct {
 	Results     string
 	Path        []string
@@ -209,12 +213,6 @@ var types = map[string]regexSlice{
 			OpenAPIRegexPath,
 		},
 	},
-	"kubernetes": {
-		regex: []*regexp.Regexp{
-			k8sRegex,
-			k8sRegexKind,
-		},
-	},
 	"crossplane": {
 		regex: []*regexp.Regexp{
 			crossPlaneRegex,
@@ -225,11 +223,6 @@ var types = map[string]regexSlice{
 		regex: []*regexp.Regexp{
 			knativeRegex,
 			k8sRegexKind,
-		},
-	},
-	"cloudformation": {
-		regex: []*regexp.Regexp{
-			cloudRegex,
 		},
 	},
 	"azureresourcemanager": {
@@ -301,12 +294,6 @@ var types = map[string]regexSlice{
 			serverlessProviderRegex,
 		},
 	},
-	"cicd": {
-		[]*regexp.Regexp{
-			cicdOnRegex,
-			cicdJobsRegex,
-		},
-	},
 	"dependabot": {
 		[]*regexp.Regexp{
 			dependabotVersionRegex,
@@ -326,10 +313,8 @@ var defaultConfigSuffixes = []string{"pnpm-lock.yaml"}
 
 // Required substrings per platform; skip regex when none are present.
 var contentHints = map[string][][]byte{
-	"kubernetes":               {[]byte("apiVersion")},
 	"crossplane":               {[]byte("crossplane.io")},
 	"knative":                  {[]byte("knative.dev")},
-	"cloudformation":           {[]byte("Resources")},
 	"openapi":                  {[]byte("openapi"), []byte("swagger")},
 	"azureresourcemanager":     {[]byte("contentVersion")},
 	"terraform":                {[]byte("planned_values")},
@@ -340,7 +325,6 @@ var contentHints = map[string][][]byte{
 	"buildah":                  {[]byte("buildah")},
 	"dependabot":               {[]byte("package-ecosystem")},
 	"githubAction":             {[]byte("using:")},
-	"cicd":                     {[]byte("jobs:")},
 }
 
 // nolint:gocyclo
@@ -576,7 +560,8 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 }
 
 func isContentClassifiedExt(ext string) bool {
-	return ext == yaml || ext == yml || ext == json || ext == sh
+	return ext == yaml || ext == yml || ext == json || ext == sh ||
+		platformreg.StructuralClassificationRequiresContent(ext)
 }
 
 func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) ([]byte, bool) {
@@ -642,8 +627,6 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 // matches or the file is a non-Terraform JSON (which the scanner does not scan).
 // typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
 func classifyByContent(ctx context.Context, path string, content []byte, ext string, typesFlag []string, hc *sync.Map) string {
-	returnType := ""
-
 	// Sort map so that CloudFormation (type that as less requireds) goes last
 	keys := make([]string, 0, len(types))
 	for k := range types {
@@ -656,23 +639,10 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 
 	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
 
-	for _, key := range keys {
-		if hints, ok := contentHints[key]; ok && !containsAny(content, hints) {
-			continue
-		}
-		check := true
-		for _, typeRegex := range types[key].regex {
-			if !typeRegex.Match(content) {
-				check = false
-				break
-			}
-		}
-		// If all regexs passed and there wasn't a type already assigned
-		if check && returnType == "" {
-			returnType = key
-		} else if needsOverride(check, returnType, key, ext) {
-			returnType = key
-		}
+	returnType := classifyByRegex(content, ext, keys)
+
+	if returnType == "" && (ext == yaml || ext == yml) {
+		returnType = classifyStructuredYAML(content, ext, typesFlag)
 	}
 
 	endReturnType := checkReturnType(ctx, path, returnType, ext, content, hc)
@@ -686,6 +656,33 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 	return endReturnType
 }
 
+func classifyByRegex(content []byte, ext string, keys []string) string {
+	returnType := ""
+	for _, key := range keys {
+		typeRegexes, ok := types[key]
+		if !ok {
+			continue
+		}
+		if hints, ok := contentHints[key]; ok && !containsAny(content, hints) {
+			continue
+		}
+		check := true
+		for _, typeRegex := range typeRegexes.regex {
+			if !typeRegex.Match(content) {
+				check = false
+				break
+			}
+		}
+		// If all regexs passed and there wasn't a type already assigned
+		if check && returnType == "" {
+			returnType = key
+		} else if needsOverride(check, returnType, key, ext) {
+			returnType = key
+		}
+	}
+	return returnType
+}
+
 func containsAny(content []byte, needles [][]byte) bool {
 	for _, needle := range needles {
 		if bytes.Contains(content, needle) {
@@ -693,6 +690,18 @@ func containsAny(content []byte, needles [][]byte) bool {
 		}
 	}
 	return false
+}
+
+func classifyStructuredYAML(content []byte, ext string, typesFlag []string) string {
+	var document map[string]interface{}
+	if err := yamlParser.Unmarshal(content, &document); err != nil {
+		return ""
+	}
+	structuralPlatform, ok := platformreg.ClassifyStructuredDocument(ext, document)
+	if !ok || !platformreg.IsRequested(structuralPlatform, typesFlag) {
+		return ""
+	}
+	return string(structuralPlatform)
 }
 
 // ClassifyFile returns the platform a file would be classified as (lowercased,
@@ -718,6 +727,12 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	typesFlag = typesLower(typesFlag)
 	ext, err := utils.GetExtensionWithFS(ctx, fsys, path)
 	if err != nil {
+		return ""
+	}
+	if structuralPlatform, ok := platformreg.ClassifyStructuredContent(ext, content); ok {
+		if platformreg.IsRequested(structuralPlatform, typesFlag) {
+			return string(structuralPlatform)
+		}
 		return ""
 	}
 	switch ext {
@@ -1087,11 +1102,16 @@ func shouldConsiderGitIgnoreFile(ctx context.Context, path, gitIgnore string, ex
 }
 
 func multiPlatformTypeCheck(typesSelected *[]string) {
-	if utils.Contains("serverlessfw", *typesSelected) && !utils.Contains("cloudformation", *typesSelected) {
-		*typesSelected = append(*typesSelected, "cloudformation")
-	}
-	if utils.Contains("knative", *typesSelected) && !utils.Contains("kubernetes", *typesSelected) {
-		*typesSelected = append(*typesSelected, "kubernetes")
+	for _, selected := range slices.Clone(*typesSelected) {
+		for _, target := range platformreg.PayloadTargets(selected) {
+			targetName := string(target)
+			alreadySelected := slices.ContainsFunc(*typesSelected, func(existing string) bool {
+				return platformreg.Matches(existing, targetName)
+			})
+			if !alreadySelected {
+				*typesSelected = append(*typesSelected, targetName)
+			}
+		}
 	}
 }
 

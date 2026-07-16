@@ -313,9 +313,11 @@ type TestFile struct {
 type TestFinding struct {
 	ShortDescription string `jsonapi:"attribute" json:"short_description"`
 	// FileName is the base name of the positive file; empty means any file.
-	FileName string `jsonapi:"attribute" json:"file_name,omitempty"`
-	Line     int    `jsonapi:"attribute" json:"line"`
-	Severity string `jsonapi:"attribute" json:"severity"`
+	FileName     string  `jsonapi:"attribute" json:"file_name,omitempty"`
+	Line         int     `jsonapi:"attribute" json:"line"`
+	Severity     string  `jsonapi:"attribute" json:"severity"`
+	ResourceType *string `jsonapi:"attribute" json:"resource_type,omitempty"`
+	ResourceName *string `jsonapi:"attribute" json:"resource_name,omitempty"`
 }
 
 // RuleOverride contains a set of keyed changes for the rule configuration

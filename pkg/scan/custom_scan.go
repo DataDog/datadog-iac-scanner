@@ -6,6 +6,7 @@
 package scan
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,11 +16,13 @@ import (
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/open-policy-agent/opa/v1/storage/inmem"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	platformreg "github.com/DataDog/datadog-iac-scanner/pkg/platform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
@@ -66,6 +69,20 @@ func RunCustomRegoQuery(
 	regoContent string,
 	fileContent []byte,
 ) ([]model.Vulnerability, map[string]error, error) {
+	libSource, err := source.NewDatadogSource(datadog.NewDatadogClient())
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating library source: %w", err)
+	}
+	return runCustomRegoQuery(ctx, platform, regoContent, fileContent, libSource)
+}
+
+func runCustomRegoQuery(
+	ctx context.Context,
+	platform string,
+	regoContent string,
+	fileContent []byte,
+	libSource source.QueriesSource,
+) ([]model.Vulnerability, map[string]error, error) {
 	tmpDir, err := os.MkdirTemp("", "iac-custom-scan-*")
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating temp dir: %w", err)
@@ -78,8 +95,6 @@ func RunCustomRegoQuery(
 		return nil, nil, fmt.Errorf("writing temp file: %w", err)
 	}
 
-	// LibrariesDefaultBasePath ("./assets/libraries") is CWD-relative; the CLI is
-	// always invoked from the repo root so this resolves correctly.
 	params := &Parameters{
 		Path:                    []string{tmpFile},
 		QueriesPath:             []string{"."},
@@ -102,10 +117,6 @@ func RunCustomRegoQuery(
 
 	c.analyzerOverride = func(_ context.Context) (model.AnalyzedPaths, error) {
 		return model.AnalyzedPaths{Types: []string{platform}}, nil
-	}
-	libSource, err := source.NewDatadogSource(datadog.NewDatadogClient())
-	if err != nil {
-		return nil, nil, fmt.Errorf("creating library source: %w", err)
 	}
 	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
 		return &customRegoSource{platform: platform, regoContent: regoContent, libSource: libSource}, nil
@@ -153,20 +164,29 @@ func ValidateCustomRegoQuery(
 
 	allErrs := staticChecks(module)
 
-	commonLib, err := libSource.GetQueryLibrary(ctx, "common")
+	commonLib, err := libSource.GetQueryLibrary(ctx, platformreg.LibraryCommon)
 	if err != nil {
 		return nil, fmt.Errorf("loading common library: %w", err)
 	}
 
-	platformLib, err := libSource.GetQueryLibrary(ctx, source.LibraryName(platform))
+	datadogLib := source.ScannerFindingLibrary()
+
+	platformLib, err := libSource.GetQueryLibrary(ctx, platformreg.LibraryName(platform))
 	if err != nil {
 		return nil, fmt.Errorf("loading platform library: %w", err)
+	}
+
+	mergedInputData, err := source.MergeInputData(commonLib.LibraryInputData, platformLib.LibraryInputData)
+	if err != nil {
+		return nil, fmt.Errorf("merging library input data: %w", err)
 	}
 
 	_, compileErr := rego.New(
 		rego.Query(utils.RegoQuery),
 		rego.SetRegoVersion(ast.RegoV1),
+		rego.Store(inmem.NewFromReader(bytes.NewBufferString(mergedInputData))),
 		rego.Module("Common", commonLib.LibraryCode),
+		rego.Module("Datadog", datadogLib.LibraryCode),
 		rego.Module("Generic", platformLib.LibraryCode),
 		rego.Module("query.rego", regoContent),
 		rego.UnsafeBuiltins(map[string]struct{}{
@@ -386,8 +406,12 @@ var requiredResultFields = []string{
 	"documentId",
 	"resourceType",
 	"resourceName",
-	"searchKey",
 }
+
+const (
+	resultAttributePathField = "attributePath"
+	resultSearchKeyField     = "searchKey"
+)
 
 var requiredImportAliases = map[string]string{
 	"common_lib": "import data.generic.common as common_lib",
@@ -504,6 +528,21 @@ func checkResultFields(module *ast.Module) []RegoValidationError {
 						EndCol:    loc.Col + len(string(lhs)),
 					})
 				}
+			}
+			if !present[resultAttributePathField] && !present[resultSearchKeyField] {
+				errs = append(errs, RegoValidationError{
+					Code: "missing_result_field",
+					Message: fmt.Sprintf(
+						"result object is missing required location field %q or %q. "+
+							"Findings without one of these fields will have no source location",
+						resultAttributePathField,
+						resultSearchKeyField,
+					),
+					StartLine: loc.Row,
+					StartCol:  loc.Col,
+					EndLine:   loc.Row,
+					EndCol:    loc.Col + len(string(lhs)),
+				})
 			}
 			return false
 		})
@@ -909,5 +948,5 @@ func (s *customRegoSource) GetQueries(_ context.Context, _ *source.QueryInspecto
 }
 
 func (s *customRegoSource) GetQueryLibrary(ctx context.Context, libPlatform string) (source.RegoLibraries, error) {
-	return s.libSource.GetQueryLibrary(ctx, source.LibraryName(libPlatform))
+	return s.libSource.GetQueryLibrary(ctx, platformreg.LibraryName(libPlatform))
 }

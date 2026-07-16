@@ -23,6 +23,7 @@ import (
 	ansibleHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	bicepParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/bicep"
 	buildahParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/buildah"
+	cniParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/cni"
 	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
@@ -329,6 +330,7 @@ func (c *Client) createService(
 		Add(&dockerParser.Parser{}).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).
+		Add(&cniParser.Parser{}).
 		Add(&ansibleConfigParser.Parser{}).
 		Add(&ansibleHostsParser.Parser{})
 

@@ -27,8 +27,9 @@ func (s *stubLibSource) GetQueryLibrary(_ context.Context, platform string) (sou
 			LibraryCode: `package generic.terraform
 import rego.v1
 resolve_s3_bucket_name(resource, name) := name
+expected_acl(resource) := data.custom.expected_acl
 `,
-			LibraryInputData: "{}",
+			LibraryInputData: `{"custom":{"expected_acl":"public-read"}}`,
 		}, nil
 	case "common":
 		return source.RegoLibraries{
@@ -67,6 +68,20 @@ DatadogPolicy contains result if {
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
 		"searchLine": common_lib.build_search_line(["resource", "aws_s3_bucket", name, "acl"], []),
 	}
+}
+`
+
+const typedTerraformRego = `
+package datadog
+
+import rego.v1
+
+import data.generic.terraform as tf_lib
+
+DatadogPolicy contains result if {
+	some resource in input.resources["aws_s3_bucket"]
+	resource.acl == "public-read"
+	result := data.datadog.finding(resource, ["acl"])
 }
 `
 
@@ -455,8 +470,6 @@ func TestValidateCustomRegoQuery_AllErrorsInOneCall(t *testing.T) {
 	assert.True(t, codes["sprintf_arity"])
 }
 
-// ── platform support ──────────────────────────────────────────────────────────
-
 func TestValidateCustomRegoQuery_KubernetesPlatform(t *testing.T) {
 	// Verifies that "kubernetes" platform loads the k8s library correctly
 	// (libraryPlatform maps "kubernetes" → "k8s" to match the embedded asset).
@@ -481,6 +494,94 @@ DatadogPolicy contains result if {
 	for _, e := range errs {
 		assert.NotContains(t, e.Message, "unable to get libraries", "library must load correctly")
 	}
+}
+
+func TestValidateCustomRegoQuery_TypedResourcesWithBackendHelper(t *testing.T) {
+	errs, err := ValidateCustomRegoQuery(t.Context(), "terraform", typedTerraformRego, testLibSource())
+	require.NoError(t, err)
+	require.Empty(t, errs)
+}
+
+func TestRunCustomRegoQuery_TypedResourcesWithBackendHelper(t *testing.T) {
+	vulns, failedQueries, err := runCustomRegoQuery(
+		t.Context(),
+		"terraform",
+		typedTerraformRego,
+		[]byte(`resource "aws_s3_bucket" "public" {
+  acl = "public-read"
+}`),
+		testLibSource(),
+	)
+	require.NoError(t, err)
+	require.Empty(t, failedQueries)
+	require.Len(t, vulns, 1)
+	assert.Equal(t, "aws_s3_bucket", vulns[0].ResourceType)
+	assert.Equal(t, "public", vulns[0].ResourceName)
+}
+
+func TestRunCustomRegoQuery_TypedResourcesWithoutSharedHelper(t *testing.T) {
+	const rego = `
+package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	some resource in input.resources["aws_s3_bucket"]
+	resource.acl == "public-read"
+	result := {
+		"_dd": {"id": resource._dd.id},
+		"path": ["acl"],
+	}
+}
+`
+	vulns, failedQueries, err := runCustomRegoQuery(
+		t.Context(),
+		"terraform",
+		rego,
+		[]byte(`resource "aws_s3_bucket" "public" {
+  acl = "public-read"
+}`),
+		testLibSource(),
+	)
+	require.NoError(t, err)
+	require.Empty(t, failedQueries)
+	require.Len(t, vulns, 1)
+}
+
+func TestRunCustomRegoQuery_CorrelatesResources(t *testing.T) {
+	const rego = `
+package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	some bucket in input.resources["aws_s3_bucket"]
+	some acl in input.resources["aws_s3_bucket_acl"]
+	bucket.resource_name == acl.resource_name
+	bucket.scope.module == acl.scope.module
+	acl.attributes.acl == "public-read"
+	result := data.datadog.finding(acl, ["acl"])
+}
+`
+	vulns, failedQueries, err := runCustomRegoQuery(
+		t.Context(),
+		"terraform",
+		rego,
+		[]byte(`resource "aws_s3_bucket" "public" {
+  bucket = "public"
+}
+
+resource "aws_s3_bucket_acl" "public" {
+  bucket = aws_s3_bucket.public.id
+  acl = "public-read"
+}`),
+		testLibSource(),
+	)
+	require.NoError(t, err)
+	require.Empty(t, failedQueries)
+	require.Len(t, vulns, 1)
+	assert.Equal(t, "aws_s3_bucket_acl", vulns[0].ResourceType)
+	assert.Equal(t, "public", vulns[0].ResourceName)
 }
 
 // ── ValidateRegoStructure ─────────────────────────────────────────────────────

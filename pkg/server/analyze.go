@@ -76,10 +76,9 @@ type analyzeRequest struct {
 	Platform  []string         `json:"platform,omitempty"`
 }
 
-// analyzeResponse is the body of a successful analyze. Findings are the engine's
-// full vulnerability records (the extension's converter picks the fields it
-// needs). MissingFiles drives the hybrid escalation: paths the engine referenced
-// but that were not pushed.
+// analyzeResponse is the body of a successful analyze. Vulnerability JSON tags
+// expose only the supported finding fields. MissingFiles drives the hybrid
+// escalation: paths the engine referenced but that were not pushed.
 type analyzeResponse struct {
 	Findings      []model.Vulnerability `json:"findings"`
 	MissingFiles  []string              `json:"missing_files"`
@@ -319,14 +318,17 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	}
 	if len(res.Results) > 0 {
 		resp.Findings = res.Results
+		for i := range resp.Findings {
+			resp.Findings[i].FileName = filepath.ToSlash(filepath.Clean(resp.Findings[i].FileName))
+		}
 	}
 	if len(res.FailedQueries) > 0 {
 		contextLogger.Warn().
 			Int("failed_query_count", len(res.FailedQueries)).
 			Msg("IaC analysis completed with failed queries")
 		resp.FailedQueries = make(map[string]string, len(res.FailedQueries))
-		for q, e := range res.FailedQueries {
-			resp.FailedQueries[q] = e.Error()
+		for q := range res.FailedQueries {
+			resp.FailedQueries[q] = "query failed"
 		}
 	}
 	return resp, nil

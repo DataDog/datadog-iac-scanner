@@ -22,6 +22,7 @@ import (
 
 	engineSource "github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -95,6 +96,28 @@ display_name(resource_type, name) := sprintf("%s.%s", [resource_type, name])`,
 	}
 }
 
+func cniBridgeRule() analyzeRule {
+	return analyzeRule{
+		ID:       "kubernetes-cni-bridge",
+		Platform: "k8s",
+		Content: `package datadog
+
+DatadogPolicy contains result if {
+	some config in input.resources["cni_config"]
+	some i, plugin in config.plugins
+	plugin.type == "bridge"
+	result := data.datadog.finding(config, ["plugins", i, "type"])
+}`,
+		Metadata: map[string]any{
+			"id":        "kubernetes-cni-bridge",
+			"queryName": "CNI bridge configuration",
+			"severity":  "LOW",
+			"platform":  "k8s",
+			"category":  "Best Practices",
+		},
+	}
+}
+
 func postAnalyze(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse, int) {
 	t.Helper()
 	if len(req.Libraries) == 0 {
@@ -148,6 +171,33 @@ func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 	if len(out.MissingFiles) != 0 {
 		t.Errorf("expected no missing files for same-dir siblings, got %v", out.MissingFiles)
 	}
+}
+
+func TestAnalyze_ContentPush_CNIConflistFinding(t *testing.T) {
+	s := newTestServer(t)
+	req := analyzeRequest{
+		Files: []analyzeFile{{
+			Path: "etc/cni/net.d/10-bridge.conflist",
+			Content: `{
+  "name": "pod-network",
+  "cniVersion": "1.0.0",
+  "plugins": [{"type": "bridge"}]
+}`,
+		}},
+		Rules: []analyzeRule{cniBridgeRule()},
+		Libraries: []analyzeLibrary{
+			{ID: "common", Content: "package generic.common"},
+			{ID: "k8s", Content: "package generic.k8s"},
+		},
+		Platform: []string{"Kubernetes"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	require.Lenf(t, out.Findings, 1, "failed queries: %v", out.FailedQueries)
+	require.Equal(t, "kubernetes-cni-bridge", out.Findings[0].QueryID)
+	require.Equal(t, "etc/cni/net.d/10-bridge.conflist", out.Findings[0].FileName)
+	require.Empty(t, out.MissingFiles)
 }
 
 // TestAnalyze_MissingModuleEscalation verifies a Terraform module pointing at a
@@ -466,7 +516,7 @@ func TestAnalyze_MissingPlatformLibraryReportedAsFailedQuery(t *testing.T) {
 		t.Fatalf("analyze: %v", err)
 	}
 	failed, ok := out.FailedQueries[syntheticRuleID]
-	if !ok || !strings.Contains(failed, "failed to get platform library") {
+	if !ok || failed != "query failed" {
 		t.Fatalf("failed queries = %v", out.FailedQueries)
 	}
 }

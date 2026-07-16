@@ -48,6 +48,7 @@ var strategyByPattern = map[string]fileStrategy{
 	".bicep":      strategyDirectory,
 	".cfg":        strategyDirectory,
 	".conf":       strategyDirectory,
+	".conflist":   strategySingleFile,
 	".ini":        strategyDirectory,
 	"Dockerfile":  strategySingleFile,
 	".dockerfile": strategySingleFile,

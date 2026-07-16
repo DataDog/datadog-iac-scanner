@@ -8,6 +8,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -138,11 +139,11 @@ func TestJSONParserBuilder(t *testing.T) {
 	require.NoError(t, err)
 	baselineCount := len(servicesWithoutFlag)
 
-	// Check that JSON parser is NOT present when flag is false
+	// Check that the Terraform-plan JSON parser is NOT present when flag is false.
 	jsonParserFound := false
 	for _, service := range servicesWithoutFlag {
 		if service.Parser != nil && service.Parser.Parsers != nil {
-			if service.Parser.Parsers.GetKind() == model.KindJSON {
+			if _, ok := service.Parser.Parsers.(*jsonParser.Parser); ok {
 				jsonParserFound = true
 				break
 			}
@@ -184,11 +185,11 @@ func TestJSONParserBuilder(t *testing.T) {
 	require.NoError(t, err)
 	countWithFlag := len(servicesWithFlag)
 
-	// Check that JSON parser IS present when flag is true
+	// Check that the Terraform-plan JSON parser IS present when flag is true.
 	jsonParserFound = false
 	for _, service := range servicesWithFlag {
 		if service.Parser != nil && service.Parser.Parsers != nil {
-			if service.Parser.Parsers.GetKind() == model.KindJSON {
+			if _, ok := service.Parser.Parsers.(*jsonParser.Parser); ok {
 				jsonParserFound = true
 				break
 			}

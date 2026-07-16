@@ -456,6 +456,55 @@ func TestClassifyFile_SwaggerOpenAPI(t *testing.T) {
 	require.Equal(t, "openapi", got)
 }
 
+func TestClassifyFile_RegistryStructuredShapes(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		content  string
+		want     string
+	}{
+		{"kubernetes yaml", "pod.yaml", "apiVersion: v1\nkind: Pod\n", "kubernetes"},
+		{"cloudformation yaml", "stack.yaml", "Resources: {}\n", "cloudformation"},
+		{"cicd yaml", "workflow.yaml", "on: push\njobs: {}\n", "cicd"},
+		{
+			"kubernetes precedence",
+			"mixed.yaml",
+			"Resources: {}\napiVersion: v1\nkind: Pod\non: push\njobs: {}\n",
+			"kubernetes",
+		},
+		{"nested keys do not classify", "nested.yaml", "wrapper:\n  apiVersion: v1\n  kind: Pod\n", ""},
+		{"partial kubernetes does not classify", "partial.yaml", "kind: Pod\n", ""},
+		{"kubernetes json remains gated", "pod.json", `{"apiVersion":"v1","kind":"Pod"}`, ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), test.filename)
+			content := []byte(test.content)
+			require.NoError(t, os.WriteFile(path, content, 0o600))
+			require.Equal(t, test.want, ClassifyFile(context.Background(), nil, path, content, []string{""}))
+		})
+	}
+}
+
+func TestAnalyze_KubernetesCNIConflist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "10-flannel.conflist")
+	content := []byte("{\n  \"cniVersion\": \"1.0.0\",\n  \"plugins\": [{\"type\": \"flannel\"}]\n}\n")
+	require.NoError(t, os.WriteFile(path, content, 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    filepath.Dir(path),
+		Paths:       []string{path},
+		Types:       []string{"Kubernetes"},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"kubernetes"}, got.Types)
+	require.Contains(t, got.Inventory, filepath.ToSlash(path))
+	require.Equal(t, content, got.ContentCache[filepath.ToSlash(path)])
+}
+
 func TestAnalyze_ValidSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target.tf")
