@@ -30,10 +30,11 @@ func (cacheTracker) GetOutputLines() int     { return 3 }
 func newCacheTestLoader(t *testing.T, platform string, queries []model.QueryMetadata) *QueryLoader {
 	t.Helper()
 	commonLib := source.RegoLibraries{LibraryCode: "package common\n", LibraryInputData: "{}"}
+	datadogLib := source.RegoLibraries{LibraryCode: "package datadog\nimport rego.v1\n"}
 	platformLibs := map[string]source.RegoLibraries{
 		platform: {LibraryCode: "package generic." + platform + "\n", LibraryInputData: "{}"},
 	}
-	loader, err := prepareQueries(queries, commonLib, platformLibs, cacheTracker{})
+	loader, err := prepareQueries(queries, commonLib, datadogLib, platformLibs, cacheTracker{})
 	require.NoError(t, err)
 	return &loader
 }

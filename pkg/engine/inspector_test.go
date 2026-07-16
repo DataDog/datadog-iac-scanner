@@ -51,6 +51,36 @@ func (s *stubQueriesSource) GetQueryLibrary(_ context.Context, platform string) 
 	}, nil
 }
 
+// configuredLibrarySource is a [source.QueriesSource] whose library responses
+// are configured per-platform via the libraries map. Platforms absent from the
+// map return the same trivial stub as stubQueriesSource.
+type configuredLibrarySource struct {
+	queries   []model.QueryMetadata
+	libraries map[string]source.RegoLibraries // keyed by platform name
+	libErrors map[string]error                // platform → error to return
+}
+
+func (s *configuredLibrarySource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
+	return s.queries, nil
+}
+
+func (s *configuredLibrarySource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
+	if s.libErrors != nil {
+		if err, ok := s.libErrors[platform]; ok {
+			return source.RegoLibraries{}, err
+		}
+	}
+	if s.libraries != nil {
+		if lib, ok := s.libraries[platform]; ok {
+			return lib, nil
+		}
+	}
+	return source.RegoLibraries{
+		LibraryCode:      "package generic." + platform + "\n",
+		LibraryInputData: "{}",
+	}, nil
+}
+
 // inspectorOpts configures [newTestInspector]; zero values yield an inspector
 // with no rules. Set `querySource` to plug in a custom QueriesSource (e.g. a
 // gomock) instead of the default in-memory stub backed by `queries`.
@@ -247,6 +277,93 @@ func TestNewInspector(t *testing.T) {
 	require.NotNil(t, ins.QueryLoader, "query loader should be initialized")
 	require.Equal(t, queries, ins.QueryLoader.QueriesMetadata,
 		"queries supplied by the source should flow through to QueryLoader")
+}
+
+func TestNewInspectorUsesScannerFindingLibrary(t *testing.T) {
+	legacyRule := model.QueryMetadata{
+		Query:       "legacy-rule",
+		Content:     "package datadog\nimport rego.v1\nDatadogPolicy[result] { result := {\"documentId\": \"x\", \"searchKey\": \"k\", \"issueType\": \"IncorrectValue\", \"keyExpectedValue\": \"v\", \"keyActualValue\": \"w\"} }",
+		InputData:   "{}",
+		Platform:    "terraform",
+		Aggregation: 1,
+	}
+	migratedRule := model.QueryMetadata{
+		Query: "migrated-rule",
+		// Uses data.datadog.* — requires the datadog library to be present.
+		Content:     "package myrule\nimport rego.v1\nDatadogPolicy[result] if {\n\tx := data.datadog.finding\n\tresult := x\n}",
+		InputData:   "{}",
+		Platform:    "terraform",
+		Aggregation: 1,
+	}
+	validDatadogLib := source.RegoLibraries{
+		LibraryCode:      "package datadog\nimport rego.v1\nfinding := {}",
+		LibraryInputData: "{}",
+	}
+	missingErr := fmt.Errorf("library not found")
+
+	t.Run("legacy_searchKey_rule_succeeds_with_no_datadog_rego", func(t *testing.T) {
+		src := &configuredLibrarySource{
+			queries:   []model.QueryMetadata{legacyRule},
+			libErrors: map[string]error{"datadog": missingErr},
+		}
+		ins, err := NewInspector(
+			context.Background(), src, DefaultVulnerabilityBuilder,
+			&tracker.CITracker{}, &source.QueryInspectorParameters{},
+			nil, ".", false, false, 1, featureflags.NewLocalEvaluator(),
+			vfs.DiskFS{}, false, false,
+		)
+		require.NoError(t, err, "legacy rule should succeed without datadog.rego")
+		require.NotNil(t, ins)
+	})
+
+	t.Run("migrated_rule_succeeds_when_source_library_is_absent", func(t *testing.T) {
+		src := &configuredLibrarySource{
+			queries:   []model.QueryMetadata{migratedRule},
+			libErrors: map[string]error{"datadog": missingErr},
+		}
+		ins, err := NewInspector(
+			context.Background(), src, DefaultVulnerabilityBuilder,
+			&tracker.CITracker{}, &source.QueryInspectorParameters{},
+			nil, ".", false, false, 1, featureflags.NewLocalEvaluator(),
+			vfs.DiskFS{}, false, false,
+		)
+		require.NoError(t, err)
+		require.Contains(t, ins.QueryLoader.datadogLibrary.LibraryCode, "finding(resource, relative_path)")
+	})
+
+	t.Run("source_datadog_library_is_ignored", func(t *testing.T) {
+		src := &configuredLibrarySource{
+			queries: []model.QueryMetadata{legacyRule},
+			libraries: map[string]source.RegoLibraries{
+				"datadog": {LibraryCode: "THIS IS NOT VALID REGO }{{{"},
+			},
+		}
+		ins, err := NewInspector(
+			context.Background(), src, DefaultVulnerabilityBuilder,
+			&tracker.CITracker{}, &source.QueryInspectorParameters{},
+			nil, ".", false, false, 1, featureflags.NewLocalEvaluator(),
+			vfs.DiskFS{}, false, false,
+		)
+		require.NoError(t, err)
+		require.NotContains(t, ins.QueryLoader.datadogLibrary.LibraryCode, "THIS IS NOT VALID")
+	})
+
+	t.Run("valid_datadog_rego_with_migrated_rule_succeeds", func(t *testing.T) {
+		src := &configuredLibrarySource{
+			queries: []model.QueryMetadata{migratedRule},
+			libraries: map[string]source.RegoLibraries{
+				"datadog": validDatadogLib,
+			},
+		}
+		ins, err := NewInspector(
+			context.Background(), src, DefaultVulnerabilityBuilder,
+			&tracker.CITracker{}, &source.QueryInspectorParameters{},
+			nil, ".", false, false, 1, featureflags.NewLocalEvaluator(),
+			vfs.DiskFS{}, false, false,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, ins)
+	})
 }
 
 func TestEngine_contains(t *testing.T) {
@@ -706,6 +823,37 @@ func TestInspector_DecodeQueryResults(t *testing.T) {
 	result, err := c.DecodeQueryResults(ctx, &queryContext, expiredCtx, newResultset(), 57)
 	assert.Nil(t, err, "Error not as expected")
 	assert.Equal(t, 0, len(result), "Array size is not as expected")
+}
+
+func TestInspectorDoRunPropagatesEvalAndDecodeTiming(t *testing.T) {
+	ctx := context.Background()
+	prepared, err := rego.New(
+		rego.Query("result = data.test.result"),
+		rego.Module("test.rego", "package test\nresult := [{}]"),
+	).PrepareForEval(ctx)
+	require.NoError(t, err)
+
+	var queryDuration time.Duration
+	ins := newTestInspector(t, inspectorOpts{
+		vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
+			_ *detector.DetectLine, _ bool, duration time.Duration) (*model.Vulnerability, error) {
+			queryDuration = duration
+			return &model.Vulnerability{}, nil
+		},
+	})
+	var payload ast.Value = ast.NewObject()
+	qCtx := &QueryContext{
+		Ctx:     ctx,
+		Files:   map[string]*model.FileMetadata{},
+		Query:   &PreparedQuery{OpaQuery: prepared, Metadata: model.QueryMetadata{Query: "test"}},
+		payload: &payload,
+	}
+
+	_, timing, err := ins.doRun(ctx, qCtx)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, timing.eval, time.Duration(0))
+	require.GreaterOrEqual(t, timing.decode, time.Duration(0))
+	require.Equal(t, timing.eval, queryDuration)
 }
 
 func newResultset() rego.ResultSet {

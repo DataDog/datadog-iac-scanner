@@ -28,12 +28,14 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/terraform"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/resourceindex"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	platformreg "github.com/DataDog/datadog-iac-scanner/pkg/platform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
@@ -77,6 +79,7 @@ var ErrInvalidResult = errors.New("query: invalid result format")
 // QueryLoader is responsible for loading the queries for the inspector
 type QueryLoader struct {
 	commonLibrary     source.RegoLibraries
+	datadogLibrary    source.RegoLibraries
 	platformLibraries map[string]source.RegoLibraries
 	querySum          int
 	QueriesMetadata   []model.QueryMetadata
@@ -85,6 +88,10 @@ type QueryLoader struct {
 	// every PrepareForEval call; each call still compiles its own fresh module
 	// set so there is no shared mutable compiler state across goroutines.
 	parsedCommon *ast.Module
+	// parsedDatadog is the Datadog shared helpers module (package datadog),
+	// parsed once at startup. It provides data.datadog.finding and related
+	// helpers to rules that use input.resources.
+	parsedDatadog *ast.Module
 	// parsedGeneric holds the per-platform Generic library module, also parsed once.
 	parsedGeneric map[string]*ast.Module
 	// platformKeyBases holds, per platform, a precomputed hash of the common and
@@ -253,12 +260,13 @@ func (c *Inspector) SetExternalModulePaths(paths []string) {
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
 // the query compiled and its payload
 type QueryContext struct {
-	Ctx           context.Context
-	scanID        string
-	Files         map[string]*model.FileMetadata
-	Query         *PreparedQuery
-	payload       *ast.Value
-	FlagEvaluator featureflags.FlagEvaluator
+	Ctx            context.Context
+	scanID         string
+	Files          map[string]*model.FileMetadata
+	Query          *PreparedQuery
+	payload        *ast.Value
+	resourceLookup map[string]resourceindex.ResourceMetadata
+	FlagEvaluator  featureflags.FlagEvaluator
 }
 
 var (
@@ -318,13 +326,16 @@ func NewInspector(
 
 	contextLogger.Info().Msgf("Queries loaded: %d", len(queries))
 
-	commonLibrary, err := queriesSource.GetQueryLibrary(ctx, "common")
+	commonLibrary, err := queriesSource.GetQueryLibrary(ctx, platformreg.LibraryCommon)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get library")
 	}
+
+	datadogLibrary := source.ScannerFindingLibrary()
+
 	platformLibraries := getPlatformLibraries(ctx, queriesSource, queries)
 
-	queryLoader, err := prepareQueries(queries, commonLibrary, platformLibraries, tracker)
+	queryLoader, err := prepareQueries(queries, commonLibrary, datadogLibrary, platformLibraries, tracker)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to prepare queries")
 	}
@@ -392,6 +403,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	sharedQueries map[int]*rego.PreparedEvalQuery) QueryResult {
 	contextLogger := logger.FromContext(ctx)
 
+	totalStart := time.Now()
 	loadStart := time.Now()
 	// Prefer the shared-compiler query when one was prepared for this rule (rule
 	// isolation disabled); otherwise compile/load it individually, using the
@@ -416,20 +428,29 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	// payload is read-only, so sharing the per-platform ast.Value across workers
 	// is safe.
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
+	resourceLookup := selectPlatformLookup(
+		query.Metadata.Platform,
+		payloads.lookupByPlatform,
+		payloads.fullLookup,
+	)
 	queryContext := &QueryContext{
-		Ctx:           ctx,
-		scanID:        scanID,
-		Files:         filesMap,
-		Query:         query,
-		payload:       &payload,
-		FlagEvaluator: c.flagEvaluator,
+		Ctx:            ctx,
+		scanID:         scanID,
+		Files:          filesMap,
+		Query:          query,
+		payload:        &payload,
+		resourceLookup: resourceLookup,
+		FlagEvaluator:  c.flagEvaluator,
 	}
 
-	evalStart := time.Now()
-	vuls, err := c.doRun(ctx, queryContext)
-	evalDur := time.Since(evalStart)
-	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
-		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
+	vuls, timing, err := c.doRun(ctx, queryContext)
+	totalDur := time.Since(totalStart)
+	contextLogger.Debug().Msgf("query timing: load=%s eval=%s decode=%s total=%s query=%s",
+		loadDur.Round(time.Millisecond),
+		timing.eval.Round(time.Millisecond),
+		timing.decode.Round(time.Millisecond),
+		totalDur.Round(time.Millisecond),
+		queries[queryID].Query)
 	if err == nil {
 		c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
 	}
@@ -715,7 +736,15 @@ func queryIDsFromMetadata(ctx context.Context, metadata *model.QueryMetadata) (q
 	return queryID, legacyQueryID
 }
 
-func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, err error) {
+type queryRunTiming struct {
+	eval   time.Duration
+	decode time.Duration
+}
+
+func (c *Inspector) doRun(
+	ctx context.Context,
+	qCtx *QueryContext,
+) (vulns []model.Vulnerability, timing queryRunTiming, err error) {
 	contextLogger := logger.FromContext(ctx)
 	defer func() {
 		if r := recover(); r != nil {
@@ -729,11 +758,11 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	queryID, legacyQueryID := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
 	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID); found {
 		if args, ok, err := ruleArgumentsValue(rc); err != nil {
-			return nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
+			return nil, timing, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
 		} else if ok {
 			payload, err = withRuleArguments(payload, args)
 			if err != nil {
-				return nil, err
+				return nil, timing, err
 			}
 		}
 	}
@@ -747,14 +776,14 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 
 	evalStart := time.Now()
 	results, err := qCtx.Query.OpaQuery.Eval(qCtx.Ctx, options...)
-	evalDuration := time.Since(evalStart)
+	timing.eval = time.Since(evalStart)
 	qCtx.payload = nil
 	if err != nil {
 		if topdown.IsCancel(err) {
-			return nil, errors.Wrap(err, "query evaluation canceled (scan aborting)")
+			return nil, timing, errors.Wrap(err, "query evaluation canceled (scan aborting)")
 		}
 
-		return nil, errors.Wrap(err, "failed to evaluate query")
+		return nil, timing, errors.Wrap(err, "failed to evaluate query")
 	}
 	if c.enableCoverageReport && cov != nil {
 		module, parseErr := ast.ParseModuleWithOpts(
@@ -763,7 +792,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			ast.ParserOptions{RegoVersion: ast.RegoV1},
 		)
 		if parseErr != nil {
-			return nil, errors.Wrap(parseErr, "failed to parse coverage module")
+			return nil, timing, errors.Wrap(parseErr, "failed to parse coverage module")
 		}
 
 		c.coverageReport = cov.Report(map[string]*ast.Module{
@@ -772,22 +801,22 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	}
 
 	decodeStart := time.Now()
-	vulns, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
-	decodeDuration := time.Since(decodeStart)
+	vulns, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, timing.eval)
+	timing.decode = time.Since(decodeStart)
 
 	// Flag slow rules so they can be debugged/optimized later
-	if total := evalDuration + decodeDuration; total > slowQueryWarnThreshold {
+	if total := timing.eval + timing.decode; total > slowQueryWarnThreshold {
 		contextLogger.Warn().
 			Str("event", "slow_rule").
 			Str("queryID", qCtx.Query.Metadata.Query).
 			Str("platform", qCtx.Query.Metadata.Platform).
-			Int64("evalMs", evalDuration.Milliseconds()).
-			Int64("decodeMs", decodeDuration.Milliseconds()).
+			Int64("evalMs", timing.eval.Milliseconds()).
+			Int64("decodeMs", timing.decode.Milliseconds()).
 			Int64("totalMs", total.Milliseconds()).
 			Int64("thresholdMs", slowQueryWarnThreshold.Milliseconds()).
 			Msg("slow rule")
 	}
-	return vulns, err
+	return vulns, timing, err
 }
 
 func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.Value) ast.Value {
@@ -1002,164 +1031,32 @@ func checkComment(line int, ignoreLines []int) bool {
 	return false
 }
 
-// Platform keys used to bucket documents and route queries to per-platform payloads.
-const (
-	platformCommon         = "common"
-	platformK8s            = "k8s"
-	platformKubernetes     = "kubernetes"
-	platformBicep          = "bicep"
-	platformAzureRM        = "azureresourcemanager"
-	platformKnative        = "knative"
-	platformServerlessFW   = "serverlessfw"
-	platformCloudFormation = "cloudformation"
-)
-
-// platformPayloads holds per-platform OPA input payloads built once per scan.
-type platformPayloads struct {
-	byPlatform map[string]ast.Value
-	full       ast.Value
-}
-
-// partitionDocsByPlatform groups parsed documents by their file's platform
-// bucket(s); multi-platform files (Knative, Serverless Framework) land in both
-// their own and their parent platform's bucket via platformBucketKeys.
-// Documents with an undetermined platform are collected separately and later
-// merged into every platform's payload so no rule loses coverage.
-func partitionDocsByPlatform(
-	filesMap map[string]*model.FileMetadata,
-	combinedDocs, moduleDocs []model.Document,
-) (byPlatform map[string][]interface{}, unknown, all []interface{}) {
-	byPlatform = make(map[string][]interface{})
-	all = make([]interface{}, 0, len(combinedDocs)+len(moduleDocs))
-	addDoc := func(d model.Document) {
-		m := map[string]interface{}(d)
-		all = append(all, m)
-		id, _ := d["id"].(string)
-		var platform string
-		if fm := filesMap[id]; fm != nil {
-			platform = fm.Platform
-		}
-		keys := platformBucketKeys(platform)
-		if len(keys) == 0 {
-			unknown = append(unknown, m)
-			return
-		}
-		for _, key := range keys {
-			byPlatform[key] = append(byPlatform[key], m)
-		}
-	}
-	for _, d := range combinedDocs {
-		addDoc(d)
-	}
-	for _, d := range moduleDocs {
-		addDoc(d)
-	}
-	return byPlatform, unknown, all
-}
-
-// buildPlatformPayloads partitions documents by platform and builds one OPA
-// payload per queried platform. Common-platform queries receive the full
-// cross-platform payload.
-func (c *Inspector) buildPlatformPayloads(
-	ctx context.Context,
-	filesMap map[string]*model.FileMetadata,
-	combinedDocs, moduleDocs []model.Document,
-	queries []model.QueryMetadata,
-) (platformPayloads, error) {
-	docsByPlatform, unknownDocs, allDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
-
-	makePayload := func(ds []interface{}) (ast.Value, error) {
-		v, err := ast.InterfaceToValue(map[string]interface{}{"document": ds})
-		if err != nil {
-			return nil, err
-		}
-		return c.TransformJsonencodeInPayload(ctx, v), nil
-	}
-
-	needFullPayload := false
-	neededPlatforms := make(map[string]bool)
-	for i := range queries {
-		key := canonicalPlatformKey(queries[i].Platform)
-		if key == platformCommon {
-			needFullPayload = true
-			continue
-		}
-		neededPlatforms[key] = true
-	}
-
-	out := platformPayloads{
-		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
-	}
-	for key := range neededPlatforms {
-		ds := docsByPlatform[key]
-		if len(unknownDocs) > 0 {
-			combined := make([]interface{}, 0, len(ds)+len(unknownDocs))
-			combined = append(combined, ds...)
-			combined = append(combined, unknownDocs...)
-			ds = combined
-		}
-		pv, err := makePayload(ds)
-		if err != nil {
-			return platformPayloads{}, err
-		}
-		out.byPlatform[key] = pv
-	}
-
-	if needFullPayload {
-		pv, err := makePayload(allDocs)
-		if err != nil {
-			return platformPayloads{}, err
-		}
-		out.full = pv
-	}
-
-	return out, nil
-}
-
 // canonicalPlatformKey maps a query- or file-level platform name to the single
 // lowercased key used to bucket documents and select per-platform payloads.
-// Kubernetes is keyed "kubernetes" (query metadata uses "k8s"), and Bicep is
-// scanned by the Azure Resource Manager rules (Bicep transpiles to ARM).
 func canonicalPlatformKey(p string) string {
-	p = strings.ToLower(p)
-	switch p {
-	case platformK8s:
-		return platformKubernetes
-	case platformBicep:
-		return platformAzureRM
-	}
-	return p
-}
-
-// platformBucketKeys returns every payload bucket a document of the given
-// platform must belong to. Knative manifests are also scanned by the Kubernetes
-// rules and Serverless Framework manifests by the CloudFormation rules; these
-// fan-outs mirror multiPlatformTypeCheck in the analyzer (which force-loads the
-// parent platform's queries), so those documents are placed in both their own
-// bucket and their parent platform's bucket. Every other platform (including
-// Crossplane, which is classified consistently by the sink and has its own
-// queries) maps to a single bucket. Returns nil for an undetermined platform so
-// the caller can treat it as unknown.
-func platformBucketKeys(platform string) []string {
-	key := canonicalPlatformKey(platform)
-	switch key {
-	case "":
-		return nil
-	case platformKnative:
-		return []string{platformKnative, platformKubernetes}
-	case platformServerlessFW:
-		return []string{platformServerlessFW, platformCloudFormation}
-	}
-	return []string{key}
+	return platformreg.CompareKey(p)
 }
 
 // selectPlatformPayload returns the document payload a query should evaluate
 // against: its own platform's payload, or the full payload for common rules
 // (and as a defensive fallback when a platform payload was not built).
 func selectPlatformPayload(queryPlatform string, byPlatform map[string]ast.Value, full ast.Value) ast.Value {
-	if key := canonicalPlatformKey(queryPlatform); key != platformCommon {
-		if p, ok := byPlatform[key]; ok {
+	if !platformreg.IsCrossPlatformRule(queryPlatform) {
+		if p, ok := byPlatform[canonicalPlatformKey(queryPlatform)]; ok {
 			return p
+		}
+	}
+	return full
+}
+
+func selectPlatformLookup(
+	queryPlatform string,
+	byPlatform map[string]map[string]resourceindex.ResourceMetadata,
+	full map[string]resourceindex.ResourceMetadata,
+) map[string]resourceindex.ResourceMetadata {
+	if !platformreg.IsCrossPlatformRule(queryPlatform) {
+		if lookup, ok := byPlatform[canonicalPlatformKey(queryPlatform)]; ok {
+			return lookup
 		}
 	}
 	return full
@@ -1168,12 +1065,12 @@ func selectPlatformPayload(queryPlatform string, byPlatform map[string]ast.Value
 // contains is a simple method to check if a slice
 // contains an entry
 func contains(s []string, e string) bool {
-	if canonicalPlatformKey(e) == platformCommon {
+	if platformreg.IsCrossPlatformRule(e) {
 		return true
 	}
-	e = canonicalPlatformKey(e)
+	key := canonicalPlatformKey(e)
 	for _, a := range s {
-		if strings.EqualFold(a, e) {
+		if canonicalPlatformKey(a) == key {
 			return true
 		}
 	}
@@ -1201,7 +1098,7 @@ func ShouldSkipVulnerability(command model.CommentsCommands, queryID, legacyQuer
 	return false
 }
 
-func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibraries,
+func prepareQueries(queries []model.QueryMetadata, commonLibrary, datadogLibrary source.RegoLibraries,
 	platformLibraries map[string]source.RegoLibraries, tracker Tracker) (QueryLoader, error) {
 	// track queries loaded
 	sum := 0
@@ -1218,6 +1115,12 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 		return QueryLoader{}, errors.Wrap(err, "failed to parse Common Rego library")
 	}
 
+	parsedDatadog, err := ast.ParseModuleWithOpts("Datadog", datadogLibrary.LibraryCode,
+		ast.ParserOptions{RegoVersion: ast.RegoV1})
+	if err != nil {
+		return QueryLoader{}, errors.Wrap(err, "failed to parse Datadog Rego library")
+	}
+
 	parsedGeneric := make(map[string]*ast.Module, len(platformLibraries))
 	platformKeyBases := make(map[string]uint64, len(platformLibraries))
 	for platform, lib := range platformLibraries {
@@ -1230,6 +1133,8 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 		platformKeyBases[platform] = hashFields(
 			commonLibrary.LibraryCode,
 			commonLibrary.LibraryInputData,
+			datadogLibrary.LibraryCode,
+			datadogLibrary.LibraryInputData,
 			lib.LibraryCode,
 			lib.LibraryInputData,
 		)
@@ -1237,10 +1142,12 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 
 	return QueryLoader{
 		commonLibrary:     commonLibrary,
+		datadogLibrary:    datadogLibrary,
 		platformLibraries: platformLibraries,
 		querySum:          sum,
 		QueriesMetadata:   queries,
 		parsedCommon:      parsedCommon,
+		parsedDatadog:     parsedDatadog,
 		parsedGeneric:     parsedGeneric,
 		platformKeyBases:  platformKeyBases,
 	}, nil
@@ -1368,6 +1275,11 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		} else {
 			opts = append(opts, rego.Module("Common", q.commonLibrary.LibraryCode))
 		}
+		if q.parsedDatadog != nil {
+			opts = append(opts, rego.ParsedModule(q.parsedDatadog))
+		} else {
+			opts = append(opts, rego.Module("Datadog", q.datadogLibrary.LibraryCode))
+		}
 		if parsedGen, ok := q.parsedGeneric[query.Platform]; ok {
 			opts = append(opts, rego.ParsedModule(parsedGen))
 		} else {
@@ -1435,10 +1347,15 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 		// so one malformed rule cannot fail the whole batch at the parse stage.
 		modules := map[string]*ast.Module{
 			"Common":  q.parsedCommon,
+			"Datadog": q.parsedDatadog,
 			"Generic": q.parsedGeneric[platform],
 		}
 		if modules["Common"] == nil {
 			modules["Common"], _ = ast.ParseModuleWithOpts("Common", q.commonLibrary.LibraryCode,
+				ast.ParserOptions{RegoVersion: ast.RegoV1})
+		}
+		if modules["Datadog"] == nil {
+			modules["Datadog"], _ = ast.ParseModuleWithOpts("Datadog", q.datadogLibrary.LibraryCode,
 				ast.ParserOptions{RegoVersion: ast.RegoV1})
 		}
 		if modules["Generic"] == nil {

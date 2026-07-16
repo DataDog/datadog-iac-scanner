@@ -333,12 +333,18 @@ func instantiatedDocs(
 
 		refsMap := buildRefsMap(r, cckRefs[cck])
 
+		sourceName := tfeval.ResourceBaseName(r.Name)
+		attrs := tfeval.AttributesToDocument(r)
+		if r.ModuleAddress != "" {
+			attrs["_dd_module_address"] = r.ModuleAddress
+		}
+
 		doc := model.Document{
 			"id":   docID,
 			"file": fm.FilePath,
 			"resource": map[string]interface{}{
 				r.Type: map[string]interface{}{
-					tfeval.ResourceBaseName(r.Name): tfeval.AttributesToDocument(r),
+					sourceName: attrs,
 				},
 			},
 		}
