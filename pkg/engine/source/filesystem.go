@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	platformreg "github.com/DataDog/datadog-iac-scanner/pkg/platform"
 	"github.com/pkg/errors"
 )
 
@@ -140,12 +141,14 @@ func (s *FilesystemSource) GetQueryLibrary(ctx context.Context, platform string)
 
 // CheckType checks if the queries have the type passed as an argument in '--type' flag to be loaded
 func (s *FilesystemSource) CheckType(queryPlatform any) bool {
-	if queryPlatform.(string) == common {
+	qp := queryPlatform.(string)
+	if platformreg.IsCrossPlatformRule(qp) {
 		return true
 	}
 	if s.Types[0] != "" {
+		qKey := platformreg.CompareKey(qp)
 		for _, t := range s.Types {
-			if strings.EqualFold(t, queryPlatform.(string)) {
+			if platformreg.CompareKey(t) == qKey {
 				return true
 			}
 		}
@@ -436,7 +439,7 @@ func parseQuery(ctx context.Context, queryName string, queryContent, metadataCon
 		return model.QueryMetadata{}, err
 	}
 
-	platform := getPlatform(metadata["platform"].(string))
+	platform := platformreg.LibraryIdentityOrUnknown(metadata["platform"].(string))
 
 	aggregation := 1
 	if agg, ok := metadata["aggregation"]; ok {

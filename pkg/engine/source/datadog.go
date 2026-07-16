@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	platformreg "github.com/DataDog/datadog-iac-scanner/pkg/platform"
 )
 
 // NewDatadogSource creates a DatadogSource with the given options.
@@ -150,13 +151,18 @@ func (s *DatadogSource) filterRules(ruleset *datadog.Ruleset, selection *QueryIn
 
 // isWantedPlatform checks if the given platform is in the list of wanted platforms.
 func (s *DatadogSource) isWantedPlatform(platform string) bool {
-	if strings.EqualFold(platform, "Common") {
+	if platformreg.IsCrossPlatformRule(platform) {
 		return true
 	}
 	if s.wantedPlatforms[0] == "" {
 		return true
 	}
-	return isInCaseInsensitiveList(&platform, s.wantedPlatforms)
+	for _, wanted := range s.wantedPlatforms {
+		if platformreg.Matches(platform, wanted) {
+			return true
+		}
+	}
+	return false
 }
 
 // isWantedCloudProvider checks if the given provider is in the list of wanted providers.
@@ -222,7 +228,7 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 			"severity":        rule.Severity,
 			"category":        rule.Category,
 		},
-		Platform:     getPlatform(rule.Platform),
+		Platform:     platformreg.LibraryIdentityOrUnknown(rule.Platform),
 		Aggregation:  1,
 		Experimental: rule.IsTesting,
 	}
