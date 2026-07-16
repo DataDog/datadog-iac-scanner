@@ -22,6 +22,25 @@ import (
 type DetectKindLine struct {
 }
 
+// DetectLineByPath maps a structured finding path back to the Helm template.
+// Rendered YAML array indices have no corresponding template keys, so they are
+// omitted before reusing the Helm-aware key traversal.
+func (d DetectKindLine) DetectLineByPath(
+	ctx context.Context,
+	file *model.FileMetadata,
+	path model.Path,
+	outputLines int,
+) model.VulnerabilityLines {
+	keys := make([]string, 0, len(path))
+	for _, component := range path {
+		if component.IsIndex {
+			continue
+		}
+		keys = append(keys, component.Key)
+	}
+	return d.DetectLine(ctx, file, strings.Join(keys, "."), outputLines)
+}
+
 type detectCurlLine struct {
 	foundRes   bool
 	lineRes    int

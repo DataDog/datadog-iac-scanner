@@ -291,3 +291,29 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 		})
 	}
 }
+
+func TestDetectKindLine_DetectLineByPath(t *testing.T) {
+	file := &model.FileMetadata{
+		ID:                "1",
+		Kind:              model.KindHELM,
+		FilePath:          "test-connection.yaml",
+		HelmID:            "# KICS_HELM_ID_0",
+		OriginalData:      OriginalData1,
+		LinesOriginalData: utils.SplitLines(OriginalData1),
+	}
+
+	got := (DetectKindLine{}).DetectLineByPath(
+		context.Background(),
+		file,
+		model.Path{
+			{Key: "spec"},
+			{Key: "containers"},
+			{Index: 0, IsIndex: true},
+			{Key: "image"},
+		},
+		1,
+	)
+	if got.Line != 12 {
+		t.Fatalf("structured Helm path resolved to line %d, want template line 12", got.Line)
+	}
+}

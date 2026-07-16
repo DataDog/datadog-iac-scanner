@@ -288,12 +288,31 @@ func handleArrayIndex(
 // extractStructuralPath converts a sanitized segment list into a plain key path for
 // GetLineBySearchLine: resolves {{N}} placeholders, strips value anchors (key=value →
 // key), and preserves numeric indices.
+//
+// A "key=value" segment followed by more path (e.g. "metadata.name={{x}}.rules.0.verbs")
+// is an identity filter used to pick a document, not a literal nested path: "rules" is
+// a sibling of "metadata", not a child of "metadata.name". When such a mid-path anchor
+// is found, the anchor and everything before it are dropped so the remaining attribute
+// path resolves against the document root. A trailing anchor (nothing follows it) keeps
+// its bare key, matching legacy resource/element-identification behavior.
 func extractStructuralPath(segments []string, extracted [][]string) []string {
-	result := make([]string, 0, len(segments))
-	for _, seg := range segments {
-		for i, ext := range extracted {
-			seg = strings.ReplaceAll(seg, `{{`+strconv.Itoa(i)+`}}`, ext[1])
+	resolved := make([]string, len(segments))
+	for i, seg := range segments {
+		for j, ext := range extracted {
+			seg = strings.ReplaceAll(seg, `{{`+strconv.Itoa(j)+`}}`, ext[1])
 		}
+		resolved[i] = seg
+	}
+
+	start := 0
+	for i, seg := range resolved {
+		if strings.Contains(seg, "=") && i < len(resolved)-1 {
+			start = i + 1
+		}
+	}
+
+	result := make([]string, 0, len(resolved)-start)
+	for _, seg := range resolved[start:] {
 		if idx := strings.Index(seg, "="); idx >= 0 {
 			seg = seg[:idx]
 		}

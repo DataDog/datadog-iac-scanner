@@ -127,6 +127,116 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 	return buildEmptyVulnerabilityLines(file)
 }
 
+// RefinePathLine aligns metadata-based line resolution with the legacy searchKey
+// resolver for nested HCL structures (jsonencode policies, ingress/egress blocks).
+func (d *DetectKindLine) RefinePathLine(ctx context.Context, file *model.FileMetadata, typedPath model.Path, line int) int {
+	path := typedPath.LegacyComponents()
+	if len(path) < 2 {
+		return line
+	}
+	attrName := path[len(path)-2]
+	index, err := strconv.Atoi(path[len(path)-1])
+	if err != nil {
+		return line
+	}
+	attrPath := path[:len(path)-2]
+
+	if attrName == "Statement" {
+		return d.refinePolicyStatementLine(ctx, file, path, line, index, attrPath)
+	}
+
+	if attrName == "ingress" || attrName == "egress" || attrName == "route" ||
+		strings.HasSuffix(attrName, "_ingress") || strings.HasSuffix(attrName, "_egress") ||
+		strings.Contains(attrName, "block_device") {
+		return d.refineListAttributeLine(ctx, file, line, attrName, index, attrPath)
+	}
+
+	return line
+}
+
+func (d *DetectKindLine) refinePolicyStatementLine(
+	ctx context.Context,
+	file *model.FileMetadata,
+	path []string,
+	line, index int,
+	policyPath []string,
+) int {
+	if len(path) < 3 {
+		return line
+	}
+	policyLine, err := detector.GetLineBySearchLine(policyPath, file)
+	if err != nil || policyLine <= 0 {
+		return line
+	}
+	lines := *file.LinesOriginalData
+	if policyLine > len(lines) {
+		return line
+	}
+	policyText := lines[policyLine-1]
+	if strings.Contains(policyText, "<<") {
+		return line
+	}
+	if !strings.Contains(policyText, "jsonencode(") {
+		if line < policyLine {
+			return policyLine
+		}
+		return line
+	}
+	_, lineNum := resolveListIndex(ctx, "Statement", index, policyLine-1, lines, []byte(file.OriginalData))
+	if lineNum < 0 {
+		return line
+	}
+	return lineNum + 1
+}
+
+func (d *DetectKindLine) refineListAttributeLine(
+	ctx context.Context,
+	file *model.FileMetadata,
+	line int,
+	attrName string,
+	index int,
+	attrPath []string,
+) int {
+	attrLine, err := detector.GetLineBySearchLine(attrPath, file)
+	if err != nil || attrLine <= 0 {
+		return line
+	}
+	lines := *file.LinesOriginalData
+	_, lineNum := resolveListIndex(ctx, attrName, index, attrLine-1, lines, []byte(file.OriginalData))
+	if lineNum < 0 {
+		return line
+	}
+	return lineNum + 1
+}
+
+// EnrichLine augments a line already resolved from structured _dd_line metadata
+// (via DetectLineByPath) with the enclosing HCL block: block, remediation and
+// source locations. It reuses the same block-location logic as the searchKey
+// path so input.resources findings and legacy findings produce identical
+// location output. On any parse/lookup failure it returns an undetected result,
+// letting the caller fall back to the plain single-line location.
+func (d *DetectKindLine) EnrichLine(ctx context.Context, file *model.FileMetadata,
+	line, outputLines int) model.VulnerabilityLines {
+	contextLogger := logger.FromContext(ctx)
+	lines := *file.LinesOriginalData
+
+	body, parseErr := d.cachedParseBody([]byte(file.OriginalData), file.FilePath)
+	if parseErr != nil {
+		contextLogger.Error().Err(parseErr).Msgf("Failed to parse block at line %d in file %s", line, file.FilePath)
+		return buildEmptyVulnerabilityLines(file)
+	}
+	vulnLines, err := locateTerraformBlock(ctx, body, line, lines)
+	if err != nil {
+		contextLogger.Error().Err(err).Msgf("Failed to locate block at line %d in file %s", line, file.FilePath)
+		return buildEmptyVulnerabilityLines(file)
+	}
+	vulnLines.Line = line
+	vulnLines.VulnLines = detector.GetAdjacentVulnLines(line-1, outputLines, lines)
+	vulnLines.ResolvedFile = file.FilePath
+	vulnLines.FileSource = lines
+	return vulnLines
+}
+
 func buildEmptyVulnerabilityLines(file *model.FileMetadata) model.VulnerabilityLines {
 	return model.VulnerabilityLines{
 		Line:           undetectedVulnerabilityLine,

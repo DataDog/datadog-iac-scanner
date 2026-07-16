@@ -6,6 +6,7 @@
 package detector
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -291,6 +292,17 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 			want:    7,
 			wantErr: false,
 		},
+		{
+			name: "unresolved path returns zero",
+			args: args{
+				pathComponents: []string{"missing", "path"},
+				file: &model.FileMetadata{
+					LineInfoDocument: map[string]interface{}{},
+				},
+			},
+			want:    0,
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -303,5 +315,167 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 				t.Errorf("GetLineBySearchLine() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestJSONPathLineOffset(t *testing.T) {
+	statementObject := `{
+  "Version": "2012-10-17",
+  "Statement": {
+    "Action": "es:*",
+    "Effect": "Allow"
+  }
+}`
+	statementArray := `{
+  "Statement": [
+    {
+      "Action": [
+        "read",
+        "write"
+      ]
+    }
+  ]
+}`
+
+	tests := []struct {
+		name    string
+		jsonStr string
+		path    []string
+		want    int
+	}{
+		{
+			name:    "bare policy field",
+			jsonStr: statementObject,
+			path:    []string{"Statement"},
+			want:    2,
+		},
+		{
+			name:    "virtual statement object index zero",
+			jsonStr: statementObject,
+			path:    []string{"Statement", "0"},
+			want:    2,
+		},
+		{
+			name:    "nested statement object action",
+			jsonStr: statementObject,
+			path:    []string{"Statement", "0", "Action"},
+			want:    3,
+		},
+		{
+			name:    "virtual statement object rejects index one",
+			jsonStr: statementObject,
+			path:    []string{"Statement", "1"},
+			want:    -1,
+		},
+		{
+			name:    "array element",
+			jsonStr: statementArray,
+			path:    []string{"Statement", "0"},
+			want:    2,
+		},
+		{
+			name:    "nested array element",
+			jsonStr: statementArray,
+			path:    []string{"Statement", "0", "Action", "1"},
+			want:    5,
+		},
+		{
+			name:    "case insensitive object keys",
+			jsonStr: statementArray,
+			path:    []string{"statement", "0", "action"},
+			want:    3,
+		},
+		{
+			name:    "non-numeric array index",
+			jsonStr: statementArray,
+			path:    []string{"Statement", "first"},
+			want:    -1,
+		},
+		{
+			name:    "negative array index",
+			jsonStr: statementArray,
+			path:    []string{"Statement", "-1"},
+			want:    -1,
+		},
+		{
+			name:    "array index out of bounds",
+			jsonStr: statementArray,
+			path:    []string{"Statement", "2"},
+			want:    -1,
+		},
+		{
+			name:    "invalid JSON",
+			jsonStr: `{"Statement": [`,
+			path:    []string{"Statement", "0"},
+			want:    -1,
+		},
+		{
+			name:    "empty path",
+			jsonStr: statementObject,
+			path:    nil,
+			want:    -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := jsonPathLineOffset(tt.jsonStr, tt.path); got != tt.want {
+				t.Fatalf("jsonPathLineOffset() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetLineBySearchLine_HeredocStatementObject(t *testing.T) {
+	lines := []string{
+		`module "x" {`,
+		`  access_policies = <<POLICIES`,
+		`{`,
+		`  "Version": "2012-10-17",`,
+		`  "Statement": {`,
+		`    "Action": "es:*",`,
+		`    "Effect": "Allow"`,
+		`  }`,
+		`}`,
+		`POLICIES`,
+		`}`,
+	}
+	heredocJSON := strings.Join(lines[2:8], "\n") + "\n"
+	file := &model.FileMetadata{
+		LineInfoDocument: map[string]interface{}{
+			"module": map[string]interface{}{
+				"x": map[string]interface{}{
+					"_dd_lines": map[string]interface{}{
+						"_dd__default": map[string]interface{}{"_dd_line": 1},
+						"_dd_access_policies": map[string]interface{}{
+							"_dd_line": 2,
+						},
+					},
+					"access_policies": heredocJSON,
+				},
+			},
+		},
+		LinesOriginalData: &lines,
+	}
+	got, err := GetLineBySearchLine([]string{"module", "x", "access_policies", "Statement", "0"}, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 5 {
+		t.Fatalf("GetLineBySearchLine() = %d, want 5", got)
+	}
+	path := model.Path{
+		{Key: "module"},
+		{Key: "x"},
+		{Key: "access_policies"},
+		{Key: "Statement"},
+		{Index: 0, IsIndex: true},
+	}
+	_, resolution, err := GetLineByPathWithResolution(path, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resolution.StructuralExact || resolution.MatchedElements != len(path) {
+		t.Fatalf("JSON fallback resolution = %+v, want exact", resolution)
 	}
 }
