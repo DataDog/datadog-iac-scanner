@@ -264,6 +264,7 @@ func (e Extensions) Include(ext string) bool {
 type LineObject struct {
 	Line int                      `json:"_dd_line"`
 	Arr  []map[string]*LineObject `json:"_dd_arr,omitempty"`
+	Map  map[string]*LineObject   `json:"_dd_lines,omitempty"`
 }
 
 // MatchedFilesRegex returns the regex rule to identify if an extension is supported or not
