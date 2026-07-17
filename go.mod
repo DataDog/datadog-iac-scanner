@@ -30,7 +30,7 @@ require (
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/sosedoff/ansible-vault-go v0.2.0
 	github.com/stretchr/testify v1.11.1
-	github.com/tdewolff/minify/v2 v2.24.9
+	github.com/tdewolff/minify/v2 v2.24.13
 	github.com/tidwall/gjson v1.18.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-bash v0.25.1
@@ -260,7 +260,7 @@ require (
 	github.com/ruudk/golang-pdf417 v0.0.0-20201230142125-a7e3863a1245 // indirect
 	github.com/spf13/viper v1.21.0
 	github.com/tchap/go-patricia/v2 v2.3.3 // indirect
-	github.com/tdewolff/parse/v2 v2.8.8 // indirect
+	github.com/tdewolff/parse/v2 v2.8.12 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
