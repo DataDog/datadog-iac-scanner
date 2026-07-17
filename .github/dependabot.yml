@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      gh-actions-packages:
+        patterns:
+          - "*"
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "gomod"
+    directory: "/.github/scripts/report"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "pip"
+    directory: "/.github/scripts/lint-licenses"
+    schedule:
+      interval: "monthly"
