@@ -1,0 +1,32 @@
+variables:
+  GIT_DEPTH: 1
+
+stages:
+  - verify
+
+ddci-hello-pr-comment:
+  stage: verify
+  rules:
+    # Pre-merge (pull request) builds only.
+    - if: $DDCI_REQUEST_KIND == "REQUEST_KIND_CHANGE_REQUEST"
+  tags: ["arch:amd64"]
+  image:
+    name: "registry.ddbuild.io/images/pr-commenter:3"
+    entrypoint: [""] # bypass the image's default entrypoint; we call curl directly
+  variables:
+    # Not using the entrypoint script for the pr-commenter image
+    FF_KUBERNETES_HONOR_ENTRYPOINT: false
+  # Verification only, this must never block a PR while we are onboarding.
+  allow_failure: true
+  script:
+    - |
+      PAYLOAD=$(printf '{"org":"DataDog","repo":"datadog-iac-scanner","commit":"%s","header":"DDCI onboarding","message":"%s"}' \
+        "${CI_COMMIT_SHA}" \
+        "👋 Hello from DDCI. Integration is working for datadog-iac-scanner.")
+    - |
+      curl --fail --show-error --silent \
+        https://pr-commenter.us1.ddbuild.io/internal/cit/pr-comment \
+        -H "$(authanywhere)" \
+        -H "X-DdOrigin: gitlab-ci" \
+        -X PATCH \
+        -d "${PAYLOAD}"
