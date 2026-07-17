@@ -12,3 +12,11 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+  - package-ecosystem: "gomod"
+    directory: "/.github/scripts/report"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "pip"
+    directory: "/.github/scripts/lint-licenses"
+    schedule:
+      interval: "monthly"
