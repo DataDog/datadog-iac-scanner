@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	engineSource "github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/rs/zerolog"
 )
@@ -39,11 +40,16 @@ const syntheticRuleID = "test-terraform-resource-missing-owner"
 
 // syntheticRule imports both test-only pushed libraries. Its identifiers and
 // behavior are deliberately unrelated to the production rule corpus.
-func syntheticRule() analyzeRule {
-	return analyzeRule{
-		ID:       syntheticRuleID,
-		Platform: "terraform",
-		Content: `package datadog
+func syntheticRule() datadog.Rule {
+	return datadog.Rule{
+		ID:               syntheticRuleID,
+		Name:             syntheticRuleID,
+		ShortDescription: "Synthetic missing owner label",
+		Platform:         "Terraform",
+		Severity:         "INFO",
+		Category:         "Test",
+		IsPublished:      true,
+		RegoQuery: []byte(`package datadog
 
 import rego.v1
 
@@ -60,22 +66,15 @@ DatadogPolicy contains result if {
 		"resourceName": tf_lib.display_name(resource_type, name),
 		"searchKey": sprintf("%s[%s].labels.owner", [resource_type, name]),
 	}
-}`,
-		Metadata: map[string]any{
-			"id":        syntheticRuleID,
-			"queryName": "Synthetic missing owner label",
-			"severity":  "INFO",
-			"platform":  "Terraform",
-			"category":  "Test",
-		},
+}`),
 	}
 }
 
-func testLibraries(enabled bool) []analyzeLibrary {
-	return []analyzeLibrary{
+func testLibraries(enabled bool) []datadog.Library {
+	return []datadog.Library{
 		{
 			ID: "common",
-			Content: `package generic.common
+			RegoCode: `package generic.common
 
 import rego.v1
 
@@ -86,13 +85,22 @@ has_owner(resource) if resource.labels.owner`,
 		},
 		{
 			ID: "terraform",
-			Content: `package generic.terraform
+			RegoCode: `package generic.terraform
 
 import rego.v1
 
 display_name(resource_type, name) := sprintf("%s.%s", [resource_type, name])`,
 		},
 	}
+}
+
+// ruleset wraps rule values in the request's [datadog.Ruleset] shape.
+func ruleset(rules ...datadog.Rule) datadog.Ruleset {
+	ptrs := make([]*datadog.Rule, len(rules))
+	for i := range rules {
+		ptrs[i] = &rules[i]
+	}
+	return datadog.Ruleset{Rules: ptrs}
 }
 
 func postAnalyze(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse, int) {
@@ -122,7 +130,7 @@ func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 }`},
 			{Path: "infra/variables.tf", Content: `variable "bucket_name" { default = "my-bucket" }`},
 		},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 	}
 
@@ -164,7 +172,7 @@ func TestAnalyze_MissingModuleEscalation(t *testing.T) {
 }
 resource "aws_s3_bucket" "b" { bucket = "x" }`},
 		},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 	}
 
@@ -196,7 +204,7 @@ func TestAnalyze_MissingFilesCWDIndependent(t *testing.T) {
   source = "../modules/networking"
 }
 resource "aws_s3_bucket" "b" { bucket = "x" }`}},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 	}
 
@@ -215,10 +223,10 @@ func TestAnalyze_Validation(t *testing.T) {
 	ts := httptest.NewServer(s.http.Handler)
 	defer ts.Close()
 
-	validRule := analyzeRule{ID: "test-rule", Platform: "terraform", Content: "package datadog"}
-	validLibraries := []analyzeLibrary{
-		{ID: "common", Content: "package generic.common"},
-		{ID: "terraform", Content: "package generic.terraform"},
+	validRule := datadog.Rule{ID: "test-rule", Name: "test-rule", Platform: "Terraform", RegoQuery: []byte("package datadog")}
+	validLibraries := []datadog.Library{
+		{ID: "common", RegoCode: "package generic.common"},
+		{ID: "terraform", RegoCode: "package generic.terraform"},
 	}
 	cases := []struct {
 		name string
@@ -228,7 +236,7 @@ func TestAnalyze_Validation(t *testing.T) {
 	}{
 		{
 			name: "empty files",
-			req:  analyzeRequest{Rules: []analyzeRule{validRule}, Libraries: validLibraries},
+			req:  analyzeRequest{Ruleset: ruleset(validRule), Libraries: validLibraries},
 			want: http.StatusBadRequest,
 		},
 		{
@@ -241,16 +249,16 @@ func TestAnalyze_Validation(t *testing.T) {
 		{
 			name: "path traversal",
 			req: analyzeRequest{
-				Files: []analyzeFile{{Path: "../escape.tf", Content: "x"}},
-				Rules: []analyzeRule{validRule}, Libraries: validLibraries,
+				Files:   []analyzeFile{{Path: "../escape.tf", Content: "x"}},
+				Ruleset: ruleset(validRule), Libraries: validLibraries,
 			},
 			want: http.StatusBadRequest,
 		},
 		{
 			name: "absolute path",
 			req: analyzeRequest{
-				Files: []analyzeFile{{Path: "/etc/passwd", Content: "x"}},
-				Rules: []analyzeRule{validRule}, Libraries: validLibraries,
+				Files:   []analyzeFile{{Path: "/etc/passwd", Content: "x"}},
+				Ruleset: ruleset(validRule), Libraries: validLibraries,
 			},
 			want: http.StatusBadRequest,
 		},
@@ -280,71 +288,54 @@ func TestAnalyze_Validation(t *testing.T) {
 
 func TestValidateAnalyzeRequest_Libraries(t *testing.T) {
 	base := analyzeRequest{
-		Files: []analyzeFile{{Path: "main.tf", Content: "resource"}},
-		Rules: []analyzeRule{{ID: "rule", Platform: "Terraform", Content: "package datadog"}},
+		Files:   []analyzeFile{{Path: "main.tf", Content: "resource"}},
+		Ruleset: ruleset(datadog.Rule{ID: "rule", Name: "rule", Platform: "Terraform", RegoQuery: []byte("package datadog")}),
 	}
-	tooManyLibraries := make([]analyzeLibrary, maxLibraries+1)
+	tooManyLibraries := make([]datadog.Library, maxLibraries+1)
 	tests := []struct {
 		name      string
-		libraries []analyzeLibrary
+		libraries []datadog.Library
 		wantError string
 	}{
 		{name: "missing", wantError: "at least one library is required"},
 		{name: "too many", libraries: tooManyLibraries, wantError: "too many libraries"},
 		{
 			name:      "empty id",
-			libraries: []analyzeLibrary{{Content: "package generic.common"}},
+			libraries: []datadog.Library{{RegoCode: "package generic.common"}},
 			wantError: "empty library id",
 		},
 		{
 			name:      "empty content",
-			libraries: []analyzeLibrary{{ID: "common", Content: " "}},
+			libraries: []datadog.Library{{ID: "common", RegoCode: " "}},
 			wantError: "empty library content for common",
 		},
 		{
 			name: "missing common",
-			libraries: []analyzeLibrary{
-				{ID: "terraform", Content: "package generic.terraform"},
+			libraries: []datadog.Library{
+				{ID: "terraform", RegoCode: "package generic.terraform"},
 			},
 			wantError: "common library is required",
 		},
 		{
 			name: "missing platform",
-			libraries: []analyzeLibrary{
-				{ID: "common", Content: "package generic.common"},
+			libraries: []datadog.Library{
+				{ID: "common", RegoCode: "package generic.common"},
 			},
 			wantError: "library is required for rule platform: Terraform",
 		},
 		{
-			name: "noncanonical id",
-			libraries: []analyzeLibrary{
-				{ID: "Common", Content: "package generic.common"},
-				{ID: "terraform", Content: "package generic.terraform"},
-			},
-			wantError: "library id must be canonical lowercase: Common",
-		},
-		{
-			name: "duplicate id",
-			libraries: []analyzeLibrary{
-				{ID: "common", Content: "package generic.common"},
-				{ID: "common", Content: "package generic.common"},
-				{ID: "terraform", Content: "package generic.terraform"},
-			},
-			wantError: "duplicate library id: common",
-		},
-		{
 			name: "invalid input data",
-			libraries: []analyzeLibrary{
-				{ID: "common", Content: "package generic.common", InputData: "{"},
-				{ID: "terraform", Content: "package generic.terraform"},
+			libraries: []datadog.Library{
+				{ID: "common", RegoCode: "package generic.common", InputData: "{"},
+				{ID: "terraform", RegoCode: "package generic.terraform"},
 			},
 			wantError: "invalid library input data for common",
 		},
 		{
 			name: "non-object input data",
-			libraries: []analyzeLibrary{
-				{ID: "common", Content: "package generic.common", InputData: "null"},
-				{ID: "terraform", Content: "package generic.terraform"},
+			libraries: []datadog.Library{
+				{ID: "common", RegoCode: "package generic.common", InputData: "null"},
+				{ID: "terraform", RegoCode: "package generic.terraform"},
 			},
 			wantError: "invalid library input data for common",
 		},
@@ -372,14 +363,14 @@ func TestValidateAnalyzeRequest_RuleBoundaries(t *testing.T) {
 	validRequest := func() analyzeRequest {
 		return analyzeRequest{
 			Files:     []analyzeFile{{Path: "main.tf", Content: "resource"}},
-			Rules:     []analyzeRule{{ID: "test-rule", Platform: "terraform", Content: "package datadog"}},
+			Ruleset:   ruleset(datadog.Rule{ID: "test-rule", Name: "test-rule", Platform: "Terraform", RegoQuery: []byte("package datadog")}),
 			Libraries: testLibraries(true),
 		}
 	}
 
 	t.Run("too many rules", func(t *testing.T) {
 		req := validRequest()
-		req.Rules = make([]analyzeRule, maxRules+1)
+		req.Ruleset.Rules = make([]*datadog.Rule, maxRules+1)
 		err := validateAnalyzeRequest(&req, defaultMaxFiles)
 		if err == nil || err.Error() != "too many rules" {
 			t.Fatalf("validateAnalyzeRequest() error = %v", err)
@@ -388,7 +379,7 @@ func TestValidateAnalyzeRequest_RuleBoundaries(t *testing.T) {
 
 	t.Run("empty rule platform", func(t *testing.T) {
 		req := validRequest()
-		req.Rules[0].Platform = " "
+		req.Ruleset.Rules[0].Platform = " "
 		err := validateAnalyzeRequest(&req, defaultMaxFiles)
 		if err == nil || err.Error() != "empty platform for rule test-rule" {
 			t.Fatalf("validateAnalyzeRequest() error = %v", err)
@@ -396,21 +387,21 @@ func TestValidateAnalyzeRequest_RuleBoundaries(t *testing.T) {
 	})
 }
 
-func TestValidateAnalyzeRequest_RuleInputDataMustBeObject(t *testing.T) {
-	for _, inputData := range []string{"null", "[]", "1", `"value"`} {
-		t.Run(inputData, func(t *testing.T) {
-			req := analyzeRequest{
-				Files: []analyzeFile{{Path: "main.tf", Content: "resource"}},
-				Rules: []analyzeRule{{
-					ID: "test-rule", Platform: "terraform", Content: "package datadog", InputData: inputData,
-				}},
-				Libraries: testLibraries(true),
-			}
-			err := validateAnalyzeRequest(&req, defaultMaxFiles)
-			if err == nil || err.Error() != "invalid rule input data for test-rule" {
-				t.Fatalf("validateAnalyzeRequest() error = %v", err)
-			}
-		})
+// TestValidateAnalyzeRequest_LibraryIDNormalization verifies library ids match
+// case-insensitively and that keys collapsing to the same normalized value
+// ("cloudFormation"/"cloudformation") are not rejected as duplicates.
+func TestValidateAnalyzeRequest_LibraryIDNormalization(t *testing.T) {
+	req := analyzeRequest{
+		Files:   []analyzeFile{{Path: "main.tf", Content: "resource"}},
+		Ruleset: ruleset(datadog.Rule{ID: "cfn-rule", Name: "cfn-rule", Platform: "CloudFormation", RegoQuery: []byte("package datadog")}),
+		Libraries: []datadog.Library{
+			{ID: "Common", RegoCode: "package generic.common"},
+			{ID: "cloudFormation", RegoCode: "package generic.cloudformation"},
+			{ID: "cloudformation", RegoCode: "package generic.cloudformation"},
+		},
+	}
+	if err := validateAnalyzeRequest(&req, defaultMaxFiles); err != nil {
+		t.Fatalf("validateAnalyzeRequest() error = %v, want nil", err)
 	}
 }
 
@@ -423,7 +414,7 @@ func TestAnalyze_NormalizesRuleAndScanPlatforms(t *testing.T) {
 			Path:    "infra/main.tf",
 			Content: `resource "test_widget" "example" {}`,
 		}},
-		Rules:     []analyzeRule{rule},
+		Ruleset:   ruleset(rule),
 		Libraries: testLibraries(true),
 		Platform:  []string{" Terraform "},
 	}
@@ -454,9 +445,9 @@ func TestAnalyze_MissingPlatformLibraryReportedAsFailedQuery(t *testing.T) {
 			Path:    "infra/main.tf",
 			Content: `resource "test_widget" "example" {}`,
 		}},
-		Rules: []analyzeRule{syntheticRule()},
-		Libraries: []analyzeLibrary{
-			{ID: "common", Content: "package generic.common\nimport rego.v1"},
+		Ruleset: ruleset(syntheticRule()),
+		Libraries: []datadog.Library{
+			{ID: "common", RegoCode: "package generic.common\nimport rego.v1"},
 		},
 		Platform: []string{"terraform"},
 	}
@@ -478,7 +469,7 @@ func TestAnalyze_RequestLibrariesInvalidateSharedRuleCache(t *testing.T) {
 			Path:    "infra/main.tf",
 			Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`,
 		}},
-		Rules:     []analyzeRule{syntheticRule()},
+		Ruleset:   ruleset(syntheticRule()),
 		Libraries: testLibraries(true),
 		Platform:  []string{"terraform"},
 	}
@@ -510,7 +501,7 @@ func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
 			Path:    "infra/main.tf",
 			Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`,
 		}},
-		Rules:     []analyzeRule{syntheticRule()},
+		Ruleset:   ruleset(syntheticRule()),
 		Libraries: testLibraries(true),
 		Platform:  []string{"terraform"},
 	})
@@ -525,17 +516,17 @@ func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
 func TestAnalyze_LogsFailedQueryCount(t *testing.T) {
 	s := newTestServer(t)
 	rule := syntheticRule()
-	rule.Content = `package datadog
+	rule.RegoQuery = []byte(`package datadog
 
 import rego.v1
 
-DatadogPolicy contains "invalid-result"`
+DatadogPolicy contains "invalid-result"`)
 	req := analyzeRequest{
 		Files: []analyzeFile{{
 			Path:    "infra/main.tf",
 			Content: `resource "test_widget" "example" {}`,
 		}},
-		Rules:     []analyzeRule{rule},
+		Ruleset:   ruleset(rule),
 		Libraries: testLibraries(true),
 		Platform:  []string{"terraform"},
 	}
@@ -667,14 +658,15 @@ func TestAnalyze_Concurrent(t *testing.T) {
 	// across multiple worker goroutines, producing findings concurrently — this
 	// exercises the shared per-request engine state (failedQueries, the shared
 	// line detector) that earlier raced under -race.
-	rules := make([]analyzeRule, 0, 8)
+	rules := make([]datadog.Rule, 0, 8)
 	for i := range 8 {
 		r := rule
 		r.ID = fmt.Sprintf("%s-%d", rule.ID, i)
+		r.Name = r.ID
 		rules = append(rules, r)
 	}
 	req := analyzeRequest{
-		Files: files, Rules: rules, Libraries: testLibraries(true), Platform: []string{"terraform"},
+		Files: files, Ruleset: ruleset(rules...), Libraries: testLibraries(true), Platform: []string{"terraform"},
 	}
 
 	const n = 12
@@ -711,7 +703,7 @@ func TestAnalyze_ConfigWithoutIacSection(t *testing.T) {
 
 	req := analyzeRequest{
 		Files:    []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 		Config:   "schema-version: v1.3\nsecrets:\n  enabled: true\n",
 	}
@@ -732,7 +724,7 @@ func TestAnalyze_ConfigIgnoreRulePushedRule(t *testing.T) {
 
 	req := analyzeRequest{
 		Files:    []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 		Config:   "schema-version: v1.3\niac:\n  ignore-rules:\n    - " + syntheticRuleID + "\n",
 	}
@@ -756,7 +748,7 @@ func TestAnalyze_ConfigIgnorePaths(t *testing.T) {
 	// Baseline: without filters the rule fires on infra/main.tf.
 	base, _ := postAnalyze(t, s, analyzeRequest{
 		Files:    []analyzeFile{{Path: "infra/main.tf", Content: body}},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 	})
 	if len(base.Findings) == 0 {
@@ -766,7 +758,7 @@ func TestAnalyze_ConfigIgnorePaths(t *testing.T) {
 	// With ignore-paths covering infra/, the file is skipped → no findings.
 	out, _ := postAnalyze(t, s, analyzeRequest{
 		Files:    []analyzeFile{{Path: "infra/main.tf", Content: body}},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 		Config:   "schema-version: v1.3\niac:\n  global-config:\n    ignore-paths:\n      - \"infra/**\"\n",
 	})
@@ -840,7 +832,7 @@ func TestAnalyze_HCLCacheIsolatedBetweenRequests(t *testing.T) {
 	// Request 1: resource is at line 1.
 	req1 := analyzeRequest{
 		Files:    []analyzeFile{{Path: "infra/main.tf", Content: "resource \"aws_s3_bucket\" \"b\" {\n  bucket = \"x\"\n}\n"}},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 	}
 	out1, _ := postAnalyze(t, s, req1)
@@ -862,7 +854,7 @@ func TestAnalyze_HCLCacheIsolatedBetweenRequests(t *testing.T) {
 	// not the updated one.
 	req2 := analyzeRequest{
 		Files:    []analyzeFile{{Path: "infra/main.tf", Content: "\n\n\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"x\"\n}\n"}},
-		Rules:    []analyzeRule{rule},
+		Ruleset:  ruleset(rule),
 		Platform: []string{"terraform"},
 	}
 	out2, _ := postAnalyze(t, s, req2)
