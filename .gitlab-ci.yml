@@ -1,0 +1,46 @@
+stages:
+  - verify
+
+regression-detector:
+  stage: verify
+  rules:
+    - if: $DDCI_REQUEST_KIND == "REQUEST_KIND_CHANGE_REQUEST"
+  tags: ["arch:amd64"]
+  image: registry.ddbuild.io/images/mirror/golang:1.25
+  allow_failure: true
+  id_tokens:
+    GITRETRIEVER_ID_TOKEN:
+      aud: codesync
+  variables:
+    # Baseline resolution needs full history + tags (main, latest vX.Y.Z);
+    # GIT_DEPTH: 1 is too shallow for this job specifically.
+    GIT_DEPTH: 0
+  before_script:
+    - wget -q https://binaries.ddbuild.io/dd-source/authanywhere/LATEST/authanywhere-linux-amd64 -O /usr/local/bin/authanywhere
+    - chmod +x /usr/local/bin/authanywhere
+  script:
+    - export GITRETRIEVER_TOKEN="${GITRETRIEVER_ID_TOKEN}"
+    - git -c http.extraHeader="Authorization: Bearer ${GITRETRIEVER_TOKEN}" clone --depth 1
+        https://gitretriever.us1.ddbuild.io/DataDog/datadog-iac-scanner-default-rules.git
+        /work/datadog-iac-scanner-default-rules
+    - python3 regression_detector/run.py --trigger scanner --repos-dir /work --output regression-comment.md
+    - |
+      PAYLOAD=$(python3 -c "
+      import json, os
+      with open('regression-comment.md') as f:
+          message = f.read()
+      print(json.dumps({
+          'org': 'DataDog',
+          'repo': 'datadog-iac-scanner',
+          'commit': os.environ['CI_COMMIT_SHA'],
+          'header': 'Regression Detector',
+          'message': message,
+      }))
+      ")
+    - |
+      curl --fail --show-error --silent \
+        https://pr-commenter.us1.ddbuild.io/internal/cit/pr-comment \
+        -H "$(authanywhere)" \
+        -H "X-DdOrigin: gitlab-ci" \
+        -X PATCH \
+        -d "${PAYLOAD}"

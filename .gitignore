@@ -71,3 +71,7 @@ module_support
 
 # local scanner binary
 /scanner
+
+# regression_detector runtime artifacts
+.regression-work/
+regression-comment.md
