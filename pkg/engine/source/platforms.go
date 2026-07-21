@@ -23,7 +23,9 @@ var supPlatforms = &supportedPlatforms{
 	"CICD":                    "cicd",
 }
 
-func getPlatform(metadataPlatform string) string {
+// GetPlatform maps a backend platform name (e.g. "Kubernetes") to the engine's
+// platform key (e.g. "k8s"), returning "unknown" when unrecognized.
+func GetPlatform(metadataPlatform string) string {
 	if p, ok := (*supPlatforms)[metadataPlatform]; ok {
 		return p
 	}

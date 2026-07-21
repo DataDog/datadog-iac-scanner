@@ -10,12 +10,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"maps"
 	"net/http"
 	"path/filepath"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -35,9 +35,8 @@ const (
 	// generous bound while preventing an accidentally unbounded request array.
 	maxLibraries   = 100
 	emptyInputData = "{}"
-	// metadataDefaultKeys is the number of fixed keys setDefault injects in
-	// toQueryMetadata (id, legacyId, queryName, severity, platform, category).
-	metadataDefaultKeys = 6
+	// commonLibraryID is the id of the shared library every scan requires.
+	commonLibraryID = "common"
 )
 
 // analyzeFile is a single pushed file: a workspace-relative path and its raw
@@ -47,33 +46,15 @@ type analyzeFile struct {
 	Content string `json:"content"`
 }
 
-// analyzeRule is a single Rego rule supplied by the caller. Mirrors the shape
-// the extension already builds for the engine.
-type analyzeRule struct {
-	ID        string         `json:"id"`
-	Platform  string         `json:"platform"`
-	Content   string         `json:"content"`
-	InputData string         `json:"inputData,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-}
-
-// analyzeLibrary is one shared Rego module supplied by the caller. Callers use
-// the canonical lowercase name of either "common" or a rule platform as ID.
-type analyzeLibrary struct {
-	ID        string `json:"id"`
-	Content   string `json:"content"`
-	InputData string `json:"inputData,omitempty"`
-}
-
-// analyzeRequest is the body of POST /ide/v1/iac/analyze. Content is raw (not
-// base64). Rules and their supporting libraries are pushed by the extension.
-// Config is the raw YAML of the unified config's iac section.
+// analyzeRequest is the body of POST /ide/v1/iac/analyze. Ruleset and Libraries
+// use the backend data models. Config is the raw YAML of the unified config's
+// iac section.
 type analyzeRequest struct {
-	Files     []analyzeFile    `json:"files"`
-	Rules     []analyzeRule    `json:"rules"`
-	Libraries []analyzeLibrary `json:"libraries"`
-	Config    string           `json:"config,omitempty"`
-	Platform  []string         `json:"platform,omitempty"`
+	Files     []analyzeFile     `json:"files"`
+	Ruleset   datadog.Ruleset   `json:"ruleset"`
+	Libraries []datadog.Library `json:"libraries"`
+	Config    string            `json:"config,omitempty"`
+	Platform  []string          `json:"platform,omitempty"`
 }
 
 // analyzeResponse is the body of a successful analyze. Findings are the engine's
@@ -136,18 +117,14 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 	if len(req.Files) > maxFiles {
 		return errors.New("too many files")
 	}
-	if len(req.Rules) == 0 {
+	rules := req.Ruleset.Rules
+	if len(rules) == 0 {
 		return errors.New("at least one rule is required")
 	}
-	if len(req.Rules) > maxRules {
+	if len(rules) > maxRules {
 		return errors.New("too many rules")
 	}
-	for _, rule := range req.Rules {
-		if !isOptionalInputDataObject(rule.InputData) {
-			return errors.New("invalid rule input data for " + rule.ID)
-		}
-	}
-	if err := validateLibraries(req.Libraries, req.Rules); err != nil {
+	if err := validateLibraries(req.Libraries, rules); err != nil {
 		return err
 	}
 	for _, f := range req.Files {
@@ -158,7 +135,7 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 	return nil
 }
 
-func validateLibraries(libraries []analyzeLibrary, rules []analyzeRule) error {
+func validateLibraries(libraries []datadog.Library, rules []*datadog.Rule) error {
 	if len(libraries) == 0 {
 		return errors.New("at least one library is required")
 	}
@@ -168,33 +145,29 @@ func validateLibraries(libraries []analyzeLibrary, rules []analyzeRule) error {
 
 	available := make(map[string]struct{}, len(libraries))
 	for _, library := range libraries {
-		id := strings.TrimSpace(library.ID)
+		id := normalizePlatform(library.ID)
 		if id == "" {
 			return errors.New("empty library id")
 		}
-		if library.ID != normalizePlatform(library.ID) {
-			return errors.New("library id must be canonical lowercase: " + library.ID)
-		}
-		if strings.TrimSpace(library.Content) == "" {
+		if strings.TrimSpace(library.RegoCode) == "" {
 			return errors.New("empty library content for " + library.ID)
 		}
 		if !isOptionalInputDataObject(library.InputData) {
 			return errors.New("invalid library input data for " + library.ID)
 		}
-		if _, exists := available[id]; exists {
-			return errors.New("duplicate library id: " + library.ID)
-		}
 		available[id] = struct{}{}
 	}
-	if _, ok := available["common"]; !ok {
+	if _, ok := available[commonLibraryID]; !ok {
 		return errors.New("common library is required")
 	}
 	for _, rule := range rules {
-		platform := normalizePlatform(rule.Platform)
-		if platform == "" {
+		if rule == nil {
+			continue
+		}
+		if strings.TrimSpace(rule.Platform) == "" {
 			return errors.New("empty platform for rule " + rule.ID)
 		}
-		if _, ok := available[platform]; !ok {
+		if _, ok := available[ruleLibraryKey(rule.Platform)]; !ok {
 			return errors.New("library is required for rule platform: " + rule.Platform)
 		}
 	}
@@ -214,8 +187,15 @@ func isOptionalInputDataObject(inputData string) bool {
 	return inputData == "" || source.IsJSONObject(inputData)
 }
 
+// normalizePlatform lowercases and trims a library key for consistent comparison.
 func normalizePlatform(platform string) string {
 	return strings.ToLower(strings.TrimSpace(platform))
+}
+
+// ruleLibraryKey maps a rule's backend platform (e.g. "Kubernetes") to the
+// normalized key of the library its queries look up (e.g. "k8s").
+func ruleLibraryKey(platform string) string {
+	return normalizePlatform(source.GetPlatform(strings.TrimSpace(platform)))
 }
 
 // validateFilePath rejects paths that are empty, absolute, contain a NUL byte,
@@ -298,7 +278,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	client, err := scan.NewClient(ctx, params, &consolePrinter.Printer{},
 		scan.WithFS(memfs),
 		scan.WithInMemoryScan(memfs.Paths()),
-		scan.WithQuerySourceFactory(querySourceFactory(req.Rules, req.Libraries)),
+		scan.WithQuerySourceFactory(querySourceFactory(req.Ruleset.Rules, req.Libraries)),
 	)
 	if err != nil {
 		return nil, err
@@ -334,7 +314,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 
 // querySourceFactory returns a factory that serves rules and libraries only
 // from the analyze request.
-func querySourceFactory(rules []analyzeRule, libraries []analyzeLibrary) func(
+func querySourceFactory(rules []*datadog.Rule, libraries []datadog.Library) func(
 	context.Context, []string,
 ) (source.QueriesSource, error) {
 	return func(context.Context, []string) (source.QueriesSource, error) {
@@ -367,49 +347,31 @@ func (r *requestQuerySource) GetQueryLibrary(ctx context.Context, platform strin
 	return library, nil
 }
 
-func toRegoLibraries(libraries []analyzeLibrary) map[string]source.RegoLibraries {
+func toRegoLibraries(libraries []datadog.Library) map[string]source.RegoLibraries {
 	out := make(map[string]source.RegoLibraries, len(libraries))
 	for _, library := range libraries {
-		out[library.ID] = source.RegoLibraries{
-			LibraryCode:      library.Content,
+		out[normalizePlatform(library.ID)] = source.RegoLibraries{
+			LibraryCode:      library.RegoCode,
 			LibraryInputData: normalizeInputData(library.InputData),
 		}
 	}
 	return out
 }
 
-// toQueryMetadata converts request rules into engine query metadata, filling the
-// metadata fields the vulnerability builder expects when the caller omits them.
-func toQueryMetadata(rules []analyzeRule) []model.QueryMetadata {
+// toQueryMetadata converts request rules into engine query metadata via the
+// shared Datadog API conversion.
+func toQueryMetadata(rules []*datadog.Rule) []model.QueryMetadata {
 	out := make([]model.QueryMetadata, 0, len(rules))
 	for _, rule := range rules {
-		platform := normalizePlatform(rule.Platform)
-		// Copy the caller's metadata into a fresh map so this function never
-		// mutates the request value (which may be shared/read concurrently).
-		metadata := make(map[string]any, len(rule.Metadata)+metadataDefaultKeys)
-		maps.Copy(metadata, rule.Metadata)
-		setDefault(metadata, "id", rule.ID)
-		setDefault(metadata, "legacyId", rule.ID)
-		setDefault(metadata, "queryName", rule.ID)
-		setDefault(metadata, "severity", "INFO")
-		setDefault(metadata, "platform", platform)
-		setDefault(metadata, "category", "Best Practices")
-
-		out = append(out, model.QueryMetadata{
-			Query:     rule.ID,
-			Content:   rule.Content,
-			InputData: normalizeInputData(rule.InputData),
-			Platform:  platform,
-			Metadata:  metadata,
-		})
+		if rule == nil {
+			continue
+		}
+		// Copy so trimming the platform does not mutate the shared request value.
+		r := *rule
+		r.Platform = strings.TrimSpace(r.Platform)
+		out = append(out, source.ConvertRule(&r))
 	}
 	return out
-}
-
-func setDefault(m map[string]any, key string, value any) {
-	if _, ok := m[key]; !ok {
-		m[key] = value
-	}
 }
 
 // compile-time assertion that requestQuerySource satisfies the engine interface.

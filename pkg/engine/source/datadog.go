@@ -222,7 +222,7 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 			"severity":        rule.Severity,
 			"category":        rule.Category,
 		},
-		Platform:     getPlatform(rule.Platform),
+		Platform:     GetPlatform(rule.Platform),
 		Aggregation:  1,
 		Experimental: rule.IsTesting,
 	}

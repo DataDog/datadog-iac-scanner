@@ -436,7 +436,7 @@ func parseQuery(ctx context.Context, queryName string, queryContent, metadataCon
 		return model.QueryMetadata{}, err
 	}
 
-	platform := getPlatform(metadata["platform"].(string))
+	platform := GetPlatform(metadata["platform"].(string))
 
 	aggregation := 1
 	if agg, ok := metadata["aggregation"]; ok {
