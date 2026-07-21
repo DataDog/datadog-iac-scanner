@@ -2,6 +2,10 @@ package source
 
 import "strings"
 
+// PlatformUnknown is the sentinel GetPlatform returns for an unrecognized
+// backend platform name.
+const PlatformUnknown = "unknown"
+
 type supportedPlatforms map[string]string
 
 var supPlatforms = &supportedPlatforms{
@@ -29,7 +33,7 @@ func GetPlatform(metadataPlatform string) string {
 	if p, ok := (*supPlatforms)[metadataPlatform]; ok {
 		return p
 	}
-	return "unknown"
+	return PlatformUnknown
 }
 
 // LibraryName maps a user-facing platform name (case-insensitive) to the

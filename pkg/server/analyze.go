@@ -118,13 +118,14 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 		return errors.New("too many files")
 	}
 	rules := req.Ruleset.Rules
-	if len(rules) == 0 {
-		return errors.New("at least one rule is required")
-	}
 	if len(rules) > maxRules {
 		return errors.New("too many rules")
 	}
-	if err := validateLibraries(req.Libraries, rules); err != nil {
+	nonNil := nonNilRules(rules)
+	if len(nonNil) == 0 {
+		return errors.New("at least one rule is required")
+	}
+	if err := validateLibraries(req.Libraries, nonNil); err != nil {
 		return err
 	}
 	for _, f := range req.Files {
@@ -133,6 +134,30 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 		}
 	}
 	return nil
+}
+
+func nonNilRules(rules []*datadog.Rule) []*datadog.Rule {
+	out := make([]*datadog.Rule, 0, len(rules))
+	for _, rule := range rules {
+		if rule != nil {
+			out = append(out, rule)
+		}
+	}
+	return out
+}
+
+// publishedRules further narrows nonNilRules to published rules, mirroring
+// DatadogSource.filterRules's !rule.IsPublished guard so pushed rulesets
+// can't surface findings a normal backend-driven scan would suppress.
+func publishedRules(rules []*datadog.Rule) []*datadog.Rule {
+	nonNil := nonNilRules(rules)
+	out := make([]*datadog.Rule, 0, len(nonNil))
+	for _, rule := range nonNil {
+		if rule.IsPublished {
+			out = append(out, rule)
+		}
+	}
+	return out
 }
 
 func validateLibraries(libraries []datadog.Library, rules []*datadog.Rule) error {
@@ -161,13 +186,14 @@ func validateLibraries(libraries []datadog.Library, rules []*datadog.Rule) error
 		return errors.New("common library is required")
 	}
 	for _, rule := range rules {
-		if rule == nil {
-			continue
-		}
 		if strings.TrimSpace(rule.Platform) == "" {
 			return errors.New("empty platform for rule " + rule.ID)
 		}
-		if _, ok := available[ruleLibraryKey(rule.Platform)]; !ok {
+		key, err := ruleLibraryKey(rule.Platform)
+		if err != nil {
+			return err
+		}
+		if _, ok := available[key]; !ok {
 			return errors.New("library is required for rule platform: " + rule.Platform)
 		}
 	}
@@ -193,9 +219,17 @@ func normalizePlatform(platform string) string {
 }
 
 // ruleLibraryKey maps a rule's backend platform (e.g. "Kubernetes") to the
-// normalized key of the library its queries look up (e.g. "k8s").
-func ruleLibraryKey(platform string) string {
-	return normalizePlatform(source.GetPlatform(strings.TrimSpace(platform)))
+// normalized key of the library its queries look up (e.g. "k8s"). It fails
+// explicitly when the platform is unrecognized (including casing mismatches
+// such as "terraform" vs "Terraform") instead of silently falling through to
+// "unknown", which would otherwise surface a misleading "library is required"
+// error for the original platform name.
+func ruleLibraryKey(platform string) (string, error) {
+	mapped := source.GetPlatform(strings.TrimSpace(platform))
+	if mapped == source.PlatformUnknown {
+		return "", errors.New("unsupported rule platform: " + platform)
+	}
+	return normalizePlatform(mapped), nil
 }
 
 // validateFilePath rejects paths that are empty, absolute, contain a NUL byte,
@@ -361,11 +395,9 @@ func toRegoLibraries(libraries []datadog.Library) map[string]source.RegoLibrarie
 // toQueryMetadata converts request rules into engine query metadata via the
 // shared Datadog API conversion.
 func toQueryMetadata(rules []*datadog.Rule) []model.QueryMetadata {
-	out := make([]model.QueryMetadata, 0, len(rules))
-	for _, rule := range rules {
-		if rule == nil {
-			continue
-		}
+	usable := publishedRules(rules)
+	out := make([]model.QueryMetadata, 0, len(usable))
+	for _, rule := range usable {
 		// Copy so trimming the platform does not mutate the shared request value.
 		r := *rule
 		r.Platform = strings.TrimSpace(r.Platform)
