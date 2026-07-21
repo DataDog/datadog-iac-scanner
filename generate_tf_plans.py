@@ -10,10 +10,13 @@ import argparse
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -86,6 +89,134 @@ class TerraformPlanGenerator:
         self.client = Anthropic(**client_kwargs)
 
         self.stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+
+        # The nifcloud provider's registry entry points at GitHub release
+        # assets that no longer exist (the nifcloud org made its repos
+        # private), so `terraform init` can never fetch it normally. We
+        # build it ourselves from the Go module proxy (which mirrors the
+        # source independently of GitHub) and point Terraform at it via a
+        # scoped filesystem_mirror, so only nifcloud bypasses the registry.
+        self.nifcloud_tf_cli_config: Optional[Path] = self._ensure_nifcloud_provider()
+
+    # Version to build/mirror. Matches the last version published to the
+    # registry before the upstream GitHub org went private.
+    NIFCLOUD_PROVIDER_VERSION = "1.18.0"
+    NIFCLOUD_MODULE_PATH = "github.com/nifcloud/terraform-provider-nifcloud"
+
+    @staticmethod
+    def _terraform_platform() -> str:
+        """Return the Terraform-style '<os>_<arch>' string for this machine."""
+        os_name = platform.system().lower()
+        arch = platform.machine().lower()
+        arch_map = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}
+        return f"{os_name}_{arch_map.get(arch, arch)}"
+
+    def _ensure_nifcloud_provider(self) -> Optional[Path]:
+        """
+        Build the nifcloud Terraform provider from source (via the Go module
+        proxy) if it isn't already built, register it in a local filesystem
+        mirror, and return a Terraform CLI config file that routes only
+        nifcloud/nifcloud installs to that mirror.
+
+        Returns:
+            Path to a generated .terraformrc file, or None if the provider
+            could not be built (e.g. Go toolchain unavailable).
+        """
+        cache_dir = Path.home() / ".cache" / "generate_tf_plans" / "nifcloud"
+        platform_dir = (
+            cache_dir
+            / "mirror"
+            / "registry.terraform.io"
+            / "nifcloud"
+            / "nifcloud"
+            / self.NIFCLOUD_PROVIDER_VERSION
+            / self._terraform_platform()
+        )
+        binary_path = platform_dir / f"terraform-provider-nifcloud_v{self.NIFCLOUD_PROVIDER_VERSION}"
+        cli_config_path = cache_dir / "cli_config.tfrc"
+
+        if binary_path.exists():
+            logger.debug(f"nifcloud provider already built at {binary_path}")
+            self._write_nifcloud_cli_config(cli_config_path, cache_dir / "mirror")
+            return cli_config_path
+
+        if shutil.which("go") is None:
+            logger.warning(
+                "Go toolchain not found; cannot build the nifcloud provider "
+                "locally. .tf files using nifcloud_* resources will fail to init."
+            )
+            return None
+
+        logger.info(
+            f"Building nifcloud provider v{self.NIFCLOUD_PROVIDER_VERSION} from source "
+            "(registry release assets are unavailable upstream)..."
+        )
+
+        try:
+            with tempfile.TemporaryDirectory() as build_tmp:
+                build_path = Path(build_tmp)
+                zip_url = (
+                    f"https://proxy.golang.org/{self.NIFCLOUD_MODULE_PATH}/@v/"
+                    f"v{self.NIFCLOUD_PROVIDER_VERSION}.zip"
+                )
+                zip_path = build_path / "src.zip"
+                urllib.request.urlretrieve(zip_url, zip_path)
+
+                with zipfile.ZipFile(zip_path) as zf:
+                    zf.extractall(build_path)
+
+                src_dir = (
+                    build_path
+                    / self.NIFCLOUD_MODULE_PATH
+                    / f"@v{self.NIFCLOUD_PROVIDER_VERSION}"
+                )
+                if not src_dir.exists():
+                    # Module proxy sometimes lowercases path segments differently.
+                    candidates = list(build_path.glob("**/go.mod"))
+                    if not candidates:
+                        raise RuntimeError("Could not locate extracted provider source")
+                    src_dir = candidates[0].parent
+
+                platform_dir.mkdir(parents=True, exist_ok=True)
+                env = os.environ.copy()
+                env["GOFLAGS"] = "-mod=mod"
+                result = subprocess.run(
+                    ["go", "build", "-o", str(binary_path), "."],
+                    cwd=src_dir,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                if result.returncode != 0:
+                    logger.error(f"Failed to build nifcloud provider: {result.stderr[:500]}")
+                    return None
+
+                binary_path.chmod(0o755)
+        except Exception as e:
+            logger.error(f"Failed to fetch/build nifcloud provider: {e}")
+            return None
+
+        logger.info(f"Built nifcloud provider at {binary_path}")
+        self._write_nifcloud_cli_config(cli_config_path, cache_dir / "mirror")
+        return cli_config_path
+
+    @staticmethod
+    def _write_nifcloud_cli_config(cli_config_path: Path, mirror_dir: Path) -> None:
+        """Write a Terraform CLI config that mirrors only nifcloud/nifcloud locally."""
+        cli_config_path.parent.mkdir(parents=True, exist_ok=True)
+        cli_config_path.write_text(
+            f"""provider_installation {{
+  filesystem_mirror {{
+    path    = "{mirror_dir}"
+    include = ["nifcloud/nifcloud"]
+  }}
+  direct {{
+    exclude = ["nifcloud/nifcloud"]
+  }}
+}}
+"""
+        )
 
     def is_high_rule(self, tf_file: Path) -> bool:
         """
@@ -212,6 +343,9 @@ class TerraformPlanGenerator:
             env["ARM_CLIENT_ID"] = "00000000-0000-0000-0000-000000000000"
             env["ARM_CLIENT_SECRET"] = "mock_secret_value"
 
+            if self.nifcloud_tf_cli_config is not None:
+                env["TF_CLI_CONFIG_FILE"] = str(self.nifcloud_tf_cli_config)
+
             result = subprocess.run(
                 cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env
             )
@@ -221,6 +355,85 @@ class TerraformPlanGenerator:
             return False, "", f"Command timed out after {timeout} seconds"
         except Exception as e:
             return False, "", str(e)
+
+    # Maps a resource type prefix to its provider source and mock provider block.
+    PROVIDER_HINTS = {
+        "aws": (
+            "hashicorp/aws",
+            '~> 4.0',
+            """provider "aws" {
+     access_key                  = "mock_access_key"
+     secret_key                  = "mock_secret_key"
+     region                      = "us-east-1"
+     skip_credentials_validation = true
+     skip_requesting_account_id  = true
+     skip_metadata_api_check     = true
+   }""",
+        ),
+        "google": (
+            "hashicorp/google",
+            "~> 4.0",
+            """provider "google" {
+     project     = "mock-project"
+     region      = "us-central1"
+     credentials = jsonencode({ type = "service_account" })
+   }""",
+        ),
+        "alicloud": (
+            "aliyun/alicloud",
+            "~> 1.0",
+            """provider "alicloud" {
+     access_key = "mock_access_key"
+     secret_key = "mock_secret_key"
+     region     = "cn-hangzhou"
+   }""",
+        ),
+        "nifcloud": (
+            "nifcloud/nifcloud",
+            NIFCLOUD_PROVIDER_VERSION,
+            """provider "nifcloud" {
+     access_key = "mock_access_key"
+     secret_key = "mock_secret_key"
+     region     = "jp-east-1"
+   }""",
+        ),
+        "azurerm": (
+            "hashicorp/azurerm",
+            "~> 3.0",
+            """provider "azurerm" {
+     features {}
+     skip_provider_registration = true
+     # Auth will use ARM_* environment variables set by the script
+   }""",
+        ),
+    }
+
+    def detect_provider(self, tf_content: str) -> Optional[str]:
+        """
+        Detect the intended provider from the resource/data types used in the file,
+        e.g. `nifcloud_router` -> "nifcloud", `aws_security_group` -> "aws".
+
+        Args:
+            tf_content: Terraform file content
+
+        Returns:
+            The detected provider prefix, or None if it can't be determined.
+        """
+        import re
+
+        types = re.findall(r'(?:resource|data)\s+"([a-zA-Z0-9]+)_', tf_content)
+        if not types:
+            return None
+
+        # Prefer known providers, sorted by first appearance.
+        for candidate in types:
+            if candidate in self.PROVIDER_HINTS:
+                return candidate
+
+        # Fall back to the most common prefix even if we have no canned hint for it.
+        from collections import Counter
+
+        return Counter(types).most_common(1)[0][0]
 
     def fix_terraform_with_ai(
         self, tf_content: str, error_message: str, attempt: int
@@ -238,6 +451,33 @@ class TerraformPlanGenerator:
         """
         logger.info(f"Attempting AI fix (attempt {attempt}/{self.max_retries})")
 
+        provider = self.detect_provider(tf_content)
+        hint = self.PROVIDER_HINTS.get(provider) if provider else None
+
+        if hint:
+            source, version, provider_block = hint
+            provider_guidance = f"""CRITICAL: The resources in this file belong to the "{provider}" provider. Do NOT switch them to a different provider (e.g. do not rewrite {provider}_* resources as aws_* resources). Keep every resource type and name exactly as in the original file.
+
+Add or fix the required provider block:
+   terraform {{
+     required_providers {{
+       {provider} = {{
+         source  = "{source}"
+         version = "{version}"
+       }}
+     }}
+   }}
+
+   {provider_block}
+"""
+        elif provider:
+            provider_guidance = f"""CRITICAL: The resources in this file belong to the "{provider}" provider. Do NOT switch them to a different provider (e.g. do not rewrite {provider}_* resources as aws_* resources). Keep every resource type and name exactly as in the original file.
+
+Add a terraform {{ required_providers {{ ... }} }} block and a provider "{provider}" {{ ... }} block with mock/fake credentials so that terraform init and plan succeed without real authentication.
+"""
+        else:
+            provider_guidance = ""
+
         if (
             "terraform plan" in error_message.lower()
             or "terraform plan error" in error_message.lower()
@@ -254,9 +494,12 @@ ERROR:
 CURRENT TERRAFORM FILE:
 {tf_content}
 
-Fix this error. IMPORTANT: Azure provider ALWAYS requires real authentication, even with mock credentials.
+Fix this error.
 
-For Azure resources, use this approach:
+{provider_guidance}
+Keep ALL original resources from the file, with their original resource types and provider - only add the missing terraform/provider blocks and any missing stub dependencies above them.
+
+NOTE: The Azure (azurerm) provider ALWAYS requires real authentication, even with mock credentials. If (and only if) the resources in this file are azurerm_* resources, use this approach instead:
 1. Add required providers and Azure provider with environment variable auth:
    terraform {{
      required_providers {{
@@ -301,8 +544,6 @@ For Azure resources, use this approach:
    data "azurerm_subscription" "primary" {{}}
    data "azurerm_client_config" "example" {{}}
 
-3. Keep ALL original resources from the file - just add the missing dependencies above them
-
 CRITICAL: Return ONLY the corrected Terraform code. Do NOT include:
 - Explanations
 - Markdown code blocks
@@ -322,6 +563,7 @@ TERRAFORM FILE CONTENT:
 
 Please fix the Terraform configuration to resolve this error.
 
+{provider_guidance}
 If the error involves Azure (authentication, missing resources, or provider), add:
    terraform {{
      required_providers {{
@@ -364,7 +606,7 @@ If the error involves Azure (authentication, missing resources, or provider), ad
      byte_length = 8
    }}
 
-If the error involves AWS authentication, add mock AWS provider configuration.
+Otherwise, do NOT change any resource types or provider - keep every original resource exactly as-is and only add/fix the terraform/provider configuration blocks needed to make init succeed.
 
 CRITICAL: Return ONLY the corrected Terraform code. Do NOT include:
 - Explanations
