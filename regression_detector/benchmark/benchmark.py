@@ -28,6 +28,7 @@ from .sources import (
     Worktrees,
     ensure_fetched,
     filesystem_safe,
+    is_git_checkout,
     require_repository,
     resolve_corpus,
     resolve_latest_release_tag,
@@ -40,12 +41,17 @@ log = logging.getLogger("regression")
 def measure_scan(
     scanner_binary: Path,
     corpus_dir: Path,
-    queries: Path,
-    libraries: Path,
+    queries: Path | None,
+    libraries: Path | None,
     platforms: list[str],
     temp_dir: Path,
 ) -> RunMetrics:
-    """Run one scan under rusage measurement and parse its metadata JSON."""
+    """Run one scan under rusage measurement and parse its metadata JSON.
+
+    When ``queries``/``libraries`` are None the scanner is invoked without local
+    rule paths, so it fetches the deployed default ruleset from the Datadog
+    backend at runtime.
+    """
     metadata_path = temp_dir / "meta.json"
     if metadata_path.exists():
         metadata_path.unlink()
@@ -56,13 +62,13 @@ def measure_scan(
         "scan",
         "--path",
         str(corpus_dir),
-        "--queries-path",
-        str(queries),
-        "--libraries-path",
-        str(libraries),
         "--metadata-path",
         str(metadata_path),
     ]
+    if queries is not None:
+        command += ["--queries-path", str(queries)]
+    if libraries is not None:
+        command += ["--libraries-path", str(libraries)]
     for platform in platforms:
         command += ["--type", platform]
 
@@ -244,15 +250,30 @@ class BenchmarkContext:
 def run(args: CliArgs) -> str:
     repos_dir = Path(args.repos_dir).expanduser().resolve()
     scanner_repo = require_repository(SCANNER_REPO, "datadog-iac-scanner")
-    rules_repo = require_repository(
-        repos_dir / "datadog-iac-scanner-default-rules",
-        "datadog-iac-scanner-default-rules",
-    )
+    rules_checkout = repos_dir / "datadog-iac-scanner-default-rules"
+    use_remote_rules = args.remote_rules or not is_git_checkout(rules_checkout)
+    if use_remote_rules and args.trigger == Trigger.RULES:
+        raise RuntimeError(
+            "--trigger rules requires a local default-rules "
+            + f"checkout under {repos_dir} (looked at {rules_checkout}); remote "
+            + "rules are held fixed and cannot vary the ruleset per variant"
+        )
+    if use_remote_rules:
+        log.info(
+            "using remote rules: the scanner will fetch the deployed default "
+            + "ruleset from the Datadog backend at runtime (no rules checkout %s)",
+            "requested" if args.remote_rules else "found",
+        )
+        rules_repo = None
+    else:
+        rules_repo = require_repository(
+            rules_checkout, "datadog-iac-scanner-default-rules"
+        )
     work_dir = Path(args.work_dir).resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
 
     ensure_fetched(scanner_repo)
-    if args.trigger == Trigger.RULES:
+    if args.trigger == Trigger.RULES and rules_repo is not None:
         ensure_fetched(rules_repo)
 
     corpus = load_corpus(Path(args.corpus_config))
@@ -316,7 +337,10 @@ def run(args: CliArgs) -> str:
 
 
 def _set_variant_display_names(
-    variants: list[Variant], trigger: Trigger, scanner_repo: str, rules_repo: str
+    variants: list[Variant],
+    trigger: Trigger,
+    scanner_repo: str,
+    rules_repo: str | None,
 ) -> None:
     for variant in variants:
         variant.scanner_display = (
@@ -324,11 +348,12 @@ def _set_variant_display_names(
             if variant.is_candidate and trigger == Trigger.SCANNER
             else short_sha(scanner_repo, variant.scanner_ref or "HEAD")
         )
-        variant.rules_display = (
-            "PR"
-            if variant.is_candidate and trigger == Trigger.RULES
-            else short_sha(rules_repo, variant.rules_ref or "HEAD")
-        )
+        if variant.is_candidate and trigger == Trigger.RULES:
+            variant.rules_display = "PR"
+        elif rules_repo is None:
+            variant.rules_display = "remote"
+        else:
+            variant.rules_display = short_sha(rules_repo, variant.rules_ref or "HEAD")
 
 
 def _parse_platforms(value: str) -> list[str]:
@@ -365,7 +390,7 @@ def _warm_repository(
 ) -> None:
     candidate = context.variants[0]
     temp_dir = _scan_temp_dir(context.work_dir, corpus_repo, "warmup")
-    queries, libraries = context.assets.rules_paths(candidate.rules_ref)
+    queries, libraries = context.assets.rules_paths(candidate.rules_ref) or (None, None)
     log.info("%s: warmup scan starting (variant=%s)", corpus_repo.repo, candidate.label)
     started_at = time.monotonic()
     try:
@@ -460,11 +485,13 @@ def _measure_variant(
         variant.label,
     )
     started_at = time.monotonic()
+    queries, libraries = context.assets.rules_paths(variant.rules_ref) or (None, None)
     try:
         metrics = measure_scan(
             context.assets.scanner_binary(variant.scanner_ref),
             repository_path,
-            *context.assets.rules_paths(variant.rules_ref),
+            queries,
+            libraries,
             context.platforms,
             temp_dir,
         )

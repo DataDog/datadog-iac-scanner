@@ -122,12 +122,12 @@ class VariantAssets:
     def __init__(
         self,
         scanner_repo: str,
-        rules_repo: str,
+        rules_repo: str | None,
         work_dir: Path,
         worktrees: Worktrees,
     ) -> None:
         self._scanner_repo: str = scanner_repo
-        self._rules_repo: str = rules_repo
+        self._rules_repo: str | None = rules_repo
         self._work_dir: Path = work_dir
         self._worktrees: Worktrees = worktrees
         self._scanner_binaries: dict[str | None, Path] = {}
@@ -194,7 +194,21 @@ class VariantAssets:
         self._scanner_binaries[ref] = binary
         return binary
 
-    def rules_paths(self, ref: str | None) -> tuple[Path, Path]:
+    def rules_paths(self, ref: str | None) -> tuple[Path, Path] | None:
+        """Return (queries, libraries) paths, or None when using remote rules.
+
+        With no local rules checkout the scanner is invoked without query or
+        library paths, so it fetches the deployed default ruleset from the
+        Datadog backend at runtime.
+        """
+        if self._rules_repo is None:
+            if ref is not None:
+                raise RuntimeError(
+                    f"cannot materialize rules ref {ref!r} without a local rules "
+                    + "checkout; remote rules cannot vary the ruleset per variant"
+                )
+            return None
+
         if ref in self._rules_paths:
             return self._rules_paths[ref]
 

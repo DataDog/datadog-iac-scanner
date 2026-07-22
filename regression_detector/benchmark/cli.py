@@ -28,16 +28,23 @@ counts for each, and renders a Markdown PR comment summarising the deltas.
 The same script is invoked from both CI pipelines; only ``--trigger`` differs:
 
   * ``--trigger scanner`` — a PR in datadog-iac-scanner. The scanner binary is
-    the variable; rules are held fixed (as cloned, i.e. main). Baselines are the
-    scanner's ``main`` branch and its latest released tag (semver ``vX.Y.Z``,
-    pre-releases like ``-alpha`` excluded).
+    the variable; rules are held fixed. Baselines are the scanner's ``main``
+    branch and its latest released tag (semver ``vX.Y.Z``, pre-releases like
+    ``-alpha`` excluded).
   * ``--trigger rules`` — a PR in datadog-iac-scanner-default-rules. The rules
     are the variable; the scanner is held fixed (latest released tag). The only
     baseline is the rules' ``main`` branch.
 
-Both a CI run and a local run need clones of the scanner and rules repositories,
-plus the corpus repositories. The scanner checkout is discovered from this
-entrypoint; other clones default to its parent directory.
+Rules come from a local default-rules checkout when present.
+With ``--remote-rules`` (or when no local checkout is found under --repos-dir),
+the scanner instead fetches the deployed default ruleset from the Datadog
+backend at runtime, so no rules clone is needed. Remote rules are held fixed for
+every variant, so they only apply to ``--trigger scanner``; ``--trigger rules``
+requires a local checkout because it varies the ruleset per variant.
+
+A run needs a clone of the scanner repository plus the corpus repositories, and
+(unless running with remote rules) the rules repository. The scanner checkout is
+discovered from this entrypoint; other clones default to its parent directory.
 
 Deliberately dependency-free (Python 3.10+ stdlib only): measurement uses
 os.fork/os.wait4 rusage, so CI needs no ``pip install`` step.
@@ -83,6 +90,13 @@ def parse_args(argv: list[str] | None = None) -> CliArgs:
     _ = parser.add_argument(
         "--platforms",
         help="comma-separated platform types to scan (default: all)",
+    )
+    _ = parser.add_argument(
+        "--remote-rules",
+        action="store_true",
+        help="skip the local rules checkout and let the scanner fetch the "
+        + "deployed default ruleset from the Datadog backend at runtime "
+        + "(scanner trigger only; the default when no local rules checkout is found)",
     )
     _ = parser.add_argument(
         "--gitretriever-url",

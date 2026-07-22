@@ -20,11 +20,7 @@ regression-detector:
     - chmod +x /usr/local/bin/authanywhere
   script:
     - export GITRETRIEVER_TOKEN="${GITRETRIEVER_ID_TOKEN}"
-    - |
-      git -c http.extraHeader="Authorization: Bearer ${GITRETRIEVER_TOKEN}" clone --depth 1 \
-        https://gitretriever.us1.ddbuild.io/DataDog/datadog-iac-scanner-default-rules.git \
-        /work/datadog-iac-scanner-default-rules
-    - python3 regression_detector/run.py --trigger scanner --repos-dir /work --output regression-comment.md
+    - python3 regression_detector/run.py --trigger scanner --remote-rules --repos-dir /work --output regression-comment.md
     - |
       PAYLOAD=$(python3 -c "
       import json, os

@@ -6,7 +6,7 @@
 
 | Trigger (`--trigger`) | Variable | Held fixed | Baselines |
 | --- | --- | --- | --- |
-| `scanner` | scanner binary | rules (as cloned = `main`) | scanner `main` **and** latest release tag `vX.Y.Z` |
+| `scanner` | scanner binary | rules (local `main`, or the deployed ruleset with `--remote-rules`) | scanner `main` **and** latest release tag `vX.Y.Z` |
 | `rules` | rules (`assets/`) | scanner (latest release tag) | rules `main` |
 
 Release tags are semver `vX.Y.Z` only; pre-releases (`-alpha`, etc.) are ignored. The candidate is always the PR working tree as checked out; baselines are materialised in isolated git worktrees, so the checked-out tree is never mutated.
@@ -14,7 +14,7 @@ Release tags are semver `vX.Y.Z` only; pre-releases (`-alpha`, etc.) are ignored
 ## What the pipeline must provide
 
 - The **datadog-iac-scanner** checkout containing this entrypoint, with tags + `origin/main` fetchable (the script does a best-effort fetch).
-- A **datadog-iac-scanner-default-rules** clone under `--repos-dir`.
+- A **datadog-iac-scanner-default-rules** clone under `--repos-dir` — **unless** running with `--remote-rules` (see below), in which case no rules clone is needed.
 - The `go` toolchain (to build the scanner variants; `CGO_ENABLED=1`).
 - Corpus repos: either pre-cloned under `--repos-dir`, or reachable via gitretriever with a Bearer token in `$GITRETRIEVER_TOKEN` (in GitLab CI, mint one with an ID token: `id_tokens: {GITRETRIEVER_ID_TOKEN: {aud: codesync}}`).
 
@@ -34,10 +34,13 @@ The candidate is your **working tree** (uncommitted changes included). Use `--re
 
 ## CI usage
 
+The scanner trigger passes `--remote-rules`: the scanner fetches the deployed default ruleset from the Datadog backend at runtime (`api.<DD_SITE>` — default `datadoghq.com`), so no local rules checkout is needed. Remote rules are held fixed across every variant, so `--remote-rules` is scanner-only; `--trigger rules` still requires a local checkout because it varies the ruleset per variant. When no local rules checkout is found under `--repos-dir`, remote rules are used automatically.
+
 ```bash
 # scanner PR
 python regression_detector/run.py \
   --trigger scanner \
+  --remote-rules \
   --repos-dir /work \
   --output       regression-comment.md
 

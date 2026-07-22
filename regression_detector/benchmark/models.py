@@ -136,6 +136,7 @@ class CliArgs(argparse.Namespace):
     runs: int
     warmup: bool
     platforms: str
+    remote_rules: bool
     gitretriever_url: str
     gitretriever_token: str | None
     output: str
@@ -152,6 +153,7 @@ class CliArgs(argparse.Namespace):
         self.runs = DEFAULT_RUNS
         self.warmup = True
         self.platforms = ""
+        self.remote_rules = False
         self.gitretriever_url = DEFAULT_GITRETRIEVER_URL
         self.gitretriever_token = os.environ.get("GITRETRIEVER_TOKEN")
         self.output = DEFAULT_OUTPUT
