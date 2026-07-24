@@ -13,6 +13,9 @@ trigger-regression-detector:
     # Surface the downstream pipeline's status on this pipeline.
     strategy: depend
   variables:
+    UPSTREAM_TRIGGER: scanner
+    UPSTREAM_ORG: DataDog
+    UPSTREAM_REPO: datadog-iac-scanner
     UPSTREAM_PIPELINE_ID: $CI_PIPELINE_ID
     UPSTREAM_BRANCH: $CI_COMMIT_REF_NAME
     UPSTREAM_COMMIT_SHA: $CI_COMMIT_SHA
