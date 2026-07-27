@@ -5,11 +5,10 @@ trigger-regression-detector:
   stage: verify
   rules:
     - if: $DDCI_REQUEST_KIND == "REQUEST_KIND_CHANGE_REQUEST"
-    - if: $CI_COMMIT_TAG
   allow_failure: true
   trigger:
     project: ddoghq/datadog-iac-regression-detector
-    branch: ilya.siamionau/K9CODESEC-3295/add-regression-detector
+    branch: main
     # Surface the downstream pipeline's status on this pipeline.
     strategy: depend
   variables:
