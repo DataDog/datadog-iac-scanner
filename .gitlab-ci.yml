@@ -1,0 +1,20 @@
+stages:
+  - verify
+
+trigger-regression-detector:
+  stage: verify
+  rules:
+    - if: $DDCI_REQUEST_KIND == "REQUEST_KIND_CHANGE_REQUEST"
+  allow_failure: true
+  trigger:
+    project: ddoghq/datadog-iac-regression-detector
+    branch: main
+    # Surface the downstream pipeline's status on this pipeline.
+    strategy: depend
+  variables:
+    UPSTREAM_TRIGGER: scanner
+    UPSTREAM_ORG: DataDog
+    UPSTREAM_REPO: datadog-iac-scanner
+    UPSTREAM_PIPELINE_ID: $CI_PIPELINE_ID
+    UPSTREAM_BRANCH: $CI_COMMIT_REF_NAME
+    UPSTREAM_COMMIT_SHA: $CI_COMMIT_SHA
