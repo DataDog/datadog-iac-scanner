@@ -87,9 +87,7 @@ class TopazManager:
     ADMIN_PASSWORD = "admin"
     IMAGE = "thecloudtheory/topaz-host:latest"
     CLOUD_NAME = "TopazPlanGen"
-    CLOUD_JSON_URL = (
-        "https://raw.githubusercontent.com/TheCloudTheory/Topaz/refs/heads/main/cloud.json"
-    )
+    CLOUD_JSON_URL = "https://raw.githubusercontent.com/TheCloudTheory/Topaz/refs/heads/main/cloud.json"
     METADATA_PATH = "/metadata/endpoints?api-version=2022-09-01"
 
     def __init__(self, container_name: str = "topaz-plan-gen"):
@@ -171,12 +169,18 @@ class TopazManager:
             text=True,
         )
         cmd = [
-            "docker", "run", "-d",
-            "--name", self.container_name,
-            "-p", f"{self.RM_PORT}:{self.RM_PORT}",
-            "-p", f"{self.PROXY_PORT}:{self.PROXY_PORT}",
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            self.container_name,
+            "-p",
+            f"{self.RM_PORT}:{self.RM_PORT}",
+            "-p",
+            f"{self.PROXY_PORT}:{self.PROXY_PORT}",
             self.IMAGE,
-            "--default-subscription", self.SUBSCRIPTION_ID,
+            "--default-subscription",
+            self.SUBSCRIPTION_ID,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if result.returncode != 0:
@@ -238,13 +242,16 @@ class TopazManager:
         # SSL_CERT_FILE, so trust the cert there. Idempotent: re-adding a trusted
         # cert is a no-op.
         if platform.system() == "Darwin":
-            keychain = (
-                Path.home() / "Library" / "Keychains" / "login.keychain-db"
-            )
+            keychain = Path.home() / "Library" / "Keychains" / "login.keychain-db"
             subprocess.run(
                 [
-                    "security", "add-trusted-cert", "-r", "trustRoot",
-                    "-k", str(keychain), str(cert_path),
+                    "security",
+                    "add-trusted-cert",
+                    "-r",
+                    "trustRoot",
+                    "-k",
+                    str(keychain),
+                    str(cert_path),
                 ],
                 capture_output=True,
                 text=True,
@@ -258,7 +265,10 @@ class TopazManager:
 
             return certifi.where()
         except Exception:
-            for candidate in ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"):
+            for candidate in (
+                "/etc/ssl/cert.pem",
+                "/etc/ssl/certs/ca-certificates.crt",
+            ):
                 if Path(candidate).exists():
                     return candidate
         return None
@@ -284,25 +294,54 @@ class TopazManager:
 
         # Register (or update, if a previous run left it) then activate the cloud.
         reg = subprocess.run(
-            ["az", "cloud", "register", "-n", self.CLOUD_NAME,
-             "--cloud-config", f"@{cloud_json}"],
-            capture_output=True, text=True, env=env,
+            [
+                "az",
+                "cloud",
+                "register",
+                "-n",
+                self.CLOUD_NAME,
+                "--cloud-config",
+                f"@{cloud_json}",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
         )
         if reg.returncode != 0:
             subprocess.run(
-                ["az", "cloud", "update", "-n", self.CLOUD_NAME,
-                 "--cloud-config", f"@{cloud_json}"],
-                capture_output=True, text=True, env=env,
+                [
+                    "az",
+                    "cloud",
+                    "update",
+                    "-n",
+                    self.CLOUD_NAME,
+                    "--cloud-config",
+                    f"@{cloud_json}",
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
             )
         subprocess.run(
             ["az", "cloud", "set", "-n", self.CLOUD_NAME],
-            capture_output=True, text=True, env=env,
+            capture_output=True,
+            text=True,
+            env=env,
         )
 
         login = subprocess.run(
-            ["az", "login", "--username", self.ADMIN_USER,
-             "--password", self.ADMIN_PASSWORD],
-            capture_output=True, text=True, env=env, timeout=60,
+            [
+                "az",
+                "login",
+                "--username",
+                self.ADMIN_USER,
+                "--password",
+                self.ADMIN_PASSWORD,
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
         )
         if login.returncode != 0:
             logger.error(f"az login against Topaz failed: {login.stderr.strip()[:300]}")
@@ -325,7 +364,11 @@ class TopazManager:
             env["REQUESTS_CA_BUNDLE"] = str(self.ca_bundle)
         # Don't leak an ARM_CLIENT_ID/SECRET from the generic env — that would make
         # the provider try service-principal auth instead of the CLI session.
-        for stale in ("ARM_CLIENT_ID", "ARM_CLIENT_SECRET", "ARM_SKIP_PROVIDER_REGISTRATION"):
+        for stale in (
+            "ARM_CLIENT_ID",
+            "ARM_CLIENT_SECRET",
+            "ARM_SKIP_PROVIDER_REGISTRATION",
+        ):
             env.pop(stale, None)
         return env
 
@@ -341,7 +384,8 @@ class TopazManager:
         if self._started_container:
             subprocess.run(
                 ["docker", "rm", "-f", self.container_name],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             self._started_container = False
         shutil.rmtree(self.work_dir, ignore_errors=True)
@@ -438,7 +482,12 @@ class TerraformPlanGenerator:
         """Return the Terraform-style '<os>_<arch>' string for this machine."""
         os_name = platform.system().lower()
         arch = platform.machine().lower()
-        arch_map = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}
+        arch_map = {
+            "x86_64": "amd64",
+            "amd64": "amd64",
+            "aarch64": "arm64",
+            "arm64": "arm64",
+        }
         return f"{os_name}_{arch_map.get(arch, arch)}"
 
     def _ensure_nifcloud_provider(self) -> Optional[Path]:
@@ -462,7 +511,10 @@ class TerraformPlanGenerator:
             / self.NIFCLOUD_PROVIDER_VERSION
             / self._terraform_platform()
         )
-        binary_path = platform_dir / f"terraform-provider-nifcloud_v{self.NIFCLOUD_PROVIDER_VERSION}"
+        binary_path = (
+            platform_dir
+            / f"terraform-provider-nifcloud_v{self.NIFCLOUD_PROVIDER_VERSION}"
+        )
         cli_config_path = cache_dir / "cli_config.tfrc"
 
         if binary_path.exists():
@@ -519,7 +571,9 @@ class TerraformPlanGenerator:
                     timeout=300,
                 )
                 if result.returncode != 0:
-                    logger.error(f"Failed to build nifcloud provider: {result.stderr[:500]}")
+                    logger.error(
+                        f"Failed to build nifcloud provider: {result.stderr[:500]}"
+                    )
                     return None
 
                 binary_path.chmod(0o755)
@@ -535,8 +589,7 @@ class TerraformPlanGenerator:
     def _write_nifcloud_cli_config(cli_config_path: Path, mirror_dir: Path) -> None:
         """Write a Terraform CLI config that mirrors only nifcloud/nifcloud locally."""
         cli_config_path.parent.mkdir(parents=True, exist_ok=True)
-        cli_config_path.write_text(
-            f"""provider_installation {{
+        cli_config_path.write_text(f"""provider_installation {{
   filesystem_mirror {{
     path    = "{mirror_dir}"
     include = ["nifcloud/nifcloud"]
@@ -545,18 +598,17 @@ class TerraformPlanGenerator:
     exclude = ["nifcloud/nifcloud"]
   }}
 }}
-"""
-        )
+""")
 
-    def is_high_rule(self, tf_file: Path) -> bool:
+    def is_medium_rule(self, tf_file: Path) -> bool:
         """
-        Check if a .tf file belongs to a high severity rule.
+        Check if a .tf file belongs to a medium severity rule.
 
         Args:
             tf_file: Path to the .tf file
 
         Returns:
-            True if the file is in a high rule directory, False otherwise
+            True if the file is in a medium rule directory, False otherwise
         """
         # Look for metadata.json in parent directories
         current = tf_file.parent
@@ -568,10 +620,10 @@ class TerraformPlanGenerator:
                         metadata = json.load(f)
 
                     severity = metadata.get("severity")
-                    if severity == "HIGH":
+                    if severity == "MEDIUM":
                         return True
                     else:
-                        # Found metadata but not high, stop searching
+                        # Found metadata but not medium, stop searching
                         return False
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.debug(f"Failed to parse metadata file {metadata_file}: {e}")
@@ -611,33 +663,35 @@ class TerraformPlanGenerator:
 
     def find_tf_files(self, root_dir: Path) -> List[Path]:
         """
-        Recursively find all .tf files in the given directory that belong to high severity rules.
+        Recursively find all .tf files in the given directory that belong to medium severity rules.
         Skips rules that already have .json test files.
 
         Args:
             root_dir: Root directory to search
 
         Returns:
-            List of Path objects for .tf files in high severity rules that don't have .json tests yet
+            List of Path objects for .tf files in medium severity rules that don't have .json tests yet
         """
-        logger.info(f"Searching for .tf files in high severity rules in {root_dir}")
+        logger.info(f"Searching for .tf files in medium severity rules in {root_dir}")
         all_tf_files = list(root_dir.rglob("*.tf"))
         logger.debug(f"Found {len(all_tf_files)} total .tf files")
 
-        # Filter to only high severity rules
-        high_tf_files = [tf for tf in all_tf_files if self.is_high_rule(tf)]
+        # Filter to only medium severity rules
+        medium_tf_files = [tf for tf in all_tf_files if self.is_medium_rule(tf)]
 
         # Filter out rules that already have .json test files
-        files_without_json = [tf for tf in high_tf_files if not self.has_json_tests(tf)]
+        files_without_json = [
+            tf for tf in medium_tf_files if not self.has_json_tests(tf)
+        ]
 
-        skipped_count = len(high_tf_files) - len(files_without_json)
+        skipped_count = len(medium_tf_files) - len(files_without_json)
         if skipped_count > 0:
             logger.info(
                 f"Skipped {skipped_count} .tf files from rules that already have .json tests"
             )
 
         logger.info(
-            f"Found {len(files_without_json)} .tf files in high severity rules without .json tests "
+            f"Found {len(files_without_json)} .tf files in medium severity rules without .json tests "
             f"(skipped {len(all_tf_files) - len(files_without_json)} files total)"
         )
         return files_without_json
@@ -648,6 +702,7 @@ class TerraformPlanGenerator:
         cwd: Path,
         timeout: int = 300,
         extra_env: Optional[Dict[str, str]] = None,
+        is_azure: bool = False,
     ) -> Tuple[bool, str, str]:
         """
         Run a shell command and return success status and output.
@@ -659,6 +714,10 @@ class TerraformPlanGenerator:
             extra_env: Overrides merged onto the base environment. When provided
                 (e.g. by the Topaz azurerm path), the caller controls all ARM_*
                 variables and the default mock Azure credentials are NOT applied.
+            is_azure: Whether the .tf file being processed is azurerm_*. Mock
+                ARM_* credentials are only injected for azurerm files - other
+                providers (e.g. databricks) auto-detect ARM_CLIENT_ID/SECRET as
+                Azure auth and error with "more than one authorization method".
 
         Returns:
             Tuple of (success, stdout, stderr)
@@ -672,7 +731,7 @@ class TerraformPlanGenerator:
             env.pop("OTEL_TRACES_EXPORTER", None)
             env.pop("OTEL_EXPORTER_OTLP_PROTOCOL", None)
 
-            if extra_env is None:
+            if extra_env is None and is_azure:
                 # Default (non-Topaz) path: set mock Azure environment variables so
                 # the azurerm provider config doesn't error on missing values.
                 # (This is enough for init/validate but NOT for a real azurerm plan.)
@@ -681,7 +740,7 @@ class TerraformPlanGenerator:
                 env["ARM_TENANT_ID"] = "00000000-0000-0000-0000-000000000000"
                 env["ARM_CLIENT_ID"] = "00000000-0000-0000-0000-000000000000"
                 env["ARM_CLIENT_SECRET"] = "mock_secret_value"
-            else:
+            elif extra_env is not None:
                 env.update(extra_env)
 
             if self.nifcloud_tf_cli_config is not None:
@@ -723,7 +782,7 @@ class TerraformPlanGenerator:
     PROVIDER_HINTS = {
         "aws": (
             "hashicorp/aws",
-            '~> 4.0',
+            "~> 4.0",
             """provider "aws" {
      access_key                  = "mock_access_key"
      secret_key                  = "mock_secret_key"
@@ -768,6 +827,51 @@ class TerraformPlanGenerator:
      metadata_host                   = "topaz.local.dev:8899"
      resource_provider_registrations = "none"
      # Plans run against a local Topaz emulator (see TopazManager); no real Azure.
+   }""",
+        ),
+        "databricks": (
+            "databricks/databricks",
+            "~> 1.0",
+            """provider "databricks" {
+     host  = "https://mock-workspace.cloud.databricks.com"
+     token = "mock_token"
+   }
+
+   # Some test files reference `provider = databricks.created_workspace` - declare
+   # that alias too, with the SAME single auth method (host+token). Do NOT add any
+   # azure_* or google_* auth fields to either block - mixing auth methods causes
+   # "more than one authorization method configured" errors.
+   provider "databricks" {
+     alias = "created_workspace"
+     host  = "https://mock-workspace.cloud.databricks.com"
+     token = "mock_token"
+   }
+
+   # Stub any referenced-but-undefined data sources/resources, e.g.:
+   data "databricks_spark_version" "latest" {
+     latest = true
+   }
+
+   data "databricks_node_type" "smallest" {
+     local_disk = true
+   }
+
+   resource "databricks_notebook" "this" {
+     path     = "/Shared/mock-notebook"
+     language = "PYTHON"
+     source   = "notebook.py"
+   }
+
+   resource "databricks_cluster" "shared" {
+     cluster_name            = "mock-cluster"
+     spark_version           = data.databricks_spark_version.latest.id
+     node_type_id            = data.databricks_node_type.smallest.id
+     num_workers              = 1
+     autotermination_minutes = 20
+   }
+
+   resource "databricks_pipeline" "this" {
+     name = "mock-pipeline"
    }""",
         ),
     }
@@ -1078,7 +1182,7 @@ The output should be valid .tf file content that can be directly saved and used.
                 logger.debug(f"Terraform init attempt {attempt}/{self.max_retries}")
 
                 success, stdout, stderr = self.run_command(
-                    ["terraform", "init"], temp_path, extra_env=extra_env
+                    ["terraform", "init"], temp_path, extra_env=extra_env, is_azure=is_azure
                 )
 
                 if success:
@@ -1109,10 +1213,15 @@ The output should be valid .tf file content that can be directly saved and used.
 
             # Try terraform plan with retries
             for plan_attempt in range(1, self.max_retries + 1):
-                logger.debug(f"Terraform plan attempt {plan_attempt}/{self.max_retries}")
+                logger.debug(
+                    f"Terraform plan attempt {plan_attempt}/{self.max_retries}"
+                )
 
                 success, stdout, stderr = self.run_command(
-                    ["terraform", "plan", "-out=tfplan"], temp_path, extra_env=extra_env
+                    ["terraform", "plan", "-out=tfplan"],
+                    temp_path,
+                    extra_env=extra_env,
+                    is_azure=is_azure,
                 )
 
                 if success:
@@ -1138,7 +1247,10 @@ The output should be valid .tf file content that can be directly saved and used.
 
                         # Re-run init in case providers/deps changed.
                         reinit_success, _, _ = self.run_command(
-                            ["terraform", "init", "-upgrade"], temp_path, extra_env=extra_env
+                            ["terraform", "init", "-upgrade"],
+                            temp_path,
+                            extra_env=extra_env,
+                            is_azure=is_azure,
                         )
                         if not reinit_success:
                             logger.warning(
@@ -1154,8 +1266,14 @@ The output should be valid .tf file content that can be directly saved and used.
                         # data source, unemulated service, etc.). Fall back to a
                         # synthetic plan so the rule still gets a fixture, and record
                         # that the Topaz path failed so it's visible in the summary.
-                        reason = "Topaz enabled but plan failed" if topaz else (
-                            "Topaz unavailable" if self.use_topaz else "Topaz disabled"
+                        reason = (
+                            "Topaz enabled but plan failed"
+                            if topaz
+                            else (
+                                "Topaz unavailable"
+                                if self.use_topaz
+                                else "Topaz disabled"
+                            )
                         )
                         logger.warning(
                             f"Azure plan via Topaz did not succeed for {tf_file} "
@@ -1163,7 +1281,10 @@ The output should be valid .tf file content that can be directly saved and used.
                             f"Last error: {stderr[:200]}"
                         )
                         if self._write_synthetic_azure_plan(
-                            tf_file, json_file, current_content, temp_path,
+                            tf_file,
+                            json_file,
+                            current_content,
+                            temp_path,
                             extra_env=extra_env,
                         ):
                             self.stats["azure_synthetic_fallback"] += 1
@@ -1183,7 +1304,10 @@ The output should be valid .tf file content that can be directly saved and used.
             # Convert plan to JSON
             logger.debug("Converting plan to JSON")
             success, stdout, stderr = self.run_command(
-                ["terraform", "show", "-json", "tfplan"], temp_path, extra_env=extra_env
+                ["terraform", "show", "-json", "tfplan"],
+                temp_path,
+                extra_env=extra_env,
+                is_azure=is_azure,
             )
 
             if not success:
@@ -1234,7 +1358,11 @@ The output should be valid .tf file content that can be directly saved and used.
 
     # References to other resources → a concrete default value.
     _SYNTHETIC_REF_PATTERNS = [
-        (r"location\s*=\s*azurerm_resource_group\.[^.]+\.location", "location", "eastus"),
+        (
+            r"location\s*=\s*azurerm_resource_group\.[^.]+\.location",
+            "location",
+            "eastus",
+        ),
         (
             r"resource_group_name\s*=\s*azurerm_resource_group\.[^.]+\.name",
             "resource_group_name",
@@ -1354,7 +1482,10 @@ The output should be valid .tf file content that can be directly saved and used.
         with resources parsed from the HCL. Returns True on success.
         """
         val_success, val_stdout, _ = self.run_command(
-            ["terraform", "validate", "-json"], temp_path, extra_env=extra_env
+            ["terraform", "validate", "-json"],
+            temp_path,
+            extra_env=extra_env,
+            is_azure=True,
         )
         if not val_success:
             logger.error(
@@ -1402,7 +1533,6 @@ The output should be valid .tf file content that can be directly saved and used.
         except Exception as e:
             logger.error(f"Failed to create synthetic plan: {e}")
             return False
-
 
     def process_directory(
         self, root_dir: Path, skip_existing: bool = False, workers: int = 1
