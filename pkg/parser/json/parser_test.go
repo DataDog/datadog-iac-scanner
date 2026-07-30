@@ -30,17 +30,51 @@ func TestParser_SupportedExtensions(t *testing.T) {
 	require.Equal(t, []string{".json"}, p.SupportedExtensions())
 }
 
-// TestParser_SupportedExtensions tests the functions [SupportedTypes()] and all the methods called by them
+// TestParser_SupportedTypes tests that "terraform" is only supported when
+// tf-plan detection is enabled; other types are always supported.
 func TestParser_SupportedTypes(t *testing.T) {
-	p := &Parser{}
 	require.Equal(t, map[string]bool{
 		"ansible":              true,
 		"cloudformation":       true,
 		"openapi":              true,
 		"azureresourcemanager": true,
-		"terraform":            true,
 		"kubernetes":           true,
-	}, p.SupportedTypes())
+	}, NewDefaultWithParams(false).SupportedTypes())
+
+	require.Equal(t, map[string]bool{
+		"ansible":              true,
+		"cloudformation":       true,
+		"openapi":              true,
+		"azureresourcemanager": true,
+		"kubernetes":           true,
+		"terraform":            true,
+	}, NewDefaultWithParams(true).SupportedTypes())
+}
+
+// TestParser_TfPlanGating verifies tf-plan detection in KindForContent and
+// Parse is controlled by scanTfPlans, independent of parser registration.
+func TestParser_TfPlanGating(t *testing.T) {
+	ctx := context.Background()
+
+	enabled := NewDefaultWithParams(true)
+	kind, override := enabled.KindForContent([]byte(minifiedTFPlan))
+	require.True(t, override)
+	require.Equal(t, model.KindTerraformPlan, kind)
+
+	_, doc, _, _, err := enabled.Parse(ctx, []byte(minifiedTFPlan), "plan.json", false, 15)
+	require.NoError(t, err)
+	require.Len(t, doc, 1)
+	require.Contains(t, doc[0], "resource")
+
+	disabled := NewDefaultWithParams(false)
+	_, override = disabled.KindForContent([]byte(minifiedTFPlan))
+	require.False(t, override)
+
+	_, doc, _, _, err = disabled.Parse(ctx, []byte(minifiedTFPlan), "plan.json", false, 15)
+	require.NoError(t, err)
+	require.Len(t, doc, 1)
+	require.Contains(t, doc[0], "format_version")
+	require.NotContains(t, doc[0], "resource")
 }
 
 // TestParser_Parse tests the functions [Parse()] and all the methods called by them
