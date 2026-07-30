@@ -446,7 +446,7 @@ var (
 func getFixtureParsers(ctx context.Context) ([]*parser.Parser, error) {
 	fixtureParsersOnce.Do(func() {
 		fixtureParsers, fixtureParsersErr = parser.NewBuilder(ctx).
-			Add(&jsonParser.Parser{}).
+			Add(jsonParser.NewDefaultWithParams(true)).
 			Add(&yamlParser.Parser{}).
 			Add(terraformParser.NewDefault()).
 			Add(&bicepParser.Parser{}).
