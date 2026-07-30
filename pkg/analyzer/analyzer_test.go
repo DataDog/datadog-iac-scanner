@@ -27,25 +27,20 @@ func TestAnalyzer_Analyze(t *testing.T) {
 		gitIgnoreFileName string
 		excludeGitIgnore  bool
 		MaxFileSize       int
+		scanTfPlans       bool
 		repoPath          string
 	}{
 		{
 			name:  "analyze_test_dir_single_path",
 			paths: []string{filepath.FromSlash("../../test/fixtures/analyzer_test")},
-			// The following test is changed by the json gating that only allows terraform plans to be scanned.
-			// It will be changed when support for json files for other platforms is added.
-			// wantTypes: []string{"ansible", "azureresourcemanager", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
-			wantTypes: []string{"ansible", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
+			wantTypes: []string{"ansible", "azureresourcemanager", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
 			wantExclude: []string{
-				filepath.FromSlash("../../test/fixtures/analyzer_test/azureResourceManager.json"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/not_openapi.json"),
-				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI.json"),
-				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI_test/openAPI.json"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/pnpm-lock.yaml"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/undetected.yaml"),
 			},
 			typesFromFlag:     []string{""},
-			wantLOC:           680, // Reduced from 819 due to JSON file exclusion
+			wantLOC:           819,
 			wantErr:           false,
 			gitIgnoreFileName: "",
 			excludeGitIgnore:  false,
@@ -83,11 +78,9 @@ func TestAnalyzer_Analyze(t *testing.T) {
 				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI_test"),
 			},
 			wantTypes: []string{"openapi"},
-			wantExclude: []string{
-				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI_test/openAPI.json"),
-			},
+			wantExclude: []string{},
 			typesFromFlag:     []string{""},
-			wantLOC:           39, // Reduced from 107 due to JSON file exclusion (107 - 68 = 39)
+			wantLOC:           107,
 			wantErr:           false,
 			gitIgnoreFileName: "",
 			excludeGitIgnore:  false,
@@ -129,7 +122,23 @@ func TestAnalyzer_Analyze(t *testing.T) {
 			wantTypes:         []string{"terraform"},
 			wantExclude:       []string{},
 			typesFromFlag:     []string{""},
+			scanTfPlans:       true,
 			wantLOC:           26,
+			wantErr:           false,
+			gitIgnoreFileName: "",
+			excludeGitIgnore:  false,
+			MaxFileSize:       -1,
+		},
+		{
+			name: "analyze_test_tfplan_flag_off",
+			paths: []string{
+				filepath.FromSlash("../../test/fixtures/tfplan"),
+			},
+			wantTypes:   []string{},
+			wantExclude: []string{filepath.FromSlash("../../test/fixtures/tfplan/tfplan.json")},
+			typesFromFlag:     []string{""},
+			scanTfPlans:       false,
+			wantLOC:           0,
 			wantErr:           false,
 			gitIgnoreFileName: "",
 			excludeGitIgnore:  false,
@@ -241,20 +250,14 @@ func TestAnalyzer_Analyze(t *testing.T) {
 		{
 			name:  "analyze_test_ignore_pnpm_lock_yaml_file",
 			paths: []string{filepath.FromSlash("../../test/fixtures/analyzer_test")},
-			// The following test is changed by the json gating that only allows terraform plans to be scanned.
-			// It will be changed when support for json files for other platforms is added.
-			// wantTypes: []string{"ansible", "azureresourcemanager", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
-			wantTypes: []string{"ansible", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
+			wantTypes: []string{"ansible", "azureresourcemanager", "cicd", "cloudformation", "crossplane", "googledeploymentmanager", "knative", "kubernetes", "openapi", "pulumi", "serverlessfw", "terraform"},
 			wantExclude: []string{
-				filepath.FromSlash("../../test/fixtures/analyzer_test/azureResourceManager.json"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/not_openapi.json"),
-				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI.json"),
-				filepath.FromSlash("../../test/fixtures/analyzer_test/openAPI_test/openAPI.json"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/pnpm-lock.yaml"),
 				filepath.FromSlash("../../test/fixtures/analyzer_test/undetected.yaml"),
 			},
 			typesFromFlag:     []string{""},
-			wantLOC:           680, // Reduced from 819 due to JSON file exclusion
+			wantLOC:           819,
 			wantErr:           false,
 			gitIgnoreFileName: "",
 			excludeGitIgnore:  false,
@@ -402,6 +405,7 @@ func TestAnalyzer_Analyze(t *testing.T) {
 				ExcludeGitIgnore:  tt.excludeGitIgnore,
 				GitIgnoreFileName: tt.gitIgnoreFileName,
 				MaxFileSize:       tt.MaxFileSize,
+				ScanTfPlans:       tt.scanTfPlans,
 			}
 
 			got, err := Analyze(ctx, analyzer)
@@ -458,52 +462,19 @@ func TestClassifyFile_SwaggerOpenAPI(t *testing.T) {
 
 func TestClassifyFile_JSONTerraformGating(t *testing.T) {
 	ctx := context.Background()
-	fixturesDir := filepath.FromSlash("../../test/fixtures/tfplan_flag_test")
-	tfPlan, err := os.ReadFile(filepath.Join(fixturesDir, "tfplan.json"))
+	tfPlan, err := os.ReadFile(filepath.FromSlash("../../test/fixtures/tfplan/tfplan.json"))
 	require.NoError(t, err)
-	cfJSON, err := os.ReadFile(filepath.Join(fixturesDir, "cloudformation.json"))
+	cfJSON, err := os.ReadFile(filepath.FromSlash("../../test/fixtures/tfplan_flag_test/cloudformation.json"))
 	require.NoError(t, err)
 
-	tests := []struct {
-		name        string
-		content     []byte
-		path        string
-		platforms   []string
-		scanTfPlans bool
-		want        string
-	}{
-		{
-			name:        "cloudformation json classified without tf plan flag",
-			content:     cfJSON,
-			path:        filepath.Join(fixturesDir, "cloudformation.json"),
-			platforms:   []string{"cloudformation"},
-			scanTfPlans: false,
-			want:        "cloudformation",
-		},
-		{
-			name:        "terraform plan json rejected when flag off",
-			content:     tfPlan,
-			path:        filepath.Join(fixturesDir, "tfplan.json"),
-			platforms:   []string{"terraform"},
-			scanTfPlans: false,
-			want:        "",
-		},
-		{
-			name:        "terraform plan json classified when flag on",
-			content:     tfPlan,
-			path:        filepath.Join(fixturesDir, "tfplan.json"),
-			platforms:   []string{"terraform"},
-			scanTfPlans: true,
-			want:        "terraform",
-		},
-	}
+	tfPath := filepath.Join(t.TempDir(), "plan.json")
+	cfPath := filepath.Join(t.TempDir(), "template.json")
+	require.NoError(t, os.WriteFile(tfPath, tfPlan, 0o600))
+	require.NoError(t, os.WriteFile(cfPath, cfJSON, 0o600))
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ClassifyFile(ctx, nil, tt.path, tt.content, tt.platforms, tt.scanTfPlans)
-			require.Equal(t, tt.want, got)
-		})
-	}
+	require.Equal(t, "", ClassifyFile(ctx, nil, tfPath, tfPlan, []string{"terraform"}, false))
+	require.Equal(t, terraform, ClassifyFile(ctx, nil, tfPath, tfPlan, []string{"terraform"}, true))
+	require.Equal(t, "cloudformation", ClassifyFile(ctx, nil, cfPath, cfJSON, []string{"cloudformation"}, false))
 }
 
 func TestAnalyze_ValidSymlink(t *testing.T) {

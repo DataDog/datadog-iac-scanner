@@ -68,7 +68,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 	}
 
 	combinedParser, err := parser.NewBuilder(ctx).
-		Add(&jsonParser.Parser{}).
+		Add(jsonParser.NewDefaultWithParams(false)).
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefault()).
 		Build(types, cloudProviders)

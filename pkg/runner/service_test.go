@@ -128,7 +128,7 @@ func createParserSourceProvider(path string) ([]*parser.Parser,
 	*provider.FileSystemSourceProvider, *resolver.Resolver) {
 	ctx := context.Background()
 	mockParser, _ := parser.NewBuilder(ctx).
-		Add(&jsonParser.Parser{}).
+		Add(jsonParser.NewDefaultWithParams(false)).
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefault()).
 		Build([]string{""}, []string{""})

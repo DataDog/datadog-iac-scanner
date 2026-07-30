@@ -59,7 +59,7 @@ func buildParityServices(t *testing.T, ctx context.Context, paths []string) ([]*
 		Add(&buildahParser.Parser{}).
 		Add(&ansibleConfigParser.Parser{}).
 		Add(&ansibleHostsParser.Parser{}).
-		Add(&jsonParser.Parser{}).
+		Add(jsonParser.NewDefaultWithParams(false)).
 		Build([]string{""}, []string{""})
 	require.NoError(t, err)
 
