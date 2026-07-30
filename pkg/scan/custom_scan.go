@@ -20,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
@@ -36,26 +37,28 @@ type RegoValidationError struct {
 
 const (
 	scanTargetJSON     = "scan-target.json"
-	platformARM        = "azureresourcemanager"
 	codeMissingPackage = "missing_package"
 	datadogPackage     = "package datadog"
 )
 
-// platformTempFileName returns a temp filename whose extension the scanner's file-type
-// filter will accept for the given platform.
+// Temp-file names for all supported platforms.
+var platformExtensions = map[string]string{
+	"Terraform":      "scan-target.tf",
+	"CloudFormation": scanTargetJSON,
+	"Kubernetes":     "scan-target.yaml",
+	"Ansible":        "scan-target.yaml",
+	"CICD":           "scan-target.yaml",
+	"Dockerfile":     "Dockerfile",
+}
+
+// Returns a temp filename for all supported platforms.
 func platformTempFileName(platform string) string {
-	switch strings.ToLower(platform) {
-	case "terraform":
-		return "scan-target.tf"
-	case "cloudformation", platformARM:
-		return scanTargetJSON
-	case "kubernetes", "ansible":
-		return "scan-target.yaml"
-	case "dockerfile":
-		return "Dockerfile"
-	default:
-		return scanTargetJSON
+	for _, supported := range platforms.Supported {
+		if strings.EqualFold(supported, platform) {
+			return platformExtensions[supported]
+		}
 	}
+	return scanTargetJSON
 }
 
 // RunCustomRegoQuery writes fileContent to a temp file and runs regoContent against it

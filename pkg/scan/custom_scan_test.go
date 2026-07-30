@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 )
 
 // stubLibSource returns minimal Rego stubs sufficient for OPA compilation in tests.
@@ -98,6 +99,30 @@ func firstWithCode(errs []RegoValidationError, code string) (RegoValidationError
 }
 
 // ── unit tests ────────────────────────────────────────────────────────────────
+
+func TestPlatformTempFileName_CoversAllSupportedPlatforms(t *testing.T) {
+	expected := map[string]string{
+		"Ansible":        "scan-target.yaml",
+		"CICD":           "scan-target.yaml",
+		"CloudFormation": scanTargetJSON,
+		"Dockerfile":     "Dockerfile",
+		"Kubernetes":     "scan-target.yaml",
+		"Terraform":      "scan-target.tf",
+	}
+	require.Len(t, platforms.Supported, len(expected),
+		"platforms.Supported changed; update the expected mapping and platformTempFileName in lockstep")
+	for _, platform := range platforms.Supported {
+		want, ok := expected[platform]
+		require.True(t, ok, "no expected temp file name for platform %q; update this test", platform)
+		assert.Equal(t, want, platformTempFileName(platform), "platform %q", platform)
+	}
+}
+
+func TestPlatformTempFileName_ARMNotSpecialCased(t *testing.T) {
+	// ARM is not part of platforms.Supported; custom rules for it are rejected at the
+	// CLI layer (validatePlatform), so this exercises the defensive default fallback.
+	assert.Equal(t, scanTargetJSON, platformTempFileName("azureresourcemanager"))
+}
 
 func TestParseImportAliases(t *testing.T) {
 	src := `

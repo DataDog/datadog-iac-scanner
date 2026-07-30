@@ -6,12 +6,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
+	iacplatforms "github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	cli "github.com/urfave/cli/v3"
 )
+
+// Reports an error if platform is not one of iacplatforms.Supported
+func validatePlatform(platform string) error {
+	for _, p := range iacplatforms.Supported {
+		if strings.EqualFold(p, platform) {
+			return nil
+		}
+	}
+	return fmt.Errorf("unsupported platform %q, must be one of %v", platform, iacplatforms.Supported)
+}
 
 var customAction = &cli.Command{
 	Name:  "custom",
@@ -49,6 +61,9 @@ var evaluateCustomAction = &cli.Command{
 
 func runEvaluateCustom(ctx context.Context, c *cli.Command) error {
 	platform := c.String("platform")
+	if err := validatePlatform(platform); err != nil {
+		return err
+	}
 
 	regoBytes, err := base64.StdEncoding.DecodeString(c.String("rego"))
 	if err != nil {
@@ -122,6 +137,10 @@ var validateCustomAction = &cli.Command{
 }
 
 func runValidateCustom(ctx context.Context, c *cli.Command) error {
+	if err := validatePlatform(c.String("platform")); err != nil {
+		return err
+	}
+
 	regoBytes, err := base64.StdEncoding.DecodeString(c.String("rego"))
 	if err != nil {
 		return fmt.Errorf("decoding --rego: %w", err)
