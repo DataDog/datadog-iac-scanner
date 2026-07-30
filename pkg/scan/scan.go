@@ -330,11 +330,8 @@ func (c *Client) createService(
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).
 		Add(&ansibleConfigParser.Parser{}).
-		Add(&ansibleHostsParser.Parser{})
-
-	if c.ScanParams.ShouldScanTfPlans {
-		combinedParserBuilder.Add(&jsonParser.Parser{})
-	}
+		Add(&ansibleHostsParser.Parser{}).
+		Add(jsonParser.NewDefaultWithParams(c.ScanParams.ShouldScanTfPlans))
 
 	combinedParser, err := combinedParserBuilder.Build(types, cloudProviders)
 	if err != nil {
