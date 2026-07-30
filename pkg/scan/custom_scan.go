@@ -51,7 +51,7 @@ var platformExtensions = map[string]string{
 	"Dockerfile":     "Dockerfile",
 }
 
-// Returns a temp filename for the given platform's extension.
+// Returns a temp filename for all supported platforms.
 func platformTempFileName(platform string) string {
 	for _, supported := range platforms.Supported {
 		if strings.EqualFold(supported, platform) {
