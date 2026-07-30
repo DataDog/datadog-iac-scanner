@@ -451,9 +451,59 @@ func TestClassifyFile_SwaggerOpenAPI(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "swagger.yaml")
 	require.NoError(t, os.WriteFile(path, content, 0o600))
 
-	got := ClassifyFile(context.Background(), nil, path, content, []string{""})
+	got := ClassifyFile(context.Background(), nil, path, content, []string{""}, false)
 
 	require.Equal(t, "openapi", got)
+}
+
+func TestClassifyFile_JSONTerraformGating(t *testing.T) {
+	ctx := context.Background()
+	fixturesDir := filepath.FromSlash("../../test/fixtures/tfplan_flag_test")
+	tfPlan, err := os.ReadFile(filepath.Join(fixturesDir, "tfplan.json"))
+	require.NoError(t, err)
+	cfJSON, err := os.ReadFile(filepath.Join(fixturesDir, "cloudformation.json"))
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		content     []byte
+		path        string
+		platforms   []string
+		scanTfPlans bool
+		want        string
+	}{
+		{
+			name:        "cloudformation json classified without tf plan flag",
+			content:     cfJSON,
+			path:        filepath.Join(fixturesDir, "cloudformation.json"),
+			platforms:   []string{"cloudformation"},
+			scanTfPlans: false,
+			want:        "cloudformation",
+		},
+		{
+			name:        "terraform plan json rejected when flag off",
+			content:     tfPlan,
+			path:        filepath.Join(fixturesDir, "tfplan.json"),
+			platforms:   []string{"terraform"},
+			scanTfPlans: false,
+			want:        "",
+		},
+		{
+			name:        "terraform plan json classified when flag on",
+			content:     tfPlan,
+			path:        filepath.Join(fixturesDir, "tfplan.json"),
+			platforms:   []string{"terraform"},
+			scanTfPlans: true,
+			want:        "terraform",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ClassifyFile(ctx, nil, tt.path, tt.content, tt.platforms, tt.scanTfPlans)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestAnalyze_ValidSymlink(t *testing.T) {

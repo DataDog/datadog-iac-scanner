@@ -93,6 +93,7 @@ func RunCustomRegoQuery(
 		MaxResolverDepth:        15,
 		FlagEvaluator:           featureflags.NewLocalEvaluator(),
 		ExcludeGitIgnore:        true,
+		ShouldScanTfPlans:       true,
 	}
 
 	c, err := NewClient(ctx, params, (*printer.Printer)(nil))

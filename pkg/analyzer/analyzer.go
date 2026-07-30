@@ -22,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfplan"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
@@ -181,6 +182,7 @@ type regexSlice struct {
 
 type analyzerInfo struct {
 	typesFlag       []string
+	scanTfPlans     bool
 	filePath        string
 	filePlatformMap *sync.Map
 	contentCache    *sync.Map
@@ -198,6 +200,7 @@ type Analyzer struct {
 	ExcludeGitIgnore  bool
 	MaxFileSize       int
 	NumWorkers        int
+	ScanTfPlans       bool
 }
 
 // types is a map that contains the regex by type
@@ -485,6 +488,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
 					typesFlag:       typesFlag,
+					scanTfPlans:     a.ScanTfPlans,
 					filePath:        filePath,
 					filePlatformMap: &filePlatformMap,
 					contentCache:    &contentCache,
@@ -559,7 +563,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache)
+	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.scanTfPlans, a.helmCache)
 	if platform == "" {
 		unwanted <- a.filePath
 		return
@@ -639,9 +643,9 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 // classifyByContent determines the platform of a content-detected file (yaml,
 // yml, json, sh) using the type regexes and the post-processing in
 // checkReturnType. It returns the platform string (lowercased) or "" when none
-// matches or the file is a non-Terraform JSON (which the scanner does not scan).
+// matches. Terraform-plan JSON is included only when scanTfPlans is true.
 // typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
-func classifyByContent(ctx context.Context, path string, content []byte, ext string, typesFlag []string, hc *sync.Map) string {
+func classifyByContent(ctx context.Context, path string, content []byte, ext string, typesFlag []string, scanTfPlans bool, hc *sync.Map) string {
 	returnType := ""
 
 	// Sort map so that CloudFormation (type that as less requireds) goes last
@@ -677,10 +681,14 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 
 	endReturnType := checkReturnType(ctx, path, returnType, ext, content, hc)
 
-	// Only process JSON files if they are Terraform plans
-	// This will be the case until other platforms support json scanning
-	if ext == json && (endReturnType != "terraform" || returnType == cdkTf) {
-		return ""
+	if ext == json {
+		if endReturnType == terraform || returnType == cdkTf {
+			if !scanTfPlans || !tfplan.IsTerraformPlanJSON(content) {
+				return ""
+			}
+			return terraform
+		}
+		return endReturnType
 	}
 
 	return endReturnType
@@ -705,13 +713,13 @@ func containsAny(content []byte, needles [][]byte) bool {
 // classification consistent with the analyzer's. fsys is the filesystem used
 // for extension detection; pass the in-memory FS for pushed content that never
 // touches disk, or nil to default to the real disk.
-func ClassifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string) string {
-	return classifyFile(ctx, fsys, path, content, typesFlag, nil)
+func ClassifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string, scanTfPlans bool) string {
+	return classifyFile(ctx, fsys, path, content, typesFlag, scanTfPlans, nil)
 }
 
 // classifyFile is the internal implementation; hc is the per-scan helm cache
 // (nil disables caching, which is safe for the server/sink path).
-func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string, hc *sync.Map) string {
+func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string, scanTfPlans bool, hc *sync.Map) string {
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}
@@ -737,7 +745,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	case extCfg, extConf, extIni:
 		return ansible
 	case yaml, yml, json, sh:
-		return classifyByContent(ctx, path, content, ext, typesFlag, hc)
+		return classifyByContent(ctx, path, content, ext, typesFlag, scanTfPlans, hc)
 	}
 	return ""
 }
@@ -751,11 +759,11 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 // scan, "crossplane" only when Crossplane is enabled). fsys is forwarded for
 // extension detection so the server's in-memory pushed content (not on disk) is
 // classified correctly.
-func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, kind model.FileKind, path string, content []byte) string {
+func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, scanTfPlans bool, kind model.FileKind, path string, content []byte) string {
 	if platform, ok := PlatformForKind(kind); ok {
 		return platform
 	}
-	return ClassifyFile(ctx, fsys, path, content, platforms)
+	return ClassifyFile(ctx, fsys, path, content, platforms, scanTfPlans)
 }
 
 // PlatformForKind returns the fixed platform for kind when known.

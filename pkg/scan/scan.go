@@ -364,6 +364,7 @@ func (c *Client) createService(
 				MaxFileSize:    c.ScanParams.MaxFileSizeFlag,
 				Platforms:      types,
 				FilePlatform:   filePlatform,
+				ScanTfPlans:    c.ScanParams.ShouldScanTfPlans,
 			},
 		)
 	}

@@ -82,6 +82,8 @@ type Service struct {
 	Platforms []string
 	// FilePlatform is the analyzer path → platform map, reused in the sink.
 	FilePlatform map[string]string
+	// ScanTfPlans gates terraform-plan JSON classification in the sink.
+	ScanTfPlans bool
 	// failedHelmChartDirsMu guards failedHelmChartDirs.
 	failedHelmChartDirsMu sync.RWMutex
 	// failedHelmChartDirs tracks chart directories that could not be rendered,

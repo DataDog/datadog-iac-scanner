@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfplan"
 )
 
 // Parser defines a parser type
@@ -66,7 +67,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	jLine := initializeJSONLine(resolved)
 	jsonDoc := jLine.setLineInfo(r)
 
-	if !p.scanTfPlans || !looksLikeTerraformPlan(fileContent) {
+	if !p.scanTfPlans || !tfplan.IsTerraformPlanJSON(fileContent) {
 		// JSON is not a tf plan, or tf-plan detection is disabled
 		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
 	}
@@ -94,7 +95,7 @@ func (p *Parser) GetKind() model.FileKind {
 // KindForContent overrides the static kind for Terraform plan JSON so line
 // detection can resolve plan resources structurally instead of by text match.
 func (p *Parser) KindForContent(content []byte) (model.FileKind, bool) {
-	if p.scanTfPlans && looksLikeTerraformPlan(content) {
+	if p.scanTfPlans && tfplan.IsTerraformPlanJSON(content) {
 		return model.KindTerraformPlan, true
 	}
 	return "", false
@@ -124,7 +125,7 @@ func (p *Parser) GetCommentToken() string {
 
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
-	if looksLikeTerraformPlan(content) {
+	if tfplan.IsTerraformPlanJSON(content) {
 		var out bytes.Buffer
 		if err := json.Indent(&out, content, "", "  "); err != nil {
 			return "", err
@@ -132,13 +133,4 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 		return out.String(), nil
 	}
 	return string(content), nil
-}
-
-// looksLikeTerraformPlan is a fast byte-level heuristic that avoids a full
-// JSON parse. Both keys are required by the Terraform plan JSON spec, so their
-// co-presence is a reliable signal. Used by KindForContent and StringifyContent
-// where a full parseTFPlan call would be redundant (Parse already does it).
-func looksLikeTerraformPlan(content []byte) bool {
-	return bytes.Contains(content, []byte(`"format_version"`)) &&
-		bytes.Contains(content, []byte(`"planned_values"`))
 }
