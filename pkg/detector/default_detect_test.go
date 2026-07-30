@@ -446,7 +446,7 @@ var OriginalDataTFPlan = `{
 
 // Test_detectLineTerraformPlan verifies attribute-level plan searchKeys.
 func Test_detectLineTerraformPlan(t *testing.T) {
-	p := &jsonParser.Parser{}
+	p := jsonParser.NewDefaultWithParams(true)
 	_, docs, _, _, err := p.Parse(context.Background(), []byte(OriginalDataTFPlan), "plan.json", false, 1)
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
@@ -482,7 +482,7 @@ func Test_detectLineTerraformPlanResourceLevel(t *testing.T) {
     }
   }
 }`
-	p := &jsonParser.Parser{}
+	p := jsonParser.NewDefaultWithParams(true)
 	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
 	require.NoError(t, err)
 
@@ -521,7 +521,7 @@ func Test_detectLineTerraformPlanModuleResourceWithCountIndex(t *testing.T) {
     }
   }
 }`
-	p := &jsonParser.Parser{}
+	p := jsonParser.NewDefaultWithParams(true)
 	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
 	require.NoError(t, err)
 
@@ -575,7 +575,7 @@ func Test_detectLineTerraformPlanSiblingModulesSameTypeAndName(t *testing.T) {
     }
   }
 }`
-	p := &jsonParser.Parser{}
+	p := jsonParser.NewDefaultWithParams(true)
 	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
 	require.NoError(t, err)
 
@@ -599,7 +599,7 @@ func Test_detectLineTerraformPlanMinified(t *testing.T) {
 	// After StringifyContent pretty-prints, LinesOriginalData is multi-line.
 	// Structural lookup must fall through to text matching.
 	minified := `{"format_version":"1.0","planned_values":{"root_module":{"resources":[{"address":"alicloud_db_instance.example","type":"alicloud_db_instance","name":"example","values":{"address":"0.0.0.0/0"}}]}}}`
-	p := &jsonParser.Parser{}
+	p := jsonParser.NewDefaultWithParams(true)
 	// Parse computes _dd_lines from the minified bytes.
 	_, docs, _, _, err := p.Parse(context.Background(), []byte(minified), "plan.json", false, 1)
 	require.NoError(t, err)
