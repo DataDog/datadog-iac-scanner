@@ -241,8 +241,8 @@ func ruleLibraryKey(platform string) (string, error) {
 // Absolute paths are accepted. The IDE pushes one when the file it is analyzing
 // lives outside every open workspace folder (File > Open File on a lone .tf),
 // and rejecting it failed the whole request rather than that one file. Nothing
-// downstream needs the path to be relative: content-push mode serves every read
-// from the in-memory FS, and the engine has always been absolute-path clean
+// downstream needs the path to be relative: content-push mode serves pushed file
+// reads from the in-memory FS, and the engine has always been absolute-path clean
 // (the CLI absolutizes all of its input before running the same pipeline).
 //
 // The disk read this check used to stand in for is Terraform local-module
