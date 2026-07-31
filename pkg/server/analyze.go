@@ -39,8 +39,11 @@ const (
 	commonLibraryID = "common"
 )
 
-// analyzeFile is a single pushed file: a workspace-relative path and its raw
-// (possibly unsaved) content.
+// analyzeFile is a single pushed file: its path and its raw (possibly unsaved)
+// content. The path is workspace-relative for a file inside an IDE workspace
+// folder and absolute for one outside every folder. Both are accepted, and
+// findings and missing_files report paths in the shape they were pushed with,
+// after cleaning and forward-slashing (see vfs.MemFS).
 type analyzeFile struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
@@ -232,8 +235,29 @@ func ruleLibraryKey(platform string) (string, error) {
 	return normalizePlatform(mapped), nil
 }
 
-// validateFilePath rejects paths that are empty, absolute, contain a NUL byte,
-// or escape the workspace root via "..".
+// validateFilePath rejects paths that are empty, contain a NUL byte, or escape
+// the workspace root via "..".
+//
+// Absolute paths are accepted. The IDE pushes one when the file it is analyzing
+// lives outside every open workspace folder (File > Open File on a lone .tf),
+// and rejecting it failed the whole request rather than that one file. Nothing
+// downstream needs the path to be relative: content-push mode serves every read
+// from the in-memory FS, and the engine has always been absolute-path clean
+// (the CLI absolutizes all of its input before running the same pipeline).
+//
+// The disk read this check used to stand in for is Terraform local-module
+// evaluation, pinned off for server mode in serverFlagEvaluator. That pin, not
+// this check, is what bounds it. It is not the only read that escapes the
+// in-memory FS: the YAML/JSON file resolver opens paths taken from pushed
+// content. That one predates this change and is reachable with a relative path
+// as well, so path shape does not bound it either; it is tracked separately.
+//
+// Known gap: config path filters (ignore-paths/only-paths) are workspace-rooted
+// patterns, so an absolute path matches none of them except a leading-"**" one.
+// Under only-paths that means excluded, not exempt, and an unscanned file is
+// indistinguishable from a clean one in the response. Accepted for now because
+// it needs a filter that no longer matches an out-of-workspace file against the
+// config of a workspace it does not belong to.
 func validateFilePath(p string) error {
 	if p == "" {
 		return errors.New("empty file path")
@@ -241,16 +265,34 @@ func validateFilePath(p string) error {
 	if strings.ContainsRune(p, 0) {
 		return errors.New("file path contains NUL byte")
 	}
-	// filepath.IsAbs is OS-dependent; also reject Unix-style absolute paths on
-	// Windows (e.g. "/etc/passwd" is not absolute per Windows rules).
-	if filepath.IsAbs(p) || strings.HasPrefix(p, "/") {
-		return errors.New("file path must be workspace-relative, got absolute: " + p)
-	}
 	clean := filepath.ToSlash(filepath.Clean(p))
 	if clean == ".." || strings.HasPrefix(clean, "../") {
 		return errors.New("file path escapes the workspace: " + p)
 	}
 	return nil
+}
+
+// serverFlagEvaluator pins the feature flags content-push mode depends on.
+//
+// Helm rendering shells out to a chart on disk, which content-push mode has no
+// way to materialize, so the resolver is off.
+//
+// Terraform local-module evaluation is off because it reads directories derived
+// from pushed paths off the real disk: tfeval's LoadRootVars and parseDir call
+// os.ReadDir directly instead of going through the request's in-memory FS.
+// Pushed paths may be absolute, so relying
+// on this flag's default — which is remotely togglable — would leave an
+// arbitrary directory readable by a cross-origin caller. Pinning it here is
+// what lets validateFilePath accept absolute paths.
+//
+// Parallel file parsing fans the per-file parse across CPUs; off unless the
+// server opts in via --x-parallelparsing.
+func serverFlagEvaluator(parallelParsing bool) featureflags.FlagEvaluator {
+	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
+		featureflags.IacEnableKicsHelmResolver:        false,
+		featureflags.IacEnableLocalModuleEval:         false,
+		featureflags.IaCEnableKicsParallelFileParsing: parallelParsing,
+	})
 }
 
 // analyze runs the content-push scan: build an in-memory FS from the pushed
@@ -287,23 +329,16 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	}
 
 	params := &scan.Parameters{
-		CloudProvider:    []string{""},
-		Path:             memfs.Paths(),
-		RepoPath:         "", // no git in server mode
-		PreviewLines:     3,
-		Platform:         plats,
-		DisableSecrets:   true,
-		ScanID:           "serve",
-		MaxFileSizeFlag:  100,
-		MaxResolverDepth: 15,
-		// Helm rendering shells out to a chart on disk, which content-push mode
-		// has no way to materialize, so disable the resolver. Parallel file
-		// parsing fans the per-file parse across CPUs; enabled by default and
-		// can be disabled with --x-parallelparsing=false.
-		FlagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
-			featureflags.IacEnableKicsHelmResolver:        false,
-			featureflags.IaCEnableKicsParallelFileParsing: s.cfg.ParallelParsing,
-		}),
+		CloudProvider:        []string{""},
+		Path:                 memfs.Paths(),
+		RepoPath:             "", // no git in server mode
+		PreviewLines:         3,
+		Platform:             plats,
+		DisableSecrets:       true,
+		ScanID:               "serve",
+		MaxFileSizeFlag:      100,
+		MaxResolverDepth:     15,
+		FlagEvaluator:        serverFlagEvaluator(s.cfg.ParallelParsing),
 		Config:               cfg,
 		DisableRuleIsolation: s.cfg.DisableRuleIsolation,
 		UseRulesCache:        s.cfg.UseRulesCache,

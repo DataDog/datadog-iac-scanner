@@ -123,6 +123,49 @@ func TestMemFS_ReadDir(t *testing.T) {
 	}
 }
 
+// TestMemFS_ReadDirAbsoluteKeys covers the keys the server sees when the IDE
+// analyzes a file that lives outside every workspace folder.
+//
+// The case worth pinning is ReadDir("."): synthesizing a directory's children
+// takes each key's first path segment, and an absolute key's first segment is
+// empty ("" for "/tmp/ws/main.tf"), which names no directory. There must be no
+// entry called "" — a caller iterating the listing would go on to read a path
+// that cannot exist. Nothing in the Terraform readers reaches ReadDir(".") with
+// absolute keys today (every directory they derive from an absolute key stays
+// absolute), so this guards a latent edge rather than a live one.
+func TestMemFS_ReadDirAbsoluteKeys(t *testing.T) {
+	m := NewMemFS(map[string][]byte{
+		"/tmp/ws/main.tf":             []byte(`resource "aws_s3_bucket" "b" {}`),
+		"/tmp/ws/variables.tf":        []byte(`variable "name" {}`),
+		"/tmp/ws/modules/net/main.tf": []byte(`resource "x" "y" {}`),
+	})
+
+	entries, err := m.ReadDir("/tmp/ws")
+	if err != nil {
+		t.Fatalf("ReadDir /tmp/ws: %v", err)
+	}
+	got := map[string]bool{}
+	for _, e := range entries {
+		got[e.Name()] = e.IsDir()
+	}
+	want := map[string]bool{"main.tf": false, "variables.tf": false, "modules": true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ReadDir /tmp/ws = %v, want %v", got, want)
+	}
+
+	// "." holds nothing when every key is absolute: it must report a miss, not
+	// a listing containing an unnamed directory.
+	rootEntries, err := m.ReadDir(".")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReadDir \".\" over absolute keys = (%v, %v), want ErrNotExist", rootEntries, err)
+	}
+	for _, e := range rootEntries {
+		if e.Name() == "" {
+			t.Errorf("ReadDir \".\" synthesized an entry with an empty name from an absolute key")
+		}
+	}
+}
+
 func TestMemFS_Paths(t *testing.T) {
 	m := newTestMemFS()
 	want := []string{"infra/main.tf", "infra/modules/net/main.tf", "infra/prod.auto.tfvars", "infra/variables.tf", "root.tf"}

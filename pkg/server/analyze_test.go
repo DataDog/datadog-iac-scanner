@@ -22,6 +22,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	engineSource "github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/rs/zerolog"
 )
 
@@ -161,6 +162,11 @@ func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 // TestAnalyze_MissingModuleEscalation verifies a Terraform module pointing at a
 // directory that was not pushed is reported in missing_files as a clean
 // workspace-relative path (the hybrid escalation signal).
+//
+// Relative in, relative out: this pins how the pushed paths' own shape is
+// preserved, not a global "missing_files are never absolute" invariant. Push
+// absolute paths and missing_files come back absolute — see
+// TestAnalyze_AbsolutePathMissingModuleEscalation.
 func TestAnalyze_MissingModuleEscalation(t *testing.T) {
 	s := newTestServer(t)
 	rule := syntheticRule()
@@ -184,7 +190,7 @@ resource "aws_s3_bucket" "b" { bucket = "x" }`},
 			sawModule = true
 		}
 		if filepath.IsAbs(m) {
-			t.Errorf("missing path should be workspace-relative, got absolute: %q", m)
+			t.Errorf("relative input should produce relative missing paths, got absolute: %q", m)
 		}
 	}
 	if !sawModule {
@@ -192,10 +198,11 @@ resource "aws_s3_bucket" "b" { bucket = "x" }`},
 	}
 }
 
-// TestAnalyze_MissingFilesCWDIndependent proves missing_files are
-// workspace-relative regardless of the server process's working directory. A
-// single server serves many IDE workspaces/windows, so the result must not
-// depend on where the binary was launched.
+// TestAnalyze_MissingFilesCWDIndependent proves missing_files derived from
+// relative input stay workspace-relative regardless of the server process's
+// working directory. A single server serves many IDE workspaces/windows, so the
+// result must not depend on where the binary was launched. CWD-independence is
+// the property this pins; the relative shape just follows the input's.
 func TestAnalyze_MissingFilesCWDIndependent(t *testing.T) {
 	s := newTestServer(t)
 	rule := syntheticRule()
@@ -214,6 +221,194 @@ resource "aws_s3_bucket" "b" { bucket = "x" }`}},
 	out, _ := postAnalyze(t, s, req)
 	if len(out.MissingFiles) != 1 || out.MissingFiles[0] != "modules/networking" {
 		t.Errorf("missing_files = %v, want [modules/networking] (workspace-relative, CWD-independent)", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_ContentPush_AbsolutePathFinding is the absolute-path twin of
+// TestAnalyze_ContentPush_TerraformFinding: a file outside every IDE workspace
+// folder is pushed under its absolute path, and must scan exactly like a
+// workspace-relative one.
+//
+// The FileName assertion is a cross-process contract. The extension keeps only
+// the findings whose fileName equals the path it pushed (an exact string
+// compare), so an echo that differs by so much as a separator silently drops
+// every finding for the file and it renders as clean. The contract is equality
+// after MemFS normalization (filepath.Clean + ToSlash), not byte identity: the
+// paths used here are already normalized, which is what the IDE sends (VS Code's
+// uri.path is always forward-slash, even on Windows).
+func TestAnalyze_ContentPush_AbsolutePathFinding(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticRule()
+
+	const target = "/tmp/ws/main.tf"
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: target, Content: `resource "aws_s3_bucket" "b" {
+  bucket = var.bucket_name
+}`},
+			{Path: "/tmp/ws/variables.tf", Content: `variable "bucket_name" { default = "my-bucket" }`},
+		},
+		Ruleset:  ruleset(rule),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var found bool
+	for _, f := range out.Findings {
+		if f.QueryID == syntheticRuleID {
+			found = true
+			if f.FileName != target {
+				t.Errorf("finding fileName = %q, want %q echoed back unchanged", f.FileName, target)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected the synthetic rule to fire on an absolute path; findings = %+v, failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+	// Sibling resolution works off the absolute directory too.
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files for same-dir siblings, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_AbsolutePathMissingModuleEscalation pins the other half of the
+// echo contract: missing_files keeps the shape of the paths that were pushed, so
+// absolute input escalates as absolute paths. The IDE resolves these against a
+// workspace folder, and there is none for an out-of-workspace file, so it
+// declines to escalate and the analysis stays best-effort — findings on the file
+// itself, no cross-directory module enrichment.
+func TestAnalyze_AbsolutePathMissingModuleEscalation(t *testing.T) {
+	s := newTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "/tmp/ws/infra/main.tf", Content: `module "net" {
+  source = "../modules/networking"
+}
+resource "aws_s3_bucket" "b" { bucket = "x" }`},
+		},
+		Ruleset:  ruleset(syntheticRule()),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var sawModule bool
+	for _, m := range out.MissingFiles {
+		if m == "/tmp/ws/modules/networking" {
+			sawModule = true
+		}
+	}
+	if !sawModule {
+		t.Errorf("expected /tmp/ws/modules/networking in missing_files, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_MixedAbsoluteAndRelativePaths pins mixing as defined rather than
+// accidental. The extension cannot produce such a request — a path's shape
+// follows its directory, and every file in a request comes from one directory —
+// but validation is per-path, so mixing is what the server does by default, and
+// other API clients are not bound by the extension's fileset construction.
+// Rejecting it would mean one odd path failing the whole request, which is the
+// failure mode dropping the absolute-path check exists to remove.
+func TestAnalyze_MixedAbsoluteAndRelativePaths(t *testing.T) {
+	s := newTestServer(t)
+	body := `resource "aws_s3_bucket" "b" { bucket = "x" }`
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "/tmp/ws/absolute.tf", Content: body},
+			{Path: "infra/relative.tf", Content: body},
+		},
+		Ruleset:   ruleset(syntheticRule()),
+		Libraries: testLibraries(true),
+		Platform:  []string{"terraform"},
+	}
+	if err := validateAnalyzeRequest(&req, defaultMaxFiles); err != nil {
+		t.Fatalf("validateAnalyzeRequest() error = %v, want a mixed request to be accepted", err)
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	got := make(map[string]bool, len(out.Findings))
+	for _, f := range out.Findings {
+		if f.QueryID == syntheticRuleID {
+			got[f.FileName] = true
+		}
+	}
+	for _, want := range []string{"/tmp/ws/absolute.tf", "infra/relative.tf"} {
+		if !got[want] {
+			t.Errorf("expected a finding for %q, got findings for %v", want, got)
+		}
+	}
+}
+
+// TestServerFlagEvaluator pins the flags server mode depends on. The
+// local-module-eval pin is what makes accepting absolute paths defensible: it is
+// the only thing keeping tfeval's direct os.ReadDir off directories derived from
+// pushed paths, which would otherwise be an arbitrary-directory read on a server
+// reachable cross-origin. If this test fails, validateFilePath's acceptance of
+// absolute paths is no longer safe.
+func TestServerFlagEvaluator(t *testing.T) {
+	evaluator := serverFlagEvaluator(false)
+
+	if evaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
+		t.Error("IacEnableLocalModuleEval must be pinned false in server mode: " +
+			"local module evaluation reads directories derived from pushed paths off the real disk")
+	}
+	if evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
+		t.Error("IacEnableKicsHelmResolver must be pinned false in server mode: " +
+			"Helm rendering needs a chart on disk, which content-push mode cannot materialize")
+	}
+	// Each flag is read through the same method its production call site uses,
+	// so this keeps holding if server mode ever gets an evaluator whose methods
+	// do not all resolve to the same value.
+	if evaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing) {
+		t.Error("parallel file parsing should be off unless the server opts in")
+	}
+	if !serverFlagEvaluator(true).EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing) {
+		t.Error("parallel file parsing should follow the server's --x-parallelparsing setting")
+	}
+}
+
+// TestValidateFilePath specifies the accepted path shapes directly, without a
+// scan or an HTTP round trip.
+func TestValidateFilePath(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		wantError bool
+	}{
+		{name: "workspace-relative", path: "infra/main.tf"},
+		{name: "bare file name", path: "main.tf"},
+		{name: "dot-relative", path: "./infra/main.tf"},
+		// Absolute paths are what an out-of-workspace file looks like.
+		{name: "posix absolute", path: "/tmp/ws/main.tf"},
+		{name: "windows drive qualified", path: "C:/ws/main.tf"},
+		{name: "vscode windows uri path", path: "/c:/ws/main.tf"},
+		// Clean collapses interior "..", so these stay inside their own root.
+		{name: "absolute with interior dotdot", path: "/tmp/ws/../ws/main.tf"},
+		{name: "relative with interior dotdot", path: "infra/../infra/main.tf"},
+		// Escaping a relative root is still refused.
+		{name: "dotdot", path: "..", wantError: true},
+		{name: "leading dotdot", path: "../escape.tf", wantError: true},
+		{name: "dotdot after cleaning", path: "infra/../../escape.tf", wantError: true},
+		{name: "empty", path: "", wantError: true},
+		{name: "NUL byte", path: "infra/ma\x00in.tf", wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateFilePath(tt.path)
+			if tt.wantError && err == nil {
+				t.Fatalf("validateFilePath(%q) = nil, want an error", tt.path)
+			}
+			if !tt.wantError && err != nil {
+				t.Fatalf("validateFilePath(%q) = %v, want nil", tt.path, err)
+			}
+		})
 	}
 }
 
@@ -255,12 +450,16 @@ func TestAnalyze_Validation(t *testing.T) {
 			want: http.StatusBadRequest,
 		},
 		{
+			// An absolute path is accepted: the IDE pushes one for a file that
+			// lives outside every workspace folder. Uses a .tf path so the case
+			// exercises a real scan rather than whatever an extensionless file
+			// happens to do.
 			name: "absolute path",
 			req: analyzeRequest{
-				Files:   []analyzeFile{{Path: "/etc/passwd", Content: "x"}},
+				Files:   []analyzeFile{{Path: "/tmp/ws/main.tf", Content: `resource "aws_s3_bucket" "b" { bucket = "x" }`}},
 				Ruleset: ruleset(validRule), Libraries: validLibraries,
 			},
-			want: http.StatusBadRequest,
+			want: http.StatusOK,
 		},
 		{name: "malformed json", body: `{`, want: http.StatusBadRequest},
 	}
