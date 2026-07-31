@@ -307,6 +307,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		Config:               cfg,
 		DisableRuleIsolation: s.cfg.DisableRuleIsolation,
 		UseRulesCache:        s.cfg.UseRulesCache,
+		ShouldScanTfPlans:    true,
 	}
 
 	client, err := scan.NewClient(ctx, params, &consolePrinter.Printer{},

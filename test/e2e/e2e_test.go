@@ -113,10 +113,10 @@ func violationDiff(a, b map[string]map[string]int) map[string]int {
 	return diff
 }
 
-// Test_E2ETerraformPlanFlag verifies that:
-// 1. Terraform plan JSON files are scanned when the flag is enabled
-// 2. CloudFormation JSON files are NOT scanned (even though they are JSON)
-// 3. The flag correctly gates the JSON parser registration
+// Test_E2ETerraformPlanFlag verifies JSON platform gating:
+// 1. Terraform plan JSON is scanned only when --x-terraform-plan is enabled (CLI disk scans)
+// 2. CloudFormation and other platform JSON files are scanned regardless of the flag
+// 3. Terraform-only scans do not register the JSON parser when the flag is disabled
 func Test_E2ETerraformPlanFlag(t *testing.T) {
 	fixturesDir := filepath.Join("..", "fixtures", "tfplan_flag_test")
 
@@ -160,7 +160,7 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 		require.Equal(t, 0, metadata.Stats.Files, "Terraform plan JSON should not be scanned when flag is disabled")
 	})
 
-	t.Run("cloudformation json not scanned even with flag enabled", func(t *testing.T) {
+	t.Run("cloudformation json scanned with flag enabled", func(t *testing.T) {
 		params, ctx := scan.GetDefaultParameters(context.Background(), "")
 		params.Path = []string{filepath.Join(fixturesDir, "cloudformation.json")}
 		params.OutputPath = t.TempDir()
@@ -176,12 +176,29 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 		metadata, err := console.ExecuteScan(ctx, params)
 		require.NoError(t, err)
 
-		// CloudFormation JSON files should NOT be processed because the JSON parser
-		// is gated to only process Terraform JSON files
-		require.Equal(t, 0, metadata.Stats.Files, "CloudFormation JSON should not be scanned (JSON parser only processes Terraform)")
+		require.Greater(t, metadata.Stats.Files, 0, "CloudFormation JSON should be scanned when cloudformation platform is enabled")
 	})
 
-	t.Run("both files in same scan - only tfplan scanned", func(t *testing.T) {
+	t.Run("cloudformation json scanned with flag disabled", func(t *testing.T) {
+		params, ctx := scan.GetDefaultParameters(context.Background(), "")
+		params.Path = []string{filepath.Join(fixturesDir, "cloudformation.json")}
+		params.OutputPath = t.TempDir()
+		params.QueriesPath = []string{mustAbs(t, filepath.Join("..", "..", "assets", "queries"))}
+		params.ShouldScanTfPlans = false
+		params.Platform = []string{"cloudformation"}
+		params.FlagEvaluator = featureflags.NewLocalEvaluator()
+		params.SCIInfo = model.SCIInfo{
+			DiffAware:            model.DiffAware{Enabled: false},
+			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+		}
+
+		metadata, err := console.ExecuteScan(ctx, params)
+		require.NoError(t, err)
+
+		require.Greater(t, metadata.Stats.Files, 0, "CloudFormation JSON should be scanned even when tf-plan flag is disabled")
+	})
+
+	t.Run("both files in same scan - both scanned when flag enabled", func(t *testing.T) {
 		params, ctx := scan.GetDefaultParameters(context.Background(), "")
 		params.Path = []string{fixturesDir}
 		params.OutputPath = t.TempDir()
@@ -197,9 +214,6 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 		metadata, err := console.ExecuteScan(ctx, params)
 		require.NoError(t, err)
 
-		// Should only process the Terraform plan JSON, not the CloudFormation JSON
-		// The CloudFormation JSON file is filtered out by the analyzer because
-		// it's a JSON file but not a Terraform plan
-		require.Equal(t, 1, metadata.Stats.Files, "Should scan exactly 1 file (tfplan.json), CloudFormation JSON excluded")
+		require.Equal(t, 2, metadata.Stats.Files, "Should scan both tfplan.json and cloudformation.json when flag is enabled")
 	})
 }

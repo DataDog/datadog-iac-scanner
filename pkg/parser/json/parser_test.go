@@ -142,7 +142,8 @@ func TestJSON_StringifyContent(t *testing.T) {
 	for i := range tests {
 		tt := &tests[i]
 		t.Run(tt.name, func(t *testing.T) {
-			var p Parser
+			scanTfPlans := tt.name == "terraform plan JSON is indented"
+			p := NewDefaultWithParams(scanTfPlans)
 			got, err := p.StringifyContent(tt.content)
 			require.Equal(t, tt.wantErr, (err != nil))
 			require.Equal(t, tt.want, got)

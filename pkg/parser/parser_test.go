@@ -90,7 +90,7 @@ func TestParser_SupportedExtensions(t *testing.T) {
 func initilizeBuilder() []*Parser {
 	ctx := context.Background()
 	bd, _ := NewBuilder(ctx).
-		Add(&jsonParser.Parser{}).
+		Add(jsonParser.NewDefaultWithParams(false)).
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefault()).
 		Build([]string{""}, []string{""})
@@ -100,7 +100,7 @@ func initilizeBuilder() []*Parser {
 func TestIsValidExtension(t *testing.T) {
 	ctx := context.Background()
 	parser, _ := NewBuilder(ctx).
-		Add(&jsonParser.Parser{}).
+		Add(jsonParser.NewDefaultWithParams(false)).
 		Build([]string{""}, []string{""})
 	require.True(t, parser[0].isValidExtension(ctx, "../../test/fixtures/test_extension/test.json"), "test.json should be a valid extension")
 	require.False(t, parser[0].isValidExtension(ctx, "../../test/fixtures/test_extension/test.xml"), "test.xml should not be a valid extension")
