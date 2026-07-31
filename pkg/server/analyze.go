@@ -280,9 +280,9 @@ func validateFilePath(p string) error {
 // Terraform local-module evaluation is off because it reads directories derived
 // from pushed paths off the real disk: tfeval's LoadRootVars and parseDir call
 // os.ReadDir directly instead of going through the request's in-memory FS.
-// Pushed paths may be absolute, so relying
-// on this flag's default — which is remotely togglable — would leave an
-// arbitrary directory readable by a cross-origin caller. Pinning it here is
+// Pushed paths may be absolute, so do not rely on the flag's default staying
+// safe: pinning it here ensures server mode never enables an arbitrary-directory
+// read via local-module evaluation. Pinning it here is
 // what lets validateFilePath accept absolute paths.
 //
 // Parallel file parsing fans the per-file parse across CPUs; off unless the
