@@ -2,14 +2,51 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	"github.com/stretchr/testify/assert"
-	cli "github.com/urfave/cli/v3"
 	"github.com/stretchr/testify/require"
+	cli "github.com/urfave/cli/v3"
 )
+
+func TestGetRepositoryCommitInfoWithRefStorage(t *testing.T) {
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	initCommand := exec.Command("git", "init", "--ref-format=reftable", "--initial-branch=main", repoDir)
+	if output, err := initCommand.CombinedOutput(); err != nil {
+		t.Skipf("Git does not support reftable: %s", strings.TrimSpace(string(output)))
+	}
+
+	runTestGit(t, repoDir, "config", "user.name", "Test User")
+	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runTestGit(t, repoDir, "config", "commit.gpgsign", "false")
+	runTestGit(t, repoDir, "remote", "add", "origin", "https://example.com/repository.git")
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "main.tf"), []byte("resource \"test\" \"example\" {}\n"), 0o600))
+	runTestGit(t, repoDir, "add", "main.tf")
+	runTestGit(t, repoDir, "commit", "-m", "initial commit")
+	wantSHA := runTestGit(t, repoDir, "rev-parse", "HEAD")
+
+	info, gotRepoDir, err := getRepositoryCommitInfo([]string{filepath.Join(repoDir, "main.tf")})
+
+	require.NoError(t, err)
+	resolvedRepoDir, err := filepath.EvalSymlinks(repoDir)
+	require.NoError(t, err)
+	assert.Equal(t, resolvedRepoDir, gotRepoDir)
+	assert.Equal(t, "https://example.com/repository.git", info.RepositoryUrl)
+	assert.Equal(t, wantSHA, info.CommitSHA)
+	assert.Equal(t, "main", info.Branch)
+}
+
+func runTestGit(t *testing.T, repoDir string, args ...string) string {
+	t.Helper()
+	cmdArgs := append([]string{"-C", repoDir}, args...)
+	output, err := exec.Command("git", cmdArgs...).CombinedOutput()
+	require.NoError(t, err, strings.TrimSpace(string(output)))
+	return strings.TrimSpace(string(output))
+}
 
 func TestApplyPlatformFilters(t *testing.T) {
 	all := []string{"Ansible", "CICD", "CloudFormation", "Dockerfile", "Kubernetes", "Terraform"}
