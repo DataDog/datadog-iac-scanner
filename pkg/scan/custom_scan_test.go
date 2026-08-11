@@ -124,24 +124,6 @@ func TestPlatformTempFileName_ARMNotSpecialCased(t *testing.T) {
 	assert.Equal(t, scanTargetJSON, platformTempFileName("azureresourcemanager"))
 }
 
-func TestParseImportAliases(t *testing.T) {
-	src := `
-import data.generic.terraform as tf_lib
-import data.generic.common as common_lib
-import data.generic.kubernetes as k8s_lib
-`
-	got := parseImportAliases(src)
-	assert.Equal(t, "data.generic.terraform", got["tf_lib"])
-	assert.Equal(t, "data.generic.common", got["common_lib"])
-	assert.Equal(t, "data.generic.kubernetes", got["k8s_lib"])
-	assert.Len(t, got, 3, "only 'as'-aliased imports should be collected")
-}
-
-func TestParseImportAliases_NoAlias(t *testing.T) {
-	got := parseImportAliases(`import rego.v1`)
-	assert.Empty(t, got, "bare imports without 'as' should be ignored")
-}
-
 // ── parse phase ───────────────────────────────────────────────────────────────
 
 func TestValidateCustomRegoQuery_Valid(t *testing.T) {

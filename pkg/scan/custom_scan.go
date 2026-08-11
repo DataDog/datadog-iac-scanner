@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -38,6 +40,8 @@ type RegoValidationError struct {
 const (
 	scanTargetJSON     = "scan-target.json"
 	codeMissingPackage = "missing_package"
+	codeMissingImport  = "missing_import"
+	codeUnsafeVarError = "rego_unsafe_var_error"
 	datadogPackage     = "package datadog"
 )
 
@@ -132,8 +136,13 @@ func RunCustomRegoQuery(
 // errors are collected independently so no phase gates another:
 //
 //  1. Parse: syntax errors enriched with precise locations.
-//  2. Static checks: package name, rule name, result fields, sprintf arity, missing imports.
-//  3. OPA compile against platform libraries: type errors and unresolved references.
+//  2. Static checks: package name, rule name, result fields, sprintf arity.
+//  3. OPA compile against platform libraries: type errors, unresolved references, and
+//     missing imports (detected from the library's real content, not a hardcoded table).
+//
+// When the package declaration is missing, the module is still parsed and run through
+// phases 2 and 3 against a recovered copy (with `package datadog` prepended) so a
+// single call surfaces every other problem too, not just the missing package.
 //
 // Returns (nil, nil) on success, (errors, nil) on validation failure.
 func ValidateCustomRegoQuery(
@@ -143,18 +152,24 @@ func ValidateCustomRegoQuery(
 	libSource source.QueriesSource,
 ) ([]RegoValidationError, error) {
 	module, parseErrs := parseRegoModule(regoContent)
+	compileContent := regoContent
+	lineOffset := 0
+
 	if module == nil {
-		if hasPackageExpectedError(parseErrs) {
-			if recoveredModule, _ := parseRegoModule(datadogPackage + "\n\n" + regoContent); recoveredModule != nil {
-				recoveredErrs := staticChecks(recoveredModule)
-				shiftErrorLines(recoveredErrs, -2)
-				return append(parseErrs, recoveredErrs...), nil
-			}
+		if !hasPackageExpectedError(parseErrs) {
+			return parseErrs, nil
 		}
-		return parseErrs, nil
+		compileContent = datadogPackage + "\n\n" + regoContent
+		recovered, _ := parseRegoModule(compileContent)
+		if recovered == nil {
+			return parseErrs, nil
+		}
+		module = recovered
+		lineOffset = -2
 	}
 
 	allErrs := staticChecks(module)
+	shiftErrorLines(allErrs, lineOffset)
 
 	commonLib, err := libSource.GetQueryLibrary(ctx, "common")
 	if err != nil {
@@ -166,28 +181,19 @@ func ValidateCustomRegoQuery(
 		return nil, fmt.Errorf("loading platform library: %w", err)
 	}
 
-	_, compileErr := rego.New(
-		rego.Query(utils.RegoQuery),
-		rego.SetRegoVersion(ast.RegoV1),
-		rego.Module("Common", commonLib.LibraryCode),
-		rego.Module("Generic", platformLib.LibraryCode),
-		rego.Module("query.rego", regoContent),
-		rego.UnsafeBuiltins(map[string]struct{}{
-			"http.send":   {},
-			"opa.runtime": {},
-		}),
-	).PrepareForEval(ctx)
-
-	if compileErr != nil {
-		compileErrs := regoValidationErrorsFrom(compileErr)
-		// Filter before enriching: enrichCompileErrors rewrites messages (e.g.
-		// "var tf_lib is unsafe" → "undefined variable..."), so isConsequentialCompileError
-		// must see the original OPA text to match correctly.
+	if compileErrs := compileCustomRego(ctx, compileContent, commonLib.LibraryCode, platformLib.LibraryCode); compileErrs != nil {
+		libs := []libraryInfo{parseLibrary(commonLib.LibraryCode), parseLibrary(platformLib.LibraryCode)}
+		// Filter before enriching: isConsequentialCompileError must see the original OPA
+		// text — enrichCompileErrors rewrites messages (e.g. "var tf_lib is unsafe" →
+		// "missing_import"), which would no longer match.
 		compileErrs = filterConsequentialCompileErrors(allErrs, compileErrs)
-		compileErrs = enrichCompileErrors(regoContent, compileErrs)
+		compileErrs = enrichCompileErrors(module, compileContent, libs, compileErrs)
+		shiftErrorLines(compileErrs, lineOffset)
 		allErrs = append(allErrs, compileErrs...)
 	}
 
+	allErrs = append(parseErrs, allErrs...)
+	sortRegoValidationErrors(allErrs)
 	return allErrs, nil
 }
 
@@ -200,7 +206,29 @@ func ValidateRegoStructure(regoContent string) []RegoValidationError {
 	if module == nil {
 		return parseErrs
 	}
-	return staticChecks(module)
+	errs := staticChecks(module)
+	sortRegoValidationErrors(errs)
+	return errs
+}
+
+// compileCustomRego compiles regoContent against the given library sources using the
+// same OPA setup as a real scan, returning the resulting errors (nil on success).
+func compileCustomRego(ctx context.Context, regoContent, commonLibCode, platformLibCode string) []RegoValidationError {
+	_, err := rego.New(
+		rego.Query(utils.RegoQuery),
+		rego.SetRegoVersion(ast.RegoV1),
+		rego.Module("Common", commonLibCode),
+		rego.Module("Generic", platformLibCode),
+		rego.Module("query.rego", regoContent),
+		rego.UnsafeBuiltins(map[string]struct{}{
+			"http.send":   {},
+			"opa.runtime": {},
+		}),
+	).PrepareForEval(ctx)
+	if err == nil {
+		return nil
+	}
+	return regoValidationErrorsFrom(err)
 }
 
 // parseRegoModule parses and enriches parse errors. Returns (module, nil) on success.
@@ -210,7 +238,9 @@ func parseRegoModule(regoContent string) (*ast.Module, []RegoValidationError) {
 		RegoVersion:       ast.RegoV1,
 	})
 	if err != nil {
-		return nil, enrichParseErrors(regoContent, regoValidationErrorsFrom(err))
+		errs := enrichParseErrors(regoContent, regoValidationErrorsFrom(err))
+		sortRegoValidationErrors(errs)
+		return nil, errs
 	}
 	return module, nil
 }
@@ -225,6 +255,9 @@ func hasPackageExpectedError(errs []RegoValidationError) bool {
 }
 
 func shiftErrorLines(errs []RegoValidationError, delta int) {
+	if delta == 0 {
+		return
+	}
 	for i := range errs {
 		if errs[i].StartLine > 0 {
 			errs[i].StartLine = max(1, errs[i].StartLine+delta)
@@ -235,35 +268,118 @@ func shiftErrorLines(errs []RegoValidationError, delta int) {
 	}
 }
 
-// enrichTypeErrors translates OPA's internal fully-qualified paths in type error
-// messages back to the import alias the user wrote. OPA always uses the qualified
-// form in errors regardless of how the user wrote it.
-func enrichTypeErrors(regoContent string, errs []RegoValidationError) []RegoValidationError {
-	aliases := parseImportAliases(regoContent)
+func sortRegoValidationErrors(errs []RegoValidationError) {
+	sort.SliceStable(errs, func(i, j int) bool {
+		if errs[i].StartLine != errs[j].StartLine {
+			return errs[i].StartLine < errs[j].StartLine
+		}
+		return errs[i].StartCol < errs[j].StartCol
+	})
+}
+
+// moduleImportAliases returns every import in module keyed by the local alias it is
+// bound to (explicit "as", or the default alias when omitted), mapped to the
+// fully-qualified path it refers to, e.g. "tf_lib" -> "data.generic.terraform".
+func moduleImportAliases(module *ast.Module) map[string]string {
+	out := make(map[string]string, len(module.Imports))
+	for _, imp := range module.Imports {
+		var path string
+		switch v := imp.Path.Value.(type) {
+		case ast.Ref:
+			path = v.String()
+		case ast.Var:
+			path = string(v)
+		default:
+			continue
+		}
+		out[string(imp.Name())] = path
+	}
+	return out
+}
+
+func declaredAliasSet(module *ast.Module) map[string]bool {
+	declared := make(map[string]bool, len(module.Imports))
+	for _, imp := range module.Imports {
+		declared[string(imp.Name())] = true
+	}
+	return declared
+}
+
+// translateQualifiedPaths rewrites every fully-qualified library path (e.g.
+// "data.generic.terraform") appearing in a compile error's message back to the alias
+// the user actually imported it under. OPA always reports the canonical qualified form
+// regardless of how the module referenced it; left alone this leaks internal package
+// layout into user-facing diagnostics. Applied to every message rather than one
+// specific phrasing, so it also fixes "undefined ref", "arity mismatch", and other
+// message shapes that embed a qualified path, not just "undefined function ...".
+func translateQualifiedPaths(module *ast.Module, errs []RegoValidationError) []RegoValidationError {
+	aliases := moduleImportAliases(module)
+	if len(aliases) == 0 {
+		return errs
+	}
+
+	type aliasPath struct{ path, alias string }
+	pairs := make([]aliasPath, 0, len(aliases))
+	for alias, path := range aliases {
+		pairs = append(pairs, aliasPath{path, alias})
+	}
+	// Longest path first so a nested library path is never partially shadowed by a
+	// shorter one that happens to be a prefix of it.
+	sort.Slice(pairs, func(i, j int) bool { return len(pairs[i].path) > len(pairs[j].path) })
+
 	for i := range errs {
-		e := &errs[i]
-		if e.Code != ast.TypeErr {
-			continue
-		}
-		const prefix = "undefined function "
-		if !strings.HasPrefix(e.Message, prefix) {
-			continue
-		}
-		fnFull := strings.TrimPrefix(e.Message, prefix)
-		for alias, qualPath := range aliases {
-			if strings.HasPrefix(fnFull, qualPath+".") {
-				e.Message = prefix + alias + "." + strings.TrimPrefix(fnFull, qualPath+".")
-				break
-			}
+		for _, p := range pairs {
+			errs[i].Message = strings.ReplaceAll(errs[i].Message, p.path+".", p.alias+".")
 		}
 	}
 	return errs
 }
 
-func enrichCompileErrors(regoContent string, errs []RegoValidationError) []RegoValidationError {
-	errs = enrichTypeErrors(regoContent, errs)
+// libraryInfo pairs a Rego library's canonical package path with the set of function
+// (rule) names it declares. Built directly from the library's own source so import
+// suggestions stay correct for every platform without a hardcoded alias table.
+type libraryInfo struct {
+	path      string
+	functions map[string]bool
+}
+
+func parseLibrary(libCode string) libraryInfo {
+	info := libraryInfo{functions: map[string]bool{}}
+	module, err := ast.ParseModuleWithOpts("library.rego", libCode, ast.ParserOptions{RegoVersion: ast.RegoV1})
+	if err != nil {
+		return info
+	}
+	info.path = module.Package.Path.String()
+	for _, rule := range module.Rules {
+		info.functions[string(rule.Head.Name)] = true
+	}
+	return info
+}
+
+func findLibraryDefining(libs []libraryInfo, fn string) string {
+	for _, lib := range libs {
+		if lib.functions[fn] {
+			return lib.path
+		}
+	}
+	return ""
+}
+
+func enrichCompileErrors(module *ast.Module, regoContent string, libs []libraryInfo, errs []RegoValidationError) []RegoValidationError {
+	declared := declaredAliasSet(module)
+
 	out := make([]RegoValidationError, 0, len(errs))
+	missingAliases := make(map[string]bool)
 	for _, e := range errs {
+		if e.Code == ast.TypeErr && strings.HasPrefix(e.Message, "undefined function ") {
+			rewritten, alias := rewriteUndefinedFunction(e, libs)
+			if alias != "" {
+				missingAliases[alias] = true
+			}
+			out = append(out, rewritten)
+			continue
+		}
+
 		varName, ok := unsafeVarName(e)
 		if !ok {
 			out = append(out, e) // not an unsafe-var error; pass through
@@ -272,27 +388,259 @@ func enrichCompileErrors(regoContent string, errs []RegoValidationError) []RegoV
 		if varName == resultVar {
 			continue // "result is unsafe" is always a cascade; skip it
 		}
-		if line, col, ok := findVariableUsage(regoContent, varName); ok {
-			e.StartLine = line
-			e.EndLine = line
-			e.StartCol = col
-			e.EndCol = col + len(varName)
+		rewritten := rewriteUnsafeVar(e, varName, regoContent, declared, libs)
+		if rewritten.Code == codeMissingImport {
+			missingAliases[varName] = true
 		}
-		e.Message = fmt.Sprintf("undefined variable %q. Define it before using it.", varName)
+		out = append(out, rewritten)
+	}
+
+	// A variable bound from an expression that itself references a now-identified
+	// missing import (e.g. `name := k8s_lib.get_pod_name`) is also reported unsafe by
+	// OPA as a pure consequence — drop that cascade once its root cause is known.
+	out = dropImportCascades(out, missingAliases, regoContent)
+
+	// Runs last: covers every remaining message shape that still embeds a qualified
+	// library path (e.g. "undefined ref", "arity mismatch") once the two more specific
+	// rewrites above have handled "undefined function" and "unsafe var".
+	return translateQualifiedPaths(module, out)
+}
+
+func dropImportCascades(errs []RegoValidationError, missingAliases map[string]bool, regoContent string) []RegoValidationError {
+	if len(missingAliases) == 0 {
+		return errs
+	}
+	lines := strings.Split(regoContent, "\n")
+
+	out := make([]RegoValidationError, 0, len(errs))
+	for _, e := range errs {
+		if e.Code == codeUnsafeVarError && e.StartLine >= 1 && e.StartLine <= len(lines) {
+			varName, ok := unsafeVarFromError(e)
+			if ok && isImportCascadeVar(lines[e.StartLine-1], varName, missingAliases) {
+				continue
+			}
+		}
 		out = append(out, e)
 	}
 	return out
 }
 
+// unsafeVarFromError extracts the variable name from an unsafe-var diagnostic, whether
+// OPA's original message or our rewritten "undefined variable" form.
+func unsafeVarFromError(e RegoValidationError) (string, bool) {
+	if name, ok := unsafeVarName(e); ok {
+		return name, true
+	}
+	const prefix = `undefined variable "`
+	const suffix = `". Define it before using it.`
+	if strings.HasPrefix(e.Message, prefix) && strings.HasSuffix(e.Message, suffix) {
+		return strings.TrimSuffix(strings.TrimPrefix(e.Message, prefix), suffix), true
+	}
+	return "", false
+}
+
+// isImportCascadeVar reports whether varName is bound via := from an expression that
+// references a missing import alias — e.g. suppress `name` for `name := k8s_lib.fn`
+// but not `podd` on `name := [k8s_lib.fn, podd]`.
+func isImportCascadeVar(line, varName string, missingAliases map[string]bool) bool {
+	rhs, ok := findAssignmentRHS(line, varName)
+	if !ok {
+		return false
+	}
+	for alias := range missingAliases {
+		if referencesIdentifier(rhs, alias) {
+			return true
+		}
+	}
+	return false
+}
+
+func findAssignmentRHS(line, varName string) (string, bool) {
+	searchFrom := 0
+	for {
+		idx := strings.Index(line[searchFrom:], varName)
+		if idx < 0 {
+			return "", false
+		}
+		idx += searchFrom
+		if !isIdentifierBoundary(line, idx-1) || !isIdentifierBoundary(line, idx+len(varName)) {
+			searchFrom = idx + len(varName)
+			continue
+		}
+		after := idx + len(varName)
+		for after < len(line) && (line[after] == ' ' || line[after] == '\t') {
+			after++
+		}
+		if after+1 < len(line) && line[after:after+2] == ":=" {
+			return strings.TrimSpace(line[after+2:]), true
+		}
+		searchFrom = idx + len(varName)
+	}
+}
+
+func referencesIdentifier(text, name string) bool {
+	searchFrom := 0
+	for {
+		idx := strings.Index(text[searchFrom:], name)
+		if idx < 0 {
+			return false
+		}
+		idx += searchFrom
+		if isIdentifierBoundary(text, idx-1) && isIdentifierBoundary(text, idx+len(name)) {
+			return true
+		}
+		searchFrom = idx + len(name)
+	}
+}
+
+// rewriteUndefinedFunction handles OPA's "undefined function X" compile error. When X
+// is already a fully-qualified path (starts with "data."), the alias itself resolved
+// fine and this is a genuine typo of a function that doesn't exist in that library —
+// left as-is for translateQualifiedPaths to convert back to the user's alias. When X is
+// NOT qualified (e.g. "tf_lib.resolve_s3_bucket_name"), the alias never resolved at all
+// because it was never imported; this is the missing-import case, and the exact library
+// to suggest is found by checking which one actually declares the called function.
+// Returns the rewritten error, plus the missing-import alias (empty when it didn't
+// identify one) so the caller can suppress dependent cascades.
+func rewriteUndefinedFunction(e RegoValidationError, libs []libraryInfo) (rewritten RegoValidationError, missingAlias string) {
+	const prefix = "undefined function "
+	fnFull := strings.TrimPrefix(e.Message, prefix)
+	if strings.HasPrefix(fnFull, "data.") {
+		return e, ""
+	}
+
+	alias, fn, ok := strings.Cut(fnFull, ".")
+	if !ok {
+		return e, ""
+	}
+	libPath := findLibraryDefining(libs, fn)
+	if libPath == "" {
+		return e, ""
+	}
+	e.Code = codeMissingImport
+	e.Message = fmt.Sprintf(
+		"%q is not imported. Add `import %s as %s` to use %s.%s(...).",
+		alias, libPath, alias, alias, fn,
+	)
+	return e, alias
+}
+
+// rewriteUnsafeVar turns a raw "var X is unsafe" compiler error into an actionable
+// diagnostic. If X is referenced like a library alias (X.someFunc(...), but as a plain
+// reference rather than a call — the call form is caught earlier by
+// rewriteUndefinedFunction) and someFunc is actually declared in one of the platform's
+// libraries, this points precisely at the missing import for any platform, since it is
+// derived from the library's real content rather than a hardcoded per-platform alias
+// table. Otherwise it is a genuine undefined variable, so a generic message is used.
+func rewriteUnsafeVar(
+	e RegoValidationError,
+	varName, regoContent string,
+	declared map[string]bool,
+	libs []libraryInfo,
+) RegoValidationError {
+	e = narrowUnsafeVarLocation(e, varName, regoContent)
+
+	if !declared[varName] {
+		if fn, ok := findDottedCallAt(regoContent, e.StartLine, varName); ok {
+			if libPath := findLibraryDefining(libs, fn); libPath != "" {
+				e.Code = codeMissingImport
+				e.Message = fmt.Sprintf(
+					"%q is not imported. Add `import %s as %s` to use %s.%s(...).",
+					varName, libPath, varName, varName, fn,
+				)
+				return e
+			}
+		}
+	}
+
+	e.Message = fmt.Sprintf("undefined variable %q. Define it before using it.", varName)
+	return e
+}
+
+// narrowUnsafeVarLocation tightens an unsafe-var error's span from the whole expression
+// OPA attaches it to (e.g. the full "resource.acl == \"public-read\"" condition) down to
+// just the offending identifier. OPA's row is always trusted — it already points at the
+// variable's earliest real usage — only the column span is refined, and only a full-file
+// scan is used as a fallback on the rare chance the identifier isn't found on that exact
+// line (e.g. a multi-line expression) or OPA attached no location at all.
+func narrowUnsafeVarLocation(e RegoValidationError, varName, regoContent string) RegoValidationError {
+	lines := strings.Split(regoContent, "\n")
+	if e.StartLine >= 1 && e.StartLine <= len(lines) {
+		if col, ok := findIdentifierInLine(lines[e.StartLine-1], varName); ok {
+			e.StartCol = col
+			e.EndLine = e.StartLine
+			e.EndCol = col + len(varName)
+			return e
+		}
+	}
+	if line, col, ok := findVariableUsage(regoContent, varName); ok {
+		e.StartLine, e.EndLine = line, line
+		e.StartCol, e.EndCol = col, col+len(varName)
+	}
+	return e
+}
+
+func findIdentifierInLine(text, varName string) (col int, ok bool) {
+	searchFrom := 0
+	for {
+		idx := strings.Index(text[searchFrom:], varName)
+		if idx < 0 {
+			return 0, false
+		}
+		idx += searchFrom
+		if isIdentifierBoundary(text, idx-1) && isIdentifierBoundary(text, idx+len(varName)) {
+			return idx + 1, true
+		}
+		searchFrom = idx + len(varName)
+	}
+}
+
 func unsafeVarName(e RegoValidationError) (string, bool) {
 	const prefix = "var "
 	const suffix = " is unsafe"
-	if e.Code != "rego_unsafe_var_error" ||
+	if e.Code != codeUnsafeVarError ||
 		!strings.HasPrefix(e.Message, prefix) ||
 		!strings.HasSuffix(e.Message, suffix) {
 		return "", false
 	}
 	return strings.TrimSuffix(strings.TrimPrefix(e.Message, prefix), suffix), true
+}
+
+var identifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*`)
+
+// findDottedCallAt looks for "<alias>.<name>" on the line the compiler flagged first,
+// falling back to a whole-file scan so a multi-line expression still resolves.
+func findDottedCallAt(regoContent string, line int, alias string) (string, bool) {
+	lines := strings.Split(regoContent, "\n")
+	if line >= 1 && line <= len(lines) {
+		if fn, ok := findDottedCallInText(lines[line-1], alias); ok {
+			return fn, true
+		}
+	}
+	for _, text := range lines {
+		if fn, ok := findDottedCallInText(text, alias); ok {
+			return fn, true
+		}
+	}
+	return "", false
+}
+
+func findDottedCallInText(text, alias string) (string, bool) {
+	needle := alias + "."
+	searchFrom := 0
+	for {
+		idx := strings.Index(text[searchFrom:], needle)
+		if idx < 0 {
+			return "", false
+		}
+		idx += searchFrom
+		if isIdentifierBoundary(text, idx-1) {
+			if m := identifierPattern.FindString(text[idx+len(needle):]); m != "" {
+				return m, true
+			}
+		}
+		searchFrom = idx + len(needle)
+	}
 }
 
 func findVariableUsage(regoContent, varName string) (line, col int, ok bool) {
@@ -367,18 +715,23 @@ func staticChecks(module *ast.Module) []RegoValidationError {
 			Message: "no '" + datadogPolicyRule + "' rule found. " +
 				"The scanner evaluates data.datadog.DatadogPolicy so the rule must use that exact name",
 		}
+		// Fall back to the package declaration's location when the module has no rules
+		// at all, so this diagnostic always carries a valid (non-zero) position.
+		loc := module.Package.Location
+		nameLen := 1
 		if firstOtherRule != nil && firstOtherRule.Location != nil {
-			loc := firstOtherRule.Location
-			ruleName := string(firstOtherRule.Head.Name)
+			loc = firstOtherRule.Location
+			nameLen = len(string(firstOtherRule.Head.Name))
+		}
+		if loc != nil {
 			e.StartLine = loc.Row
 			e.EndLine = loc.Row
 			e.StartCol = loc.Col
-			e.EndCol = loc.Col + len(ruleName)
+			e.EndCol = loc.Col + nameLen
 		}
 		errs = append(errs, e)
 	}
 
-	errs = append(errs, checkMissingImports(module)...)
 	errs = append(errs, checkSprintfArity(module)...)
 	errs = append(errs, checkResultFields(module)...)
 
@@ -390,70 +743,6 @@ var requiredResultFields = []string{
 	"resourceType",
 	"resourceName",
 	"searchKey",
-}
-
-var requiredImportAliases = map[string]string{
-	"common_lib": "import data.generic.common as common_lib",
-	"tf_lib":     "import data.generic.terraform as tf_lib",
-}
-
-// parseImportAliases scans regoContent for "import <path> as <alias>" lines and
-// returns a map of alias → qualified path. Used to translate OPA's internal paths
-// back to the alias the user actually wrote, covering all imported libraries.
-func parseImportAliases(regoContent string) map[string]string {
-	out := make(map[string]string)
-	for _, line := range strings.Split(regoContent, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "import ") {
-			continue
-		}
-		path, alias, ok := strings.Cut(strings.TrimPrefix(line, "import "), " as ")
-		if ok {
-			out[strings.TrimSpace(alias)] = strings.TrimSpace(path)
-		}
-	}
-	return out
-}
-
-func checkMissingImports(module *ast.Module) []RegoValidationError {
-	imported := make(map[string]bool, len(module.Imports))
-	for _, imp := range module.Imports {
-		imported[string(imp.Name())] = true
-	}
-
-	reported := make(map[string]bool)
-	var errs []RegoValidationError
-	ast.WalkTerms(module, func(term *ast.Term) bool {
-		ref, ok := term.Value.(ast.Ref)
-		if !ok || len(ref) == 0 {
-			return false
-		}
-
-		alias, ok := ref[0].Value.(ast.Var)
-		if !ok {
-			return false
-		}
-
-		aliasName := string(alias)
-		importStmt, required := requiredImportAliases[aliasName]
-		if !required || imported[aliasName] || reported[aliasName] {
-			return false
-		}
-
-		reported[aliasName] = true
-		loc := term.Location
-		errs = append(errs, RegoValidationError{
-			Code:      "missing_import",
-			Message:   fmt.Sprintf("missing import for %q. Add `%s`.", aliasName, importStmt),
-			StartLine: loc.Row,
-			StartCol:  loc.Col,
-			EndLine:   loc.Row,
-			EndCol:    loc.Col + len(aliasName),
-		})
-		return false
-	})
-
-	return errs
 }
 
 // checkResultFields reports missing required keys in literal result := { ... } assignments.
@@ -598,7 +887,9 @@ func regoValidationErrorsFrom(err error) []RegoValidationError {
 
 // enrichParseErrors rewrites raw OPA parse messages into actionable diagnostics.
 // "non-terminated object" errors are replaced with a text scan that locates every
-// missing comma — OPA reports those at the object opener rather than the offending line.
+// missing comma and every unclosed call — OPA reports those at the object opener
+// rather than the offending line, and (unlike OPA) both classes are searched for and
+// reported together so a file with both bug types doesn't only show one.
 func enrichParseErrors(regoContent string, errs []RegoValidationError) []RegoValidationError {
 	result := make([]RegoValidationError, 0, len(errs))
 	var nonTerminated []RegoValidationError
@@ -626,10 +917,9 @@ func enrichParseErrors(regoContent string, errs []RegoValidationError) []RegoVal
 	}
 
 	if len(nonTerminated) > 0 {
-		textErrs := findAllMissingObjectFieldSeparators(regoContent)
-		if len(textErrs) == 0 {
-			textErrs = findUnclosedParentheses(regoContent)
-		}
+		var textErrs []RegoValidationError
+		textErrs = append(textErrs, findAllMissingObjectFieldSeparators(regoContent)...)
+		textErrs = append(textErrs, findUnclosedParentheses(regoContent)...)
 		if len(textErrs) > 0 {
 			result = append(result, textErrs...)
 		} else {
@@ -727,7 +1017,8 @@ func findUnclosedParentheses(regoContent string) []RegoValidationError {
 	lines := strings.Split(regoContent, "\n")
 
 	for i, text := range lines {
-		if strings.Count(text, "(") <= strings.Count(text, ")") {
+		open, closing := countParensOutsideStrings(text)
+		if open <= closing {
 			continue
 		}
 		col, name, ok := findUnclosedCallOnLine(text)
@@ -751,8 +1042,44 @@ func findUnclosedParentheses(regoContent string) []RegoValidationError {
 	return errs
 }
 
+func countParensOutsideStrings(text string) (open, closing int) {
+	inString := false
+	escaped := false
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+		if ch == '#' {
+			break
+		}
+		if ch == '"' {
+			inString = true
+			continue
+		}
+		switch ch {
+		case '(':
+			open++
+		case ')':
+			closing++
+		}
+	}
+	return open, closing
+}
+
 func findUnclosedCallOnLine(text string) (col int, name string, ok bool) {
-	lastOpen := strings.LastIndex(text, "(")
+	lastOpen := lastOpenParenOutsideStrings(text)
 	if lastOpen < 0 {
 		return 0, "", false
 	}
@@ -769,6 +1096,40 @@ func findUnclosedCallOnLine(text string) (col int, name string, ok bool) {
 		return start + 1, text[start+1 : end+1], true
 	}
 	return lastOpen, "", true
+}
+
+func lastOpenParenOutsideStrings(text string) int {
+	inString := false
+	escaped := false
+	last := -1
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+		if ch == '#' {
+			break
+		}
+		if ch == '"' {
+			inString = true
+			continue
+		}
+		if ch == '(' {
+			last = i
+		}
+	}
+	return last
 }
 
 func isIdentChar(ch byte) bool {
@@ -793,7 +1154,7 @@ func extractObjectKey(line string) string {
 // invalid_package.
 func filterConsequentialCompileErrors(structural, compile []RegoValidationError) []RegoValidationError {
 	summary := summarizeStructuralErrors(structural)
-	if !summary.hasInvalidPackage && !summary.hasMissingRule && len(summary.missingImportAliases) == 0 {
+	if !summary.hasInvalidPackage && !summary.hasMissingRule {
 		return compile
 	}
 
@@ -808,25 +1169,18 @@ func filterConsequentialCompileErrors(structural, compile []RegoValidationError)
 }
 
 type structuralErrorSummary struct {
-	hasInvalidPackage    bool
-	hasMissingRule       bool
-	missingImportAliases map[string]bool
+	hasInvalidPackage bool
+	hasMissingRule    bool
 }
 
 func summarizeStructuralErrors(errs []RegoValidationError) structuralErrorSummary {
-	summary := structuralErrorSummary{missingImportAliases: map[string]bool{}}
+	var summary structuralErrorSummary
 	for _, e := range errs {
 		switch e.Code {
 		case "invalid_package":
 			summary.hasInvalidPackage = true
 		case "missing_rule":
 			summary.hasMissingRule = true
-		case "missing_import":
-			for alias := range requiredImportAliases {
-				if strings.Contains(e.Message, alias) {
-					summary.missingImportAliases[alias] = true
-				}
-			}
 		}
 	}
 	return summary
@@ -838,12 +1192,6 @@ func isConsequentialCompileError(e RegoValidationError, summary structuralErrorS
 	}
 	if summary.hasMissingRule && strings.Contains(e.Message, "DatadogPolicy") {
 		return true
-	}
-	for alias := range summary.missingImportAliases {
-		if strings.Contains(e.Message, "undefined function "+alias+".") ||
-			strings.Contains(e.Message, "var "+alias+" is unsafe") {
-			return true
-		}
 	}
 	return false
 }
