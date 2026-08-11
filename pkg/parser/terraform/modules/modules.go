@@ -287,7 +287,11 @@ func fillModuleAttrs(
 			mod.SourceType, mod.RegistryScope = DetectModuleSourceType(resolved)
 			mod.IsLocal = LooksLikeLocalModuleSource(strings.TrimPrefix(resolved, "git::"))
 			if mod.IsLocal {
-				absPath := filepath.Join(baseDir, strings.TrimPrefix(resolved, "file://"))
+				sourcePath := strings.TrimPrefix(resolved, "file://")
+				absPath := filepath.Clean(sourcePath)
+				if !filepath.IsAbs(sourcePath) {
+					absPath = filepath.Join(baseDir, sourcePath)
+				}
 				var err error
 				mod.AbsSource, err = fsys.Abs(absPath)
 				if err != nil {

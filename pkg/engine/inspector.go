@@ -834,6 +834,50 @@ func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.
 	}
 }
 
+func (c *Inspector) interfaceToPayloadValue(
+	ctx context.Context,
+	value interface{},
+	objects map[uintptr]ast.Value,
+) (ast.Value, error) {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		pointer := reflect.ValueOf(v).Pointer()
+		if pointer != 0 {
+			if converted, ok := objects[pointer]; ok {
+				return converted, nil
+			}
+		}
+		object := ast.NewObject()
+		if pointer != 0 {
+			objects[pointer] = object
+		}
+		for key, raw := range v {
+			converted, err := c.interfaceToPayloadValue(ctx, raw, objects)
+			if err != nil {
+				return nil, err
+			}
+			object.Insert(ast.StringTerm(key), ast.NewTerm(converted))
+		}
+		return object, nil
+	case []interface{}:
+		terms := make([]*ast.Term, 0, len(v))
+		for _, raw := range v {
+			converted, err := c.interfaceToPayloadValue(ctx, raw, objects)
+			if err != nil {
+				return nil, err
+			}
+			terms = append(terms, ast.NewTerm(converted))
+		}
+		return ast.NewArray(terms...), nil
+	default:
+		converted, err := ast.InterfaceToValue(value)
+		if err != nil {
+			return nil, err
+		}
+		return c.TransformJsonencodeInPayload(ctx, converted), nil
+	}
+}
+
 // DecodeQueryResults decodes the results into []model.Vulnerability
 func (c *Inspector) DecodeQueryResults(
 	ctx context.Context,
@@ -1069,11 +1113,11 @@ func (c *Inspector) buildPlatformPayloads(
 	docsByPlatform, unknownDocs, allDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
 
 	makePayload := func(ds []interface{}) (ast.Value, error) {
-		v, err := ast.InterfaceToValue(map[string]interface{}{"document": ds})
-		if err != nil {
-			return nil, err
-		}
-		return c.TransformJsonencodeInPayload(ctx, v), nil
+		return c.interfaceToPayloadValue(
+			ctx,
+			map[string]interface{}{"document": ds},
+			make(map[uintptr]ast.Value),
+		)
 	}
 
 	needFullPayload := false
@@ -1090,6 +1134,7 @@ func (c *Inspector) buildPlatformPayloads(
 	out := platformPayloads{
 		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
 	}
+	fullPayloadBuilt := false
 	for key := range neededPlatforms {
 		ds := docsByPlatform[key]
 		if len(unknownDocs) > 0 {
@@ -1103,9 +1148,16 @@ func (c *Inspector) buildPlatformPayloads(
 			return platformPayloads{}, err
 		}
 		out.byPlatform[key] = pv
+		if needFullPayload &&
+			len(neededPlatforms) == 1 &&
+			len(unknownDocs) == 0 &&
+			len(ds) == len(allDocs) {
+			out.full = pv
+			fullPayloadBuilt = true
+		}
 	}
 
-	if needFullPayload {
+	if needFullPayload && !fullPayloadBuilt {
 		pv, err := makePayload(allDocs)
 		if err != nil {
 			return platformPayloads{}, err

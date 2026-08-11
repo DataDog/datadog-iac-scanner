@@ -84,6 +84,28 @@ module "local_bucket" {
 	}
 }
 
+func TestParseTerraformModules_AbsoluteLocalModule(t *testing.T) {
+	rootDir := t.TempDir()
+	moduleDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`resource "test" "example" {}`), 0o600))
+	mainTF := `module "local" { source = "` + filepath.ToSlash(moduleDir) + `" }`
+	files := model.FileMetadatas{
+		&model.FileMetadata{
+			FilePath:          filepath.Join(rootDir, "main.tf"),
+			OriginalData:      mainTF,
+			LinesOriginalData: &[]string{mainTF},
+		},
+	}
+
+	modules, err := ParseTerraformModules(context.Background(), nil, files, 0)
+
+	require.NoError(t, err)
+	require.Len(t, modules, 1)
+	for _, module := range modules {
+		require.Equal(t, filepath.Clean(moduleDir), module.AbsSource)
+	}
+}
+
 // TestParseTerraformModules_CanceledContext guards the cancellation contract:
 // a canceled scan must surface ctx.Err() rather than silently return partial
 // module data. HCL parse workers skip individual failures, so without an

@@ -113,6 +113,13 @@ func (e *Evaluator) SetRemoteResolver(r RemoteResolver) {
 	e.remoteResolver = r
 }
 
+func (e *Evaluator) ReleaseCaches() {
+	e.parseMu.Lock()
+	e.cache = nil
+	e.dirCache = nil
+	e.parseMu.Unlock()
+}
+
 // EvaluateModule evaluates the module rooted at dir with the given inputs and
 // returns all resources materialized by this module and its nested modules.
 // visitedChildDirs contains every child directory that was successfully evaluated

@@ -380,6 +380,60 @@ func Test_partitionDocsByPlatform(t *testing.T) {
 	require.Len(t, byPlatform["cloudformation"], 1)
 }
 
+func TestInterfaceToPayloadValueMatchesExistingTransformation(t *testing.T) {
+	shared := map[string]interface{}{"name": "example", "encoded": `jsonencode({foo = "bar"})`}
+	input := map[string]interface{}{
+		"document": []interface{}{
+			map[string]interface{}{
+				"id":       "one",
+				"resource": shared,
+				"_refs":    map[string]interface{}{"resource": shared},
+			},
+		},
+	}
+	inspector := &Inspector{}
+
+	raw, err := ast.InterfaceToValue(input)
+	require.NoError(t, err)
+	want := inspector.TransformJsonencodeInPayload(context.Background(), raw)
+	got, err := inspector.interfaceToPayloadValue(
+		context.Background(),
+		input,
+		make(map[uintptr]ast.Value),
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, want.String(), got.String())
+}
+
+func TestBuildPlatformPayloadsReusesEquivalentFullPayload(t *testing.T) {
+	filesMap := map[string]*model.FileMetadata{
+		"terraform-id": {ID: "terraform-id", Platform: "terraform"},
+	}
+	documents := []model.Document{
+		{"id": "terraform-id", "resource": map[string]interface{}{"test": map[string]interface{}{}}},
+	}
+	queries := []model.QueryMetadata{
+		{Platform: "terraform"},
+		{Platform: "common"},
+	}
+
+	payloads, err := (&Inspector{}).buildPlatformPayloads(
+		context.Background(),
+		filesMap,
+		documents,
+		nil,
+		queries,
+	)
+
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		reflect.ValueOf(payloads.full).Pointer(),
+		reflect.ValueOf(payloads.byPlatform["terraform"]).Pointer(),
+	)
+}
+
 func TestEngine_selectPlatformPayload(t *testing.T) {
 	full := ast.String("FULL")
 	byPlatform := map[string]ast.Value{
