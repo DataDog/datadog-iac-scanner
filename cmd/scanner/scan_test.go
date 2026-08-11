@@ -28,6 +28,17 @@ func TestGetRepositoryCommitInfoWithRefStorage(t *testing.T) {
 	runTestGit(t, repoDir, "add", "main.tf")
 	runTestGit(t, repoDir, "commit", "-m", "initial commit")
 	wantSHA := runTestGit(t, repoDir, "rev-parse", "HEAD")
+	for _, name := range []string{
+		"GIT_DIR",
+		"GIT_WORK_TREE",
+		"GIT_COMMON_DIR",
+		"GIT_INDEX_FILE",
+		"GIT_OBJECT_DIRECTORY",
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+		"GIT_NAMESPACE",
+	} {
+		t.Setenv(name, filepath.Join(t.TempDir(), "override"))
+	}
 
 	info, gotRepoDir, err := getRepositoryCommitInfo([]string{filepath.Join(repoDir, "main.tf")})
 
@@ -38,6 +49,12 @@ func TestGetRepositoryCommitInfoWithRefStorage(t *testing.T) {
 	assert.Equal(t, "https://example.com/repository.git", info.RepositoryUrl)
 	assert.Equal(t, wantSHA, info.CommitSHA)
 	assert.Equal(t, "main", info.Branch)
+}
+
+func TestTrimGitOutputTerminator(t *testing.T) {
+	assert.Equal(t, "/tmp/repo ", trimGitOutputTerminator("/tmp/repo \n"))
+	assert.Equal(t, "/tmp/repo ", trimGitOutputTerminator("/tmp/repo \r\n"))
+	assert.Equal(t, " value ", trimGitOutputTerminator(" value "))
 }
 
 func runTestGit(t *testing.T, repoDir string, args ...string) string {

@@ -564,7 +564,9 @@ func getRepositoryCommitInfoWithGit(path string) (*model.RepositoryCommitInfo, s
 func runGit(repoDir string, args ...string) (string, error) {
 	cmdArgs := append([]string{"-C", repoDir}, args...)
 	//nolint:gosec // Arguments are fixed by internal callers.
-	output, err := exec.Command("git", cmdArgs...).CombinedOutput()
+	cmd := exec.Command("git", cmdArgs...)
+	cmd.Env = gitEnvironment()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
 		if message == "" {
@@ -572,7 +574,32 @@ func runGit(repoDir string, args ...string) (string, error) {
 		}
 		return "", fmt.Errorf("%s: %w", message, err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	return trimGitOutputTerminator(string(output)), nil
+}
+
+func trimGitOutputTerminator(output string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(output, "\n"), "\r")
+}
+
+func gitEnvironment() []string {
+	env := os.Environ()
+	cleanEnv := env[:0]
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		switch strings.ToUpper(name) {
+		case "GIT_DIR",
+			"GIT_WORK_TREE",
+			"GIT_COMMON_DIR",
+			"GIT_INDEX_FILE",
+			"GIT_OBJECT_DIRECTORY",
+			"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+			"GIT_NAMESPACE":
+			continue
+		default:
+			cleanEnv = append(cleanEnv, entry)
+		}
+	}
+	return cleanEnv
 }
 
 // openRepo opens a Git repo, recursing up the directory tree if needed
