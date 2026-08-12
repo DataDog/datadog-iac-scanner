@@ -59,6 +59,14 @@ func (c *LocalFileClient) GetDefaultRulesetWithTests(_ context.Context) (*Rulese
 	return c.ruleset, nil
 }
 
+func (c *LocalFileClient) GetCustomRuleset(_ context.Context) (*Ruleset, error) {
+	return &Ruleset{ID: CustomRulesetName, Name: CustomRulesetName}, nil
+}
+
+func (c *LocalFileClient) GetCustomRulesetWithTests(_ context.Context) (*Ruleset, error) {
+	return &Ruleset{ID: CustomRulesetName, Name: CustomRulesetName}, nil
+}
+
 // GetRemoteConfig returns localConfig unchanged. The bundle's config.yaml
 // (written by `fetch-bundle`) already carries the fully-merged result, so
 // callers using LocalFileClient are expected to load that file directly with

@@ -88,6 +88,8 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 			w.Header().Add("content-type", "application/json")
 			_, err = w.Write(body)
 			require.NoError(t, err)
+		case "/api/v2/static-analysis/iac/rulesets/custom-ruleset":
+			http.NotFound(w, r)
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL)
 			http.NotFound(w, r)

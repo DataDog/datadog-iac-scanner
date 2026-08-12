@@ -100,10 +100,15 @@ var testRulesAction = &cli.Command{
 
 func runTestRules(ctx context.Context, c *cli.Command) error {
 	client := datadog.NewDatadogClient()
-	ruleset, err := client.GetDefaultRulesetWithTests(ctx)
+	defaultRuleset, err := client.GetDefaultRulesetWithTests(ctx)
 	if err != nil {
-		return fmt.Errorf("fetching rules with tests: %w", err)
+		return fmt.Errorf("fetching default rules with tests: %w", err)
 	}
+	customRuleset, err := client.GetCustomRulesetWithTests(ctx)
+	if err != nil {
+		return fmt.Errorf("fetching custom rules with tests: %w", err)
+	}
+	ruleset := datadog.MergeRulesets(defaultRuleset, customRuleset)
 
 	libSource, err := source.NewDatadogSource(client)
 	if err != nil {

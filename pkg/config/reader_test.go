@@ -333,6 +333,14 @@ func (f *fakeDatadogClient) GetDefaultRulesetWithTests(ctx context.Context) (*da
 	panic("unimplemented")
 }
 
+func (f *fakeDatadogClient) GetCustomRuleset(_ context.Context) (*datadog.Ruleset, error) {
+	return &datadog.Ruleset{ID: datadog.CustomRulesetName, Name: datadog.CustomRulesetName}, nil
+}
+
+func (f *fakeDatadogClient) GetCustomRulesetWithTests(_ context.Context) (*datadog.Ruleset, error) {
+	panic("unimplemented")
+}
+
 func (f *fakeDatadogClient) GetRemoteConfig(_ context.Context, repoUrl string, localConfig []byte) ([]byte, error) {
 	assert.Equal(f.t, f.expectedRepoUrl, repoUrl)
 	assert.Equal(f.t, string(f.expectedSentConfig), string(localConfig))

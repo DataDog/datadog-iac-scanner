@@ -73,9 +73,13 @@ type DatadogSource struct {
 func (s *DatadogSource) GetQueries(ctx context.Context, querySelection *QueryInspectorParameters) ([]model.QueryMetadata, error) {
 	defaultRuleset, err := s.client.GetDefaultRuleset(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving rules from Datadog: %w", err)
+		return nil, fmt.Errorf("error retrieving default rules from Datadog: %w", err)
 	}
-	return s.filterRules(defaultRuleset, querySelection)
+	customRuleset, err := s.client.GetCustomRuleset(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving custom rules from Datadog: %w", err)
+	}
+	return s.filterRules(datadog.MergeRulesets(defaultRuleset, customRuleset), querySelection)
 }
 
 func (s *DatadogSource) loadLibraries(ctx context.Context) (map[string]RegoLibraries, error) {
