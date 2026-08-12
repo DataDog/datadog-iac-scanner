@@ -28,6 +28,10 @@ func TestGetRepositoryCommitInfoWithRefStorage(t *testing.T) {
 	runTestGit(t, repoDir, "add", "main.tf")
 	runTestGit(t, repoDir, "commit", "-m", "initial commit")
 	wantSHA := runTestGit(t, repoDir, "rev-parse", "HEAD")
+	runTestGit(t, repoDir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runTestGit(t, repoDir, "update-ref", "refs/remotes/origin/second", "HEAD")
+	runTestGit(t, repoDir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	runTestGit(t, repoDir, "checkout", "--detach", "HEAD")
 	for _, name := range []string{
 		"GIT_DIR",
 		"GIT_WORK_TREE",
@@ -48,13 +52,19 @@ func TestGetRepositoryCommitInfoWithRefStorage(t *testing.T) {
 	assert.Equal(t, resolvedRepoDir, gotRepoDir)
 	assert.Equal(t, "https://example.com/repository.git", info.RepositoryUrl)
 	assert.Equal(t, wantSHA, info.CommitSHA)
-	assert.Equal(t, "main", info.Branch)
+	assert.Equal(t, "origin/main", info.Branch)
 }
 
 func TestTrimGitOutputTerminator(t *testing.T) {
 	assert.Equal(t, "/tmp/repo ", trimGitOutputTerminator("/tmp/repo \n"))
 	assert.Equal(t, "/tmp/repo ", trimGitOutputTerminator("/tmp/repo \r\n"))
 	assert.Equal(t, " value ", trimGitOutputTerminator(" value "))
+}
+
+func TestFirstRemoteBranch(t *testing.T) {
+	refs := "origin\x00refs/remotes/origin/main\r\norigin/main\x00\r\norigin/second\x00"
+	assert.Equal(t, "origin/main", firstRemoteBranch(refs))
+	assert.Empty(t, firstRemoteBranch("origin\x00refs/remotes/origin/main"))
 }
 
 func runTestGit(t *testing.T, repoDir string, args ...string) string {

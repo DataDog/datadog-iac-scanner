@@ -545,13 +545,11 @@ func getRepositoryCommitInfoWithGit(path string) (*model.RepositoryCommitInfo, s
 
 	branch, err := runGit(repoDir, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
-		branch, err = runGit(repoDir, "for-each-ref", "--format=%(refname:short)", "--points-at", "HEAD", "refs/remotes")
+		refs, err := runGit(repoDir, "for-each-ref", "--format=%(refname:short)%00%(symref)", "--points-at", "HEAD", "refs/remotes")
 		if err != nil {
 			return nil, "", fmt.Errorf("error retrieving reference list: %w", err)
 		}
-		if index := strings.IndexByte(branch, '\n'); index >= 0 {
-			branch = branch[:index]
-		}
+		branch = firstRemoteBranch(refs)
 	}
 
 	return &model.RepositoryCommitInfo{
@@ -559,6 +557,17 @@ func getRepositoryCommitInfoWithGit(path string) (*model.RepositoryCommitInfo, s
 		CommitSHA:     sha,
 		Branch:        branch,
 	}, repoDir, nil
+}
+
+func firstRemoteBranch(refs string) string {
+	for _, line := range strings.Split(refs, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		name, symref, found := strings.Cut(line, "\x00")
+		if found && name != "" && symref == "" {
+			return name
+		}
+	}
+	return ""
 }
 
 func runGit(repoDir string, args ...string) (string, error) {
