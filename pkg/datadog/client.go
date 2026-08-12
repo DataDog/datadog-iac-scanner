@@ -7,9 +7,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/jsonapi"
+)
+
+const (
+	DefaultRulesetName = "default-ruleset"
+	CustomRulesetName  = "custom-ruleset"
 )
 
 type Client interface {
@@ -17,6 +23,13 @@ type Client interface {
 	GetDefaultRuleset(ctx context.Context) (*Ruleset, error)
 	// GetDefaultRulesetWithTests returns the default ruleset with per-rule test fixtures included.
 	GetDefaultRulesetWithTests(ctx context.Context) (*Ruleset, error)
+	// GetCustomRuleset returns the org's published custom IaC ruleset.
+	// When the org has no custom rules, the feature is disabled, or the caller
+	// lacks org-scoped auth, the backend returns 404 and this method returns an
+	// empty ruleset without error.
+	GetCustomRuleset(ctx context.Context) (*Ruleset, error)
+	// GetCustomRulesetWithTests returns the org's custom ruleset with test fixtures included.
+	GetCustomRulesetWithTests(ctx context.Context) (*Ruleset, error)
 	// GetRemoteConfig applies server-side changes to the local configuration.
 	GetRemoteConfig(ctx context.Context, repoUrl string, localConfig []byte) ([]byte, error)
 	// GetLibraries returns all Rego library modules from the backend, keyed by module name.
@@ -143,21 +156,50 @@ type datadogClient struct {
 
 // GetDefaultRuleset returns the content of the default ruleset.
 func (s *datadogClient) GetDefaultRuleset(ctx context.Context) (*Ruleset, error) {
-	return s.fetchDefaultRuleset(ctx, false)
+	return s.fetchRuleset(ctx, DefaultRulesetName, false)
 }
 
 // GetDefaultRulesetWithTests returns the default ruleset with per-rule test fixtures included.
 func (s *datadogClient) GetDefaultRulesetWithTests(ctx context.Context) (*Ruleset, error) {
-	return s.fetchDefaultRuleset(ctx, true)
+	return s.fetchRuleset(ctx, DefaultRulesetName, true)
 }
 
-func (s *datadogClient) fetchDefaultRuleset(ctx context.Context, includeTests bool) (*Ruleset, error) {
-	path := fmt.Sprintf("iac/rulesets/default-ruleset?include_tests=%t&include_testing_rules=true", includeTests)
+// GetCustomRuleset returns the org's published custom IaC ruleset.
+func (s *datadogClient) GetCustomRuleset(ctx context.Context) (*Ruleset, error) {
+	return s.fetchRuleset(ctx, CustomRulesetName, false)
+}
+
+// GetCustomRulesetWithTests returns the org's custom ruleset with test fixtures included.
+func (s *datadogClient) GetCustomRulesetWithTests(ctx context.Context) (*Ruleset, error) {
+	return s.fetchRuleset(ctx, CustomRulesetName, true)
+}
+
+// MergeRulesets appends custom rules onto a copy of the default ruleset.
+func MergeRulesets(defaultRuleset, customRuleset *Ruleset) *Ruleset {
+	if customRuleset == nil || len(customRuleset.Rules) == 0 {
+		return defaultRuleset
+	}
+	if defaultRuleset == nil {
+		return customRuleset
+	}
+	merged := *defaultRuleset
+	merged.Rules = append(slices.Clone(defaultRuleset.Rules), customRuleset.Rules...)
+	return &merged
+}
+
+func (s *datadogClient) fetchRuleset(ctx context.Context, rulesetName string, includeTests bool) (*Ruleset, error) {
+	path := fmt.Sprintf("iac/rulesets/%s?include_tests=%t&include_testing_rules=true", rulesetName, includeTests)
 	response, err := s.sendRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close() // nolint:errcheck
+	if response.StatusCode == http.StatusNotFound && rulesetName == CustomRulesetName {
+		return &Ruleset{
+			ID:   CustomRulesetName,
+			Name: CustomRulesetName,
+		}, nil
+	}
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("the Datadog API returned status %d", response.StatusCode)
 	}

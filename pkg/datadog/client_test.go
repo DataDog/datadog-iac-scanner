@@ -11,6 +11,67 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetCustomRuleset_NotFoundReturnsEmpty(t *testing.T) {
+	clearDatadogEnv(t)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/v2/static-analysis/iac/rulesets/custom-ruleset", r.URL.Path)
+		http.NotFound(w, r)
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(handler))
+	t.Cleanup(server.Close)
+
+	client := NewDatadogClient(
+		WithHostname(server.Listener.Addr().String()),
+		WithHttpClient(server.Client()),
+		WithJwtToken("my-jwt-token"),
+	)
+	ruleset, err := client.GetCustomRuleset(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, CustomRulesetName, ruleset.ID)
+	assert.Empty(t, ruleset.Rules)
+}
+
+func TestGetCustomRuleset(t *testing.T) {
+	customRules := []*Rule{
+		{
+			ID:               "custom-dockerfile-untagged-from",
+			Name:             "custom-dockerfile-untagged-from",
+			ShortDescription: "Untagged FROM image",
+			Description:      "Dockerfile uses an untagged base image",
+			Platform:         "Dockerfile",
+			Type:             "rego",
+			RegoQuery:        []byte("package datadog"),
+			Severity:         "HIGH",
+			Category:         "Best Practices",
+			IsPublished:      true,
+		},
+	}
+
+	client := getDatadogClient(t, nil, customRules, "", nil)
+	ruleset, err := client.GetCustomRuleset(t.Context())
+	assert.NoError(t, err)
+	assert.Equal(t, customRules, ruleset.Rules)
+}
+
+func TestMergeRulesets(t *testing.T) {
+	defaultRule := &Rule{ID: "default-rule", Name: "default-rule", IsPublished: true}
+	customRule := &Rule{ID: "custom-rule", Name: "custom-rule", IsPublished: true}
+
+	merged := MergeRulesets(
+		&Ruleset{ID: DefaultRulesetName, Rules: []*Rule{defaultRule}},
+		&Ruleset{ID: CustomRulesetName, Rules: []*Rule{customRule}},
+	)
+	require.Len(t, merged.Rules, 2)
+	assert.Equal(t, "default-rule", merged.Rules[0].ID)
+	assert.Equal(t, "custom-rule", merged.Rules[1].ID)
+
+	assert.Equal(t,
+		&Ruleset{ID: DefaultRulesetName, Rules: []*Rule{defaultRule}},
+		MergeRulesets(&Ruleset{ID: DefaultRulesetName, Rules: []*Rule{defaultRule}}, &Ruleset{ID: CustomRulesetName}),
+	)
+}
+
 func TestGetDefaultRuleset(t *testing.T) {
 	rules := []*Rule{
 		{
@@ -47,7 +108,7 @@ func TestGetDefaultRuleset(t *testing.T) {
 		},
 	}
 
-	client := getDatadogClient(t, rules, "", nil)
+	client := getDatadogClient(t, rules, nil, "", nil)
 	ruleset, err := client.GetDefaultRuleset(t.Context())
 	assert.NoError(t, err)
 	assert.Equal(t, rules, ruleset.Rules)
@@ -56,7 +117,7 @@ func TestGetDefaultRuleset(t *testing.T) {
 func TestGetRemoteConfig(t *testing.T) {
 	repoUrl := "https://example.com/repo"
 	remoteConfig := "this is the configuration"
-	client := getDatadogClient(t, nil, repoUrl, []byte(remoteConfig))
+	client := getDatadogClient(t, nil, nil, repoUrl, []byte(remoteConfig))
 	actual, err := client.GetRemoteConfig(t.Context(), repoUrl, []byte{})
 	assert.NoError(t, err)
 	assert.Equal(t, remoteConfig, string(actual))
@@ -234,23 +295,36 @@ func TestGetRemoteConfig_HostnameWithHttpScheme(t *testing.T) {
 	assert.Equal(t, remoteConfig, string(actual))
 }
 
-func getDatadogClient(t *testing.T, rules []*Rule, repoUrl string, config []byte) Client {
+func getDatadogClient(t *testing.T, defaultRules, customRules []*Rule, repoUrl string, config []byte) Client {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "my-api-key", r.Header.Get("dd-api-key"))
 		assert.Equal(t, "my-app-key", r.Header.Get("dd-application-key"))
-		if r.URL.Path == "/api/v2/static-analysis/iac/rulesets/default-ruleset" {
+		switch r.URL.Path {
+		case "/api/v2/static-analysis/iac/rulesets/default-ruleset":
 			assert.Equal(t, http.MethodGet, r.Method)
 			ruleset := Ruleset{
-				ID:    "default-ruleset",
-				Name:  "default-ruleset",
-				Rules: rules,
+				ID:    DefaultRulesetName,
+				Name:  DefaultRulesetName,
+				Rules: defaultRules,
 			}
 			body, err := jsonapi.Marshal(ruleset)
 			require.NoError(t, err)
 			w.Header().Add("content-type", "application/json")
 			_, err = w.Write(body)
 			require.NoError(t, err)
-		} else if r.URL.Path == "/api/v2/static-analysis/config/client" {
+		case "/api/v2/static-analysis/iac/rulesets/custom-ruleset":
+			assert.Equal(t, http.MethodGet, r.Method)
+			ruleset := Ruleset{
+				ID:    CustomRulesetName,
+				Name:  CustomRulesetName,
+				Rules: customRules,
+			}
+			body, err := jsonapi.Marshal(ruleset)
+			require.NoError(t, err)
+			w.Header().Add("content-type", "application/json")
+			_, err = w.Write(body)
+			require.NoError(t, err)
+		case "/api/v2/static-analysis/config/client":
 			assert.Equal(t, http.MethodPost, r.Method)
 			defer r.Body.Close()
 			var request remoteConfigRequest
@@ -266,10 +340,9 @@ func getDatadogClient(t *testing.T, rules []*Rule, repoUrl string, config []byte
 			w.Header().Add("content-type", "application/json")
 			_, err = w.Write(body)
 			require.NoError(t, err)
-		} else {
+		default:
 			assert.Failf(t, "Unexpected request: %s %s", r.Method, r.URL)
 			http.NotFoundHandler().ServeHTTP(w, r)
-			return
 		}
 	}
 	server := httptest.NewTLSServer(http.HandlerFunc(handler))

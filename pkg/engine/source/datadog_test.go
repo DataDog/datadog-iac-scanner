@@ -513,6 +513,46 @@ var queries = []model.QueryMetadata{
 	},
 }
 
+func TestGetQueriesMergesCustomRules(t *testing.T) {
+	source, err := NewDatadogSource(&fakeDatadogClient{
+		rules: []*datadog.Rule{
+			{
+				ID:               "default-rule",
+				Name:             "default-rule",
+				ShortDescription: "default",
+				Description:      "default",
+				Platform:         "Dockerfile",
+				Type:             "rego",
+				RegoQuery:        []byte("package datadog"),
+				Severity:         "HIGH",
+				Category:         "Best Practices",
+				IsPublished:      true,
+			},
+		},
+		customRules: []*datadog.Rule{
+			{
+				ID:               "custom-dockerfile-rule",
+				Name:             "custom-dockerfile-rule",
+				ShortDescription: "custom",
+				Description:      "custom",
+				Platform:         "Dockerfile",
+				Type:             "rego",
+				RegoQuery:        []byte("package datadog"),
+				Severity:         "HIGH",
+				Category:         "Best Practices",
+				IsPublished:      true,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	queries, err := source.GetQueries(t.Context(), &QueryInspectorParameters{})
+	require.NoError(t, err)
+	require.Len(t, queries, 2)
+	assert.Equal(t, "default-rule", queries[0].Metadata["id"])
+	assert.Equal(t, "custom-dockerfile-rule", queries[1].Metadata["id"])
+}
+
 func getDatadogSource(t *testing.T, rules []*datadog.Rule, options ...DatadogSourceOption) QueriesSource {
 	client := &fakeDatadogClient{rules: rules}
 	source, err := NewDatadogSource(client, options...)
@@ -593,8 +633,9 @@ func (s stubLibrarySource) GetQueryLibrary(_ context.Context, platform string) (
 }
 
 type fakeDatadogClient struct {
-	rules     []*datadog.Rule
-	libraries map[string]datadog.Library
+	rules       []*datadog.Rule
+	customRules []*datadog.Rule
+	libraries   map[string]datadog.Library
 }
 
 func (f fakeDatadogClient) GetDefaultRuleset(ctx context.Context) (*datadog.Ruleset, error) {
@@ -607,6 +648,21 @@ func (f fakeDatadogClient) GetDefaultRuleset(ctx context.Context) (*datadog.Rule
 }
 
 func (f fakeDatadogClient) GetDefaultRulesetWithTests(ctx context.Context) (*datadog.Ruleset, error) {
+	panic("unimplemented")
+}
+
+func (f fakeDatadogClient) GetCustomRuleset(_ context.Context) (*datadog.Ruleset, error) {
+	if len(f.customRules) == 0 {
+		return &datadog.Ruleset{ID: datadog.CustomRulesetName, Name: datadog.CustomRulesetName}, nil
+	}
+	return &datadog.Ruleset{
+		ID:    datadog.CustomRulesetName,
+		Name:  datadog.CustomRulesetName,
+		Rules: f.customRules,
+	}, nil
+}
+
+func (f fakeDatadogClient) GetCustomRulesetWithTests(_ context.Context) (*datadog.Ruleset, error) {
 	panic("unimplemented")
 }
 

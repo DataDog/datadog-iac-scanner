@@ -32,7 +32,7 @@ type bundleManifest struct {
 
 var fetchBundleAction = &cli.Command{
 	Name: "fetch-bundle",
-	Usage: "Fetches the default ruleset, Rego libraries, and merged remote " +
+	Usage: "Fetches the default and custom rulesets, Rego libraries, and merged remote " +
 		"configuration for a repository and writes them to local files, for " +
 		"later use with `scan --offline-bundle-path` in a network-isolated environment",
 	Flags: []cli.Flag{
@@ -78,10 +78,15 @@ func fetchBundle(ctx context.Context, c *cli.Command) error {
 		return errorWithExitCode(fmt.Errorf("error writing the configuration bundle: %w", err), constants.EngineErrorCode)
 	}
 
-	ruleset, err := client.GetDefaultRuleset(ctx)
+	defaultRuleset, err := client.GetDefaultRuleset(ctx)
 	if err != nil {
 		return errorWithExitCode(fmt.Errorf("error fetching the default ruleset: %w", err), constants.EngineErrorCode)
 	}
+	customRuleset, err := client.GetCustomRuleset(ctx)
+	if err != nil {
+		return errorWithExitCode(fmt.Errorf("error fetching the custom ruleset: %w", err), constants.EngineErrorCode)
+	}
+	ruleset := datadog.MergeRulesets(defaultRuleset, customRuleset)
 	rulesetBytes, err := json.Marshal(ruleset)
 	if err != nil {
 		return errorWithExitCode(fmt.Errorf("error marshaling the default ruleset: %w", err), constants.EngineErrorCode)
