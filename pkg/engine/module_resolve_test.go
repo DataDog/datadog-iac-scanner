@@ -15,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/rs/zerolog"
 )
 
@@ -645,6 +646,92 @@ func TestInstantiatedModuleResourceCountIncludesDeduplicatedCallers(t *testing.T
 
 	if got := instantiatedModuleResourceCount(&res); got != 5 {
 		t.Fatalf("instantiatedModuleResourceCount() = %d, want 5", got)
+	}
+}
+
+func TestCalledModuleDirsFromDocuments_LocalModule(t *testing.T) {
+	root := t.TempDir()
+	modDir := filepath.Join(root, "modules", "bucket")
+	rootFile := filepath.Join(root, "stack", "main.tf")
+
+	dirs, ok := calledModuleDirsFromDocuments(model.FileMetadatas{
+		{
+			ID:       "root-id",
+			FilePath: rootFile,
+			Document: model.Document{
+				"module": map[string]interface{}{
+					"bucket": map[string]interface{}{
+						"source": "../modules/bucket",
+					},
+				},
+			},
+		},
+	}, root, nil)
+	if !ok {
+		t.Fatal("expected document-based discovery")
+	}
+	want := filepath.Clean(modDir)
+	if len(dirs) != 1 || dirs[0] != want {
+		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
+	}
+}
+
+func TestDiscoverCalledModuleDirs_UsesParsedDocument(t *testing.T) {
+	root := t.TempDir()
+	modDir := filepath.Join(root, "modules", "bucket")
+	rootFile := filepath.Join(root, "stack", "main.tf")
+
+	evaluator := tfeval.New()
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+
+	dirs := discoverCalledModuleDirs(ctx, evaluator, model.FileMetadatas{
+		{
+			ID:       "root-id",
+			FilePath: rootFile,
+			Document: model.Document{
+				"module": map[string]interface{}{
+					"bucket": map[string]interface{}{
+						"source": "../modules/bucket",
+					},
+				},
+			},
+		},
+	}, root, nil, filepath.Join(root, "stack"))
+
+	want := filepath.Clean(modDir)
+	if len(dirs) != 1 || dirs[0] != want {
+		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
+	}
+	if strings.Contains(logs.String(), "falling back") {
+		t.Fatalf("did not expect fallback log, got %q", logs.String())
+	}
+}
+
+func TestDiscoverCalledModuleDirs_FallsBackWhenDocumentEmpty(t *testing.T) {
+	root := t.TempDir()
+	modDir := filepath.Join(root, "modules", "bucket")
+	writeFile(t, modDir, "main.tf", `resource "test" "x" {}`)
+	rootFile := writeFile(t, filepath.Join(root, "stack"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+}
+`)
+
+	evaluator := tfeval.New()
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+
+	dirs := discoverCalledModuleDirs(ctx, evaluator, model.FileMetadatas{
+		fileMeta("root-id", rootFile),
+	}, root, nil, filepath.Dir(rootFile))
+
+	want := filepath.Clean(modDir)
+	if len(dirs) != 1 || dirs[0] != want {
+		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
+	}
+	if !strings.Contains(logs.String(), "falling back to directory parse") {
+		t.Fatalf("expected fallback debug log, got %q", logs.String())
 	}
 }
 

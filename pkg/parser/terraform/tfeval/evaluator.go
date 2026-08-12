@@ -114,9 +114,9 @@ func (e *Evaluator) SetRemoteResolver(r RemoteResolver) {
 }
 
 func (e *Evaluator) ReleaseCaches() {
+	e.cache = make(map[evalCacheKey]*evalCacheEntry)
 	e.parseMu.Lock()
-	e.cache = nil
-	e.dirCache = nil
+	e.dirCache = make(map[string]dirParse)
 	e.parseMu.Unlock()
 }
 

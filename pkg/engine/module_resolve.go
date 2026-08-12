@@ -213,7 +213,7 @@ func resolveModuleDocuments(
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
 	staticCalledDirs := make(map[string]bool)
 	for dir := range dirsWithTf {
-		calledDirs := discoverCalledModuleDirs(evaluator, filesByDir[dir], repoPath, resolver, dir)
+		calledDirs := discoverCalledModuleDirs(ctx, evaluator, filesByDir[dir], repoPath, resolver, dir)
 		for _, called := range calledDirs {
 			staticCalledDirs[called] = true
 		}
@@ -464,6 +464,7 @@ func stripModuleCalls(doc model.Document, filePath, repoPath string, calledDirs 
 }
 
 func discoverCalledModuleDirs(
+	ctx context.Context,
 	evaluator *tfeval.Evaluator,
 	files []*model.FileMetadata,
 	repoPath string,
@@ -474,6 +475,10 @@ func discoverCalledModuleDirs(
 	if ok {
 		return calledDirs
 	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Debug().Str("dir", dir).Msg(
+		"module resolve: falling back to directory parse for called module discovery",
+	)
 	return evaluator.CalledModuleDirs(dir)
 }
 
