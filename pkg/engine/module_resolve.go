@@ -80,7 +80,11 @@ func (c *Inspector) instantiateLocalModules(
 			// drop only those to avoid double-counting; keep the rest of the body
 			// (variable/output/data/locals) so those rules still fire.
 			delete(f.Document, "resource")
-			delete(f.LineInfoDocument, "resource")
+			if err := f.EnsureLineInfoDocument(ctx); err != nil {
+				contextLogger.Err(err).Msgf("failed to build line-info document for file %s", f.FilePath)
+			} else {
+				delete(f.LineInfoDocument, "resource")
+			}
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
@@ -411,14 +415,20 @@ func buildRefsMap(self *tfeval.ResolvedResource, allInCall []moduleRefEntry) map
 
 // newInstanceFileMetadata clones fm for a synthetic doc (empty Document so Combine skips it).
 func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *model.FileMetadata {
-	clone := *fm
+	clone := fm.Clone()
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
 	if fm.LineInfoDocument != nil {
+		// Already materialized: shallow-clone so later mutations on the
+		// parent (e.g. deleting a suppressed "resource" key) don't alias
+		// into this synthetic instance's copy.
 		clone.LineInfoDocument = maps.Clone(fm.LineInfoDocument)
+		clone.LineInfoLoader = nil
 	}
-	return &clone
+	// Otherwise not yet materialized: the clone keeps fm's LineInfoLoader
+	// (copied by Clone) and lazily reconstructs its own copy on demand.
+	return clone
 }
 
 // callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).

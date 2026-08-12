@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -136,10 +137,20 @@ type CommentsCommands map[string]string
 
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
-	ID                string `db:"id"`
-	ScanID            string `db:"scan_id"`
-	Document          Document
-	LineInfoDocument  map[string]interface{}
+	ID               string `db:"id"`
+	ScanID           string `db:"scan_id"`
+	Document         Document
+	LineInfoDocument map[string]interface{}
+	// LineInfoLoader, when set, lazily reconstructs LineInfoDocument (a
+	// second full copy of the parsed document tree, kept intact with
+	// _dd_lines markers purely to resolve a confirmed finding's source line)
+	// on first access via EnsureLineInfoDocument, instead of every file
+	// paying for it eagerly. Only a small fraction of scanned files ever
+	// have a finding, so most never need it. nil means LineInfoDocument is
+	// already populated (or intentionally left unset).
+	LineInfoLoader    func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
+	lineInfoOnce      sync.Once
+	lineInfoErr       error
 	OriginalData      string   `db:"orig_data"`
 	Kind              FileKind `db:"kind"`
 	FilePath          string   `db:"file_path"`
@@ -156,6 +167,52 @@ type FileMetadata struct {
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
 	Platform string
+}
+
+// Clone returns a shallow copy of f. FileMetadata carries a sync.Once (for
+// EnsureLineInfoDocument's memoization), so a plain `x := *f` struct-literal
+// copy would duplicate its current state (and trips go vet's copylocks
+// check); Clone instead copies field-by-field and gives the result its own,
+// independent, not-yet-fired memoization state.
+func (f *FileMetadata) Clone() *FileMetadata {
+	return &FileMetadata{
+		ID:                f.ID,
+		ScanID:            f.ScanID,
+		Document:          f.Document,
+		LineInfoDocument:  f.LineInfoDocument,
+		LineInfoLoader:    f.LineInfoLoader,
+		OriginalData:      f.OriginalData,
+		Kind:              f.Kind,
+		FilePath:          f.FilePath,
+		HelmID:            f.HelmID,
+		IDInfo:            f.IDInfo,
+		Commands:          f.Commands,
+		LinesIgnore:       f.LinesIgnore,
+		ResolvedFiles:     f.ResolvedFiles,
+		LinesOriginalData: f.LinesOriginalData,
+		IsMinified:        f.IsMinified,
+		ModuleCallChain:   f.ModuleCallChain,
+		Platform:          f.Platform,
+	}
+}
+
+// EnsureLineInfoDocument lazily materializes LineInfoDocument via
+// LineInfoLoader on first access, memoizing the result (or error) so repeat
+// calls are cheap. Safe for concurrent callers. No-op if LineInfoLoader is
+// nil, i.e. LineInfoDocument is already populated (or intentionally unset).
+func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
+	if f.LineInfoLoader == nil {
+		return nil
+	}
+	f.lineInfoOnce.Do(func() {
+		doc, err := f.LineInfoLoader(ctx, f)
+		if err != nil {
+			f.lineInfoErr = err
+			return
+		}
+		f.LineInfoDocument = doc
+	})
+	return f.lineInfoErr
 }
 
 // QueryMetadata is a representation of general information about a query
@@ -316,6 +373,10 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 			continue
 		}
 		if lineInfo {
+			if err := f.EnsureLineInfoDocument(ctx); err != nil {
+				contextLogger.Err(err).Msgf("failed to build line-info document for file %s", f.FilePath)
+				continue
+			}
 			f.LineInfoDocument["id"] = f.ID
 			f.LineInfoDocument["file"] = f.FilePath
 			documents.Documents = append(documents.Documents, f.LineInfoDocument)

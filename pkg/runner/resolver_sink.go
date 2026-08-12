@@ -115,10 +115,15 @@ func (s *Service) storeResolvedFiles(
 			}
 
 			file := model.FileMetadata{
-				ID:                uuid.New().String(),
-				ScanID:            scanID,
-				Document:          PrepareScanDocument(ctx, document, kind),
-				OriginalData:      originalData,
+				ID:           uuid.New().String(),
+				ScanID:       scanID,
+				Document:     PrepareScanDocument(ctx, document, kind),
+				OriginalData: originalData,
+				// Not lazily loaded here (unlike sink.go): OriginalData is the
+				// unrendered Helm/OpenAPI source, but parsing (and thus a
+				// reconstructed LineInfoDocument) needs rfile.Content, the
+				// resolved/rendered text. Keeping it eager avoids the risk of
+				// silently re-parsing the wrong content.
 				LineInfoDocument:  document,
 				Kind:              kind,
 				FilePath:          rfile.FileName,
