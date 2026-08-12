@@ -47,6 +47,11 @@ build: generate
 	@CGO_ENABLED=1 go build -mod=mod -o ${TARGET_BIN} -ldflags "-X ${CONSTANTS_PATH}.SCMCommit=${COMMIT} -X ${CONSTANTS_PATH}.Version=${VERSION} -X ${CONSTANTS_PATH}.BaseURL=${DESCRIPTIONS_URL}" \
 		github.com/DataDog/datadog-iac-scanner/cmd/scanner
 
+.PHONY: playground
+playground: ## run local custom Rego rule editor playground
+	$(call print-target)
+	@go run -mod=mod ./cmd/custom-playground
+
 
 .PHONY: go-clean
 go-clean: ## Go clean build, test and modules caches

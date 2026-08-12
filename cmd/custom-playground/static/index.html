@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom Rego Playground</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1117;
+      --panel: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #388bfd;
+      --danger: #f85149;
+      --success: #3fb950;
+      --warning: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    header h1 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+    }
+    header p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .panes {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 0;
+    }
+    .pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      border-right: 1px solid var(--border);
+    }
+    .pane:last-child { border-right: none; }
+    .pane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    .pane-title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .pane-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .pill.success { color: var(--success); border-color: #238636; }
+    .pill.danger { color: var(--danger); border-color: #da3633; }
+    .pill.progress { color: var(--accent); border-color: #1f6feb; }
+    .pill.warning { color: var(--warning); border-color: #9e6a03; }
+    button {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .editor {
+      flex: 1;
+      min-height: 0;
+    }
+    .error-list {
+      max-height: 120px;
+      overflow: auto;
+      border-top: 1px solid var(--border);
+      background: #0d1117;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+    }
+    .error-item {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .error-item:hover { background: #161b22; }
+    .error-item .loc { color: var(--muted); }
+    footer {
+      padding: 6px 12px;
+      font-size: 11px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Custom Rego Playground</h1>
+    <p>Local validate/evaluate — same logic as the IaC rule editor</p>
+    <label for="platform">Platform</label>
+    <select id="platform"></select>
+  </header>
+
+  <div class="panes">
+    <section class="pane">
+      <div class="pane-header">
+        <span class="pane-title">Rego policy</span>
+        <div class="pane-actions">
+          <span id="syntax-pill" class="pill">Idle</span>
+          <button type="button" id="reset-rego">Reset</button>
+        </div>
+      </div>
+      <div id="rego-editor" class="editor"></div>
+      <div id="rego-errors" class="error-list"></div>
+    </section>
+
+    <section class="pane">
+      <div class="pane-header">
+        <span class="pane-title">Test your policy</span>
+        <div class="pane-actions">
+          <span id="run-pill" class="pill">Not run</span>
+          <button type="button" id="reset-sample">Reset</button>
+          <button type="button" id="run-btn" class="primary">Run</button>
+        </div>
+      </div>
+      <div id="sample-editor" class="editor"></div>
+      <div id="sample-errors" class="error-list"></div>
+    </section>
+  </div>
+
+  <footer>
+    Requires <code>DD_API_KEY</code> and <code>DD_APP_KEY</code> on the server process to load Rego libraries.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
