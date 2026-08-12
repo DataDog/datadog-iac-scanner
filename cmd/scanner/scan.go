@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -460,15 +461,18 @@ func getRepositoryCommitInfo(repoPaths []string) (*model.RepositoryCommitInfo, s
 	}
 	repo, repoDir, err := openRepo(commonDir)
 	if err != nil {
+		if isUnsupportedRefStorage(err) {
+			return getRepositoryCommitInfoWithGit(commonDir)
+		}
 		return nil, "", fmt.Errorf("error opening the repository: %w", err)
 	}
 
 	remote, err := repo.Remote("origin")
 	if err != nil {
-		return nil, "", fmt.Errorf("error retrieving remote `origin`: %w", err)
+		return getRepositoryCommitInfoWithGit(commonDir)
 	}
 	if len(remote.Config().URLs) == 0 {
-		return nil, "", errors.New("the repository doesn't have a configured remote")
+		return getRepositoryCommitInfoWithGit(commonDir)
 	}
 	out := &model.RepositoryCommitInfo{}
 	out.RepositoryUrl = remote.Config().URLs[0]
@@ -509,6 +513,102 @@ func getRepositoryCommitInfo(repoPaths []string) (*model.RepositoryCommitInfo, s
 	}
 
 	return out, repoDir, nil
+}
+
+func isUnsupportedRefStorage(err error) bool {
+	return errors.Is(err, git.ErrUnsupportedExtensionRepositoryFormatVersion) &&
+		strings.Contains(strings.ToLower(err.Error()), "refstorage")
+}
+
+func getRepositoryCommitInfoWithGit(path string) (*model.RepositoryCommitInfo, string, error) {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return nil, "", err
+	}
+	if !stat.IsDir() {
+		path = filepath.Dir(path)
+	}
+
+	repoDir, err := runGit(path, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return nil, "", fmt.Errorf("error determining repository root: %w", err)
+	}
+	repoDir = filepath.Clean(filepath.FromSlash(repoDir))
+	remoteURL, err := runGit(repoDir, "remote", "get-url", "origin")
+	if err != nil {
+		return nil, "", fmt.Errorf("error retrieving remote `origin`: %w", err)
+	}
+	sha, err := runGit(repoDir, "rev-parse", "HEAD")
+	if err != nil {
+		return nil, "", fmt.Errorf("error retrieving HEAD ref: %w", err)
+	}
+
+	branch, err := runGit(repoDir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		refs, err := runGit(repoDir, "for-each-ref", "--format=%(refname:short)%00%(symref)", "--points-at", "HEAD", "refs/remotes")
+		if err != nil {
+			return nil, "", fmt.Errorf("error retrieving reference list: %w", err)
+		}
+		branch = firstRemoteBranch(refs)
+	}
+
+	return &model.RepositoryCommitInfo{
+		RepositoryUrl: remoteURL,
+		CommitSHA:     sha,
+		Branch:        branch,
+	}, repoDir, nil
+}
+
+func firstRemoteBranch(refs string) string {
+	for _, line := range strings.Split(refs, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		name, symref, found := strings.Cut(line, "\x00")
+		if found && name != "" && symref == "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func runGit(repoDir string, args ...string) (string, error) {
+	cmdArgs := append([]string{"-C", repoDir}, args...)
+	//nolint:gosec // Arguments are fixed by internal callers.
+	cmd := exec.Command("git", cmdArgs...)
+	cmd.Env = gitEnvironment()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			return "", err
+		}
+		return "", fmt.Errorf("%s: %w", message, err)
+	}
+	return trimGitOutputTerminator(string(output)), nil
+}
+
+func trimGitOutputTerminator(output string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(output, "\n"), "\r")
+}
+
+func gitEnvironment() []string {
+	env := os.Environ()
+	cleanEnv := env[:0]
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		switch strings.ToUpper(name) {
+		case "GIT_DIR",
+			"GIT_WORK_TREE",
+			"GIT_COMMON_DIR",
+			"GIT_INDEX_FILE",
+			"GIT_OBJECT_DIRECTORY",
+			"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+			"GIT_NAMESPACE":
+			continue
+		default:
+			cleanEnv = append(cleanEnv, entry)
+		}
+	}
+	return cleanEnv
 }
 
 // openRepo opens a Git repo, recursing up the directory tree if needed

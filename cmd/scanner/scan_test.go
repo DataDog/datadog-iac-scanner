@@ -2,14 +2,78 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	"github.com/stretchr/testify/assert"
-	cli "github.com/urfave/cli/v3"
 	"github.com/stretchr/testify/require"
+	cli "github.com/urfave/cli/v3"
 )
+
+func TestGetRepositoryCommitInfoWithRefStorage(t *testing.T) {
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	initCommand := exec.Command("git", "init", "--ref-format=reftable", "--initial-branch=main", repoDir)
+	if output, err := initCommand.CombinedOutput(); err != nil {
+		t.Skipf("Git does not support reftable: %s", strings.TrimSpace(string(output)))
+	}
+
+	runTestGit(t, repoDir, "config", "user.name", "Test User")
+	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runTestGit(t, repoDir, "config", "commit.gpgsign", "false")
+	runTestGit(t, repoDir, "remote", "add", "origin", "https://example.com/repository.git")
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "main.tf"), []byte("resource \"test\" \"example\" {}\n"), 0o600))
+	runTestGit(t, repoDir, "add", "main.tf")
+	runTestGit(t, repoDir, "commit", "-m", "initial commit")
+	wantSHA := runTestGit(t, repoDir, "rev-parse", "HEAD")
+	runTestGit(t, repoDir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runTestGit(t, repoDir, "update-ref", "refs/remotes/origin/second", "HEAD")
+	runTestGit(t, repoDir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	runTestGit(t, repoDir, "checkout", "--detach", "HEAD")
+	for _, name := range []string{
+		"GIT_DIR",
+		"GIT_WORK_TREE",
+		"GIT_COMMON_DIR",
+		"GIT_INDEX_FILE",
+		"GIT_OBJECT_DIRECTORY",
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+		"GIT_NAMESPACE",
+	} {
+		t.Setenv(name, filepath.Join(t.TempDir(), "override"))
+	}
+
+	info, gotRepoDir, err := getRepositoryCommitInfo([]string{filepath.Join(repoDir, "main.tf")})
+
+	require.NoError(t, err)
+	resolvedRepoDir, err := filepath.EvalSymlinks(repoDir)
+	require.NoError(t, err)
+	assert.Equal(t, resolvedRepoDir, gotRepoDir)
+	assert.Equal(t, "https://example.com/repository.git", info.RepositoryUrl)
+	assert.Equal(t, wantSHA, info.CommitSHA)
+	assert.Equal(t, "origin/main", info.Branch)
+}
+
+func TestTrimGitOutputTerminator(t *testing.T) {
+	assert.Equal(t, "/tmp/repo ", trimGitOutputTerminator("/tmp/repo \n"))
+	assert.Equal(t, "/tmp/repo ", trimGitOutputTerminator("/tmp/repo \r\n"))
+	assert.Equal(t, " value ", trimGitOutputTerminator(" value "))
+}
+
+func TestFirstRemoteBranch(t *testing.T) {
+	refs := "origin\x00refs/remotes/origin/main\r\norigin/main\x00\r\norigin/second\x00"
+	assert.Equal(t, "origin/main", firstRemoteBranch(refs))
+	assert.Empty(t, firstRemoteBranch("origin\x00refs/remotes/origin/main"))
+}
+
+func runTestGit(t *testing.T, repoDir string, args ...string) string {
+	t.Helper()
+	cmdArgs := append([]string{"-C", repoDir}, args...)
+	output, err := exec.Command("git", cmdArgs...).CombinedOutput()
+	require.NoError(t, err, strings.TrimSpace(string(output)))
+	return strings.TrimSpace(string(output))
+}
 
 func TestApplyPlatformFilters(t *testing.T) {
 	all := []string{"Ansible", "CICD", "CloudFormation", "Dockerfile", "Kubernetes", "Terraform"}
