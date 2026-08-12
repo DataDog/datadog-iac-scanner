@@ -99,6 +99,10 @@ func (s *Service) storeResolvedFiles(
 		}
 
 		fileCommands := s.Parser.CommentsCommands(ctx, rfile.FileName, rfile.OriginalData)
+		originalData := string(rfile.OriginalData)
+		// Computed once per rendered file and shared (same pointer) across every
+		// document's FileMetadata below; see the equivalent comment in sink.go.
+		linesOriginalData := utils.SplitLines(originalData)
 
 		for _, document := range documents.Docs {
 			_, err = json.Marshal(document)
@@ -114,7 +118,7 @@ func (s *Service) storeResolvedFiles(
 				ID:                uuid.New().String(),
 				ScanID:            scanID,
 				Document:          PrepareScanDocument(ctx, document, kind),
-				OriginalData:      string(rfile.OriginalData),
+				OriginalData:      originalData,
 				LineInfoDocument:  document,
 				Kind:              kind,
 				FilePath:          rfile.FileName,
@@ -123,7 +127,7 @@ func (s *Service) storeResolvedFiles(
 				IDInfo:            rfile.IDInfo,
 				LinesIgnore:       documents.IgnoreLines,
 				ResolvedFiles:     documents.ResolvedFiles,
-				LinesOriginalData: utils.SplitLines(string(rfile.OriginalData)),
+				LinesOriginalData: linesOriginalData,
 				IsMinified:        documents.IsMinified,
 				Platform:          s.classifyPlatform(ctx, kind, rfile.FileName, rfile.Content),
 			}

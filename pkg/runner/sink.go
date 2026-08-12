@@ -78,6 +78,14 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 
 	fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
 
+	// Computed once per file and shared (same pointer) across every document's
+	// FileMetadata below: documents.Content is identical for every document of
+	// a file, so splitting it inside the loop re-split (and separately
+	// retained) the whole file once per document — a multi-document YAML file
+	// (e.g. "---"-separated Kubernetes manifests) with N documents paid N
+	// times the memory and CPU for the exact same line slice.
+	linesOriginalData := utils.SplitLines(documents.Content)
+
 	for _, document := range documents.Docs {
 		// Deep-copy + sanitize the document with a single marshal. A marshal
 		// failure means the document can't be scanned, so skip it (preserving
@@ -103,7 +111,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 			Commands:          fileCommands,
 			LinesIgnore:       documents.IgnoreLines,
 			ResolvedFiles:     documents.ResolvedFiles,
-			LinesOriginalData: utils.SplitLines(documents.Content),
+			LinesOriginalData: linesOriginalData,
 			IsMinified:        documents.IsMinified,
 			Platform:          s.classifyPlatform(ctx, documents.Kind, filename, *content),
 		}
