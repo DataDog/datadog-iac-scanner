@@ -413,6 +413,9 @@ func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (
 			continue
 		}
 		docs, _ := p.Parse(ctx, cleanPath, content, true, false, defaultRuleTestMaxResolverDepth)
+		// Computed once per file and shared across every document's
+		// FileMetadata below; docs.Content is identical for every document.
+		linesOriginalData := scanUtils.SplitLines(docs.Content)
 		for _, doc := range docs.Docs {
 			files = append(files, &model.FileMetadata{
 				ID:                uuid.NewString(),
@@ -423,7 +426,7 @@ func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (
 				Kind:              docs.Kind,
 				FilePath:          cleanPath,
 				ResolvedFiles:     docs.ResolvedFiles,
-				LinesOriginalData: scanUtils.SplitLines(docs.Content),
+				LinesOriginalData: linesOriginalData,
 			})
 		}
 	}
