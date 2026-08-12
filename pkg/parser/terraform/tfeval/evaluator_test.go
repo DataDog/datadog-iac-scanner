@@ -1229,3 +1229,39 @@ resource "aws_s3_bucket" "this" {
 		t.Fatalf("versioning[0].enabled = %#v, want true", enabled)
 	}
 }
+
+func TestReleaseCachesAllowsReuse(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+variable "name" { type = string }
+resource "aws_s3_bucket" "this" {
+  bucket = var.name
+}
+`,
+	})
+
+	e := New()
+	resources1, _, _, err := e.EvaluateModule(context.Background(), dir, map[string]cty.Value{
+		"name": cty.StringVal("first"),
+	})
+	if err != nil {
+		t.Fatalf("first EvaluateModule: %v", err)
+	}
+	if len(resources1) != 1 {
+		t.Fatalf("first eval: got %d resources, want 1", len(resources1))
+	}
+
+	e.ReleaseCaches()
+
+	resources2, _, _, err := e.EvaluateModule(context.Background(), dir, map[string]cty.Value{
+		"name": cty.StringVal("second"),
+	})
+	if err != nil {
+		t.Fatalf("second EvaluateModule after ReleaseCaches: %v", err)
+	}
+	if len(resources2) != 1 {
+		t.Fatalf("second eval: got %d resources, want 1", len(resources2))
+	}
+	requireString(t, resources2[0].Attributes, "bucket", "second")
+}

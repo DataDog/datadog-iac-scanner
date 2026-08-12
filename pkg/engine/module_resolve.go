@@ -213,7 +213,8 @@ func resolveModuleDocuments(
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
 	staticCalledDirs := make(map[string]bool)
 	for dir := range dirsWithTf {
-		for _, called := range evaluator.CalledModuleDirs(dir) {
+		calledDirs := discoverCalledModuleDirs(ctx, evaluator, filesByDir[dir], repoPath, resolver, dir)
+		for _, called := range calledDirs {
 			staticCalledDirs[called] = true
 		}
 	}
@@ -244,6 +245,7 @@ func resolveModuleDocuments(
 		extra = append(extra, docs...)
 		syntheticFiles = append(syntheticFiles, syn...)
 	}
+	evaluator.ReleaseCaches()
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement.
@@ -307,6 +309,10 @@ func instantiatedDocs(
 			attrs:     tfeval.AttributesToDocument(r),
 		})
 	}
+	callContentKeys := make(map[string]string, len(cckRefs))
+	for cck, refs := range cckRefs {
+		callContentKeys[cck] = moduleCallRefsKey(refs)
+	}
 
 	// Pass 2: emit one doc per instance.
 	for i := range resources {
@@ -324,7 +330,7 @@ func instantiatedDocs(
 		docID := fm.ID + "\x00" + cck + "\x00" + r.Name
 
 		// Identical resolved attributes dedupe to one OPA doc; extras get cloned findings after OPA.
-		contentKey := moduleCallContentKey(r, cckRefs[cck], repoPath)
+		contentKey := moduleCallContentKey(r, callContentKeys[cck], repoPath)
 		if primaryDocID, dup := seen[contentKey]; dup {
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{callChain: cck, docID: docID})
 			continue
@@ -351,8 +357,7 @@ func instantiatedDocs(
 	return docs, synthetic
 }
 
-// moduleCallContentKey hashes the resource and every resolved resource in its module call.
-func moduleCallContentKey(self *tfeval.ResolvedResource, allInCall []moduleRefEntry, repoPath string) string {
+func moduleCallRefsKey(allInCall []moduleRefEntry) string {
 	type row struct{ typ, name, definedIn, defLine, attrKey string }
 	rows := make([]row, 0, len(allInCall))
 	for _, e := range allInCall {
@@ -373,14 +378,18 @@ func moduleCallContentKey(self *tfeval.ResolvedResource, allInCall []moduleRefEn
 		}
 		return false
 	})
-	parts := []string{
-		self.ModuleAddress, self.Type, self.Name,
-		absPath(self.DefinedIn, repoPath), strconv.Itoa(self.DefLine),
-	}
+	var parts []string
 	for _, r := range rows {
 		parts = append(parts, r.typ, r.name, r.definedIn, r.defLine, r.attrKey)
 	}
 	return strings.Join(parts, "\x00")
+}
+
+func moduleCallContentKey(self *tfeval.ResolvedResource, refsKey, repoPath string) string {
+	return strings.Join([]string{
+		self.ModuleAddress, self.Type, self.Name,
+		absPath(self.DefinedIn, repoPath), strconv.Itoa(self.DefLine), refsKey,
+	}, "\x00")
 }
 
 // buildRefsMap returns sibling resources in the same module call (for walk-based rules).
@@ -443,14 +452,7 @@ func stripModuleCalls(doc model.Document, filePath, repoPath string, calledDirs 
 			continue
 		}
 		version, _ := call["version"].(string)
-		cleanSource := tfeval.StripGetterPrefix(source)
-
-		var resolvedDir string
-		if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
-			resolvedDir = filepath.Clean(filepath.Join(fileDir, cleanSource))
-		} else if resolver != nil {
-			resolvedDir, _ = resolver(source, version, filePath, name)
-		}
+		resolvedDir, _ := resolveModuleTargetDir(fileDir, source, version, filePath, name, resolver)
 
 		if resolvedDir != "" && calledDirs[resolvedDir] {
 			delete(modules, name)
@@ -459,6 +461,69 @@ func stripModuleCalls(doc model.Document, filePath, repoPath string, calledDirs 
 	if len(modules) == 0 {
 		delete(doc, "module")
 	}
+}
+
+func discoverCalledModuleDirs(
+	ctx context.Context,
+	evaluator *tfeval.Evaluator,
+	files []*model.FileMetadata,
+	repoPath string,
+	resolver tfeval.RemoteResolver,
+	dir string,
+) []string {
+	calledDirs, ok := calledModuleDirsFromDocuments(files, repoPath, resolver)
+	if ok {
+		return calledDirs
+	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Debug().Str("dir", dir).Msg(
+		"module resolve: falling back to directory parse for called module discovery",
+	)
+	return evaluator.CalledModuleDirs(dir)
+}
+
+func calledModuleDirsFromDocuments(
+	files []*model.FileMetadata,
+	repoPath string,
+	resolver tfeval.RemoteResolver,
+) ([]string, bool) {
+	var dirs []string
+	for _, file := range files {
+		if file == nil || len(file.Document) == 0 {
+			return nil, false
+		}
+		modules := docAsMap(file.Document["module"])
+		fileDir := filepath.Dir(absPath(file.FilePath, repoPath))
+		for name, callRaw := range modules {
+			call := docAsMap(callRaw)
+			source, _ := call["source"].(string)
+			if source == "" {
+				continue
+			}
+			version, _ := call["version"].(string)
+			if dir, ok := resolveModuleTargetDir(fileDir, source, version, file.FilePath, name, resolver); ok {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+	return dirs, true
+}
+
+func resolveModuleTargetDir(
+	callerDir, source, version, callerFile, moduleName string,
+	resolver tfeval.RemoteResolver,
+) (string, bool) {
+	cleanSource := tfeval.StripGetterPrefix(source)
+	if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
+		if filepath.IsAbs(cleanSource) {
+			return filepath.Clean(cleanSource), true
+		}
+		return filepath.Clean(filepath.Join(callerDir, cleanSource)), true
+	}
+	if resolver == nil {
+		return "", false
+	}
+	return resolver(source, version, callerFile, moduleName)
 }
 
 // indexTerraformFiles builds lookup maps from a flat FileMetadatas slice.
