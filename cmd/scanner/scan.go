@@ -87,7 +87,7 @@ var scanAction = &cli.Command{
 			Name:   "x-parallelparsing",
 			Hidden: true,
 			Usage:  "(experimental, will be removed soon) parse files in parallel",
-			Value:  false,
+			Value:  true,
 		},
 		&cli.BoolFlag{
 			Name:   "x-local-module-eval",
@@ -163,17 +163,6 @@ var scanAction = &cli.Command{
 			Usage: "output report formats (valid: sarif, simple-json)",
 			Value: []string{"sarif"},
 		},
-
-		// NOTE: --x-parallelparsing flag disabled due to pre-existing race conditions
-		// in concurrent query workers (SetupLogs shared state write, docker detector
-		// shallow slice copy) that cause non-deterministic violation counts.
-		// See K9VULN-13746 for the follow-up to fix and re-enable.
-		// &cli.BoolFlag{
-		// 	Name:   "x-parallelparsing",
-		// 	Hidden: true,
-		// 	Usage:  "(experimental, will be removed soon) parse files in parallel",
-		// 	Value:  false,
-		// },
 	},
 	Action: runScan,
 }

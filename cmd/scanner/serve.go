@@ -67,7 +67,7 @@ var serveAction = &cli.Command{
 			Name:   "x-parallelparsing",
 			Hidden: true,
 			Usage:  "(experimental, will be removed soon) parse pushed files in parallel across CPUs",
-			Value:  false,
+			Value:  true,
 		},
 	},
 	Action: serve,

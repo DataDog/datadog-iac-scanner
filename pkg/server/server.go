@@ -96,8 +96,8 @@ type Config struct {
 	// cost of retained memory). Maps to the --use-rules-cache server flag.
 	UseRulesCache bool
 	// ParallelParsing fans the per-file parse across CPUs for pushed content.
-	// Measured ~26% faster wall-clock on a 950-file push; same CPU total. Maps
-	// to the experimental --x-parallelparsing server flag.
+	// Measured ~26% faster wall-clock on a 950-file push; same CPU total. Enabled
+	// by default via --x-parallelparsing; pass --x-parallelparsing=false to disable.
 	ParallelParsing bool
 	// WriteTimeout bounds how long writing a response may take, so a client that
 	// stops reading cannot hold a handler goroutine indefinitely. Zero applies
