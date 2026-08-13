@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -134,15 +135,29 @@ type ExtractedPathObject struct {
 // CommentsCommands list of commands on a file that will be parsed
 type CommentsCommands map[string]string
 
+// lineInfoState holds lazy line-info state behind a pointer so FileMetadata
+// copies stay copylocks-clean (sync.Mutex must not be struct-copied).
+type lineInfoState struct {
+	mu     sync.Mutex
+	err    error
+	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
+}
+
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
-	ID                string `db:"id"`
-	ScanID            string `db:"scan_id"`
-	Document          Document
-	LineInfoDocument  map[string]interface{}
-	OriginalData      string   `db:"orig_data"`
-	Kind              FileKind `db:"kind"`
-	FilePath          string   `db:"file_path"`
+	ID               string `db:"id"`
+	ScanID           string `db:"scan_id"`
+	Document         Document
+	LineInfoDocument map[string]interface{}
+	// lineInfo, when set, lazily reconstructs LineInfoDocument (a second full
+	// copy of the parsed document tree, kept intact with _dd_lines markers
+	// purely to resolve a confirmed finding's source line) on first access via
+	// EnsureLineInfoDocument. nil means LineInfoDocument is already populated
+	// (or intentionally left unset).
+	lineInfo          *lineInfoState `json:"-"`
+	OriginalData      string         `db:"orig_data"`
+	Kind              FileKind       `db:"kind"`
+	FilePath          string         `db:"file_path"`
 	HelmID            string
 	IDInfo            map[int]interface{}
 	Commands          CommentsCommands
@@ -156,6 +171,65 @@ type FileMetadata struct {
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
 	Platform string
+}
+
+// SetLineInfoLoader configures on-demand reconstruction of LineInfoDocument.
+func (f *FileMetadata) SetLineInfoLoader(
+	loader func(ctx context.Context, fm *FileMetadata) (map[string]interface{}, error),
+) {
+	if loader == nil {
+		f.lineInfo = nil
+		return
+	}
+	f.lineInfo = &lineInfoState{loader: loader}
+}
+
+// cloneLineInfoState returns an independent lazy state that shares loader.
+func cloneLineInfoState(src *lineInfoState) *lineInfoState {
+	if src == nil {
+		return nil
+	}
+	return &lineInfoState{loader: src.loader}
+}
+
+// ShallowCopy returns a copy of f with independent lazy line-info memoization.
+func (f *FileMetadata) ShallowCopy() *FileMetadata {
+	clone := *f
+	if f.LineInfoDocument != nil {
+		clone.lineInfo = nil
+	} else {
+		clone.lineInfo = cloneLineInfoState(f.lineInfo)
+	}
+	return &clone
+}
+
+// EnsureLineInfoDocument lazily materializes LineInfoDocument on first access,
+// memoizing the result (or error) so repeat calls are cheap. Safe for
+// concurrent callers. No-op when line info is already populated or unset.
+func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
+	st := f.lineInfo
+	if st == nil {
+		return nil
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if f.LineInfoDocument != nil {
+		return nil
+	}
+	if st.err != nil {
+		return st.err
+	}
+	if st.loader == nil {
+		return nil
+	}
+	doc, err := st.loader(ctx, f)
+	if err != nil {
+		st.err = err
+		return err
+	}
+	f.LineInfoDocument = doc
+	st.loader = nil
+	return nil
 }
 
 // QueryMetadata is a representation of general information about a query
@@ -316,6 +390,13 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 			continue
 		}
 		if lineInfo {
+			if err := f.EnsureLineInfoDocument(ctx); err != nil {
+				contextLogger.Err(err).Msgf("failed to build line-info document for file %s", f.FilePath)
+				f.Document["id"] = f.ID
+				f.Document["file"] = f.FilePath
+				documents.Documents = append(documents.Documents, f.Document)
+				continue
+			}
 			f.LineInfoDocument["id"] = f.ID
 			f.LineInfoDocument["file"] = f.FilePath
 			documents.Documents = append(documents.Documents, f.LineInfoDocument)

@@ -86,7 +86,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	// times the memory and CPU for the exact same line slice.
 	linesOriginalData := utils.SplitLines(documents.Content)
 
-	for _, document := range documents.Docs {
+	for docIdx, document := range documents.Docs {
 		// Deep-copy + sanitize the document with a single marshal. A marshal
 		// failure means the document can't be scanned, so skip it (preserving
 		// the previous skip-on-unmarshalable-document behavior).
@@ -104,7 +104,6 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 			ID:                uuid.New().String(),
 			ScanID:            scanID,
 			Document:          preparedDocument,
-			LineInfoDocument:  document,
 			OriginalData:      documents.Content,
 			Kind:              documents.Kind,
 			FilePath:          filename,
@@ -115,6 +114,8 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 			IsMinified:        documents.IsMinified,
 			Platform:          s.classifyPlatform(ctx, documents.Kind, filename, *content),
 		}
+		file.SetLineInfoLoader(newLineInfoLoader(
+			s.Parser, filename, docIdx, openAPIResolveReferences, c.IsMinified, maxResolverDepth))
 
 		s.saveToFile(ctx, &file)
 	}

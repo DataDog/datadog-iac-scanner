@@ -297,6 +297,31 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	}
 }
 
+// newLineInfoLoader builds a lazy loader that reconstructs a file's line-info
+// document by re-parsing OriginalData on demand.
+func newLineInfoLoader(
+	p *parser.Parser,
+	filename string,
+	docIdx int,
+	openAPIResolveReferences bool,
+	isMinified bool,
+	maxResolverDepth int,
+) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
+	return func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
+		reparsed, err := p.Parse(
+			ctx, filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)
+		}
+		if docIdx >= len(reparsed.Docs) {
+			return nil, errors.Errorf(
+				"reparse of %s for line info produced %d documents, expected index %d",
+				filename, len(reparsed.Docs), docIdx)
+		}
+		return reparsed.Docs[docIdx], nil
+	}
+}
+
 // PrepareScanDocument removes _dd_lines from payload and parses json filters.
 // On a marshal failure it logs and returns the original body unchanged.
 func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind model.FileKind) map[string]interface{} {
