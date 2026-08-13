@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,7 +42,10 @@ build_search_line(keys, obj) := keys
 		}, nil
 	case "k8s", "kubernetes":
 		return source.RegoLibraries{
-			LibraryCode:      "package generic.k8s\nimport rego.v1\n",
+			LibraryCode: `package generic.k8s
+import rego.v1
+is_privileged(container) := container.securityContext.privileged
+`,
 			LibraryInputData: "{}",
 		}, nil
 	default:
@@ -51,14 +55,13 @@ build_search_line(keys, obj) := keys
 
 func testLibSource() source.QueriesSource { return &stubLibSource{} }
 
-// validTerraformRego is a minimal DatadogPolicy rule that passes all validation phases.
-const validTerraformRego = `
-package datadog
+// validTerraformRego is a minimal DatadogPolicy rule that passes every phase.
+const validTerraformRego = `package datadog
 
-import data.generic.common as common_lib
 import data.generic.terraform as tf_lib
 
 DatadogPolicy contains result if {
+	some i, name
 	resource := input.document[i].resource.aws_s3_bucket[name]
 	resource.acl == "public-read"
 	result := {
@@ -66,12 +69,18 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_s3_bucket",
 		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
-		"searchLine": common_lib.build_search_line(["resource", "aws_s3_bucket", name, "acl"], []),
 	}
 }
 `
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+func validate(t *testing.T, platform, rego string) []RegoValidationError {
+	t.Helper()
+	errs, err := ValidateCustomRegoQuery(context.Background(), platform, rego, testLibSource())
+	require.NoError(t, err)
+	return errs
+}
 
 func errorCodes(errs []RegoValidationError) map[string]bool {
 	m := make(map[string]bool, len(errs))
@@ -79,14 +88,6 @@ func errorCodes(errs []RegoValidationError) map[string]bool {
 		m[e.Code] = true
 	}
 	return m
-}
-
-func errorLines(errs []RegoValidationError) []int {
-	lines := make([]int, 0, len(errs))
-	for _, e := range errs {
-		lines = append(lines, e.StartLine)
-	}
-	return lines
 }
 
 func firstWithCode(errs []RegoValidationError, code string) (RegoValidationError, bool) {
@@ -98,7 +99,15 @@ func firstWithCode(errs []RegoValidationError, code string) (RegoValidationError
 	return RegoValidationError{}, false
 }
 
-// ── unit tests ────────────────────────────────────────────────────────────────
+func allCodes(errs []RegoValidationError) []string {
+	out := make([]string, 0, len(errs))
+	for _, e := range errs {
+		out = append(out, e.Code)
+	}
+	return out
+}
+
+// ── platform mapping ──────────────────────────────────────────────────────────
 
 func TestPlatformTempFileName_CoversAllSupportedPlatforms(t *testing.T) {
 	expected := map[string]string{
@@ -118,397 +127,599 @@ func TestPlatformTempFileName_CoversAllSupportedPlatforms(t *testing.T) {
 	}
 }
 
-func TestPlatformTempFileName_ARMNotSpecialCased(t *testing.T) {
-	// ARM is not part of platforms.Supported; custom rules for it are rejected at the
-	// CLI layer (validatePlatform), so this exercises the defensive default fallback.
-	assert.Equal(t, scanTargetJSON, platformTempFileName("azureresourcemanager"))
+// ── happy path ────────────────────────────────────────────────────────────────
+
+func TestValidate_ValidRuleProducesNoDiagnostics(t *testing.T) {
+	errs := validate(t, "terraform", validTerraformRego)
+	assert.Empty(t, allCodes(errs), "a contract-compliant rule must produce no diagnostics")
 }
 
-// ── parse phase ───────────────────────────────────────────────────────────────
-
-func TestValidateCustomRegoQuery_Valid(t *testing.T) {
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", validTerraformRego, testLibSource())
-	require.NoError(t, err)
-	assert.Empty(t, errs, "valid rule should produce no errors")
-}
-
-func TestValidateCustomRegoQuery_MissingPackage(t *testing.T) {
-	rego := strings.TrimPrefix(strings.Replace(validTerraformRego, "package datadog\n\n", "", 1), "\n")
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-	assert.Equal(t, codeMissingPackage, errs[0].Code)
-	assert.Contains(t, errs[0].Message, "package datadog")
-	assert.Equal(t, 1, errs[0].StartLine)
-}
-
-func TestValidateCustomRegoQuery_MissingPackageRecovery(t *testing.T) {
-	// Missing package + a missing result field: both should be reported thanks to
-	// the recovery path that prepends "package datadog" and re-runs static checks.
-	rego := strings.TrimPrefix(strings.Replace(validTerraformRego, "package datadog\n\n", "", 1), "\n")
-	rego = strings.Replace(rego, `"resourceType": "aws_s3_bucket",`+"\n", "", 1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-
-	codes := errorCodes(errs)
-	assert.True(t, codes[codeMissingPackage], "missing package must be reported")
-	assert.True(t, codes["missing_result_field"], "static checks must still run after recovery")
-}
-
-func TestValidateCustomRegoQuery_MissingIf(t *testing.T) {
-	rego := strings.Replace(validTerraformRego, "DatadogPolicy contains result if {", "DatadogPolicy contains result {", 1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs, "missing 'if' should produce a parse error")
-
-	e := errs[0]
-	assert.Equal(t, "rego_parse_error", e.Code)
-	assert.Greater(t, e.StartLine, 0)
-}
-
-func TestValidateCustomRegoQuery_MissingInputRoot(t *testing.T) {
-	rego := strings.Replace(validTerraformRego,
-		"input.document[i].resource.aws_s3_bucket[name]",
-		".document[i].resource.aws_s3_bucket[name]",
-		1,
-	)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-
-	assert.Equal(t, "rego_parse_error", errs[0].Code)
-	assert.Equal(t, "expected `input` before `.document`", errs[0].Message)
-	assert.Equal(t, 8, errs[0].StartLine)
-	assert.Equal(t, 14, errs[0].StartCol)
-}
-
-func TestValidateCustomRegoQuery_MissingComma(t *testing.T) {
-	rego := strings.Replace(validTerraformRego,
-		`"documentId": input.document[i].id,`,
-		`"documentId": input.document[i].id`,
-		1,
-	)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-	assert.Contains(t, errs[0].Message, `expected ',' after field "documentId"`)
-	assert.Equal(t, 11, errs[0].StartLine)
-}
-
-func TestValidateCustomRegoQuery_MissingCommaAfterMiddleField(t *testing.T) {
-	rego := strings.Replace(validTerraformRego,
-		`"resourceType": "aws_s3_bucket",`,
-		`"resourceType": "aws_s3_bucket"`,
-		1,
-	)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-	assert.Contains(t, errs[0].Message, `expected ',' after field "resourceType"`)
-	assert.Equal(t, 12, errs[0].StartLine)
-}
-
-func TestValidateCustomRegoQuery_TwoMissingCommas(t *testing.T) {
-	rego := validTerraformRego
-	rego = strings.Replace(rego, `"documentId": input.document[i].id,`, `"documentId": input.document[i].id`, 1)
-	rego = strings.Replace(rego, `"resourceType": "aws_s3_bucket",`, `"resourceType": "aws_s3_bucket"`, 1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(errs), 2, "all missing commas should be reported in one pass")
-	assert.Contains(t, errorLines(errs), 11)
-	assert.Contains(t, errorLines(errs), 12)
-}
-
-func TestValidateCustomRegoQuery_MissingClosingParen(t *testing.T) {
-	rego := strings.Replace(validTerraformRego,
-		`sprintf("aws_s3_bucket[%s].acl", [name]),`,
-		`sprintf("aws_s3_bucket[%s].acl", [name],`,
-		1,
-	)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-	assert.Equal(t, "rego_parse_error", errs[0].Code)
-	assert.Contains(t, errs[0].Message, ")")
-	assert.Equal(t, 14, errs[0].StartLine)
-}
-
-func TestValidateCustomRegoQuery_UnbalancedBrace(t *testing.T) {
-	rego := validTerraformRego[:strings.LastIndex(validTerraformRego, "}")]
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs, "removing closing brace should produce a parse error")
-
-	e := errs[0]
-	assert.Equal(t, "rego_parse_error", e.Code)
-	assert.Contains(t, e.Message, "unclosed")
-	assert.Greater(t, e.StartLine, 0)
-}
-
-func TestValidateCustomRegoQuery_ExtraClosingBrace(t *testing.T) {
-	rego := validTerraformRego + "}\n"
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-
-	e := errs[0]
-	assert.Equal(t, "rego_parse_error", e.Code)
-	assert.Contains(t, e.Message, "unexpected `}`")
-	assert.Greater(t, e.StartLine, 0)
-}
-
-// ── static checks ─────────────────────────────────────────────────────────────
-
-func TestValidateCustomRegoQuery_WrongPackage(t *testing.T) {
-	rego := strings.Replace(validTerraformRego, "package datadog", "package mycompany", 1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-
-	e, ok := firstWithCode(errs, "invalid_package")
-	require.True(t, ok, "invalid_package must be present")
-	assert.Greater(t, e.StartLine, 0, "must carry a line number")
-	assert.Greater(t, e.StartCol, 0, "must carry a column number")
-}
-
-func TestValidateCustomRegoQuery_WrongRuleName(t *testing.T) {
-	rego := strings.Replace(validTerraformRego, "DatadogPolicy", "MyPolicy", -1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-
-	e, ok := firstWithCode(errs, "missing_rule")
-	require.True(t, ok, "missing_rule must be present")
-	assert.Greater(t, e.StartLine, 0, "must point to the misnamed rule")
-	assert.Contains(t, e.Message, "The scanner evaluates")
-}
-
-func TestValidateCustomRegoQuery_SprintfArityMismatch(t *testing.T) {
-	rego := strings.Replace(validTerraformRego,
-		`sprintf("aws_s3_bucket[%s].acl", [name])`,
-		`sprintf("aws_s3_bucket[%s].acl=%s", [name])`,
-		1,
-	)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-
-	e, ok := firstWithCode(errs, "sprintf_arity")
-	require.True(t, ok, "sprintf_arity must be reported")
-	assert.Contains(t, e.Message, "zero Findings")
-	assert.Greater(t, e.StartLine, 0)
-}
-
-func TestValidateCustomRegoQuery_MissingResultField(t *testing.T) {
-	rego := strings.Replace(validTerraformRego,
-		`"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),`+"\n",
-		"",
-		1,
-	)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-
-	e, ok := firstWithCode(errs, "missing_result_field")
-	require.True(t, ok)
-	assert.Contains(t, e.Message, "searchKey")
-	assert.Contains(t, e.Message, "Findings")
-	assert.Equal(t, 10, e.StartLine)
-	assert.Equal(t, 2, e.StartCol)
-}
-
-func TestValidateCustomRegoQuery_MultipleResultFieldsMissing(t *testing.T) {
-	rego := validTerraformRego
-	rego = strings.Replace(rego, `"resourceType": "aws_s3_bucket",`+"\n", "", 1)
-	rego = strings.Replace(rego, `"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),`+"\n", "", 1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-
-	missing := make([]string, 0)
-	for _, e := range errs {
-		if e.Code == "missing_result_field" {
-			missing = append(missing, e.Message)
-		}
-	}
-	require.Len(t, missing, 2, "both missing fields should be reported")
-	assert.True(t, strings.Contains(missing[0], "resourceType") || strings.Contains(missing[1], "resourceType"))
-	assert.True(t, strings.Contains(missing[0], "resourceName") || strings.Contains(missing[1], "resourceName"))
-}
-
-func TestValidateCustomRegoQuery_MissingTfLibImport(t *testing.T) {
-	rego := strings.Replace(validTerraformRego, "import data.generic.terraform as tf_lib\n", "", 1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-
-	e, ok := firstWithCode(errs, "missing_import")
-	require.True(t, ok)
-	assert.Contains(t, e.Message, "tf_lib")
-	assert.Greater(t, e.StartLine, 0)
-	assert.Greater(t, e.StartCol, 0)
-
-	// Compile cascade should be filtered: no redundant "undefined function tf_lib." error.
-	for _, e := range errs {
-		assert.NotContains(t, e.Message, "undefined function tf_lib.")
-	}
-}
-
-func TestValidateCustomRegoQuery_MissingCommonLibImport(t *testing.T) {
-	rego := strings.Replace(validTerraformRego, "import data.generic.common as common_lib\n", "", 1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-
-	e, ok := firstWithCode(errs, "missing_import")
-	require.True(t, ok)
-	assert.Contains(t, e.Message, "common_lib")
-	assert.Greater(t, e.StartLine, 0)
-
-	for _, e := range errs {
-		assert.NotContains(t, e.Message, "undefined function common_lib.")
-	}
-}
-
-// ── OPA compilation phase ─────────────────────────────────────────────────────
-
-func TestValidateCustomRegoQuery_UndefinedLibraryFunction(t *testing.T) {
-	// Call a function that does not exist in tf_lib; OPA reports the fully-qualified
-	// path, but enrichTypeErrors should translate it back to the alias the user wrote.
-	rego := strings.Replace(validTerraformRego,
-		"tf_lib.resolve_s3_bucket_name(resource, name)",
-		"tf_lib.no_such_fn(resource, name)",
-		1,
-	)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-
-	var typeErr *RegoValidationError
-	for i := range errs {
-		if errs[i].Code == "rego_type_error" {
-			typeErr = &errs[i]
-			break
-		}
-	}
-	require.NotNil(t, typeErr, "rego_type_error must be present")
-	assert.Contains(t, typeErr.Message, "tf_lib.no_such_fn",
-		"alias form must be used, not data.generic.terraform.no_such_fn")
-	assert.NotContains(t, typeErr.Message, "data.generic.terraform")
-}
-
-func TestValidateCustomRegoQuery_MissingResourceBinding(t *testing.T) {
-	rego := strings.Replace(validTerraformRego,
-		"\tresource := input.document[i].resource.aws_s3_bucket[name]\n",
-		"",
-		1,
-	)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.NotEmpty(t, errs)
-
-	// "result is unsafe" must not surface — it is always a cascade.
-	for _, e := range errs {
-		assert.NotContains(t, e.Message, "result is unsafe")
-	}
-
-	var hasResource, hasName bool
-	for _, e := range errs {
-		if e.Code != "rego_unsafe_var_error" {
-			continue
-		}
-		if strings.Contains(e.Message, `"resource"`) {
-			hasResource = true
-			assert.Equal(t, 8, e.StartLine)
-			assert.Equal(t, 2, e.StartCol)
-			assert.Equal(t, 10, e.EndCol)
-		}
-		if strings.Contains(e.Message, `"name"`) {
-			hasName = true
-			assert.Greater(t, e.StartCol, 0)
-		}
-	}
-	assert.True(t, hasResource, "resource usage must be flagged")
-	assert.True(t, hasName, "name usage must be flagged")
-}
-
-// ── all-at-once behaviour ─────────────────────────────────────────────────────
-
-func TestValidateCustomRegoQuery_AllErrorsInOneCall(t *testing.T) {
-	rego := validTerraformRego
-	rego = strings.Replace(rego, "package datadog", "package mycompany", 1)
-	rego = strings.Replace(rego, `sprintf("aws_s3_bucket[%s].acl", [name])`, `sprintf("aws_s3_bucket[%s].acl=%s", [name])`, 1)
-
-	errs, err := ValidateCustomRegoQuery(context.Background(), "terraform", rego, testLibSource())
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(errs), 2)
-
-	codes := errorCodes(errs)
-	assert.True(t, codes["invalid_package"])
-	assert.True(t, codes["sprintf_arity"])
-}
-
-// ── platform support ──────────────────────────────────────────────────────────
-
-func TestValidateCustomRegoQuery_KubernetesPlatform(t *testing.T) {
-	// Verifies that "kubernetes" platform loads the k8s library correctly
-	// (libraryPlatform maps "kubernetes" → "k8s" to match the embedded asset).
-	const k8sRego = `
-package datadog
-
-import rego.v1
+func TestValidate_ValidKubernetesRule(t *testing.T) {
+	rego := `package datadog
 
 DatadogPolicy contains result if {
-	pod := input.document[_]
+	some i
+	doc := input.document[i]
+	doc.kind == "Pod"
 	result := {
-		"documentId":   pod.id,
+		"documentId": doc.id,
 		"resourceType": "Pod",
-		"resourceName": "pod",
-		"searchKey":    "pod",
+		"resourceName": doc.metadata.name,
+		"searchKey": "metadata.name",
 	}
 }
 `
-	errs, err := ValidateCustomRegoQuery(context.Background(), "kubernetes", k8sRego, testLibSource())
-	require.NoError(t, err, "kubernetes platform must not fail with a library-load error")
-	// Content errors are fine; what matters is no internal "unable to get libraries" error.
+	errs := validate(t, "kubernetes", rego)
+	assert.Empty(t, allCodes(errs))
+}
+
+// ── OPA parse errors pass through unchanged ───────────────────────────────────
+
+func TestValidate_ParseErrorUsesOPACode(t *testing.T) {
+	errs := validate(t, "terraform", "package datadog\n\nDatadogPolicy contains result if {\n\tresult := {\n")
+	e, ok := firstWithCode(errs, "rego_parse_error")
+	require.True(t, ok, "expected OPA parse error, got %v", errorCodes(errs))
+	assert.Positive(t, e.StartLine, "parse errors must carry a source location")
+}
+
+// A module that does not parse cannot be analyzed further, so only OPA's parse
+// diagnostics are returned rather than guesses about later phases.
+func TestValidate_ParseFailureReturnsOnlyParseErrors(t *testing.T) {
+	errs := validate(t, "terraform", "this is not rego at all {{{")
+	require.NotEmpty(t, errs)
 	for _, e := range errs {
-		assert.NotContains(t, e.Message, "unable to get libraries", "library must load correctly")
+		assert.Equal(t, "rego_parse_error", e.Code,
+			"parse failure must not synthesize non-parse diagnostics, got %q", e.Code)
 	}
 }
 
-// ── ValidateRegoStructure ─────────────────────────────────────────────────────
-
-func TestValidateRegoStructure_Valid(t *testing.T) {
-	errs := ValidateRegoStructure(validTerraformRego)
-	assert.Empty(t, errs)
+// Regression: the previous text-scanning heuristics miscounted parentheses inside
+// raw (backtick) strings and reported an unclosed call that did not exist.
+func TestValidate_BacktickStringWithParensIsNotFlagged(t *testing.T) {
+	rego := "package datadog\n\n" +
+		"DatadogPolicy contains result if {\n" +
+		"\tsome i\n" +
+		"\tregex.match(`^(a|b)$`, \"a\")\n" +
+		"\tresult := {\n" +
+		"\t\t\"documentId\": input.document[i].id,\n" +
+		"\t\t\"resourceType\": \"t\",\n" +
+		"\t\t\"resourceName\": \"n\",\n" +
+		"\t\t\"searchKey\": \"s\",\n" +
+		"\t}\n}\n"
+	errs := validate(t, "terraform", rego)
+	assert.Empty(t, allCodes(errs), "raw strings containing parens must not produce errors")
 }
 
-func TestValidateRegoStructure_WrongPackage(t *testing.T) {
-	rego := strings.Replace(validTerraformRego, "package datadog", "package mycompany", 1)
-	errs := ValidateRegoStructure(rego)
-	require.NotEmpty(t, errs)
-	assert.True(t, errorCodes(errs)["invalid_package"])
+// ── Datadog contract, enforced through embedded Regal rules ───────────────────
+
+func TestValidate_WrongPackage(t *testing.T) {
+	rego := strings.Replace(validTerraformRego, "package datadog", "package mypolicy", 1)
+	errs := validate(t, "terraform", rego)
+
+	e, ok := firstWithCode(errs, codeInvalidPackage)
+	require.True(t, ok, "expected package-name violation, got %v", errorCodes(errs))
+	assert.Contains(t, e.Message, "mypolicy")
 }
 
-func TestValidateRegoStructure_MissingPackage(t *testing.T) {
-	rego := strings.TrimPrefix(strings.Replace(validTerraformRego, "package datadog\n\n", "", 1), "\n")
-	errs := ValidateRegoStructure(rego)
-	// Returns parse errors; does not attempt recovery (unlike ValidateCustomRegoQuery).
+func TestValidate_WrongRuleName(t *testing.T) {
+	rego := strings.Replace(validTerraformRego, "DatadogPolicy contains", "MyPolicy contains", 1)
+	errs := validate(t, "terraform", rego)
+
+	_, ok := firstWithCode(errs, codeMissingRule)
+	require.True(t, ok, "expected policy-rule violation, got %v", errorCodes(errs))
+}
+
+func TestValidate_MissingResultField(t *testing.T) {
+	rego := strings.Replace(validTerraformRego, `"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),`, "", 1)
+	errs := validate(t, "terraform", rego)
+
+	e, ok := firstWithCode(errs, codeMissingResultField)
+	require.True(t, ok, "expected result-fields violation, got %v", errorCodes(errs))
+	assert.Contains(t, e.Message, "resourceName")
+}
+
+func TestValidate_ReportsEveryMissingResultField(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	result := {"documentId": input.document[i].id}
+}
+`
+	errs := validate(t, "terraform", rego)
+
+	var missing []string
+	for _, e := range errs {
+		if e.Code == codeMissingResultField {
+			missing = append(missing, e.Message)
+		}
+	}
+	require.Len(t, missing, 3, "expected one diagnostic per missing field, got %v", missing)
+	assert.Contains(t, strings.Join(missing, "|"), "resourceType")
+	assert.Contains(t, strings.Join(missing, "|"), "resourceName")
+	assert.Contains(t, strings.Join(missing, "|"), "searchKey")
+}
+
+// A wrong package name must not hide the other contract problems: all phases after
+// parsing run against the same AST, so one broken convention no longer gates the rest.
+func TestValidate_WrongPackageStillReportsFieldErrors(t *testing.T) {
+	rego := `package wrong
+
+DatadogPolicy contains result if {
+	some i
+	result := {"documentId": input.document[i].id}
+}
+`
+	errs := validate(t, "terraform", rego)
+	codes := errorCodes(errs)
+	assert.True(t, codes[codeInvalidPackage], "expected package-name violation, got %v", codes)
+	assert.True(t, codes[codeMissingResultField], "expected result-fields violations, got %v", codes)
+}
+
+// ── Author-facing message quality ─────────────────────────────────────────────
+//
+// OPA and Regal are accurate but terse. These pin the rewrites that turn their output
+// into something a rule author can act on; see rego_messages.go.
+
+// Forgetting the library import is the most common authoring mistake, and OPA can only
+// describe it as an undefined function on a path the author never wrote.
+func TestValidate_MissingLibraryImportNamesTheImportToAdd(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i, name
+	resource := input.document[i].resource.aws_s3_bucket[name]
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
+		"searchKey": "s",
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+
+	e, ok := firstWithCode(errs, codeMissingImport)
+	require.True(t, ok, "expected a missing-import diagnostic, got %v", errorCodes(errs))
+	assert.Contains(t, e.Message, "import data.generic.terraform as tf_lib")
+	assert.Positive(t, e.StartLine)
+}
+
+// The suggested import is derived from the libraries actually loaded for the platform,
+// not from a table of known aliases, so it works on any platform and echoes back
+// whatever alias the author chose.
+func TestValidate_MissingImportHintCoversAnyPlatformAndAlias(t *testing.T) {
+	for _, tc := range []struct {
+		name, platform, alias, call, wantImport string
+	}{
+		{
+			name: "platform library", platform: "k8s", alias: "whatever",
+			call: "whatever.is_privileged(c)", wantImport: "import data.generic.k8s as whatever",
+		},
+		{
+			name: "common library", platform: "terraform", alias: "cmn",
+			call: "cmn.build_search_line([], {})", wantImport: "import data.generic.common as cmn",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rego := fmt.Sprintf(`package datadog
+
+DatadogPolicy contains result if {
+	some i
+	c := input.document[i]
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "t",
+		"resourceName": %s,
+		"searchKey": "s",
+	}
+}
+`, tc.call)
+
+			errs := validate(t, tc.platform, rego)
+			e, ok := firstWithCode(errs, codeMissingImport)
+			require.True(t, ok, "expected a missing-import diagnostic, got %v", errorCodes(errs))
+			assert.Contains(t, e.Message, tc.wantImport)
+			assert.Contains(t, e.Message, tc.alias, "should echo the author's own alias")
+		})
+	}
+}
+
+// A call to something no library defines is a genuine typo, not a forgotten import.
+func TestValidate_UnknownFunctionIsNotReportedAsMissingImport(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "t",
+		"resourceName": nonsense.not_a_library_helper(1),
+		"searchKey": "s",
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+	_, ok := firstWithCode(errs, codeMissingImport)
+	assert.False(t, ok, "should not invent an import for an unknown function, got %v", errorCodes(errs))
+	assert.NotEmpty(t, errs, "but it must still be reported as an error")
+}
+
+// OPA resolves aliases before reporting, so an undefined library function comes back as
+// a fully qualified path. Authors search for what they typed.
+func TestValidate_TypeErrorsUseTheAuthorsAlias(t *testing.T) {
+	rego := strings.Replace(validTerraformRego, "resolve_s3_bucket_name", "no_such_helper", 1)
+	errs := validate(t, "terraform", rego)
+
+	e, ok := firstWithCode(errs, "rego_type_error")
+	require.True(t, ok, "expected a type error, got %v", errorCodes(errs))
+	assert.Contains(t, e.Message, "tf_lib.no_such_helper")
+	assert.NotContains(t, e.Message, "data.generic.terraform")
+}
+
+// "var x is unsafe" is Rego's vocabulary, not the author's, and OPA reports it against
+// the whole expression — which underlines the entire line in an editor.
+func TestValidate_UnsafeVarNamesTheVariableAndPointsAtIt(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": buckett.kind,
+		"resourceName": "n",
+		"searchKey": "s",
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+
+	e, ok := firstWithCode(errs, "rego_unsafe_var_error")
+	require.True(t, ok, "expected an unsafe-var diagnostic, got %v", errorCodes(errs))
+	assert.Contains(t, e.Message, `undefined variable "buckett"`)
+	assert.Equal(t, 7, e.StartLine, "should point at the variable, not the rule body")
+	assert.Greater(t, e.EndCol, e.StartCol, "should span the variable, not the whole line")
+}
+
+// "result is unsafe" is always a consequence of an earlier error in the same body;
+// reporting it doubles the diagnostics without adding information.
+func TestValidate_CascadingResultErrorIsSuppressed(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": undefined_thing,
+		"resourceName": "n",
+		"searchKey": "s",
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+
+	for _, e := range errs {
+		assert.NotContains(t, e.Message, `variable "result"`,
+			"the cascading result error should be suppressed: %+v", e)
+	}
+}
+
+func TestValidate_ParseErrorsExplainTheLikelyCause(t *testing.T) {
+	for name, tc := range map[string]struct {
+		rego       string
+		want       string
+		wantLine   int
+		wantNotCol int // column that must not be highlighted (OPA mis-fire)
+	}{
+		"unclosed brace": {
+			rego: "package datadog\n\nDatadogPolicy contains result if {\n\tresult := {\n",
+			want: "unclosed",
+		},
+		"missing separator": {
+			rego: "package datadog\n\nDatadogPolicy contains result if {\n\tresult := {\n" +
+				"\t\t\"documentId\": \"a\"\n\t\t\"searchKey\": \"b\",\n\t}\n}\n",
+			want:     "expected ',' after field \"documentId\"",
+			wantLine: 5,
+		},
+		"missing comma after resourceName": {
+			rego: strings.Replace(validTerraformRego,
+				`"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),`,
+				`"resourceName": tf_lib.resolve_s3_bucket_name(resource, name)`, 1),
+			want:       "expected ',' after field \"resourceName\"",
+			wantLine:   12,
+			wantNotCol: 17, // OPA wrongly highlights `input` on the documentId line
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			errs := validate(t, "terraform", tc.rego)
+			require.NotEmpty(t, errs)
+			assert.Contains(t, errs[0].Message, tc.want)
+			if tc.wantLine > 0 {
+				assert.Equal(t, tc.wantLine, errs[0].StartLine)
+			}
+			if tc.wantNotCol > 0 {
+				assert.NotEqual(t, tc.wantNotCol, errs[0].StartCol,
+					"should not highlight OPA's wrong token")
+			}
+		})
+	}
+}
+
+func TestValidate_ParenInsideStringDoesNotTriggerUnclosedCall(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i, name
+	result := {
+		"documentId": input.document[i].id
+		"searchKey": sprintf("prefix (%s", [name]),
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
 	require.NotEmpty(t, errs)
-	assert.True(t, errorCodes(errs)[codeMissingPackage], "must return parse error, not recover")
-	assert.False(t, errorCodes(errs)["missing_result_field"], "recovery path must not run")
+	for _, e := range errs {
+		assert.NotContains(t, e.Message, "expected ')' to close function call",
+			"paren inside a string literal must not trigger unclosed-call recovery")
+	}
+}
+
+func TestValidate_TypeErrorAliasRewritePrefersLongestPath(t *testing.T) {
+	rego := `package datadog
+
+import data.generic as generic_alias
+import data.generic.terraform as tf_alias
+
+DatadogPolicy contains result if {
+	some i
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "t",
+		"resourceName": tf_alias.no_such_helper(),
+		"searchKey": "s",
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+	e, ok := firstWithCode(errs, "rego_type_error")
+	require.True(t, ok, "got %v", errorCodes(errs))
+	assert.Contains(t, e.Message, "tf_alias.no_such_helper")
+	assert.NotContains(t, e.Message, "generic_alias.terraform")
+}
+
+// Regal detects sprintf arity mismatches but only reports "Mismatch in `sprintf`
+// arguments count"; an embedded rule replaces it with the actual counts.
+func TestValidate_SprintfArityMismatchIsReported(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i, name
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "t",
+		"resourceName": name,
+		"searchKey": sprintf("bucket[%s].%s", [name]),
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+	e, ok := firstWithCode(errs, codeSprintfArity)
+	require.True(t, ok, "expected the sprintf rule to fire, got %v", errorCodes(errs))
+	assert.Contains(t, e.Message, "2 verb(s) but 1 argument(s)")
+}
+
+// "%%" is a literal percent, not a verb.
+func TestValidate_SprintfEscapedPercentIsNotAVerb(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i, name
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "t",
+		"resourceName": name,
+		"searchKey": sprintf("100%% of bucket[%s]", [name]),
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+	_, ok := firstWithCode(errs, codeSprintfArity)
+	assert.False(t, ok, "escaped percent must not count as a verb, got %v", errorCodes(errs))
+}
+
+// Every diagnostic blocks evaluation, so Regal must only report the contract category
+// and the curated bug rules — not advisory checks like constant-condition.
+func TestValidate_OnlyCuratedRegalRulesAreReported(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	x := 1
+	x == 1
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "t",
+		"resourceName": "n",
+		"searchKey": "s",
+	}
+}
+`
+	allowed := make(map[string]bool, len(enabledRegalBugRules))
+	for _, rule := range enabledRegalBugRules {
+		allowed["bugs/"+rule] = true
+	}
+
+	for _, errs := range [][]RegoValidationError{
+		validate(t, "terraform", rego),
+		validate(t, "terraform", validTerraformRego),
+	} {
+		for _, e := range errs {
+			category, rule, isRegal := strings.Cut(e.Code, "/")
+			if !isRegal {
+				continue
+			}
+			switch category {
+			case "datadog":
+				continue
+			case "bugs":
+				assert.True(t, allowed["bugs/"+rule], "%s is not a curated bug rule", e.Code)
+			default:
+				assert.Fail(t, "unexpected Regal category %q", category)
+			}
+		}
+	}
+}
+
+// Advisory bug rules such as constant-condition must not block evaluation.
+func TestValidate_ConstantConditionDoesNotBlockEvaluation(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	1 == 1
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "t",
+		"resourceName": "n",
+		"searchKey": "s",
+	}
+}
+`
+	assert.Empty(t, allCodes(validate(t, "terraform", rego)))
+}
+
+func TestValidateRegoStructure_SkipsLibraryCompilation(t *testing.T) {
+	rego := strings.Replace(validTerraformRego, `"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),`, "", 1)
+	errs := ValidateRegoStructure(rego)
+	codes := errorCodes(errs)
+	assert.False(t, codes[codeMissingImport], "ValidateRegoStructure must not load libraries")
+	assert.True(t, codes[codeMissingResultField])
+
+	assert.Empty(t, allCodes(ValidateRegoStructure(validTerraformRego)))
+}
+
+// A rule that is merely unidiomatic must still be runnable.
+func TestValidate_UnidiomaticButWorkingRuleIsAccepted(t *testing.T) {
+	// Uses implicit output vars and bare iteration, which Regal's idiomatic and style
+	// categories both flag, but which is the established style across the rule corpus.
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	resource := input.document[i].resource.aws_s3_bucket[name]
+	resource.acl == "public-read"
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": name,
+		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
+	}
+}
+`
+	assert.Empty(t, allCodes(validate(t, "terraform", rego)))
+}
+
+// ── OPA compile phase ─────────────────────────────────────────────────────────
+
+func TestValidate_UndefinedLibraryFunctionIsReportedByOPA(t *testing.T) {
+	rego := strings.Replace(
+		validTerraformRego,
+		"tf_lib.resolve_s3_bucket_name(resource, name)",
+		"tf_lib.does_not_exist(resource, name)",
+		1,
+	)
+	errs := validate(t, "terraform", rego)
+	assert.NotEmpty(t, allCodes(errs), "an undefined library function must block evaluation")
+}
+
+func TestValidate_UnsafeBuiltinIsRejected(t *testing.T) {
+	rego := `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	resp := http.send({"method": "get", "url": "https://example.com"})
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "t",
+		"resourceName": "n",
+		"searchKey": resp.status_code,
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+	assert.NotEmpty(t, allCodes(errs), "http.send must be rejected")
+}
+
+// Any valid alias must work; the scanner does not maintain a table of known aliases.
+func TestValidate_ArbitraryImportAliasIsAccepted(t *testing.T) {
+	rego := `package datadog
+
+import data.generic.terraform as whatever_name
+
+DatadogPolicy contains result if {
+	some i, name
+	resource := input.document[i].resource.aws_s3_bucket[name]
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": whatever_name.resolve_s3_bucket_name(resource, name),
+		"searchKey": "acl",
+	}
+}
+`
+	errs := validate(t, "terraform", rego)
+	assert.Empty(t, allCodes(errs))
+}
+
+func TestValidate_UnsupportedPlatformReturnsError(t *testing.T) {
+	_, err := ValidateCustomRegoQuery(context.Background(), "not-a-platform", validTerraformRego, testLibSource())
+	require.Error(t, err, "an unknown platform has no library and must surface an error")
+}
+
+// ── ordering and deduplication ────────────────────────────────────────────────
+
+func TestFinalizeDiagnostics_DedupesAndSortsByPosition(t *testing.T) {
+	got := finalizeDiagnostics([]RegoValidationError{
+		{Code: "b", Message: "later", StartLine: 12, StartCol: 3},
+		{Code: "a", Message: "unlocated"},
+		{Code: "c", Message: "earlier", StartLine: 4, StartCol: 9},
+		{Code: "c", Message: "earlier", StartLine: 4, StartCol: 9},
+		{Code: "d", Message: "same line", StartLine: 4, StartCol: 2},
+	})
+
+	codes := make([]string, 0, len(got))
+	for _, e := range got {
+		codes = append(codes, e.Code)
+	}
+	assert.Equal(t, []string{"d", "c", "b", "a"}, codes,
+		"diagnostics sort by line then column, with unlocated entries last and duplicates removed")
+}
+
+// The prepared Regal linter is shared across calls, so validation must stay correct
+// and race-free when requests are handled concurrently.
+func TestValidate_ConcurrentUseIsSafe(t *testing.T) {
+	inputs := []string{
+		validTerraformRego,
+		"package wrong\n\nDatadogPolicy contains result if { some i; result := {\"documentId\": input.document[i].id} }\n",
+		"package datadog\n\nfoo := 1\n",
+	}
+
+	var wg sync.WaitGroup
+	results := make([][]string, len(inputs)*4)
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs, err := ValidateCustomRegoQuery(
+				context.Background(), "terraform", inputs[i%len(inputs)], testLibSource(),
+			)
+			assert.NoError(t, err)
+			results[i] = allCodes(errs)
+		}()
+	}
+	wg.Wait()
+
+	// Same input must always yield the same verdict, whichever goroutine ran it.
+	for i := range results {
+		assert.Equal(t, results[i%len(inputs)], results[i], "result %d diverged for the same input", i)
+	}
 }

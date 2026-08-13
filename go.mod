@@ -13,7 +13,7 @@ require (
 	github.com/emicklei/proto v1.14.3
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
 	github.com/golang/mock v1.6.0
-	github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6
+	github.com/google/pprof v0.0.0-20251007162407-5df77e3f7d1d
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.0
 	github.com/hashicorp/go-getter v1.8.6
@@ -23,6 +23,7 @@ require (
 	github.com/johnfercher/maroto v1.0.0
 	github.com/moby/buildkit v0.27.1
 	github.com/open-policy-agent/opa v1.13.2
+	github.com/open-policy-agent/regal v0.38.1
 	github.com/pkg/errors v0.9.1
 	github.com/relex/aini v1.6.0
 	github.com/rmuir/tree-sitter-ghactions v0.2.5
