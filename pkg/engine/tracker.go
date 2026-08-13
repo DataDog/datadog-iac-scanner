@@ -9,11 +9,13 @@ package engine
 // TrackQueryLoad increments the number of loaded queries
 // TrackQueryExecution increments the number of queries executed
 // FailedDetectLine decrements the number of queries executed
+// FailedLineInfoDocument increments line-info lazy-load failures
 // GetOutputLines returns the number of lines to be displayed in results outputs
 type Tracker interface {
 	TrackQueryLoad(queryAggregation int)
 	TrackQueryExecuting(queryAggregation int)
 	TrackQueryExecution(queryAggregation int)
 	FailedDetectLine()
+	FailedLineInfoDocument()
 	GetOutputLines() int
 }

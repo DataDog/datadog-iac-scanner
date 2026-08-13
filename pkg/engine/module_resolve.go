@@ -415,7 +415,7 @@ func buildRefsMap(self *tfeval.ResolvedResource, allInCall []moduleRefEntry) map
 
 // newInstanceFileMetadata clones fm for a synthetic doc (empty Document so Combine skips it).
 func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *model.FileMetadata {
-	clone := fm.Clone()
+	clone := fm.ShallowCopy()
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
@@ -424,10 +424,7 @@ func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *mode
 		// parent (e.g. deleting a suppressed "resource" key) don't alias
 		// into this synthetic instance's copy.
 		clone.LineInfoDocument = maps.Clone(fm.LineInfoDocument)
-		clone.LineInfoLoader = nil
 	}
-	// Otherwise not yet materialized: the clone keeps fm's LineInfoLoader
-	// (copied by Clone) and lazily reconstructs its own copy on demand.
 	return clone
 }
 

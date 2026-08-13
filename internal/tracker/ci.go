@@ -20,19 +20,20 @@ var (
 )
 
 type CITracker struct {
-	ExecutingQueries int
-	ExecutedQueries  int
-	FoundFiles       int
-	LoadedQueries    int
-	ParsedFiles      int
-	lines            int
-	FoundCountLines  int
-	ParsedCountLines int
-	IgnoreCountLines int
-	BagOfFilesParse  map[string]int
-	BagOfFilesFound  map[string]int
-	syncFileMutex    sync.Mutex
-	FoundResources   int
+	ExecutingQueries     int
+	ExecutedQueries      int
+	FoundFiles           int
+	LoadedQueries        int
+	ParsedFiles          int
+	lines                int
+	FoundCountLines      int
+	ParsedCountLines     int
+	IgnoreCountLines     int
+	BagOfFilesParse      map[string]int
+	BagOfFilesFound      map[string]int
+	syncFileMutex        sync.Mutex
+	FoundResources       int
+	LineInfoLoadFailures int
 }
 
 // NewTracker will create a new instance of a tracker with the number of lines to display in results output
@@ -106,6 +107,13 @@ func (c *CITracker) FailedDetectLine() {
 	trackerMu.Lock()
 	defer trackerMu.Unlock()
 	c.ExecutedQueries--
+}
+
+// FailedLineInfoDocument counts lazy line-info document load failures.
+func (c *CITracker) FailedLineInfoDocument() {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
+	c.LineInfoLoadFailures++
 }
 
 // TrackFileFoundCountLines - information about the lines of the scanned files

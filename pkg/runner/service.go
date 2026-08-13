@@ -297,17 +297,10 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	}
 }
 
-// newLineInfoLoader builds a FileMetadata.LineInfoLoader that reconstructs a
-// file's line-info document (the raw parse output, with intact _dd_lines
-// markers, used only to resolve a confirmed finding's source line) by
-// re-parsing the file's own already-retained OriginalData on demand. This
-// avoids every scanned file having to hold a second full copy of its parsed
-// document tree for the whole scan just in case one of its findings needs a
-// line number - most files never have any finding at all.
-//
-// docIdx selects which of the re-parse's documents corresponds to this
-// FileMetadata, for multi-document files (e.g. "---"-separated YAML).
-func (s *Service) newLineInfoLoader(
+// newLineInfoLoader builds a lazy loader that reconstructs a file's line-info
+// document by re-parsing OriginalData on demand.
+func newLineInfoLoader(
+	p *parser.Parser,
 	filename string,
 	docIdx int,
 	openAPIResolveReferences bool,
@@ -315,7 +308,7 @@ func (s *Service) newLineInfoLoader(
 	maxResolverDepth int,
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
-		reparsed, err := s.Parser.Parse(
+		reparsed, err := p.Parse(
 			ctx, filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)

@@ -483,4 +483,5 @@ func (t *noopTracker) TrackQueryLoad(int)      {}
 func (t *noopTracker) TrackQueryExecuting(int) {}
 func (t *noopTracker) TrackQueryExecution(int) {}
 func (t *noopTracker) FailedDetectLine()       {}
+func (t *noopTracker) FailedLineInfoDocument() {}
 func (t *noopTracker) GetOutputLines() int     { return 0 }

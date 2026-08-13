@@ -25,6 +25,7 @@ func (cacheTracker) TrackQueryLoad(int)      {}
 func (cacheTracker) TrackQueryExecuting(int) {}
 func (cacheTracker) TrackQueryExecution(int) {}
 func (cacheTracker) FailedDetectLine()       {}
+func (cacheTracker) FailedLineInfoDocument() {}
 func (cacheTracker) GetOutputLines() int     { return 3 }
 
 func newCacheTestLoader(t *testing.T, platform string, queries []model.QueryMetadata) *QueryLoader {

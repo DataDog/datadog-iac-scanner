@@ -101,11 +101,9 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		}
 
 		file := model.FileMetadata{
-			ID:       uuid.New().String(),
-			ScanID:   scanID,
-			Document: preparedDocument,
-			LineInfoLoader: s.newLineInfoLoader(
-				filename, docIdx, openAPIResolveReferences, c.IsMinified, maxResolverDepth),
+			ID:                uuid.New().String(),
+			ScanID:            scanID,
+			Document:          preparedDocument,
 			OriginalData:      documents.Content,
 			Kind:              documents.Kind,
 			FilePath:          filename,
@@ -116,6 +114,8 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 			IsMinified:        documents.IsMinified,
 			Platform:          s.classifyPlatform(ctx, documents.Kind, filename, *content),
 		}
+		file.SetLineInfoLoader(newLineInfoLoader(
+			s.Parser, filename, docIdx, openAPIResolveReferences, c.IsMinified, maxResolverDepth))
 
 		s.saveToFile(ctx, &file)
 	}
