@@ -298,8 +298,8 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		MaxResolverDepth: 15,
 		// Helm rendering shells out to a chart on disk, which content-push mode
 		// has no way to materialize, so disable the resolver. Parallel file
-		// parsing fans the per-file parse across CPUs; off unless the server
-		// opts in via --x-parallelparsing.
+		// parsing fans the per-file parse across CPUs; enabled by default and
+		// can be disabled with --x-parallelparsing=false.
 		FlagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
 			featureflags.IacEnableKicsHelmResolver:        false,
 			featureflags.IaCEnableKicsParallelFileParsing: s.cfg.ParallelParsing,
