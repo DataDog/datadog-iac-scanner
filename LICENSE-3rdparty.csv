@@ -617,6 +617,7 @@ core,github.com/open-policy-agent/opa/v1/logging,Apache-2.0,Copyright 2016 The O
 core,github.com/open-policy-agent/opa/v1/metrics,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/plugins,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/plugins/rest,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
+core,github.com/open-policy-agent/opa/v1/profiler,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/rego,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/resolver,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/resolver/wasm,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
@@ -635,6 +636,33 @@ core,github.com/open-policy-agent/opa/v1/types,Apache-2.0,Copyright 2016 The OPA
 core,github.com/open-policy-agent/opa/v1/util,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/util/decoding,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
 core,github.com/open-policy-agent/opa/v1/version,Apache-2.0,Copyright 2016 The OPA Authors.  All rights reserved.
+core,github.com/open-policy-agent/regal/bundle,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/capabilities,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/capabilities/embedded,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/exp,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/io,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/io/files,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/io/files/filter,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/metrics,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/mode,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/parse,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/roast/encoding,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/roast/encoding/write,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/roast/transforms,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/roast/transforms/module,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/semver,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/internal/util,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/builtins,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/builtins/opa,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/builtins/regal,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/config,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/linter,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/report,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/roast/encoding,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/roast/intern,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/roast/rast,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/roast/transform,Apache-2.0,Copyright The Regal Authors
+core,github.com/open-policy-agent/regal/pkg/rules,Apache-2.0,Copyright The Regal Authors
 core,github.com/opencontainers/go-digest,Apache-2.0,"Copyright 2016 Docker, Inc | Copyright 2019, 2020 OCI Contributors | Copyright © 2016 Docker, Inc | Copyright © 2019, 2020 OCI Contributors"
 core,github.com/opencontainers/image-spec/specs-go,Apache-2.0,Copyright 2016 The Linux Foundation
 core,github.com/opencontainers/image-spec/specs-go/v1,Apache-2.0,Copyright 2016 The Linux Foundation
