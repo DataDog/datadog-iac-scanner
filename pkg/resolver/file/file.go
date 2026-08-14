@@ -19,6 +19,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var serverlessFileReferenceRE = regexp.MustCompile(`^\${file\((.*\.(yaml|yml))\)}$`)
+
 // ResolvedFile - used for caching the already resolved files
 type ResolvedFile struct {
 	fileContent        []byte
@@ -592,8 +594,7 @@ func contains(elem string, list []string) bool {
 }
 
 func checkServerlessFileReference(value string) string {
-	re := regexp.MustCompile(`^\${file\((.*\.(yaml|yml))\)}$`)
-	matches := re.FindStringSubmatch(value)
+	matches := serverlessFileReferenceRE.FindStringSubmatch(value)
 	if len(matches) > 1 {
 		return matches[1]
 	}
@@ -606,17 +607,25 @@ func findFilePath(
 	extensions []string) (exists bool, path, onlyFilePath, cleanFilePath string) {
 	path = filepath.Join(folderPath, filename)
 	if ansibleVars {
-		if exists, ansibleVarsPath := findAnsibleVarsPath(folderPath, filename); !exists {
+		exists, ansibleVarsPath := findAnsibleVarsPath(folderPath, filename)
+		if !exists {
 			return false, "", "", ""
-		} else {
-			path = ansibleVarsPath
 		}
-	} else if _, err := os.Stat(path); err != nil {
-		return false, "", "", ""
-	}
-
-	if !contains(filepath.Ext(path), extensions) {
-		return false, "", "", ""
+		path = ansibleVarsPath
+		if !contains(filepath.Ext(path), extensions) {
+			return false, "", "", ""
+		}
+	} else {
+		// The extension is determined by the path alone, so reject unsupported
+		// files before the stat. This function is called for every scalar value
+		// in every document, and the vast majority are not file references, so
+		// stat-first would spend a syscall per value to learn nothing.
+		if !contains(filepath.Ext(path), extensions) {
+			return false, "", "", ""
+		}
+		if _, err := os.Stat(path); err != nil {
+			return false, "", "", ""
+		}
 	}
 
 	onlyFilePath = getPathFromString(path)
