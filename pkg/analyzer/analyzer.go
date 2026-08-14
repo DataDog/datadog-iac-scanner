@@ -25,7 +25,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
-	ignore "github.com/sabhiram/go-gitignore"
 
 	yamlParser "gopkg.in/yaml.v3"
 )
@@ -1085,13 +1084,13 @@ func isConfigFile(path string, suffixes []string) bool {
 
 // shouldConsiderGitIgnoreFile verifies if the scan should exclude the files according to the .gitignore file
 func shouldConsiderGitIgnoreFile(ctx context.Context, path, gitIgnore string, excludeGitIgnoreFile bool) (hasGitIgnoreFileRes bool,
-	gitIgnoreRes *ignore.GitIgnore) {
+	gitIgnoreRes *gitIgnoreMatcher) {
 	contextLogger := logger.FromContext(ctx)
 	gitIgnorePath := filepath.ToSlash(filepath.Join(path, gitIgnore))
 	_, err := os.Stat(gitIgnorePath)
 
 	if !excludeGitIgnoreFile && err == nil && gitIgnore != "" {
-		gitIgnore, _ := ignore.CompileIgnoreFile(gitIgnorePath)
+		gitIgnore, _ := compileGitIgnoreFile(gitIgnorePath)
 		if gitIgnore != nil {
 			contextLogger.Info().Msgf(".gitignore file was found in '%s' and it will be used to automatically exclude paths", path)
 			return true, gitIgnore
