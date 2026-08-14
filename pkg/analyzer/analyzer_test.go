@@ -476,6 +476,44 @@ func TestAnalyze_ValidSymlink(t *testing.T) {
 	require.Empty(t, got.Exc)
 }
 
+func TestAnalyze_ChartRootsFromChartYamlFile(t *testing.T) {
+	dir := t.TempDir()
+	chartDir := filepath.Join(dir, "mychart")
+	require.NoError(t, os.MkdirAll(chartDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chartDir, "Chart.yaml"), []byte("name: x\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(chartDir, "values.yaml"), []byte("replicaCount: 1\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, got.ChartRoots, filepath.ToSlash(chartDir))
+}
+
+func TestAnalyze_ChartRootsWhenScanPathOutsideRepo(t *testing.T) {
+	repo := t.TempDir()
+	scanRoot := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(scanRoot, ".helmignore"), []byte("patterns\n"), 0o600))
+	chartDir := filepath.Join(scanRoot, "mychart")
+	require.NoError(t, os.MkdirAll(chartDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chartDir, "Chart.yaml"), []byte("name: x\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(chartDir, "values.yaml"), []byte("replicaCount: 1\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    repo,
+		Paths:       []string{scanRoot},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, got.ChartRoots, filepath.ToSlash(chartDir))
+}
+
 func Test_checkHelm(t *testing.T) {
 	helm := filepath.FromSlash("../../test/fixtures/analyzer_test/helm")
 	tests := []struct {
