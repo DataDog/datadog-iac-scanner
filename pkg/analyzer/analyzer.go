@@ -399,10 +399,6 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 			totalFiles++
 
-			if filepath.Base(path) == "Chart.yaml" {
-				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
-			}
-
 			if d.Type()&fs.ModeSymlink != 0 {
 				if _, statErr := os.Stat(path); statErr != nil {
 					norm := filepath.ToSlash(path)
@@ -410,6 +406,10 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					a.Exc = append(a.Exc, norm)
 					return nil
 				}
+			}
+
+			if filepath.Base(path) == "Chart.yaml" {
+				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
 			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
