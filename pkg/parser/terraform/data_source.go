@@ -101,7 +101,7 @@ func getDataSourcePolicy(ctx context.Context, fsys vfs.FS, currentPath string, i
 			continue
 		}
 		for _, block := range body.Blocks {
-			if block.Type == "data" && block.Labels[0] == "aws_iam_policy_document" && len(block.Labels) > 1 {
+			if block.Type == terraformDataIdentifier && block.Labels[0] == "aws_iam_policy_document" && len(block.Labels) > 1 {
 				policyJSON := parseDataSourceBody(ctx, block.Body, inputVariables)
 				jsonMap[block.Labels[1]] = map[string]string{
 					"json": policyJSON,

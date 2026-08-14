@@ -392,6 +392,42 @@ data "aws_iam_policy_document" "test_destination_policy" {
 	}
 }
 
+func TestParseFileReplacesOnlyRootDataTraversals(t *testing.T) {
+	source := []byte(`
+resource "test" "test" {
+  root_data    = data.aws_s3_bucket.selected.arn
+  nested_var   = var.data.resource_arn
+  nested_local = local.data.resource_arn
+  nested_each  = each.value.data.resource_arn
+  literal      = "data.aws_s3_bucket.selected.arn"
+  template     = "arn:${data.aws_partition.current.partition}:s3:::example"
+}
+`)
+	path := filepath.Join(t.TempDir(), "data_references.tf")
+	require.NoError(t, os.WriteFile(path, source, 0o600))
+
+	parsedFile, err := parseFile(vfs.DiskFS{}, path, true)
+	require.NoError(t, err)
+	got := string(parsedFile.Bytes)
+	require.Contains(t, got, `root_data    = "data.aws_s3_bucket.selected.arn"`)
+	require.Contains(t, got, `nested_var   = var.data.resource_arn`)
+	require.Contains(t, got, `nested_local = local.data.resource_arn`)
+	require.Contains(t, got, `nested_each  = each.value.data.resource_arn`)
+	require.Contains(t, got, `literal      = "data.aws_s3_bucket.selected.arn"`)
+	require.Contains(t, got, `template     = "arn:${"data.aws_partition.current.partition"}:s3:::example"`)
+}
+
+func TestParseFileReturnsDiagnostics(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "invalid.tf")
+	require.NoError(t, os.WriteFile(path, []byte(`resource "test" "test" {
+  value = aws_s3_bucket.selected.
+}`), 0o600))
+
+	parsedFile, err := parseFile(vfs.DiskFS{}, path, true)
+	require.Nil(t, parsedFile)
+	require.ErrorContains(t, err, "Invalid attribute name")
+}
+
 // TestParser_ConcurrentSameDir guards the per-directory variable cache: the
 // converter adds per-file keys to the variable map during evaluation, so the
 // cached map must never be shared across the files parsed concurrently in the
