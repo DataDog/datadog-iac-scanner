@@ -62,6 +62,115 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
+				// Raw pass-through: empty array/object round-trips as-is.
+				"resource_changes": []interface{}{},
+				"configuration":    map[string]interface{}{},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test - resource_changes and configuration pass through",
+			args: args{
+				doc: model.Document{
+					"format_version":    "1.2",
+					"terraform_version": "1.5.0",
+					"planned_values": map[string]interface{}{
+						"root_module": map[string]interface{}{
+							"resources": []map[string]interface{}{
+								{
+									"address": "aws_s3_bucket.main",
+									"mode":    "managed",
+									"type":    "aws_s3_bucket",
+									"name":    "main",
+									"values": map[string]interface{}{
+										"bucket": "main-bucket",
+									},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]interface{}{
+						{
+							"address": "aws_s3_bucket.main",
+							"mode":    "managed",
+							"type":    "aws_s3_bucket",
+							"name":    "main",
+							"change": map[string]interface{}{
+								"actions": []string{"create"},
+								"before":  nil,
+								"after": map[string]interface{}{
+									"acl": "private",
+								},
+								"after_unknown": map[string]interface{}{
+									"bucket": true,
+									"id":     true,
+								},
+							},
+						},
+					},
+					"configuration": map[string]interface{}{
+						"root_module": map[string]interface{}{
+							"resources": []map[string]interface{}{
+								{
+									"address": "aws_s3_bucket.main",
+									"mode":    "managed",
+									"type":    "aws_s3_bucket",
+									"name":    "main",
+									"expressions": map[string]interface{}{
+										"bucket": map[string]interface{}{
+											"references": []string{"random_id.suffix"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]interface{}{
+					"aws_s3_bucket": map[string]interface{}{
+						"main": map[string]interface{}{
+							"bucket": "main-bucket",
+						},
+					},
+				},
+				"resource_changes": []interface{}{
+					map[string]interface{}{
+						"address": "aws_s3_bucket.main",
+						"mode":    "managed",
+						"type":    "aws_s3_bucket",
+						"name":    "main",
+						"change": map[string]interface{}{
+							"actions": []interface{}{"create"},
+							"before":  nil,
+							"after": map[string]interface{}{
+								"acl": "private",
+							},
+							"after_unknown": map[string]interface{}{
+								"bucket": true,
+								"id":     true,
+							},
+						},
+					},
+				},
+				"configuration": map[string]interface{}{
+					"root_module": map[string]interface{}{
+						"resources": []interface{}{
+							map[string]interface{}{
+								"address": "aws_s3_bucket.main",
+								"mode":    "managed",
+								"type":    "aws_s3_bucket",
+								"name":    "main",
+								"expressions": map[string]interface{}{
+									"bucket": map[string]interface{}{
+										"references": []interface{}{"random_id.suffix"},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			wantErr: false,
 		},
@@ -553,6 +662,8 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
+				"resource_changes": []any{},
+				"configuration":    map[string]any{},
 			},
 			wantErr: false,
 		},

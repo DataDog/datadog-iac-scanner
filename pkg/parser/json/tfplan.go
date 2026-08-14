@@ -17,6 +17,11 @@ import (
 // TFPlan is an auxiliary structure for parsing tfplans as a scanner Document
 type TFPlan struct {
 	Resource map[string]TFPlanResource `json:"resource"`
+
+	// Raw (any), not typed hcl_plan structs, so after_unknown/configuration
+	// pass through verbatim without a typed round-trip dropping data.
+	ResourceChanges any `json:"resource_changes,omitempty"`
+	Configuration   any `json:"configuration,omitempty"`
 }
 
 // TFPlanResource is an auxiliary structure for parsing tfplans as a scanner Document.
@@ -50,7 +55,7 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 	// address) before that information is lost.
 	resourceLines := extractResourceHeaderLines(b)
 
-	parsedPlan := readPlan(plan, resourceLines)
+	parsedPlan := readPlan(plan, doc["resource_changes"], doc["configuration"], resourceLines)
 	return parsedPlan, nil
 }
 
@@ -85,10 +90,13 @@ func walkModule(module *gjson.Result, lines map[string]int) {
 	})
 }
 
-// readPlan extracts the information needed from a Terraform plan and converts it to a scanner Document
-func readPlan(plan *hcl_plan.Plan, resourceLines map[string]int) model.Document {
+// readPlan extracts the information needed from a Terraform plan and converts it to a scanner Document.
+// resourceChanges/configuration are raw values from the source document, passed through verbatim.
+func readPlan(plan *hcl_plan.Plan, resourceChanges, configuration any, resourceLines map[string]int) model.Document {
 	kp := TFPlan{
-		Resource: make(map[string]TFPlanResource),
+		Resource:        make(map[string]TFPlanResource),
+		ResourceChanges: resourceChanges,
+		Configuration:   configuration,
 	}
 
 	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines)

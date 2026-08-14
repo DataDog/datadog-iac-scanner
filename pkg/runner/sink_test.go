@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -118,6 +119,67 @@ func TestKics_prepareDocument(t *testing.T) {
 
 			`,
 		},
+		{
+			// Flat (not wrapped in "document":[...]) to match sink.go's real per-document input.
+			name: "prepare document resolves pattern for terraform plan documents",
+			args: args{
+				bodyType: `
+				{
+					"resource": {
+					  "aws_cloudwatch_log_metric_filter": {
+						"cis_changes_nacl": {
+						  "name": "CIS-4.11-Changes-NACL",
+						  "pattern": "{ ($.eventName = CreateNetworkAcl) || ($.eventName = CreateNetworkAclEntry) }",
+						  "log_group_name": "aws_cloudwatch_log_group.CIS_CloudWatch_LogsGroup"
+						}
+					  }
+					},
+					"configuration": {
+					  "root_module": {
+						"resources": [
+						  {
+							"address": "aws_cloudwatch_log_metric_filter.cis_changes_nacl",
+							"expressions": {
+							  "pattern": {
+								"constant_value": "{ ($.eventName = CreateNetworkAcl) || ($.eventName = CreateNetworkAclEntry) }"
+							  }
+							}
+						  }
+						]
+					  }
+					}
+				  }
+				`,
+				kind: model.KindTerraformPlan,
+			},
+			want: `
+			{
+				"resource": {
+				  "aws_cloudwatch_log_metric_filter": {
+					"cis_changes_nacl": {
+					  "log_group_name": "aws_cloudwatch_log_group.CIS_CloudWatch_LogsGroup",
+					  "name": "CIS-4.11-Changes-NACL",
+					  "pattern": "{\"_dd_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}},\"_kics_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}}}"
+					}
+				  }
+				},
+				"configuration": {
+				  "root_module": {
+					"resources": [
+					  {
+						"address": "aws_cloudwatch_log_metric_filter.cis_changes_nacl",
+						"expressions": {
+						  "pattern": {
+							"constant_value": "{ ($.eventName = CreateNetworkAcl) || ($.eventName = CreateNetworkAclEntry) }"
+						  }
+						}
+					  }
+					]
+				  }
+				}
+			  }
+			`,
+		},
 	}
 
 	ctx := context.Background()
@@ -131,6 +193,134 @@ func TestKics_prepareDocument(t *testing.T) {
 			compareJSONLine(t, got, tt.want)
 		})
 	}
+}
+
+// TestSink_TFPlanExposesAfterUnknownAndConfiguration drives a plan through the
+// real Parser.Parse -> PrepareScanDocument pipeline used in production.
+func TestSink_TFPlanExposesAfterUnknownAndConfiguration(t *testing.T) {
+	ctx := context.Background()
+
+	planJSON := []byte(`{
+		"format_version": "1.2",
+		"terraform_version": "1.5.0",
+		"planned_values": {
+			"root_module": {
+				"resources": [
+					{
+						"address": "aws_s3_bucket.main",
+						"mode": "managed",
+						"type": "aws_s3_bucket",
+						"name": "main",
+						"values": {
+							"acl": "private"
+						}
+					}
+				]
+			}
+		},
+		"resource_changes": [
+			{
+				"address": "aws_s3_bucket.main",
+				"mode": "managed",
+				"type": "aws_s3_bucket",
+				"name": "main",
+				"change": {
+					"actions": ["create"],
+					"before": null,
+					"after": {
+						"acl": "private"
+					},
+					"after_unknown": {
+						"bucket": true,
+						"id": true
+					}
+				}
+			}
+		],
+		"configuration": {
+			"root_module": {
+				"resources": [
+					{
+						"address": "aws_s3_bucket.main",
+						"mode": "managed",
+						"type": "aws_s3_bucket",
+						"name": "main",
+						"expressions": {
+							"bucket": {
+								"references": ["random_id.suffix"]
+							}
+						}
+					}
+				]
+			}
+		}
+	}`)
+
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(ctx, planJSON, "tfplan.json", false, 15)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+
+	kind, ok := p.KindForContent(planJSON)
+	require.True(t, ok)
+	require.Equal(t, model.KindTerraformPlan, kind)
+
+	prepared := PrepareScanDocument(ctx, docs[0], kind)
+
+	require.Contains(t, prepared, "resource")
+	require.Contains(t, prepared, "resource_changes")
+	require.Contains(t, prepared, "configuration")
+
+	b, err := json.Marshal(prepared)
+	require.NoError(t, err)
+	require.NotContains(t, string(b), "_dd_lines",
+		"line-tracking metadata must not leak into resource_changes/configuration")
+
+	require.JSONEq(t, `{
+		"resource": {
+			"aws_s3_bucket": {
+				"main": {
+					"acl": "private"
+				}
+			}
+		},
+		"resource_changes": [
+			{
+				"address": "aws_s3_bucket.main",
+				"mode": "managed",
+				"type": "aws_s3_bucket",
+				"name": "main",
+				"change": {
+					"actions": ["create"],
+					"before": null,
+					"after": {
+						"acl": "private"
+					},
+					"after_unknown": {
+						"bucket": true,
+						"id": true
+					}
+				}
+			}
+		],
+		"configuration": {
+			"root_module": {
+				"resources": [
+					{
+						"address": "aws_s3_bucket.main",
+						"mode": "managed",
+						"type": "aws_s3_bucket",
+						"name": "main",
+						"expressions": {
+							"bucket": {
+								"references": ["random_id.suffix"]
+							}
+						}
+					}
+				]
+			}
+		}
+	}`, string(b))
 }
 
 func TestKics_resolveCRLFFile(t *testing.T) {
