@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -496,7 +497,7 @@ func TestFileSystemSourceProvider_checkConditions(t *testing.T) {
 				paths:    tt.fields.paths,
 				excludes: tt.fields.excludes,
 			}
-			if got, err := s.checkConditions(ctx, tt.args.info, tt.args.extensions, tt.args.path, nil); got != tt.want.got || err != tt.want.err {
+			if got, _, err := s.checkConditions(ctx, tt.args.info, tt.args.extensions, tt.args.path, nil); got != tt.want.got || err != tt.want.err {
 				t.Errorf("FileSystemSourceProvider.checkConditions() = %v, want %v", err, tt.want)
 			}
 		})
@@ -791,4 +792,13 @@ func TestGetSources_helmChartSkipsRawTemplates(t *testing.T) {
 			return fs.GetParallelSources(ctx, model.Extensions{".yaml": {}}, recordingSink, recordingResolverSink)
 		})
 	})
+}
+
+func TestIsUnderChartRoot_normalizesSeparators(t *testing.T) {
+	root := `D:/charts/app`
+	require.True(t, isUnderChartRoot(`D:/charts/app/templates/svc.yaml`, []string{root}))
+	if runtime.GOOS == "windows" {
+		require.True(t, isUnderChartRoot(`D:\charts\app\templates\svc.yaml`, []string{root}))
+	}
+	require.False(t, isUnderChartRoot(`D:/charts/other/templates/svc.yaml`, []string{root}))
 }
