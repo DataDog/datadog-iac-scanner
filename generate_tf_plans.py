@@ -600,15 +600,15 @@ class TerraformPlanGenerator:
 }}
 """)
 
-    def is_medium_rule(self, tf_file: Path) -> bool:
+    def is_low_rule(self, tf_file: Path) -> bool:
         """
-        Check if a .tf file belongs to a medium severity rule.
+        Check if a .tf file belongs to a low severity rule.
 
         Args:
             tf_file: Path to the .tf file
 
         Returns:
-            True if the file is in a medium rule directory, False otherwise
+            True if the file is in a low rule directory, False otherwise
         """
         # Look for metadata.json in parent directories
         current = tf_file.parent
@@ -620,10 +620,10 @@ class TerraformPlanGenerator:
                         metadata = json.load(f)
 
                     severity = metadata.get("severity")
-                    if severity == "MEDIUM":
+                    if severity == "LOW":
                         return True
                     else:
-                        # Found metadata but not medium, stop searching
+                        # Found metadata but not low, stop searching
                         return False
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.debug(f"Failed to parse metadata file {metadata_file}: {e}")
@@ -663,35 +663,33 @@ class TerraformPlanGenerator:
 
     def find_tf_files(self, root_dir: Path) -> List[Path]:
         """
-        Recursively find all .tf files in the given directory that belong to medium severity rules.
+        Recursively find all .tf files in the given directory that belong to low severity rules.
         Skips rules that already have .json test files.
 
         Args:
             root_dir: Root directory to search
 
         Returns:
-            List of Path objects for .tf files in medium severity rules that don't have .json tests yet
+            List of Path objects for .tf files in low severity rules that don't have .json tests yet
         """
-        logger.info(f"Searching for .tf files in medium severity rules in {root_dir}")
+        logger.info(f"Searching for .tf files in low severity rules in {root_dir}")
         all_tf_files = list(root_dir.rglob("*.tf"))
         logger.debug(f"Found {len(all_tf_files)} total .tf files")
 
-        # Filter to only medium severity rules
-        medium_tf_files = [tf for tf in all_tf_files if self.is_medium_rule(tf)]
+        # Filter to only low severity rules
+        low_tf_files = [tf for tf in all_tf_files if self.is_low_rule(tf)]
 
         # Filter out rules that already have .json test files
-        files_without_json = [
-            tf for tf in medium_tf_files if not self.has_json_tests(tf)
-        ]
+        files_without_json = [tf for tf in low_tf_files if not self.has_json_tests(tf)]
 
-        skipped_count = len(medium_tf_files) - len(files_without_json)
+        skipped_count = len(low_tf_files) - len(files_without_json)
         if skipped_count > 0:
             logger.info(
                 f"Skipped {skipped_count} .tf files from rules that already have .json tests"
             )
 
         logger.info(
-            f"Found {len(files_without_json)} .tf files in medium severity rules without .json tests "
+            f"Found {len(files_without_json)} .tf files in low severity rules without .json tests "
             f"(skipped {len(all_tf_files) - len(files_without_json)} files total)"
         )
         return files_without_json
@@ -1182,7 +1180,10 @@ The output should be valid .tf file content that can be directly saved and used.
                 logger.debug(f"Terraform init attempt {attempt}/{self.max_retries}")
 
                 success, stdout, stderr = self.run_command(
-                    ["terraform", "init"], temp_path, extra_env=extra_env, is_azure=is_azure
+                    ["terraform", "init"],
+                    temp_path,
+                    extra_env=extra_env,
+                    is_azure=is_azure,
                 )
 
                 if success:
