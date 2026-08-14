@@ -7,6 +7,7 @@ package terraform
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -93,4 +94,111 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_getDataSourcePolicy_ignoresFilesWithoutPolicyDocuments(t *testing.T) {
+	dir := t.TempDir()
+	writeFile := func(name, content string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
+	}
+	writeFile("no_policy.tf", `
+resource "aws_s3_bucket" "bucket" {
+  bucket = "example"
+}
+
+data "aws_caller_identity" "current" {}
+`)
+	writeFile("policy.tf", `
+data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::example/*"]
+  }
+}
+`)
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	data, ok := result["data"]
+	require.True(t, ok, "expected a data entry in the variable map")
+
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+
+	policies := awsPolicyMap["aws_iam_policy_document"]
+	require.Len(t, policies, 1, "only the declared policy document should be collected")
+	require.Equal(t,
+		"{\"Statement\":[{\"Actions\":[\"s3:GetObject\"],\"Resources\":[\"arn:aws:s3:::example/*\"]}]}\n",
+		policies["doc"]["json"],
+	)
+}
+
+func Test_getDataSourcePolicy_noPolicyDocumentsInDirectory(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+resource "aws_s3_bucket" "bucket" {
+  bucket = "example"
+}
+`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	data, ok := result["data"]
+	require.True(t, ok, "expected a data entry even when no policies are declared")
+
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	require.Empty(t, awsPolicyMap["aws_iam_policy_document"])
+}
+
+func Test_getDataSourcePolicy_arnWithDataPartitionReference(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "positive.tf"), []byte(`
+data "aws_iam_policy_document" "glue-example-policy" {
+  statement {
+    actions = ["glue:*"]
+    resources = ["arn:data.aws_partition.current.partition:glue:data.aws_region.current.name:data.aws_caller_identity.current.account_id:*"]
+    principals {
+      identifiers = ["*"]
+      type        = "AWS"
+    }
+  }
+}
+
+resource "aws_glue_resource_policy" "example" {
+  policy = data.aws_iam_policy_document.glue-example-policy.json
+}
+`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	data, ok := result["data"]
+	require.True(t, ok)
+
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+
+	policy, ok := awsPolicyMap["aws_iam_policy_document"]["glue-example-policy"]["json"]
+	require.True(t, ok, "policy document should be parsed despite data.aws_partition in ARN")
+	require.Contains(t, policy, "glue:*")
+}
+
+func Test_getDataSourcePolicy_whitespaceInBlockHeader(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf"), []byte(`
+data	"aws_iam_policy_document"	"doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::example/*"]
+  }
+}
+`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	data, ok := result["data"]
+	require.True(t, ok)
+
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+
+	policies := awsPolicyMap["aws_iam_policy_document"]
+	require.Contains(t, policies, "doc")
+	require.Contains(t, policies["doc"]["json"], "s3:GetObject")
 }

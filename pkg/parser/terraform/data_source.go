@@ -25,6 +25,10 @@ import (
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
+// iamPolicyDocumentTypeMarker is a cheap content gate before parsing; the parser
+// still matches the block type exactly below.
+var iamPolicyDocumentTypeMarker = []byte("aws_iam_policy_document")
+
 type dataSourcePolicyCondition struct {
 	Test     string   `json:"test,omitempty"`
 	Variable string   `json:"variable,omitempty"`
@@ -91,8 +95,20 @@ func getDataSourcePolicy(ctx context.Context, fsys vfs.FS, currentPath string, i
 	}
 	jsonMap := make(map[string]map[string]string)
 	for _, tfFile := range tfFiles {
-		parsedFile, parseErr := parseFile(fsys, tfFile, true)
-		if parseErr != nil {
+		content, readErr := fsys.ReadFile(filepath.Clean(tfFile))
+		if readErr != nil {
+			contextLogger.Debug().Msgf("Error trying to read file %s for data source.", tfFile)
+			continue
+		}
+		if !bytes.Contains(content, iamPolicyDocumentTypeMarker) {
+			continue
+		}
+		parsedFile, diags := parseFileContent(content, tfFile, true)
+		if diags != nil && diags.HasErrors() {
+			contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
+			continue
+		}
+		if parsedFile == nil {
 			contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
 			continue
 		}
@@ -101,7 +117,9 @@ func getDataSourcePolicy(ctx context.Context, fsys vfs.FS, currentPath string, i
 			continue
 		}
 		for _, block := range body.Blocks {
-			if block.Type == terraformDataIdentifier && block.Labels[0] == "aws_iam_policy_document" && len(block.Labels) > 1 {
+			if block.Type == terraformDataIdentifier &&
+				len(block.Labels) > 1 &&
+				block.Labels[0] == "aws_iam_policy_document" {
 				policyJSON := parseDataSourceBody(ctx, block.Body, inputVariables)
 				jsonMap[block.Labels[1]] = map[string]string{
 					"json": policyJSON,

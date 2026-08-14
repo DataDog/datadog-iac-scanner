@@ -213,24 +213,13 @@ func addExtraInfo(ctx context.Context, json []model.Document, path string) ([]mo
 	return json, nil
 }
 
-func parseFile(fsys vfs.FS, filename string, shouldReplaceDataSource bool) (*hcl.File, error) {
-	file, err := fsys.ReadFile(filepath.Clean(filename))
-	if err != nil {
-		return nil, err
+func parseFileContent(content []byte, filename string, shouldReplaceDataSource bool) (*hcl.File, hcl.Diagnostics) {
+	parsedFile, diagnostics := hclsyntax.ParseConfig(content, filename, hcl.Pos{Line: 1, Column: 1})
+	if diagnostics.HasErrors() || !shouldReplaceDataSource {
+		return parsedFile, diagnostics
 	}
-	parsedFile, diagnostics := hclsyntax.ParseConfig(file, filename, hcl.Pos{Line: 1, Column: 1})
-	if diagnostics.HasErrors() {
-		return nil, diagnostics
-	}
-	if shouldReplaceDataSource {
-		file = quoteDataSourceTraversals(file, parsedFile)
-		parsedFile, diagnostics = hclsyntax.ParseConfig(file, filename, hcl.Pos{Line: 1, Column: 1})
-		if diagnostics.HasErrors() {
-			return nil, diagnostics
-		}
-	}
-
-	return parsedFile, nil
+	content = quoteDataSourceTraversals(content, parsedFile)
+	return hclsyntax.ParseConfig(content, filename, hcl.Pos{Line: 1, Column: 1})
 }
 
 func quoteDataSourceTraversals(source []byte, file *hcl.File) []byte {
