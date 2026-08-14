@@ -202,3 +202,25 @@ data	"aws_iam_policy_document"	"doc" {
 	require.Contains(t, policies, "doc")
 	require.Contains(t, policies["doc"]["json"], "s3:GetObject")
 }
+
+func Test_getDataSourcePolicy_escapedLabelInBlockHeader(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf"), []byte(`data "aws_iam_pol\u0069cy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::example/*"]
+  }
+}
+`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	data, ok := result["data"]
+	require.True(t, ok)
+
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+
+	policies := awsPolicyMap["aws_iam_policy_document"]
+	require.Contains(t, policies, "doc")
+	require.Contains(t, policies["doc"]["json"], "s3:GetObject")
+}

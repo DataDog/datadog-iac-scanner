@@ -27,7 +27,13 @@ import (
 
 // iamPolicyDocumentTypeMarker is a cheap content gate before parsing; the parser
 // still matches the block type exactly below.
-var iamPolicyDocumentTypeMarker = []byte("aws_iam_policy_document")
+const iamPolicyDocumentType = "aws_iam_policy_document"
+
+var iamPolicyDocumentTypeMarker = []byte(iamPolicyDocumentType)
+
+// iamPolicyDocumentTypePrefix catches HCL unicode-escaped spellings such as
+// aws_iam_pol\u0069cy_document that decode to the same label after lexing.
+var iamPolicyDocumentTypePrefix = []byte("aws_iam_pol")
 
 type dataSourcePolicyCondition struct {
 	Test     string   `json:"test,omitempty"`
@@ -100,7 +106,7 @@ func getDataSourcePolicy(ctx context.Context, fsys vfs.FS, currentPath string, i
 			contextLogger.Debug().Msgf("Error trying to read file %s for data source.", tfFile)
 			continue
 		}
-		if !bytes.Contains(content, iamPolicyDocumentTypeMarker) {
+		if !fileMayDeclareIAMPolicyDocument(content) {
 			continue
 		}
 		parsedFile, diags := parseFileContent(content, tfFile, true)
@@ -119,7 +125,7 @@ func getDataSourcePolicy(ctx context.Context, fsys vfs.FS, currentPath string, i
 		for _, block := range body.Blocks {
 			if block.Type == terraformDataIdentifier &&
 				len(block.Labels) > 1 &&
-				block.Labels[0] == "aws_iam_policy_document" {
+				block.Labels[0] == iamPolicyDocumentType {
 				policyJSON := parseDataSourceBody(ctx, block.Body, inputVariables)
 				jsonMap[block.Labels[1]] = map[string]string{
 					"json": policyJSON,
@@ -138,6 +144,69 @@ func getDataSourcePolicy(ctx context.Context, fsys vfs.FS, currentPath string, i
 
 	inputVariables["data"] = data
 	return inputVariables
+}
+
+// fileMayDeclareIAMPolicyDocument is a fast precheck before parseFileContent.
+// A literal substring match covers the common case; lexer decoding handles
+// escaped block-type labels that do not appear verbatim in source bytes.
+func fileMayDeclareIAMPolicyDocument(content []byte) bool {
+	if bytes.Contains(content, iamPolicyDocumentTypeMarker) {
+		return true
+	}
+	if !bytes.Contains(content, iamPolicyDocumentTypePrefix) {
+		return false
+	}
+	return scanForIAMPolicyDocumentDataBlock(content)
+}
+
+func scanForIAMPolicyDocumentDataBlock(content []byte) bool {
+	tokens, diags := hclsyntax.LexConfig(content, "", hcl.InitialPos)
+	if diags.HasErrors() {
+		return false
+	}
+	for i := 0; i < len(tokens); i++ {
+		if tokens[i].Type != hclsyntax.TokenIdent || string(tokens[i].Bytes) != terraformDataIdentifier {
+			continue
+		}
+		label, next := decodeQuotedBlockLabel(tokens, i+1)
+		if label == iamPolicyDocumentType {
+			return true
+		}
+		i = next
+	}
+	return false
+}
+
+func decodeQuotedBlockLabel(tokens hclsyntax.Tokens, start int) (label string, next int) {
+	for start < len(tokens) {
+		switch tokens[start].Type {
+		case hclsyntax.TokenNewline, hclsyntax.TokenComment:
+			start++
+		case hclsyntax.TokenOQuote:
+			goto parseQuoted
+		default:
+			return "", start
+		}
+	}
+	return "", start
+
+parseQuoted:
+	var b strings.Builder
+	for j := start + 1; j < len(tokens); j++ {
+		switch tokens[j].Type {
+		case hclsyntax.TokenCQuote:
+			return b.String(), j
+		case hclsyntax.TokenQuotedLit:
+			s, litDiags := hclsyntax.ParseStringLiteralToken(tokens[j])
+			if litDiags.HasErrors() {
+				return "", j
+			}
+			b.WriteString(s)
+		default:
+			return "", j
+		}
+	}
+	return "", start
 }
 
 func decodeDataSourcePolicy(ctx context.Context, value cty.Value) dataSourcePolicy {
