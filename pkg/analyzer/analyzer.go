@@ -554,8 +554,6 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		}
 	}
 
-	linesCount, _ := utils.LineCounter(ctx, a.filePath)
-
 	content, ok := a.readClassifyContent(ctx, ext)
 	if !ok {
 		return
@@ -574,7 +572,21 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 	}
 	a.persistWorkerState(content, platform)
 	results <- platform
-	locCount <- linesCount
+	// Counted only once the file is known to be scanned, and from the content
+	// read for classification when there is any, so the file is opened once.
+	locCount <- a.countLines(ctx, content)
+}
+
+func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {
+	if content != nil {
+		return utils.CountLines(content)
+	}
+	lineCount, err := utils.LineCounter(ctx, a.filePath)
+	if err != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Err(err).Msgf("failed to count lines of '%s'", a.filePath)
+	}
+	return lineCount
 }
 
 func isContentClassifiedExt(ext string) bool {
