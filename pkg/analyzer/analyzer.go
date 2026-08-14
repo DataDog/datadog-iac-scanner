@@ -25,7 +25,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
-	ignore "github.com/sabhiram/go-gitignore"
 
 	yamlParser "gopkg.in/yaml.v3"
 )
@@ -378,9 +377,11 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	}
 	// get all the files inside the given paths
 	for _, path := range a.Paths {
-		if _, err := os.Stat(path); err != nil {
-			return returnAnalyzedPaths, errors.Wrap(err, "failed to analyze path")
+		pathInfo, statErr := os.Stat(path)
+		if statErr != nil {
+			return returnAnalyzedPaths, errors.Wrap(statErr, "failed to analyze path")
 		}
+		singleFilePath := !pathInfo.IsDir()
 		if err := filepath.WalkDir(path, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -390,8 +391,24 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return filepath.SkipDir
 			}
 
+			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
+			insideRepo := relErr == nil &&
+				trimmedPath != ".." &&
+				!strings.HasPrefix(trimmedPath, ".."+string(os.PathSeparator))
+
 			if d.IsDir() {
 				if provider.IsTerraformCacheDir(path) {
+					return filepath.SkipDir
+				}
+				// Pruning the subtree is cheaper than testing every file below
+				// it, and it is what makes an ignored directory final: git
+				// cannot re-include a file whose parent is excluded, so the
+				// files under it must never be considered at all. The directory
+				// itself is recorded as excluded so downstream walks skip it too.
+				if insideRepo && hasGitIgnoreFile && gitIgnore.MatchesDir(trimmedPath) {
+					norm := filepath.ToSlash(path)
+					ignoreFiles = append(ignoreFiles, norm)
+					a.Exc = append(a.Exc, norm)
 					return filepath.SkipDir
 				}
 				return nil
@@ -412,9 +429,6 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
-			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
-			outsideRepo := relErr != nil
-
 			ext := utils.ExtensionFromPath(path)
 			if ext == "" {
 				return nil
@@ -430,7 +444,9 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return nil
 			}
 
-			if !outsideRepo && hasGitIgnoreFile && gitIgnore.MatchesPath(trimmedPath) {
+			if insideRepo && hasGitIgnoreFile &&
+				(gitIgnore.MatchesPath(trimmedPath) ||
+					(singleFilePath && gitIgnore.MatchesParentDir(trimmedPath))) {
 				norm := filepath.ToSlash(path)
 				ignoreFiles = append(ignoreFiles, norm)
 				a.Exc = append(a.Exc, norm)
@@ -1085,13 +1101,13 @@ func isConfigFile(path string, suffixes []string) bool {
 
 // shouldConsiderGitIgnoreFile verifies if the scan should exclude the files according to the .gitignore file
 func shouldConsiderGitIgnoreFile(ctx context.Context, path, gitIgnore string, excludeGitIgnoreFile bool) (hasGitIgnoreFileRes bool,
-	gitIgnoreRes *ignore.GitIgnore) {
+	gitIgnoreRes *gitIgnoreMatcher) {
 	contextLogger := logger.FromContext(ctx)
 	gitIgnorePath := filepath.ToSlash(filepath.Join(path, gitIgnore))
 	_, err := os.Stat(gitIgnorePath)
 
 	if !excludeGitIgnoreFile && err == nil && gitIgnore != "" {
-		gitIgnore, _ := ignore.CompileIgnoreFile(gitIgnorePath)
+		gitIgnore, _ := compileGitIgnoreFile(gitIgnorePath)
 		if gitIgnore != nil {
 			contextLogger.Info().Msgf(".gitignore file was found in '%s' and it will be used to automatically exclude paths", path)
 			return true, gitIgnore

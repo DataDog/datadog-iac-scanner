@@ -476,6 +476,52 @@ func TestAnalyze_ValidSymlink(t *testing.T) {
 	require.Empty(t, got.Exc)
 }
 
+// An ignored directory is pruned rather than expanded into its files, so the
+// subtree is never walked and only the directory is reported as excluded.
+func TestAnalyze_PrunesGitIgnoredDirectory(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("resource \"aws_s3_bucket\" \"b\" {}\n")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("vendor/\n!vendor/keep.tf\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), body, 0o600))
+	vendorDir := filepath.Join(dir, "vendor", "nested")
+	require.NoError(t, os.MkdirAll(vendorDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "vendor", "keep.tf"), body, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(vendorDir, "deep.tf"), body, 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:          dir,
+		Paths:             []string{dir},
+		Types:             []string{""},
+		GitIgnoreFileName: ".gitignore",
+		MaxFileSize:       -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.ToSlash(filepath.Join(dir, "vendor"))}, got.Exc)
+	require.Equal(t, []string{filepath.ToSlash(filepath.Join(dir, "main.tf"))}, got.Inventory)
+}
+
+func TestAnalyze_DoesNotApplyGitIgnoreOutsideRepo(t *testing.T) {
+	repo := t.TempDir()
+	scanRoot := t.TempDir()
+	vendorDir := filepath.Join(scanRoot, "vendor")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("vendor/\n"), 0o600))
+	require.NoError(t, os.MkdirAll(vendorDir, 0o755))
+	externalFile := filepath.Join(vendorDir, "main.tf")
+	require.NoError(t, os.WriteFile(externalFile, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:          repo,
+		Paths:             []string{scanRoot},
+		Types:             []string{""},
+		GitIgnoreFileName: ".gitignore",
+		MaxFileSize:       -1,
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, got.Inventory, filepath.ToSlash(externalFile))
+}
+
 func TestAnalyze_ChartRootsFromChartYamlFile(t *testing.T) {
 	dir := t.TempDir()
 	chartDir := filepath.Join(dir, "mychart")
