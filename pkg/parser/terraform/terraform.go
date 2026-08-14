@@ -8,7 +8,8 @@ package terraform
 import (
 	"context"
 	"path/filepath"
-	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -26,8 +27,11 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// RetriesDefaultValue is default number of times a parser will retry to execute
-const RetriesDefaultValue = 50
+const (
+	// RetriesDefaultValue is default number of times a parser will retry to execute
+	RetriesDefaultValue     = 50
+	terraformDataIdentifier = "data"
+)
 
 // Converter returns content json, error line, error
 type Converter func(ctx context.Context, file *hcl.File, inputVariables converter.VariableMap) (model.Document, error)
@@ -214,13 +218,48 @@ func parseFile(fsys vfs.FS, filename string, shouldReplaceDataSource bool) (*hcl
 	if err != nil {
 		return nil, err
 	}
-	if shouldReplaceDataSource {
-		replaceDataIdentifiers := regexp.MustCompile(`(data\.[A-Za-z0-9._-]+)`)
-		file = []byte(replaceDataIdentifiers.ReplaceAllString(string(file), "\"$1\""))
+	parsedFile, diagnostics := hclsyntax.ParseConfig(file, filename, hcl.Pos{Line: 1, Column: 1})
+	if diagnostics.HasErrors() {
+		return nil, diagnostics
 	}
-	parsedFile, _ := hclsyntax.ParseConfig(file, filename, hcl.Pos{Line: 1, Column: 1})
+	if shouldReplaceDataSource {
+		file = quoteDataSourceTraversals(file, parsedFile)
+		parsedFile, diagnostics = hclsyntax.ParseConfig(file, filename, hcl.Pos{Line: 1, Column: 1})
+		if diagnostics.HasErrors() {
+			return nil, diagnostics
+		}
+	}
 
 	return parsedFile, nil
+}
+
+func quoteDataSourceTraversals(source []byte, file *hcl.File) []byte {
+	type sourceRange struct {
+		start int
+		end   int
+	}
+	var ranges []sourceRange
+	_ = hclsyntax.VisitAll(file.Body.(*hclsyntax.Body), func(node hclsyntax.Node) hcl.Diagnostics {
+		expr, ok := node.(*hclsyntax.ScopeTraversalExpr)
+		if !ok || expr.Traversal.RootName() != terraformDataIdentifier {
+			return nil
+		}
+		exprRange := expr.Range()
+		ranges = append(ranges, sourceRange{start: exprRange.Start.Byte, end: exprRange.End.Byte})
+		return nil
+	})
+	sort.Slice(ranges, func(i, j int) bool {
+		return ranges[i].start > ranges[j].start
+	})
+	for _, sourceRange := range ranges {
+		quoted := strconv.Quote(string(source[sourceRange.start:sourceRange.end]))
+		updated := make([]byte, 0, len(source)+len(quoted))
+		updated = append(updated, source[:sourceRange.start]...)
+		updated = append(updated, quoted...)
+		updated = append(updated, source[sourceRange.end:]...)
+		source = updated
+	}
+	return source
 }
 
 // Parse execute parser for the content in a file
