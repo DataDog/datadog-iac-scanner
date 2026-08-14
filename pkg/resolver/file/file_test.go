@@ -282,3 +282,9 @@ func prepareString(content string) string {
 	content = strings.Replace(content, " ", "", -1)
 	return content
 }
+
+func TestCheckServerlessFileReference(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "config/settings.yaml", checkServerlessFileReference("${file(config/settings.yaml)}"))
+	require.Equal(t, "plain/path.yml", checkServerlessFileReference("plain/path.yml"))
+}

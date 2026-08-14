@@ -182,6 +182,7 @@ type regexSlice struct {
 type analyzerInfo struct {
 	typesFlag       []string
 	filePath        string
+	maxFileSize     int
 	filePlatformMap *sync.Map
 	contentCache    *sync.Map
 	helmCache       *sync.Map
@@ -393,9 +394,6 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				if provider.IsTerraformCacheDir(path) {
 					return filepath.SkipDir
 				}
-				if _, statErr := os.Stat(filepath.Join(path, "Chart.yaml")); statErr == nil {
-					chartRoots = append(chartRoots, filepath.ToSlash(path))
-				}
 				return nil
 			}
 
@@ -410,15 +408,18 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				}
 			}
 
-			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
-			if relErr != nil {
-				return relErr
+			if filepath.Base(path) == "Chart.yaml" {
+				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
-			if hasGitIgnoreFile && gitIgnore.MatchesPath(trimmedPath) {
-				norm := filepath.ToSlash(path)
-				ignoreFiles = append(ignoreFiles, norm)
-				a.Exc = append(a.Exc, norm)
+			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
+			outsideRepo := relErr != nil
+
+			ext := utils.ExtensionFromPath(path)
+			if ext == "" {
+				return nil
+			}
+			if _, ok := possibleFileTypes[ext]; !ok {
 				return nil
 			}
 
@@ -429,27 +430,15 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return nil
 			}
 
-			ext := utils.ExtensionFromPath(path)
-			if ext == "" {
-				return nil
-			}
-			if _, ok := possibleFileTypes[ext]; !ok {
-				return nil
-			}
-			if isExcludedFile(path, a.Exc) || !isIncludedFile(path, a.Only) {
+			if !outsideRepo && hasGitIgnoreFile && gitIgnore.MatchesPath(trimmedPath) {
+				norm := filepath.ToSlash(path)
+				ignoreFiles = append(ignoreFiles, norm)
+				a.Exc = append(a.Exc, norm)
 				return nil
 			}
 
-			if a.MaxFileSize >= 0 {
-				if info, infoErr := d.Info(); infoErr == nil {
-					if float64(info.Size())/float64(sizeMb) > float64(a.MaxFileSize) {
-						contextLogger.Warn().Msgf("file %s exceeds maximum file size of %d Mb", path, a.MaxFileSize)
-						norm := filepath.ToSlash(path)
-						ignoreFiles = append(ignoreFiles, norm)
-						a.Exc = append(a.Exc, norm)
-						return nil
-					}
-				}
+			if isExcludedFile(path, a.Exc) || !isIncludedFile(path, a.Only) {
+				return nil
 			}
 
 			files = append(files, filepath.ToSlash(path))
@@ -486,6 +475,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				analyzerInfo := &analyzerInfo{
 					typesFlag:       typesFlag,
 					filePath:        filePath,
+					maxFileSize:     a.MaxFileSize,
 					filePlatformMap: &filePlatformMap,
 					contentCache:    &contentCache,
 					helmCache:       &helmCacheLocal,
@@ -550,6 +540,18 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 	ext := utils.ExtensionFromPath(a.filePath)
 	if ext == "" {
 		return
+	}
+
+	if a.maxFileSize >= 0 {
+		if info, err := os.Stat(a.filePath); err == nil {
+			if float64(info.Size())/float64(sizeMb) > float64(a.maxFileSize) {
+				contextLogger := logger.FromContext(ctx)
+				contextLogger.Warn().Msgf(
+					"file %s exceeds maximum file size of %d Mb", a.filePath, a.maxFileSize)
+				unwanted <- a.filePath
+				return
+			}
+		}
 	}
 
 	linesCount, _ := utils.LineCounter(ctx, a.filePath)

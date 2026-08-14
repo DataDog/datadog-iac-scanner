@@ -236,6 +236,46 @@ func TestPrepareSharedWalk_PrebuiltWalk_MatchesPerService(t *testing.T) {
 	require.True(t, tfvarsPrepared, "tfvars document should be prepared by the shared walk")
 }
 
+func TestPrepareSharedWalk_DanglingChartYamlSymlinkStillScansTerraform(t *testing.T) {
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	chartDir := filepath.Join(dir, "mixed")
+	require.NoError(t, os.MkdirAll(chartDir, 0o755))
+	require.NoError(t, os.Symlink("/nonexistent/Chart.yaml", filepath.Join(chartDir, "Chart.yaml")))
+	mainTF := filepath.Join(chartDir, "main.tf")
+	writeFile(t, mainTF, `resource "aws_s3_bucket" "b" { bucket = "my-bucket" }`)
+
+	analyzed, err := analyzer.Analyze(ctx, &analyzer.Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{"terraform"},
+		MaxFileSize: 100,
+	})
+	require.NoError(t, err)
+	require.Contains(t, analyzed.Inventory, filepath.ToSlash(mainTF))
+
+	services, store := buildParityServices(t, ctx, []string{dir})
+	fsp, ok := SharedWalkProvider(services)
+	require.True(t, ok)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	for _, s := range services {
+		s.FilePlatform = analyzed.FilePlatform
+	}
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "dangling-chart", false, 5))
+
+	prepared := documentFingerprint(t, store)
+	require.NotEmpty(t, prepared)
+	found := false
+	for key := range prepared {
+		if strings.Contains(key, "main.tf") {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "terraform file under dangling Chart.yaml symlink must be prepared")
+}
+
 // TestContentLineCountParity guards that chunked reads (getContent) and cached
 // bytes (contentFromBytes) report identical line counts, including large files
 // with no trailing newline that span multiple read chunks.

@@ -22,14 +22,15 @@ import (
 // terraformVarsPathDirective is the inline comment prefix that overrides the tfvars path for a file.
 const terraformVarsPathDirective = "kics_terraform_vars"
 
+var terraformVarsPathRegex = regexp.MustCompile(`(?m)^\s*// ` + terraformVarsPathDirective + `: ([\w/\\.:-]+)\r?\n`)
+
 func mergeMaps(baseMap, newItems converter.VariableMap) {
 	for key, value := range newItems {
 		baseMap[key] = value
 	}
 }
 
-// nolint:gocyclo
-func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
+func parseHCLBody(fsys vfs.FS, filename string) (*hclsyntax.Body, error) {
 	src, err := fsys.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		return nil, err
@@ -39,12 +40,34 @@ func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.Variable
 	if diags.HasErrors() {
 		return nil, diags
 	}
+	body, _ := parsedFile.Body.(*hclsyntax.Body)
+	return body, nil
+}
 
+func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
+	body, err := parseHCLBody(fsys, filename)
+	if err != nil {
+		return nil, err
+	}
+	return extractInputVariables(body, filename), nil
+}
+
+// getInputVariablesAndLocalsFromFile parses filename once for both variables and locals.
+func getInputVariablesAndLocalsFromFile(
+	fsys vfs.FS, filename string,
+) (vars, locals converter.VariableMap, err error) {
+	body, err := parseHCLBody(fsys, filename)
+	if err != nil {
+		return nil, nil, err
+	}
+	return extractInputVariables(body, filename), extractLocals(body), nil
+}
+
+// nolint:gocyclo
+func extractInputVariables(body *hclsyntax.Body, filename string) converter.VariableMap {
 	variables := make(converter.VariableMap)
-
-	body, ok := parsedFile.Body.(*hclsyntax.Body)
-	if !ok {
-		return variables, nil
+	if body == nil {
+		return variables
 	}
 
 	// Case 1: .tfvars-style assignments
@@ -55,7 +78,7 @@ func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.Variable
 				variables[name] = val
 			}
 		}
-		return variables, nil
+		return variables
 	}
 
 	// Case 2: .tf variable "x" { default = ... }
@@ -83,21 +106,15 @@ func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.Variable
 		}
 	}
 
-	return variables, nil
+	return variables
 }
 
-func getInputLocalsFromFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
-	src, err := fsys.ReadFile(filepath.Clean(filename))
-	if err != nil {
-		return nil, err
-	}
-
-	parsedFile, diags := hclsyntax.ParseConfig(src, filename, hcl.InitialPos)
-	if diags.HasErrors() {
-		return nil, diags
-	}
-
+func extractLocals(body *hclsyntax.Body) converter.VariableMap {
 	locals := make(converter.VariableMap)
+	if body == nil {
+		return locals
+	}
+
 	type unresolved struct {
 		name string
 		expr hclsyntax.Expression
@@ -105,7 +122,7 @@ func getInputLocalsFromFile(fsys vfs.FS, filename string) (converter.VariableMap
 	var unevaluated []unresolved
 
 	// Collect all locals
-	for _, block := range parsedFile.Body.(*hclsyntax.Body).Blocks {
+	for _, block := range body.Blocks {
 		if block.Type != "locals" {
 			continue
 		}
@@ -131,7 +148,7 @@ func getInputLocalsFromFile(fsys vfs.FS, filename string) (converter.VariableMap
 		}
 	}
 
-	return locals, nil
+	return locals
 }
 
 func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {
@@ -147,7 +164,9 @@ func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {
 	return out
 }
 
-func getInputVariables(ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string) converter.VariableMap {
+func getInputVariables(
+	ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string,
+) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
 	variablesMap := make(converter.VariableMap)
 	localsMap := make(converter.VariableMap)
@@ -159,23 +178,14 @@ func getInputVariables(ctx context.Context, fsys vfs.FS, currentPath, fileConten
 
 	// Parse all .tf files for variables and locals
 	for _, tfFile := range tfFiles {
-		// Get variables
-		vars, errVars := getInputVariablesFromFile(fsys, tfFile)
-		if errVars != nil {
-			contextLogger.Error().Msgf("Error getting default values from %s", tfFile)
-			contextLogger.Err(errVars)
-		} else {
-			mergeMaps(variablesMap, vars)
+		vars, locals, err := getInputVariablesAndLocalsFromFile(fsys, tfFile)
+		if err != nil {
+			contextLogger.Error().Msgf("Error getting default values and locals from %s", tfFile)
+			contextLogger.Err(err)
+			continue
 		}
-
-		// Get locals
-		locals, errLocals := getInputLocalsFromFile(fsys, tfFile)
-		if errLocals != nil {
-			contextLogger.Error().Msgf("Error getting locals from %s", tfFile)
-			contextLogger.Err(errLocals)
-		} else {
-			mergeMaps(localsMap, locals)
-		}
+		mergeMaps(variablesMap, vars)
+		mergeMaps(localsMap, locals)
 	}
 
 	// Parse *.auto.tfvars files
@@ -200,7 +210,6 @@ func getInputVariables(ctx context.Context, fsys vfs.FS, currentPath, fileConten
 	}
 
 	if terraformVarsPath == "" {
-		terraformVarsPathRegex := regexp.MustCompile(`(?m)^\s*// ` + terraformVarsPathDirective + `: ([\w/\\.:-]+)\r?\n`)
 		match := terraformVarsPathRegex.FindStringSubmatch(fileContent)
 		if match != nil {
 			terraformVarsPath = filepath.FromSlash(strings.ReplaceAll(match[1], "\\", "/"))

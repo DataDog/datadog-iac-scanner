@@ -81,7 +81,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string, kind model.File
 
 // GetType will analyze the filepath to determine which resolver to use
 func (r *Resolver) GetType(filePath string) model.FileKind {
-	chartFS := os.DirFS(filepath.Clean(filePath))
+	chartFS := os.DirFS(filepath.Clean(filepath.FromSlash(filePath)))
 	data, err := fs.ReadFile(chartFS, "Chart.yaml")
 	if err != nil {
 		return model.KindCOMMON

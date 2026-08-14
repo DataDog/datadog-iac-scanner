@@ -16,6 +16,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -380,7 +381,7 @@ data "aws_iam_policy_document" "test_destination_policy" {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsedFile, err := parseFile(vfs.DiskFS{}, tt.filename, tt.shouldReplaceDataSource)
+			parsedFile, err := readAndParseFile(vfs.DiskFS{}, tt.filename, tt.shouldReplaceDataSource)
 			if tt.wantErr {
 				require.NotNil(t, err)
 				require.Nil(t, parsedFile)
@@ -406,7 +407,7 @@ resource "test" "test" {
 	path := filepath.Join(t.TempDir(), "data_references.tf")
 	require.NoError(t, os.WriteFile(path, source, 0o600))
 
-	parsedFile, err := parseFile(vfs.DiskFS{}, path, true)
+	parsedFile, err := readAndParseFile(vfs.DiskFS{}, path, true)
 	require.NoError(t, err)
 	got := string(parsedFile.Bytes)
 	require.Contains(t, got, `root_data    = "data.aws_s3_bucket.selected.arn"`)
@@ -423,9 +424,21 @@ func TestParseFileReturnsDiagnostics(t *testing.T) {
   value = aws_s3_bucket.selected.
 }`), 0o600))
 
-	parsedFile, err := parseFile(vfs.DiskFS{}, path, true)
+	parsedFile, err := readAndParseFile(vfs.DiskFS{}, path, true)
 	require.Nil(t, parsedFile)
 	require.ErrorContains(t, err, "Invalid attribute name")
+}
+
+func readAndParseFile(fsys vfs.FS, filename string, shouldReplaceDataSource bool) (*hcl.File, error) {
+	content, err := fsys.ReadFile(filepath.Clean(filename))
+	if err != nil {
+		return nil, err
+	}
+	file, diags := parseFileContent(content, filename, shouldReplaceDataSource)
+	if diags.HasErrors() {
+		return nil, diags
+	}
+	return file, nil
 }
 
 // TestParser_ConcurrentSameDir guards the per-directory variable cache: the

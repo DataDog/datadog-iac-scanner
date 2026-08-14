@@ -178,7 +178,7 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 			return nil, errors.Wrap(err, "failed to open path")
 		}
 		if !fileInfo.IsDir() {
-			if shouldSkip, _ := s.checkConditions(ctx, fileInfo, extensions, scanPath, nil); shouldSkip {
+			if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, extensions, scanPath, nil); shouldSkip {
 				continue
 			}
 			files = append(files, filepath.ToSlash(scanPath))
@@ -356,10 +356,10 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 }
 
 func isUnderChartRoot(path string, chartRoots []string) bool {
+	path = filepath.ToSlash(path)
 	for _, root := range chartRoots {
-		if path == root ||
-			strings.HasPrefix(path, root+string(os.PathSeparator)) ||
-			strings.HasPrefix(path, root+"/") {
+		root = filepath.ToSlash(root)
+		if path == root || strings.HasPrefix(path, root+"/") {
 			return true
 		}
 	}
@@ -440,8 +440,7 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 				}
 				return nil
 			},
-			func(ctx context.Context, path string) error {
-				ext, _ := utils.GetExtension(ctx, path)
+			func(_ context.Context, path, ext string) error {
 				files = append(files, InventoryFile{Path: strings.ReplaceAll(path, "\\", "/"), Ext: ext})
 				return nil
 			})
@@ -455,14 +454,15 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 
 func (s *FileSystemSourceProvider) walkDirectory(ctx context.Context, scanPath string, extensions model.Extensions,
 	onChart func(ctx context.Context, path string, resolvedChartPaths *[]string) error,
-	onFile func(ctx context.Context, path string) error) error {
+	onFile func(ctx context.Context, path, ext string) error) error {
 	var resolvedChartPaths []string
 	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if shouldSkip, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedChartPaths); shouldSkip {
+		shouldSkip, ext, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedChartPaths)
+		if shouldSkip {
 			return skipFolder
 		}
 
@@ -470,7 +470,7 @@ func (s *FileSystemSourceProvider) walkDirectory(ctx context.Context, scanPath s
 			return onChart(ctx, path, &resolvedChartPaths)
 		}
 
-		return onFile(ctx, path)
+		return onFile(ctx, path, ext)
 	})
 }
 
@@ -480,7 +480,7 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 		func(ctx context.Context, path string, resolved *[]string) error {
 			return s.resolveChartDir(ctx, path, resolverSink, resolved)
 		},
-		func(ctx context.Context, path string) error {
+		func(_ context.Context, path, _ string) error {
 			files = append(files, strings.ReplaceAll(path, "\\", "/"))
 			return nil
 		})
@@ -524,7 +524,7 @@ func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
 		func(ctx context.Context, path string, resolved *[]string) error {
 			return s.resolveChartDir(ctx, path, resolverSink, resolved)
 		},
-		func(ctx context.Context, path string) error {
+		func(ctx context.Context, path, _ string) error {
 			c, err := os.Open(filepath.Clean(path)) // nolint:gosec
 			if err != nil {
 				if ignoreDamagedFiles(ctx, filepath.Clean(path)) {
@@ -564,7 +564,7 @@ func validateScanFile(ctx context.Context, scanPath string, extensions model.Ext
 
 // nolint:gocyclo
 func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.FileInfo, extensions model.Extensions,
-	path string, resolvedChartPaths []string) (bool, error) {
+	path string, resolvedChartPaths []string) (skip bool, ext string, err error) {
 	contextLogger := logger.FromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -576,23 +576,23 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 
 			err := s.addExcluded(ctx, []string{info.Name()})
 			if err != nil {
-				return true, err
+				return true, "", err
 			}
-			return true, filepath.SkipDir
+			return true, "", filepath.SkipDir
 		}
 		if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
 			contextLogger.Info().Msgf("Directory ignored: %s", path)
-			return true, filepath.SkipDir
+			return true, "", filepath.SkipDir
 		}
 		_, err := os.Stat(filepath.Join(path, "Chart.yaml"))
 		if err != nil || isUnderResolvedChart(path, resolvedChartPaths) {
-			return true, nil
+			return true, "", nil
 		}
-		return false, nil
+		return false, "", nil
 	}
 
 	if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
-		return true, nil
+		return true, "", nil
 	}
 	if s.onlyPaths != nil {
 		underOnlyPath := false
@@ -603,14 +603,14 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 			}
 		}
 		if !underOnlyPath {
-			return true, nil
+			return true, "", nil
 		}
 	}
-	ext, _ := utils.GetExtension(ctx, path)
+	ext, _ = utils.GetExtension(ctx, path)
 	if !extensions.Include(ext) {
-		return true, nil
+		return true, "", nil
 	}
-	return false, nil
+	return false, ext, nil
 }
 
 func pathWithinBase(base, path string) bool {
