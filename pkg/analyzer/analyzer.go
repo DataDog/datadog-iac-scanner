@@ -883,9 +883,6 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 	if isInsideAnsibleTemplatesDir(path) {
 		return ""
 	}
-	if checkForAnsibleByPaths(path) {
-		return ansible
-	}
 
 	contextLogger := logger.FromContext(ctx)
 
@@ -893,6 +890,9 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 
 	if utils.IsAnsibleVaultEncrypted(content) {
 		return ""
+	}
+	if checkForAnsibleByPaths(path) {
+		return ansible
 	}
 
 	if !yamlRootHasAnyKey(content, yamlPlatformRootKeys...) {

@@ -22,8 +22,10 @@ func yamlRootHasAnyKey(content []byte, keys ...string) bool {
 		return false
 	}
 	content = bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})
-	inDoc := false
 	for _, line := range bytes.Split(content, []byte("\n")) {
+		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+			continue
+		}
 		trimmed := bytes.TrimSpace(line)
 		if len(trimmed) == 0 {
 			continue
@@ -32,16 +34,9 @@ func yamlRootHasAnyKey(content []byte, keys ...string) bool {
 			continue
 		}
 		if bytes.HasPrefix(trimmed, []byte("---")) {
-			inDoc = true
 			continue
 		}
-		if !inDoc {
-			inDoc = true
-		}
-		if trimmed[0] == ' ' || trimmed[0] == '\t' {
-			continue
-		}
-		if trimmed[0] == '-' {
+		if trimmed[0] == '-' && (len(trimmed) == 1 || trimmed[1] == ' ' || trimmed[1] == '\t') {
 			return true
 		}
 		for _, key := range keys {
@@ -70,13 +65,53 @@ func yamlDocumentRoot(content []byte) (*yamlParser.Node, error) {
 }
 
 func yamlMapKeyNode(m *yamlParser.Node, key string) *yamlParser.Node {
+	return yamlMapKeyNodeSeen(m, key, make(map[*yamlParser.Node]struct{}))
+}
+
+func yamlMapKeyNodeSeen(m *yamlParser.Node, key string, seen map[*yamlParser.Node]struct{}) *yamlParser.Node {
+	if m != nil && m.Kind == yamlParser.AliasNode {
+		m = m.Alias
+	}
 	if m == nil || m.Kind != yamlParser.MappingNode {
 		return nil
 	}
+	if _, ok := seen[m]; ok {
+		return nil
+	}
+	seen[m] = struct{}{}
+
 	for i := 0; i+1 < len(m.Content); i += 2 {
 		k := m.Content[i]
 		if k.Kind == yamlParser.ScalarNode && k.Value == key {
 			return m.Content[i+1]
+		}
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		k := m.Content[i]
+		if k.Kind != yamlParser.ScalarNode || k.Value != "<<" || k.Tag == "!!str" {
+			continue
+		}
+		if found := yamlMergedMapKeyNode(m.Content[i+1], key, seen); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func yamlMergedMapKeyNode(merge *yamlParser.Node, key string, seen map[*yamlParser.Node]struct{}) *yamlParser.Node {
+	if merge == nil {
+		return nil
+	}
+	switch merge.Kind {
+	case yamlParser.AliasNode:
+		return yamlMapKeyNodeSeen(merge.Alias, key, seen)
+	case yamlParser.MappingNode:
+		return yamlMapKeyNodeSeen(merge, key, seen)
+	case yamlParser.SequenceNode:
+		for _, item := range merge.Content {
+			if found := yamlMergedMapKeyNode(item, key, seen); found != nil {
+				return found
+			}
 		}
 	}
 	return nil

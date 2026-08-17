@@ -21,6 +21,11 @@ build/
 docs/**/tmp/
 node_modules
 a/b*.txt
+ignored/
+!ignored/reincluded.tf
+reopened/
+!reopened/
+!reopened/reincluded.tf
 `)
 
 	dir := t.TempDir()
@@ -54,6 +59,9 @@ a/b*.txt
 		{path: "docs/tmp/x.txt", want: true},
 		{path: "a/b1.txt", want: true},
 		{path: "a/c/b1.txt", want: false},
+		// A file cannot be re-included while its parent remains ignored.
+		{path: "ignored/reincluded.tf", want: true},
+		{path: "reopened/reincluded.tf", want: false},
 		{path: "keep/me.txt", want: false},
 	}
 	for _, tt := range tests {

@@ -48,5 +48,11 @@ func (m *gitIgnoreMatcher) MatchesPath(relPath string) bool {
 	if normalized == "" {
 		return false
 	}
-	return m.matcher.Match(strings.Split(normalized, "/"), false)
+	parts := strings.Split(normalized, "/")
+	for i := 1; i < len(parts); i++ {
+		if m.matcher.Match(parts[:i], true) {
+			return true
+		}
+	}
+	return m.matcher.Match(parts, false)
 }

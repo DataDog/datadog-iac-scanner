@@ -35,6 +35,12 @@ func Test_yamlRootHasAnyKey(t *testing.T) {
 			want:    false,
 		},
 		{
+			name:    "nested matching key",
+			content: "metadata:\n  resources:\n    - name: x\n",
+			keys:    []string{"resources"},
+			want:    false,
+		},
+		{
 			name:    "comment and document marker",
 			content: "---\n# note\nresources:\n  - name: x\n",
 			keys:    []string{"resources"},
@@ -68,6 +74,22 @@ func Test_checkYamlPlatform_ansibleWithoutFullDocumentUnmarshal(t *testing.T) {
       - debug: msg=hi
 `)
 	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "site.yml"))
+}
+
+func Test_checkYamlPlatform_ansibleInventoryMergeAlias(t *testing.T) {
+	ctx := context.Background()
+	content := []byte(`inventory: &inventory
+  hosts:
+    web: {}
+all:
+  <<: *inventory
+`)
+	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "inventory.yml"))
+}
+
+func Test_checkYamlPlatform_encryptedGroupVars(t *testing.T) {
+	content := []byte("$ANSIBLE_VAULT;1.1;AES256\ninvalid\n")
+	require.Equal(t, "", checkYamlPlatform(context.Background(), content, "ansible/group_vars/all/vault.yml"))
 }
 
 func Test_checkYamlPlatform_skipsParseWhenNoRootKeys(t *testing.T) {
