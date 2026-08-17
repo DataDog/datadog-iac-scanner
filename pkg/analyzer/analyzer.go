@@ -25,8 +25,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
-
-	yamlParser "gopkg.in/yaml.v3"
 )
 
 // move the openApi regex to public to be used on file.go
@@ -855,6 +853,9 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 	if isInsideAnsibleTemplatesDir(path) {
 		return ""
 	}
+	if checkForAnsibleByPaths(path) {
+		return ansible
+	}
 
 	contextLogger := logger.FromContext(ctx)
 
@@ -864,48 +865,23 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 		return ""
 	}
 
-	// Parse as Node to manually call Datadog's version of UnmarshalYAML with context
-	var node yamlParser.Node
-	if err := yamlParser.Unmarshal(content, &node); err != nil {
+	if !yamlRootHasAnyKey(content, yamlPlatformRootKeys...) {
+		return ""
+	}
+
+	root, err := yamlDocumentRoot(content)
+	if err != nil {
 		contextLogger.Warn().Msgf("failed to parse yaml file (%s): %s", path, err)
 		return ""
 	}
-
-	// Get the yaml content in node
-	contentNode := &node
-	if node.Kind == yamlParser.DocumentNode && len(node.Content) > 0 {
-		contentNode = node.Content[0]
-	}
-
-	// A scalar root means the document is empty/null (e.g. a comment-only vars file).
-	// No platform can be detected; skip silently.
-	if contentNode.Kind == yamlParser.ScalarNode {
+	if root == nil {
 		return ""
 	}
 
-	var yamlContent model.Document
-	if err := yamlContent.UnmarshalYAML(ctx, contentNode, nil); err != nil {
-		contextLogger.Warn().Msgf("failed to unmarshal yaml file (%s): %s", path, err)
-		return ""
+	if yamlMapKeyNode(root, listKeywordsGoogleDeployment[0]) != nil {
+		return gdm
 	}
-
-	// check if it is google deployment manager platform
-	for _, keyword := range listKeywordsGoogleDeployment {
-		if _, ok := yamlContent[keyword]; ok {
-			return gdm
-		}
-	}
-
-	// check if the file contains some keywords related with Ansible
-	if checkForAnsible(yamlContent) {
-		return ansible
-	}
-	// check if the file contains some keywords related with Ansible Host
-	if checkForAnsibleHost(yamlContent) {
-		return ansible
-	}
-	// add for yaml files contained at paths (group_vars, host_vars) related with ansible
-	if checkForAnsibleByPaths(path) {
+	if ansibleFromYAMLNode(root) {
 		return ansible
 	}
 	return ""
@@ -936,41 +912,6 @@ func isInsideAnsibleTemplatesDir(path string) bool {
 		}
 	}
 	return false
-}
-
-func checkForAnsible(yamlContent model.Document) bool {
-	isAnsible := false
-	if play := yamlContent[playBooks]; play != nil {
-		if listOfPlayBooks, ok := play.([]interface{}); ok {
-			for _, value := range listOfPlayBooks {
-				castingValue, ok := value.(map[string]interface{})
-				if ok {
-					for _, keyword := range listKeywordsAnsible {
-						if _, ok := castingValue[keyword]; ok {
-							isAnsible = true
-						}
-					}
-				}
-			}
-		}
-	}
-	return isAnsible
-}
-
-func checkForAnsibleHost(yamlContent model.Document) bool {
-	isAnsible := false
-	for _, ansibleDefault := range ansibleHost {
-		if hosts := yamlContent[ansibleDefault]; hosts != nil {
-			if listHosts, ok := hosts.(map[string]interface{}); ok {
-				for _, value := range listKeywordsAnsibleHots {
-					if host := listHosts[value]; host != nil {
-						isAnsible = true
-					}
-				}
-			}
-		}
-	}
-	return isAnsible
 }
 
 // computeValues computes expected Lines of Code to be scanned from locCount channel
