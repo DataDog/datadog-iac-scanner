@@ -23,27 +23,28 @@ func yamlRootHasAnyKey(content []byte, keys ...string) bool {
 	}
 	content = bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})
 	for _, line := range bytes.Split(content, []byte("\n")) {
-		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
-			continue
-		}
-		trimmed := bytes.TrimSpace(line)
-		if len(trimmed) == 0 {
-			continue
-		}
-		if trimmed[0] == '#' {
-			continue
-		}
-		if bytes.HasPrefix(trimmed, []byte("---")) {
-			continue
-		}
-		if trimmed[0] == '-' && (len(trimmed) == 1 || trimmed[1] == ' ' || trimmed[1] == '\t') {
+		if yamlRootLineHasAnyKey(line, keys...) {
 			return true
 		}
-		for _, key := range keys {
-			prefix := key + ":"
-			if bytes.HasPrefix(trimmed, []byte(prefix)) {
-				return true
-			}
+	}
+	return false
+}
+
+func yamlRootLineHasAnyKey(line []byte, keys ...string) bool {
+	if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+		return false
+	}
+	trimmed := bytes.TrimSpace(line)
+	if len(trimmed) == 0 || trimmed[0] == '#' || bytes.HasPrefix(trimmed, []byte("---")) {
+		return false
+	}
+	if trimmed[0] == '"' || trimmed[0] == '\'' ||
+		(trimmed[0] == '-' && (len(trimmed) == 1 || trimmed[1] == ' ' || trimmed[1] == '\t')) {
+		return true
+	}
+	for _, key := range keys {
+		if bytes.HasPrefix(trimmed, []byte(key+":")) {
+			return true
 		}
 	}
 	return false

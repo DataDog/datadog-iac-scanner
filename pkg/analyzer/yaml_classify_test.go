@@ -46,6 +46,12 @@ func Test_yamlRootHasAnyKey(t *testing.T) {
 			keys:    []string{"resources"},
 			want:    true,
 		},
+		{
+			name:    "quoted root key",
+			content: `"resources": []` + "\n",
+			keys:    []string{"resources"},
+			want:    true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -85,6 +91,15 @@ all:
   <<: *inventory
 `)
 	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "inventory.yml"))
+}
+
+func Test_checkYamlPlatform_quotedRootKeys(t *testing.T) {
+	ctx := context.Background()
+	require.Equal(t, gdm, checkYamlPlatform(ctx, []byte(`"resources": []`), "deployment.yaml"))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, []byte(`'all':
+  hosts:
+    web: {}
+`), "inventory.yaml"))
 }
 
 func Test_checkYamlPlatform_encryptedGroupVars(t *testing.T) {
