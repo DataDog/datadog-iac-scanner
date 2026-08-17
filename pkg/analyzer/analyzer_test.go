@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -474,6 +475,50 @@ func TestAnalyze_ValidSymlink(t *testing.T) {
 	require.Equal(t, []string{terraform}, got.Types)
 	require.Contains(t, got.Inventory, filepath.ToSlash(link))
 	require.Empty(t, got.Exc)
+}
+
+func Test_checkHelm_memoizesEveryWalkedDirectory(t *testing.T) {
+	dir := t.TempDir()
+	chart := filepath.Join(dir, "mychart")
+	templates := filepath.Join(chart, "templates")
+	require.NoError(t, os.MkdirAll(templates, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chart, "Chart.yaml"), []byte("name: x\n"), 0o600))
+
+	cache := &sync.Map{}
+	require.True(t, checkHelm(context.Background(), filepath.Join(templates, "service.yaml"), cache))
+
+	// The chart root is reached by walking up from the file, so both it and the
+	// directories passed on the way share the answer.
+	for _, d := range []string{templates, chart} {
+		v, ok := cache.Load(d)
+		require.True(t, ok, d)
+		require.True(t, v.(bool), d)
+	}
+}
+
+// A negative answer is memoized for the whole chain too, so a sibling subtree
+// stops at the first cached ancestor instead of walking to the root again.
+func Test_checkHelm_memoizesNegativeResultForAncestors(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "a", "b")
+	require.NoError(t, os.MkdirAll(nested, 0o755))
+	sibling := filepath.Join(dir, "a", "c")
+	require.NoError(t, os.MkdirAll(sibling, 0o755))
+
+	cache := &sync.Map{}
+	ctx := context.Background()
+	require.False(t, checkHelm(ctx, filepath.Join(nested, "svc.yaml"), cache))
+
+	for _, d := range []string{nested, filepath.Join(dir, "a"), dir} {
+		v, ok := cache.Load(d)
+		require.True(t, ok, d)
+		require.False(t, v.(bool), d)
+	}
+
+	require.False(t, checkHelm(ctx, filepath.Join(sibling, "svc.yaml"), cache))
+	v, ok := cache.Load(sibling)
+	require.True(t, ok)
+	require.False(t, v.(bool))
 }
 
 // An ignored directory is pruned rather than expanded into its files, so the

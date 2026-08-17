@@ -871,32 +871,49 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 // hc is the scan-scoped cache; when nil the lookup always hits the filesystem.
 func checkHelm(ctx context.Context, path string, hc *sync.Map) bool {
 	contextLogger := logger.FromContext(ctx)
-	dir := filepath.Dir(path)
+	startDir := filepath.Dir(path)
+	if hc != nil {
+		if v, ok := hc.Load(startDir); ok {
+			return v.(bool)
+		}
+	}
+
+	// Every directory walked before the answer is known shares that answer, so
+	// all of them are memoized. This keeps the total number of Chart.yaml probes
+	// proportional to the number of directories in the repository rather than to
+	// directories times their depth, and lets sibling subtrees reuse the walk.
+	walked := []string{startDir}
+	dir := startDir
 	for {
-		if hc != nil {
+		if hc != nil && dir != startDir {
 			if v, ok := hc.Load(dir); ok {
-				return v.(bool)
+				return storeHelmResults(hc, walked, v.(bool))
 			}
 		}
 		_, err := os.Stat(filepath.Join(dir, "Chart.yaml"))
 		if err == nil {
-			if hc != nil {
-				hc.Store(dir, true)
-			}
-			return true
+			return storeHelmResults(hc, walked, true)
 		}
 		if !errors.Is(err, os.ErrNotExist) {
 			contextLogger.Error().Msgf("failed to check helm: %s", err)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			if hc != nil {
-				hc.Store(dir, false)
-			}
-			return false
+			return storeHelmResults(hc, walked, false)
 		}
 		dir = parent
+		walked = append(walked, dir)
 	}
+}
+
+func storeHelmResults(hc *sync.Map, dirs []string, result bool) bool {
+	if hc == nil {
+		return result
+	}
+	for _, dir := range dirs {
+		hc.Store(dir, result)
+	}
+	return result
 }
 
 func checkYamlPlatform(ctx context.Context, content []byte, path string) string {
