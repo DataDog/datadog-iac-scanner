@@ -210,9 +210,15 @@ func (m *MemFS) MissingFiles() []string {
 }
 
 // underDir returns the path of p relative to dir if p is a strict descendant of
-// dir (a non-empty remainder after the "dir/" prefix).
+// dir (a non-empty remainder after the "dir/" prefix). dir may already end in
+// "/" (e.g. the root "/" or a Windows drive root "C:/"); avoid doubling the
+// separator in that case, since "dir/" + "/" matches no key.
 func underDir(p, dir string) (string, bool) {
-	if after, ok := strings.CutPrefix(p, dir+"/"); ok && after != "" {
+	prefix := dir + "/"
+	if strings.HasSuffix(dir, "/") {
+		prefix = dir
+	}
+	if after, ok := strings.CutPrefix(p, prefix); ok && after != "" {
 		return after, true
 	}
 	return "", false

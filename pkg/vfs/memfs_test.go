@@ -164,6 +164,23 @@ func TestMemFS_ReadDirAbsoluteKeys(t *testing.T) {
 			t.Errorf("ReadDir \".\" synthesized an entry with an empty name from an absolute key")
 		}
 	}
+
+	// "/" is the mirror image of ".": the directory itself already ends in the
+	// separator underDir would otherwise append, so it must list "tmp" as a
+	// child rather than reporting a miss (reachable via a "../" source from a
+	// file pushed at, e.g., "/ws/main.tf").
+	slashEntries, err := m.ReadDir("/")
+	if err != nil {
+		t.Fatalf("ReadDir \"/\": %v", err)
+	}
+	slashGot := map[string]bool{}
+	for _, e := range slashEntries {
+		slashGot[e.Name()] = e.IsDir()
+	}
+	slashWant := map[string]bool{"tmp": true}
+	if !reflect.DeepEqual(slashGot, slashWant) {
+		t.Errorf("ReadDir \"/\" = %v, want %v", slashGot, slashWant)
+	}
 }
 
 func TestMemFS_Paths(t *testing.T) {

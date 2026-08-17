@@ -250,14 +250,15 @@ func ruleLibraryKey(platform string) (string, error) {
 // this check, is what bounds it. It is not the only read that escapes the
 // in-memory FS: the YAML/JSON file resolver opens paths taken from pushed
 // content. That one predates this change and is reachable with a relative path
-// as well, so path shape does not bound it either; it is tracked separately.
+// as well, so path shape does not bound it either; it is tracked separately in
+// K9CODESEC-4924.
 //
 // Known gap: config path filters (ignore-paths/only-paths) are workspace-rooted
 // patterns, so an absolute path matches none of them except a leading-"**" one.
 // Under only-paths that means excluded, not exempt, and an unscanned file is
 // indistinguishable from a clean one in the response. Accepted for now because
 // it needs a filter that no longer matches an out-of-workspace file against the
-// config of a workspace it does not belong to.
+// config of a workspace it does not belong to. Tracked in K9CODESEC-4940.
 func validateFilePath(p string) error {
 	if p == "" {
 		return errors.New("empty file path")
