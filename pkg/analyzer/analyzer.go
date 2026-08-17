@@ -556,7 +556,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	if a.maxFileSize >= 0 {
+	if a.maxFileSize >= 0 && !isContentClassifiedExt(ext) {
 		if info, err := os.Stat(a.filePath); err == nil {
 			if float64(info.Size())/float64(sizeMb) > float64(a.maxFileSize) {
 				contextLogger := logger.FromContext(ctx)
@@ -568,7 +568,11 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		}
 	}
 
-	content, ok := a.readClassifyContent(ctx, ext)
+	content, ok, tooLarge := a.readClassifyContent(ctx, ext)
+	if tooLarge {
+		unwanted <- a.filePath
+		return
+	}
 	if !ok {
 		return
 	}
@@ -607,17 +611,47 @@ func isContentClassifiedExt(ext string) bool {
 	return ext == yaml || ext == yml || ext == json || ext == sh
 }
 
-func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) ([]byte, bool) {
+func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) (content []byte, ok, tooLarge bool) {
 	if !isContentClassifiedExt(ext) {
-		return nil, true
+		return nil, true, false
 	}
-	content, err := os.ReadFile(a.filePath)
+	file, err := os.Open(filepath.Clean(a.filePath))
 	if err != nil {
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Error().Msgf("failed to analyze file: %s", err)
-		return nil, false
+		return nil, false, false
 	}
-	return content, true
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Err(closeErr).Msgf("failed to close '%s'", a.filePath)
+		}
+	}()
+
+	size := int64(-1)
+	if info, statErr := file.Stat(); statErr == nil {
+		size = info.Size()
+		if a.maxFileSize >= 0 && float64(size)/float64(sizeMb) > float64(a.maxFileSize) {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Warn().Msgf(
+				"file %s exceeds maximum file size of %d Mb", a.filePath, a.maxFileSize)
+			return nil, false, true
+		}
+	}
+
+	// Sizing the buffer from the stat already taken above reads the file in one
+	// pass. io.ReadAll would start at 512 bytes and repeatedly double, so every
+	// classified file would cost a handful of allocations and copies instead.
+	var buf bytes.Buffer
+	if size > 0 && int64(int(size)) == size {
+		buf.Grow(int(size) + bytes.MinRead)
+	}
+	if _, err := buf.ReadFrom(file); err != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Error().Msgf("failed to analyze file: %s", err)
+		return nil, false, false
+	}
+	return buf.Bytes(), true, false
 }
 
 func (a *analyzerInfo) persistWorkerState(content []byte, platform string) {
