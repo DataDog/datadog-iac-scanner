@@ -282,11 +282,11 @@ func validateFilePath(p string) error {
 // os.ReadDir directly instead of going through the request's in-memory FS.
 // Pushed paths may be absolute, so do not rely on the flag's default staying
 // safe: pinning it here ensures server mode never enables an arbitrary-directory
-// read via local-module evaluation. Pinning it here is
-// what lets validateFilePath accept absolute paths.
+// read via local-module evaluation, and is what lets validateFilePath accept
+// absolute paths.
 //
-// Parallel file parsing fans the per-file parse across CPUs; off unless the
-// server opts in via --x-parallelparsing.
+// Parallel file parsing fans the per-file parse across CPUs; enabled by default
+// and can be disabled with --x-parallelparsing=false.
 func serverFlagEvaluator(parallelParsing bool) featureflags.FlagEvaluator {
 	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
 		featureflags.IacEnableKicsHelmResolver:        false,
