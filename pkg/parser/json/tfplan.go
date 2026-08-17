@@ -8,9 +8,10 @@ package json
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcl_plan "github.com/hashicorp/terraform-json"
 	"github.com/tidwall/gjson"
 )
@@ -23,24 +24,31 @@ type TFPlan struct {
 	// pass through verbatim without a typed round-trip dropping data.
 	ResourceChanges any `json:"resource_changes,omitempty"`
 	Configuration   any `json:"configuration,omitempty"`
+
+	// TfplanMeta is a reserved top-level map, parallel to Resource (not
+	// nested inside it), so Rego rules that iterate doc.resource.<type> never
+	// see it as a fake resource instance. Keyed exactly like
+	// Resource[type][flattened-key], it gives Rego a direct lookup for data
+	// that otherwise requires reconstructing the resource's canonical address
+	// and correlating it against the raw resource_changes/configuration
+	// structures.
+	TfplanMeta map[string]map[string]tfplanResourceMeta `json:"_dd_tfplan_meta,omitempty"`
 }
 
 // TFPlanResource is an auxiliary structure for parsing tfplans as a scanner Document.
-// Values are either a TFPlanNamedResource (keyed by resource name) or, under a
-// reserved "_dd_*" key, scanner-owned metadata keyed like the sibling resource
-// name (see readModule): "_dd_lines" holds each header line, "_dd_tfplan_meta"
-// holds each resource's canonical address plus its correlated
-// resource_changes/configuration entries.
+// Values are either a TFPlanNamedResource (keyed by resource name) or, under
+// the reserved "_dd_lines" key, each resource's header line keyed like the
+// sibling resource name (see readModule).
 type TFPlanResource map[string]any
 
 // TFPlanNamedResource is an auxiliary structure for parsing tfplans as a scanner Document
 type TFPlanNamedResource map[string]any
 
 // tfplanResourceMeta is the payload stored under
-// resource.<type>._dd_tfplan_meta._dd_<flattened-key>. It gives Rego a direct
-// lookup for data that otherwise requires reconstructing the resource's
-// canonical address and correlating it against the raw resource_changes/
-// configuration structures.
+// _dd_tfplan_meta.<type>.<flattened-key>. It gives Rego a direct lookup for
+// data that otherwise requires reconstructing the resource's canonical
+// address and correlating it against the raw resource_changes/configuration
+// structures.
 type tfplanResourceMeta struct {
 	// Address is the canonical (absolute) Terraform resource address, e.g.
 	// "module.staging.aws_instance.web[0]".
@@ -52,10 +60,6 @@ type tfplanResourceMeta struct {
 	// this resource, verbatim, or nil if no matching configuration was found.
 	ConfigurationExpressions any `json:"configuration_expressions,omitempty"`
 }
-
-// indexBracketRE matches a single "[...]" instance-key suffix (count index or
-// quoted for_each key) in a Terraform resource/module address segment.
-var indexBracketRE = regexp.MustCompile(`\[[^\]]*\]`)
 
 // resourceChangeCorrelation holds the two per-address lookups built once per
 // plan (from the raw, untyped resource_changes/configuration) so readModule
@@ -136,9 +140,27 @@ func walkConfigModule(module *gjson.Result, modulePath string, c *resourceChange
 // absolute resource address, e.g. "module.staging[\"prod\"].aws_instance.web[2]"
 // becomes "module.staging.aws_instance.web" - the shape configuration
 // addresses always have, since a module's configuration is shared by every
-// instance of that module (for_each/count).
+// instance of that module (for_each/count). Address is parsed as an HCL
+// traversal (not a regex) so quoted for_each keys containing "]" or escaped
+// quotes are handled correctly.
 func canonicalConfigAddress(address string) string {
-	return indexBracketRE.ReplaceAllString(address, "")
+	traversal, diags := hclsyntax.ParseTraversalAbs([]byte(address), "", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return address
+	}
+
+	canonical := ""
+	for _, step := range traversal {
+		switch t := step.(type) {
+		case hcl.TraverseRoot:
+			canonical = t.Name
+		case hcl.TraverseAttr:
+			canonical += "." + t.Name
+		case hcl.TraverseIndex:
+			// Instance-key suffix (count/for_each) - dropped.
+		}
+	}
+	return canonical
 }
 
 // resourceMetaFor builds the _dd_tfplan_meta payload for a single resource,
@@ -294,17 +316,20 @@ func (kp *TFPlan) readModule(
 			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
 		}
 
-		// Inject the resource's canonical address plus its correlated
-		// resource_changes/configuration data as a sibling _dd_tfplan_meta
-		// entry at resource.<type>._dd_tfplan_meta._dd_<name>, so Rego rules
-		// can look this up directly instead of reconstructing the address and
-		// re-walking resource_changes/configuration themselves.
-		ddMeta, isMap := typeRes["_dd_tfplan_meta"].(map[string]tfplanResourceMeta)
-		if !isMap {
-			ddMeta = make(map[string]tfplanResourceMeta)
-			typeRes["_dd_tfplan_meta"] = ddMeta
+		// Record the resource's canonical address plus its correlated
+		// resource_changes/configuration data under the top-level
+		// _dd_tfplan_meta.<type>.<key> map (parallel to Resource, never nested
+		// inside it), so Rego rules can look this up directly instead of
+		// reconstructing the address and re-walking resource_changes/
+		// configuration themselves - and so rules iterating
+		// doc.resource.<type> never see it as a fake resource instance.
+		if kp.TfplanMeta[resource.Type] == nil {
+			if kp.TfplanMeta == nil {
+				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
+			}
+			kp.TfplanMeta[resource.Type] = make(map[string]tfplanResourceMeta)
 		}
-		ddMeta["_dd_"+resourceKey] = resourceMetaFor(resource.Address, correlation)
+		kp.TfplanMeta[resource.Type][resourceKey] = resourceMetaFor(resource.Address, correlation)
 	}
 
 	// Recursively process child modules, accumulating into the same map

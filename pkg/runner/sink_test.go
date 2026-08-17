@@ -279,22 +279,24 @@ func TestSink_TFPlanExposesAfterUnknownAndConfiguration(t *testing.T) {
 	require.JSONEq(t, `{
 		"resource": {
 			"aws_s3_bucket": {
-				"_dd_tfplan_meta": {
-					"_dd_main": {
-						"address": "aws_s3_bucket.main",
-						"after_unknown": {
-							"bucket": true,
-							"id": true
-						},
-						"configuration_expressions": {
-							"bucket": {
-								"references": ["random_id.suffix"]
-							}
-						}
-					}
-				},
 				"main": {
 					"acl": "private"
+				}
+			}
+		},
+		"_dd_tfplan_meta": {
+			"aws_s3_bucket": {
+				"main": {
+					"address": "aws_s3_bucket.main",
+					"after_unknown": {
+						"bucket": true,
+						"id": true
+					},
+					"configuration_expressions": {
+						"bucket": {
+							"references": ["random_id.suffix"]
+						}
+					}
 				}
 			}
 		},
