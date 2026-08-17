@@ -2,11 +2,13 @@ package tfmodules
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -125,6 +127,27 @@ func TestParseTerraformModules_CanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// TestParseDirModules_CanceledContext guards per-directory extraction: once the
+// scan is canceled, parseDirModules must stop before parsing the rest of the
+// files in that directory rather than finishing the whole directory first.
+func TestParseDirModules_CanceledContext(t *testing.T) {
+	dir := t.TempDir()
+	const fileBody = `locals { x = "y" }`
+	files := make([]*model.FileMetadata, 32)
+	for i := range files {
+		files[i] = &model.FileMetadata{
+			FilePath:     filepath.Join(dir, fmt.Sprintf("file_%02d.tf", i)),
+			OriginalData: fileBody,
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := parseDirModules(ctx, nil, &sync.Map{}, dirFiles{dir: dir, files: files}, nil)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 // TestParseAllModuleVariables_CanceledContext guards the cancellation contract:
 // a canceled context should return an empty slice without blocking.
 func TestParseAllModuleVariables_CanceledContext(t *testing.T) {
@@ -139,6 +162,72 @@ func TestParseAllModuleVariables_CanceledContext(t *testing.T) {
 	got, err := ParseAllModuleVariables(ctx, nil, modules, t.TempDir(), nil)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, got)
+}
+
+// TestParseTerraformModules_IdenticalContentResolvedPerDirectory guards the
+// content-keyed extract cache: two directories can hold byte-identical .tf
+// files, so the cached extract is shared between them, but each module argument
+// must still resolve against the locals of its own directory.
+func TestParseTerraformModules_IdenticalContentResolvedPerDirectory(t *testing.T) {
+	root := t.TempDir()
+	// Byte-identical in both directories, so both hit the same cache entry.
+	const mainTF = `module "m" {
+  source = local.mod_path
+}`
+	files := model.FileMetadatas{}
+	for dirName, modName := range map[string]string{"stack-a": "mod-a", "stack-b": "mod-b"} {
+		dir := filepath.Join(root, dirName)
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, modName), 0o755))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, modName, "main.tf"), []byte(`resource "test" "r" {}`), 0o600))
+		localsTF := `locals {
+  mod_path = "./` + modName + `"
+}`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "locals.tf"), []byte(localsTF), 0o600))
+		files = append(files,
+			&model.FileMetadata{FilePath: filepath.Join(dir, "main.tf"), OriginalData: mainTF},
+			&model.FileMetadata{FilePath: filepath.Join(dir, "locals.tf"), OriginalData: localsTF},
+		)
+	}
+
+	modules, err := ParseTerraformModules(context.Background(), nil, files, 0)
+	require.NoError(t, err)
+	require.Len(t, modules, 2)
+
+	sourceByDir := make(map[string]string)
+	absByDir := make(map[string]string)
+	for _, mod := range modules {
+		dir := filepath.Base(filepath.Dir(mod.FileName))
+		sourceByDir[dir] = mod.Source
+		absByDir[dir] = mod.AbsSource
+	}
+	require.Equal(t, "./mod-a", sourceByDir["stack-a"])
+	require.Equal(t, "./mod-b", sourceByDir["stack-b"])
+	require.Equal(t, filepath.Join(root, "stack-a", "mod-a"), absByDir["stack-a"])
+	require.Equal(t, filepath.Join(root, "stack-b", "mod-b"), absByDir["stack-b"])
+}
+
+// TestParseTerraformModules_MissingSourceLeavesSourceTypeUnset locks in the
+// distinction between an absent source argument and one that resolves to an
+// empty string: only the latter is classified (as "unknown").
+func TestParseTerraformModules_MissingSourceLeavesSourceTypeUnset(t *testing.T) {
+	dir := t.TempDir()
+	const mainTF = `module "m" {
+  version = "1.2.3"
+}`
+	files := model.FileMetadatas{
+		&model.FileMetadata{FilePath: filepath.Join(dir, "main.tf"), OriginalData: mainTF},
+	}
+
+	modules, err := ParseTerraformModules(context.Background(), nil, files, 0)
+	require.NoError(t, err)
+	require.Len(t, modules, 1)
+	for _, mod := range modules {
+		require.Equal(t, "1.2.3", mod.Version)
+		require.Empty(t, mod.Source)
+		require.Empty(t, mod.SourceType, "an absent source must not be classified")
+		require.False(t, mod.IsLocal)
+	}
 }
 
 func TestParseTerraformModules(t *testing.T) {
