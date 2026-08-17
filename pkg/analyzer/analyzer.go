@@ -848,17 +848,19 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 // hc is the scan-scoped cache; when nil the lookup always hits the filesystem.
 func checkHelm(ctx context.Context, path string, hc *sync.Map) bool {
 	contextLogger := logger.FromContext(ctx)
-	dir := filepath.Dir(path)
-	for {
-		if hc != nil {
-			if v, ok := hc.Load(dir); ok {
-				return v.(bool)
-			}
+	startDir := filepath.Dir(path)
+	if hc != nil {
+		if v, ok := hc.Load(startDir); ok {
+			return v.(bool)
 		}
+	}
+
+	dir := startDir
+	for {
 		_, err := os.Stat(filepath.Join(dir, "Chart.yaml"))
 		if err == nil {
 			if hc != nil {
-				hc.Store(dir, true)
+				hc.Store(startDir, true)
 			}
 			return true
 		}
@@ -868,7 +870,7 @@ func checkHelm(ctx context.Context, path string, hc *sync.Map) bool {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			if hc != nil {
-				hc.Store(dir, false)
+				hc.Store(startDir, false)
 			}
 			return false
 		}
