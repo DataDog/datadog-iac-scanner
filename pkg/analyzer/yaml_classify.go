@@ -10,9 +10,9 @@ import (
 // when no regex-based type matched during classification.
 var yamlPlatformRootKeys = []string{
 	listKeywordsGoogleDeployment[0], // resources
-	playBooks,                         // playbooks
-	ansibleHost[0],                    // all
-	ansibleHost[1],                    // ungrouped
+	playBooks,                       // playbooks
+	ansibleHost[0],                  // all
+	ansibleHost[1],                  // ungrouped
 }
 
 // yamlRootHasAnyKey reports whether content appears to declare any of keys at
