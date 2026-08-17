@@ -56,6 +56,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"fakewebservices_database": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_prod_db": map[string]interface{}{
+								"address": "fakewebservices_database.prod_db",
+							},
+						},
 						"prod_db": map[string]interface{}{
 							"name": "Production DB",
 							"size": (float64)(256),
@@ -130,6 +135,20 @@ func TestJson_parseTFPlan(t *testing.T) {
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_main": map[string]interface{}{
+								"address": "aws_s3_bucket.main",
+								"after_unknown": map[string]interface{}{
+									"bucket": true,
+									"id":     true,
+								},
+								"configuration_expressions": map[string]interface{}{
+									"bucket": map[string]interface{}{
+										"references": []interface{}{"random_id.suffix"},
+									},
+								},
+							},
+						},
 						"main": map[string]interface{}{
 							"bucket": "main-bucket",
 						},
@@ -239,6 +258,14 @@ func TestJson_parseTFPlan(t *testing.T) {
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_main": map[string]interface{}{
+								"address": "aws_s3_bucket.main",
+							},
+							"_dd_module.storage.backup": map[string]interface{}{
+								"address": "module.storage.aws_s3_bucket.backup",
+							},
+						},
 						"main": map[string]interface{}{
 							"bucket": "main-bucket",
 							"acl":    "private",
@@ -249,6 +276,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 					"aws_instance": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_web": map[string]interface{}{
+								"address": "aws_instance.web",
+							},
+						},
 						"web": map[string]interface{}{
 							"instance_type": "t2.micro",
 						},
@@ -307,6 +339,14 @@ func TestJson_parseTFPlan(t *testing.T) {
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_instance": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_web": map[string]interface{}{
+								"address": "aws_instance.web",
+							},
+							"_dd_module.staging.web": map[string]interface{}{
+								"address": "module.staging.aws_instance.web",
+							},
+						},
 						"web": map[string]interface{}{
 							"instance_type": "t2.large",
 							"tags": map[string]interface{}{
@@ -382,16 +422,31 @@ func TestJson_parseTFPlan(t *testing.T) {
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_vpc": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_main": map[string]interface{}{
+								"address": "aws_vpc.main",
+							},
+						},
 						"main": map[string]interface{}{
 							"cidr_block": "10.0.0.0/16",
 						},
 					},
 					"aws_subnet": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_module.networking.public": map[string]interface{}{
+								"address": "module.networking.aws_subnet.public",
+							},
+						},
 						"module.networking.public": map[string]interface{}{
 							"cidr_block": "10.0.1.0/24",
 						},
 					},
 					"aws_security_group": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_module.networking.module.security.web": map[string]interface{}{
+								"address": "module.networking.module.security.aws_security_group.web",
+							},
+						},
 						"module.networking.module.security.web": map[string]interface{}{
 							"description": "Web traffic",
 						},
@@ -447,6 +502,14 @@ func TestJson_parseTFPlan(t *testing.T) {
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_module.app1.data": map[string]interface{}{
+								"address": "module.app1.aws_s3_bucket.data",
+							},
+							"_dd_module.app2.data": map[string]interface{}{
+								"address": "module.app2.aws_s3_bucket.data",
+							},
+						},
 						"module.app1.data": map[string]interface{}{
 							"bucket": "app1-data",
 						},
@@ -517,6 +580,17 @@ func TestJson_parseTFPlan(t *testing.T) {
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_instance": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_web[0]": map[string]interface{}{
+								"address": "aws_instance.web[0]",
+							},
+							"_dd_web[1]": map[string]interface{}{
+								"address": "aws_instance.web[1]",
+							},
+							"_dd_web[2]": map[string]interface{}{
+								"address": "aws_instance.web[2]",
+							},
+						},
 						"web[0]": map[string]interface{}{
 							"instance_type": "t2.micro",
 							"tags": map[string]interface{}{
@@ -593,6 +667,17 @@ func TestJson_parseTFPlan(t *testing.T) {
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
+						"_dd_tfplan_meta": map[string]interface{}{
+							"_dd_data[\"prod\"]": map[string]interface{}{
+								"address": "aws_s3_bucket.data[\"prod\"]",
+							},
+							"_dd_data[\"staging\"]": map[string]interface{}{
+								"address": "aws_s3_bucket.data[\"staging\"]",
+							},
+							"_dd_data[\"dev\"]": map[string]interface{}{
+								"address": "aws_s3_bucket.data[\"dev\"]",
+							},
+						},
 						"data[\"prod\"]": map[string]interface{}{
 							"bucket": "prod-data-bucket",
 							"acl":    "private",
@@ -656,6 +741,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"_dd_lines": map[string]any{
 							"_dd_prod_db": map[string]any{"_dd_line": (float64)(7)},
 						},
+						"_dd_tfplan_meta": map[string]any{
+							"_dd_prod_db": map[string]any{
+								"address": "fakewebservices_database.prod_db",
+							},
+						},
 						"prod_db": map[string]any{
 							"name": "Production DB",
 							"size": (float64)(256),
@@ -680,4 +770,202 @@ func TestJson_parseTFPlan(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestJson_parseTFPlan_dd_tfplan_meta_correlation exercises _dd_tfplan_meta's
+// direct-lookup contract end to end: a Rego rule should be able to read
+// resource.<type>._dd_tfplan_meta._dd_<key>.after_unknown/configuration_expressions
+// without reconstructing the resource's Terraform address or walking
+// resource_changes/configuration itself. Covers a root resource, a resource in
+// a nested module, a count instance, a for_each instance, and a for_each
+// instance whose key contains a literal dot (which must not be mistaken for a
+// module/resource path separator when correlating).
+func TestJson_parseTFPlan_dd_tfplan_meta_correlation(t *testing.T) {
+	doc := model.Document{
+		"format_version":    "1.2",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"resources": []map[string]interface{}{
+					{
+						"address": "aws_vpc.main",
+						"mode":    "managed",
+						"type":    "aws_vpc",
+						"name":    "main",
+						"values": map[string]interface{}{
+							"cidr_block": "10.0.0.0/16",
+						},
+					},
+					{
+						"address": "aws_instance.web[0]",
+						"mode":    "managed",
+						"type":    "aws_instance",
+						"name":    "web",
+						"index":   float64(0),
+						"values": map[string]interface{}{
+							"instance_type": "t2.micro",
+						},
+					},
+					{
+						"address": "aws_s3_bucket.data[\"prod\"]",
+						"mode":    "managed",
+						"type":    "aws_s3_bucket",
+						"name":    "data",
+						"index":   "prod",
+						"values": map[string]interface{}{
+							"bucket": "prod-data-bucket",
+						},
+					},
+					{
+						"address": "aws_s3_bucket.data[\"a.b\"]",
+						"mode":    "managed",
+						"type":    "aws_s3_bucket",
+						"name":    "data",
+						"index":   "a.b",
+						"values": map[string]interface{}{
+							"bucket": "dotted-key-bucket",
+						},
+					},
+				},
+				"child_modules": []map[string]interface{}{
+					{
+						"address": "module.networking",
+						"resources": []map[string]interface{}{
+							{
+								"address": "module.networking.aws_subnet.public",
+								"mode":    "managed",
+								"type":    "aws_subnet",
+								"name":    "public",
+								"values": map[string]interface{}{
+									"cidr_block": "10.0.1.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"resource_changes": []map[string]interface{}{
+			{
+				"address": "aws_vpc.main",
+				"change": map[string]interface{}{
+					"after_unknown": map[string]interface{}{"id": true},
+				},
+			},
+			{
+				"address": "aws_instance.web[0]",
+				"change": map[string]interface{}{
+					"after_unknown": map[string]interface{}{"arn": true},
+				},
+			},
+			{
+				"address": "aws_s3_bucket.data[\"prod\"]",
+				"change": map[string]interface{}{
+					"after_unknown": map[string]interface{}{"id": true},
+				},
+			},
+			{
+				"address": "aws_s3_bucket.data[\"a.b\"]",
+				"change": map[string]interface{}{
+					"after_unknown": map[string]interface{}{"id": true},
+				},
+			},
+			{
+				"address": "module.networking.aws_subnet.public",
+				"change": map[string]interface{}{
+					"after_unknown": map[string]interface{}{"id": true},
+				},
+			},
+		},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"resources": []map[string]interface{}{
+					{
+						"address": "aws_vpc.main",
+						"expressions": map[string]interface{}{
+							"cidr_block": map[string]interface{}{"constant_value": "10.0.0.0/16"},
+						},
+					},
+					{
+						"address": "aws_instance.web",
+						"expressions": map[string]interface{}{
+							"instance_type": map[string]interface{}{"references": []string{"var.instance_type"}},
+						},
+					},
+					{
+						"address": "aws_s3_bucket.data",
+						"expressions": map[string]interface{}{
+							"bucket": map[string]interface{}{"references": []string{"var.bucket_name"}},
+						},
+					},
+				},
+				"module_calls": map[string]interface{}{
+					"networking": map[string]interface{}{
+						"module": map[string]interface{}{
+							"resources": []map[string]interface{}{
+								{
+									"address": "aws_subnet.public",
+									"expressions": map[string]interface{}{
+										"cidr_block": map[string]interface{}{"references": []string{"var.subnet_cidr"}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	meta := func(resourceType, key string) map[string]interface{} {
+		typeMap, ok := got["resource"].(map[string]interface{})[resourceType].(map[string]interface{})
+		require.True(t, ok, "resource.%s not found", resourceType)
+		metaMap, ok := typeMap["_dd_tfplan_meta"].(map[string]interface{})
+		require.True(t, ok, "resource.%s._dd_tfplan_meta not found", resourceType)
+		entry, ok := metaMap["_dd_"+key].(map[string]interface{})
+		require.True(t, ok, "resource.%s._dd_tfplan_meta._dd_%s not found", resourceType, key)
+		return entry
+	}
+
+	// Root resource.
+	require.Equal(t, map[string]interface{}{
+		"address":                   "aws_vpc.main",
+		"after_unknown":             map[string]interface{}{"id": true},
+		"configuration_expressions": map[string]interface{}{"cidr_block": map[string]interface{}{"constant_value": "10.0.0.0/16"}},
+	}, meta("aws_vpc", "main"))
+
+	// Count instance: correlates by exact address (change) and index-stripped
+	// address (configuration, shared across all instances).
+	require.Equal(t, map[string]interface{}{
+		"address":                   "aws_instance.web[0]",
+		"after_unknown":             map[string]interface{}{"arn": true},
+		"configuration_expressions": map[string]interface{}{"instance_type": map[string]interface{}{"references": []interface{}{"var.instance_type"}}},
+	}, meta("aws_instance", "web[0]"))
+
+	// for_each instance.
+	require.Equal(t, map[string]interface{}{
+		"address":                   "aws_s3_bucket.data[\"prod\"]",
+		"after_unknown":             map[string]interface{}{"id": true},
+		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
+	}, meta("aws_s3_bucket", "data[\"prod\"]"))
+
+	// for_each instance whose key contains a literal dot: the dot must not be
+	// mistaken for an address separator when stripping the index to correlate
+	// against configuration.
+	require.Equal(t, map[string]interface{}{
+		"address":                   "aws_s3_bucket.data[\"a.b\"]",
+		"after_unknown":             map[string]interface{}{"id": true},
+		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
+	}, meta("aws_s3_bucket", "data[\"a.b\"]"))
+
+	// Resource in a nested module: configuration is correlated via
+	// module_calls, keyed by module call name, not module instance address.
+	require.Equal(t, map[string]interface{}{
+		"address":                   "module.networking.aws_subnet.public",
+		"after_unknown":             map[string]interface{}{"id": true},
+		"configuration_expressions": map[string]interface{}{"cidr_block": map[string]interface{}{"references": []interface{}{"var.subnet_cidr"}}},
+	}, meta("aws_subnet", "module.networking.public"))
 }
