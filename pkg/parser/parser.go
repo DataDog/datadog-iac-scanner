@@ -230,6 +230,10 @@ func contains(types []string, supportedTypes map[string]bool) bool {
 }
 
 func (c *Parser) isValidExtension(ctx context.Context, filePath string) bool {
+	if ext := utils.ExtensionFromPath(filePath); ext != "" {
+		_, ok := c.extensions[ext]
+		return ok
+	}
 	fsys := c.fsys
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
