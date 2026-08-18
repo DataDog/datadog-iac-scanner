@@ -380,6 +380,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			return returnAnalyzedPaths, errors.Wrap(statErr, "failed to analyze path")
 		}
 		singleFilePath := !pathInfo.IsDir()
+		walkRootDirChecked := false
 		if err := filepath.WalkDir(path, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -397,6 +398,19 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			if d.IsDir() {
 				if provider.IsTerraformCacheDir(path) {
 					return filepath.SkipDir
+				}
+				// When the walk root starts below an ignored ancestor, git never
+				// enters that ancestor so MatchesDir on the root basename is not
+				// enough. One parent check per WalkDir root preserves pruning
+				// without re-testing every file or directory in the tree.
+				if insideRepo && hasGitIgnoreFile && !walkRootDirChecked {
+					walkRootDirChecked = true
+					if gitIgnore.MatchesParentDir(trimmedPath) {
+						norm := filepath.ToSlash(path)
+						ignoreFiles = append(ignoreFiles, norm)
+						a.Exc = append(a.Exc, norm)
+						return filepath.SkipDir
+					}
 				}
 				// Pruning the subtree is cheaper than testing every file below
 				// it, and it is what makes an ignored directory final: git

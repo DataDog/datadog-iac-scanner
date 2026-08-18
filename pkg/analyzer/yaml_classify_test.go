@@ -163,6 +163,15 @@ all:
 	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "inventory.yml"))
 }
 
+func Test_checkYamlPlatform_aliasBackedPlaybooks(t *testing.T) {
+	ctx := context.Background()
+	content := []byte(`plays: &plays
+  - hosts: all
+playbooks: *plays
+`)
+	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "playbook.yaml"))
+}
+
 func Test_checkYamlPlatform_quotedRootKeys(t *testing.T) {
 	ctx := context.Background()
 	require.Equal(t, gdm, checkYamlPlatform(ctx, []byte(`"resources": []`), "deployment.yaml"))

@@ -567,6 +567,27 @@ func TestAnalyze_DoesNotApplyGitIgnoreOutsideRepo(t *testing.T) {
 	require.Contains(t, got.Inventory, filepath.ToSlash(externalFile))
 }
 
+func TestAnalyze_SkipsWalkRootBelowGitIgnoredDirectory(t *testing.T) {
+	repo := t.TempDir()
+	build := filepath.Join(repo, "build", "nested")
+	require.NoError(t, os.MkdirAll(build, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("build/\n"), 0o600))
+	nestedFile := filepath.Join(build, "main.tf")
+	require.NoError(t, os.WriteFile(nestedFile, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:          repo,
+		Paths:             []string{build},
+		Types:             []string{""},
+		GitIgnoreFileName: ".gitignore",
+		MaxFileSize:       -1,
+	})
+	require.NoError(t, err)
+	require.Contains(t, got.Exc, filepath.ToSlash(build))
+	require.NotContains(t, got.Inventory, filepath.ToSlash(nestedFile))
+	require.NotContains(t, got.Types, terraform)
+}
+
 func TestAnalyze_ChartRootsFromChartYamlFile(t *testing.T) {
 	dir := t.TempDir()
 	chartDir := filepath.Join(dir, "mychart")

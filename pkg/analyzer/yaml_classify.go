@@ -128,6 +128,13 @@ func yamlRootIsMapping(root *yamlParser.Node) bool {
 	return root != nil && root.Kind == yamlParser.MappingNode
 }
 
+func yamlResolveAlias(n *yamlParser.Node) *yamlParser.Node {
+	for n != nil && n.Kind == yamlParser.AliasNode {
+		n = n.Alias
+	}
+	return n
+}
+
 func yamlMapKeyNode(m *yamlParser.Node, key string) *yamlParser.Node {
 	return yamlMapKeyNodeSeen(m, key, nil)
 }
@@ -189,6 +196,7 @@ func yamlMergedMapKeyNode(merge *yamlParser.Node, key string, seen map[*yamlPars
 }
 
 func ansiblePlayKeywordsFromNode(play *yamlParser.Node) bool {
+	play = yamlResolveAlias(play)
 	if play == nil || play.Kind != yamlParser.MappingNode {
 		return false
 	}
@@ -215,7 +223,7 @@ func ansibleFromYAMLNode(root *yamlParser.Node) bool {
 	if root.Kind != yamlParser.MappingNode {
 		return false
 	}
-	playbooks := yamlMapKeyNode(root, playBooks)
+	playbooks := yamlResolveAlias(yamlMapKeyNode(root, playBooks))
 	if playbooks != nil && playbooks.Kind == yamlParser.SequenceNode {
 		for _, item := range playbooks.Content {
 			if ansiblePlayKeywordsFromNode(item) {
