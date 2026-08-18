@@ -25,9 +25,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
-	ignore "github.com/sabhiram/go-gitignore"
-
-	yamlParser "gopkg.in/yaml.v3"
 )
 
 // move the openApi regex to public to be used on file.go
@@ -378,9 +375,12 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	}
 	// get all the files inside the given paths
 	for _, path := range a.Paths {
-		if _, err := os.Stat(path); err != nil {
-			return returnAnalyzedPaths, errors.Wrap(err, "failed to analyze path")
+		pathInfo, statErr := os.Stat(path)
+		if statErr != nil {
+			return returnAnalyzedPaths, errors.Wrap(statErr, "failed to analyze path")
 		}
+		singleFilePath := !pathInfo.IsDir()
+		walkRootDirChecked := false
 		if err := filepath.WalkDir(path, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -390,8 +390,37 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return filepath.SkipDir
 			}
 
+			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
+			insideRepo := relErr == nil &&
+				trimmedPath != ".." &&
+				!strings.HasPrefix(trimmedPath, ".."+string(os.PathSeparator))
+
 			if d.IsDir() {
 				if provider.IsTerraformCacheDir(path) {
+					return filepath.SkipDir
+				}
+				// When the walk root starts below an ignored ancestor, git never
+				// enters that ancestor so MatchesDir on the root basename is not
+				// enough. One parent check per WalkDir root preserves pruning
+				// without re-testing every file or directory in the tree.
+				if insideRepo && hasGitIgnoreFile && !walkRootDirChecked {
+					walkRootDirChecked = true
+					if gitIgnore.MatchesParentDir(trimmedPath) {
+						norm := filepath.ToSlash(path)
+						ignoreFiles = append(ignoreFiles, norm)
+						a.Exc = append(a.Exc, norm)
+						return filepath.SkipDir
+					}
+				}
+				// Pruning the subtree is cheaper than testing every file below
+				// it, and it is what makes an ignored directory final: git
+				// cannot re-include a file whose parent is excluded, so the
+				// files under it must never be considered at all. The directory
+				// itself is recorded as excluded so downstream walks skip it too.
+				if insideRepo && hasGitIgnoreFile && gitIgnore.MatchesDir(trimmedPath) {
+					norm := filepath.ToSlash(path)
+					ignoreFiles = append(ignoreFiles, norm)
+					a.Exc = append(a.Exc, norm)
 					return filepath.SkipDir
 				}
 				return nil
@@ -412,9 +441,6 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
-			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
-			outsideRepo := relErr != nil
-
 			ext := utils.ExtensionFromPath(path)
 			if ext == "" {
 				return nil
@@ -430,7 +456,9 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return nil
 			}
 
-			if !outsideRepo && hasGitIgnoreFile && gitIgnore.MatchesPath(trimmedPath) {
+			if insideRepo && hasGitIgnoreFile &&
+				(gitIgnore.MatchesPath(trimmedPath) ||
+					(singleFilePath && gitIgnore.MatchesParentDir(trimmedPath))) {
 				norm := filepath.ToSlash(path)
 				ignoreFiles = append(ignoreFiles, norm)
 				a.Exc = append(a.Exc, norm)
@@ -542,7 +570,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	if a.maxFileSize >= 0 {
+	if a.maxFileSize >= 0 && !isContentClassifiedExt(ext) {
 		if info, err := os.Stat(a.filePath); err == nil {
 			if float64(info.Size())/float64(sizeMb) > float64(a.maxFileSize) {
 				contextLogger := logger.FromContext(ctx)
@@ -554,9 +582,11 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		}
 	}
 
-	linesCount, _ := utils.LineCounter(ctx, a.filePath)
-
-	content, ok := a.readClassifyContent(ctx, ext)
+	content, ok, tooLarge := a.readClassifyContent(ctx, ext)
+	if tooLarge {
+		unwanted <- a.filePath
+		return
+	}
 	if !ok {
 		return
 	}
@@ -574,24 +604,68 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 	}
 	a.persistWorkerState(content, platform)
 	results <- platform
-	locCount <- linesCount
+	// Counted only once the file is known to be scanned, and from the content
+	// read for classification when there is any, so the file is opened once.
+	locCount <- a.countLines(ctx, content)
+}
+
+func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {
+	if content != nil {
+		return utils.CountLines(content)
+	}
+	lineCount, err := utils.LineCounter(ctx, a.filePath)
+	if err != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Err(err).Msgf("failed to count lines of '%s'", a.filePath)
+	}
+	return lineCount
 }
 
 func isContentClassifiedExt(ext string) bool {
 	return ext == yaml || ext == yml || ext == json || ext == sh
 }
 
-func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) ([]byte, bool) {
+func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) (content []byte, ok, tooLarge bool) {
 	if !isContentClassifiedExt(ext) {
-		return nil, true
+		return nil, true, false
 	}
-	content, err := os.ReadFile(a.filePath)
+	file, err := os.Open(filepath.Clean(a.filePath))
 	if err != nil {
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Error().Msgf("failed to analyze file: %s", err)
-		return nil, false
+		return nil, false, false
 	}
-	return content, true
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Err(closeErr).Msgf("failed to close '%s'", a.filePath)
+		}
+	}()
+
+	size := int64(-1)
+	if info, statErr := file.Stat(); statErr == nil {
+		size = info.Size()
+		if a.maxFileSize >= 0 && float64(size)/float64(sizeMb) > float64(a.maxFileSize) {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Warn().Msgf(
+				"file %s exceeds maximum file size of %d Mb", a.filePath, a.maxFileSize)
+			return nil, false, true
+		}
+	}
+
+	// Sizing the buffer from the stat already taken above reads the file in one
+	// pass. io.ReadAll would start at 512 bytes and repeatedly double, so every
+	// classified file would cost a handful of allocations and copies instead.
+	var buf bytes.Buffer
+	if size > 0 && int64(int(size)) == size {
+		buf.Grow(int(size) + bytes.MinRead)
+	}
+	if _, err := buf.ReadFrom(file); err != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Error().Msgf("failed to analyze file: %s", err)
+		return nil, false, false
+	}
+	return buf.Bytes(), true, false
 }
 
 func (a *analyzerInfo) persistWorkerState(content []byte, platform string) {
@@ -811,32 +885,49 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 // hc is the scan-scoped cache; when nil the lookup always hits the filesystem.
 func checkHelm(ctx context.Context, path string, hc *sync.Map) bool {
 	contextLogger := logger.FromContext(ctx)
-	dir := filepath.Dir(path)
+	startDir := filepath.Dir(path)
+	if hc != nil {
+		if v, ok := hc.Load(startDir); ok {
+			return v.(bool)
+		}
+	}
+
+	// Every directory walked before the answer is known shares that answer, so
+	// all of them are memoized. This keeps the total number of Chart.yaml probes
+	// proportional to the number of directories in the repository rather than to
+	// directories times their depth, and lets sibling subtrees reuse the walk.
+	walked := []string{startDir}
+	dir := startDir
 	for {
-		if hc != nil {
+		if hc != nil && dir != startDir {
 			if v, ok := hc.Load(dir); ok {
-				return v.(bool)
+				return storeHelmResults(hc, walked, v.(bool))
 			}
 		}
 		_, err := os.Stat(filepath.Join(dir, "Chart.yaml"))
 		if err == nil {
-			if hc != nil {
-				hc.Store(dir, true)
-			}
-			return true
+			return storeHelmResults(hc, walked, true)
 		}
 		if !errors.Is(err, os.ErrNotExist) {
 			contextLogger.Error().Msgf("failed to check helm: %s", err)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			if hc != nil {
-				hc.Store(dir, false)
-			}
-			return false
+			return storeHelmResults(hc, walked, false)
 		}
 		dir = parent
+		walked = append(walked, dir)
 	}
+}
+
+func storeHelmResults(hc *sync.Map, dirs []string, result bool) bool {
+	if hc == nil {
+		return result
+	}
+	for _, dir := range dirs {
+		hc.Store(dir, result)
+	}
+	return result
 }
 
 func checkYamlPlatform(ctx context.Context, content []byte, path string) string {
@@ -849,52 +940,36 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 
 	content = utils.DecryptAnsibleVault(ctx, content, utils.GetVaultPassword())
 
+	// A still-encrypted file has no readable content to classify, so it stays
+	// unclassified even when it sits in a path that otherwise implies Ansible.
 	if utils.IsAnsibleVaultEncrypted(content) {
 		return ""
 	}
 
-	// Parse as Node to manually call Datadog's version of UnmarshalYAML with context
-	var node yamlParser.Node
-	if err := yamlParser.Unmarshal(content, &node); err != nil {
+	ansibleVarsPath := checkForAnsibleByPaths(path)
+	if !ansibleVarsPath && !yamlRootHasAnyKey(content, yamlPlatformRootKeys...) {
+		return ""
+	}
+
+	root, err := yamlDocumentRoot(content)
+	if err != nil {
 		contextLogger.Warn().Msgf("failed to parse yaml file (%s): %s", path, err)
 		return ""
 	}
-
-	// Get the yaml content in node
-	contentNode := &node
-	if node.Kind == yamlParser.DocumentNode && len(node.Content) > 0 {
-		contentNode = node.Content[0]
-	}
-
-	// A scalar root means the document is empty/null (e.g. a comment-only vars file).
-	// No platform can be detected; skip silently.
-	if contentNode.Kind == yamlParser.ScalarNode {
+	if root == nil {
 		return ""
 	}
-
-	var yamlContent model.Document
-	if err := yamlContent.UnmarshalYAML(ctx, contentNode, nil); err != nil {
-		contextLogger.Warn().Msgf("failed to unmarshal yaml file (%s): %s", path, err)
-		return ""
-	}
-
-	// check if it is google deployment manager platform
-	for _, keyword := range listKeywordsGoogleDeployment {
-		if _, ok := yamlContent[keyword]; ok {
-			return gdm
+	if ansibleVarsPath {
+		if yamlRootIsMapping(root) {
+			return ansible
 		}
+		return ""
 	}
 
-	// check if the file contains some keywords related with Ansible
-	if checkForAnsible(yamlContent) {
-		return ansible
+	if yamlMapKeyNode(root, listKeywordsGoogleDeployment[0]) != nil {
+		return gdm
 	}
-	// check if the file contains some keywords related with Ansible Host
-	if checkForAnsibleHost(yamlContent) {
-		return ansible
-	}
-	// add for yaml files contained at paths (group_vars, host_vars) related with ansible
-	if checkForAnsibleByPaths(path) {
+	if ansibleFromYAMLNode(root) {
 		return ansible
 	}
 	return ""
@@ -925,41 +1000,6 @@ func isInsideAnsibleTemplatesDir(path string) bool {
 		}
 	}
 	return false
-}
-
-func checkForAnsible(yamlContent model.Document) bool {
-	isAnsible := false
-	if play := yamlContent[playBooks]; play != nil {
-		if listOfPlayBooks, ok := play.([]interface{}); ok {
-			for _, value := range listOfPlayBooks {
-				castingValue, ok := value.(map[string]interface{})
-				if ok {
-					for _, keyword := range listKeywordsAnsible {
-						if _, ok := castingValue[keyword]; ok {
-							isAnsible = true
-						}
-					}
-				}
-			}
-		}
-	}
-	return isAnsible
-}
-
-func checkForAnsibleHost(yamlContent model.Document) bool {
-	isAnsible := false
-	for _, ansibleDefault := range ansibleHost {
-		if hosts := yamlContent[ansibleDefault]; hosts != nil {
-			if listHosts, ok := hosts.(map[string]interface{}); ok {
-				for _, value := range listKeywordsAnsibleHots {
-					if host := listHosts[value]; host != nil {
-						isAnsible = true
-					}
-				}
-			}
-		}
-	}
-	return isAnsible
 }
 
 // computeValues computes expected Lines of Code to be scanned from locCount channel
@@ -1073,13 +1113,13 @@ func isConfigFile(path string, suffixes []string) bool {
 
 // shouldConsiderGitIgnoreFile verifies if the scan should exclude the files according to the .gitignore file
 func shouldConsiderGitIgnoreFile(ctx context.Context, path, gitIgnore string, excludeGitIgnoreFile bool) (hasGitIgnoreFileRes bool,
-	gitIgnoreRes *ignore.GitIgnore) {
+	gitIgnoreRes *gitIgnoreMatcher) {
 	contextLogger := logger.FromContext(ctx)
 	gitIgnorePath := filepath.ToSlash(filepath.Join(path, gitIgnore))
 	_, err := os.Stat(gitIgnorePath)
 
 	if !excludeGitIgnoreFile && err == nil && gitIgnore != "" {
-		gitIgnore, _ := ignore.CompileIgnoreFile(gitIgnorePath)
+		gitIgnore, _ := compileGitIgnoreFile(gitIgnorePath)
 		if gitIgnore != nil {
 			contextLogger.Info().Msgf(".gitignore file was found in '%s' and it will be used to automatically exclude paths", path)
 			return true, gitIgnore

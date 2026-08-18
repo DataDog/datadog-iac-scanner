@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -474,6 +475,117 @@ func TestAnalyze_ValidSymlink(t *testing.T) {
 	require.Equal(t, []string{terraform}, got.Types)
 	require.Contains(t, got.Inventory, filepath.ToSlash(link))
 	require.Empty(t, got.Exc)
+}
+
+func Test_checkHelm_memoizesEveryWalkedDirectory(t *testing.T) {
+	dir := t.TempDir()
+	chart := filepath.Join(dir, "mychart")
+	templates := filepath.Join(chart, "templates")
+	require.NoError(t, os.MkdirAll(templates, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chart, "Chart.yaml"), []byte("name: x\n"), 0o600))
+
+	cache := &sync.Map{}
+	require.True(t, checkHelm(context.Background(), filepath.Join(templates, "service.yaml"), cache))
+
+	// The chart root is reached by walking up from the file, so both it and the
+	// directories passed on the way share the answer.
+	for _, d := range []string{templates, chart} {
+		v, ok := cache.Load(d)
+		require.True(t, ok, d)
+		require.True(t, v.(bool), d)
+	}
+}
+
+// A negative answer is memoized for the whole chain too, so a sibling subtree
+// stops at the first cached ancestor instead of walking to the root again.
+func Test_checkHelm_memoizesNegativeResultForAncestors(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "a", "b")
+	require.NoError(t, os.MkdirAll(nested, 0o755))
+	sibling := filepath.Join(dir, "a", "c")
+	require.NoError(t, os.MkdirAll(sibling, 0o755))
+
+	cache := &sync.Map{}
+	ctx := context.Background()
+	require.False(t, checkHelm(ctx, filepath.Join(nested, "svc.yaml"), cache))
+
+	for _, d := range []string{nested, filepath.Join(dir, "a"), dir} {
+		v, ok := cache.Load(d)
+		require.True(t, ok, d)
+		require.False(t, v.(bool), d)
+	}
+
+	require.False(t, checkHelm(ctx, filepath.Join(sibling, "svc.yaml"), cache))
+	v, ok := cache.Load(sibling)
+	require.True(t, ok)
+	require.False(t, v.(bool))
+}
+
+// An ignored directory is pruned rather than expanded into its files, so the
+// subtree is never walked and only the directory is reported as excluded.
+func TestAnalyze_PrunesGitIgnoredDirectory(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("resource \"aws_s3_bucket\" \"b\" {}\n")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("vendor/\n!vendor/keep.tf\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), body, 0o600))
+	vendorDir := filepath.Join(dir, "vendor", "nested")
+	require.NoError(t, os.MkdirAll(vendorDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "vendor", "keep.tf"), body, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(vendorDir, "deep.tf"), body, 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:          dir,
+		Paths:             []string{dir},
+		Types:             []string{""},
+		GitIgnoreFileName: ".gitignore",
+		MaxFileSize:       -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.ToSlash(filepath.Join(dir, "vendor"))}, got.Exc)
+	require.Equal(t, []string{filepath.ToSlash(filepath.Join(dir, "main.tf"))}, got.Inventory)
+}
+
+func TestAnalyze_DoesNotApplyGitIgnoreOutsideRepo(t *testing.T) {
+	repo := t.TempDir()
+	scanRoot := t.TempDir()
+	vendorDir := filepath.Join(scanRoot, "vendor")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("vendor/\n"), 0o600))
+	require.NoError(t, os.MkdirAll(vendorDir, 0o755))
+	externalFile := filepath.Join(vendorDir, "main.tf")
+	require.NoError(t, os.WriteFile(externalFile, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:          repo,
+		Paths:             []string{scanRoot},
+		Types:             []string{""},
+		GitIgnoreFileName: ".gitignore",
+		MaxFileSize:       -1,
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, got.Inventory, filepath.ToSlash(externalFile))
+}
+
+func TestAnalyze_SkipsWalkRootBelowGitIgnoredDirectory(t *testing.T) {
+	repo := t.TempDir()
+	build := filepath.Join(repo, "build", "nested")
+	require.NoError(t, os.MkdirAll(build, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("build/\n"), 0o600))
+	nestedFile := filepath.Join(build, "main.tf")
+	require.NoError(t, os.WriteFile(nestedFile, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:          repo,
+		Paths:             []string{build},
+		Types:             []string{""},
+		GitIgnoreFileName: ".gitignore",
+		MaxFileSize:       -1,
+	})
+	require.NoError(t, err)
+	require.Contains(t, got.Exc, filepath.ToSlash(build))
+	require.NotContains(t, got.Inventory, filepath.ToSlash(nestedFile))
+	require.NotContains(t, got.Types, terraform)
 }
 
 func TestAnalyze_ChartRootsFromChartYamlFile(t *testing.T) {

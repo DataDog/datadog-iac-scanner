@@ -608,6 +608,18 @@ func TestAnalyze_NormalizesRuleAndScanPlatforms(t *testing.T) {
 	s := newTestServer(t)
 	rule := syntheticRule()
 	rule.Platform = " Terraform "
+	rule.RegoQuery = []byte(`package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	result := {
+		"documentId": input.document[0].id,
+		"resourceType": "test_widget",
+		"resourceName": "example",
+		"searchKey": "resource",
+	}
+}`)
 	req := analyzeRequest{
 		Files: []analyzeFile{{
 			Path:    "infra/main.tf",
