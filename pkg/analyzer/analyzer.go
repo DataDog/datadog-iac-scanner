@@ -931,11 +931,9 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 	if utils.IsAnsibleVaultEncrypted(content) {
 		return ""
 	}
-	if checkForAnsibleByPaths(path) {
-		return ansible
-	}
 
-	if !yamlRootHasAnyKey(content, yamlPlatformRootKeys...) {
+	ansibleVarsPath := checkForAnsibleByPaths(path)
+	if !ansibleVarsPath && !yamlRootHasAnyKey(content, yamlPlatformRootKeys...) {
 		return ""
 	}
 
@@ -945,6 +943,12 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 		return ""
 	}
 	if root == nil {
+		return ""
+	}
+	if ansibleVarsPath {
+		if yamlRootIsMapping(root) {
+			return ansible
+		}
 		return ""
 	}
 

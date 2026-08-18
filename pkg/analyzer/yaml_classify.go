@@ -22,19 +22,23 @@ func yamlRootHasAnyKey(content []byte, keys ...string) bool {
 		return false
 	}
 	content = bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})
+	rootIndent, matchIndent := -1, -1
 	for _, line := range bytes.Split(content, []byte("\n")) {
-		if yamlRootLineHasAnyKey(line, keys...) {
-			return true
+		indent, trimmed := yamlLineContent(line)
+		if len(trimmed) == 0 {
+			continue
+		}
+		if rootIndent < 0 || indent < rootIndent {
+			rootIndent = indent
+		}
+		if yamlRootContentHasAnyKey(trimmed, keys...) && (matchIndent < 0 || indent < matchIndent) {
+			matchIndent = indent
 		}
 	}
-	return false
+	return matchIndent >= 0 && matchIndent == rootIndent
 }
 
-func yamlRootLineHasAnyKey(line []byte, keys ...string) bool {
-	trimmed := yamlRootLineContent(line)
-	if len(trimmed) == 0 {
-		return false
-	}
+func yamlRootContentHasAnyKey(trimmed []byte, keys ...string) bool {
 	// A root-level sequence is the shape of an Ansible playbook, where the
 	// keywords live on the plays rather than on the document root.
 	if trimmed[0] == '-' && (len(trimmed) == 1 || trimmed[1] == ' ' || trimmed[1] == '\t') {
@@ -49,21 +53,21 @@ func yamlRootLineHasAnyKey(line []byte, keys ...string) bool {
 	return plainRootKeyIsAny(trimmed, keys...) || plainRootKeyIsAny(trimmed, "<<")
 }
 
-func yamlRootLineContent(line []byte) []byte {
-	if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
-		return nil
+func yamlLineContent(line []byte) (indent int, content []byte) {
+	for indent < len(line) && (line[indent] == ' ' || line[indent] == '\t') {
+		indent++
 	}
 	trimmed := bytes.TrimSpace(line)
 	if len(trimmed) == 0 || trimmed[0] == '#' {
-		return nil
+		return 0, nil
 	}
 	if bytes.HasPrefix(trimmed, []byte("---")) {
 		trimmed = bytes.TrimSpace(trimmed[3:])
 		if len(trimmed) == 0 || trimmed[0] == '#' {
-			return nil
+			return 0, nil
 		}
 	}
-	return trimmed
+	return indent, trimmed
 }
 
 func plainRootKeyIsAny(trimmed []byte, keys ...string) bool {
@@ -118,6 +122,10 @@ func yamlDocumentRoot(content []byte) (*yamlParser.Node, error) {
 		return nil, nil
 	}
 	return contentNode, nil
+}
+
+func yamlRootIsMapping(root *yamlParser.Node) bool {
+	return root != nil && root.Kind == yamlParser.MappingNode
 }
 
 func yamlMapKeyNode(m *yamlParser.Node, key string) *yamlParser.Node {

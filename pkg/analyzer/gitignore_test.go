@@ -145,6 +145,20 @@ func TestGitIgnoreMatcher_ExplicitFileChecksIgnoredParents(t *testing.T) {
 	require.True(t, matcher.MatchesParentDir("build/main.tf"))
 }
 
+func TestGitIgnoreMatcher_ReincludedWildcardDirectoryKeepsDescendants(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitignore")
+	require.NoError(t, os.WriteFile(path, []byte("foo/*\n!foo/bar/\n"), 0o600))
+
+	matcher, err := compileGitIgnoreFile(path)
+	require.NoError(t, err)
+	require.NotNil(t, matcher)
+
+	require.True(t, ignoredDuringWalk(matcher, "foo/other.tf"))
+	require.False(t, matcher.MatchesDir("foo/bar"))
+	require.False(t, ignoredDuringWalk(matcher, "foo/bar/main.tf"))
+}
+
 func TestGitIgnoreMatcher_NoUsablePattern(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".gitignore")

@@ -45,10 +45,10 @@ func Test_yamlRootHasAnyKey(t *testing.T) {
 			want:    false,
 		},
 		{
-			name:    "indented only",
-			content: "  hosts: all\n",
-			keys:    []string{"playbooks", "all"},
-			want:    false,
+			name:    "indented root",
+			content: "  resources: []\n",
+			keys:    []string{"resources"},
+			want:    true,
 		},
 		{
 			name:    "nested matching key",
@@ -186,9 +186,42 @@ func Test_checkYamlPlatform_rootMerge(t *testing.T) {
 	require.Equal(t, gdm, checkYamlPlatform(context.Background(), content, "deployment.yaml"))
 }
 
+func Test_checkYamlPlatform_indentedRoots(t *testing.T) {
+	ctx := context.Background()
+	require.Equal(t, gdm, checkYamlPlatform(ctx, []byte(`  resources: []`), "deployment.yaml"))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, []byte(`  playbooks:
+    - hosts: all
+`), "playbook.yaml"))
+}
+
 func Test_checkYamlPlatform_encryptedGroupVars(t *testing.T) {
 	content := []byte("$ANSIBLE_VAULT;1.1;AES256\ninvalid\n")
 	require.Equal(t, "", checkYamlPlatform(context.Background(), content, "ansible/group_vars/all/vault.yml"))
+}
+
+func Test_checkYamlPlatform_pathVarsRequireMappingRoot(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{name: "mapping", content: "region: us-east-1\n", want: ansible},
+		{name: "empty", content: "", want: ""},
+		{name: "comment only", content: "---\n# vars\n", want: ""},
+		{name: "scalar", content: "value\n", want: ""},
+		{name: "sequence", content: "- value\n", want: ""},
+		{name: "malformed", content: "key: [\n", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := checkYamlPlatform(
+				context.Background(),
+				[]byte(tt.content),
+				"ansible/group_vars/all/main.yml",
+			)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func Test_checkYamlPlatform_skipsParseWhenNoRootKeys(t *testing.T) {

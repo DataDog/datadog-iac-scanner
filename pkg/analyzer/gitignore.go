@@ -11,8 +11,13 @@ import (
 // gitIgnoreMatcher matches repo-relative paths against the patterns of a single
 // .gitignore file, with git's last-match-wins precedence.
 type gitIgnoreMatcher struct {
-	matcher    gitignore.Matcher
-	dirMatcher gitignore.Matcher
+	patterns []gitIgnorePattern
+}
+
+type gitIgnorePattern struct {
+	pattern       gitignore.Pattern
+	exactPath     bool
+	directoryOnly bool
 }
 
 // compileGitIgnoreFile parses the .gitignore at path. It returns nil when the
@@ -23,41 +28,51 @@ func compileGitIgnoreFile(path string) (*gitIgnoreMatcher, error) {
 		return nil, err
 	}
 
-	var filePatterns, dirPatterns []gitignore.Pattern
+	var patterns []gitIgnorePattern
 	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSuffix(line, "\r")
 		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}
-		// A nil domain anchors the patterns at the repository root, which is
-		// where the parsed file lives.
-		if !isDirectoryOnlyPattern(line) {
-			filePatterns = append(filePatterns, gitignore.ParsePattern(line, nil))
-		}
-		dirPatterns = append(dirPatterns, gitignore.ParsePattern(directoryPattern(line), nil))
+		patterns = append(patterns, compileGitIgnorePattern(line))
 	}
-	if len(dirPatterns) == 0 {
+	if len(patterns) == 0 {
 		return nil, nil
 	}
-	return &gitIgnoreMatcher{
-		matcher:    gitignore.NewMatcher(filePatterns),
-		dirMatcher: gitignore.NewMatcher(dirPatterns),
-	}, nil
+	return &gitIgnoreMatcher{patterns: patterns}, nil
 }
 
-func isDirectoryOnlyPattern(pattern string) bool {
+func compileGitIgnorePattern(pattern string) gitIgnorePattern {
 	if !strings.HasSuffix(pattern, `\ `) {
 		pattern = strings.TrimRight(pattern, " ")
 	}
-	return strings.HasSuffix(pattern, "/")
-}
 
-func directoryPattern(pattern string) string {
-	// Git's trailing /** matches a directory's contents, not the directory itself.
-	if strings.HasSuffix(pattern, "/**") {
-		return strings.TrimSuffix(pattern, "**") + "*"
+	inclusion := ""
+	body := pattern
+	if strings.HasPrefix(body, "!") {
+		inclusion = "!"
+		body = body[1:]
 	}
-	return pattern
+	directoryOnly := strings.HasSuffix(body, "/")
+	body = strings.TrimSuffix(body, "/")
+	exactPath := strings.Contains(body, "/")
+	if !exactPath {
+		return gitIgnorePattern{
+			pattern:       gitignore.ParsePattern(pattern, nil),
+			directoryOnly: directoryOnly,
+		}
+	}
+
+	// A trailing /** requires at least one path component below its parent.
+	if strings.HasSuffix(body, "/**") {
+		body = strings.TrimSuffix(body, "/**") + "/*/**"
+	}
+	const pathEnd = "\x00"
+	return gitIgnorePattern{
+		pattern:       gitignore.ParsePattern(inclusion+body+"/"+pathEnd, nil),
+		exactPath:     true,
+		directoryOnly: directoryOnly,
+	}
 }
 
 // MatchesPath reports whether the given repo-relative file path is ignored by a
@@ -68,10 +83,7 @@ func directoryPattern(pattern string) string {
 // which mirrors git never entering an ignored directory and keeps matching at
 // one pass over the patterns per path instead of one per path component.
 func (m *gitIgnoreMatcher) MatchesPath(relPath string) bool {
-	if m == nil {
-		return false
-	}
-	return m.matches(m.matcher, relPath, false)
+	return m.matches(relPath, false)
 }
 
 // MatchesDir reports whether the given repo-relative directory is ignored.
@@ -81,10 +93,7 @@ func (m *gitIgnoreMatcher) MatchesPath(relPath string) bool {
 // directories is excluded: a negated pattern deeper in the tree would otherwise
 // win the last-match-wins precedence and resurrect the file.
 func (m *gitIgnoreMatcher) MatchesDir(relPath string) bool {
-	if m == nil {
-		return false
-	}
-	return m.matches(m.dirMatcher, relPath, true)
+	return m.matches(relPath, true)
 }
 
 func (m *gitIgnoreMatcher) MatchesParentDir(relPath string) bool {
@@ -94,17 +103,43 @@ func (m *gitIgnoreMatcher) MatchesParentDir(relPath string) bool {
 	normalized := strings.Trim(filepath.ToSlash(relPath), "/")
 	parts := strings.Split(normalized, "/")
 	for i := 1; i < len(parts); i++ {
-		if m.dirMatcher.Match(parts[:i], true) {
+		if m.matchParts(parts[:i], true) {
 			return true
 		}
 	}
 	return false
 }
 
-func (m *gitIgnoreMatcher) matches(matcher gitignore.Matcher, relPath string, isDir bool) bool {
+func (m *gitIgnoreMatcher) matches(relPath string, isDir bool) bool {
+	if m == nil {
+		return false
+	}
 	normalized := strings.Trim(filepath.ToSlash(relPath), "/")
 	if normalized == "" || normalized == "." {
 		return false
 	}
-	return matcher.Match(strings.Split(normalized, "/"), isDir)
+	return m.matchParts(strings.Split(normalized, "/"), isDir)
+}
+
+func (m *gitIgnoreMatcher) matchParts(parts []string, isDir bool) bool {
+	const pathEnd = "\x00"
+	exactParts := make([]string, len(parts)+1)
+	copy(exactParts, parts)
+	exactParts[len(parts)] = pathEnd
+	basename := parts[len(parts)-1:]
+
+	for i := len(m.patterns) - 1; i >= 0; i-- {
+		pattern := m.patterns[i]
+		if pattern.directoryOnly && !isDir {
+			continue
+		}
+		matchPath := basename
+		if pattern.exactPath {
+			matchPath = exactParts
+		}
+		if result := pattern.pattern.Match(matchPath, isDir); result > gitignore.NoMatch {
+			return result == gitignore.Exclude
+		}
+	}
+	return false
 }
