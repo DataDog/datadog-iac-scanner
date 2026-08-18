@@ -163,6 +163,16 @@ all:
 	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "inventory.yml"))
 }
 
+func Test_checkYamlPlatform_aliasBackedInventory(t *testing.T) {
+	ctx := context.Background()
+	content := []byte(`inventory: &inventory
+  hosts:
+    web: {}
+all: *inventory
+`)
+	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "inventory.yml"))
+}
+
 func Test_checkYamlPlatform_aliasBackedPlaybooks(t *testing.T) {
 	ctx := context.Background()
 	content := []byte(`plays: &plays

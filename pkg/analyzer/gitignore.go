@@ -63,8 +63,10 @@ func compileGitIgnorePattern(pattern string) gitIgnorePattern {
 		}
 	}
 
-	// A trailing /** requires at least one path component below its parent.
-	if strings.HasSuffix(body, "/**") {
+	// These recursive suffixes require at least one component below the parent.
+	if strings.HasSuffix(body, "/**/*") {
+		body = strings.TrimSuffix(body, "/**/*") + "/*/**"
+	} else if strings.HasSuffix(body, "/**") {
 		body = strings.TrimSuffix(body, "/**") + "/*/**"
 	}
 	const pathEnd = "\x00"

@@ -232,7 +232,7 @@ func ansibleFromYAMLNode(root *yamlParser.Node) bool {
 		}
 	}
 	for _, hostKey := range ansibleHost {
-		hosts := yamlMapKeyNode(root, hostKey)
+		hosts := yamlResolveAlias(yamlMapKeyNode(root, hostKey))
 		if hosts == nil || hosts.Kind != yamlParser.MappingNode {
 			continue
 		}

@@ -132,6 +132,22 @@ func TestGitIgnoreMatcher_TrailingGlobstarDoesNotIgnoreParent(t *testing.T) {
 	require.False(t, ignoredDuringWalk(matcher, "abc/def/keep.tf"))
 }
 
+func TestGitIgnoreMatcher_RecursiveWildcardAfterReincludedDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitignore")
+	require.NoError(t, os.WriteFile(path, []byte("foo/**/*\n!foo/bar/\n!foo/bar/keep.tf\n"), 0o600))
+
+	matcher, err := compileGitIgnoreFile(path)
+	require.NoError(t, err)
+	require.NotNil(t, matcher)
+
+	require.False(t, matcher.MatchesDir("foo"))
+	require.False(t, matcher.MatchesDir("foo/bar"))
+	require.True(t, ignoredDuringWalk(matcher, "foo/bar/a.tf"))
+	require.True(t, ignoredDuringWalk(matcher, "foo/bar/nested/a.tf"))
+	require.False(t, ignoredDuringWalk(matcher, "foo/bar/keep.tf"))
+}
+
 func TestGitIgnoreMatcher_ExplicitFileChecksIgnoredParents(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".gitignore")
