@@ -115,6 +115,12 @@ func (m *MemFS) ReadDir(name string) ([]fs.DirEntry, error) {
 		}
 		if seg, _, found := strings.Cut(rel, "/"); found {
 			// A descendant: its first path segment is an immediate subdirectory.
+			// An absolute key under dir "." has an empty first segment ("" for
+			// "/ws/main.tf"), which names no directory — skip it rather than
+			// synthesizing an entry called "".
+			if seg == "" {
+				continue
+			}
 			if _, ok := children[seg]; !ok {
 				children[seg] = childInfo{isDir: true}
 			}
@@ -167,9 +173,12 @@ func (m *MemFS) Glob(pattern string) ([]string, error) {
 	return out, nil
 }
 
-// Abs keeps the path workspace-relative. This keeps Terraform module
-// and missing-file paths relative to the request's own workspace, which is
-// correct even when a single server process serves many IDE workspaces.
+// Abs normalizes rather than resolving against the process working directory,
+// so a path keeps the shape it was pushed with. Relative paths stay relative to
+// the request's own workspace, which is what makes Terraform module and
+// missing-file paths correct even when a single server process serves many IDE
+// workspaces; absolute paths (a file outside every workspace folder) stay
+// absolute, which is self-disambiguating.
 func (m *MemFS) Abs(name string) (string, error) {
 	return normalize(name), nil
 }
@@ -201,9 +210,15 @@ func (m *MemFS) MissingFiles() []string {
 }
 
 // underDir returns the path of p relative to dir if p is a strict descendant of
-// dir (a non-empty remainder after the "dir/" prefix).
+// dir (a non-empty remainder after the "dir/" prefix). dir may already end in
+// "/" (e.g. the root "/" or a Windows drive root "C:/"); avoid doubling the
+// separator in that case, since "dir/" + "/" matches no key.
 func underDir(p, dir string) (string, bool) {
-	if after, ok := strings.CutPrefix(p, dir+"/"); ok && after != "" {
+	prefix := dir + "/"
+	if strings.HasSuffix(dir, "/") {
+		prefix = dir
+	}
+	if after, ok := strings.CutPrefix(p, prefix); ok && after != "" {
 		return after, true
 	}
 	return "", false

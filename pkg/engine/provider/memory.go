@@ -48,8 +48,11 @@ func NewMemorySourceProvider(fsys vfs.FS, paths, ignorePaths, onlyPaths []string
 	return &MemorySourceProvider{fsys: fsys, paths: sorted, ignorePaths: ignorePaths, onlyPaths: onlyPaths}
 }
 
-// GetBasePaths returns the synthetic root the pushed (workspace-relative) paths
-// are reported against.
+// GetBasePaths returns a synthetic root. Pushed paths are reported back exactly
+// as they were pushed, whether relative or absolute, so there is no real base to
+// name. The server's entry point (scan.Client.Scan) never consults this: it
+// returns the raw vulnerabilities, skipping the summary step that relativizes
+// file names against a base path.
 func (m *MemorySourceProvider) GetBasePaths() []string { return []string{"."} }
 
 // GetSources feeds each pushed file whose extension a parser supports into the
