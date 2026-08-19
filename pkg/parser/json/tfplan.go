@@ -20,8 +20,6 @@ import (
 type TFPlan struct {
 	Resource map[string]TFPlanResource `json:"resource"`
 
-	// Raw (any), not typed hcl_plan structs, so after_unknown/configuration
-	// pass through verbatim without a typed round-trip dropping data.
 	ResourceChanges any `json:"resource_changes,omitempty"`
 	Configuration   any `json:"configuration,omitempty"`
 
@@ -34,32 +32,21 @@ type TFPlan struct {
 // holding each resource's header line (see readModule).
 type TFPlanResource map[string]any
 
-// TFPlanNamedResource is an auxiliary structure for parsing tfplans as a scanner Document
 type TFPlanNamedResource map[string]any
 
 // tfplanResourceMeta is the payload stored under
 // _dd_tfplan_meta.<type>.<flattened-key>.
 type tfplanResourceMeta struct {
-	// Address is the canonical (absolute) Terraform resource address, e.g.
-	// "module.staging.aws_instance.web[0]".
-	Address string `json:"address"`
-	// AfterUnknown is resource_changes[].change.after_unknown for this
-	// resource, verbatim, or nil if no matching change was found.
-	AfterUnknown any `json:"after_unknown,omitempty"`
-	// ConfigurationExpressions is configuration...resources[].expressions for
-	// this resource, verbatim, or nil if no matching configuration was found.
-	ConfigurationExpressions any `json:"configuration_expressions,omitempty"`
+	Address                  string `json:"address"`
+	AfterUnknown             any    `json:"after_unknown,omitempty"`
+	ConfigurationExpressions any    `json:"configuration_expressions,omitempty"`
 }
 
-// resourceChangeCorrelation holds per-address lookups built once per plan so
-// readModule can attach correlated data without re-walking per resource.
 type resourceChangeCorrelation struct {
 	afterUnknownByAddress map[string]any
 	expressionsByAddress  map[string]any
 }
 
-// buildResourceChangeCorrelation indexes resource_changes and configuration
-// by resource address, using raw gjson so the data itself is never touched.
 func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 	c := resourceChangeCorrelation{
 		afterUnknownByAddress: make(map[string]any),
@@ -83,15 +70,8 @@ func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 	return c
 }
 
-// walkConfigModule recursively walks configuration.root_module (and its
-// module_calls), reconstructing each resource's absolute address from
-// modulePath so it can be looked up with the same canonical address as
-// resource_changes and readModule's resourceLines/resourceKey.
 func walkConfigModule(module *gjson.Result, modulePath string, c *resourceChangeCorrelation) {
 	module.Get("resources").ForEach(func(_, resource gjson.Result) bool {
-		// ConfigResource.Address is relative to its own module, e.g.
-		// "aws_instance.web" - never index-suffixed, since configuration
-		// describes the module definition, not a specific instance.
 		relativeAddress := resource.Get("address").String()
 		if relativeAddress == "" {
 			return true
@@ -120,10 +100,8 @@ func walkConfigModule(module *gjson.Result, modulePath string, c *resourceChange
 	})
 }
 
-// canonicalConfigAddress strips every "[...]" instance-key suffix from an
-// absolute resource address, e.g. "module.staging[\"prod\"].aws_instance.web[2]"
-// becomes "module.staging.aws_instance.web". Parsed as an HCL traversal (not
-// a regex) so quoted for_each keys containing "]" or escaped quotes work.
+// canonicalConfigAddress strips "[...]" instance-key suffixes, e.g.
+// "module.staging[\"prod\"].aws_instance.web[2]" -> "module.staging.aws_instance.web".
 func canonicalConfigAddress(address string) string {
 	traversal, diags := hclsyntax.ParseTraversalAbs([]byte(address), "", hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
@@ -138,15 +116,11 @@ func canonicalConfigAddress(address string) string {
 		case hcl.TraverseAttr:
 			canonical += "." + t.Name
 		case hcl.TraverseIndex:
-			// Instance-key suffix (count/for_each) - dropped.
 		}
 	}
 	return canonical
 }
 
-// resourceMetaFor builds the _dd_tfplan_meta payload for a single resource,
-// correlating by its canonical (address) and configuration (index-stripped)
-// addresses.
 func resourceMetaFor(address string, c *resourceChangeCorrelation) tfplanResourceMeta {
 	meta := tfplanResourceMeta{Address: address}
 	if afterUnknown, ok := c.afterUnknownByAddress[address]; ok {
@@ -158,42 +132,28 @@ func resourceMetaFor(address string, c *resourceChangeCorrelation) tfplanResourc
 	return meta
 }
 
-// parseTFPlan unmarshals Document as a plan so it can be rebuilt with only
-// the required information
 func parseTFPlan(doc model.Document) (model.Document, error) {
 	var plan *hcl_plan.Plan
 	b, err := json.Marshal(doc)
 	if err != nil {
 		return model.Document{}, err
 	}
-	// Unmarshal our Document as a plan so we are able retrieve planned_values
-	// in a easier way
 	err = json.Unmarshal(b, &plan)
 	if err != nil {
-		// Consider as regular JSON and not tfplan
 		return model.Document{}, err
 	}
 
-	// hcl_plan.Plan is a typed struct so unmarshaling drops the injected
-	// _dd_lines keys along with each resource's "values" attribute line. Read
-	// those lines back out of the raw bytes (via gjson, keyed by resource
-	// address) before that information is lost.
+	// hcl_plan.Plan is typed and drops the injected _dd_lines keys, so read
+	// them back from the raw bytes before that information is lost.
 	resourceLines := extractResourceHeaderLines(b)
-
-	// Built from the raw bytes (not the typed plan) so resource_changes/
-	// configuration correlation sees exactly what's in the source document.
 	correlation := buildResourceChangeCorrelation(b)
 
 	parsedPlan := readPlan(plan, doc["resource_changes"], doc["configuration"], resourceLines, &correlation)
 	return parsedPlan, nil
 }
 
-// extractResourceHeaderLines walks the raw plan JSON and returns, for every
-// planned resource, the _dd_line of its "values" attribute (i.e. where the
-// resource's own attribute block starts), keyed by resource address. Array
-// elements don't carry their own _dd_lines sibling (see setSeqLines in
-// json_line.go) — that information lives positionally in the parent module's
-// "_dd_lines._dd_resources._dd_arr" instead.
+// extractResourceHeaderLines returns each resource's "values" attribute
+// line, keyed by resource address.
 func extractResourceHeaderLines(rawPlan []byte) map[string]int {
 	lines := make(map[string]int)
 	root_module := gjson.GetBytes(rawPlan, "planned_values.root_module")
@@ -219,8 +179,6 @@ func walkModule(module *gjson.Result, lines map[string]int) {
 	})
 }
 
-// readPlan extracts the information needed from a Terraform plan and converts it to a scanner Document.
-// resourceChanges/configuration are raw values from the source document, passed through verbatim.
 func readPlan(
 	plan *hcl_plan.Plan,
 	resourceChanges, configuration any,
@@ -249,45 +207,33 @@ func readPlan(
 	return doc
 }
 
-// readModule recursively processes a module and its children, accumulating
-// resources from every module into the same flat resource.<type>.<name> map
-// without losing data across modules. moduleAddress is the full address of
-// module (e.g. "module.staging"), or "" for the root module.
+// readModule recursively accumulates resources from every module into the
+// same flat resource.<type>.<name> map. moduleAddress is "" for the root module.
 func (kp *TFPlan) readModule(
 	module *hcl_plan.StateModule,
 	moduleAddress string,
 	resourceLines map[string]int,
 	correlation *resourceChangeCorrelation,
 ) {
-	// Process all resources in this module
 	for _, resource := range module.Resources {
-		// Ensure the resource type map exists - accumulate, don't reinitialize!
 		if kp.Resource[resource.Type] == nil {
 			kp.Resource[resource.Type] = make(TFPlanResource)
 		}
 		typeRes := kp.Resource[resource.Type]
 
-		// Root-module resources keep their plain name. Child-module resources
-		// get their module address prefixed, so same-type-same-name resources
-		// in different modules don't collide into one map entry (which would
-		// silently drop a resource from evaluation).
+		// Module-prefixed so same-type-same-name resources in different
+		// modules don't collide.
 		resourceKey := resource.Name
 		if moduleAddress != "" {
 			resourceKey = moduleAddress + "." + resource.Name
 		}
 
-		// Handle count and for_each: append the index to the resource key
-		// This ensures each instance gets a unique key
 		if resource.Index != nil {
 			resourceKey = formatResourceKeyWithIndex(resourceKey, resource.Index)
 		}
 
-		// Accumulate the resource into the existing type map
 		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
 
-		// Inject the resource's "values" attribute line as a sibling _dd_lines
-		// entry at resource.<type>._dd_lines._dd_<name>._dd_line, matching the
-		// gjson path GetLineBySearchLine builds for a bare resource searchKey.
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeRes["_dd_lines"].(map[string]*model.LineObject)
 			if !isMap {
@@ -297,8 +243,6 @@ func (kp *TFPlan) readModule(
 			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
 		}
 
-		// Record correlated resource_changes/configuration data under the
-		// top-level _dd_tfplan_meta.<type>.<key> map, parallel to Resource.
 		if kp.TfplanMeta[resource.Type] == nil {
 			if kp.TfplanMeta == nil {
 				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
@@ -308,31 +252,21 @@ func (kp *TFPlan) readModule(
 		kp.TfplanMeta[resource.Type][resourceKey] = resourceMetaFor(resource.Address, correlation)
 	}
 
-	// Recursively process child modules, accumulating into the same map
 	for _, childModule := range module.ChildModules {
 		kp.readModule(childModule, childModule.Address, resourceLines, correlation)
 	}
 }
 
-// formatResourceKeyWithIndex formats a resource key to include count/for_each index
-// Examples:
-//   - count: "web" + 0 -> "web[0]"
-//   - count: "web" + 2 -> "web[2]"
-//   - for_each: "bucket" + "prod" -> "bucket[\"prod\"]"
-//   - for_each: "bucket" + "staging" -> "bucket[\"staging\"]"
-func formatResourceKeyWithIndex(baseName string, index interface{}) string {
+// formatResourceKeyWithIndex appends a count/for_each index, e.g. "web[0]" or "bucket[\"prod\"]".
+func formatResourceKeyWithIndex(baseName string, index any) string {
 	switch idx := index.(type) {
 	case float64:
-		// Count index (JSON numbers are float64)
 		return fmt.Sprintf("%s[%d]", baseName, int(idx))
 	case int:
-		// Count index (in case it's already an int)
 		return fmt.Sprintf("%s[%d]", baseName, idx)
 	case string:
-		// For_each index with string key
 		return fmt.Sprintf("%s[%q]", baseName, idx)
 	default:
-		// Fallback: just use the base name if we don't recognize the index type
 		return baseName
 	}
 }

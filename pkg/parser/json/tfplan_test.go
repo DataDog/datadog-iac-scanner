@@ -69,7 +69,6 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
-				// Raw pass-through: empty array/object round-trips as-is.
 				"resource_changes": []interface{}{},
 				"configuration":    map[string]interface{}{},
 			},
@@ -340,8 +339,6 @@ func TestJson_parseTFPlan(t *testing.T) {
 					},
 				},
 			},
-			// Child-module resources are module-prefixed, so they no longer
-			// collide with the root-module resource of the same type+name.
 			want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_instance": map[string]interface{}{
@@ -508,8 +505,7 @@ func TestJson_parseTFPlan(t *testing.T) {
 					},
 				},
 			},
-			// Distinct module-prefixed keys, so both remain visible.
-			want: model.Document{
+					want: model.Document{
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"module.app1.data": map[string]interface{}{
@@ -712,9 +708,6 @@ func TestJson_parseTFPlan(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			// Mirrors what initializeJSONLine/setLineInfo injects: the resources
-			// array element's own line lives in the parent's
-			// "_dd_lines._dd_resources._dd_arr", not on the element itself.
 			name: "test - injects resource values line from _dd_lines",
 			args: args{
 				doc: model.Document{
@@ -984,50 +977,42 @@ func TestJson_parseTFPlan_dd_tfplan_meta_correlation(t *testing.T) {
 		require.NotContains(t, asMap, "_dd_tfplan_meta", "resource.%s must not contain _dd_tfplan_meta", resourceType)
 	}
 
-	// Root resource.
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_vpc.main",
 		"after_unknown":             map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"cidr_block": map[string]interface{}{"constant_value": "10.0.0.0/16"}},
 	}, meta("aws_vpc", "main"))
 
-	// Count instance: correlates by exact address (change) and index-stripped
-	// address (configuration, shared across all instances).
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_instance.web[0]",
 		"after_unknown":             map[string]interface{}{"arn": true},
 		"configuration_expressions": map[string]interface{}{"instance_type": map[string]interface{}{"references": []interface{}{"var.instance_type"}}},
 	}, meta("aws_instance", "web[0]"))
 
-	// for_each instance.
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"prod\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"prod\"]"))
 
-	// for_each instance whose key contains a literal dot.
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"a.b\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"a.b\"]"))
 
-	// for_each instance whose key contains a literal "]".
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"a]b\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"a]b\"]"))
 
-	// for_each instance whose key contains an escaped quote.
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"a\\\"b\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"a\\\"b\"]"))
 
-	// Resource in a nested module.
 	require.Equal(t, map[string]interface{}{
 		"address":                   "module.networking.aws_subnet.public",
 		"after_unknown":             map[string]interface{}{"id": true},
