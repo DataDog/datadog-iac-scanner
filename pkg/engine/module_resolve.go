@@ -36,6 +36,9 @@ type moduleResolutionResult struct {
 	calledDirs     map[string]bool
 	extras         map[string][]extraCallerInfo
 	ok             bool
+	// resourceCount is how many module resources were instantiated. Documents
+	// hold many resources each, so it cannot be derived from the document count.
+	resourceCount int
 }
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
@@ -62,11 +65,12 @@ func (c *Inspector) instantiateLocalModules(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Info().
 		Int("module_resources_instantiated", totalCallers).
+		Int("module_documents_instantiated", len(res.docs)).
 		Msgf(
-			"Instantiated %d module resources (%d unique OPA docs, %d deduplicated callers)",
+			"Instantiated %d module resources into %d OPA documents (%d deduplicated callers)",
 			totalCallers,
 			len(res.docs),
-			totalCallers-len(res.docs),
+			dedupedCallers(&res),
 		)
 	if !res.ok {
 		return nil, nil, nil
@@ -94,11 +98,17 @@ func (c *Inspector) instantiateLocalModules(
 }
 
 func instantiatedModuleResourceCount(res *moduleResolutionResult) int {
-	count := len(res.docs)
+	return res.resourceCount
+}
+
+// dedupedCallers counts the callers that collapsed onto another caller's
+// document and get their findings cloned after evaluation.
+func dedupedCallers(res *moduleResolutionResult) int {
+	var n int
 	for _, extras := range res.extras {
-		count += len(extras)
+		n += len(extras)
 	}
-	return count
+	return n
 }
 
 func (c *Inspector) buildRemoteResolver() tfeval.RemoteResolver {
@@ -228,6 +238,7 @@ func resolveModuleDocuments(
 	seen := make(map[string]string)
 	extras := make(map[string][]extraCallerInfo)
 	var rootEvalOK bool
+	var resourceCount int
 	actualCalledDirs := make(map[string]bool)
 	var extra []model.Document
 	var syntheticFiles []*model.FileMetadata
@@ -245,9 +256,10 @@ func resolveModuleDocuments(
 		for d := range childDirs {
 			actualCalledDirs[d] = true
 		}
-		docs, syn := instantiatedDocs(resources, byAbsPath, repoPath, seen, extras)
+		docs, syn, n := instantiatedDocs(resources, byAbsPath, repoPath, seen, extras)
 		extra = append(extra, docs...)
 		syntheticFiles = append(syntheticFiles, syn...)
+		resourceCount += n
 	}
 	evaluator.ReleaseCaches()
 
@@ -279,7 +291,14 @@ func resolveModuleDocuments(
 		calledDirs:     strippedDirs,
 		extras:         extras,
 		ok:             true,
+		resourceCount:  resourceCount,
 	}
+}
+
+// instantiatedResource is one resolved resource as it is placed into a document.
+type instantiatedResource struct {
+	typ, baseName, defLine string
+	attrs                  interface{}
 }
 
 // moduleRefEntry holds resolved resource data for _refs injection and dedup.
@@ -288,7 +307,27 @@ type moduleRefEntry struct {
 	attrs                         interface{}
 }
 
-// instantiatedDocs emits one synthetic OPA doc per resolved module resource instance.
+// docGroup collects every resource that one module call contributes to a single
+// defining file.
+type docGroup struct {
+	fm            *model.FileMetadata
+	callChain     string
+	moduleAddress string
+	layer         int
+	entries       []instantiatedResource
+}
+
+// instantiatedDocs emits one synthetic OPA doc per (module call, defining file),
+// holding every resource that call resolved in that file. This mirrors how an
+// ordinary Terraform file reaches Rego - one document, many resources - so rules
+// matching a resource against same-file siblings behave as they do anywhere else.
+//
+// _refs carries the rest of the call's resources so cross-file references inside
+// a module still resolve, and is shared by every doc in the call. Grouping is
+// what makes that affordable: emitting one doc per resource attaches an N-entry
+// map to each of N docs, which is O(N^2) both in memory and in the traversal
+// every walk-based rule performs. Per file it is O(files x N) instead.
+//
 // Identical callers are recorded in extras for post-eval finding cloning.
 func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
@@ -296,113 +335,153 @@ func instantiatedDocs(
 	repoPath string,
 	seen map[string]string,
 	extras map[string][]extraCallerInfo,
-) (docs []model.Document, synthetic []*model.FileMetadata) {
-	// Pass 1: index resources per call chain.
+) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
+	groups := make(map[string]*docGroup)
+	var order []string
 	cckRefs := make(map[string][]moduleRefEntry)
+	// A base name repeats within one call and file whenever count/for_each
+	// expands a block. Document keys have to stay base-named for line detection
+	// to resolve them against the file's HCL, so repeats spill into another
+	// layer rather than overwriting each other.
+	layers := make(map[string]int)
+
 	for i := range resources {
 		r := &resources[i]
 		if r.ModuleAddress == "" {
 			continue
 		}
+		fm, ok := byAbsPath[absPath(r.DefinedIn, repoPath)]
+		if !ok {
+			continue
+		}
 		cck := callChainKey(r, repoPath)
+		base := tfeval.ResourceBaseName(r.Name)
+		attrs := tfeval.AttributesToDocument(r)
+
 		cckRefs[cck] = append(cckRefs[cck], moduleRefEntry{
 			typ:       r.Type,
 			name:      r.Name,
 			definedIn: absPath(r.DefinedIn, repoPath),
 			defLine:   strconv.Itoa(r.DefLine),
-			attrs:     tfeval.AttributesToDocument(r),
+			attrs:     attrs,
 		})
+
+		slot := cck + "\x00" + fm.ID + "\x00" + r.Type + "\x00" + base
+		layer := layers[slot]
+		layers[slot] = layer + 1
+
+		key := cck + "\x00" + fm.ID + "\x00" + strconv.Itoa(layer)
+		g, exists := groups[key]
+		if !exists {
+			g = &docGroup{fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer}
+			groups[key] = g
+			order = append(order, key)
+		}
+		g.entries = append(g.entries, instantiatedResource{
+			typ:      r.Type,
+			baseName: base,
+			defLine:  strconv.Itoa(r.DefLine),
+			attrs:    attrs,
+		})
+		resourceCount++
 	}
-	callContentKeys := make(map[string]string, len(cckRefs))
+
+	// One _refs map per call chain, shared by every doc in it.
+	callRefKeys := make(map[string]uint64, len(cckRefs))
+	callRefs := make(map[string]map[string]interface{}, len(cckRefs))
 	for cck, refs := range cckRefs {
-		callContentKeys[cck] = moduleCallRefsKey(refs)
+		callRefKeys[cck] = xxhash.Sum64String(moduleCallRefsKey(refs))
+		callRefs[cck] = buildSharedRefsMap(refs)
 	}
 
-	// Pass 2: emit one doc per instance.
-	for i := range resources {
-		r := &resources[i]
-		if r.ModuleAddress == "" {
-			continue
-		}
-		abs := absPath(r.DefinedIn, repoPath)
-		fm, ok := byAbsPath[abs]
-		if !ok {
-			continue
-		}
+	for _, key := range order {
+		g := groups[key]
+		docID := g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
 
-		cck := callChainKey(r, repoPath)
-		docID := fm.ID + "\x00" + cck + "\x00" + r.Name
-
-		// Identical resolved attributes dedupe to one OPA doc; extras get cloned findings after OPA.
-		contentKey := moduleCallContentKey(r, callContentKeys[cck], repoPath)
+		// Calls that resolve this file to identical content share one OPA doc;
+		// the others are recorded so their findings are cloned after eval.
+		contentKey := groupContentKey(g, callRefKeys[g.callChain])
 		if primaryDocID, dup := seen[contentKey]; dup {
-			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{callChain: cck, docID: docID})
+			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
+				callChain: g.callChain,
+				docID:     docID,
+			})
 			continue
 		}
 		seen[contentKey] = docID
 
-		refsMap := buildRefsMap(r, cckRefs[cck])
+		resource := make(map[string]interface{})
+		for _, e := range g.entries {
+			byName, ok := resource[e.typ].(map[string]interface{})
+			if !ok {
+				byName = make(map[string]interface{})
+				resource[e.typ] = byName
+			}
+			byName[e.baseName] = e.attrs
+		}
 
 		doc := model.Document{
-			"id":   docID,
-			"file": fm.FilePath,
-			"resource": map[string]interface{}{
-				r.Type: map[string]interface{}{
-					tfeval.ResourceBaseName(r.Name): tfeval.AttributesToDocument(r),
-				},
-			},
+			"id":       docID,
+			"file":     g.fm.FilePath,
+			"resource": resource,
 		}
-		if len(refsMap) > 0 {
+		if refsMap := callRefs[g.callChain]; len(refsMap) > 0 {
 			doc["_refs"] = map[string]interface{}{"resource": refsMap}
 		}
 		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(fm, docID, cck))
+		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain))
 	}
-	return docs, synthetic
+	return docs, synthetic, resourceCount
 }
 
-func moduleCallRefsKey(allInCall []moduleRefEntry) string {
-	type row struct{ typ, name, definedIn, defLine, attrKey string }
-	rows := make([]row, 0, len(allInCall))
-	for _, e := range allInCall {
+// groupContentKey identifies a document by its module address, defining file,
+// the content it resolved to, and the call's reference set.
+//
+// The module address keeps two distinct calls in one configuration apart even
+// when they resolve identically, since an aggregating rule must still see both;
+// leaving out the calling root is what lets the same call dedup across roots.
+// The reference set has to be part of the identity because it is part of the
+// document: two calls resolving this file identically can still expose
+// different siblings through _refs.
+func groupContentKey(g *docGroup, refsKey uint64) string {
+	rows := make([]string, 0, len(g.entries))
+	for _, e := range g.entries {
 		b, _ := json.Marshal(e.attrs)
-		rows = append(rows, row{e.typ, e.name, e.definedIn, e.defLine, strconv.FormatUint(xxhash.Sum64(b), 16)})
+		rows = append(rows, strings.Join(
+			[]string{e.typ, e.baseName, e.defLine, strconv.FormatUint(xxhash.Sum64(b), 16)},
+			"\x1f",
+		))
 	}
-	sort.Slice(rows, func(i, j int) bool {
-		for _, pair := range [][2]string{
-			{rows[i].typ, rows[j].typ},
-			{rows[i].name, rows[j].name},
-			{rows[i].definedIn, rows[j].definedIn},
-			{rows[i].defLine, rows[j].defLine},
-			{rows[i].attrKey, rows[j].attrKey},
-		} {
-			if pair[0] != pair[1] {
-				return pair[0] < pair[1]
-			}
-		}
-		return false
-	})
-	var parts []string
-	for _, r := range rows {
-		parts = append(parts, r.typ, r.name, r.definedIn, r.defLine, r.attrKey)
-	}
-	return strings.Join(parts, "\x00")
-}
-
-func moduleCallContentKey(self *tfeval.ResolvedResource, refsKey, repoPath string) string {
+	sort.Strings(rows)
 	return strings.Join([]string{
-		self.ModuleAddress, self.Type, self.Name,
-		absPath(self.DefinedIn, repoPath), strconv.Itoa(self.DefLine), refsKey,
+		g.moduleAddress,
+		g.fm.ID,
+		strconv.Itoa(g.layer),
+		strconv.FormatUint(refsKey, 16),
+		strings.Join(rows, "\x1e"),
 	}, "\x00")
 }
 
-// buildRefsMap returns sibling resources in the same module call (for walk-based rules).
-func buildRefsMap(self *tfeval.ResolvedResource, allInCall []moduleRefEntry) map[string]interface{} {
+func moduleCallRefsKey(allInCall []moduleRefEntry) string {
+	rows := make([]string, 0, len(allInCall))
+	for _, e := range allInCall {
+		b, _ := json.Marshal(e.attrs)
+		rows = append(rows, strings.Join(
+			[]string{e.typ, e.name, e.definedIn, e.defLine, strconv.FormatUint(xxhash.Sum64(b), 16)},
+			"\x1f",
+		))
+	}
+	sort.Strings(rows)
+	return strings.Join(rows, "\x00")
+}
+
+// buildSharedRefsMap returns every resource in a module call, for rules that
+// resolve a reference against another file of the same module. It is built once
+// per call chain and shared by all of that call's docs, so unlike a
+// self-excluding map it also includes the doc's own resources.
+func buildSharedRefsMap(allInCall []moduleRefEntry) map[string]interface{} {
 	refs := make(map[string]interface{})
 	for _, e := range allInCall {
-		if e.typ == self.Type && e.name == self.Name {
-			continue
-		}
 		inner, _ := refs[e.typ].(map[string]interface{})
 		if inner == nil {
 			inner = make(map[string]interface{})
