@@ -22,8 +22,7 @@ import (
 )
 
 // stubQueriesSource is a minimal in-memory source.QueriesSource for driving
-// engine.NewInspector with a single ad-hoc rule, without loading anything
-// from disk.
+// engine.NewInspector with a single ad-hoc rule.
 type stubQueriesSource struct {
 	queries []model.QueryMetadata
 }
@@ -39,10 +38,8 @@ func (s *stubQueriesSource) GetQueryLibrary(_ context.Context, platform string) 
 	}, nil
 }
 
-// cloudwatchLogMetricFilterRule mirrors the common Terraform rule-authoring
-// pattern flagged in review: iterating every instance of a resource type
-// directly off doc.resource.<type>. If a reserved key ever lived in that map
-// (e.g. _dd_tfplan_meta), it would be iterated here as a fake resource.
+// cloudwatchLogMetricFilterRule mirrors the common pattern of iterating
+// doc.resource.<type> directly, which would pick up a reserved key as a fake resource.
 const cloudwatchLogMetricFilterRule = `package datadog
 
 DatadogPolicy contains result if {
@@ -57,14 +54,8 @@ DatadogPolicy contains result if {
 }
 `
 
-// TestInspect_TFPlanMetaNotExposedAsFakeResource is a regression test for a
-// reserved-key leak: _dd_tfplan_meta must live in a top-level map parallel to
-// "resource", never nested inside resource.<type>, or any rule iterating
-// doc.resource.<type> (a common pattern - see cloudwatchLogMetricFilterRule)
-// would pick it up as a fake resource instance and report a spurious finding
-// under the resource name "_dd_tfplan_meta". This drives the real
-// Parser.Parse -> PrepareScanDocument -> engine.Inspect pipeline, not just a
-// document-shape assertion.
+// TestInspect_TFPlanMetaNotExposedAsFakeResource is a regression test:
+// _dd_tfplan_meta must never surface as a fake resource to Rego rules.
 func TestInspect_TFPlanMetaNotExposedAsFakeResource(t *testing.T) {
 	ctx := context.Background()
 

@@ -791,14 +791,8 @@ func TestJson_parseTFPlan(t *testing.T) {
 }
 
 // TestJson_parseTFPlan_dd_tfplan_meta_correlation exercises _dd_tfplan_meta's
-// direct-lookup contract end to end: a Rego rule should be able to read
-// _dd_tfplan_meta.<type>.<key>.after_unknown/configuration_expressions without
-// reconstructing the resource's Terraform address or walking
-// resource_changes/configuration itself. Covers a root resource, a resource in
-// a nested module, a count instance, a for_each instance, and for_each
-// instances whose quoted key contains characters that must not be mistaken
-// for address separators/terminators when stripping the index to correlate
-// against configuration: a literal dot, a literal "]", and an escaped quote.
+// direct-lookup contract for root/nested/count/for_each resources, including
+// for_each keys with a dot, a "]", and an escaped quote.
 func TestJson_parseTFPlan_dd_tfplan_meta_correlation(t *testing.T) {
 	doc := model.Document{
 		"format_version":    "1.2",
@@ -981,9 +975,7 @@ func TestJson_parseTFPlan_dd_tfplan_meta_correlation(t *testing.T) {
 		return entry
 	}
 
-	// _dd_tfplan_meta must never be nested inside resource.<type> - Rego rules
-	// commonly do `some name, resource in doc.resource.<type>`, and any
-	// non-resource key there would be iterated as a fake resource instance.
+	// _dd_tfplan_meta must never be nested inside resource.<type>.
 	resourceTypes, ok := got["resource"].(map[string]interface{})
 	require.True(t, ok)
 	for resourceType, typeMap := range resourceTypes {
@@ -1014,18 +1006,14 @@ func TestJson_parseTFPlan_dd_tfplan_meta_correlation(t *testing.T) {
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"prod\"]"))
 
-	// for_each instance whose key contains a literal dot: the dot must not be
-	// mistaken for an address separator when stripping the index to correlate
-	// against configuration.
+	// for_each instance whose key contains a literal dot.
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"a.b\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"a.b\"]"))
 
-	// for_each instance whose key contains a literal "]": a naive
-	// bracket-matching regex would stop at this inner "]" and strip the
-	// address short, breaking configuration correlation.
+	// for_each instance whose key contains a literal "]".
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"a]b\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
@@ -1039,8 +1027,7 @@ func TestJson_parseTFPlan_dd_tfplan_meta_correlation(t *testing.T) {
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"a\\\"b\"]"))
 
-	// Resource in a nested module: configuration is correlated via
-	// module_calls, keyed by module call name, not module instance address.
+	// Resource in a nested module.
 	require.Equal(t, map[string]interface{}{
 		"address":                   "module.networking.aws_subnet.public",
 		"after_unknown":             map[string]interface{}{"id": true},
