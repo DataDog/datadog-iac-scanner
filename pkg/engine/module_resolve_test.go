@@ -10,6 +10,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -17,6 +19,7 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/rs/zerolog"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // docFileID is the prefix of synthetic doc ids: fileID\x00callChain.
@@ -635,17 +638,152 @@ module "bucket" {
 	}
 }
 
-func TestInstantiatedModuleResourceCountIncludesDeduplicatedCallers(t *testing.T) {
+// A document holds many resources, so the reported resource count cannot be
+// derived from the document count. Keeping them separate is what stops the
+// metric silently changing meaning.
+func TestInstantiatedModuleResourceCountIsResourcesNotDocuments(t *testing.T) {
 	res := moduleResolutionResult{
-		docs: []model.Document{{}, {}},
+		docs:          []model.Document{{}, {}},
+		resourceCount: 37,
 		extras: map[string][]extraCallerInfo{
 			"first":  {{}, {}},
 			"second": {{}},
 		},
 	}
 
-	if got := instantiatedModuleResourceCount(&res); got != 5 {
-		t.Fatalf("instantiatedModuleResourceCount() = %d, want 5", got)
+	if got := instantiatedModuleResourceCount(&res); got != 37 {
+		t.Fatalf("instantiatedModuleResourceCount() = %d, want 37 resources", got)
+	}
+	if got := dedupedCallers(&res); got != 3 {
+		t.Fatalf("dedupedCallers() = %d, want 3", got)
+	}
+}
+
+// Every resource a call resolves in one file belongs to a single document, the
+// way an ordinary Terraform file is presented to Rego. One document per resource
+// would attach an N-entry _refs map to each of N documents, which is quadratic
+// in both memory and the traversal walk-based rules perform.
+func TestInstantiatedDocs_GroupsCallResourcesPerFile(t *testing.T) {
+	const n = 40
+	fm := fileMeta("mod-id", "/repo/monitoring/main.tf")
+	byAbsPath := map[string]*model.FileMetadata{"/repo/monitoring/main.tf": fm}
+
+	resources := make([]tfeval.ResolvedResource, 0, n)
+	for i := 0; i < n; i++ {
+		resources = append(resources, tfeval.ResolvedResource{
+			Type:          "datadog_monitor",
+			Name:          "m" + strconv.Itoa(i),
+			Attributes:    map[string]cty.Value{"name": cty.StringVal("svc")},
+			DefinedIn:     "/repo/monitoring/main.tf",
+			DefLine:       i + 1,
+			ModuleAddress: "module.monitoring",
+			CallChain: []tfeval.CallSite{{
+				ModuleName: "monitoring",
+				Source:     "./monitoring",
+				CalledFrom: "/repo/main.tf",
+				CalledLine: 1,
+			}},
+		})
+	}
+
+	docs, synthetic, _ := instantiatedDocs(resources, byAbsPath, "/repo", map[string]string{}, map[string][]extraCallerInfo{})
+	if len(docs) != 1 {
+		t.Fatalf("got %d docs, want 1 for %d resources of one call in one file", len(docs), n)
+	}
+	if len(synthetic) != 1 {
+		t.Fatalf("got %d synthetic files, want 1 per document", len(synthetic))
+	}
+
+	monitors, _ := docs[0]["resource"].(map[string]interface{})["datadog_monitor"].(map[string]interface{})
+	if len(monitors) != n {
+		t.Fatalf("document holds %d monitors, want all %d", len(monitors), n)
+	}
+}
+
+// count/for_each expansion repeats a base name within one call and file.
+// Document keys stay base-named so line detection can resolve them, so the
+// repeats have to spill into further documents instead of overwriting.
+func TestInstantiatedDocs_RepeatedBaseNamesSpillIntoLayers(t *testing.T) {
+	const instances = 3
+	fm := fileMeta("mod-id", "/repo/monitoring/main.tf")
+	byAbsPath := map[string]*model.FileMetadata{"/repo/monitoring/main.tf": fm}
+
+	resources := make([]tfeval.ResolvedResource, 0, instances)
+	for i := 0; i < instances; i++ {
+		resources = append(resources, tfeval.ResolvedResource{
+			Type:          "datadog_monitor",
+			Name:          "m[" + strconv.Itoa(i) + "]",
+			Attributes:    map[string]cty.Value{"name": cty.StringVal("svc" + strconv.Itoa(i))},
+			DefinedIn:     "/repo/monitoring/main.tf",
+			DefLine:       1,
+			ModuleAddress: "module.monitoring",
+			CallChain: []tfeval.CallSite{{
+				ModuleName: "monitoring",
+				Source:     "./monitoring",
+				CalledFrom: "/repo/main.tf",
+				CalledLine: 1,
+			}},
+		})
+	}
+
+	docs, _, _ := instantiatedDocs(resources, byAbsPath, "/repo", map[string]string{}, map[string][]extraCallerInfo{})
+	if len(docs) != instances {
+		t.Fatalf("got %d docs, want %d so no instance is dropped", len(docs), instances)
+	}
+
+	seenNames := map[string]bool{}
+	for i, doc := range docs {
+		monitors, _ := doc["resource"].(map[string]interface{})["datadog_monitor"].(map[string]interface{})
+		if len(monitors) != 1 {
+			t.Fatalf("doc %d holds %d monitors, want 1", i, len(monitors))
+		}
+		for name, attrs := range monitors {
+			if name != "m" {
+				t.Fatalf("doc %d keyed by %q, want the base name %q so line detection resolves", i, name, "m")
+			}
+			seenNames[attrs.(map[string]interface{})["name"].(string)] = true
+		}
+	}
+	if len(seenNames) != instances {
+		t.Fatalf("kept %d distinct instances, want %d: %v", len(seenNames), instances, seenNames)
+	}
+}
+
+// _refs is what lets a rule resolve a reference into another file of the same
+// module, so it must stay scoped to its own call.
+func TestInstantiatedDocs_DifferentCallChainsGetDistinctRefsMaps(t *testing.T) {
+	fm := fileMeta("mod-id", "/repo/monitoring/main.tf")
+	byAbsPath := map[string]*model.FileMetadata{"/repo/monitoring/main.tf": fm}
+
+	makeResource := func(name, callerFile string, line int) tfeval.ResolvedResource {
+		return tfeval.ResolvedResource{
+			Type:          "datadog_monitor",
+			Name:          name,
+			Attributes:    map[string]cty.Value{"name": cty.StringVal("svc")},
+			DefinedIn:     "/repo/monitoring/main.tf",
+			DefLine:       1,
+			ModuleAddress: "module.monitoring",
+			CallChain: []tfeval.CallSite{{
+				ModuleName: "monitoring",
+				Source:     "./monitoring",
+				CalledFrom: callerFile,
+				CalledLine: line,
+			}},
+		}
+	}
+
+	resources := []tfeval.ResolvedResource{
+		makeResource("a", "/repo/stack-a/main.tf", 1),
+		makeResource("b", "/repo/stack-b/main.tf", 1),
+	}
+	docs, _, _ := instantiatedDocs(resources, byAbsPath, "/repo", map[string]string{}, map[string][]extraCallerInfo{})
+	if len(docs) != 2 {
+		t.Fatalf("got %d docs, want 2", len(docs))
+	}
+	refsA := docs[0]["_refs"].(map[string]interface{})["resource"]
+	refsB := docs[1]["_refs"].(map[string]interface{})["resource"]
+	if reflect.ValueOf(refsA).Pointer() == reflect.ValueOf(refsB).Pointer() {
+		t.Fatal("distinct call chains must not share the same _refs map")
 	}
 }
 
