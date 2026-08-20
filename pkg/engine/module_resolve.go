@@ -34,7 +34,7 @@ type extraCallerInfo struct {
 type moduleResolutionResult struct {
 	docs           []model.Document
 	syntheticFiles []*model.FileMetadata
-	suppressed     map[string]bool
+	suppressed     instantiatedIndex
 	calledDirs     map[string]bool
 	extras         map[string][]extraCallerInfo
 	resourceCount  int
@@ -78,15 +78,18 @@ func (c *Inspector) instantiateLocalModules(
 		if f == nil || !isTerraformFile(f.FilePath) {
 			continue
 		}
-		if res.suppressed[f.ID] {
-			// Resource blocks are re-emitted as instantiated synthetic docs, so
-			// drop only those to avoid double-counting; keep the rest of the body
-			// (variable/output/data/locals) so those rules still fire.
-			delete(f.Document, "resource")
+		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
+			// Only the blocks that came back as instantiated documents are
+			// dropped, so nothing loses its coverage: a resource the evaluator
+			// could not resolve, or one that expanded to no instances, keeps
+			// being scanned where it is written. The rest of the body
+			// (variable/output/data/locals) is always kept so its rules fire as
+			// they do in a standalone scan.
+			removeInstantiatedResources(f.Document, replaced)
 			if err := f.EnsureLineInfoDocument(ctx); err != nil {
 				contextLogger.Err(err).Msgf("failed to build line-info document for file %s", f.FilePath)
 			} else {
-				delete(f.LineInfoDocument, "resource")
+				removeInstantiatedResources(f.LineInfoDocument, replaced)
 			}
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
@@ -94,6 +97,76 @@ func (c *Inspector) instantiateLocalModules(
 		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, resolver)
 	}
 	return res.docs, res.syntheticFiles, res.extras
+}
+
+// instantiatedIndex records which resource blocks of a file were re-emitted as
+// instantiated documents, as file ID -> resource type -> block name.
+type instantiatedIndex map[string]map[string]map[string]bool
+
+func (idx instantiatedIndex) add(fileID, typ, name string) {
+	byType, ok := idx[fileID]
+	if !ok {
+		byType = make(map[string]map[string]bool)
+		idx[fileID] = byType
+	}
+	names, ok := byType[typ]
+	if !ok {
+		names = make(map[string]bool)
+		byType[typ] = names
+	}
+	names[name] = true
+}
+
+// removeInstantiatedResources deletes the named resource blocks from a parsed
+// file so they are not scanned twice, once where they are written and once
+// instantiated.
+func removeInstantiatedResources(doc map[string]interface{}, replaced map[string]map[string]bool) {
+	resources, ok := asStringMap(doc["resource"])
+	if !ok {
+		return
+	}
+	for typ, names := range replaced {
+		byName, ok := asStringMap(resources[typ])
+		if !ok {
+			// A nameless resource block parses to a list, leaving no name to
+			// match on; drop the type so nothing is counted twice.
+			delete(resources, typ)
+			continue
+		}
+		for name := range names {
+			delete(byName, name)
+		}
+		if onlyMetadataKeys(byName) {
+			delete(resources, typ)
+		}
+	}
+	if onlyMetadataKeys(resources) {
+		delete(doc, "resource")
+	}
+}
+
+// asStringMap accepts either shape a parsed document uses for an object.
+func asStringMap(value interface{}) (map[string]interface{}, bool) {
+	switch m := value.(type) {
+	case model.Document:
+		return m, true
+	case map[string]interface{}:
+		return m, true
+	default:
+		return nil, false
+	}
+}
+
+// onlyMetadataKeys reports whether a map holds nothing but the parser's own
+// bookkeeping (line numbers and the like), which describes content that is no
+// longer there.
+func onlyMetadataKeys(m map[string]interface{}) bool {
+	for key := range m {
+		if !strings.HasPrefix(key, "_") {
+			return false
+		}
+	}
+	return true
 }
 
 func deduplicatedCallerCount(res *moduleResolutionResult) int {
@@ -230,6 +303,7 @@ func resolveModuleDocuments(
 	// be recorded in extras rather than emitted as separate OPA documents.
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
+	instantiated := make(instantiatedIndex)
 	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
 	var extra []model.Document
@@ -249,7 +323,7 @@ func resolveModuleDocuments(
 		for d := range childDirs {
 			actualCalledDirs[d] = true
 		}
-		docs, syn, count := instantiatedDocs(resources, byAbsPath, repoPath, seen, extras)
+		docs, syn, count := instantiatedDocs(resources, byAbsPath, repoPath, seen, extras, instantiated)
 		extra = append(extra, docs...)
 		syntheticFiles = append(syntheticFiles, syn...)
 		resourceCount += count
@@ -262,25 +336,25 @@ func resolveModuleDocuments(
 		return moduleResolutionResult{}
 	}
 
-	suppressed := make(map[string]bool)
-	for dir := range actualCalledDirs {
-		for _, f := range filesByDir[dir] {
-			suppressed[f.ID] = true
-		}
-	}
-
-	// Only strip call sites when that module's files are in the scan (avoid dropping sole coverage).
+	// A call site is only stripped once the module behind it actually produced
+	// instantiated documents. Stripping it otherwise — because evaluation
+	// resolved nothing, or because the module's files are not part of the scan
+	// — would remove the call-site rule branches without putting anything in
+	// their place.
 	strippedDirs := make(map[string]bool, len(actualCalledDirs))
 	for dir := range actualCalledDirs {
-		if len(filesByDir[dir]) > 0 {
-			strippedDirs[dir] = true
+		for _, f := range filesByDir[dir] {
+			if len(instantiated[f.ID]) > 0 {
+				strippedDirs[dir] = true
+				break
+			}
 		}
 	}
 
 	return moduleResolutionResult{
 		docs:           extra,
 		syntheticFiles: syntheticFiles,
-		suppressed:     suppressed,
+		suppressed:     instantiated,
 		calledDirs:     strippedDirs,
 		extras:         extras,
 		resourceCount:  resourceCount,
@@ -339,6 +413,7 @@ func instantiatedDocs(
 	repoPath string,
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
+	instantiated instantiatedIndex,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -381,6 +456,9 @@ func instantiatedDocs(
 			order = append(order, key)
 		}
 		g.entries = append(g.entries, entry)
+		// Recorded before deduplication: a document that dedupes away still
+		// covers its resource, through a finding cloned onto its call site.
+		instantiated.add(fm.ID, r.Type, base)
 		resourceCount++
 	}
 

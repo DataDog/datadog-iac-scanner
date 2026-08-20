@@ -187,12 +187,80 @@ resource "aws_s3_bucket" "this" {
 
 	// The module body must be suppressed (so it isn't scanned standalone), but
 	// the root file must still be scanned.
-	if !res.suppressed["mod-id"] {
+	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatalf("module file should be suppressed")
 	}
-	if res.suppressed["root-id"] {
+	if len(res.suppressed["root-id"]) != 0 {
 		t.Fatalf("root file should not be suppressed")
 	}
+}
+
+// Only the blocks that came back instantiated may be dropped from the file they
+// are written in. Dropping the whole file would lose the coverage the scanner
+// has today for everything else in it.
+func TestRemoveInstantiatedResources(t *testing.T) {
+	newDoc := func() model.Document {
+		return model.Document{
+			"resource": model.Document{
+				"aws_s3_bucket": model.Document{
+					"replaced": model.Document{"bucket": "x"},
+					"kept":     model.Document{"bucket": "y"},
+				},
+				"aws_sqs_queue": model.Document{
+					"untouched": model.Document{"name": "q"},
+				},
+				"_dd_lines": map[string]model.LineObject{},
+			},
+			"variable": model.Document{"name": model.Document{}},
+		}
+	}
+
+	t.Run("removes only the instantiated block", func(t *testing.T) {
+		doc := newDoc()
+		removeInstantiatedResources(doc, map[string]map[string]bool{
+			"aws_s3_bucket": {"replaced": true},
+		})
+
+		resources, _ := asStringMap(doc["resource"])
+		buckets, _ := asStringMap(resources["aws_s3_bucket"])
+		if _, gone := buckets["replaced"]; gone {
+			t.Fatalf("instantiated block must not be scanned in place too: %#v", buckets)
+		}
+		if _, kept := buckets["kept"]; !kept {
+			t.Fatalf("a block that produced no instance must keep its coverage: %#v", buckets)
+		}
+		if _, kept := resources["aws_sqs_queue"]; !kept {
+			t.Fatalf("untouched resource types must remain: %#v", resources)
+		}
+		if _, kept := doc["variable"]; !kept {
+			t.Fatalf("non-resource blocks must never be dropped")
+		}
+	})
+
+	t.Run("drops the resource key once nothing is left under it", func(t *testing.T) {
+		doc := newDoc()
+		removeInstantiatedResources(doc, map[string]map[string]bool{
+			"aws_s3_bucket": {"replaced": true, "kept": true},
+			"aws_sqs_queue": {"untouched": true},
+		})
+
+		if _, still := doc["resource"]; still {
+			t.Fatalf("only parser line metadata was left, so resource should be gone: %#v", doc)
+		}
+	})
+
+	t.Run("drops a nameless block's whole type", func(t *testing.T) {
+		doc := model.Document{
+			"resource": model.Document{
+				"aws_lb": []interface{}{model.Document{"name": "one"}},
+			},
+		}
+		removeInstantiatedResources(doc, map[string]map[string]bool{"aws_lb": {"": true}})
+
+		if _, still := doc["resource"]; still {
+			t.Fatalf("a nameless block has no name to match, so its type must go: %#v", doc)
+		}
+	})
 }
 
 func TestResolveModuleDocuments_RelativeFilePaths(t *testing.T) {
@@ -234,7 +302,7 @@ resource "aws_s3_bucket" "this" {
 	if doc := res.docs[0]; docFileID(doc["id"]) != "mod-id" {
 		t.Fatalf("instantiated doc id prefix = %v, want mod-id", docFileID(doc["id"]))
 	}
-	if !res.suppressed["mod-id"] || res.suppressed["root-id"] {
+	if len(res.suppressed["mod-id"]) == 0 || len(res.suppressed["root-id"]) != 0 {
 		t.Fatalf("unexpected suppression map: %#v", res.suppressed)
 	}
 }
@@ -315,7 +383,7 @@ resource "aws_s3_bucket" "this" {
 	if len(chains) != 2 {
 		t.Fatalf("want 2 distinct module call chains (one per root), got %d: %#v", len(chains), chains)
 	}
-	if !res.suppressed["mod-id"] {
+	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatalf("shared module file should be suppressed")
 	}
 }
@@ -532,7 +600,7 @@ resource "aws_s3_bucket" "this" {
 	if len(res.docs) != 0 {
 		t.Fatalf("orphan module should not instantiate resources, got %#v", res.docs)
 	}
-	if res.suppressed["orphan-id"] {
+	if len(res.suppressed["orphan-id"]) != 0 {
 		t.Fatalf("orphan module should not be suppressed")
 	}
 }
@@ -587,10 +655,15 @@ resource "aws_s3_bucket" "leaf" {
 		t.Fatalf("leaf bucket = %#v, want deep", leaf["bucket"])
 	}
 
-	if !res.suppressed["a-id"] || !res.suppressed["leaf-id"] {
-		t.Fatalf("intermediate and leaf module files should be suppressed: %#v", res.suppressed)
+	if !res.suppressed["leaf-id"]["aws_s3_bucket"]["leaf"] {
+		t.Fatalf("the instantiated leaf resource should be replaced: %#v", res.suppressed)
 	}
-	if res.suppressed["root-id"] {
+	// The intermediate module only calls another module, so it has no resource
+	// block to replace and nothing about it should be dropped.
+	if len(res.suppressed["a-id"]) != 0 {
+		t.Fatalf("intermediate module declares no resources, nothing to replace: %#v", res.suppressed)
+	}
+	if len(res.suppressed["root-id"]) != 0 {
 		t.Fatalf("root file should not be suppressed")
 	}
 }
