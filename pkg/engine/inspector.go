@@ -459,6 +459,15 @@ func (c *Inspector) Inspect(
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
 
+	if os.Getenv("IAC_EXPERIMENTAL_RULE_PREFILTER") == "1" {
+		present := presentAnchors(combinedFiles.Documents, moduleDocs)
+		var skipped int
+		queries, skipped = filterQueriesByPresentAnchors(queries, present)
+		contextLogger.Info().Msgf(
+			"EXPERIMENT rule prefilter: %d anchors present, skipped %d queries, %d remain",
+			len(present), skipped, len(queries))
+	}
+
 	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
 	// non-fatal (logged, scan continues), but a context cancellation must abort
 	// the scan rather than proceed with partial module data.
