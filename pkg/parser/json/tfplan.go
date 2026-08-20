@@ -8,7 +8,9 @@ package json
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/hashicorp/hcl/v2"
@@ -48,6 +50,50 @@ type resourceChangeCorrelation struct {
 	afterUnknownByAddress map[string]any
 	expressionsByAddress  map[string]any
 	provisionersByAddress map[string]any
+}
+
+// correlationCacheSize bounds the number of raw-plan correlations kept
+// around; the loader that reparses OriginalData for line info produces the
+// same bytes as the eager parse, so a small cache avoids rebuilding it.
+const correlationCacheSize = 32
+
+var (
+	correlationCacheMu   sync.Mutex
+	correlationCacheKeys []uint64
+	correlationCache     = make(map[uint64]resourceChangeCorrelation, correlationCacheSize)
+)
+
+func hashRawPlan(rawPlan []byte) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write(rawPlan)
+	return h.Sum64()
+}
+
+func buildResourceChangeCorrelationCached(rawPlan []byte) resourceChangeCorrelation {
+	key := hashRawPlan(rawPlan)
+
+	correlationCacheMu.Lock()
+	if c, ok := correlationCache[key]; ok {
+		correlationCacheMu.Unlock()
+		return c
+	}
+	correlationCacheMu.Unlock()
+
+	c := buildResourceChangeCorrelation(rawPlan)
+
+	correlationCacheMu.Lock()
+	if _, ok := correlationCache[key]; !ok {
+		if len(correlationCacheKeys) >= correlationCacheSize {
+			oldest := correlationCacheKeys[0]
+			correlationCacheKeys = correlationCacheKeys[1:]
+			delete(correlationCache, oldest)
+		}
+		correlationCache[key] = c
+		correlationCacheKeys = append(correlationCacheKeys, key)
+	}
+	correlationCacheMu.Unlock()
+
+	return c
 }
 
 func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
@@ -200,7 +246,7 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 	// hcl_plan.Plan is typed and drops the injected _dd_lines keys, so read
 	// them back from the raw bytes before that information is lost.
 	resourceLines := extractResourceHeaderLines(b)
-	correlation := buildResourceChangeCorrelation(b)
+	correlation := buildResourceChangeCorrelationCached(b)
 
 	parsedPlan := readPlan(plan, doc["resource_changes"], doc["configuration"], resourceLines, &correlation)
 	return parsedPlan, nil
