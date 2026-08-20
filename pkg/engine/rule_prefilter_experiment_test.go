@@ -6,6 +6,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -62,16 +63,29 @@ func TestRuleAnchors(t *testing.T) {
 		{
 			// `data.generic.common` is the Rego library namespace and says
 			// nothing about what the rule reads.
-			name:        "the rego library namespace is not a data source",
-			rego:        "import data.generic.common as common_lib\nx := input.document[i].resource.aws_vpc[n]",
+			name: "the rego library namespace is not a data source",
+			rego: "package datadog\n\nimport data.generic.common as common_lib\n\n" +
+				"DatadogPolicy contains result if {\n" +
+				"\tx := input.document[i].resource.aws_vpc[n]\n" +
+				"\tcommon_lib.valid_key(x, \"tags\")\n" +
+				"\tresult := {\"documentId\": \"x\"}\n}\n",
 			wantBounded: true,
 			wantAnchors: []string{"resource:aws_vpc"},
 		},
 	}
 
+	// ruleAnchors works on a parsed module, so a rule body is wrapped in one.
+	// A case that needs module-level syntax supplies the whole module itself.
+	asModule := func(rego string) string {
+		if strings.HasPrefix(rego, "package ") {
+			return rego
+		}
+		return policy(rego)
+	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			anchors, bounded := ruleAnchors(tc.rego)
+			anchors, bounded := ruleAnchors(asModule(tc.rego))
 			if bounded != tc.wantBounded {
 				t.Fatalf("bounded = %v, want %v (anchors %v)", bounded, tc.wantBounded, anchors)
 			}
@@ -87,6 +101,11 @@ func TestRuleAnchors(t *testing.T) {
 	}
 }
 
+func policy(body string) string {
+	return "package datadog\n\nDatadogPolicy contains result if {\n\t" + body +
+		"\n\tresult := {\"documentId\": \"x\"}\n}\n"
+}
+
 func TestFilterQueriesByPresentAnchors(t *testing.T) {
 	docs := []model.Document{{
 		"resource": map[string]interface{}{
@@ -100,13 +119,13 @@ func TestFilterQueriesByPresentAnchors(t *testing.T) {
 
 	queries := []model.QueryMetadata{
 		{Query: "matches", Platform: "terraform",
-			Content: `x := input.document[i].resource.aws_s3_bucket[n]`},
+			Content: policy(`x := input.document[i].resource.aws_s3_bucket[n]`)},
 		{Query: "absent", Platform: "terraform",
-			Content: `x := input.document[i].resource.aws_autoscaling_group[n]`},
+			Content: policy(`x := input.document[i].resource.aws_autoscaling_group[n]`)},
 		{Query: "unbounded", Platform: "terraform",
-			Content: `x := input.document[i].resource[res][n]`},
+			Content: policy(`x := input.document[i].resource[res][n]`)},
 		{Query: "other-platform", Platform: "k8s",
-			Content: `x := input.document[i].resource.aws_autoscaling_group[n]`},
+			Content: policy(`x := input.document[i].resource.aws_autoscaling_group[n]`)},
 	}
 
 	kept, skipped := filterQueriesByPresentAnchors(queries, present)

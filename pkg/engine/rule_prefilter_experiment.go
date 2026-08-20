@@ -8,10 +8,10 @@ package engine
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/open-policy-agent/opa/v1/ast"
 )
 
 // EXPERIMENT: skip Terraform rules that read nothing the scan contains.
@@ -36,19 +36,17 @@ func blockAnchor(kind string) string   { return "block:" + kind }
 // anchored on. `data` is excluded: it is tracked per data source type instead.
 var documentBlockKinds = []string{"module", "provider", "terraform", "output", "variable", "locals"}
 
-var (
-	// A rule that indexes resources through a variable, as in
-	// `input.document[i].resource[res][name]`, decides the type at evaluation
-	// time and can therefore match anything.
-	dynamicResourcePattern = regexp.MustCompile(`resource\[\s*[^"\s\]]`)
-	// A rule that hands the whole resource map to a helper, as in
-	// `settings_are_equal(document.resource, ...)`, can likewise reach any type.
-	bareResourcePattern = regexp.MustCompile(`\.resource[^.\[_a-zA-Z0-9]`)
-	// `data.generic` is the Rego library namespace, not a Terraform data source.
-	dataSourcePattern = regexp.MustCompile(`\bdata\.([a-z][a-z0-9_]*)`)
-	blockKindPattern  = regexp.MustCompile(
-		`document(?:\[[^\]]*\])?\.(module|provider|terraform|output|variable|locals)\b`)
+// The two block kinds tracked per declared type rather than by kind alone.
+const (
+	blockKindResource = "resource"
+	blockKindData     = "data"
 )
+
+// blockKindAnchors is the set of non-resource top-level blocks tracked by kind.
+var blockKindAnchors = map[string]bool{
+	"module": true, "provider": true, "terraform": true,
+	"output": true, "variable": true, "locals": true,
+}
 
 // presentAnchors collects every anchor the documents about to be evaluated can
 // satisfy, so a rule reading none of them cannot produce a finding.
@@ -76,29 +74,71 @@ func presentAnchors(sets ...[]model.Document) map[string]bool {
 	return present
 }
 
-// ruleAnchors collects what a rule reads. It returns ok=false when the rule
-// selects blocks at evaluation time, which makes any collected set an
-// under-approximation and the rule unsafe to skip.
+// ruleAnchors collects what a rule reads, working from the parsed Rego rather
+// than its text: only the AST distinguishes a literal block key from one chosen
+// at evaluation time, and a Terraform `data` block from the `data.generic`
+// library namespace.
+//
+// It returns ok=false when the rule's reach cannot be bounded — an unparseable
+// rule, or one that indexes a block through a variable — in which case any
+// collected set would be an under-approximation and the rule must always run.
 func ruleAnchors(source string) (anchors map[string]bool, ok bool) {
-	if dynamicResourcePattern.MatchString(source) || bareResourcePattern.MatchString(source) {
+	module, err := ast.ParseModuleWithOpts("rule.rego", source, ast.ParserOptions{RegoVersion: ast.RegoV1})
+	if err != nil {
 		return nil, false
 	}
+
 	anchors = make(map[string]bool)
-	for _, pattern := range []*regexp.Regexp{resourceFieldPattern, resourceIndexPattern} {
-		for _, m := range pattern.FindAllStringSubmatch(source, -1) {
-			anchors[resourceAnchor(m[1])] = true
+	bounded := true
+	ast.WalkRefs(module, func(ref ast.Ref) bool {
+		// A ref rooted at the `data` document addresses Rego, not Terraform, so
+		// `data.generic.terraform` says nothing about the blocks a rule reads.
+		if root, isVar := ref[0].Value.(ast.Var); isVar && root.Equal(ast.DefaultRootDocument.Value.(ast.Var)) {
+			return false
 		}
-	}
-	for _, m := range dataSourcePattern.FindAllStringSubmatch(source, -1) {
-		if m[1] == "generic" {
-			continue
+		for i := 1; i < len(ref); i++ {
+			key, isString := ref[i].Value.(ast.String)
+			if !isString {
+				continue
+			}
+			switch kind := string(key); kind {
+			case blockKindResource, blockKindData:
+				typ, named := refStringAt(ref, i+1)
+				if !named {
+					// `resource[res]` or a bare `document.resource` handed to a
+					// helper: the type is decided later, so nothing bounds it.
+					bounded = false
+					return true
+				}
+				if kind == blockKindResource {
+					anchors[resourceAnchor(typ)] = true
+				} else {
+					anchors[dataAnchor(typ)] = true
+				}
+			default:
+				if blockKindAnchors[kind] {
+					anchors[blockAnchor(kind)] = true
+				}
+			}
 		}
-		anchors[dataAnchor(m[1])] = true
-	}
-	for _, m := range blockKindPattern.FindAllStringSubmatch(source, -1) {
-		anchors[blockAnchor(m[1])] = true
+		return false
+	})
+	if !bounded {
+		return nil, false
 	}
 	return anchors, true
+}
+
+// refStringAt reports the literal key at position i, if there is one.
+func refStringAt(ref ast.Ref, i int) (string, bool) {
+	if i >= len(ref) {
+		return "", false
+	}
+	key, ok := ref[i].Value.(ast.String)
+	if !ok {
+		return "", false
+	}
+	return string(key), true
 }
 
 func filterQueriesByPresentAnchors(
@@ -110,7 +150,10 @@ func filterQueriesByPresentAnchors(
 			kept = append(kept, queries[i])
 			continue
 		}
-		anchors, ok := ruleAnchors(queries[i].Content + "\n" + queries[i].InputData)
+		// Only the Rego is parsed: InputData is JSON, and a rule that picks
+		// block names out of it reaches them through a variable, which
+		// ruleAnchors already reports as unbounded.
+		anchors, ok := ruleAnchors(queries[i].Content)
 		// Unknown or empty anchors mean the rule's reach cannot be bounded.
 		if !ok || len(anchors) == 0 || anyAnchorPresent(anchors, present) {
 			kept = append(kept, queries[i])
