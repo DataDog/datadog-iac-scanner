@@ -45,6 +45,10 @@ type ResolvedResource struct {
 	Type       string
 	Name       string
 	Attributes map[string]cty.Value
+	// Body is the resource's HCL body, used to recover the reference text of
+	// attributes evaluation could not resolve. It is not consulted during
+	// evaluation, so recovered references never feed back into resolved values.
+	Body *hclsyntax.Body
 
 	// Source location and module address for finding attribution.
 	DefinedIn     string
@@ -429,6 +433,7 @@ func (e *Evaluator) expandResourceBlock(
 			Type:          typeName,
 			Name:          name,
 			Attributes:    e.evalBody(rb.Body, ctx, nil),
+			Body:          rb.Body,
 			DefinedIn:     rb.TypeRange.Filename,
 			DefLine:       rb.TypeRange.Start.Line,
 			ModuleAddress: addr,
