@@ -485,8 +485,13 @@ sg_is_used(sgName, doc) if {
 }
 `
 
-// Cross-file SG reference in a module must suppress sg_not_used.
-func TestInspect_CrossFileModuleRefsResolvedBySiblings(t *testing.T) {
+// A rule that decides by looking at one whole document sees a module's files
+// separately, exactly as it sees the files of any other directory. Giving
+// instantiated documents a cross-file view their inline equivalents do not have
+// would both change findings depending on where code lives and tie every
+// document to the call it came from, which is what makes deduplication
+// collapse on repositories with many roots.
+func TestInspect_CrossFileModuleRefsMatchInlineBehaviour(t *testing.T) {
 	root := t.TempDir()
 
 	rootDir := filepath.Join(root, "stack")
@@ -543,7 +548,54 @@ resource "aws_instance" "app" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
-	require.Empty(t, vulns, "sg_not_used must not fire when the SG is referenced in a sibling module file")
+	inline := inlineEquivalentFindings(t, root, sgNotUsedRule)
+	require.Len(t, vulns, inline,
+		"a module's cross-file references must be seen exactly as the same code inlined would be")
+	require.Len(t, vulns, 1, "one document per file, so the sibling reference is not visible")
+}
+
+// inlineEquivalentFindings scans the same two files as a plain directory, with
+// no module call, and reports how many findings the rule produces.
+func inlineEquivalentFindings(t *testing.T, root, rule string) int {
+	t.Helper()
+	dir := filepath.Join(root, "inline")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	sgPath := filepath.Join(dir, "sg.tf")
+	instancePath := filepath.Join(dir, "instance.tf")
+	require.NoError(t, os.WriteFile(sgPath, []byte(`
+resource "aws_security_group" "web" {
+  name = "web-sg"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(instancePath, []byte(`
+resource "aws_instance" "app" {
+  ami                    = "ami-12345678"
+  vpc_security_group_ids = ["aws_security_group.web.id"]
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, sgPath)...)
+	files = append(files, parseTerraform(t, instancePath)...)
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query:       "sg_not_used_rule",
+			Content:     rule,
+			InputData:   "{}",
+			Platform:    "terraform",
+			Metadata:    map[string]interface{}{"id": "sg-not-used"},
+			Aggregation: 1,
+		}},
+		repoPath:      dir,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: moduleEvalEnabled(),
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	return len(vulns)
 }
 
 func TestInspect_CrossFileUnusedSGStillFires(t *testing.T) {
@@ -606,7 +658,10 @@ resource "aws_instance" "app" {
 	require.Equal(t, "aws_security_group", vulns[0].ResourceType)
 }
 
-func TestInspect_CrossRootDivergentSiblingNotDeduped(t *testing.T) {
+// Two roots calling the same module with the same inputs resolve to identical
+// content, so they share one evaluated document — but each call site still gets
+// its own finding, since a fix has to be applied per deployment.
+func TestInspect_IdenticalCallsShareADocumentAndReportEveryCallSite(t *testing.T) {
 	root := t.TempDir()
 
 	modDir := filepath.Join(root, "modules", "net")
@@ -666,7 +721,12 @@ resource "aws_instance" "server" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
-	require.Empty(t, vulns, "sg_not_used must not fire when the SG is referenced in a sibling module file")
+	require.Len(t, vulns, 2, "one finding per call site")
+	chains := []string{vulns[0].ModuleCallChain, vulns[1].ModuleCallChain}
+	require.ElementsMatch(t,
+		[]string{"stack-a/main.tf|module.net", "stack-b/main.tf|module.net"},
+		chains,
+		"each call site must keep its own attribution after deduplication")
 }
 
 func TestInspect_CountExpansionBothInstancesScanned(t *testing.T) {

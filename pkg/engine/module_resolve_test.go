@@ -635,7 +635,7 @@ module "bucket" {
 	}
 }
 
-func TestInstantiatedModuleResourceCountIncludesDeduplicatedCallers(t *testing.T) {
+func TestDeduplicatedCallerCount(t *testing.T) {
 	res := moduleResolutionResult{
 		docs: []model.Document{{}, {}},
 		extras: map[string][]extraCallerInfo{
@@ -644,8 +644,8 @@ func TestInstantiatedModuleResourceCountIncludesDeduplicatedCallers(t *testing.T
 		},
 	}
 
-	if got := instantiatedModuleResourceCount(&res); got != 5 {
-		t.Fatalf("instantiatedModuleResourceCount() = %d, want 5", got)
+	if got := deduplicatedCallerCount(&res); got != 3 {
+		t.Fatalf("deduplicatedCallerCount() = %d, want 3", got)
 	}
 }
 
