@@ -78,7 +78,7 @@ func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 // absolute address. callArgs holds the enclosing module call's own resolved
 // argument expressions (keyed by variable name), used to resolve a bare
 // "var.<name>" reference down to the value passed in at the call site.
-func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[string]gjson.Result, c *resourceChangeCorrelation) {
+func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[string]*gjson.Result, c *resourceChangeCorrelation) {
 	module.Get("resources").ForEach(func(_, resource gjson.Result) bool {
 		relativeAddress := resource.Get("address").String()
 		if relativeAddress == "" {
@@ -89,10 +89,10 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 			absoluteAddress = modulePath + "." + relativeAddress
 		}
 		if expressions := resource.Get("expressions"); expressions.Exists() {
-			c.expressionsByAddress[absoluteAddress] = resolveVarReferences(expressions, callArgs)
+			c.expressionsByAddress[absoluteAddress] = resolveVarReferences(&expressions, callArgs)
 		}
 		if provisioners := resource.Get("provisioners"); provisioners.Exists() {
-			c.provisionersByAddress[absoluteAddress] = resolveVarReferences(provisioners, callArgs)
+			c.provisionersByAddress[absoluteAddress] = resolveVarReferences(&provisioners, callArgs)
 		}
 		return true
 	})
@@ -106,9 +106,9 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 		if modulePath != "" {
 			childPath = modulePath + "." + childPath
 		}
-		childArgs := make(map[string]gjson.Result)
+		childArgs := make(map[string]*gjson.Result)
 		call.Get("expressions").ForEach(func(argName, argExpr gjson.Result) bool {
-			childArgs[argName.String()] = argExpr
+			childArgs[argName.String()] = &argExpr
 			return true
 		})
 		walkConfigModule(&childModule, childPath, childArgs, c)
@@ -120,7 +120,7 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 // leaf shaped like {"references": ["var.<name>", ...]}, substitutes in
 // callArgs[<name>] - the value the enclosing module call actually passed -
 // so the result reflects the concrete value rather than a bare var reference.
-func resolveVarReferences(value gjson.Result, callArgs map[string]gjson.Result) any {
+func resolveVarReferences(value *gjson.Result, callArgs map[string]*gjson.Result) any {
 	if len(callArgs) == 0 || !value.IsObject() && !value.IsArray() {
 		return value.Value()
 	}
@@ -137,14 +137,14 @@ func resolveVarReferences(value gjson.Result, callArgs map[string]gjson.Result) 
 		items := value.Array()
 		resolved := make([]any, len(items))
 		for i, item := range items {
-			resolved[i] = resolveVarReferences(item, callArgs)
+			resolved[i] = resolveVarReferences(&item, callArgs)
 		}
 		return resolved
 	}
 
 	resolved := make(map[string]any)
 	value.ForEach(func(key, item gjson.Result) bool {
-		resolved[key.String()] = resolveVarReferences(item, callArgs)
+		resolved[key.String()] = resolveVarReferences(&item, callArgs)
 		return true
 	})
 	return resolved
