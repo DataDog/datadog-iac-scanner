@@ -425,23 +425,38 @@ func TestResolveModuleDocuments_DocumentMirrorsItsFile(t *testing.T) {
 }
 
 // Document ids feed finding fingerprints, so the same repository must always
-// produce the same ones.
+// produce the same ones. Roots are discovered by walking a map, so nothing but
+// an explicit ordering keeps the same caller owning a shared document.
 func TestResolveModuleDocuments_DocumentIDsAreStable(t *testing.T) {
-	repo, files := writeFanOut(t, 4, true)
+	// All roots resolve identically, so every document but one is deduplicated
+	// and something has to decide which caller owns it.
+	repo, files := writeFanOut(t, 8, false)
 
-	ids := func() []string {
+	snapshot := func() ([]string, map[string][]string) {
 		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
-		out := make([]string, 0, len(res.docs))
+		ids := make([]string, 0, len(res.docs))
 		for _, doc := range res.docs {
-			out = append(out, doc["id"].(string))
+			ids = append(ids, doc["id"].(string))
 		}
-		sort.Strings(out)
-		return out
+		extras := map[string][]string{}
+		for primary, callers := range res.extras {
+			for _, c := range callers {
+				extras[primary] = append(extras[primary], c.docID)
+			}
+			sort.Strings(extras[primary])
+		}
+		return ids, extras
 	}
 
-	first, second := ids(), ids()
-	if !reflect.DeepEqual(first, second) {
-		t.Fatalf("document ids changed between runs:\n%v\n%v", first, second)
+	wantIDs, wantExtras := snapshot()
+	for run := range 3 {
+		ids, extras := snapshot()
+		if !reflect.DeepEqual(ids, wantIDs) {
+			t.Fatalf("run %d: documents changed between runs:\n%v\n%v", run, ids, wantIDs)
+		}
+		if !reflect.DeepEqual(extras, wantExtras) {
+			t.Fatalf("run %d: deduplicated callers changed between runs:\n%v\n%v", run, extras, wantExtras)
+		}
 	}
 }
 

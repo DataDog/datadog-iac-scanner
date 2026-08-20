@@ -342,10 +342,19 @@ func resolveModuleDocuments(
 	var syntheticFiles []*model.FileMetadata
 	var resourceCount int
 
+	// Roots are taken in a fixed order: which of several identical callers ends
+	// up owning a shared document decides that document's id, and ids reach
+	// finding fingerprints.
+	roots := make([]string, 0, len(dirsWithTf))
 	for dir := range dirsWithTf {
 		if staticCalledDirs[dir] {
 			continue // instantiated via a module call, not a root
 		}
+		roots = append(roots, dir)
+	}
+	sort.Strings(roots)
+
+	for _, dir := range roots {
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir))
 		if err != nil {
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
