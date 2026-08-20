@@ -444,15 +444,14 @@ func (c *Inspector) Inspect(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
 
-	// Terraform local-module instantiation is gated so it can be disabled remotely.
+	// Temporarily enable Terraform local-module instantiation unconditionally so
+	// regression detection exercises this path.
 	queries := c.getQueriesByPlat(platforms)
 
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var syntheticFiles []*model.FileMetadata
-	if shouldInstantiateLocalModules(platforms, files) &&
-		c.flagEvaluator != nil &&
-		c.flagEvaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
+	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files, targets)
 	}
