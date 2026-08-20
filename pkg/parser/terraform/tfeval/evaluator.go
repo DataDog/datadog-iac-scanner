@@ -699,6 +699,15 @@ func (e *Evaluator) evalBody(
 	}
 	for _, t := range order {
 		list := grouped[t]
+		// Match how a parsed Terraform file represents nested blocks: a block
+		// written once is an object, and only a repeated one becomes a list.
+		// Rules are written against that shape — `resource.ingress.cidr_blocks`
+		// reads straight through a single block — so a list here would make a
+		// rule quietly stop matching resources that came from a module.
+		if len(list) == 1 {
+			out[t] = list[0]
+			continue
+		}
 		out[t] = cty.TupleVal(list)
 	}
 	return out

@@ -1195,13 +1195,28 @@ module "m" {
 	}
 }
 
-func TestEvaluateModule_SingleNestedBlockIsSingletonTuple(t *testing.T) {
+// Nested blocks have to reach a rule in the same shape a parsed Terraform file
+// gives them, or a rule written for one will silently skip the other. The
+// parser writes a block that appears once as an object and only a repeated one
+// as a list, which is why `resource.ingress.cidr_blocks` is how rules are
+// written.
+func TestEvaluateModule_NestedBlockShapeMatchesParser(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{
 		"main.tf": `
-resource "aws_s3_bucket" "this" {
+resource "aws_s3_bucket" "single" {
   versioning {
     enabled = true
+  }
+}
+
+resource "aws_security_group" "repeated" {
+  ingress {
+    from_port = 22
+  }
+
+  ingress {
+    from_port = 443
   }
 }
 `,
@@ -1212,21 +1227,19 @@ resource "aws_s3_bucket" "this" {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
 
-	r := findResource(t, resources, "aws_s3_bucket", "this")
-	versioning, ok := r.Attributes["versioning"]
-	if !ok {
-		t.Fatalf("versioning block missing")
+	versioning := findResource(t, resources, "aws_s3_bucket", "single").Attributes["versioning"]
+	if !versioning.Type().IsObjectType() {
+		t.Fatalf("versioning = %s, want an object for a block written once",
+			versioning.Type().FriendlyName())
 	}
-	if !versioning.Type().IsTupleType() || versioning.LengthInt() != 1 {
-		t.Fatalf("versioning = %s (len %d), want 1-tuple", versioning.Type().FriendlyName(), versioning.LengthInt())
+	if enabled := versioning.GetAttr("enabled"); !enabled.True() {
+		t.Fatalf("versioning.enabled = %#v, want true", enabled)
 	}
-	block := versioning.Index(cty.NumberIntVal(0))
-	if !block.Type().IsObjectType() {
-		t.Fatalf("versioning[0] = %s, want object", block.Type().FriendlyName())
-	}
-	enabled := block.GetAttr("enabled")
-	if !enabled.True() {
-		t.Fatalf("versioning[0].enabled = %#v, want true", enabled)
+
+	ingress := findResource(t, resources, "aws_security_group", "repeated").Attributes["ingress"]
+	if !ingress.Type().IsTupleType() || ingress.LengthInt() != 2 {
+		t.Fatalf("ingress = %s (len %d), want a 2-tuple for a repeated block",
+			ingress.Type().FriendlyName(), ingress.LengthInt())
 	}
 }
 
