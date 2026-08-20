@@ -8,8 +8,11 @@ package engine
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -151,7 +154,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -291,7 +294,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", filepath.Join("modules", "bucket", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -304,6 +307,141 @@ resource "aws_s3_bucket" "this" {
 	}
 	if len(res.suppressed["mod-id"]) == 0 || len(res.suppressed["root-id"]) != 0 {
 		t.Fatalf("unexpected suppression map: %#v", res.suppressed)
+	}
+}
+
+// writeFanOut builds a repository where roots roots all call one module. The
+// module spans two files and declares three resources, so the fixture also
+// covers grouping. When vary is set each root passes a different value, so
+// nothing can be shared between them.
+func writeFanOut(t *testing.T, roots int, vary bool) (string, model.FileMetadatas) {
+	t.Helper()
+	root := t.TempDir()
+	modDir := filepath.Join(root, "modules", "app")
+
+	writeFile(t, modDir, "buckets.tf", `
+variable "name" { type = string }
+
+resource "aws_s3_bucket" "primary" {
+  bucket = var.name
+}
+
+resource "aws_s3_bucket" "backup" {
+  bucket = "${var.name}-backup"
+}
+`)
+	writeFile(t, modDir, "queue.tf", `
+resource "aws_sqs_queue" "events" {
+  name = var.name
+}
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("mod-buckets", filepath.Join(modDir, "buckets.tf")),
+		fileMeta("mod-queue", filepath.Join(modDir, "queue.tf")),
+	}
+	for i := range roots {
+		name := "shared"
+		if vary {
+			name = fmt.Sprintf("root-%d", i)
+		}
+		dir := filepath.Join(root, fmt.Sprintf("stack-%d", i))
+		writeFile(t, dir, "main.tf", fmt.Sprintf(`
+module "app" {
+  source = "../modules/app"
+  name   = %q
+}
+`, name))
+		files = append(files, fileMeta(fmt.Sprintf("root-%d", i), filepath.Join(dir, "main.tf")))
+	}
+	return root, files
+}
+
+// The payload has to stay proportional to the configuration. Roots that call a
+// module with the same inputs resolve to the same content and must share
+// documents; only genuinely different content may add any.
+func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
+	const modFiles = 2
+
+	for _, roots := range []int{1, 4, 32} {
+		repo, files := writeFanOut(t, roots, false)
+		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+		if !res.ok {
+			t.Fatalf("roots=%d: resolveModuleDocuments ok = false", roots)
+		}
+		if len(res.docs) != modFiles {
+			t.Fatalf("roots=%d: %d documents, want %d — identical calls must share documents",
+				roots, len(res.docs), modFiles)
+		}
+		// Every call site still has to be reported, through cloned findings.
+		if got := deduplicatedCallerCount(&res); got != (roots-1)*modFiles {
+			t.Fatalf("roots=%d: %d deduplicated callers, want %d", roots, got, (roots-1)*modFiles)
+		}
+		if got := len(res.syntheticFiles); got != modFiles {
+			t.Fatalf("roots=%d: %d synthetic files, want one per document", roots, got)
+		}
+	}
+
+	// Different inputs genuinely produce different content, so those do scale.
+	repo, files := writeFanOut(t, 8, true)
+	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+	if len(res.docs) != 8*modFiles {
+		t.Fatalf("%d documents for 8 differing roots, want %d", len(res.docs), 8*modFiles)
+	}
+}
+
+// A module file reaches Rego the way any other Terraform file does: one
+// document holding that file's resources, and nothing else.
+func TestResolveModuleDocuments_DocumentMirrorsItsFile(t *testing.T) {
+	repo, files := writeFanOut(t, 1, false)
+	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+	if !res.ok {
+		t.Fatal("resolveModuleDocuments ok = false")
+	}
+
+	byFile := map[string]model.Document{}
+	for _, doc := range res.docs {
+		byFile[docFileID(doc["id"])] = doc
+	}
+	if len(byFile) != 2 {
+		t.Fatalf("expected one document per module file, got %#v", byFile)
+	}
+
+	buckets, _ := asStringMap(byFile["mod-buckets"]["resource"])
+	byName, _ := asStringMap(buckets["aws_s3_bucket"])
+	if len(buckets) != 1 || len(byName) != 2 {
+		t.Fatalf("both resources of buckets.tf belong in one document: %#v", buckets)
+	}
+	if _, leaked := buckets["aws_sqs_queue"]; leaked {
+		t.Fatalf("a document must not carry another file's resources: %#v", buckets)
+	}
+	for _, doc := range res.docs {
+		for key := range doc {
+			if key != "id" && key != "file" && key != "resource" {
+				t.Fatalf("unexpected key %q: a document must look like a parsed file", key)
+			}
+		}
+	}
+}
+
+// Document ids feed finding fingerprints, so the same repository must always
+// produce the same ones.
+func TestResolveModuleDocuments_DocumentIDsAreStable(t *testing.T) {
+	repo, files := writeFanOut(t, 4, true)
+
+	ids := func() []string {
+		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+		out := make([]string, 0, len(res.docs))
+		for _, doc := range res.docs {
+			out = append(out, doc["id"].(string))
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	first, second := ids(), ids()
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("document ids changed between runs:\n%v\n%v", first, second)
 	}
 }
 
@@ -348,7 +486,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -431,7 +569,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -528,7 +666,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		fileMeta("mod-b", modBFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -566,7 +704,7 @@ module "bucket" {
 		fileMeta("root-id", filepath.Join("stack", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if res.ok {
 		t.Fatalf("resolveModuleDocuments ok = true, want false when all roots fail")
 	}
@@ -593,7 +731,7 @@ resource "aws_s3_bucket" "this" {
 
 	files := model.FileMetadatas{fileMeta("orphan-id", orphanFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
@@ -636,7 +774,7 @@ resource "aws_s3_bucket" "leaf" {
 		fileMeta("leaf-id", leafFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -697,7 +835,7 @@ module "bucket" {
 	})
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).WithContext(context.Background())
-	if docs, synthetic, extras := ins.instantiateLocalModules(ctx, files); docs != nil || synthetic != nil || extras != nil {
+	if docs, synthetic, extras := ins.instantiateLocalModules(ctx, files, nil); docs != nil || synthetic != nil || extras != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {
