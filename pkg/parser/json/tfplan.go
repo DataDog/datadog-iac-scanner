@@ -8,6 +8,7 @@ package json
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/hashicorp/hcl/v2"
@@ -40,17 +41,20 @@ type tfplanResourceMeta struct {
 	Address                  string `json:"address"`
 	AfterUnknown             any    `json:"after_unknown,omitempty"`
 	ConfigurationExpressions any    `json:"configuration_expressions,omitempty"`
+	Provisioners             any    `json:"provisioners,omitempty"`
 }
 
 type resourceChangeCorrelation struct {
 	afterUnknownByAddress map[string]any
 	expressionsByAddress  map[string]any
+	provisionersByAddress map[string]any
 }
 
 func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 	c := resourceChangeCorrelation{
 		afterUnknownByAddress: make(map[string]any),
 		expressionsByAddress:  make(map[string]any),
+		provisionersByAddress: make(map[string]any),
 	}
 
 	gjson.GetBytes(rawPlan, "resource_changes").ForEach(func(_, change gjson.Result) bool {
@@ -65,12 +69,16 @@ func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 	})
 
 	rootConfigModule := gjson.GetBytes(rawPlan, "configuration.root_module")
-	walkConfigModule(&rootConfigModule, "", &c)
+	walkConfigModule(&rootConfigModule, "", nil, &c)
 
 	return c
 }
 
-func walkConfigModule(module *gjson.Result, modulePath string, c *resourceChangeCorrelation) {
+// walkConfigModule indexes each resource's expressions/provisioners by
+// absolute address. callArgs holds the enclosing module call's own resolved
+// argument expressions (keyed by variable name), used to resolve a bare
+// "var.<name>" reference down to the value passed in at the call site.
+func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[string]gjson.Result, c *resourceChangeCorrelation) {
 	module.Get("resources").ForEach(func(_, resource gjson.Result) bool {
 		relativeAddress := resource.Get("address").String()
 		if relativeAddress == "" {
@@ -81,7 +89,10 @@ func walkConfigModule(module *gjson.Result, modulePath string, c *resourceChange
 			absoluteAddress = modulePath + "." + relativeAddress
 		}
 		if expressions := resource.Get("expressions"); expressions.Exists() {
-			c.expressionsByAddress[absoluteAddress] = expressions.Value()
+			c.expressionsByAddress[absoluteAddress] = resolveVarReferences(expressions, callArgs)
+		}
+		if provisioners := resource.Get("provisioners"); provisioners.Exists() {
+			c.provisionersByAddress[absoluteAddress] = resolveVarReferences(provisioners, callArgs)
 		}
 		return true
 	})
@@ -95,9 +106,48 @@ func walkConfigModule(module *gjson.Result, modulePath string, c *resourceChange
 		if modulePath != "" {
 			childPath = modulePath + "." + childPath
 		}
-		walkConfigModule(&childModule, childPath, c)
+		childArgs := make(map[string]gjson.Result)
+		call.Get("expressions").ForEach(func(argName, argExpr gjson.Result) bool {
+			childArgs[argName.String()] = argExpr
+			return true
+		})
+		walkConfigModule(&childModule, childPath, childArgs, c)
 		return true
 	})
+}
+
+// resolveVarReferences walks an expressions/provisioners tree and, for any
+// leaf shaped like {"references": ["var.<name>", ...]}, substitutes in
+// callArgs[<name>] - the value the enclosing module call actually passed -
+// so the result reflects the concrete value rather than a bare var reference.
+func resolveVarReferences(value gjson.Result, callArgs map[string]gjson.Result) any {
+	if len(callArgs) == 0 || !value.IsObject() && !value.IsArray() {
+		return value.Value()
+	}
+
+	if refs := value.Get("references"); refs.IsArray() && len(refs.Array()) > 0 {
+		if ref := refs.Array()[0].String(); strings.HasPrefix(ref, "var.") {
+			if arg, ok := callArgs[strings.TrimPrefix(ref, "var.")]; ok {
+				return arg.Value()
+			}
+		}
+	}
+
+	if value.IsArray() {
+		items := value.Array()
+		resolved := make([]any, len(items))
+		for i, item := range items {
+			resolved[i] = resolveVarReferences(item, callArgs)
+		}
+		return resolved
+	}
+
+	resolved := make(map[string]any)
+	value.ForEach(func(key, item gjson.Result) bool {
+		resolved[key.String()] = resolveVarReferences(item, callArgs)
+		return true
+	})
+	return resolved
 }
 
 // canonicalConfigAddress strips "[...]" instance-key suffixes, e.g.
@@ -126,8 +176,12 @@ func resourceMetaFor(address string, c *resourceChangeCorrelation) tfplanResourc
 	if afterUnknown, ok := c.afterUnknownByAddress[address]; ok {
 		meta.AfterUnknown = afterUnknown
 	}
-	if expressions, ok := c.expressionsByAddress[canonicalConfigAddress(address)]; ok {
+	configAddress := canonicalConfigAddress(address)
+	if expressions, ok := c.expressionsByAddress[configAddress]; ok {
 		meta.ConfigurationExpressions = expressions
+	}
+	if provisioners, ok := c.provisionersByAddress[configAddress]; ok {
+		meta.Provisioners = provisioners
 	}
 	return meta
 }

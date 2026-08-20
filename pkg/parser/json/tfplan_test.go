@@ -1019,3 +1019,118 @@ func TestJson_parseTFPlan_dd_tfplan_meta_correlation(t *testing.T) {
 		"configuration_expressions": map[string]interface{}{"cidr_block": map[string]interface{}{"references": []interface{}{"var.subnet_cidr"}}},
 	}, meta("aws_subnet", "module.networking.public"))
 }
+
+func TestJson_parseTFPlan_dd_tfplan_meta_provisioners(t *testing.T) {
+	doc := model.Document{
+		"format_version":    "1.2",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"resources": []map[string]interface{}{
+					{
+						"address": "aws_instance.web",
+						"mode":    "managed",
+						"type":    "aws_instance",
+						"name":    "web",
+						"values":  map[string]interface{}{"instance_type": "t2.micro"},
+					},
+				},
+			},
+		},
+		"resource_changes": []map[string]interface{}{},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"resources": []map[string]interface{}{
+					{
+						"address": "aws_instance.web",
+						"expressions": map[string]interface{}{
+							"instance_type": map[string]interface{}{"constant_value": "t2.micro"},
+						},
+						"provisioners": []map[string]interface{}{
+							{
+								"type": "local-exec",
+								"expressions": map[string]interface{}{
+									"command": map[string]interface{}{"constant_value": "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	ddMeta, ok := got["_dd_tfplan_meta"].(map[string]interface{})
+	require.True(t, ok)
+	entry := ddMeta["aws_instance"].(map[string]interface{})["web"].(map[string]interface{})
+
+	require.Equal(t, []interface{}{
+		map[string]interface{}{
+			"type": "local-exec",
+			"expressions": map[string]interface{}{
+				"command": map[string]interface{}{"constant_value": "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/"},
+			},
+		},
+	}, entry["provisioners"])
+}
+
+func TestJson_parseTFPlan_dd_tfplan_meta_module_call_var_resolution(t *testing.T) {
+	doc := model.Document{
+		"format_version":    "1.2",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"child_modules": []map[string]interface{}{
+					{
+						"address": "module.instance",
+						"resources": []map[string]interface{}{
+							{
+								"address": "module.instance.aws_instance.web",
+								"mode":    "managed",
+								"type":    "aws_instance",
+								"name":    "web",
+								"values":  map[string]interface{}{},
+							},
+						},
+					},
+				},
+			},
+		},
+		"resource_changes": []map[string]interface{}{},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"module_calls": map[string]interface{}{
+					"instance": map[string]interface{}{
+						"expressions": map[string]interface{}{
+							"user_data": map[string]interface{}{"constant_value": "IyEvYmluL2Jhc2gKZWNobyBoaQ=="},
+						},
+						"module": map[string]interface{}{
+							"resources": []map[string]interface{}{
+								{
+									"address": "aws_instance.web",
+									"expressions": map[string]interface{}{
+										"user_data": map[string]interface{}{"references": []string{"var.user_data"}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	ddMeta, ok := got["_dd_tfplan_meta"].(map[string]interface{})
+	require.True(t, ok)
+	entry := ddMeta["aws_instance"].(map[string]interface{})["module.instance.web"].(map[string]interface{})
+
+	require.Equal(t, map[string]interface{}{
+		"user_data": map[string]interface{}{"constant_value": "IyEvYmluL2Jhc2gKZWNobyBoaQ=="},
+	}, entry["configuration_expressions"])
+}
