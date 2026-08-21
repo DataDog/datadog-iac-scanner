@@ -27,6 +27,7 @@ import (
 const (
 	seedGroupConcurrencyFactor = 4
 	sourceTypeRegistry         = "registry"
+	parentDir                  = ".."
 )
 
 type Request struct {
@@ -190,11 +191,36 @@ func FromManifestDiscovery(discovery *resolver.ManifestDiscovery, repositoryRoot
 	if discovery == nil || !discovery.Complete {
 		return result
 	}
-	calls := make(map[string]resolver.ManifestDiscoveryCall, len(discovery.Calls))
-	for _, call := range discovery.Calls {
-		calls[call.CallID] = call
-	}
+	calls := manifestDiscoveryCallsByID(discovery.Calls)
 	depths := manifestCallDepths(calls)
+	mappingDepths := manifestMappingDepths(discovery, calls, depths, repositoryRoot, maxDepth, &result)
+	appendManifestSourceMappings(&result, discovery.SourceMappings, mappingDepths, maxDepth)
+	appendManifestScanPaths(&result, discovery.ScanPaths, mappingDepths, maxDepth)
+	sort.Strings(result.ScanPaths)
+	sort.Slice(result.Modules, func(i, j int) bool {
+		left, right := result.Modules[i], result.Modules[j]
+		return strings.Join([]string{left.CallerRoot, left.Source, left.Version, left.Name}, "\x00") <
+			strings.Join([]string{right.CallerRoot, right.Source, right.Version, right.Name}, "\x00")
+	})
+	return result
+}
+
+func manifestDiscoveryCallsByID(calls []resolver.ManifestDiscoveryCall) map[string]resolver.ManifestDiscoveryCall {
+	byID := make(map[string]resolver.ManifestDiscoveryCall, len(calls))
+	for _, call := range calls {
+		byID[call.CallID] = call
+	}
+	return byID
+}
+
+func manifestMappingDepths(
+	discovery *resolver.ManifestDiscovery,
+	calls map[string]resolver.ManifestDiscoveryCall,
+	depths map[string]int,
+	repositoryRoot string,
+	maxDepth int,
+	result *Result,
+) map[string]int {
 	mappingDepths := make(map[string]int)
 	for i := range discovery.ModuleMappings {
 		mapping := &discovery.ModuleMappings[i]
@@ -207,50 +233,70 @@ func FromManifestDiscovery(discovery *resolver.ManifestDiscovery, repositoryRoot
 		if depths[mapping.CallID] > maxDepth {
 			continue
 		}
-		call := calls[mapping.CallID]
-		resolvedVersion := mapping.ResolvedVersion
-		if resolvedVersion == "" {
-			resolvedVersion = mapping.Version
-		}
-		version := resolvedVersion
-		if version == "" {
-			version = call.RequestedVersion
-		}
-		canonicalSource := mapping.CanonicalSource
-		if canonicalSource == "" {
-			canonicalSource = discovery.SourceMappings[mapping.LocalPath]
-		}
-		result.Modules = append(result.Modules, ResolvedModule{
-			CallerRoot:       manifestCallerRoot(call.CallerPath, repositoryRoot),
-			Source:           call.Source,
-			Version:          version,
-			RequestedVersion: call.RequestedVersion,
-			ResolvedVersion:  resolvedVersion,
-			Name:             call.Name,
-			LocalPath:        mapping.LocalPath,
-			CanonicalSource:  canonicalSource,
-			ContentDigest:    mapping.ContentDigest,
-			Provenance:       mapping.Provenance,
-			Outcome:          mapping.Outcome,
-		})
+		result.Modules = append(result.Modules, manifestResolvedModule(
+			discovery, calls[mapping.CallID], mapping, repositoryRoot,
+		))
 	}
-	for localPath, source := range discovery.SourceMappings {
+	return mappingDepths
+}
+
+func manifestResolvedModule(
+	discovery *resolver.ManifestDiscovery,
+	call resolver.ManifestDiscoveryCall,
+	mapping *resolver.ManifestModuleMapping,
+	repositoryRoot string,
+) ResolvedModule {
+	resolvedVersion := mapping.ResolvedVersion
+	if resolvedVersion == "" {
+		resolvedVersion = mapping.Version
+	}
+	version := resolvedVersion
+	if version == "" {
+		version = call.RequestedVersion
+	}
+	canonicalSource := mapping.CanonicalSource
+	if canonicalSource == "" {
+		canonicalSource = discovery.SourceMappings[mapping.LocalPath]
+	}
+	return ResolvedModule{
+		CallerRoot:       manifestCallerRoot(call.CallerPath, repositoryRoot),
+		Source:           call.Source,
+		Version:          version,
+		RequestedVersion: call.RequestedVersion,
+		ResolvedVersion:  resolvedVersion,
+		Name:             call.Name,
+		LocalPath:        mapping.LocalPath,
+		CanonicalSource:  canonicalSource,
+		ContentDigest:    mapping.ContentDigest,
+		Provenance:       mapping.Provenance,
+		Outcome:          mapping.Outcome,
+	}
+}
+
+func appendManifestSourceMappings(
+	result *Result,
+	sourceMappings map[string]string,
+	mappingDepths map[string]int,
+	maxDepth int,
+) {
+	for localPath, source := range sourceMappings {
 		if manifestPathWithinDepth(localPath, mappingDepths, maxDepth) {
 			result.SourceMappings[localPath] = source
 		}
 	}
-	for _, scanPath := range discovery.ScanPaths {
+}
+
+func appendManifestScanPaths(
+	result *Result,
+	scanPaths []string,
+	mappingDepths map[string]int,
+	maxDepth int,
+) {
+	for _, scanPath := range scanPaths {
 		if manifestPathWithinDepth(scanPath, mappingDepths, maxDepth) {
 			result.ScanPaths = append(result.ScanPaths, scanPath)
 		}
 	}
-	sort.Strings(result.ScanPaths)
-	sort.Slice(result.Modules, func(i, j int) bool {
-		left, right := result.Modules[i], result.Modules[j]
-		return strings.Join([]string{left.CallerRoot, left.Source, left.Version, left.Name}, "\x00") <
-			strings.Join([]string{right.CallerRoot, right.Source, right.Version, right.Name}, "\x00")
-	})
-	return result
 }
 
 func manifestCallDepths(calls map[string]resolver.ManifestDiscoveryCall) map[string]int {
@@ -279,7 +325,7 @@ func manifestPathWithinDepth(candidate string, roots map[string]int, maxDepth in
 	bestDepth := 0
 	for root, depth := range roots {
 		relative, err := filepath.Rel(root, candidate)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		if err != nil || relative == parentDir || strings.HasPrefix(relative, parentDir+string(filepath.Separator)) {
 			continue
 		}
 		if len(root) > bestLength {
@@ -541,7 +587,7 @@ func (w *walker) seedGroups(
 
 func pathContainsDir(root, dir string) bool {
 	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(dir))
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+	return err == nil && rel != parentDir && !strings.HasPrefix(rel, parentDir+string(os.PathSeparator))
 }
 
 func (w *walker) localModuleChildDirs(

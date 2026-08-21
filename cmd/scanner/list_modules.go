@@ -116,28 +116,11 @@ func collectReachableModuleDiscoveryFilesWithParser(
 		}
 	}
 	for len(frontierFiles) > 0 {
-		frontierAllowed := make(map[string]bool, len(frontierFiles))
-		for _, file := range frontierFiles {
-			frontierAllowed[file.FilePath] = true
-		}
-		modules, parseErr := parse(frontierFiles, frontierAllowed)
-		if parseErr != nil {
-			return nil, nil, parseErr
-		}
-		var childDirs []string
-		for key := range modules {
-			module := modules[key]
-			childDir := filepath.Clean(module.AbsSource)
-			if !module.IsLocal || childDir == "." {
-				continue
-			}
-			resolvedChild, resolveErr := filepath.EvalSymlinks(childDir)
-			if resolveErr != nil || seenDirs[resolvedChild] ||
-				!pathContainsFile(resolvedRoot, resolvedChild) {
-				continue
-			}
-			seenDirs[resolvedChild] = true
-			childDirs = append(childDirs, resolvedChild)
+		childDirs, expandErr := nextLocalModuleDiscoveryDirs(
+			frontierFiles, resolvedRoot, seenDirs, parse,
+		)
+		if expandErr != nil {
+			return nil, nil, expandErr
 		}
 		if len(childDirs) == 0 {
 			return files, allowed, nil
@@ -160,6 +143,38 @@ func collectReachableModuleDiscoveryFilesWithParser(
 		}
 	}
 	return files, allowed, nil
+}
+
+func nextLocalModuleDiscoveryDirs(
+	frontierFiles model.FileMetadatas,
+	resolvedRoot string,
+	seenDirs map[string]bool,
+	parse func(model.FileMetadatas, map[string]bool) (map[string]tfmodules.ParsedModule, error),
+) ([]string, error) {
+	frontierAllowed := make(map[string]bool, len(frontierFiles))
+	for _, file := range frontierFiles {
+		frontierAllowed[file.FilePath] = true
+	}
+	modules, parseErr := parse(frontierFiles, frontierAllowed)
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	var childDirs []string
+	for key := range modules {
+		module := modules[key]
+		childDir := filepath.Clean(module.AbsSource)
+		if !module.IsLocal || childDir == "." {
+			continue
+		}
+		resolvedChild, resolveErr := filepath.EvalSymlinks(childDir)
+		if resolveErr != nil || seenDirs[resolvedChild] ||
+			!pathContainsFile(resolvedRoot, resolvedChild) {
+			continue
+		}
+		seenDirs[resolvedChild] = true
+		childDirs = append(childDirs, resolvedChild)
+	}
+	return childDirs, nil
 }
 
 func moduleRepositoryRoot(paths []string) string {

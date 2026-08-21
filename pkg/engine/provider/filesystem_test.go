@@ -88,7 +88,7 @@ func TestWalkDirectoryStopsOnCanceledContext(t *testing.T) {
 		t.TempDir(),
 		model.Extensions{},
 		func(context.Context, string, *[]string) error { return nil },
-		func(context.Context, string) error { return nil },
+		func(context.Context, string, string) error { return nil },
 	)
 
 	require.ErrorIs(t, err, context.Canceled)
