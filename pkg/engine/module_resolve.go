@@ -58,9 +58,10 @@ type moduleResolutionResult struct {
 func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
+	targets *ruleTargets,
 ) ([]model.Document, []*model.FileMetadata, map[string][]extraCallerInfo) {
 	resolver := c.buildRemoteResolver()
-	res := c.resolveModulesSafely(ctx, files, resolver)
+	res := c.resolveModulesSafely(ctx, files, resolver, targets)
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Info().
 		Int("module_resources_instantiated", res.resourceCount).
@@ -97,6 +98,29 @@ func (c *Inspector) instantiateLocalModules(
 		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, resolver)
 	}
 	return res.docs, res.syntheticFiles, res.extras
+}
+
+// declaresTargetedResource reports whether any scanned Terraform file declares
+// a resource type some rule can match by name.
+func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) bool {
+	if targets == nil {
+		return true
+	}
+	for _, f := range files {
+		if f == nil || !isTerraformFile(f.FilePath) {
+			continue
+		}
+		resources, ok := asStringMap(f.Document["resource"])
+		if !ok {
+			continue
+		}
+		for typ := range resources {
+			if targets.matches(typ) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // instantiatedIndex records which resource blocks of a file were re-emitted as
@@ -250,6 +274,7 @@ func (c *Inspector) resolveModulesSafely(
 	ctx context.Context,
 	files model.FileMetadatas,
 	resolver tfeval.RemoteResolver,
+	targets *ruleTargets,
 ) (res moduleResolutionResult) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -260,7 +285,7 @@ func (c *Inspector) resolveModulesSafely(
 			res = moduleResolutionResult{}
 		}
 	}()
-	return resolveModuleDocuments(ctx, files, c.repoPath, resolver)
+	return resolveModuleDocuments(ctx, files, c.repoPath, resolver, targets)
 }
 
 // resolveModuleDocuments instantiates all local modules referenced by the
@@ -277,9 +302,16 @@ func resolveModuleDocuments(
 	files model.FileMetadatas,
 	repoPath string,
 	resolver tfeval.RemoteResolver,
+	targets *ruleTargets,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
+		return moduleResolutionResult{}
+	}
+	// Evaluating a module tree is the expensive part, and it is pure waste when
+	// the repository declares nothing any rule can match by name. The block
+	// labels are already in the parsed documents, so this costs nothing.
+	if !declaresTargetedResource(files, targets) {
 		return moduleResolutionResult{}
 	}
 
@@ -323,7 +355,8 @@ func resolveModuleDocuments(
 		for d := range childDirs {
 			actualCalledDirs[d] = true
 		}
-		docs, syn, count := instantiatedDocs(resources, byAbsPath, repoPath, seen, extras, instantiated)
+		docs, syn, count := instantiatedDocs(
+			resources, byAbsPath, repoPath, targets, seen, extras, instantiated)
 		extra = append(extra, docs...)
 		syntheticFiles = append(syntheticFiles, syn...)
 		resourceCount += count
@@ -411,6 +444,7 @@ func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
 	repoPath string,
+	targets *ruleTargets,
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
 	instantiated instantiatedIndex,
@@ -426,6 +460,12 @@ func instantiatedDocs(
 	for i := range resources {
 		r := &resources[i]
 		if r.ModuleAddress == "" {
+			continue
+		}
+		if !targets.matches(r.Type) {
+			// No rule can match this type by name, so resolving its values
+			// cannot change a finding. It keeps being scanned where it is
+			// written, exactly as it is without module evaluation.
 			continue
 		}
 		fm, ok := byAbsPath[absPath(r.DefinedIn, repoPath)]
