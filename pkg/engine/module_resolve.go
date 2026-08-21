@@ -329,7 +329,9 @@ func evaluateRootModules(
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir))
 		if err != nil {
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
-			for _, called := range discoverCalledModuleDirs(ctx, evaluator, filesByDir[dir], repoPath, resolver, dir) {
+			for _, called := range discoverCalledModuleClosure(
+				ctx, evaluator, filesByDir, repoPath, resolver, dir,
+			) {
 				failedRootModuleDirs[called] = true
 			}
 			continue
@@ -575,8 +577,6 @@ func instantiatedDocs(
 		resourceCount++
 	}
 
-	copyStaticResourcesIntoExpandedLayers(groups, order)
-
 	for _, key := range order {
 		g := groups[key]
 		docID := g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
@@ -610,51 +610,6 @@ func instantiatedDocs(
 		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain))
 	}
 	return docs, synthetic, resourceCount
-}
-
-// copyStaticResourcesIntoExpandedLayers mirrors non-expanded resources into every
-// count/for_each layer document for the same call and file. Without this, a rule
-// that relates resources in one file would see expanded instances in isolation
-// from their siblings.
-func copyStaticResourcesIntoExpandedLayers(groups map[string]*docGroup, order []string) {
-	staticByCallFile := make(map[string][]instantiatedResource)
-	for _, key := range order {
-		g := groups[key]
-		cfKey := g.callChain + "\x00" + g.fm.ID
-		for i := range g.entries {
-			e := &g.entries[i]
-			if e.fullName != e.baseName {
-				continue
-			}
-			staticByCallFile[cfKey] = appendUniqueInstantiated(staticByCallFile[cfKey], *e)
-		}
-	}
-	for _, key := range order {
-		g := groups[key]
-		hasExpanded := false
-		for i := range g.entries {
-			if g.entries[i].fullName != g.entries[i].baseName {
-				hasExpanded = true
-				break
-			}
-		}
-		if !hasExpanded {
-			continue
-		}
-		cfKey := g.callChain + "\x00" + g.fm.ID
-		for _, e := range staticByCallFile[cfKey] {
-			g.entries = appendUniqueInstantiated(g.entries, e)
-		}
-	}
-}
-
-func appendUniqueInstantiated(entries []instantiatedResource, e instantiatedResource) []instantiatedResource {
-	for i := range entries {
-		if entries[i].typ == e.typ && entries[i].fullName == e.fullName {
-			return entries
-		}
-	}
-	return append(entries, e)
 }
 
 // groupContentKey identifies a document by the module call address it belongs
@@ -853,6 +808,38 @@ func discoverCalledModuleDirs(
 		"module resolve: falling back to directory parse for called module discovery",
 	)
 	return evaluator.CalledModuleDirs(dir)
+}
+
+// discoverCalledModuleClosure returns every module transitively reachable from
+// dir. It is used only after root evaluation fails, when suppression must be
+// conservative because no synthetic documents exist for that call chain.
+func discoverCalledModuleClosure(
+	ctx context.Context,
+	evaluator *tfeval.Evaluator,
+	filesByDir map[string][]*model.FileMetadata,
+	repoPath string,
+	resolver tfeval.RemoteResolver,
+	dir string,
+) []string {
+	seen := map[string]bool{dir: true}
+	queue := []string{dir}
+	var closure []string
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, called := range discoverCalledModuleDirs(
+			ctx, evaluator, filesByDir[current], repoPath, resolver, current,
+		) {
+			if seen[called] {
+				continue
+			}
+			seen[called] = true
+			closure = append(closure, called)
+			queue = append(queue, called)
+		}
+	}
+	return closure
 }
 
 func calledModuleDirsFromDocuments(
