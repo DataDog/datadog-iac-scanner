@@ -45,6 +45,10 @@ type ResolvedResource struct {
 	Type       string
 	Name       string
 	Attributes map[string]cty.Value
+	// Body is the resource's HCL body, used to recover the reference text of
+	// attributes evaluation could not resolve. It is not consulted during
+	// evaluation, so recovered references never feed back into resolved values.
+	Body *hclsyntax.Body
 
 	// Source location and module address for finding attribution.
 	DefinedIn     string
@@ -426,6 +430,7 @@ func (e *Evaluator) expandResourceBlock(
 			Type:          typeName,
 			Name:          name,
 			Attributes:    e.evalBody(rb.Body, ctx, nil),
+			Body:          rb.Body,
 			DefinedIn:     rb.TypeRange.Filename,
 			DefLine:       rb.TypeRange.Start.Line,
 			ModuleAddress: addr,
@@ -699,6 +704,15 @@ func (e *Evaluator) evalBody(
 	}
 	for _, t := range order {
 		list := grouped[t]
+		// Match how a parsed Terraform file represents nested blocks: a block
+		// written once is an object, and only a repeated one becomes a list.
+		// Rules are written against that shape — `resource.ingress.cidr_blocks`
+		// reads straight through a single block — so a list here would make a
+		// rule quietly stop matching resources that came from a module.
+		if len(list) == 1 {
+			out[t] = list[0]
+			continue
+		}
 		out[t] = cty.TupleVal(list)
 	}
 	return out
