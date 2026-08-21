@@ -55,6 +55,9 @@ type ResolvedResource struct {
 	DefLine       int
 	ModuleAddress string // "" for root module resources
 	CallChain     []CallSite
+	// ExpansionTruncated is set when count/for_each produced more instances than
+	// maxCountExpansion; the source block must stay in the scan for the rest.
+	ExpansionTruncated bool
 }
 
 // CallSite records one hop in a module call chain.
@@ -467,6 +470,7 @@ func (e *Evaluator) expandCountInstances(
 			return nil, true
 		}
 		nExpand := n
+		truncated := n > maxCountExpansion
 		if nExpand > maxCountExpansion {
 			nExpand = maxCountExpansion
 		}
@@ -478,7 +482,9 @@ func (e *Evaluator) expandCountInstances(
 					"index": cty.NumberIntVal(int64(i)),
 				}),
 			}
-			out = append(out, makeOne(fmt.Sprintf("%s[%d]", resName, i), child))
+			res := makeOne(fmt.Sprintf("%s[%d]", resName, i), child)
+			res.ExpansionTruncated = truncated
+			out = append(out, res)
 		}
 		return out, true
 	}
@@ -509,6 +515,8 @@ func (e *Evaluator) expandForEachInstances(
 				return nil, true
 			}
 			out := make([]ResolvedResource, 0)
+			total := fv.LengthInt()
+			truncated := total > maxCountExpansion
 			i := 0
 			for it := fv.ElementIterator(); it.Next() && i < maxCountExpansion; i++ {
 				k, kv := it.Element()
@@ -523,7 +531,9 @@ func (e *Evaluator) expandForEachInstances(
 						"value": kv,
 					}),
 				}
-				out = append(out, makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child))
+				res := makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child)
+				res.ExpansionTruncated = truncated
+				out = append(out, res)
 			}
 			return out, true
 		}

@@ -114,8 +114,9 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 		},
 	}
 	calledDirs := map[string]bool{"/cache/vpc": true}
+	successfulRoots := map[string]bool{root: true}
 
-	stripModuleCalls(doc, rootFile, root, calledDirs, func(source, version, callerFile, moduleName string) (string, bool) {
+	stripModuleCalls(doc, rootFile, root, calledDirs, successfulRoots, []string{root}, func(source, version, callerFile, moduleName string) (string, bool) {
 		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
 			return "/cache/vpc", true
 		}
@@ -124,6 +125,162 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 
 	if _, ok := doc["module"]; ok {
 		t.Fatalf("expected resolved remote module call to be stripped")
+	}
+}
+
+func TestStripModuleCalls_SkipsFailedRoot(t *testing.T) {
+	root := t.TempDir()
+	stackA := filepath.Join(root, "stack-a")
+	stackB := filepath.Join(root, "stack-b")
+	rootFileB := writeFile(t, stackB, "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+}
+`)
+	doc := model.Document{
+		"module": map[string]interface{}{
+			"bucket": map[string]interface{}{
+				"source": "../modules/bucket",
+			},
+		},
+	}
+	calledDirs := map[string]bool{filepath.Join(root, "modules", "bucket"): true}
+	successfulRoots := map[string]bool{stackA: true} // stack-b eval failed
+
+	stripModuleCalls(doc, rootFileB, root, calledDirs, successfulRoots, []string{stackA, stackB}, nil)
+
+	if _, ok := doc["module"]; !ok {
+		t.Fatal("module call under a failed root must not be stripped")
+	}
+}
+
+func TestCopyStaticResourcesIntoExpandedLayers(t *testing.T) {
+	fm := fileMeta("mod-id", "/repo/modules/app/main.tf")
+	groups := map[string]*docGroup{
+		"static": {
+			fm: fm, callChain: "stack/main.tf|module.app", layer: 0,
+			entries: []instantiatedResource{
+				{typ: "aws_s3_bucket", baseName: "shared", fullName: "shared"},
+			},
+		},
+		"expanded0": {
+			fm: fm, callChain: "stack/main.tf|module.app", layer: 0,
+			entries: []instantiatedResource{
+				{typ: "aws_s3_bucket", baseName: "replica", fullName: "replica[0]"},
+			},
+		},
+		"expanded1": {
+			fm: fm, callChain: "stack/main.tf|module.app", layer: 1,
+			entries: []instantiatedResource{
+				{typ: "aws_s3_bucket", baseName: "replica", fullName: "replica[1]"},
+			},
+		},
+	}
+	order := []string{"static", "expanded0", "expanded1"}
+
+	copyStaticResourcesIntoExpandedLayers(groups, order)
+
+	for _, key := range []string{"expanded0", "expanded1"} {
+		layer := groups[key].entries
+		hasShared := false
+		for _, e := range layer {
+			if e.typ == "aws_s3_bucket" && e.fullName == "shared" {
+				hasShared = true
+			}
+		}
+		if !hasShared {
+			t.Fatalf("%s must include static siblings: %#v", key, layer)
+		}
+	}
+}
+
+func TestResolveModuleDocuments_PartialRootFailureKeepsModuleBody(t *testing.T) {
+	root := t.TempDir()
+	stackA := filepath.Join(root, "stack-a")
+	stackB := filepath.Join(root, "stack-b")
+	modDir := filepath.Join(root, "modules", "bucket")
+
+	rootFileA := writeFile(t, stackA, "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  name   = "a"
+}
+`)
+	writeFile(t, stackB, "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  name   = "b"
+}
+`)
+	writeFile(t, stackB, "broken.tf", `resource "bad" {`) // unreadable root dir fails eval
+	modFile := writeFile(t, modDir, "main.tf", `
+variable "name" { type = string }
+resource "aws_s3_bucket" "this" { bucket = var.name }
+`)
+
+	bRootPath := filepath.Join(stackB, "main.tf")
+	files := model.FileMetadatas{
+		fileMeta("a-root", rootFileA),
+		fileMeta("mod-id", modFile),
+	}
+	bRoot := fileMeta("b-root", bRootPath)
+	bRoot.Document = model.Document{
+		"module": map[string]interface{}{
+			"bucket": map[string]interface{}{
+				"source": "../modules/bucket",
+				"name":   "b",
+			},
+		},
+	}
+	files = append(files, bRoot)
+
+	// Remove stack-b from disk so root evaluation fails reliably (chmod 000 is
+	// ignored for root users in CI). Module discovery for the failed root uses
+	// the parsed document still held in memory.
+	if err := os.RemoveAll(stackB); err != nil {
+		t.Fatalf("remove stack-b: %v", err)
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	if !res.ok {
+		t.Fatal("expected partial module resolution to succeed")
+	}
+	if len(res.suppressed["mod-id"]) != 0 {
+		t.Fatalf("shared module must not be suppressed when another root failed eval: %#v", res.suppressed)
+	}
+}
+
+func TestResolveModuleDocuments_TruncatedCountKeepsSourceBlock(t *testing.T) {
+	root := t.TempDir()
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "buckets")
+
+	rootFile := writeFile(t, rootDir, "main.tf", `
+module "buckets" {
+  source = "../modules/buckets"
+}
+`)
+	modFile := writeFile(t, modDir, "main.tf", `
+resource "aws_s3_bucket" "replica" {
+  count  = 12
+  bucket = "bucket-${count.index}"
+}
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("root-id", rootFile),
+		fileMeta("mod-id", modFile),
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	if !res.ok {
+		t.Fatal("expected module resolution to succeed")
+	}
+	if len(res.docs) != 10 {
+		t.Fatalf("expected 10 instantiated docs for truncated count, got %d", len(res.docs))
+	}
+	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
+		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)
 	}
 }
 
@@ -425,23 +582,38 @@ func TestResolveModuleDocuments_DocumentMirrorsItsFile(t *testing.T) {
 }
 
 // Document ids feed finding fingerprints, so the same repository must always
-// produce the same ones.
+// produce the same ones. Roots are discovered by walking a map, so nothing but
+// an explicit ordering keeps the same caller owning a shared document.
 func TestResolveModuleDocuments_DocumentIDsAreStable(t *testing.T) {
-	repo, files := writeFanOut(t, 4, true)
+	// All roots resolve identically, so every document but one is deduplicated
+	// and something has to decide which caller owns it.
+	repo, files := writeFanOut(t, 8, false)
 
-	ids := func() []string {
+	snapshot := func() ([]string, map[string][]string) {
 		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
-		out := make([]string, 0, len(res.docs))
+		ids := make([]string, 0, len(res.docs))
 		for _, doc := range res.docs {
-			out = append(out, doc["id"].(string))
+			ids = append(ids, doc["id"].(string))
 		}
-		sort.Strings(out)
-		return out
+		extras := map[string][]string{}
+		for primary, callers := range res.extras {
+			for _, c := range callers {
+				extras[primary] = append(extras[primary], c.docID)
+			}
+			sort.Strings(extras[primary])
+		}
+		return ids, extras
 	}
 
-	first, second := ids(), ids()
-	if !reflect.DeepEqual(first, second) {
-		t.Fatalf("document ids changed between runs:\n%v\n%v", first, second)
+	wantIDs, wantExtras := snapshot()
+	for run := range 3 {
+		ids, extras := snapshot()
+		if !reflect.DeepEqual(ids, wantIDs) {
+			t.Fatalf("run %d: documents changed between runs:\n%v\n%v", run, ids, wantIDs)
+		}
+		if !reflect.DeepEqual(extras, wantExtras) {
+			t.Fatalf("run %d: deduplicated callers changed between runs:\n%v\n%v", run, extras, wantExtras)
+		}
 	}
 }
 
