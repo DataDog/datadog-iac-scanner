@@ -32,13 +32,16 @@ type extraCallerInfo struct {
 
 // moduleResolutionResult bundles all outputs of resolveModuleDocuments.
 type moduleResolutionResult struct {
-	docs           []model.Document
-	syntheticFiles []*model.FileMetadata
-	suppressed     instantiatedIndex
-	calledDirs     map[string]bool
-	extras         map[string][]extraCallerInfo
-	resourceCount  int
-	ok             bool
+	docs                 []model.Document
+	syntheticFiles       []*model.FileMetadata
+	suppressed           instantiatedIndex
+	calledDirs           map[string]bool
+	successfulRoots      map[string]bool
+	rootDirs             []string
+	failedRootModuleDirs map[string]bool
+	extras               map[string][]extraCallerInfo
+	resourceCount        int
+	ok                   bool
 }
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
@@ -80,6 +83,9 @@ func (c *Inspector) instantiateLocalModules(
 			continue
 		}
 		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
+			if res.failedRootModuleDirs[moduleFileDir(f.FilePath, c.repoPath)] {
+				continue
+			}
 			// Only the blocks that came back as instantiated documents are
 			// dropped, so nothing loses its coverage: a resource the evaluator
 			// could not resolve, or one that expanded to no instances, keeps
@@ -95,7 +101,7 @@ func (c *Inspector) instantiateLocalModules(
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
-		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, resolver)
+		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, res.rootDirs, resolver)
 	}
 	return res.docs, res.syntheticFiles, res.extras
 }
@@ -297,6 +303,65 @@ func (c *Inspector) resolveModulesSafely(
 // `ok` is true when at least one root module evaluated successfully and the
 // caller should apply call-site / suppression mutations; otherwise it is false
 // and the returned maps are nil.
+func evaluateRootModules(
+	ctx context.Context,
+	evaluator *tfeval.Evaluator,
+	roots []string,
+	filesByDir map[string][]*model.FileMetadata,
+	repoPath string,
+	resolver tfeval.RemoteResolver,
+	targets *ruleTargets,
+	byAbsPath map[string]*model.FileMetadata,
+	seen map[docContentKey]string,
+	extras map[string][]extraCallerInfo,
+	instantiated instantiatedIndex,
+	successfulRoots map[string]bool,
+	failedRootModuleDirs map[string]bool,
+	actualCalledDirs map[string]bool,
+	extra *[]model.Document,
+	syntheticFiles *[]*model.FileMetadata,
+	resourceCount *int,
+	rootEvalOK *bool,
+) {
+	contextLogger := logger.FromContext(ctx)
+	for _, dir := range roots {
+		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir))
+		if err != nil {
+			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
+			for _, called := range discoverCalledModuleDirs(ctx, evaluator, filesByDir[dir], repoPath, resolver, dir) {
+				failedRootModuleDirs[called] = true
+			}
+			continue
+		}
+		*rootEvalOK = true
+		successfulRoots[dir] = true
+		for d := range childDirs {
+			actualCalledDirs[d] = true
+		}
+		docs, syn, count := instantiatedDocs(
+			resources, byAbsPath, repoPath, targets, seen, extras, instantiated)
+		*extra = append(*extra, docs...)
+		*syntheticFiles = append(*syntheticFiles, syn...)
+		*resourceCount += count
+	}
+}
+
+func scrubInstantiatedForFailedRoots(
+	instantiated instantiatedIndex,
+	files model.FileMetadatas,
+	failedRootModuleDirs map[string]bool,
+	repoPath string,
+) {
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		if failedRootModuleDirs[moduleFileDir(f.FilePath, repoPath)] {
+			delete(instantiated, f.ID)
+		}
+	}
+}
+
 func resolveModuleDocuments(
 	ctx context.Context,
 	files model.FileMetadatas,
@@ -315,7 +380,6 @@ func resolveModuleDocuments(
 		return moduleResolutionResult{}
 	}
 
-	contextLogger := logger.FromContext(ctx)
 	evaluator := tfeval.New()
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
@@ -338,29 +402,30 @@ func resolveModuleDocuments(
 	instantiated := make(instantiatedIndex)
 	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
+	successfulRoots := make(map[string]bool)
+	failedRootModuleDirs := make(map[string]bool)
 	var extra []model.Document
 	var syntheticFiles []*model.FileMetadata
 	var resourceCount int
 
+	// Roots are taken in a fixed order: which of several identical callers ends
+	// up owning a shared document decides that document's id, and ids reach
+	// finding fingerprints.
+	roots := make([]string, 0, len(dirsWithTf))
 	for dir := range dirsWithTf {
 		if staticCalledDirs[dir] {
 			continue // instantiated via a module call, not a root
 		}
-		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir))
-		if err != nil {
-			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
-			continue
-		}
-		rootEvalOK = true
-		for d := range childDirs {
-			actualCalledDirs[d] = true
-		}
-		docs, syn, count := instantiatedDocs(
-			resources, byAbsPath, repoPath, targets, seen, extras, instantiated)
-		extra = append(extra, docs...)
-		syntheticFiles = append(syntheticFiles, syn...)
-		resourceCount += count
+		roots = append(roots, dir)
 	}
+	sort.Strings(roots)
+
+	evaluateRootModules(
+		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets,
+		byAbsPath, seen, extras, instantiated,
+		successfulRoots, failedRootModuleDirs, actualCalledDirs,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK,
+	)
 	evaluator.ReleaseCaches()
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
@@ -384,14 +449,19 @@ func resolveModuleDocuments(
 		}
 	}
 
+	scrubInstantiatedForFailedRoots(instantiated, files, failedRootModuleDirs, repoPath)
+
 	return moduleResolutionResult{
-		docs:           extra,
-		syntheticFiles: syntheticFiles,
-		suppressed:     instantiated,
-		calledDirs:     strippedDirs,
-		extras:         extras,
-		resourceCount:  resourceCount,
-		ok:             true,
+		docs:                 extra,
+		syntheticFiles:       syntheticFiles,
+		suppressed:           instantiated,
+		calledDirs:           strippedDirs,
+		successfulRoots:      successfulRoots,
+		rootDirs:             roots,
+		failedRootModuleDirs: failedRootModuleDirs,
+		extras:               extras,
+		resourceCount:        resourceCount,
+		ok:                   true,
 	}
 }
 
@@ -498,9 +568,13 @@ func instantiatedDocs(
 		g.entries = append(g.entries, entry)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
-		instantiated.add(fm.ID, r.Type, base)
+		if !r.ExpansionTruncated {
+			instantiated.add(fm.ID, r.Type, base)
+		}
 		resourceCount++
 	}
+
+	copyStaticResourcesIntoExpandedLayers(groups, order)
 
 	for _, key := range order {
 		g := groups[key]
@@ -535,6 +609,51 @@ func instantiatedDocs(
 		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain))
 	}
 	return docs, synthetic, resourceCount
+}
+
+// copyStaticResourcesIntoExpandedLayers mirrors non-expanded resources into every
+// count/for_each layer document for the same call and file. Without this, a rule
+// that relates resources in one file would see expanded instances in isolation
+// from their siblings.
+func copyStaticResourcesIntoExpandedLayers(groups map[string]*docGroup, order []string) {
+	staticByCallFile := make(map[string][]instantiatedResource)
+	for _, key := range order {
+		g := groups[key]
+		cfKey := g.callChain + "\x00" + g.fm.ID
+		for i := range g.entries {
+			e := &g.entries[i]
+			if e.fullName != e.baseName {
+				continue
+			}
+			staticByCallFile[cfKey] = appendUniqueInstantiated(staticByCallFile[cfKey], *e)
+		}
+	}
+	for _, key := range order {
+		g := groups[key]
+		hasExpanded := false
+		for i := range g.entries {
+			if g.entries[i].fullName != g.entries[i].baseName {
+				hasExpanded = true
+				break
+			}
+		}
+		if !hasExpanded {
+			continue
+		}
+		cfKey := g.callChain + "\x00" + g.fm.ID
+		for _, e := range staticByCallFile[cfKey] {
+			g.entries = appendUniqueInstantiated(g.entries, e)
+		}
+	}
+}
+
+func appendUniqueInstantiated(entries []instantiatedResource, e instantiatedResource) []instantiatedResource {
+	for i := range entries {
+		if entries[i].typ == e.typ && entries[i].fullName == e.fullName {
+			return entries
+		}
+	}
+	return append(entries, e)
 }
 
 // groupContentKey identifies a document by the module call address it belongs
@@ -641,7 +760,19 @@ func callChainKey(r *tfeval.ResolvedResource, repoPath string) string {
 
 // stripModuleCalls drops module blocks whose target dir is in calledDirs.
 // Remote/registry sources stay so existing Rego call-site rules still match.
-func stripModuleCalls(doc model.Document, filePath, repoPath string, calledDirs map[string]bool, resolver tfeval.RemoteResolver) {
+// Call sites under a root whose evaluation failed are left in place so a
+// failed instantiation does not remove coverage with no synthetic replacement.
+func stripModuleCalls(
+	doc model.Document,
+	filePath, repoPath string,
+	calledDirs map[string]bool,
+	successfulRoots map[string]bool,
+	rootDirs []string,
+	resolver tfeval.RemoteResolver,
+) {
+	if root := owningRoot(filePath, repoPath, rootDirs); root == "" || !successfulRoots[root] {
+		return
+	}
 	modules := docAsMap(doc["module"])
 	if modules == nil {
 		return
@@ -666,6 +797,26 @@ func stripModuleCalls(doc model.Document, filePath, repoPath string, calledDirs 
 	if len(modules) == 0 {
 		delete(doc, "module")
 	}
+}
+
+// moduleFileDir returns the absolute directory containing a scanned Terraform file.
+func moduleFileDir(filePath, repoPath string) string {
+	return filepath.Dir(absPath(filePath, repoPath))
+}
+
+// owningRoot returns the root module directory that contains filePath.
+func owningRoot(filePath, repoPath string, roots []string) string {
+	abs := absPath(filePath, repoPath)
+	var best string
+	for _, root := range roots {
+		rootAbs := absPath(root, repoPath)
+		if abs == rootAbs || strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) {
+			if len(root) > len(best) {
+				best = root
+			}
+		}
+	}
+	return best
 }
 
 func discoverCalledModuleDirs(
