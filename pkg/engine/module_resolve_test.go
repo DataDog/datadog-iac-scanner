@@ -154,43 +154,56 @@ module "bucket" {
 	}
 }
 
-func TestCopyStaticResourcesIntoExpandedLayers(t *testing.T) {
-	fm := fileMeta("mod-id", "/repo/modules/app/main.tf")
-	groups := map[string]*docGroup{
-		"static": {
-			fm: fm, callChain: "stack/main.tf|module.app", layer: 0,
-			entries: []instantiatedResource{
-				{typ: "aws_s3_bucket", baseName: "shared", fullName: "shared"},
-			},
-		},
-		"expanded0": {
-			fm: fm, callChain: "stack/main.tf|module.app", layer: 0,
-			entries: []instantiatedResource{
-				{typ: "aws_s3_bucket", baseName: "replica", fullName: "replica[0]"},
-			},
-		},
-		"expanded1": {
-			fm: fm, callChain: "stack/main.tf|module.app", layer: 1,
-			entries: []instantiatedResource{
-				{typ: "aws_s3_bucket", baseName: "replica", fullName: "replica[1]"},
-			},
-		},
+func TestInstantiatedDocs_DoesNotDuplicateStaticResourcesAcrossExpansionLayers(t *testing.T) {
+	root := t.TempDir()
+	modulePath := writeFile(t, filepath.Join(root, "modules", "app"), "main.tf", `
+resource "aws_s3_bucket" "shared" {
+  bucket = "shared"
+}
+
+resource "aws_s3_bucket" "replica" {
+  count  = 2
+  bucket = "replica-${count.index}"
+}
+`)
+	fm := fileMeta("mod-id", modulePath)
+	resources := []tfeval.ResolvedResource{
+		{Type: "aws_s3_bucket", Name: "shared", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[0]", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[1]", DefinedIn: modulePath, ModuleAddress: "module.app"},
 	}
-	order := []string{"static", "expanded0", "expanded1"}
 
-	copyStaticResourcesIntoExpandedLayers(groups, order)
+	docs, _, _ := instantiatedDocs(
+		resources,
+		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
+		root,
+		nil,
+		make(map[docContentKey]string),
+		make(map[string][]extraCallerInfo),
+		make(instantiatedIndex),
+	)
 
-	for _, key := range []string{"expanded0", "expanded1"} {
-		layer := groups[key].entries
-		hasShared := false
-		for _, e := range layer {
-			if e.typ == "aws_s3_bucket" && e.fullName == "shared" {
-				hasShared = true
-			}
+	if len(docs) != 2 {
+		t.Fatalf("expected one document per expansion layer, got %d", len(docs))
+	}
+	var shared, replicas int
+	for _, doc := range docs {
+		byType, ok := asStringMap(docAsMap(doc["resource"])["aws_s3_bucket"])
+		if !ok {
+			t.Fatalf("resource document has unexpected shape: %#v", doc)
 		}
-		if !hasShared {
-			t.Fatalf("%s must include static siblings: %#v", key, layer)
+		if _, ok := byType["shared"]; ok {
+			shared++
 		}
+		if _, ok := byType["replica"]; ok {
+			replicas++
+		}
+	}
+	if shared != 1 {
+		t.Fatalf("static resource appears %d times, want exactly once", shared)
+	}
+	if replicas != 2 {
+		t.Fatalf("expanded resource appears %d times, want one per instance", replicas)
 	}
 }
 
@@ -247,6 +260,61 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 	}
 	if len(res.suppressed["mod-id"]) != 0 {
 		t.Fatalf("shared module must not be suppressed when another root failed eval: %#v", res.suppressed)
+	}
+}
+
+func TestResolveModuleDocuments_PartialRootFailureKeepsTransitiveModuleBody(t *testing.T) {
+	root := t.TempDir()
+	successfulRoot := filepath.Join(root, "successful")
+	failedRoot := filepath.Join(root, "failed")
+	middleDir := filepath.Join(root, "modules", "middle")
+	leafDir := filepath.Join(root, "modules", "leaf")
+
+	successfulFile := writeFile(t, successfulRoot, "main.tf", `
+module "leaf" {
+  source = "../modules/leaf"
+}
+`)
+	failedFile := writeFile(t, failedRoot, "main.tf", `
+module "middle" {
+  source = "../modules/middle"
+}
+`)
+	middleFile := writeFile(t, middleDir, "main.tf", `
+module "leaf" {
+  source = "../leaf"
+}
+`)
+	leafFile := writeFile(t, leafDir, "main.tf", `
+resource "aws_s3_bucket" "this" {
+  bucket = "logs"
+}
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("successful-root", successfulFile),
+		fileMeta("middle-id", middleFile),
+		fileMeta("leaf-id", leafFile),
+	}
+	failed := fileMeta("failed-root", failedFile)
+	failed.Document = model.Document{
+		"module": map[string]interface{}{
+			"middle": map[string]interface{}{"source": "../modules/middle"},
+		},
+	}
+	files = append(files, failed)
+
+	// Preserve the parsed root document but make its on-disk evaluation fail.
+	if err := os.RemoveAll(failedRoot); err != nil {
+		t.Fatalf("remove failed root: %v", err)
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	if !res.ok {
+		t.Fatal("expected the other root to evaluate successfully")
+	}
+	if len(res.suppressed["leaf-id"]) != 0 {
+		t.Fatalf("transitive module beneath failed root must not be suppressed: %#v", res.suppressed)
 	}
 }
 
