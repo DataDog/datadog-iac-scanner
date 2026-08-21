@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -72,7 +73,7 @@ func fetchBundle(ctx context.Context, c *cli.Command) error {
 
 	_, cfgBytes, err := config.ReadConfiguration(ctx, repoPath, config.WithDatadog(client, c.String("repo-url")))
 	if err != nil {
-		return errorWithExitCode(fmt.Errorf("error reading the configuration: %w", err), constants.EngineErrorCode)
+		return fetchBundleConfigurationError(err)
 	}
 	if err := os.WriteFile(filepath.Join(outputDir, bundleConfigFileName), cfgBytes, filePerms); err != nil {
 		return errorWithExitCode(fmt.Errorf("error writing the configuration bundle: %w", err), constants.EngineErrorCode)
@@ -122,6 +123,14 @@ func fetchBundle(ctx context.Context, c *cli.Command) error {
 
 	fmt.Printf("Wrote offline bundle (%d rules, %d libraries) to %s\n", len(ruleset.Rules), len(libraries), outputDir)
 	return nil
+}
+
+func fetchBundleConfigurationError(err error) error {
+	code := constants.EngineErrorCode
+	if te := (*config.InvalidLocalConfigError)(nil); errors.As(err, &te) {
+		code = constants.InvalidConfigErrorCode
+	}
+	return errorWithExitCode(fmt.Errorf("error reading the configuration: %w", err), code)
 }
 
 // readBundleManifest reads and parses the manifest written by fetchBundle,
