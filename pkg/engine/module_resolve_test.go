@@ -116,7 +116,7 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 	calledDirs := map[string]bool{"/cache/vpc": true}
 	successfulRoots := map[string]bool{root: true}
 
-	stripModuleCalls(doc, rootFile, root, calledDirs, successfulRoots, []string{root}, func(source, version, callerFile, moduleName string) (string, bool) {
+	stripModuleCalls(doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, bool) {
 		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
 			return "/cache/vpc", true
 		}
@@ -147,7 +147,7 @@ module "bucket" {
 	calledDirs := map[string]bool{filepath.Join(root, "modules", "bucket"): true}
 	successfulRoots := map[string]bool{stackA: true} // stack-b eval failed
 
-	stripModuleCalls(doc, rootFileB, root, calledDirs, successfulRoots, []string{stackA, stackB}, nil)
+	stripModuleCalls(doc, rootFileB, root, calledDirs, successfulRoots, newRootIndex([]string{stackA, stackB}), nil)
 
 	if _, ok := doc["module"]; !ok {
 		t.Fatal("module call under a failed root must not be stripped")

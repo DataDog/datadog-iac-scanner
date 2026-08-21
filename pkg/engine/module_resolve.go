@@ -78,6 +78,7 @@ func (c *Inspector) instantiateLocalModules(
 	if !res.ok {
 		return nil, nil, nil
 	}
+	rootDirs := newRootIndex(res.rootDirs)
 	for _, f := range files {
 		if f == nil || !isTerraformFile(f.FilePath) {
 			continue
@@ -101,7 +102,7 @@ func (c *Inspector) instantiateLocalModules(
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
-		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, res.rootDirs, resolver)
+		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver)
 	}
 	return res.docs, res.syntheticFiles, res.extras
 }
@@ -767,17 +768,19 @@ func stripModuleCalls(
 	filePath, repoPath string,
 	calledDirs map[string]bool,
 	successfulRoots map[string]bool,
-	rootDirs []string,
+	rootDirs rootIndex,
 	resolver tfeval.RemoteResolver,
 ) {
-	if root := owningRoot(filePath, repoPath, rootDirs); root == "" || !successfulRoots[root] {
-		return
-	}
+	// Checked before ownership because most files declare no module calls at all,
+	// and resolving the owning root is the more expensive of the two guards.
 	modules := docAsMap(doc["module"])
 	if modules == nil {
 		return
 	}
 	fileDir := filepath.Dir(absPath(filePath, repoPath))
+	if root := rootDirs.owningRoot(fileDir); root == "" || !successfulRoots[root] {
+		return
+	}
 	for name, callRaw := range modules {
 		call := docAsMap(callRaw)
 		if call == nil {
@@ -804,19 +807,33 @@ func moduleFileDir(filePath, repoPath string) string {
 	return filepath.Dir(absPath(filePath, repoPath))
 }
 
-// owningRoot returns the root module directory that contains filePath.
-func owningRoot(filePath, repoPath string, roots []string) string {
-	abs := absPath(filePath, repoPath)
-	var best string
+// rootIndex resolves which root module directory owns a file. Roots are already
+// absolute and cleaned, so ownership is a walk up the file's parents rather than
+// a scan of every root: on a repository with thousands of independent stacks the
+// scan is the dominant cost of the whole instantiation pass.
+type rootIndex map[string]bool
+
+func newRootIndex(roots []string) rootIndex {
+	idx := make(rootIndex, len(roots))
 	for _, root := range roots {
-		rootAbs := absPath(root, repoPath)
-		if abs == rootAbs || strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) {
-			if len(root) > len(best) {
-				best = root
-			}
-		}
+		idx[root] = true
 	}
-	return best
+	return idx
+}
+
+// owningRoot returns the innermost root module directory containing fileDir,
+// or "" when no root does.
+func (idx rootIndex) owningRoot(fileDir string) string {
+	for dir := fileDir; ; {
+		if idx[dir] {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
 }
 
 func discoverCalledModuleDirs(
