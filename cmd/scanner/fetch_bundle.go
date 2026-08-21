@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -72,7 +73,7 @@ func fetchBundle(ctx context.Context, c *cli.Command) error {
 
 	_, cfgBytes, err := config.ReadConfiguration(ctx, repoPath, config.WithDatadog(client, c.String("repo-url")))
 	if err != nil {
-		return errorWithExitCode(fmt.Errorf("error reading the configuration: %w", err), constants.EngineErrorCode)
+		return configurationReadError(err)
 	}
 	if err := os.WriteFile(filepath.Join(outputDir, bundleConfigFileName), cfgBytes, filePerms); err != nil {
 		return errorWithExitCode(fmt.Errorf("error writing the configuration bundle: %w", err), constants.EngineErrorCode)
@@ -122,6 +123,19 @@ func fetchBundle(ctx context.Context, c *cli.Command) error {
 
 	fmt.Printf("Wrote offline bundle (%d rules, %d libraries) to %s\n", len(ruleset.Rules), len(libraries), outputDir)
 	return nil
+}
+
+// configurationReadError classifies a config.ReadConfiguration failure the
+// same way scan.go's non-offline-bundle path does: a malformed repo-local
+// configuration file is the customer's input error (InvalidConfigErrorCode),
+// while any other read failure (e.g. a remote config fetch problem) remains
+// an undifferentiated engine failure.
+func configurationReadError(err error) error {
+	outErr := fmt.Errorf("error reading the configuration: %w", err)
+	if te := (*config.InvalidLocalConfigError)(nil); errors.As(err, &te) {
+		return errorWithExitCode(outErr, constants.InvalidConfigErrorCode)
+	}
+	return errorWithExitCode(outErr, constants.EngineErrorCode)
 }
 
 // readBundleManifest reads and parses the manifest written by fetchBundle,
