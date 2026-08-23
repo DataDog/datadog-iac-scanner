@@ -125,11 +125,52 @@ func TestAppendGetterSubdirPreservesQuery(t *testing.T) {
 	}
 }
 
+func TestSplitGetterSubdirPreservesPackageSource(t *testing.T) {
+	tests := []struct {
+		source        string
+		packageSource string
+		subdir        string
+	}{
+		{
+			source:        "git::https://github.com/org/mod.git//modules/child?ref=v1.0.0",
+			packageSource: "git::https://github.com/org/mod.git?ref=v1.0.0",
+			subdir:        "modules/child",
+		},
+		{
+			source:        "https://example.com/mod.zip//modules/child",
+			packageSource: "https://example.com/mod.zip",
+			subdir:        "modules/child",
+		},
+		{
+			source:        "git::https://github.com/org/mod.git?ref=v1.0.0",
+			packageSource: "git::https://github.com/org/mod.git?ref=v1.0.0",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.source, func(t *testing.T) {
+			packageSource, subdir := splitGetterSubdir(test.source)
+			if packageSource != test.packageSource || subdir != test.subdir {
+				t.Fatalf("splitGetterSubdir(%q) = (%q, %q), want (%q, %q)",
+					test.source, packageSource, subdir, test.packageSource, test.subdir)
+			}
+		})
+	}
+}
+
 func TestPrefetchedResolverUsesVersionedManifestKey(t *testing.T) {
+	cacheRoot := t.TempDir()
+	v1 := filepath.Join(cacheRoot, "v1")
+	v2 := filepath.Join(cacheRoot, "v2")
+	if err := os.MkdirAll(v1, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(v2, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	r := NewPrefetchedResolver(&Manifest{
 		Modules: map[string]ManifestEntry{
-			"terraform-aws-modules/vpc/aws@1.0.0": {LocalPath: "/cache/v1"},
-			"terraform-aws-modules/vpc/aws@2.0.0": {LocalPath: "/cache/v2"},
+			"terraform-aws-modules/vpc/aws@1.0.0": {LocalPath: v1},
+			"terraform-aws-modules/vpc/aws@2.0.0": {LocalPath: v2},
 		},
 	})
 
@@ -141,8 +182,8 @@ func TestPrefetchedResolverUsesVersionedManifestKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if res.LocalPath != "/cache/v2" {
-		t.Fatalf("LocalPath = %q, want /cache/v2", res.LocalPath)
+	if res.LocalPath != v2 {
+		t.Fatalf("LocalPath = %q, want %q", res.LocalPath, v2)
 	}
 }
 
@@ -177,6 +218,71 @@ func TestDotTerraformResolverDoesNotFallbackForExternalCallers(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "not found in .terraform/modules") {
 		t.Fatalf("expected unresolved external caller, got %v", err)
+	}
+}
+
+func TestDotTerraformResolverRejectsManifestEscape(t *testing.T) {
+	root := t.TempDir()
+	modulesDir := filepath.Join(root, ".terraform", "modules")
+	if err := os.MkdirAll(modulesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	payload := dotTerraformModulesJSON{Modules: []dotTerraformModuleRecord{{
+		Key:    "m",
+		Source: "terraform-aws-modules/vpc/aws",
+		Dir:    outside,
+	}}}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modulesDir, "modules.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resolver := &DotTerraformResolver{RootDirs: []string{root}}
+
+	_, err = resolver.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Name:     "m",
+		Source:   "terraform-aws-modules/vpc/aws",
+		FileName: filepath.Join(root, "main.tf"),
+	})
+	if err == nil {
+		t.Fatal("expected modules.json path outside the scan root to be rejected")
+	}
+}
+
+func TestDotTerraformResolverRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	moduleDir := filepath.Join(root, ".terraform", "modules", "vpc")
+	if err := os.MkdirAll(filepath.Dir(moduleDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, moduleDir); err != nil {
+		t.Fatal(err)
+	}
+	payload := dotTerraformModulesJSON{Modules: []dotTerraformModuleRecord{{
+		Key:    "m",
+		Source: "terraform-aws-modules/vpc/aws",
+		Dir:    filepath.Join(".terraform", "modules", "vpc"),
+	}}}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".terraform", "modules", "modules.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resolver := &DotTerraformResolver{RootDirs: []string{root}}
+
+	_, err = resolver.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Name:     "m",
+		Source:   "terraform-aws-modules/vpc/aws",
+		FileName: filepath.Join(root, "main.tf"),
+	})
+	if err == nil {
+		t.Fatal("expected symlinked .terraform module path to be rejected")
 	}
 }
 

@@ -37,6 +37,30 @@ func appendGetterSubdir(getterURL, subdir string) string {
 	return getterURL + "//" + subdir
 }
 
+func splitGetterSubdir(getterURL string) (packageURL, subdir string) {
+	queryStart := len(getterURL)
+	if query := strings.IndexByte(getterURL, '?'); query >= 0 {
+		queryStart = query
+	}
+	searchStart := 0
+	if getterPrefix := strings.Index(getterURL[:queryStart], "::"); getterPrefix >= 0 {
+		searchStart = getterPrefix + 2
+	}
+	if scheme := strings.Index(getterURL[searchStart:queryStart], "://"); scheme >= 0 {
+		searchStart += scheme + 3
+	}
+	subdirMarker := strings.Index(getterURL[searchStart:queryStart], "//")
+	if subdirMarker < 0 {
+		return getterURL, ""
+	}
+	subdirMarker += searchStart
+	subdir = strings.TrimPrefix(getterURL[subdirMarker+2:queryStart], "/")
+	if subdir == "" {
+		return getterURL, ""
+	}
+	return getterURL[:subdirMarker] + getterURL[queryStart:], subdir
+}
+
 // parseRegistrySource splits public (ns/name/provider) or private (host/ns/name/provider) sources.
 func parseRegistrySource(source string) (host, namespace, name, provider string, err error) {
 	source, _, _ = strings.Cut(source, "//")

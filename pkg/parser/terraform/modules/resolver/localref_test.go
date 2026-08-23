@@ -77,3 +77,41 @@ func TestResolveLocalRefSHAAndMissing(t *testing.T) {
 		t.Fatal("expected missing ref to be unresolved")
 	}
 }
+
+func TestArchiveExtractMaterializesLocalModuleClosure(t *testing.T) {
+	workTree := t.TempDir()
+	runGit(t, workTree, "init", "-q", "-b", "main")
+	for _, module := range []string{"selected", "shared", "unrelated"} {
+		dir := filepath.Join(workTree, "modules", module)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		content := "# " + module + "\n"
+		if module == "selected" {
+			content += "module \"shared\" { source = \"../shared\" }\n"
+		}
+		if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit(t, workTree, "add", ".")
+	runGit(t, workTree, "commit", "-q", "-m", "modules")
+	sha := runGit(t, workTree, "rev-parse", "HEAD")
+	extractBase := t.TempDir()
+
+	if err := archiveExtract(
+		t.Context(), filepath.Join(workTree, ".git"), extractBase, sha, "modules/selected",
+	); err != nil {
+		t.Fatalf("archiveExtract: %v", err)
+	}
+
+	packageRoot := archiveCacheDir(extractBase, sha)
+	for _, module := range []string{"selected", "shared"} {
+		if _, err := os.Stat(filepath.Join(packageRoot, "modules", module, "main.tf")); err != nil {
+			t.Fatalf("package module %q was not extracted: %v", module, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(packageRoot, "modules", "unrelated")); !os.IsNotExist(err) {
+		t.Fatalf("unrelated module was extracted: %v", err)
+	}
+}
