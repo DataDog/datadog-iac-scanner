@@ -52,8 +52,9 @@ func TestGoGetterConfigAppliesAllowlistToRegistryClient(t *testing.T) {
 }
 
 func TestGoGetterHTTPValidatesXTerraformGetDestination(t *testing.T) {
+	var target string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("X-Terraform-Get", "http://metadata.internal/latest")
+		w.Header().Set("X-Terraform-Get", target)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -82,11 +83,30 @@ func TestGoGetterHTTPValidatesXTerraformGetDestination(t *testing.T) {
 	cfg.httpClient = newPolicyHTTPClientWithPolicy(time.Second, policy)
 	r := NewGoGetterResolver(cfg)
 
-	_, err = r.fetchOnce(t.Context(), "http://source.example:"+port+"/module")
-
-	if err == nil || !strings.Contains(err.Error(), "metadata.internal") ||
-		!strings.Contains(err.Error(), "not a public unicast destination") {
-		t.Fatalf("expected X-Terraform-Get metadata destination to be rejected, got %v", err)
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name:   "private HTTP destination",
+			source: "http://metadata.internal/latest",
+			want:   "not a public unicast destination",
+		},
+		{
+			name:   "protocol switch",
+			source: "git::http://169.254.169.254/repository.git",
+			want:   `no getter available for X-Terraform-Get source protocol: "git"`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			target = test.source
+			_, fetchErr := r.fetchOnce(t.Context(), "http://source.example:"+port+"/module")
+			if fetchErr == nil || !strings.Contains(fetchErr.Error(), test.want) {
+				t.Fatalf("expected X-Terraform-Get source to be rejected with %q, got %v", test.want, fetchErr)
+			}
+		})
 	}
 }
 

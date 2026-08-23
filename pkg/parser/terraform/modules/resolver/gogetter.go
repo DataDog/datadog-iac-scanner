@@ -510,12 +510,14 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 	defer cancel()
 
 	client := &getter.Client{
-		Ctx:     fetchCtx,
-		Src:     getterSrc,
-		Dst:     tmpDir,
-		Pwd:     tmpDir,
-		Mode:    getter.ClientModeDir,
-		Getters: r.getters(),
+		Ctx:  fetchCtx,
+		Src:  getterSrc,
+		Dst:  tmpDir,
+		Pwd:  tmpDir,
+		Mode: getter.ClientModeDir,
+		Options: []getter.ClientOption{
+			getter.WithGetters(r.getters(getterSrc)),
+		},
 	}
 	if err := client.Get(); err != nil {
 		_ = os.RemoveAll(tmpDir)
@@ -524,10 +526,12 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 	return tmpDir, nil
 }
 
-func (r *GoGetterResolver) getters() map[string]getter.Getter {
+func (r *GoGetterResolver) getters(source string) map[string]getter.Getter {
 	getters := make(map[string]getter.Getter, len(getter.Getters))
-	for scheme, protocolGetter := range getter.Getters {
-		getters[scheme] = protocolGetter
+	if !isHTTPGetterSource(source) {
+		for scheme, protocolGetter := range getter.Getters {
+			getters[scheme] = protocolGetter
+		}
 	}
 	httpGetter := &getter.HttpGetter{
 		Netrc:              true,
@@ -537,6 +541,17 @@ func (r *GoGetterResolver) getters() map[string]getter.Getter {
 	getters["http"] = httpGetter
 	getters["https"] = httpGetter
 	return getters
+}
+
+func isHTTPGetterSource(source string) bool {
+	if forced, rest, ok := strings.Cut(source, "::"); ok {
+		if forced != "" {
+			return forced == "http" || forced == "https"
+		}
+		source = rest
+	}
+	parsed, err := url.Parse(source)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https")
 }
 
 func modifyGitURL(rawURL string, modify func(url.Values) bool) string {
