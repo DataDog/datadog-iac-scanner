@@ -80,14 +80,37 @@ func (p *httpDestinationPolicy) dialContext(ctx context.Context, network, addres
 		return nil, err
 	}
 
-	var dialErrs []error
-	for _, ip := range addresses {
-		conn, dialErr := p.dial(ctx, network, net.JoinHostPort(ip.String(), port))
-		if dialErr == nil {
-			return conn, nil
-		}
-		dialErrs = append(dialErrs, dialErr)
+	type dialResult struct {
+		conn net.Conn
+		err  error
 	}
+	dialCtx, cancel := context.WithCancel(ctx)
+	results := make(chan dialResult, len(addresses))
+	for _, ip := range addresses {
+		target := net.JoinHostPort(ip.String(), port)
+		go func() {
+			conn, dialErr := p.dial(dialCtx, network, target)
+			results <- dialResult{conn: conn, err: dialErr}
+		}()
+	}
+
+	dialErrs := make([]error, 0, len(addresses))
+	for i := 0; i < len(addresses); i++ {
+		result := <-results
+		if result.err == nil {
+			cancel()
+			go func(remaining int) {
+				for range remaining {
+					if pending := <-results; pending.conn != nil {
+						_ = pending.conn.Close()
+					}
+				}
+			}(len(addresses) - i - 1)
+			return result.conn, nil
+		}
+		dialErrs = append(dialErrs, result.err)
+	}
+	cancel()
 	return nil, fmt.Errorf("dialing HTTP destination %q: %w", host, errors.Join(dialErrs...))
 }
 

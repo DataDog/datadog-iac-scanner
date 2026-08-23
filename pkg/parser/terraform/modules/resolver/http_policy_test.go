@@ -83,6 +83,42 @@ func TestHTTPDestinationPolicyPinsValidatedAddress(t *testing.T) {
 	}
 }
 
+func TestHTTPDestinationPolicyDialsValidatedAddressesConcurrently(t *testing.T) {
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{
+			net.ParseIP("2001:db8::1"),
+			net.ParseIP("93.184.216.34"),
+		}, nil
+	}
+	firstCanceled := make(chan struct{})
+	policy.dial = func(ctx context.Context, _, address string) (net.Conn, error) {
+		if strings.HasPrefix(address, "[2001:db8::1]") {
+			<-ctx.Done()
+			close(firstCanceled)
+			return nil, ctx.Err()
+		}
+		client, server := net.Pipe()
+		t.Cleanup(func() {
+			_ = client.Close()
+			_ = server.Close()
+		})
+		return client, nil
+	}
+
+	conn, err := policy.dialContext(t.Context(), "tcp", "modules.example.com:443")
+
+	if err != nil {
+		t.Fatalf("dialContext: %v", err)
+	}
+	_ = conn.Close()
+	select {
+	case <-firstCanceled:
+	case <-time.After(time.Second):
+		t.Fatal("slower validated address was not canceled")
+	}
+}
+
 func TestHTTPDestinationPolicyAppliesHostAllowlist(t *testing.T) {
 	policy := newHTTPDestinationPolicy([]string{"example.com"})
 	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
