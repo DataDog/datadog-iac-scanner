@@ -25,6 +25,34 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+func TestRegistryClientRejectsPrivateDestinationWithoutAllowlist(t *testing.T) {
+	cache := NewRegistryCache(time.Second)
+
+	_, err := discoverModulesEndpoint(
+		t.Context(),
+		cache.client,
+		"https://169.254.169.254",
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "not a public unicast destination") {
+		t.Fatalf("expected registry metadata destination to be rejected, got %v", err)
+	}
+}
+
+func TestRegistryClientAppliesHostAllowlist(t *testing.T) {
+	cache := NewRegistryCache(time.Second, "registry.terraform.io")
+
+	_, err := discoverModulesEndpoint(
+		t.Context(),
+		cache.client,
+		"https://example.com",
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "not in --module-host-allowlist") {
+		t.Fatalf("expected registry host outside allowlist to be rejected, got %v", err)
+	}
+}
+
 func TestResolveRegistryVersionInvalidConstraint(t *testing.T) {
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {

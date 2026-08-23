@@ -130,10 +130,10 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 	ggCfg.Disabled = !c.ScanParams.EnableRemoteModules
 	if t := c.ScanParams.ModuleFetchTimeout; t > 0 {
 		ggCfg.FetchTimeout = t
-		ggCfg.RegistryCache = tfresolver.NewRegistryCache(ggCfg.FetchTimeout)
 	}
 	ggCfg.MaxTotalBytes = c.ScanParams.MaxModuleBytesTotal
 	ggCfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
+	ggCfg.RegistryCache = tfresolver.NewRegistryCache(ggCfg.FetchTimeout, ggCfg.HostAllowlist...)
 
 	if !ggCfg.Disabled {
 		cache, err := tfresolver.NewModuleCache()
