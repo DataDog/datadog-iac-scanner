@@ -91,16 +91,14 @@ type GoGetterConfig struct {
 	fetchCount atomic.Int64
 }
 
-// NewGoGetterConfig returns defaults with a fetch semaphore and a fresh registry cache.
+// NewGoGetterConfig returns default fetch limits and concurrency controls.
 func NewGoGetterConfig() *GoGetterConfig {
-	cfg := &GoGetterConfig{
+	return &GoGetterConfig{
 		FetchTimeout:   DefaultFetchTimeout,
 		MaxModuleBytes: DefaultMaxModuleBytes,
 		MaxTotalBytes:  DefaultMaxTotalBytes,
 		fetchSem:       make(chan struct{}, FetchConcurrency),
 	}
-	cfg.RegistryCache = NewRegistryCache(cfg.FetchTimeout)
-	return cfg
 }
 
 // GoGetterResolver downloads modules via hashicorp/go-getter (registry translation, caps, cache).
@@ -111,6 +109,9 @@ type GoGetterResolver struct {
 func NewGoGetterResolver(cfg *GoGetterConfig) *GoGetterResolver {
 	if cfg.httpClient == nil {
 		cfg.httpClient = newPolicyHTTPClient(cfg.FetchTimeout, cfg.HostAllowlist)
+	}
+	if cfg.RegistryCache == nil {
+		cfg.RegistryCache = NewRegistryCache(cfg.FetchTimeout, cfg.HostAllowlist...)
 	}
 	return &GoGetterResolver{cfg: cfg}
 }

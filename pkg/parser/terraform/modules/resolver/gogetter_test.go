@@ -35,6 +35,22 @@ func TestGoGetterHTTPRejectsPrivateDestinationWithoutAllowlist(t *testing.T) {
 	}
 }
 
+func TestGoGetterConfigAppliesAllowlistToRegistryClient(t *testing.T) {
+	cfg := NewGoGetterConfig()
+	cfg.HostAllowlist = []string{"registry.terraform.io"}
+	r := NewGoGetterResolver(cfg)
+
+	_, err := discoverModulesEndpoint(
+		t.Context(),
+		r.cfg.RegistryCache.client,
+		"https://example.com",
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "not in --module-host-allowlist") {
+		t.Fatalf("expected registry client to use resolver allowlist, got %v", err)
+	}
+}
+
 func TestGoGetterHTTPValidatesXTerraformGetDestination(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-Terraform-Get", "http://metadata.internal/latest")
