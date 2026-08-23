@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -1061,8 +1062,9 @@ func ParseTerraformModulesFromFiles(
 }
 
 // LoadTFFilesFromDir returns FileMetadata for top-level .tf files in dir (no recursion —
-// a Terraform module is a single directory).
-func LoadTFFilesFromDir(dir string) (model.FileMetadatas, error) {
+// a Terraform module is a single directory). When packageRoot is non-empty, symlinked .tf
+// files are included only when their targets stay within the package root.
+func LoadTFFilesFromDir(dir, packageRoot string) (model.FileMetadatas, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving module dir %q: %w", dir, err)
@@ -1073,24 +1075,63 @@ func LoadTFFilesFromDir(dir string) (model.FileMetadatas, error) {
 	}
 	var files model.FileMetadatas
 	for _, entry := range entries {
-		if entry.IsDir() {
+		path, ok := ScannableTerraformPath(entry, absDir, packageRoot)
+		if !ok {
 			continue
 		}
-		name := entry.Name()
-		if !strings.HasSuffix(strings.ToLower(name), ".tf") {
-			continue
-		}
-		absPath := filepath.Clean(filepath.Join(absDir, name))
-		data, readErr := os.ReadFile(absPath)
+		data, readErr := os.ReadFile(path) //nolint:gosec
 		if readErr != nil {
-			return nil, fmt.Errorf("reading %q: %w", absPath, readErr)
+			return nil, fmt.Errorf("reading %q: %w", path, readErr)
 		}
 		files = append(files, &model.FileMetadata{
-			FilePath:     absPath,
+			FilePath:     filepath.Clean(path),
 			OriginalData: string(data),
 		})
 	}
 	return files, nil
+}
+
+func ScannableTerraformPath(entry fs.DirEntry, dir, packageRoot string) (string, bool) {
+	if entry.IsDir() {
+		return "", false
+	}
+	name := entry.Name()
+	if !strings.HasSuffix(strings.ToLower(name), ".tf") {
+		return "", false
+	}
+	candidate := filepath.Join(dir, name)
+	entryType := entry.Type()
+	if entryType.IsRegular() {
+		return candidate, true
+	}
+	if entryType&fs.ModeSymlink == 0 && entryType != 0 {
+		return "", false
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	confineRoot := packageRoot
+	if confineRoot == "" {
+		confineRoot = dir
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(filepath.Clean(confineRoot))
+	if err != nil {
+		return "", false
+	}
+	resolvedTarget, err := filepath.EvalSymlinks(filepath.Clean(resolved))
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolvedTarget)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+	return candidate, true
 }
 
 // GetProviderFromResourceType extracts the provider name from a Terraform resource type.

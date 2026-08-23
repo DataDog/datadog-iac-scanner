@@ -33,7 +33,7 @@ func countTFFiles(t *testing.T, dir string) int {
 	}
 	n := 0
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() && filepath.Ext(e.Name()) == ".tf" {
 			n++
 		}
 	}
@@ -55,7 +55,7 @@ func TestModuleCacheConcurrentStoreLookupNeverPartial(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := c.store(source, version, src); err != nil {
+			if _, err := c.store(source, version, src, ""); err != nil {
 				errCh <- fmt.Errorf("store: %w", err)
 			}
 		}()
@@ -84,5 +84,67 @@ func TestModuleCacheConcurrentStoreLookupNeverPartial(t *testing.T) {
 	}
 	if got := countTFFiles(t, dir); got != nFiles {
 		t.Fatalf("final cache entry has %d files, want %d", got, nFiles)
+	}
+}
+
+func TestModuleCacheSkipsSymlinks(t *testing.T) {
+	src := t.TempDir()
+	requirePath := func(path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(`resource "x" "y" {}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	requirePath(filepath.Join(src, "modules", "selected", "main.tf"))
+	outside := filepath.Join(t.TempDir(), "outside.tf")
+	requirePath(outside)
+	if err := os.Symlink(outside, filepath.Join(src, "evil.tf")); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := &moduleCache{dir: t.TempDir()}
+	dir, err := cache.store("example/module/aws", "1.0.0", src, "modules/selected")
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "modules", "selected", "main.tf")); err != nil {
+		t.Fatalf("regular module file was not cached: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "evil.tf")); !os.IsNotExist(err) {
+		t.Fatalf("symlink was copied into cache: %v", err)
+	}
+}
+
+func TestModuleCacheSharesPackageAcrossSubdirs(t *testing.T) {
+	src := t.TempDir()
+	for _, sub := range []string{"modules/vpc", "modules/ec2"} {
+		dir := filepath.Join(src, sub)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "x" "y" {}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cache := &moduleCache{dir: t.TempDir()}
+	const version = "1.0.0"
+	vpcSource := "git::https://github.com/acme/modules.git//modules/vpc?ref=abc"
+	ec2Source := "git::https://github.com/acme/modules.git//modules/ec2?ref=abc"
+
+	vpcDir, err := cache.store(vpcSource, version, src, "modules/vpc")
+	if err != nil {
+		t.Fatalf("store vpc: %v", err)
+	}
+	ec2Dir, err := cache.store(ec2Source, version, src, "modules/ec2")
+	if err != nil {
+		t.Fatalf("store ec2: %v", err)
+	}
+	if vpcDir != ec2Dir {
+		t.Fatalf("expected one shared package cache dir, got %q and %q", vpcDir, ec2Dir)
 	}
 }

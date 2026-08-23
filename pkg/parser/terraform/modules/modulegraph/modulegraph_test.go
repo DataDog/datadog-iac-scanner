@@ -44,6 +44,7 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 		Version:         "1.2.3",
 		Name:            "network",
 		LocalPath:       moduleDir,
+		PackageRoot:     moduleDir,
 		CanonicalSource: "git::https://github.com/acme/network//modules/vpc?ref=v1@1.2.3",
 	}}, result.Modules)
 }
@@ -88,6 +89,59 @@ func TestResolveTraversesLocalModuleToRemoteModule(t *testing.T) {
 	require.Len(t, result.Modules, 1)
 	require.Equal(t, "registry.example.com/acme/network/aws", result.Modules[0].Source)
 	require.Equal(t, wrapperDir, result.Modules[0].CallerRoot)
+}
+
+func TestResolveConfinesRemoteLocalModulesToPackageRoot(t *testing.T) {
+	root := t.TempDir()
+	base := t.TempDir()
+	packageRoot := filepath.Join(base, "package")
+	selected := filepath.Join(packageRoot, "modules", "selected")
+	shared := filepath.Join(packageRoot, "modules", "shared")
+	outside := filepath.Join(base, "outside")
+	for _, dir := range []string{selected, shared, outside} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "remote" {
+  source = "example.com/acme/module/aws"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(selected, "main.tf"), []byte(`
+module "shared" {
+  source = "../shared"
+}
+module "escape" {
+  source = "../../../outside"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(shared, "main.tf"), []byte(`resource "x" "shared" {}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "main.tf"), []byte(`resource "x" "outside" {}`), 0o644))
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath:   selected,
+			PackageRoot: packageRoot,
+		}},
+		MaxDepth: 4,
+	})
+
+	require.Equal(t, []string{
+		filepath.Join(selected, "main.tf"),
+		filepath.Join(shared, "main.tf"),
+	}, result.ScanPaths)
+}
+
+func TestFlatTerraformFilePathsSkipsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(mainPath, []byte(`resource "x" "main" {}`), 0o644))
+	outside := filepath.Join(t.TempDir(), "outside.tf")
+	require.NoError(t, os.WriteFile(outside, []byte(`resource "x" "outside" {}`), 0o644))
+	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "linked.tf")))
+
+	require.Equal(t, []string{mainPath}, flatTerraformFilePaths(dir, dir))
 }
 
 func writeModuleGraphFixture(t *testing.T) (string, string) {
