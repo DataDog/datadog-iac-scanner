@@ -20,6 +20,8 @@ import (
 const (
 	maxHTTPRedirects       = 10
 	maxConcurrentHTTPDials = 4
+	httpScheme             = "http"
+	httpsScheme            = "https"
 )
 
 type lookupNetIPFunc func(context.Context, string, string) ([]net.IP, error)
@@ -66,7 +68,7 @@ func (p *httpDestinationPolicy) validateURL(ctx context.Context, target *url.URL
 	if target == nil {
 		return errors.New("HTTP destination URL is missing")
 	}
-	if target.Scheme != "http" && target.Scheme != "https" {
+	if target.Scheme != httpScheme && target.Scheme != httpsScheme {
 		return fmt.Errorf("HTTP destination scheme %q is not allowed", target.Scheme)
 	}
 	_, err := p.resolveHost(ctx, target.Hostname())

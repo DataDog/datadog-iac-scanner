@@ -546,12 +546,12 @@ func (r *GoGetterResolver) getters(source string) map[string]getter.Getter {
 func isHTTPGetterSource(source string) bool {
 	if forced, rest, ok := strings.Cut(source, "::"); ok {
 		if forced != "" {
-			return forced == "http" || forced == "https"
+			return forced == httpScheme || forced == httpsScheme
 		}
 		source = rest
 	}
 	parsed, err := url.Parse(source)
-	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https")
+	return err == nil && (parsed.Scheme == httpScheme || parsed.Scheme == httpsScheme)
 }
 
 func modifyGitURL(rawURL string, modify func(url.Values) bool) string {
