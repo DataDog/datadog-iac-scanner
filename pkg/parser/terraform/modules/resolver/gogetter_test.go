@@ -9,6 +9,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +22,57 @@ import (
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
+
+func TestGoGetterHTTPRejectsPrivateDestinationWithoutAllowlist(t *testing.T) {
+	cfg := NewGoGetterConfig()
+	cfg.TmpDir = t.TempDir()
+	r := NewGoGetterResolver(cfg)
+
+	_, err := r.fetchOnce(t.Context(), "http://169.254.169.254/module.zip")
+
+	if err == nil || !strings.Contains(err.Error(), "not a public unicast destination") {
+		t.Fatalf("expected metadata destination to be rejected, got %v", err)
+	}
+}
+
+func TestGoGetterHTTPValidatesXTerraformGetDestination(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Terraform-Get", "http://metadata.internal/latest")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(_ context.Context, _, host string) ([]net.IP, error) {
+		switch host {
+		case "source.example":
+			return []net.IP{net.ParseIP("93.184.216.34")}, nil
+		case "metadata.internal":
+			return []net.IP{net.ParseIP("169.254.169.254")}, nil
+		default:
+			return nil, fmt.Errorf("unexpected host %q", host)
+		}
+	}
+	policy.dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}
+
+	cfg := NewGoGetterConfig()
+	cfg.TmpDir = t.TempDir()
+	cfg.httpClient = newPolicyHTTPClientWithPolicy(time.Second, policy)
+	r := NewGoGetterResolver(cfg)
+
+	_, err = r.fetchOnce(t.Context(), "http://source.example:"+port+"/module")
+
+	if err == nil || !strings.Contains(err.Error(), "metadata.internal") ||
+		!strings.Contains(err.Error(), "not a public unicast destination") {
+		t.Fatalf("expected X-Terraform-Get metadata destination to be rejected, got %v", err)
+	}
+}
 
 func TestGetterSourceForPreservesHTTPSGit(t *testing.T) {
 	r := NewGoGetterResolver(NewGoGetterConfig())

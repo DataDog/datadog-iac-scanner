@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"math/rand"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -77,6 +78,7 @@ type GoGetterConfig struct {
 	HostAllowlist []string
 	Cache         *moduleCache
 	RegistryCache *registryCache
+	httpClient    *http.Client
 
 	TmpDir string
 
@@ -107,6 +109,9 @@ type GoGetterResolver struct {
 }
 
 func NewGoGetterResolver(cfg *GoGetterConfig) *GoGetterResolver {
+	if cfg.httpClient == nil {
+		cfg.httpClient = newPolicyHTTPClient(cfg.FetchTimeout, cfg.HostAllowlist)
+	}
 	return &GoGetterResolver{cfg: cfg}
 }
 
@@ -504,17 +509,33 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 	defer cancel()
 
 	client := &getter.Client{
-		Ctx:  fetchCtx,
-		Src:  getterSrc,
-		Dst:  tmpDir,
-		Pwd:  tmpDir,
-		Mode: getter.ClientModeDir,
+		Ctx:     fetchCtx,
+		Src:     getterSrc,
+		Dst:     tmpDir,
+		Pwd:     tmpDir,
+		Mode:    getter.ClientModeDir,
+		Getters: r.getters(),
 	}
 	if err := client.Get(); err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return "", &tfmodules.UnresolvedError{Reason: "fetch failed: " + err.Error()}
 	}
 	return tmpDir, nil
+}
+
+func (r *GoGetterResolver) getters() map[string]getter.Getter {
+	getters := make(map[string]getter.Getter, len(getter.Getters))
+	for scheme, protocolGetter := range getter.Getters {
+		getters[scheme] = protocolGetter
+	}
+	httpGetter := &getter.HttpGetter{
+		Netrc:              true,
+		Client:             r.cfg.httpClient,
+		XTerraformGetLimit: maxHTTPRedirects,
+	}
+	getters["http"] = httpGetter
+	getters["https"] = httpGetter
+	return getters
 }
 
 func modifyGitURL(rawURL string, modify func(url.Values) bool) string {

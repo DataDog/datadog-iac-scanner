@@ -39,6 +39,10 @@ func newHTTPDestinationPolicy(hostAllowlist []string) *httpDestinationPolicy {
 
 func newPolicyHTTPClient(timeout time.Duration, hostAllowlist []string) *http.Client {
 	policy := newHTTPDestinationPolicy(hostAllowlist)
+	return newPolicyHTTPClientWithPolicy(timeout, policy)
+}
+
+func newPolicyHTTPClientWithPolicy(timeout time.Duration, policy *httpDestinationPolicy) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	transport.DialContext = policy.dialContext
