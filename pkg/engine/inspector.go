@@ -230,11 +230,11 @@ type Inspector struct {
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
 	// content.
 	fsys              vfs.FS
-	remoteModuleDirs  map[string]string
+	remoteModuleDirs  map[string]RemoteModuleDirectory
 	externalPathRoots map[string]bool
 }
 
-func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]string) {
+func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
 	c.remoteModuleDirs = sourceToDir
 }
 

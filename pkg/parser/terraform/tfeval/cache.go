@@ -15,13 +15,14 @@ import (
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
-// evalCacheKey: dir + addr + inputs + call chain.
+// evalCacheKey: dir + package root + addr + inputs + call chain.
 // Chain splits identical-input callers; pre-pass and main loop share the same chain and hit the same entry.
 type evalCacheKey struct {
-	dir    string
-	addr   string
-	inputs string // canonical encoding of the resolved input map
-	chain  string // canonical encoding of the module call chain
+	dir         string
+	packageRoot string
+	addr        string
+	inputs      string // canonical encoding of the resolved input map
+	chain       string // canonical encoding of the module call chain
 }
 
 // chainKey encodes each hop as calledFrom#line#module.name; joined by "/".

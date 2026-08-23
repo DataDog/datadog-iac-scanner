@@ -257,11 +257,13 @@ func renderTraversal(traversal hcl.Traversal) (string, bool) {
 	return sb.String(), true
 }
 
-// RemoteResolver maps a non-local module call to its materialized directory on disk.
-type RemoteResolver func(source, version, callerFile, moduleName string) (dir string, ok bool)
+// RemoteResolver maps a non-local module call to its selected directory and acquired package root.
+type RemoteResolver func(
+	source, version, callerFile, moduleName string,
+) (dir, packageRoot string, ok bool)
 
 func CalledModuleDirs(dir string, resolver RemoteResolver) []string {
-	bodies, err := parseDir(dir)
+	bodies, err := parseDir(dir, "")
 	if err != nil {
 		return nil
 	}
@@ -269,7 +271,7 @@ func CalledModuleDirs(dir string, resolver RemoteResolver) []string {
 }
 
 func (e *Evaluator) CalledModuleDirs(dir string) []string {
-	bodies, err := e.parseDir(dir)
+	bodies, err := e.parseDir(dir, "")
 	if err != nil {
 		return nil
 	}
@@ -293,7 +295,7 @@ func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResol
 		}
 		if resolver != nil {
 			version := knownString(mb.Body.Attributes["version"], emptyCtx)
-			if d, ok := resolver(source, version, mb.TypeRange.Filename, blockLabel(mb)); ok {
+			if d, _, ok := resolver(source, version, mb.TypeRange.Filename, blockLabel(mb)); ok {
 				dirs = append(dirs, d)
 			}
 		}

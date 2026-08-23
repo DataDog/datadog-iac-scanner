@@ -16,6 +16,8 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
+
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
 const blockTypeModule = "module"
@@ -32,7 +34,7 @@ var reservedModuleAttrs = map[string]bool{
 
 // parseDir parses all .tf files in dir (non-recursively) and returns their bodies.
 // Files that fail to parse are skipped.
-func parseDir(dir string) ([]*hclsyntax.Body, error) {
+func parseDir(dir, packageRoot string) ([]*hclsyntax.Body, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -40,11 +42,8 @@ func parseDir(dir string) ([]*hclsyntax.Body, error) {
 
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		if strings.HasSuffix(strings.ToLower(entry.Name()), ".tf") {
-			names = append(names, entry.Name())
+		if path, ok := tfmodules.ScannableTerraformPath(entry, dir, packageRoot); ok {
+			names = append(names, filepath.Base(path))
 		}
 	}
 	sort.Strings(names)

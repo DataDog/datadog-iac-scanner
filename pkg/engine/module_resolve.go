@@ -213,9 +213,10 @@ func (c *Inspector) buildRemoteResolver() tfeval.RemoteResolver {
 		return nil
 	}
 	dirs := c.remoteModuleDirs
-	return func(source, version, callerFile, moduleName string) (string, bool) {
+	return func(source, version, callerFile, moduleName string) (string, string, bool) {
 		root := remoteModuleRoot(callerFile, c.repoPath)
-		return lookupRemoteDir(dirs, root, source, version, moduleName)
+		resolved, ok := lookupRemoteDir(dirs, root, source, version, moduleName)
+		return resolved.Path, resolved.PackageRoot, ok
 	}
 }
 
@@ -227,20 +228,28 @@ func (c *Inspector) buildModuleMetadataResolver() tfmodules.RemoteResolver {
 }
 
 type moduleMetadataResolver struct {
-	dirs     map[string]string
+	dirs     map[string]RemoteModuleDirectory
 	repoPath string
 }
 
 func (r moduleMetadataResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (string, error) {
 	root := remoteModuleRoot(mod.FileName, r.repoPath)
-	dir, ok := lookupRemoteDir(r.dirs, root, mod.Source, mod.Version, mod.Name)
+	resolved, ok := lookupRemoteDir(r.dirs, root, mod.Source, mod.Version, mod.Name)
 	if !ok {
 		return "", &tfmodules.UnresolvedError{Reason: "module was not resolved during pre-scan"}
 	}
-	return dir, nil
+	return resolved.Path, nil
 }
 
-func lookupRemoteDir(dirs map[string]string, root, source, version, name string) (string, bool) {
+type RemoteModuleDirectory struct {
+	Path        string
+	PackageRoot string
+}
+
+func lookupRemoteDir(
+	dirs map[string]RemoteModuleDirectory,
+	root, source, version, name string,
+) (RemoteModuleDirectory, bool) {
 	if d, ok := dirs[RemoteModuleCallKey(root, source, version, name)]; ok {
 		return d, true
 	}
@@ -255,7 +264,7 @@ func lookupRemoteDir(dirs map[string]string, root, source, version, name string)
 			return d, true
 		}
 	}
-	return "", false
+	return RemoteModuleDirectory{}, false
 }
 
 func RemoteModuleKey(root, source, version string) string {
@@ -883,7 +892,8 @@ func resolveModuleTargetDir(
 	if resolver == nil {
 		return "", false
 	}
-	return resolver(source, version, callerFile, moduleName)
+	dir, _, ok := resolver(source, version, callerFile, moduleName)
+	return dir, ok
 }
 
 // indexTerraformFiles builds lookup maps from a flat FileMetadatas slice.

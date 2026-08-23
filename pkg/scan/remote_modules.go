@@ -23,7 +23,12 @@ func (c *Client) resolveTerraformModulesForScan(
 	ctx context.Context,
 	paramsPlatforms []string,
 	extractedPaths *provider.ExtractedPath,
-) (moduleCleanup func(), remoteModulePaths []string, remoteSourceDirs map[string]string, err error) {
+) (
+	moduleCleanup func(),
+	remoteModulePaths []string,
+	remoteSourceDirs map[string]engine.RemoteModuleDirectory,
+	err error,
+) {
 	if !platformsIncludeTerraform(paramsPlatforms) || !c.shouldPreScanTerraformModules(extractedPaths.Path) {
 		return nil, nil, nil, nil
 	}
@@ -61,17 +66,21 @@ func (c *Client) resolveTerraformModulesForScan(
 			LocalPath: false,
 		}
 	}
-	remoteSourceDirs = make(map[string]string, len(result.Modules)*3)
+	remoteSourceDirs = make(map[string]engine.RemoteModuleDirectory, len(result.Modules)*3)
 	for _, module := range result.Modules {
+		directory := engine.RemoteModuleDirectory{
+			Path:        module.LocalPath,
+			PackageRoot: module.PackageRoot,
+		}
 		remoteSourceDirs[engine.RemoteModuleKey(
 			module.CallerRoot, module.Source, module.Version,
-		)] = module.LocalPath
+		)] = directory
 		remoteSourceDirs[engine.RemoteModuleCallKey(
 			module.CallerRoot, module.Source, module.Version, module.Name,
-		)] = module.LocalPath
+		)] = directory
 		remoteSourceDirs[engine.RemoteModuleCallKey(
 			module.CallerRoot, module.Source, "", module.Name,
-		)] = module.LocalPath
+		)] = directory
 	}
 	return result.Cleanup, result.ScanPaths, remoteSourceDirs, nil
 }

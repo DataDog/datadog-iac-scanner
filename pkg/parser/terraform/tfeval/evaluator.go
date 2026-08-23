@@ -20,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -98,8 +99,8 @@ func New() *Evaluator {
 	}
 }
 
-func (e *Evaluator) parseDir(dir string) ([]*hclsyntax.Body, error) {
-	key := filepath.Clean(dir)
+func (e *Evaluator) parseDir(dir, packageRoot string) ([]*hclsyntax.Body, error) {
+	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
 
 	e.parseMu.Lock()
 	if dp, ok := e.dirCache[key]; ok {
@@ -108,7 +109,7 @@ func (e *Evaluator) parseDir(dir string) ([]*hclsyntax.Body, error) {
 	}
 	e.parseMu.Unlock()
 
-	bodies, err := parseDir(dir)
+	bodies, err := parseDir(dir, packageRoot)
 
 	e.parseMu.Lock()
 	e.dirCache[key] = dirParse{bodies: bodies, err: err}
@@ -144,7 +145,7 @@ func (e *Evaluator) EvaluateModule(
 	}
 	visiting := map[string]bool{}
 	allVisited := map[string]bool{}
-	resources, outputs, err = e.evaluate(ctx, abs, inputs, "", nil, 0, visiting, allVisited)
+	resources, outputs, err = e.evaluate(ctx, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	return resources, outputs, allVisited, err
 }
 
@@ -153,6 +154,7 @@ func (e *Evaluator) EvaluateModule(
 func (e *Evaluator) evaluate(
 	ctx context.Context,
 	dir string,
+	packageRoot string,
 	inputs map[string]cty.Value,
 	addr string,
 	chain []CallSite,
@@ -172,7 +174,13 @@ func (e *Evaluator) evaluate(
 	}
 
 	// Pre-pass and main loop share (dir, addr, inputs, chain); distinct callers differ in chain only.
-	cacheKey := evalCacheKey{dir: dir, addr: addr, inputs: canonicalInputsKey(inputs), chain: chainKey(chain)}
+	cacheKey := evalCacheKey{
+		dir:         dir,
+		packageRoot: packageRoot,
+		addr:        addr,
+		inputs:      canonicalInputsKey(inputs),
+		chain:       chainKey(chain),
+	}
 	if entry, ok := e.cache[cacheKey]; ok {
 		for _, d := range entry.visitedDirs {
 			allVisited[d] = true
@@ -189,7 +197,7 @@ func (e *Evaluator) evaluate(
 		prevAllVisited[k] = true
 	}
 
-	bodies, err := e.parseDir(dir)
+	bodies, err := e.parseDir(dir, packageRoot)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -217,10 +225,10 @@ func (e *Evaluator) evaluate(
 		evalCtx.Variables["local"] = objectOrEmpty(localVals)
 	}
 
-	e.applySiblingModulePrepass(ctx, moduleBlocks, evalCtx, localExprs, dir, addr, chain, depth, visiting)
+	e.applySiblingModulePrepass(ctx, moduleBlocks, evalCtx, localExprs, dir, packageRoot, addr, chain, depth, visiting)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, evalCtx, dir, addr, chain, depth, visiting, allVisited,
+		ctx, moduleBlocks, evalCtx, dir, packageRoot, addr, chain, depth, visiting, allVisited,
 	)
 
 	if len(moduleOutputs) > 0 {
@@ -270,7 +278,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	localExprs map[string]hclsyntax.Expression,
-	dir, addr string,
+	dir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
 	visiting map[string]bool,
@@ -278,7 +286,9 @@ func (e *Evaluator) applySiblingModulePrepass(
 	if len(moduleBlocks) <= 1 {
 		return
 	}
-	prelimOutputs := e.preliminaryModuleOutputs(ctx, moduleBlocks, evalCtx, dir, addr, chain, depth, visiting)
+	prelimOutputs := e.preliminaryModuleOutputs(
+		ctx, moduleBlocks, evalCtx, dir, packageRoot, addr, chain, depth, visiting,
+	)
 	if len(prelimOutputs) == 0 {
 		return
 	}
@@ -291,7 +301,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
-	dir, addr string,
+	dir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
 	visiting map[string]bool,
@@ -321,7 +331,9 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 
 		version := knownString(mb.Body.Attributes["version"], evalCtx)
-		childDir, ok := e.resolveModuleDir(dir, source, version, mb.TypeRange.Filename, label)
+		childDir, childPackageRoot, ok := e.resolveModuleDir(
+			dir, packageRoot, source, version, mb.TypeRange.Filename, label,
+		)
 		if !ok {
 			continue
 		}
@@ -344,7 +356,8 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		childAddr := joinAddr(addr, "module."+label)
 
 		childRes, childOuts, cErr := e.evaluate(
-			ctx, childDir, modInputs, childAddr, append(cloneChain(chain), site), depth+1, visiting, allVisited,
+			ctx, childDir, childPackageRoot, modInputs, childAddr,
+			append(cloneChain(chain), site), depth+1, visiting, allVisited,
 		)
 		if cErr != nil {
 			contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", label, childDir, cErr)
@@ -360,16 +373,22 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	return childResources, moduleOutputs
 }
 
-func (e *Evaluator) resolveModuleDir(callerDir, source, version, callerFile, moduleName string) (dir string, ok bool) {
+func (e *Evaluator) resolveModuleDir(
+	callerDir, packageRoot, source, version, callerFile, moduleName string,
+) (dir, childPackageRoot string, ok bool) {
 	cleanSource := StripGetterPrefix(source)
 	if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
-		return resolveLocalDir(callerDir, source), true
+		localDir := resolveLocalDir(callerDir, source)
+		if packageRoot == "" {
+			return localDir, "", true
+		}
+		confined, resolveErr := resolver.ResolvePathWithinRoot(packageRoot, localDir)
+		return confined, packageRoot, resolveErr == nil
 	}
 	if e.remoteResolver != nil {
-		d, resolved := e.remoteResolver(source, version, callerFile, moduleName)
-		return d, resolved
+		return e.remoteResolver(source, version, callerFile, moduleName)
 	}
-	return "", false
+	return "", "", false
 }
 
 func (e *Evaluator) rootResourcesWithRefPasses(
@@ -744,7 +763,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
-	dir, addr string,
+	dir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
 	visiting map[string]bool,
@@ -764,7 +783,9 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			continue
 		}
 		version := knownString(mb.Body.Attributes["version"], evalCtx)
-		childDir, ok := e.resolveModuleDir(dir, source, version, mb.TypeRange.Filename, label)
+		childDir, childPackageRoot, ok := e.resolveModuleDir(
+			dir, packageRoot, source, version, mb.TypeRange.Filename, label,
+		)
 		if !ok {
 			continue
 		}
@@ -783,7 +804,10 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		}
 		childAddr := joinAddr(addr, "module."+label)
 		childChain := append(cloneChain(chain), site)
-		_, childOuts, _ := e.evaluate(ctx, childDir, modInputs, childAddr, childChain, depth+1, tmpVisiting, map[string]bool{})
+		_, childOuts, _ := e.evaluate(
+			ctx, childDir, childPackageRoot, modInputs, childAddr, childChain,
+			depth+1, tmpVisiting, map[string]bool{},
+		)
 		if len(childOuts) > 0 {
 			out[label] = objectOrEmpty(childOuts)
 			// Make each module's outputs visible to subsequent siblings within this
