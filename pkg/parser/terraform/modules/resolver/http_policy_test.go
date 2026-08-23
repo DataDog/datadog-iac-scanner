@@ -7,10 +7,12 @@ package resolver
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -116,6 +118,64 @@ func TestHTTPDestinationPolicyDialsValidatedAddressesConcurrently(t *testing.T) 
 	case <-firstCanceled:
 	case <-time.After(time.Second):
 		t.Fatal("slower validated address was not canceled")
+	}
+}
+
+func TestHTTPDestinationPolicyBoundsConcurrentDials(t *testing.T) {
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		addresses := make([]net.IP, 12)
+		for i := range addresses {
+			addresses[i] = net.IPv4(192, 0, 2, byte(i+1))
+		}
+		return addresses, nil
+	}
+	var inFlight atomic.Int32
+	var peak atomic.Int32
+	policy.dial = func(context.Context, string, string) (net.Conn, error) {
+		current := inFlight.Add(1)
+		for {
+			previous := peak.Load()
+			if current <= previous || peak.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+		inFlight.Add(-1)
+		return nil, errors.New("unreachable")
+	}
+
+	_, err := policy.dialContext(t.Context(), "tcp", "modules.example.com:443")
+
+	if err == nil {
+		t.Fatal("expected all addresses to fail")
+	}
+	if got := peak.Load(); got > maxConcurrentHTTPDials {
+		t.Fatalf("peak concurrent dials = %d, want at most %d", got, maxConcurrentHTTPDials)
+	}
+}
+
+func TestHTTPDestinationPolicyDeduplicatesDNSAnswers(t *testing.T) {
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{
+			net.ParseIP("93.184.216.34"),
+			net.ParseIP("93.184.216.34"),
+		}, nil
+	}
+	var calls atomic.Int32
+	policy.dial = func(context.Context, string, string) (net.Conn, error) {
+		calls.Add(1)
+		return nil, errors.New("unreachable")
+	}
+
+	_, err := policy.dialContext(t.Context(), "tcp", "modules.example.com:443")
+
+	if err == nil {
+		t.Fatal("expected address to fail")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("dial calls = %d, want one per unique address", got)
 	}
 }
 

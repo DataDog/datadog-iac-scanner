@@ -17,7 +17,10 @@ import (
 	"time"
 )
 
-const maxHTTPRedirects = 10
+const (
+	maxHTTPRedirects       = 10
+	maxConcurrentHTTPDials = 4
+)
 
 type lookupNetIPFunc func(context.Context, string, string) ([]net.IP, error)
 type dialContextFunc func(context.Context, string, string) (net.Conn, error)
@@ -86,11 +89,21 @@ func (p *httpDestinationPolicy) dialContext(ctx context.Context, network, addres
 	}
 	dialCtx, cancel := context.WithCancel(ctx)
 	results := make(chan dialResult, len(addresses))
-	for _, ip := range addresses {
-		target := net.JoinHostPort(ip.String(), port)
+	targets := make(chan string, len(addresses))
+	for _, address := range addresses {
+		targets <- net.JoinHostPort(address.String(), port)
+	}
+	close(targets)
+	for range min(maxConcurrentHTTPDials, len(addresses)) {
 		go func() {
-			conn, dialErr := p.dial(dialCtx, network, target)
-			results <- dialResult{conn: conn, err: dialErr}
+			for target := range targets {
+				if err := dialCtx.Err(); err != nil {
+					results <- dialResult{err: err}
+					continue
+				}
+				conn, dialErr := p.dial(dialCtx, network, target)
+				results <- dialResult{conn: conn, err: dialErr}
+			}
 		}()
 	}
 
@@ -140,6 +153,7 @@ func (p *httpDestinationPolicy) resolveHost(ctx context.Context, host string) ([
 	}
 
 	addresses := make([]netip.Addr, 0, len(resolved))
+	seen := make(map[netip.Addr]struct{}, len(resolved))
 	for _, candidate := range resolved {
 		addr, ok := netip.AddrFromSlice(candidate)
 		if !ok {
@@ -149,6 +163,10 @@ func (p *httpDestinationPolicy) resolveHost(ctx context.Context, host string) ([
 		if err := validatePublicAddress(addr); err != nil {
 			return nil, fmt.Errorf("HTTP destination host %q resolved to %s: %w", host, addr, err)
 		}
+		if _, ok := seen[addr]; ok {
+			continue
+		}
+		seen[addr] = struct{}{}
 		addresses = append(addresses, addr)
 	}
 	return addresses, nil
