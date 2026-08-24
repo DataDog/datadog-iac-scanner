@@ -11,7 +11,7 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
-func TestGitModuleResolveKeyFoldsTransport(t *testing.T) {
+func TestGitModuleResolveKeySeparatesTransport(t *testing.T) {
 	https := "git::https://github.com/org/repo.git//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
 	ssh := "git::ssh://git@github.com/org/repo//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
 	scp := "git@github.com:org/repo//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
@@ -28,12 +28,31 @@ func TestGitModuleResolveKeyFoldsTransport(t *testing.T) {
 	if !ok {
 		t.Fatal("expected scp key")
 	}
-	if keyHTTPS != keySSH || keyHTTPS != keySCP {
-		t.Fatalf("keys differ:\n  https=%q\n  ssh=%q\n  scp=%q", keyHTTPS, keySSH, keySCP)
+	if keyHTTPS == keySSH || keyHTTPS == keySCP {
+		t.Fatalf("HTTPS must not share resolve identity with SSH/SCP:\n  https=%q\n  ssh=%q\n  scp=%q", keyHTTPS, keySSH, keySCP)
 	}
-	want := "github.com/org/repo\x00aws-bucket_v7.1.2\x00terraform-modules/aws-bucket"
-	if keyHTTPS != want {
-		t.Fatalf("key = %q, want %q", keyHTTPS, want)
+	if keySSH != keySCP {
+		t.Fatalf("SSH and SCP spellings should still coalesce: %q vs %q", keySSH, keySCP)
+	}
+	wantHTTPS := "https\x00github.com/org/repo\x00aws-bucket_v7.1.2\x00terraform-modules/aws-bucket"
+	if keyHTTPS != wantHTTPS {
+		t.Fatalf("https key = %q, want %q", keyHTTPS, wantHTTPS)
+	}
+}
+
+func TestGitModuleResolveKeyFoldsEquivalentHTTPS(t *testing.T) {
+	withGit := "git::https://github.com/org/repo.git?ref=v1.0.0"
+	withoutGit := "git::https://github.com/org/repo?ref=v1.0.0"
+	keyWith, ok := GitModuleResolveKey(withGit, "")
+	if !ok {
+		t.Fatal("expected https key with .git suffix")
+	}
+	keyWithout, ok := GitModuleResolveKey(withoutGit, "")
+	if !ok {
+		t.Fatal("expected https key without .git suffix")
+	}
+	if keyWith != keyWithout {
+		t.Fatalf("equivalent HTTPS spellings should share a key: %q vs %q", keyWith, keyWithout)
 	}
 }
 

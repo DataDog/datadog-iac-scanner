@@ -35,6 +35,7 @@ const (
 	mib                   = 1024 * 1024
 
 	sourceTypeRegistry = "registry"
+	sourceTypeGit      = "git"
 
 	defaultFetchConcurrency = 32 // network-bound; override via IAC_MODULE_FETCH_CONCURRENCY
 )
@@ -184,6 +185,9 @@ func (r *GoGetterResolver) fetchAndCommit(
 	}
 	if selectedSubdir == "" && sourceType == sourceTypeRegistry {
 		selectedSubdir = registrySubdir(mod.Source)
+	}
+	if err := validateGetterSourceTransport(packageSource); err != nil {
+		return Resolution{}, err
 	}
 	if err := r.checkAllowlist(packageSource); err != nil {
 		return Resolution{}, err
@@ -527,11 +531,9 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 }
 
 func (r *GoGetterResolver) getters(source string) map[string]getter.Getter {
-	getters := make(map[string]getter.Getter, len(getter.Getters))
+	getters := make(map[string]getter.Getter)
 	if !isHTTPGetterSource(source) {
-		for scheme, protocolGetter := range getter.Getters {
-			getters[scheme] = protocolGetter
-		}
+		getters["file"] = getter.Getters["file"]
 	}
 	httpGetter := &getter.HttpGetter{
 		Netrc:              true,
@@ -541,6 +543,40 @@ func (r *GoGetterResolver) getters(source string) map[string]getter.Getter {
 	getters["http"] = httpGetter
 	getters["https"] = httpGetter
 	return getters
+}
+
+func validateGetterSourceTransport(source string) error {
+	forced := ""
+	if value, rest, ok := strings.Cut(source, "::"); ok {
+		forced = strings.ToLower(value)
+		source = rest
+	}
+	parsed, err := url.Parse(source)
+	if err != nil {
+		return &tfmodules.UnresolvedError{Reason: "invalid module source transport: " + err.Error()}
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if forced == sourceTypeGit {
+		return &tfmodules.UnresolvedError{
+			Reason: fmt.Sprintf(
+				"network git transport %q is disabled unless it is pinned by BareGitResolver, which requires a ref=",
+				scheme,
+			),
+		}
+	}
+	if forced != "" {
+		scheme = forced
+	}
+	switch scheme {
+	case httpScheme, httpsScheme, "file":
+		return nil
+	case "ssh", "git", "s3", "gcs", "hg":
+		return &tfmodules.UnresolvedError{
+			Reason: fmt.Sprintf("module transport %q is disabled because destination policy cannot be enforced", scheme),
+		}
+	default:
+		return &tfmodules.UnresolvedError{Reason: fmt.Sprintf("module transport %q is not supported", scheme)}
+	}
 }
 
 func isHTTPGetterSource(source string) bool {

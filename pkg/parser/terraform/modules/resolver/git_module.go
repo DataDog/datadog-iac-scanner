@@ -5,10 +5,13 @@
  */
 package resolver
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 // GitModuleResolveKey returns a canonical cache key for pinned git module sources.
-// Identical content folds transport spellings (https vs ssh, .git suffix) into one key.
+// Transport scheme is part of the key so disabled spellings cannot coalesce with HTTPS.
 // Returns false when the source is not a git:: module with ref= (not BareGit-owned).
 func GitModuleResolveKey(source, version string) (string, bool) {
 	repoURL, subdir, ref, ok := parseGitGetterSource(source)
@@ -18,7 +21,15 @@ func GitModuleResolveKey(source, version string) (string, bool) {
 	if v := strings.TrimSpace(version); v != "" && v != ref {
 		ref = ref + "\x00" + v
 	}
-	return normalizeGitRepoURL(repoURL) + "\x00" + ref + "\x00" + subdir, true
+	return gitModuleTransportKey(repoURL) + "\x00" + normalizeGitRepoURL(repoURL) + "\x00" + ref + "\x00" + subdir, true
+}
+
+func gitModuleTransportKey(repoURL string) string {
+	parsed, err := url.Parse(repoURL)
+	if err != nil || parsed.Scheme == "" {
+		return "unknown"
+	}
+	return strings.ToLower(parsed.Scheme)
 }
 
 // bareGitOwnsSource reports whether BareGitResolver handles this module source.
