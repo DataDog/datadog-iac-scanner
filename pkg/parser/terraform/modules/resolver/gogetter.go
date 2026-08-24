@@ -79,7 +79,10 @@ type GoGetterConfig struct {
 	HostAllowlist []string
 	Cache         *moduleCache
 	RegistryCache *registryCache
-	httpClient    *http.Client
+	// Git resolves pinnable git:: download URLs (registry X-Terraform-Get and
+	// default-branch sources) through BareGit instead of an unpinned git subprocess.
+	Git        Resolver
+	httpClient *http.Client
 
 	TmpDir string
 
@@ -126,7 +129,7 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 	if mod.IsLocal {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
 	}
-	// BareGit owns git:: sources with ref=. Falling through after a BareGit failure
+	// BareGit owns pinnable git:: sources. Falling through after a BareGit failure
 	// would trigger a full working-tree clone of the entire repository per module.
 	if bareGitOwnsSource(mod.Source) {
 		return Resolution{}, &tfmodules.UnresolvedError{
@@ -185,6 +188,17 @@ func (r *GoGetterResolver) fetchAndCommit(
 	}
 	if selectedSubdir == "" && sourceType == sourceTypeRegistry {
 		selectedSubdir = registrySubdir(mod.Source)
+	}
+	if gitMod, ok := pinnableGitModuleFromGetterSource(packageSource, selectedSubdir); ok {
+		if r.cfg.Git == nil {
+			return Resolution{}, &tfmodules.UnresolvedError{
+				Reason: "pinned git download must be resolved by BareGitResolver",
+			}
+		}
+		if err := r.checkAllowlist(packageSource); err != nil {
+			return Resolution{}, err
+		}
+		return r.cfg.Git.Resolve(ctx, gitMod)
 	}
 	if err := validateGetterSourceTransport(packageSource); err != nil {
 		return Resolution{}, err

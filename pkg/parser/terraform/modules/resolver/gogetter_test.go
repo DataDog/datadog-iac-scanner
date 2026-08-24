@@ -315,3 +315,43 @@ func TestGoGetterResolveCoalescesConcurrentFetches(t *testing.T) {
 		t.Fatalf("expected exactly 1 fetch for %d concurrent identical resolves, got %d", n, got)
 	}
 }
+
+type stubGitResolver struct {
+	last *tfmodules.ParsedModule
+	res  Resolution
+}
+
+func (s *stubGitResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	s.last = mod
+	return s.res, nil
+}
+
+func TestFetchAndCommitDelegatesPinnableGit(t *testing.T) {
+	stub := &stubGitResolver{
+		res: Resolution{LocalPath: "/tmp/mod", PackageRoot: "/tmp/mod"},
+	}
+	cfg := NewGoGetterConfig()
+	cfg.Git = stub
+	r := NewGoGetterResolver(cfg)
+
+	mod := &tfmodules.ParsedModule{Source: "git::https://github.com/org/repo.git"}
+	res, err := r.fetchAndCommit(context.Background(), sourceTypeGit, mod, "", "", false)
+	if err != nil {
+		t.Fatalf("fetchAndCommit: %v", err)
+	}
+	if res.LocalPath != stub.res.LocalPath {
+		t.Fatalf("LocalPath = %q, want delegated result", res.LocalPath)
+	}
+	if stub.last == nil || stub.last.Source != "git::https://github.com/org/repo.git?ref=HEAD" {
+		t.Fatalf("delegated source = %v, want git::https with ref=HEAD", stub.last)
+	}
+
+	mod = &tfmodules.ParsedModule{Source: "git::https://github.com/terraform-aws-modules/terraform-aws-vpc?ref=abc123"}
+	_, err = r.fetchAndCommit(context.Background(), sourceTypeGit, mod, "", "modules/vpc", false)
+	if err != nil {
+		t.Fatalf("fetchAndCommit registry-style: %v", err)
+	}
+	if stub.last.Source != "git::https://github.com/terraform-aws-modules/terraform-aws-vpc//modules/vpc?ref=abc123" {
+		t.Fatalf("delegated source = %q", stub.last.Source)
+	}
+}

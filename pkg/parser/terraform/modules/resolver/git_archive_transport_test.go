@@ -112,14 +112,17 @@ func TestArchiveCommandRejectsUnvalidatedDestination(t *testing.T) {
 // being folded into it.
 func TestLocalCloneArchiveCommandKeepsStdoutClean(t *testing.T) {
 	bare := initBareRepo(t)
-	cmd, cleanup, err := localCloneArchiveCommand(bare)(
+	preps, err := localCloneArchiveCommand(bare)(
 		context.Background(), []string{"config", "--get", "core.bare"},
 	)
 	if err != nil {
 		t.Fatalf("local archive command: %v", err)
 	}
-	defer cleanup()
-	out, err := cmd.Output()
+	if len(preps) != 1 {
+		t.Fatalf("got %d archive preps, want 1", len(preps))
+	}
+	defer preps[0].close()
+	out, err := preps[0].cmd.Output()
 	if err != nil {
 		t.Fatalf("local archive command: %v", err)
 	}
@@ -128,12 +131,46 @@ func TestLocalCloneArchiveCommandKeepsStdoutClean(t *testing.T) {
 	}
 }
 
+func TestArchiveCommandPreparesEverySSHAddress(t *testing.T) {
+	const host = "modules.example"
+	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, knownHostsLineFor(t, host)))
+
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("140.82.121.4"), net.ParseIP("140.82.121.3")}, nil
+	}
+	repo := &bareRemote{
+		transport: sshScheme,
+		cloneURL:  "ssh://git@" + host + "/org/repo.git",
+		bareRepo: &bareRepo{
+			barePath: initBareRepo(t),
+			policy:   policy,
+		},
+	}
+
+	preps, err := repo.archiveCommand(context.Background(), []string{"rev-parse", "--git-dir"})
+	if err != nil {
+		t.Fatalf("archive command: %v", err)
+	}
+	if len(preps) != 2 {
+		t.Fatalf("got %d archive preps, want one per validated address", len(preps))
+	}
+	joined := strings.Join(preps[0].cmd.Args, " ") + "\n" + strings.Join(preps[1].cmd.Args, " ")
+	if !strings.Contains(joined, "remote.origin.url=ssh://git@140.82.121.4/org/repo.git") ||
+		!strings.Contains(joined, "remote.origin.url=ssh://git@140.82.121.3/org/repo.git") {
+		t.Fatalf("archive preps did not pin both addresses:\n%s", joined)
+	}
+}
+
 func runArchiveCommand(t *testing.T, repo *bareRemote, args []string) ([]byte, error) {
 	t.Helper()
-	cmd, cleanup, err := repo.archiveCommand(context.Background(), args)
+	preps, err := repo.archiveCommand(context.Background(), args)
 	if err != nil {
 		return nil, err
 	}
-	defer cleanup()
-	return cmd.Output()
+	if len(preps) == 0 {
+		t.Fatal("no archive command")
+	}
+	defer preps[0].close()
+	return preps[0].cmd.Output()
 }

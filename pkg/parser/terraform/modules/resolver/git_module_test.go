@@ -74,11 +74,47 @@ func TestBareGitOwnsSource(t *testing.T) {
 	if !bareGitOwnsSource("git::https://github.com/org/repo//sub?ref=v1") {
 		t.Fatal("git:: with ref should be bare-git owned")
 	}
-	if bareGitOwnsSource("git::https://github.com/org/repo//sub") {
-		t.Fatal("git:: without ref is not bare-git owned")
+	if !bareGitOwnsSource("git::https://github.com/org/repo//sub") {
+		t.Fatal("default-branch git::https should be bare-git owned")
 	}
 	if bareGitOwnsSource("registry.terraform.io/org/name/aws") {
 		t.Fatal("registry source is not bare-git owned")
+	}
+	if bareGitOwnsSource("git::file:///tmp/repository") {
+		t.Fatal("file:// git sources stay on go-getter")
+	}
+}
+
+func TestPinnableGitModuleFromGetterSource(t *testing.T) {
+	mod, ok := pinnableGitModuleFromGetterSource("git::https://github.com/org/repo.git?ref=abc123", "modules/vpc")
+	if !ok {
+		t.Fatal("expected registry-style HTTPS git download to be pinnable")
+	}
+	if mod.Source != "git::https://github.com/org/repo.git//modules/vpc?ref=abc123" {
+		t.Fatalf("got %q", mod.Source)
+	}
+
+	mod, ok = pinnableGitModuleFromGetterSource("git::https://github.com/org/repo.git", "")
+	if !ok {
+		t.Fatal("expected default-branch HTTPS git to be pinnable")
+	}
+	if mod.Source != "git::https://github.com/org/repo.git?ref=HEAD" {
+		t.Fatalf("got %q", mod.Source)
+	}
+
+	if _, ok := pinnableGitModuleFromGetterSource("git::file:///tmp/repository", ""); ok {
+		t.Fatal("file:// git must not be treated as pinnable")
+	}
+}
+
+func TestGitModuleResolveKeyDefaultsMissingRefToHEAD(t *testing.T) {
+	key, ok := GitModuleResolveKey("git::https://github.com/org/repo.git", "")
+	if !ok {
+		t.Fatal("expected default-branch source to have a resolve key")
+	}
+	want := "https\x00github.com/org/repo\x00HEAD\x00"
+	if key != want {
+		t.Fatalf("key = %q, want %q", key, want)
 	}
 }
 

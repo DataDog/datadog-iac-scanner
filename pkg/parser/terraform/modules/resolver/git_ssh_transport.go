@@ -61,9 +61,15 @@ func sshKnownHostsFiles() []string {
 	return files
 }
 
-// sshHostKeyIsPinned reports whether host already has a host key entry. Hosts
-// without one are refused rather than trusted on first use, so a hijacked
-// destination cannot silently present a new key.
+// sshHostKeyName is the known_hosts / HostKeyAlias key for host. Port 22 uses
+// the bare hostname; any other port uses OpenSSH's [host]:port form.
+func sshHostKeyName(host, port string) string {
+	if port == "" || port == "22" {
+		return host
+	}
+	return "[" + host + "]:" + port
+}
+
 func sshHostKeyIsPinned(ctx context.Context, host string, knownHosts []string) bool {
 	for _, file := range knownHosts {
 		out, err := exec.CommandContext(ctx, "ssh-keygen", "-F", host, "-f", file).Output() //nolint:gosec
@@ -186,10 +192,11 @@ func sshGitSetup(
 	if host == "" {
 		return nil, nil, nil, fmt.Errorf("ssh git remote %q has no host", remoteURL)
 	}
-	if err := checkSSHHostKeyPinned(ctx, host); err != nil {
+	keyName := sshHostKeyName(host, remote.Port())
+	if err := checkSSHHostKeyPinned(ctx, keyName); err != nil {
 		return nil, nil, nil, err
 	}
-	sshCommand, err := gitSSHCommand(host, sshKnownHostsFiles())
+	sshCommand, err := gitSSHCommand(keyName, sshKnownHostsFiles())
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -225,20 +232,24 @@ func runGitSSHCommand(
 	return lastOut, lastErr
 }
 
-func prepareGitSSHCommand(
+func prepareGitSSHArchives(
 	ctx context.Context,
 	policy *httpDestinationPolicy,
 	remoteURL string,
 	command gitNetworkCommand,
-) (*exec.Cmd, func(), error) {
+) ([]archivePrep, error) {
 	remote, env, addresses, err := sshGitSetup(ctx, policy, remoteURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if len(addresses) == 0 {
-		return nil, nil, errors.New("ssh git remote had no validated address")
+		return nil, errors.New("ssh git remote had no validated address")
 	}
-	cmd := command(pinnedSSHRemote(remote, addresses[0]), nil)
-	cmd.Env = env
-	return cmd, func() {}, nil
+	preps := make([]archivePrep, 0, len(addresses))
+	for _, address := range addresses {
+		cmd := command(pinnedSSHRemote(remote, address), nil)
+		cmd.Env = env
+		preps = append(preps, archivePrep{cmd: cmd})
+	}
+	return preps, nil
 }

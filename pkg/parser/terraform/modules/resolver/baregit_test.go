@@ -9,11 +9,45 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
+
+func TestResolveUsesCachedSHAArchiveWithoutDNS(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	r := NewBareGitResolver(t.TempDir(), "github.com")
+	remote := r.getOrInitRemote("https://github.com/org/repo.git")
+	dest := archiveCacheDir(remote.extractBase, sha)
+	if err := os.MkdirAll(dest, dirPerm); err != nil {
+		t.Fatal(err)
+	}
+	marker := archiveMarkerPath(remote.extractBase, sha, ".")
+	if err := os.MkdirAll(filepath.Dir(marker), dirPerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, nil, cacheFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	r.policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		t.Fatal("cached SHA extract must not resolve DNS")
+		return nil, errors.New("offline")
+	}
+
+	res, err := r.Resolve(context.Background(), &tfmodules.ParsedModule{
+		Source: "git::https://github.com/org/repo.git?ref=" + sha,
+	})
+	if err != nil {
+		t.Fatalf("expected a cache hit without DNS, got %v", err)
+	}
+	if res.PackageRoot != dest {
+		t.Fatalf("PackageRoot = %q, want %q", res.PackageRoot, dest)
+	}
+}
 
 func TestBareGitResolverRejectsDisallowedHost(t *testing.T) {
 	r := NewBareGitResolver(t.TempDir(), "allowed.example")

@@ -66,6 +66,45 @@ func TestSSHHostKeyIsPinned(t *testing.T) {
 	}
 }
 
+func TestSSHHostKeyName(t *testing.T) {
+	cases := []struct {
+		host, port, want string
+	}{
+		{host: "modules.example", port: "", want: "modules.example"},
+		{host: "modules.example", port: "22", want: "modules.example"},
+		{host: "modules.example", port: "2222", want: "[modules.example]:2222"},
+		{host: "::1", port: "2222", want: "[::1]:2222"},
+	}
+	for _, tc := range cases {
+		if got := sshHostKeyName(tc.host, tc.port); got != tc.want {
+			t.Errorf("sshHostKeyName(%q, %q) = %q, want %q", tc.host, tc.port, got, tc.want)
+		}
+	}
+}
+
+func TestCheckSSHHostKeyPinnedCustomPort(t *testing.T) {
+	const host = "modules.example"
+	lookup := sshHostKeyName(host, "2222")
+	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, knownHostsLineFor(t, lookup)))
+	if err := checkSSHHostKeyPinned(context.Background(), lookup); err != nil {
+		t.Fatalf("expected [host]:port entry to pin the custom-port remote: %v", err)
+	}
+	if err := checkSSHHostKeyPinned(context.Background(), host); err == nil {
+		t.Fatal("a default-port lookup must not match a [host]:port known_hosts entry")
+	}
+}
+
+func TestGitSSHCommandUsesPortHostKeyAlias(t *testing.T) {
+	knownHosts := writeKnownHosts(t, "")
+	command, err := gitSSHCommand("[modules.example]:2222", []string{knownHosts})
+	if err != nil {
+		t.Fatalf("building ssh command: %v", err)
+	}
+	if !strings.Contains(command, "'HostKeyAlias=[modules.example]:2222'") {
+		t.Fatalf("ssh command %q is missing the custom-port HostKeyAlias", command)
+	}
+}
+
 func TestCheckSSHHostKeyPinnedUsesEnvOverride(t *testing.T) {
 	const host = "modules.example"
 	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, knownHostsLineFor(t, host)))
