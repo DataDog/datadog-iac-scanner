@@ -45,12 +45,19 @@ type ResolvedResource struct {
 	Type       string
 	Name       string
 	Attributes map[string]cty.Value
+	// Body is the resource's HCL body, used to recover the reference text of
+	// attributes evaluation could not resolve. It is not consulted during
+	// evaluation, so recovered references never feed back into resolved values.
+	Body *hclsyntax.Body
 
 	// Source location and module address for finding attribution.
 	DefinedIn     string
 	DefLine       int
 	ModuleAddress string // "" for root module resources
 	CallChain     []CallSite
+	// ExpansionTruncated is set when count/for_each produced more instances than
+	// maxCountExpansion; the source block must stay in the scan for the rest.
+	ExpansionTruncated bool
 }
 
 // CallSite records one hop in a module call chain.
@@ -426,6 +433,7 @@ func (e *Evaluator) expandResourceBlock(
 			Type:          typeName,
 			Name:          name,
 			Attributes:    e.evalBody(rb.Body, ctx, nil),
+			Body:          rb.Body,
 			DefinedIn:     rb.TypeRange.Filename,
 			DefLine:       rb.TypeRange.Start.Line,
 			ModuleAddress: addr,
@@ -462,6 +470,7 @@ func (e *Evaluator) expandCountInstances(
 			return nil, true
 		}
 		nExpand := n
+		truncated := n > maxCountExpansion
 		if nExpand > maxCountExpansion {
 			nExpand = maxCountExpansion
 		}
@@ -473,7 +482,9 @@ func (e *Evaluator) expandCountInstances(
 					"index": cty.NumberIntVal(int64(i)),
 				}),
 			}
-			out = append(out, makeOne(fmt.Sprintf("%s[%d]", resName, i), child))
+			res := makeOne(fmt.Sprintf("%s[%d]", resName, i), child)
+			res.ExpansionTruncated = truncated
+			out = append(out, res)
 		}
 		return out, true
 	}
@@ -504,6 +515,8 @@ func (e *Evaluator) expandForEachInstances(
 				return nil, true
 			}
 			out := make([]ResolvedResource, 0)
+			total := fv.LengthInt()
+			truncated := total > maxCountExpansion
 			i := 0
 			for it := fv.ElementIterator(); it.Next() && i < maxCountExpansion; i++ {
 				k, kv := it.Element()
@@ -518,7 +531,9 @@ func (e *Evaluator) expandForEachInstances(
 						"value": kv,
 					}),
 				}
-				out = append(out, makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child))
+				res := makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child)
+				res.ExpansionTruncated = truncated
+				out = append(out, res)
 			}
 			return out, true
 		}
@@ -699,6 +714,15 @@ func (e *Evaluator) evalBody(
 	}
 	for _, t := range order {
 		list := grouped[t]
+		// Match how a parsed Terraform file represents nested blocks: a block
+		// written once is an object, and only a repeated one becomes a list.
+		// Rules are written against that shape — `resource.ingress.cidr_blocks`
+		// reads straight through a single block — so a list here would make a
+		// rule quietly stop matching resources that came from a module.
+		if len(list) == 1 {
+			out[t] = list[0]
+			continue
+		}
 		out[t] = cty.TupleVal(list)
 	}
 	return out

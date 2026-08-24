@@ -445,14 +445,16 @@ func (c *Inspector) Inspect(
 	contextLogger.Debug().Msg("engine.Inspect()")
 
 	// Terraform local-module instantiation is gated so it can be disabled remotely.
+	queries := c.getQueriesByPlat(platforms)
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
+	var syntheticFiles []*model.FileMetadata
 	if shouldInstantiateLocalModules(platforms, files) &&
 		c.flagEvaluator != nil &&
 		c.flagEvaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
-		var syntheticFiles []*model.FileMetadata
-		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files)
-		files = append(files, syntheticFiles...)
+		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
+		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files, targets)
 	}
 
 	// Must run after module mutations (which suppress module bodies in place).
@@ -480,7 +482,12 @@ func (c *Inspector) Inspect(
 		return nil, err
 	}
 
-	queries := c.getQueriesByPlat(platforms)
+	// Synthetic files stand in for module instantiations of a file that has
+	// already been read; they are only joined once findings need to be
+	// attributed back to a call site. Adding them any earlier would have every
+	// pass over the scan input, module parsing above in particular, redo that
+	// file's work once per instantiation.
+	files = append(files, syntheticFiles...)
 
 	// Compute the file map once and share it (read-only) across all workers and
 	// payload partitioning.

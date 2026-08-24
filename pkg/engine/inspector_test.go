@@ -387,7 +387,7 @@ func TestInterfaceToPayloadValueMatchesExistingTransformation(t *testing.T) {
 			map[string]interface{}{
 				"id":       "one",
 				"resource": shared,
-				"_refs":    map[string]interface{}{"resource": shared},
+				"mirror":   map[string]interface{}{"resource": shared},
 			},
 		},
 	}

@@ -8,8 +8,11 @@ package engine
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -111,8 +114,9 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 		},
 	}
 	calledDirs := map[string]bool{"/cache/vpc": true}
+	successfulRoots := map[string]bool{root: true}
 
-	stripModuleCalls(doc, rootFile, root, calledDirs, func(source, version, callerFile, moduleName string) (string, bool) {
+	stripModuleCalls(doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, bool) {
 		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
 			return "/cache/vpc", true
 		}
@@ -121,6 +125,230 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 
 	if _, ok := doc["module"]; ok {
 		t.Fatalf("expected resolved remote module call to be stripped")
+	}
+}
+
+func TestStripModuleCalls_SkipsFailedRoot(t *testing.T) {
+	root := t.TempDir()
+	stackA := filepath.Join(root, "stack-a")
+	stackB := filepath.Join(root, "stack-b")
+	rootFileB := writeFile(t, stackB, "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+}
+`)
+	doc := model.Document{
+		"module": map[string]interface{}{
+			"bucket": map[string]interface{}{
+				"source": "../modules/bucket",
+			},
+		},
+	}
+	calledDirs := map[string]bool{filepath.Join(root, "modules", "bucket"): true}
+	successfulRoots := map[string]bool{stackA: true} // stack-b eval failed
+
+	stripModuleCalls(doc, rootFileB, root, calledDirs, successfulRoots, newRootIndex([]string{stackA, stackB}), nil)
+
+	if _, ok := doc["module"]; !ok {
+		t.Fatal("module call under a failed root must not be stripped")
+	}
+}
+
+func TestInstantiatedDocs_DoesNotDuplicateStaticResourcesAcrossExpansionLayers(t *testing.T) {
+	root := t.TempDir()
+	modulePath := writeFile(t, filepath.Join(root, "modules", "app"), "main.tf", `
+resource "aws_s3_bucket" "shared" {
+  bucket = "shared"
+}
+
+resource "aws_s3_bucket" "replica" {
+  count  = 2
+  bucket = "replica-${count.index}"
+}
+`)
+	fm := fileMeta("mod-id", modulePath)
+	resources := []tfeval.ResolvedResource{
+		{Type: "aws_s3_bucket", Name: "shared", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[0]", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[1]", DefinedIn: modulePath, ModuleAddress: "module.app"},
+	}
+
+	docs, _, _ := instantiatedDocs(
+		resources,
+		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
+		root,
+		nil,
+		make(map[docContentKey]string),
+		make(map[string][]extraCallerInfo),
+		make(instantiatedIndex),
+	)
+
+	if len(docs) != 2 {
+		t.Fatalf("expected one document per expansion layer, got %d", len(docs))
+	}
+	var shared, replicas int
+	for _, doc := range docs {
+		byType, ok := asStringMap(docAsMap(doc["resource"])["aws_s3_bucket"])
+		if !ok {
+			t.Fatalf("resource document has unexpected shape: %#v", doc)
+		}
+		if _, ok := byType["shared"]; ok {
+			shared++
+		}
+		if _, ok := byType["replica"]; ok {
+			replicas++
+		}
+	}
+	if shared != 1 {
+		t.Fatalf("static resource appears %d times, want exactly once", shared)
+	}
+	if replicas != 2 {
+		t.Fatalf("expanded resource appears %d times, want one per instance", replicas)
+	}
+}
+
+func TestResolveModuleDocuments_PartialRootFailureKeepsModuleBody(t *testing.T) {
+	root := t.TempDir()
+	stackA := filepath.Join(root, "stack-a")
+	stackB := filepath.Join(root, "stack-b")
+	modDir := filepath.Join(root, "modules", "bucket")
+
+	rootFileA := writeFile(t, stackA, "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  name   = "a"
+}
+`)
+	writeFile(t, stackB, "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  name   = "b"
+}
+`)
+	writeFile(t, stackB, "broken.tf", `resource "bad" {`) // unreadable root dir fails eval
+	modFile := writeFile(t, modDir, "main.tf", `
+variable "name" { type = string }
+resource "aws_s3_bucket" "this" { bucket = var.name }
+`)
+
+	bRootPath := filepath.Join(stackB, "main.tf")
+	files := model.FileMetadatas{
+		fileMeta("a-root", rootFileA),
+		fileMeta("mod-id", modFile),
+	}
+	bRoot := fileMeta("b-root", bRootPath)
+	bRoot.Document = model.Document{
+		"module": map[string]interface{}{
+			"bucket": map[string]interface{}{
+				"source": "../modules/bucket",
+				"name":   "b",
+			},
+		},
+	}
+	files = append(files, bRoot)
+
+	// Remove stack-b from disk so root evaluation fails reliably (chmod 000 is
+	// ignored for root users in CI). Module discovery for the failed root uses
+	// the parsed document still held in memory.
+	if err := os.RemoveAll(stackB); err != nil {
+		t.Fatalf("remove stack-b: %v", err)
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	if !res.ok {
+		t.Fatal("expected partial module resolution to succeed")
+	}
+	if len(res.suppressed["mod-id"]) != 0 {
+		t.Fatalf("shared module must not be suppressed when another root failed eval: %#v", res.suppressed)
+	}
+}
+
+func TestResolveModuleDocuments_PartialRootFailureKeepsTransitiveModuleBody(t *testing.T) {
+	root := t.TempDir()
+	successfulRoot := filepath.Join(root, "successful")
+	failedRoot := filepath.Join(root, "failed")
+	middleDir := filepath.Join(root, "modules", "middle")
+	leafDir := filepath.Join(root, "modules", "leaf")
+
+	successfulFile := writeFile(t, successfulRoot, "main.tf", `
+module "leaf" {
+  source = "../modules/leaf"
+}
+`)
+	failedFile := writeFile(t, failedRoot, "main.tf", `
+module "middle" {
+  source = "../modules/middle"
+}
+`)
+	middleFile := writeFile(t, middleDir, "main.tf", `
+module "leaf" {
+  source = "../leaf"
+}
+`)
+	leafFile := writeFile(t, leafDir, "main.tf", `
+resource "aws_s3_bucket" "this" {
+  bucket = "logs"
+}
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("successful-root", successfulFile),
+		fileMeta("middle-id", middleFile),
+		fileMeta("leaf-id", leafFile),
+	}
+	failed := fileMeta("failed-root", failedFile)
+	failed.Document = model.Document{
+		"module": map[string]interface{}{
+			"middle": map[string]interface{}{"source": "../modules/middle"},
+		},
+	}
+	files = append(files, failed)
+
+	// Preserve the parsed root document but make its on-disk evaluation fail.
+	if err := os.RemoveAll(failedRoot); err != nil {
+		t.Fatalf("remove failed root: %v", err)
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	if !res.ok {
+		t.Fatal("expected the other root to evaluate successfully")
+	}
+	if len(res.suppressed["leaf-id"]) != 0 {
+		t.Fatalf("transitive module beneath failed root must not be suppressed: %#v", res.suppressed)
+	}
+}
+
+func TestResolveModuleDocuments_TruncatedCountKeepsSourceBlock(t *testing.T) {
+	root := t.TempDir()
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "buckets")
+
+	rootFile := writeFile(t, rootDir, "main.tf", `
+module "buckets" {
+  source = "../modules/buckets"
+}
+`)
+	modFile := writeFile(t, modDir, "main.tf", `
+resource "aws_s3_bucket" "replica" {
+  count  = 12
+  bucket = "bucket-${count.index}"
+}
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("root-id", rootFile),
+		fileMeta("mod-id", modFile),
+	}
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	if !res.ok {
+		t.Fatal("expected module resolution to succeed")
+	}
+	if len(res.docs) != 10 {
+		t.Fatalf("expected 10 instantiated docs for truncated count, got %d", len(res.docs))
+	}
+	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
+		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)
 	}
 }
 
@@ -151,7 +379,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -187,12 +415,80 @@ resource "aws_s3_bucket" "this" {
 
 	// The module body must be suppressed (so it isn't scanned standalone), but
 	// the root file must still be scanned.
-	if !res.suppressed["mod-id"] {
+	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatalf("module file should be suppressed")
 	}
-	if res.suppressed["root-id"] {
+	if len(res.suppressed["root-id"]) != 0 {
 		t.Fatalf("root file should not be suppressed")
 	}
+}
+
+// Only the blocks that came back instantiated may be dropped from the file they
+// are written in. Dropping the whole file would lose the coverage the scanner
+// has today for everything else in it.
+func TestRemoveInstantiatedResources(t *testing.T) {
+	newDoc := func() model.Document {
+		return model.Document{
+			"resource": model.Document{
+				"aws_s3_bucket": model.Document{
+					"replaced": model.Document{"bucket": "x"},
+					"kept":     model.Document{"bucket": "y"},
+				},
+				"aws_sqs_queue": model.Document{
+					"untouched": model.Document{"name": "q"},
+				},
+				"_dd_lines": map[string]model.LineObject{},
+			},
+			"variable": model.Document{"name": model.Document{}},
+		}
+	}
+
+	t.Run("removes only the instantiated block", func(t *testing.T) {
+		doc := newDoc()
+		removeInstantiatedResources(doc, map[string]map[string]bool{
+			"aws_s3_bucket": {"replaced": true},
+		})
+
+		resources, _ := asStringMap(doc["resource"])
+		buckets, _ := asStringMap(resources["aws_s3_bucket"])
+		if _, gone := buckets["replaced"]; gone {
+			t.Fatalf("instantiated block must not be scanned in place too: %#v", buckets)
+		}
+		if _, kept := buckets["kept"]; !kept {
+			t.Fatalf("a block that produced no instance must keep its coverage: %#v", buckets)
+		}
+		if _, kept := resources["aws_sqs_queue"]; !kept {
+			t.Fatalf("untouched resource types must remain: %#v", resources)
+		}
+		if _, kept := doc["variable"]; !kept {
+			t.Fatalf("non-resource blocks must never be dropped")
+		}
+	})
+
+	t.Run("drops the resource key once nothing is left under it", func(t *testing.T) {
+		doc := newDoc()
+		removeInstantiatedResources(doc, map[string]map[string]bool{
+			"aws_s3_bucket": {"replaced": true, "kept": true},
+			"aws_sqs_queue": {"untouched": true},
+		})
+
+		if _, still := doc["resource"]; still {
+			t.Fatalf("only parser line metadata was left, so resource should be gone: %#v", doc)
+		}
+	})
+
+	t.Run("drops a nameless block's whole type", func(t *testing.T) {
+		doc := model.Document{
+			"resource": model.Document{
+				"aws_lb": []interface{}{model.Document{"name": "one"}},
+			},
+		}
+		removeInstantiatedResources(doc, map[string]map[string]bool{"aws_lb": {"": true}})
+
+		if _, still := doc["resource"]; still {
+			t.Fatalf("a nameless block has no name to match, so its type must go: %#v", doc)
+		}
+	})
 }
 
 func TestResolveModuleDocuments_RelativeFilePaths(t *testing.T) {
@@ -223,7 +519,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", filepath.Join("modules", "bucket", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -234,8 +530,158 @@ resource "aws_s3_bucket" "this" {
 	if doc := res.docs[0]; docFileID(doc["id"]) != "mod-id" {
 		t.Fatalf("instantiated doc id prefix = %v, want mod-id", docFileID(doc["id"]))
 	}
-	if !res.suppressed["mod-id"] || res.suppressed["root-id"] {
+	if len(res.suppressed["mod-id"]) == 0 || len(res.suppressed["root-id"]) != 0 {
 		t.Fatalf("unexpected suppression map: %#v", res.suppressed)
+	}
+}
+
+// writeFanOut builds a repository where roots roots all call one module. The
+// module spans two files and declares three resources, so the fixture also
+// covers grouping. When vary is set each root passes a different value, so
+// nothing can be shared between them.
+func writeFanOut(t *testing.T, roots int, vary bool) (string, model.FileMetadatas) {
+	t.Helper()
+	root := t.TempDir()
+	modDir := filepath.Join(root, "modules", "app")
+
+	writeFile(t, modDir, "buckets.tf", `
+variable "name" { type = string }
+
+resource "aws_s3_bucket" "primary" {
+  bucket = var.name
+}
+
+resource "aws_s3_bucket" "backup" {
+  bucket = "${var.name}-backup"
+}
+`)
+	writeFile(t, modDir, "queue.tf", `
+resource "aws_sqs_queue" "events" {
+  name = var.name
+}
+`)
+
+	files := model.FileMetadatas{
+		fileMeta("mod-buckets", filepath.Join(modDir, "buckets.tf")),
+		fileMeta("mod-queue", filepath.Join(modDir, "queue.tf")),
+	}
+	for i := range roots {
+		name := "shared"
+		if vary {
+			name = fmt.Sprintf("root-%d", i)
+		}
+		dir := filepath.Join(root, fmt.Sprintf("stack-%d", i))
+		writeFile(t, dir, "main.tf", fmt.Sprintf(`
+module "app" {
+  source = "../modules/app"
+  name   = %q
+}
+`, name))
+		files = append(files, fileMeta(fmt.Sprintf("root-%d", i), filepath.Join(dir, "main.tf")))
+	}
+	return root, files
+}
+
+// The payload has to stay proportional to the configuration. Roots that call a
+// module with the same inputs resolve to the same content and must share
+// documents; only genuinely different content may add any.
+func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
+	const modFiles = 2
+
+	for _, roots := range []int{1, 4, 32} {
+		repo, files := writeFanOut(t, roots, false)
+		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+		if !res.ok {
+			t.Fatalf("roots=%d: resolveModuleDocuments ok = false", roots)
+		}
+		if len(res.docs) != modFiles {
+			t.Fatalf("roots=%d: %d documents, want %d — identical calls must share documents",
+				roots, len(res.docs), modFiles)
+		}
+		// Every call site still has to be reported, through cloned findings.
+		if got := deduplicatedCallerCount(&res); got != (roots-1)*modFiles {
+			t.Fatalf("roots=%d: %d deduplicated callers, want %d", roots, got, (roots-1)*modFiles)
+		}
+		if got := len(res.syntheticFiles); got != modFiles {
+			t.Fatalf("roots=%d: %d synthetic files, want one per document", roots, got)
+		}
+	}
+
+	// Different inputs genuinely produce different content, so those do scale.
+	repo, files := writeFanOut(t, 8, true)
+	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+	if len(res.docs) != 8*modFiles {
+		t.Fatalf("%d documents for 8 differing roots, want %d", len(res.docs), 8*modFiles)
+	}
+}
+
+// A module file reaches Rego the way any other Terraform file does: one
+// document holding that file's resources, and nothing else.
+func TestResolveModuleDocuments_DocumentMirrorsItsFile(t *testing.T) {
+	repo, files := writeFanOut(t, 1, false)
+	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+	if !res.ok {
+		t.Fatal("resolveModuleDocuments ok = false")
+	}
+
+	byFile := map[string]model.Document{}
+	for _, doc := range res.docs {
+		byFile[docFileID(doc["id"])] = doc
+	}
+	if len(byFile) != 2 {
+		t.Fatalf("expected one document per module file, got %#v", byFile)
+	}
+
+	buckets, _ := asStringMap(byFile["mod-buckets"]["resource"])
+	byName, _ := asStringMap(buckets["aws_s3_bucket"])
+	if len(buckets) != 1 || len(byName) != 2 {
+		t.Fatalf("both resources of buckets.tf belong in one document: %#v", buckets)
+	}
+	if _, leaked := buckets["aws_sqs_queue"]; leaked {
+		t.Fatalf("a document must not carry another file's resources: %#v", buckets)
+	}
+	for _, doc := range res.docs {
+		for key := range doc {
+			if key != "id" && key != "file" && key != "resource" {
+				t.Fatalf("unexpected key %q: a document must look like a parsed file", key)
+			}
+		}
+	}
+}
+
+// Document ids feed finding fingerprints, so the same repository must always
+// produce the same ones. Roots are discovered by walking a map, so nothing but
+// an explicit ordering keeps the same caller owning a shared document.
+func TestResolveModuleDocuments_DocumentIDsAreStable(t *testing.T) {
+	// All roots resolve identically, so every document but one is deduplicated
+	// and something has to decide which caller owns it.
+	repo, files := writeFanOut(t, 8, false)
+
+	snapshot := func() ([]string, map[string][]string) {
+		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+		ids := make([]string, 0, len(res.docs))
+		for _, doc := range res.docs {
+			ids = append(ids, doc["id"].(string))
+		}
+		extras := map[string][]string{}
+		for primary, callers := range res.extras {
+			for _, c := range callers {
+				extras[primary] = append(extras[primary], c.docID)
+			}
+			sort.Strings(extras[primary])
+		}
+		return ids, extras
+	}
+
+	wantIDs, wantExtras := snapshot()
+	for run := range 3 {
+		ids, extras := snapshot()
+		if !reflect.DeepEqual(ids, wantIDs) {
+			t.Fatalf("run %d: documents changed between runs:\n%v\n%v", run, ids, wantIDs)
+		}
+		if !reflect.DeepEqual(extras, wantExtras) {
+			t.Fatalf("run %d: deduplicated callers changed between runs:\n%v\n%v", run, extras, wantExtras)
+		}
 	}
 }
 
@@ -280,7 +726,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -315,7 +761,7 @@ resource "aws_s3_bucket" "this" {
 	if len(chains) != 2 {
 		t.Fatalf("want 2 distinct module call chains (one per root), got %d: %#v", len(chains), chains)
 	}
-	if !res.suppressed["mod-id"] {
+	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatalf("shared module file should be suppressed")
 	}
 }
@@ -363,7 +809,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -460,7 +906,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		fileMeta("mod-b", modBFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -498,7 +944,7 @@ module "bucket" {
 		fileMeta("root-id", filepath.Join("stack", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if res.ok {
 		t.Fatalf("resolveModuleDocuments ok = true, want false when all roots fail")
 	}
@@ -525,14 +971,14 @@ resource "aws_s3_bucket" "this" {
 
 	files := model.FileMetadatas{fileMeta("orphan-id", orphanFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
 	if len(res.docs) != 0 {
 		t.Fatalf("orphan module should not instantiate resources, got %#v", res.docs)
 	}
-	if res.suppressed["orphan-id"] {
+	if len(res.suppressed["orphan-id"]) != 0 {
 		t.Fatalf("orphan module should not be suppressed")
 	}
 }
@@ -568,7 +1014,7 @@ resource "aws_s3_bucket" "leaf" {
 		fileMeta("leaf-id", leafFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -587,10 +1033,15 @@ resource "aws_s3_bucket" "leaf" {
 		t.Fatalf("leaf bucket = %#v, want deep", leaf["bucket"])
 	}
 
-	if !res.suppressed["a-id"] || !res.suppressed["leaf-id"] {
-		t.Fatalf("intermediate and leaf module files should be suppressed: %#v", res.suppressed)
+	if !res.suppressed["leaf-id"]["aws_s3_bucket"]["leaf"] {
+		t.Fatalf("the instantiated leaf resource should be replaced: %#v", res.suppressed)
 	}
-	if res.suppressed["root-id"] {
+	// The intermediate module only calls another module, so it has no resource
+	// block to replace and nothing about it should be dropped.
+	if len(res.suppressed["a-id"]) != 0 {
+		t.Fatalf("intermediate module declares no resources, nothing to replace: %#v", res.suppressed)
+	}
+	if len(res.suppressed["root-id"]) != 0 {
 		t.Fatalf("root file should not be suppressed")
 	}
 }
@@ -624,7 +1075,7 @@ module "bucket" {
 	})
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).WithContext(context.Background())
-	if docs, synthetic, extras := ins.instantiateLocalModules(ctx, files); docs != nil || synthetic != nil || extras != nil {
+	if docs, synthetic, extras := ins.instantiateLocalModules(ctx, files, nil); docs != nil || synthetic != nil || extras != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {
@@ -635,7 +1086,7 @@ module "bucket" {
 	}
 }
 
-func TestInstantiatedModuleResourceCountIncludesDeduplicatedCallers(t *testing.T) {
+func TestDeduplicatedCallerCount(t *testing.T) {
 	res := moduleResolutionResult{
 		docs: []model.Document{{}, {}},
 		extras: map[string][]extraCallerInfo{
@@ -644,8 +1095,8 @@ func TestInstantiatedModuleResourceCountIncludesDeduplicatedCallers(t *testing.T
 		},
 	}
 
-	if got := instantiatedModuleResourceCount(&res); got != 5 {
-		t.Fatalf("instantiatedModuleResourceCount() = %d, want 5", got)
+	if got := deduplicatedCallerCount(&res); got != 3 {
+		t.Fatalf("deduplicatedCallerCount() = %d, want 3", got)
 	}
 }
 
