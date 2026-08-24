@@ -24,25 +24,50 @@ func TestHTTPDestinationPolicyRejectsNonPublicAddresses(t *testing.T) {
 		"172.16.0.1",
 		"192.168.0.1",
 		"169.254.169.254",
-		"100.64.0.1",
-		"198.18.0.1",
-		"192.0.2.1",
-		"198.51.100.1",
-		"203.0.113.1",
-		"240.0.0.1",
 		"::1",
 		"fe80::1",
 		"fd00:ec2::254",
-		"2001:db8::1",
-		"100::1",
-		"64:ff9b:1::1",
 	}
 	policy := newHTTPDestinationPolicy(nil)
 
 	for _, address := range tests {
 		t.Run(address, func(t *testing.T) {
-			_, err := policy.resolveHost(t.Context(), address)
-			if err == nil || !strings.Contains(err.Error(), "not a public unicast destination") &&
+			if _, err := policy.resolveHost(t.Context(), address); err == nil ||
+				!strings.Contains(err.Error(), "not a public unicast destination") {
+				t.Fatalf("expected %s to be rejected, got %v", address, err)
+			}
+		})
+	}
+}
+
+func TestHTTPDestinationPolicyRejectsSpecialUseAddresses(t *testing.T) {
+	tests := []string{
+		"0.0.0.1",
+		"100.64.0.1",
+		"192.0.0.1",
+		"192.0.2.1",
+		"192.88.99.2",
+		"198.18.0.1",
+		"198.51.100.1",
+		"203.0.113.1",
+		"240.0.0.1",
+		"64:ff9b::1",
+		"64:ff9b:1::1",
+		"100::1",
+		"100:0:0:1::1",
+		"2001::1",
+		"2001:2::1",
+		"2001:20::1",
+		"2001:db8::1",
+		"2002::1",
+		"3fff::1",
+		"5f00::1",
+	}
+	policy := newHTTPDestinationPolicy(nil)
+
+	for _, address := range tests {
+		t.Run(address, func(t *testing.T) {
+			if _, err := policy.resolveHost(t.Context(), address); err == nil ||
 				!strings.Contains(err.Error(), "special-use network") {
 				t.Fatalf("expected %s to be rejected, got %v", address, err)
 			}

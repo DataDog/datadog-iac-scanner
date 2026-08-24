@@ -24,25 +24,27 @@ const (
 	httpsScheme            = "https"
 )
 
-// blockedSpecialUsePrefixes lists IANA special-purpose ranges that Go still
-// classifies as global unicast (RFC 6890 and successors).
+// Synced with the IANA special-purpose address registries updated 2025-10-09.
 var blockedSpecialUsePrefixes = func() []netip.Prefix {
 	cidrs := []string{
 		"0.0.0.0/8",
 		"100.64.0.0/10",
 		"192.0.0.0/24",
 		"192.0.2.0/24",
+		"192.88.99.0/24",
 		"198.18.0.0/15",
 		"198.51.100.0/24",
 		"203.0.113.0/24",
 		"240.0.0.0/4",
-		"100::/64",
 		"64:ff9b::/96",
 		"64:ff9b:1::/48",
-		"2001:10::/28",
-		"2001:20::/28",
+		"100::/64",
+		"100:0:0:1::/64",
+		"2001::/23",
 		"2001:db8::/32",
 		"2002::/16",
+		"3fff::/20",
+		"5f00::/16",
 	}
 	prefixes := make([]netip.Prefix, len(cidrs))
 	for i, cidr := range cidrs {
