@@ -43,6 +43,7 @@ type BareGitResolver struct {
 	CacheDir string
 
 	hostAllowlist []string
+	policy        *httpDestinationPolicy
 	mu            sync.Mutex
 	repos         map[string]*bareRepo
 }
@@ -50,27 +51,45 @@ type BareGitResolver struct {
 const bareCloneAttempts = 3
 
 type bareRepo struct {
-	cloneURL     string // canonical ssh:// URL passed to git clone
 	barePath     string // path to the bare clone on disk
 	extractBase  string // base dir for per-(sha,subdir) extracted trees
 	refCachePath string // path to the persistent ref→SHA JSON file
+	policy       *httpDestinationPolicy
 
-	cloneOK     atomic.Bool
-	cloneFailed atomic.Bool
-	cloneErrMu  sync.Mutex
-	cloneErr    error
-	cloneSF     singleflight.Group
-	fetchSF     singleflight.Group
-	extractSF   singleflight.Group
+	cloneOK   atomic.Bool
+	cloneMu   sync.Mutex       // serializes clone attempts against barePath
+	cloneErrs map[string]error // transport → clone failure, guarded by cloneMu
+
+	fetchSF   singleflight.Group
+	extractSF singleflight.Group
 
 	refMu    sync.RWMutex
 	refCache map[string]string // tag/branch ref → resolved SHA (warm from disk on init)
+}
+
+// bareRemote binds a bare clone to the transport that one module source requires.
+// Every spelling of a repository shares a single object store, because the objects
+// git stores are identical no matter how they were fetched; only reachability and
+// credentials differ per transport. Clone outcomes are therefore tracked per
+// transport, so an https attempt that fails for want of credentials never blocks
+// the ssh attempt that would have succeeded.
+type bareRemote struct {
+	*bareRepo
+	transport string // https or ssh; selects how network commands reach the remote
+	cloneURL  string // canonical remote URL, by hostname rather than address
+}
+
+// sfKey namespaces a singleflight key by transport so that a network failure on
+// one transport is never handed to a caller that asked for the other.
+func (rem *bareRemote) sfKey(key string) string {
+	return rem.transport + "\x00" + key
 }
 
 func NewBareGitResolver(cacheDir string, hostAllowlist ...string) *BareGitResolver {
 	return &BareGitResolver{
 		CacheDir:      cacheDir,
 		hostAllowlist: hostAllowlist,
+		policy:        newHTTPDestinationPolicy(hostAllowlist),
 		repos:         make(map[string]*bareRepo),
 	}
 }
@@ -91,33 +110,71 @@ func repoURLKey(normalizedRepo string) string {
 	return fmt.Sprintf("%x", h[:12])
 }
 
-// canonicalSSHCloneURL builds a stable ssh:// clone URL for a parsed repo URL.
-func canonicalSSHCloneURL(repoURL string) string {
-	norm := normalizeGitRepoURL(repoURL)
-	if norm == "" {
-		return repoURL
+func canonicalHTTPSCloneURL(repoURL string) string {
+	parsed, err := url.Parse(repoURL)
+	if err != nil || parsed.Scheme != httpsScheme || parsed.Hostname() == "" || parsed.User != nil {
+		return ""
 	}
-	return "ssh://git@" + norm
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
-func (r *BareGitResolver) getOrInitRepo(repoURL string) *bareRepo {
-	key := normalizeGitRepoURL(repoURL)
+// canonicalSSHCloneURL returns the ssh remote URL with the go-getter query stripped.
+// A URL carrying a password is rejected; ssh authenticates through an agent or key.
+func canonicalSSHCloneURL(repoURL string) string {
+	parsed, err := url.Parse(repoURL)
+	if err != nil || parsed.Scheme != sshScheme || parsed.Hostname() == "" {
+		return ""
+	}
+	if parsed.User != nil {
+		if _, hasPassword := parsed.User.Password(); hasPassword {
+			return ""
+		}
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
+}
+
+func canonicalGitCloneURL(repoURL string) string {
+	if gitModuleTransportKey(repoURL) == sshScheme {
+		return canonicalSSHCloneURL(repoURL)
+	}
+	return canonicalHTTPSCloneURL(repoURL)
+}
+
+// getOrInitRemote returns the bare clone backing repoURL, bound to the transport
+// repoURL asks for. Transport is part of the identity: sharing one store between an
+// https and an scp-form spelling of the same repository costs more than the duplicate
+// clone saves, because extraction serializes on a per-(clone, sha) lock and the two
+// spellings then queue behind each other instead of materializing in parallel.
+func (r *BareGitResolver) getOrInitRemote(repoURL string) *bareRemote {
+	transport := gitModuleTransportKey(repoURL)
+	key := transport + "\x00" + normalizeGitRepoURL(repoURL)
+	remote := &bareRemote{
+		transport: transport,
+		cloneURL:  canonicalGitCloneURL(repoURL),
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if repo, ok := r.repos[key]; ok {
-		return repo
+		remote.bareRepo = repo
+		return remote
 	}
 	base := filepath.Join(r.effectiveCacheDir(), repoURLKey(key))
 	refCachePath := filepath.Join(base, "refs.json")
 	repo := &bareRepo{
-		cloneURL:     canonicalSSHCloneURL(repoURL),
 		barePath:     filepath.Join(base, "repo.git"),
 		extractBase:  filepath.Join(base, "extracted"),
 		refCachePath: refCachePath,
+		policy:       r.policy,
 		refCache:     loadBareRefCache(refCachePath),
 	}
 	r.repos[key] = repo
-	return repo
+	remote.bareRepo = repo
+	return remote
 }
 
 // loadBareRefCache reads the persistent ref→SHA map for a bare clone.
@@ -153,52 +210,80 @@ func (repo *bareRepo) saveBareRefCache() {
 	_ = os.Rename(tmp, repo.refCachePath)
 }
 
-func (repo *bareRepo) cachedCloneError() error {
-	repo.cloneErrMu.Lock()
-	defer repo.cloneErrMu.Unlock()
-	return repo.cloneErr
+func (rem *bareRemote) runNetworkGitWith(
+	ctx context.Context, command gitNetworkCommand, output gitOutputFunc,
+) ([]byte, error) {
+	if rem.transport == sshScheme {
+		return runGitSSHCommand(ctx, rem.policy, rem.cloneURL, command, output)
+	}
+	return runGitHTTPSCommand(rem.policy, rem.cloneURL, command, output)
 }
 
-func (repo *bareRepo) setCloneError(err error) {
-	repo.cloneErrMu.Lock()
-	repo.cloneErr = err
-	repo.cloneErrMu.Unlock()
-	repo.cloneFailed.Store(true)
+func (rem *bareRemote) runNetworkGit(ctx context.Context, command gitNetworkCommand) ([]byte, error) {
+	return rem.runNetworkGitWith(ctx, command, gitCombinedOutput)
 }
 
-func (repo *bareRepo) ensureClone(ctx context.Context) error {
-	if repo.cloneOK.Load() {
+func (rem *bareRemote) archiveGitCommand(ctx context.Context, remote string, extraConfig, args []string) *exec.Cmd {
+	full := make([]string, 0, len(extraConfig)+len(args)+2)
+	full = append(full, extraConfig...)
+	full = append(full, "-c", "remote.origin.url="+remote)
+	full = append(full, args...)
+	return gitInDir(ctx, rem.barePath, full...)
+}
+
+// archiveCommand prepares git archive against the bare clone. A blob:none clone
+// may lazily fetch missing blobs; that fetch is pointed at the destination the
+// policy just validated. The caller must run the command and then call cleanup
+// so the HTTPS proxy stays up for the whole stream.
+func (rem *bareRemote) archiveCommand(ctx context.Context, args []string) (*exec.Cmd, func(), error) {
+	command := func(remote string, extraConfig []string) *exec.Cmd {
+		return rem.archiveGitCommand(ctx, remote, extraConfig, args)
+	}
+	if rem.transport == sshScheme {
+		return prepareGitSSHCommand(ctx, rem.policy, rem.cloneURL, command)
+	}
+	return prepareGitHTTPSCommand(rem.policy, rem.cloneURL, command)
+}
+
+func (rem *bareRemote) ensureClone(ctx context.Context) error {
+	if rem.cloneOK.Load() {
 		return nil
 	}
-	if repo.cloneFailed.Load() {
-		return repo.cachedCloneError()
+	rem.cloneMu.Lock()
+	defer rem.cloneMu.Unlock()
+	if rem.cloneOK.Load() {
+		return nil
 	}
-	_, err, _ := repo.cloneSF.Do("clone", func() (interface{}, error) {
-		if repo.cloneOK.Load() {
-			return nil, nil
+	if err, failed := rem.cloneErrs[rem.transport]; failed {
+		return err
+	}
+	err := rem.doClone(ctx)
+	if err != nil {
+		if rem.cloneErrs == nil {
+			rem.cloneErrs = make(map[string]error)
 		}
-		if repo.cloneFailed.Load() {
-			return nil, repo.cachedCloneError()
-		}
-		return nil, repo.doClone(ctx)
-	})
+		rem.cloneErrs[rem.transport] = err
+	}
 	return err
 }
 
 // doClone checks for an existing bare clone, validates it, and attempts a fresh
-// clone with retries if needed. It is always called inside the cloneSF singleflight.
-func (repo *bareRepo) doClone(ctx context.Context) error {
-	if info, err := os.Stat(repo.barePath); err == nil && info.IsDir() {
+// clone with retries if needed. It is always called while holding cloneMu.
+func (rem *bareRemote) doClone(ctx context.Context) error {
+	if info, err := os.Stat(rem.barePath); err == nil && info.IsDir() {
 		// Validate that the directory is a real bare repo, not a partial clone
 		// left by a killed process. This is a local-only read (no network, no
 		// pack-file I/O) so it intentionally bypasses the acquireGitProc semaphore,
 		// which is reserved for operations that meaningfully consume system resources.
-		if gitInDir(ctx, repo.barePath, "rev-parse", "--git-dir").Run() == nil {
-			repo.cloneOK.Store(true)
-			return nil
+		if gitInDir(ctx, rem.barePath, "rev-parse", "--git-dir").Run() == nil &&
+			rem.cachedConfigIsSafe(ctx) {
+			if gitInDir(ctx, rem.barePath, "remote", "set-url", "origin", rem.cloneURL).Run() == nil {
+				rem.cloneOK.Store(true)
+				return nil
+			}
 		}
 		// Partial or corrupt clone — remove and reclone.
-		_ = os.RemoveAll(repo.barePath)
+		_ = os.RemoveAll(rem.barePath)
 	}
 	var lastErr error
 	for attempt := 0; attempt < bareCloneAttempts; attempt++ {
@@ -210,49 +295,86 @@ func (repo *bareRepo) doClone(ctx context.Context) error {
 			case <-time.After(backoff):
 			}
 		}
-		if err := os.MkdirAll(filepath.Dir(repo.barePath), dirPerm); err != nil {
+		if err := os.MkdirAll(filepath.Dir(rem.barePath), dirPerm); err != nil {
 			lastErr = err
 			continue
 		}
-		_ = os.RemoveAll(repo.barePath)
+		_ = os.RemoveAll(rem.barePath)
 		release, err := acquireGitProc(ctx)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		cloneURL, urlErr := gitSafeArg(repo.cloneURL)
-		if urlErr != nil {
+		if _, urlErr := gitSafeArg(rem.cloneURL); urlErr != nil {
 			lastErr = urlErr
 			continue
 		}
-		cmd := gitCloneBare(ctx, cloneURL, repo.barePath)
-		out, cloneErr := cmd.CombinedOutput()
+		out, cloneErr := rem.runNetworkGit(ctx, func(remote string, extraConfig []string) *exec.Cmd {
+			return gitCloneBare(ctx, remote, rem.barePath, extraConfig)
+		})
 		release()
 		if cloneErr == nil {
-			repo.cloneOK.Store(true)
+			// The clone contacted a policy-validated address literal, which git records
+			// as origin. Persist the canonical hostname instead so a later run does not
+			// reuse an address that has since moved.
+			_ = gitInDir(ctx, rem.barePath, "remote", "set-url", "origin", rem.cloneURL).Run()
+			rem.cloneOK.Store(true)
 			return nil
 		}
-		_ = os.RemoveAll(repo.barePath)
-		lastErr = fmt.Errorf("git clone --bare %s: %w\n%s", repo.cloneURL, cloneErr, bytes.TrimSpace(out))
+		_ = os.RemoveAll(rem.barePath)
+		lastErr = fmt.Errorf("git clone --bare %s: %w\n%s", rem.cloneURL, cloneErr, bytes.TrimSpace(out))
 	}
-	repo.setCloneError(lastErr)
 	log := logger.FromContext(ctx)
-	log.Warn().Err(lastErr).Msgf("BareGitResolver: failed to clone %s after %d attempts", repo.cloneURL, bareCloneAttempts)
+	log.Warn().Err(lastErr).Msgf("BareGitResolver: failed to clone %s after %d attempts", rem.cloneURL, bareCloneAttempts)
 	return lastErr
 }
 
-// fetchRef ensures ref is present and returns its canonical commit SHA.
-func (repo *bareRepo) fetchRef(ctx context.Context, ref string) (string, error) {
-	if looksLikeSHA(ref) {
-		return repo.fetchSHARef(ctx, ref)
+func (repo *bareRepo) cachedConfigIsSafe(ctx context.Context) bool {
+	out, err := gitInDir(
+		ctx,
+		repo.barePath,
+		"config",
+		"--local",
+		"--no-includes",
+		"--name-only",
+		"--null",
+		"--list",
+	).Output()
+	if err != nil {
+		return false
 	}
-	return repo.fetchNamedRef(ctx, ref)
+	for _, rawKey := range bytes.Split(out, []byte{0}) {
+		key := strings.ToLower(strings.TrimSpace(string(rawKey)))
+		if key == "" {
+			continue
+		}
+		if strings.HasPrefix(key, "http.") ||
+			strings.HasPrefix(key, "url.") ||
+			strings.HasPrefix(key, "credential.") ||
+			strings.HasPrefix(key, "include.") ||
+			strings.HasPrefix(key, "includeif.") ||
+			strings.HasPrefix(key, "protocol.") ||
+			strings.Contains(key, "proxy") ||
+			key == "core.sshcommand" ||
+			key == "core.gitproxy" {
+			return false
+		}
+	}
+	return true
+}
+
+// fetchRef ensures ref is present and returns its canonical commit SHA.
+func (rem *bareRemote) fetchRef(ctx context.Context, ref string) (string, error) {
+	if looksLikeSHA(ref) {
+		return rem.fetchSHARef(ctx, ref)
+	}
+	return rem.fetchNamedRef(ctx, ref)
 }
 
 // fetchSHARef handles the case where ref is already a full 40-char SHA.
 // It checks that the object is locally present, fetching it from origin if not.
-func (repo *bareRepo) fetchSHARef(ctx context.Context, ref string) (string, error) {
-	v, err, _ := repo.fetchSF.Do(ref, func() (interface{}, error) {
+func (rem *bareRemote) fetchSHARef(ctx context.Context, ref string) (string, error) {
+	v, err, _ := rem.fetchSF.Do(rem.sfKey(ref), func() (interface{}, error) {
 		release, acqErr := acquireGitProc(ctx)
 		if acqErr != nil {
 			return "", acqErr
@@ -262,12 +384,16 @@ func (repo *bareRepo) fetchSHARef(ctx context.Context, ref string) (string, erro
 		if refErr != nil {
 			return "", refErr
 		}
-		if gitInDir(ctx, repo.barePath, "cat-file", "-t", safeRef).Run() == nil {
+		if gitInDir(ctx, rem.barePath, "cat-file", "-t", safeRef).Run() == nil {
 			return ref, nil // already present
 		}
-		cmd := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "origin", safeRef)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return "", fmt.Errorf("git fetch origin %s: %w\n%s", ref, err, bytes.TrimSpace(out))
+		out, err := rem.runNetworkGit(ctx, func(remote string, extraConfig []string) *exec.Cmd {
+			args := append(append([]string{}, extraConfig...),
+				"fetch", "--filter=blob:none", remote, safeRef)
+			return gitInDir(ctx, rem.barePath, args...)
+		})
+		if err != nil {
+			return "", fmt.Errorf("git fetch %s %s: %w\n%s", rem.cloneURL, ref, err, bytes.TrimSpace(out))
 		}
 		return ref, nil
 	})
@@ -279,16 +405,16 @@ func (repo *bareRepo) fetchSHARef(ctx context.Context, ref string) (string, erro
 
 // fetchNamedRef handles branch/tag refs: it resolves the name to a commit SHA,
 // using an in-memory and on-disk cache to avoid unnecessary network fetches.
-func (repo *bareRepo) fetchNamedRef(ctx context.Context, ref string) (string, error) {
+func (rem *bareRemote) fetchNamedRef(ctx context.Context, ref string) (string, error) {
 	// Key on "ref:<name>" so SHA keys and name keys never collide in fetchSF.
-	v, err, _ := repo.fetchSF.Do("ref:"+ref, func() (interface{}, error) {
+	v, err, _ := rem.fetchSF.Do(rem.sfKey("ref:"+ref), func() (interface{}, error) {
 		// In-process cache: skip the network if we resolved this ref earlier.
-		repo.refMu.RLock()
-		if cachedSHA, ok := repo.refCache[ref]; ok {
-			repo.refMu.RUnlock()
+		rem.refMu.RLock()
+		if cachedSHA, ok := rem.refCache[ref]; ok {
+			rem.refMu.RUnlock()
 			return cachedSHA, nil
 		}
-		repo.refMu.RUnlock()
+		rem.refMu.RUnlock()
 
 		safeRef, refErr := gitSafeArg(ref)
 		if refErr != nil {
@@ -299,12 +425,12 @@ func (repo *bareRepo) fetchNamedRef(ctx context.Context, ref string) (string, er
 		// pre-populated clone or a prior fetch), resolve it without hitting the network.
 		// This is a local-only read so it intentionally bypasses acquireGitProc;
 		// the semaphore is acquired below only when a network fetch is needed.
-		if out, localErr := gitInDir(ctx, repo.barePath, "rev-parse", "--verify", safeRef).Output(); localErr == nil {
+		if out, localErr := gitInDir(ctx, rem.barePath, "rev-parse", "--verify", safeRef).Output(); localErr == nil {
 			if resolved := strings.TrimSpace(string(out)); looksLikeSHA(resolved) {
-				repo.refMu.Lock()
-				repo.refCache[ref] = resolved
-				repo.refMu.Unlock()
-				go repo.saveBareRefCache()
+				rem.refMu.Lock()
+				rem.refCache[ref] = resolved
+				rem.refMu.Unlock()
+				go rem.saveBareRefCache()
 				return resolved, nil
 			}
 		}
@@ -315,17 +441,27 @@ func (repo *bareRepo) fetchNamedRef(ctx context.Context, ref string) (string, er
 		}
 		defer release()
 		// Shallow fetch the named ref.
-		cmd := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "--depth=1", "origin", safeRef)
-		out, err := cmd.CombinedOutput()
+		out, err := rem.runNetworkGit(ctx, func(remote string, extraConfig []string) *exec.Cmd {
+			args := append(append([]string{}, extraConfig...),
+				"fetch", "--filter=blob:none", "--depth=1", remote, safeRef)
+			return gitInDir(ctx, rem.barePath, args...)
+		})
 		if err != nil {
 			// Retry without --depth in case the server rejects shallow fetches.
-			cmd2 := gitInDir(ctx, repo.barePath, "fetch", "--filter=blob:none", "origin", safeRef)
-			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-				return "", fmt.Errorf("git fetch origin %s: %w\n%s\n%s", ref, err2, bytes.TrimSpace(out), bytes.TrimSpace(out2))
+			out2, err2 := rem.runNetworkGit(ctx, func(remote string, extraConfig []string) *exec.Cmd {
+				args := append(append([]string{}, extraConfig...),
+					"fetch", "--filter=blob:none", remote, safeRef)
+				return gitInDir(ctx, rem.barePath, args...)
+			})
+			if err2 != nil {
+				return "", fmt.Errorf(
+					"git fetch %s %s: %w\n%s\n%s",
+					rem.cloneURL, ref, err2, bytes.TrimSpace(out), bytes.TrimSpace(out2),
+				)
 			}
 		}
 		// Resolve FETCH_HEAD to the commit SHA.
-		sha, revErr := gitInDir(ctx, repo.barePath, "rev-parse", "FETCH_HEAD").Output()
+		sha, revErr := gitInDir(ctx, rem.barePath, "rev-parse", "FETCH_HEAD").Output()
 		if revErr != nil {
 			return "", fmt.Errorf("git rev-parse FETCH_HEAD: %w", revErr)
 		}
@@ -335,10 +471,10 @@ func (repo *bareRepo) fetchNamedRef(ctx context.Context, ref string) (string, er
 		}
 		// Persist synchronously so subsequent in-process callers skip the fetch too,
 		// then write to disk in the background (non-critical).
-		repo.refMu.Lock()
-		repo.refCache[ref] = resolved
-		repo.refMu.Unlock()
-		go repo.saveBareRefCache()
+		rem.refMu.Lock()
+		rem.refCache[ref] = resolved
+		rem.refMu.Unlock()
+		go rem.saveBareRefCache()
 		return resolved, nil
 	})
 	if err != nil {
@@ -380,9 +516,21 @@ func archiveMaterializeLock(gitDir, sha string) *sync.Mutex {
 	return lock.(*sync.Mutex)
 }
 
+// archiveCommandFunc prepares a git archive invocation against a specific clone.
+// The implementation decides whether a lazy blob fetch may reach the network.
+type archiveCommandFunc func(ctx context.Context, args []string) (*exec.Cmd, func(), error)
+
+func localCloneArchiveCommand(gitDir string) archiveCommandFunc {
+	return func(ctx context.Context, args []string) (*exec.Cmd, func(), error) {
+		return gitInDir(ctx, gitDir, args...), func() {}, nil
+	}
+}
+
 // archiveExtract materializes the selected module and its local-module closure
 // into a sparse directory whose layout matches the repository at the given SHA.
-func archiveExtract(ctx context.Context, gitDir, extractBase, sha, subdir string) error {
+func archiveExtract(
+	ctx context.Context, gitDir, extractBase, sha, subdir string, runArchive archiveCommandFunc,
+) error {
 	cleanSubdir, err := cleanArchiveSubdir(subdir)
 	if err != nil {
 		return err
@@ -402,7 +550,9 @@ func archiveExtract(ctx context.Context, gitDir, extractBase, sha, subdir string
 	}
 
 	extracted := int64(0)
-	if err := materializeModuleClosure(ctx, gitDir, sha, dest, extractBase, cleanSubdir, map[string]bool{}, &extracted); err != nil {
+	if err := materializeModuleClosure(
+		ctx, runArchive, sha, dest, extractBase, cleanSubdir, map[string]bool{}, &extracted,
+	); err != nil {
 		return err
 	}
 	return nil
@@ -421,7 +571,8 @@ func cleanArchiveSubdir(subdir string) (string, error) {
 
 func materializeModuleClosure(
 	ctx context.Context,
-	gitDir, sha, packageRoot, extractBase, subdir string,
+	runArchive archiveCommandFunc,
+	sha, packageRoot, extractBase, subdir string,
 	visited map[string]bool,
 	extracted *int64,
 ) error {
@@ -434,7 +585,7 @@ func materializeModuleClosure(
 	if _, err := os.Stat(marker); err == nil {
 		return nil
 	}
-	if err := extractArchiveSubdir(ctx, gitDir, sha, packageRoot, subdir, extracted); err != nil {
+	if err := extractArchiveSubdir(ctx, runArchive, sha, packageRoot, subdir, extracted); err != nil {
 		return err
 	}
 
@@ -448,7 +599,7 @@ func materializeModuleClosure(
 	}
 	for _, child := range children {
 		if err := materializeModuleClosure(
-			ctx, gitDir, sha, packageRoot, extractBase, child, visited, extracted,
+			ctx, runArchive, sha, packageRoot, extractBase, child, visited, extracted,
 		); err != nil {
 			return err
 		}
@@ -463,7 +614,7 @@ func materializeModuleClosure(
 }
 
 func extractArchiveSubdir(
-	ctx context.Context, gitDir, sha, dest, subdir string, extracted *int64,
+	ctx context.Context, runArchive archiveCommandFunc, sha, dest, subdir string, extracted *int64,
 ) error {
 	release, err := acquireGitProc(ctx)
 	if err != nil {
@@ -479,7 +630,11 @@ func extractArchiveSubdir(
 	if subdir != "." {
 		archiveArgs = append(archiveArgs, "--", filepath.ToSlash(subdir))
 	}
-	archive := gitInDir(ctx, gitDir, archiveArgs...)
+	archive, cleanup, err := runArchive(ctx, archiveArgs)
+	if err != nil {
+		return fmt.Errorf("git archive %s path %q: %w", archiveArg, subdir, err)
+	}
+	defer cleanup()
 	if err := extractArchiveCommand(archive, dest, extracted); err != nil {
 		return fmt.Errorf("extracting git archive %s: %w", archiveArg, err)
 	}
@@ -655,15 +810,17 @@ func localArchiveSubdir(moduleDir, packageRoot, source string) (string, bool) {
 	return rel, true
 }
 
-func (repo *bareRepo) extract(ctx context.Context, sha, subdir string) (string, error) {
+func (rem *bareRemote) extract(ctx context.Context, sha, subdir string) (string, error) {
 	key := archiveCacheKey(sha) + "\x00" + filepath.Clean(subdir)
-	_, err, _ := repo.extractSF.Do(key, func() (interface{}, error) {
-		return nil, archiveExtract(ctx, repo.barePath, repo.extractBase, sha, subdir)
+	_, err, _ := rem.extractSF.Do(rem.sfKey(key), func() (interface{}, error) {
+		return nil, archiveExtract(
+			ctx, rem.barePath, rem.extractBase, sha, subdir, rem.archiveCommand,
+		)
 	})
 	if err != nil {
 		return "", err
 	}
-	return archiveCacheDir(repo.extractBase, sha), nil
+	return archiveCacheDir(rem.extractBase, sha), nil
 }
 
 // Resolve implements Resolver for any git:: source that carries a ref= parameter.
@@ -674,16 +831,28 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 			Reason: "BareGitResolver: not a git:: source with a ref= parameter",
 		}
 	}
+	parsedRepo, parseErr := url.Parse(repoURL)
+	if parseErr != nil || parsedRepo.Hostname() == "" {
+		return Resolution{}, &tfmodules.UnresolvedError{
+			Reason: "git module source is not a valid remote URL",
+		}
+	}
+	if err := checkGitTransportAllowed(ctx, parsedRepo); err != nil {
+		return Resolution{}, err
+	}
 	if err := checkHostAllowlist(mod.Source, r.hostAllowlist); err != nil {
 		return Resolution{}, err
 	}
+	if _, err := r.policy.resolveHost(ctx, parsedRepo.Hostname()); err != nil {
+		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
+	}
 
 	contextLogger := logger.FromContext(ctx)
-	repo := r.getOrInitRepo(repoURL)
+	remote := r.getOrInitRemote(repoURL)
 
 	// SHA refs have stable extraction keys; branch/tag refs must be re-resolved.
 	if looksLikeSHA(ref) {
-		if packageRoot, ok := cachedArchiveDir(repo.extractBase, ref, subdir); ok {
+		if packageRoot, ok := cachedArchiveDir(remote.extractBase, ref, subdir); ok {
 			return ConfineResolution(ctx, Resolution{
 				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 				PackageRoot: packageRoot,
@@ -691,17 +860,17 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 		}
 	}
 
-	if err := repo.ensureClone(ctx); err != nil {
+	if err := remote.ensureClone(ctx); err != nil {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
-	sha, err := repo.fetchRef(ctx, ref)
+	sha, err := remote.fetchRef(ctx, ref)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msgf("BareGitResolver: ref %q not reachable from %s", ref, repoURL)
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
-	packageRoot, err := repo.extract(ctx, sha, subdir)
+	packageRoot, err := remote.extract(ctx, sha, subdir)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msgf("BareGitResolver: archive %s:%s failed", sha, subdir)
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
@@ -711,6 +880,40 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
 	})
+}
+
+// checkGitTransportAllowed accepts only the transports whose destination the
+// resolver can pin: HTTPS through the policy proxy, and ssh to a host whose key is
+// already known. Credentials embedded in the URL are refused for both.
+func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
+	switch repo.Scheme {
+	case httpsScheme:
+		if repo.User != nil {
+			return &tfmodules.UnresolvedError{
+				Reason: "HTTPS git module transport does not accept credentials embedded in the source URL",
+			}
+		}
+		return nil
+	case sshScheme:
+		if repo.User != nil {
+			if _, hasPassword := repo.User.Password(); hasPassword {
+				return &tfmodules.UnresolvedError{
+					Reason: "ssh git module transport does not accept a password embedded in the source URL",
+				}
+			}
+		}
+		if err := checkSSHHostKeyPinned(ctx, repo.Hostname()); err != nil {
+			return &tfmodules.UnresolvedError{Reason: err.Error()}
+		}
+		return nil
+	default:
+		return &tfmodules.UnresolvedError{
+			Reason: fmt.Sprintf(
+				"git module transport %q is disabled because its destination cannot be pinned",
+				repo.Scheme,
+			),
+		}
+	}
 }
 
 // normalizeSCPGitSource converts SCP-form git sources to git::ssh://git@... so
@@ -747,10 +950,10 @@ func normalizeSCPGitSource(source string) (string, bool) {
 	return "git::ssh://" + user + "@" + host + "/" + path, true
 }
 
-// normalizeImplicitGitHubSource converts Terraform's implicit GitHub module paths to git::ssh://.
+// normalizeImplicitGitHubSource converts Terraform's implicit GitHub module paths to git::https://.
 //
 //	"github.com/org/repo//subdir?ref=tag"
-//	→ "git::ssh://git@github.com/org/repo//subdir?ref=tag", true
+//	→ "git::https://github.com/org/repo//subdir?ref=tag", true
 func normalizeImplicitGitHubSource(source string) (string, bool) {
 	if strings.Contains(source, "::") {
 		return "", false
@@ -762,26 +965,7 @@ func normalizeImplicitGitHubSource(source string) (string, bool) {
 	if !strings.Contains(source, "//") && !strings.Contains(source, "ref=") {
 		return "", false
 	}
-	return "git::ssh://git@" + source, true
-}
-
-// normalizeHTTPGitToSSH rewrites git::http(s)://host/... to git::ssh://git@host/...
-// so git clones use SSH credentials instead of unauthenticated HTTPS.
-func normalizeHTTPGitToSSH(source string) (string, bool) {
-	const prefix = "git::"
-	if !strings.HasPrefix(source, prefix) {
-		return "", false
-	}
-	rest := strings.TrimPrefix(source, prefix)
-	if strings.HasPrefix(rest, "ssh://") {
-		return "", false
-	}
-	for _, scheme := range []string{"https://", "http://"} {
-		if strings.HasPrefix(rest, scheme) {
-			return prefix + "ssh://git@" + strings.TrimPrefix(rest, scheme), true
-		}
-	}
-	return "", false
+	return "git::https://" + source, true
 }
 
 // normalizeGitModuleSourceForGetter applies SCP and implicit GitHub normalization
@@ -799,7 +983,7 @@ func normalizeGitModuleSourceForGetter(source string) (string, bool) {
 	return source, source != original
 }
 
-// normalizeGitModuleSource applies all git source normalizations used by resolvers.
+// normalizeGitModuleSource applies git source normalizations used by resolvers.
 func normalizeGitModuleSource(source string) (string, bool) {
 	if source == "" {
 		return "", false
@@ -808,11 +992,6 @@ func normalizeGitModuleSource(source string) (string, bool) {
 	if normalized, ok := normalizeGitModuleSourceForGetter(source); ok {
 		source = normalized
 	}
-	if strings.HasPrefix(source, "git::") {
-		if normalized, ok := normalizeHTTPGitToSSH(source); ok {
-			source = normalized
-		}
-	}
 	return source, source != original
 }
 
@@ -820,7 +999,7 @@ func normalizeGitModuleSource(source string) (string, bool) {
 // Sources are normalized via normalizeGitModuleSource before parsing.
 //
 //	"git::https://github.com/org/repo.git//path/to/mod?ref=abc123"
-//	→ repoURL="ssh://git@github.com/org/repo.git", subdir="path/to/mod", ref="abc123"
+//	→ repoURL="https://github.com/org/repo.git", subdir="path/to/mod", ref="abc123"
 func parseGitGetterSource(source string) (repoURL, subdir, ref string, ok bool) {
 	if normalized, changed := normalizeGitModuleSource(source); changed {
 		source = normalized

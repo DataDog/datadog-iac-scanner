@@ -7,6 +7,8 @@ package resolver
 
 import (
 	"context"
+	"errors"
+	"net"
 	"strings"
 	"testing"
 
@@ -20,6 +22,71 @@ func TestBareGitResolverRejectsDisallowedHost(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), `module host "disallowed.example" is not in --module-host-allowlist`) {
 		t.Fatalf("expected host allowlist error, got %v", err)
+	}
+}
+
+func TestBareGitResolverRejectsUnpinnableTransport(t *testing.T) {
+	r := NewBareGitResolver(t.TempDir())
+	for _, source := range []string{
+		"git::http://modules.example/org/repo.git?ref=main",
+		"git::git://modules.example/org/repo.git?ref=main",
+	} {
+		t.Run(source, func(t *testing.T) {
+			_, err := r.Resolve(t.Context(), &tfmodules.ParsedModule{Source: source})
+			if err == nil || !strings.Contains(err.Error(), "destination cannot be pinned") {
+				t.Fatalf("expected unpinnable transport rejection, got %v", err)
+			}
+		})
+	}
+}
+
+func TestBareGitResolverRejectsSSHWithoutPinnedHostKey(t *testing.T) {
+	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, ""))
+	r := NewBareGitResolver(t.TempDir())
+	for _, source := range []string{
+		"git::ssh://git@modules.example/org/repo.git?ref=main",
+		"git@modules.example:org/repo.git?ref=main",
+	} {
+		t.Run(source, func(t *testing.T) {
+			_, err := r.Resolve(t.Context(), &tfmodules.ParsedModule{Source: source})
+			if err == nil || !strings.Contains(err.Error(), "is not pinned in known_hosts") {
+				t.Fatalf("expected unpinned host key rejection, got %v", err)
+			}
+		})
+	}
+}
+
+func TestBareGitResolverRejectsSSHPasswordInSource(t *testing.T) {
+	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, ""))
+	r := NewBareGitResolver(t.TempDir())
+	_, err := r.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: "git::ssh://git:secret@modules.example/org/repo.git?ref=main",
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not accept a password") {
+		t.Fatalf("expected embedded password rejection, got %v", err)
+	}
+}
+
+func TestBareGitResolverRejectsHTTPSCredentialsInSource(t *testing.T) {
+	r := NewBareGitResolver(t.TempDir())
+	_, err := r.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: "git::https://user:secret@modules.example/org/repo.git?ref=main",
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not accept credentials embedded") {
+		t.Fatalf("expected embedded credential rejection, got %v", err)
+	}
+}
+
+func TestBareGitResolverRejectsPrivateHTTPSDestination(t *testing.T) {
+	r := NewBareGitResolver(t.TempDir())
+	r.policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("169.254.169.254")}, nil
+	}
+	_, err := r.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: "git::https://modules.example/org/repo.git?ref=main",
+	})
+	if err == nil || !strings.Contains(err.Error(), "not a public unicast destination") {
+		t.Fatalf("expected private destination rejection, got %v", err)
 	}
 }
 
@@ -59,14 +126,71 @@ func TestNormalizeGitRepoURLSchemeMatchesSCP(t *testing.T) {
 	}
 }
 
-func TestParseGitGetterSourceHTTPSGitHubToSSH(t *testing.T) {
+// TestGetOrInitRemoteSeparatesStorePerTransport pins the transport into the cache
+// identity. A shared store measured much slower on a large repository: extraction
+// serializes on a per-(clone, sha) lock, so two spellings of one repository queue
+// behind each other rather than materializing concurrently.
+func TestGetOrInitRemoteSeparatesStorePerTransport(t *testing.T) {
+	r := NewBareGitResolver(t.TempDir(), "github.com")
+	https := r.getOrInitRemote("https://github.com/org/repo.git")
+	ssh := r.getOrInitRemote("ssh://git@github.com/org/repo")
+
+	if https.barePath == ssh.barePath {
+		t.Errorf("transports must not share a bare clone, both used %q", https.barePath)
+	}
+	if https.transport != httpsScheme || ssh.transport != sshScheme {
+		t.Errorf("transports = %q, %q; want https, ssh", https.transport, ssh.transport)
+	}
+	if https.cloneURL == ssh.cloneURL {
+		t.Errorf("each transport needs its own remote URL, both were %q", https.cloneURL)
+	}
+}
+
+// TestGetOrInitRemoteReusesStorePerTransport checks the same spelling still resolves
+// to one store, so repeated sources in a repository do not re-clone.
+func TestGetOrInitRemoteReusesStorePerTransport(t *testing.T) {
+	r := NewBareGitResolver(t.TempDir(), "github.com")
+	first := r.getOrInitRemote("https://github.com/org/repo.git//a?ref=v1")
+	second := r.getOrInitRemote("https://github.com/org/repo.git//b?ref=v1")
+	if first.bareRepo != second.bareRepo {
+		t.Fatal("two sources in one repository must share a bare clone")
+	}
+}
+
+// TestCloneErrorIsScopedToTransport keeps an https failure (no credentials, say) from
+// poisoning the ssh attempt that would have worked for the same repo.
+func TestCloneErrorIsScopedToTransport(t *testing.T) {
+	r := NewBareGitResolver(t.TempDir(), "github.com")
+	const sentinel = "https clone failed for want of credentials"
+
+	https := r.getOrInitRemote("https://github.com/org/repo.git")
+	https.cloneErrs = map[string]error{https.transport: errors.New(sentinel)}
+	if err := https.ensureClone(context.Background()); err == nil || !strings.Contains(err.Error(), sentinel) {
+		t.Fatalf("https should see its own memoized failure, got %v", err)
+	}
+
+	ssh := r.getOrInitRemote("ssh://git@github.com/org/repo")
+	// Reject the destination so the attempt fails locally rather than reaching out.
+	ssh.policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("169.254.169.254")}, nil
+	}
+	err := ssh.ensureClone(context.Background())
+	if err == nil {
+		t.Fatal("expected the ssh attempt to fail on its own terms")
+	}
+	if strings.Contains(err.Error(), sentinel) {
+		t.Errorf("ssh inherited the https failure: %v", err)
+	}
+}
+
+func TestParseGitGetterSourcePreservesHTTPS(t *testing.T) {
 	in := "git::https://github.com/DataDog/vault-platform.git//terraform/aws/external-iam?ref=v1.9.4-17"
 	repoURL, subdir, ref, ok := parseGitGetterSource(in)
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	if repoURL != "ssh://git@github.com/DataDog/vault-platform.git" {
-		t.Errorf("repoURL = %q, want ssh URL", repoURL)
+	if repoURL != "https://github.com/DataDog/vault-platform.git" {
+		t.Errorf("repoURL = %q, want HTTPS URL", repoURL)
 	}
 	if subdir != "terraform/aws/external-iam" {
 		t.Errorf("subdir = %q", subdir)
@@ -88,52 +212,13 @@ func TestNormalizeSCPGitSource(t *testing.T) {
 	}
 }
 
-func TestNormalizeHTTPGitToSSH(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{
-			"github",
-			"git::https://github.com/DataDog/k8s-platform.git//terraform/modules/datacenter?ref=abc",
-			"git::ssh://git@github.com/DataDog/k8s-platform.git//terraform/modules/datacenter?ref=abc",
-		},
-		{
-			"gitlab",
-			"git::https://gitlab.com/org/repo//modules/x?ref=v1",
-			"git::ssh://git@gitlab.com/org/repo//modules/x?ref=v1",
-		},
-		{
-			"ghe",
-			"git::https://github.datadoghq.com/org/repo?ref=main",
-			"git::ssh://git@github.datadoghq.com/org/repo?ref=main",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := normalizeHTTPGitToSSH(tc.in)
-			if !ok {
-				t.Fatal("expected ok")
-			}
-			if got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-	_, ok := normalizeHTTPGitToSSH("git::ssh://git@github.com/org/repo?ref=main")
-	if ok {
-		t.Error("already-ssh source should not normalize again")
-	}
-}
-
 func TestNormalizeImplicitGitHubSource(t *testing.T) {
 	in := "github.com/oracle-quickstart/terraform-oci-cis-landing-zone-iam//identity-domains?ref=release-0.3.0"
 	got, ok := normalizeImplicitGitHubSource(in)
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	want := "git::ssh://git@github.com/oracle-quickstart/terraform-oci-cis-landing-zone-iam//identity-domains?ref=release-0.3.0"
+	want := "git::https://github.com/oracle-quickstart/terraform-oci-cis-landing-zone-iam//identity-domains?ref=release-0.3.0"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -149,8 +234,8 @@ func TestNormalizeGitModuleSourceForGetterPreservesHTTPS(t *testing.T) {
 		t.Fatalf("getter normalization must not rewrite git::https, got %q", got)
 	}
 	full, ok := normalizeGitModuleSource(https)
-	if !ok || !strings.Contains(full, "ssh://") {
-		t.Fatalf("baregit resolver should still rewrite HTTPS to SSH, got %q ok=%v", full, ok)
+	if ok || full != https {
+		t.Fatalf("baregit resolver must preserve HTTPS, got %q ok=%v", full, ok)
 	}
 }
 
@@ -166,8 +251,8 @@ func TestNormalizeGitModuleSource(t *testing.T) {
 
 	https := "git::https://github.com/DataDog/vault-platform.git//terraform/aws/external-iam?ref=v1.9.4-17"
 	got, ok = normalizeGitModuleSource(https)
-	if !ok {
-		t.Fatal("expected https normalization")
+	if ok || got != https {
+		t.Fatalf("expected HTTPS to remain unchanged, got %q ok=%v", got, ok)
 	}
 	_, subdir, ref, ok := parseGitGetterSource(https)
 	if !ok || ref != "v1.9.4-17" || subdir != "terraform/aws/external-iam" {
@@ -175,14 +260,29 @@ func TestNormalizeGitModuleSource(t *testing.T) {
 	}
 }
 
-func TestBareRepoKeyDedupesGitSuffix(t *testing.T) {
-	withGit := canonicalSSHCloneURL("ssh://git@github.com/DataDog/vault-platform.git")
-	withoutGit := canonicalSSHCloneURL("ssh://git@github.com/DataDog/vault-platform")
-	if withGit != withoutGit {
-		t.Fatalf("canonical clone URLs differ: %q vs %q", withGit, withoutGit)
+func TestCanonicalHTTPSCloneURL(t *testing.T) {
+	got := canonicalHTTPSCloneURL("https://github.com:8443/DataDog/vault-platform.git?ref=v1#fragment")
+	if got != "https://github.com:8443/DataDog/vault-platform.git" {
+		t.Fatalf("canonical clone URL = %q", got)
 	}
-	if normalizeGitRepoURL("ssh://git@github.com/DataDog/vault-platform.git") !=
-		normalizeGitRepoURL("git@github.com:DataDog/vault-platform") {
-		t.Fatal("normalized repo keys should match across spellings")
+	if got := canonicalHTTPSCloneURL("https://user:token@github.com/DataDog/vault-platform.git"); got != "" {
+		t.Fatalf("clone URL with embedded credentials must be rejected, got %q", got)
+	}
+	if got := canonicalHTTPSCloneURL("ssh://git@github.com/DataDog/vault-platform.git"); got != "" {
+		t.Fatalf("SSH clone URL must be rejected, got %q", got)
+	}
+}
+
+func TestBareRepoRejectsUnsafeCachedConfig(t *testing.T) {
+	root := t.TempDir()
+	barePath := root + "/repo.git"
+	runGit(t, root, "init", "--bare", barePath)
+	repo := &bareRepo{barePath: barePath}
+	if !repo.cachedConfigIsSafe(t.Context()) {
+		t.Fatal("standard bare repository config must be accepted")
+	}
+	runGit(t, root, "--git-dir", barePath, "config", "http.https://modules.example.proxy", "")
+	if repo.cachedConfigIsSafe(t.Context()) {
+		t.Fatal("URL-specific proxy config must invalidate the cache")
 	}
 }

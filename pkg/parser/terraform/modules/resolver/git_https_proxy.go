@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os/exec"
 	"sync"
 )
 
@@ -141,12 +142,23 @@ func runGitHTTPSCommand(
 	command gitNetworkCommand,
 	output gitOutputFunc,
 ) ([]byte, error) {
-	proxy, err := startGitHTTPSProxy(policy)
+	cmd, cleanup, err := prepareGitHTTPSCommand(policy, remote, command)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = proxy.Close() }()
+	defer cleanup()
+	return output(cmd)
+}
 
+func prepareGitHTTPSCommand(
+	policy *httpDestinationPolicy,
+	remote string,
+	command gitNetworkCommand,
+) (*exec.Cmd, func(), error) {
+	proxy, err := startGitHTTPSProxy(policy)
+	if err != nil {
+		return nil, nil, err
+	}
 	proxyURL := proxy.URL()
 	extraConfig := []string{
 		"-c", "http.proxy=" + proxyURL,
@@ -154,7 +166,7 @@ func runGitHTTPSCommand(
 	}
 	cmd := command(remote, extraConfig)
 	cmd.Env = gitCommandEnv(proxyURL)
-	return output(cmd)
+	return cmd, func() { _ = proxy.Close() }, nil
 }
 
 func gitCommandEnv(proxyURL string) []string {

@@ -28,12 +28,6 @@ func gitCombinedOutput(cmd *exec.Cmd) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-// gitStdoutOnly keeps stderr out of the result so binary output, such as a tar stream,
-// is not corrupted by progress or warning messages.
-func gitStdoutOnly(cmd *exec.Cmd) ([]byte, error) {
-	return cmd.Output()
-}
-
 // gitInheritedEnvBlockedPrefixes lists environment prefixes that let the caller
 // redirect a git subprocess to an unvalidated destination.
 var gitInheritedEnvBlockedPrefixes = []string{
