@@ -67,12 +67,9 @@ type bareRepo struct {
 	refCache map[string]string // tag/branch ref → resolved SHA (warm from disk on init)
 }
 
-// bareRemote binds a bare clone to the transport that one module source requires.
-// Every spelling of a repository shares a single object store, because the objects
-// git stores are identical no matter how they were fetched; only reachability and
-// credentials differ per transport. Clone outcomes are therefore tracked per
-// transport, so an https attempt that fails for want of credentials never blocks
-// the ssh attempt that would have succeeded.
+// bareRemote binds a bare clone to the transport one module source requires.
+// Transport is part of the cache identity so an https spelling and an ssh
+// spelling never share a remote or a clone failure.
 type bareRemote struct {
 	*bareRepo
 	transport string // https or ssh; selects how network commands reach the remote
@@ -323,10 +320,26 @@ func (rem *bareRemote) doClone(ctx context.Context) error {
 		}
 		_ = os.RemoveAll(rem.barePath)
 		lastErr = fmt.Errorf("git clone --bare %s: %w\n%s", rem.cloneURL, cloneErr, bytes.TrimSpace(out))
+		if !gitCloneRetryable(out, cloneErr) {
+			break
+		}
 	}
 	log := logger.FromContext(ctx)
-	log.Warn().Err(lastErr).Msgf("BareGitResolver: failed to clone %s after %d attempts", rem.cloneURL, bareCloneAttempts)
+	log.Warn().Err(lastErr).Msgf("BareGitResolver: failed to clone %s", rem.cloneURL)
 	return lastErr
+}
+
+// gitCloneRetryable is false when another attempt cannot succeed without a
+// credential or prompt change — typical for private HTTPS sources in CI.
+func gitCloneRetryable(out []byte, err error) bool {
+	if err == nil {
+		return true
+	}
+	blob := strings.ToLower(string(out) + "\n" + err.Error())
+	return !strings.Contains(blob, "could not read username") &&
+		!strings.Contains(blob, "terminal prompts disabled") &&
+		!strings.Contains(blob, "authentication failed") &&
+		!strings.Contains(blob, "invalid username or password")
 }
 
 func (repo *bareRepo) cachedConfigIsSafe(ctx context.Context) bool {

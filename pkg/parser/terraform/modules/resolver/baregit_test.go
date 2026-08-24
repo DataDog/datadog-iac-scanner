@@ -183,6 +183,34 @@ func TestCloneErrorIsScopedToTransport(t *testing.T) {
 	}
 }
 
+func TestGitCloneRetryable(t *testing.T) {
+	transient := errors.New("exit status 128")
+	cases := []struct {
+		name string
+		out  string
+		err  error
+		want bool
+	}{
+		{name: "success", err: nil, want: true},
+		{name: "transient network", out: "unable to access 'https://github.com/org/repo.git/'", err: transient, want: true},
+		{
+			name: "missing username",
+			out:  "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+			err:  transient,
+			want: false,
+		},
+		{name: "authentication failed", out: "fatal: Authentication failed for 'https://github.com/org/repo.git/'", err: transient, want: false},
+		{name: "invalid password", out: "remote: Invalid username or password", err: transient, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := gitCloneRetryable([]byte(tc.out), tc.err); got != tc.want {
+				t.Fatalf("gitCloneRetryable(%q, %v) = %v, want %v", tc.out, tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseGitGetterSourcePreservesHTTPS(t *testing.T) {
 	in := "git::https://github.com/DataDog/vault-platform.git//terraform/aws/external-iam?ref=v1.9.4-17"
 	repoURL, subdir, ref, ok := parseGitGetterSource(in)
