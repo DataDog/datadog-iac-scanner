@@ -38,6 +38,7 @@ var blockedSpecialUsePrefixes = func() []netip.Prefix {
 		"240.0.0.0/4",
 		"100::/64",
 		"64:ff9b::/96",
+		"64:ff9b:1::/48",
 		"2001:10::/28",
 		"2001:20::/28",
 		"2001:db8::/32",

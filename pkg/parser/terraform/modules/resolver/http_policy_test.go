@@ -35,6 +35,7 @@ func TestHTTPDestinationPolicyRejectsNonPublicAddresses(t *testing.T) {
 		"fd00:ec2::254",
 		"2001:db8::1",
 		"100::1",
+		"64:ff9b:1::1",
 	}
 	policy := newHTTPDestinationPolicy(nil)
 
