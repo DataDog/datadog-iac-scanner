@@ -24,6 +24,32 @@ const (
 	httpsScheme            = "https"
 )
 
+// blockedSpecialUsePrefixes lists IANA special-purpose ranges that Go still
+// classifies as global unicast (RFC 6890 and successors).
+var blockedSpecialUsePrefixes = func() []netip.Prefix {
+	cidrs := []string{
+		"0.0.0.0/8",
+		"100.64.0.0/10",
+		"192.0.0.0/24",
+		"192.0.2.0/24",
+		"198.18.0.0/15",
+		"198.51.100.0/24",
+		"203.0.113.0/24",
+		"240.0.0.0/4",
+		"100::/64",
+		"64:ff9b::/96",
+		"2001:10::/28",
+		"2001:20::/28",
+		"2001:db8::/32",
+		"2002::/16",
+	}
+	prefixes := make([]netip.Prefix, len(cidrs))
+	for i, cidr := range cidrs {
+		prefixes[i] = netip.MustParsePrefix(cidr)
+	}
+	return prefixes
+}()
+
 type lookupNetIPFunc func(context.Context, string, string) ([]net.IP, error)
 type dialContextFunc func(context.Context, string, string) (net.Conn, error)
 
@@ -192,8 +218,10 @@ func validatePublicAddress(addr netip.Addr) error {
 		addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() {
 		return fmt.Errorf("address %s is not a public unicast destination", addr)
 	}
-	if netip.MustParsePrefix("100.64.0.0/10").Contains(addr) {
-		return fmt.Errorf("address %s is in the shared address space", addr)
+	for _, prefix := range blockedSpecialUsePrefixes {
+		if prefix.Contains(addr) {
+			return fmt.Errorf("address %s is in a special-use network", addr)
+		}
 	}
 	return nil
 }

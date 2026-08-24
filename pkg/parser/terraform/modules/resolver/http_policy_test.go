@@ -25,9 +25,16 @@ func TestHTTPDestinationPolicyRejectsNonPublicAddresses(t *testing.T) {
 		"192.168.0.1",
 		"169.254.169.254",
 		"100.64.0.1",
+		"198.18.0.1",
+		"192.0.2.1",
+		"198.51.100.1",
+		"203.0.113.1",
+		"240.0.0.1",
 		"::1",
 		"fe80::1",
 		"fd00:ec2::254",
+		"2001:db8::1",
+		"100::1",
 	}
 	policy := newHTTPDestinationPolicy(nil)
 
@@ -35,10 +42,26 @@ func TestHTTPDestinationPolicyRejectsNonPublicAddresses(t *testing.T) {
 		t.Run(address, func(t *testing.T) {
 			_, err := policy.resolveHost(t.Context(), address)
 			if err == nil || !strings.Contains(err.Error(), "not a public unicast destination") &&
-				!strings.Contains(err.Error(), "shared address space") {
+				!strings.Contains(err.Error(), "special-use network") {
 				t.Fatalf("expected %s to be rejected, got %v", address, err)
 			}
 		})
+	}
+}
+
+func TestHTTPDestinationPolicyRejectsHostnameWithSpecialUseAnswer(t *testing.T) {
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{
+			net.ParseIP("93.184.216.34"),
+			net.ParseIP("198.18.0.1"),
+		}, nil
+	}
+
+	_, err := policy.resolveHost(t.Context(), "modules.example.com")
+
+	if err == nil || !strings.Contains(err.Error(), "198.18.0.1") {
+		t.Fatalf("expected mixed DNS answer to be rejected, got %v", err)
 	}
 }
 
@@ -89,13 +112,13 @@ func TestHTTPDestinationPolicyDialsValidatedAddressesConcurrently(t *testing.T) 
 	policy := newHTTPDestinationPolicy(nil)
 	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
 		return []net.IP{
-			net.ParseIP("2001:db8::1"),
+			net.ParseIP("2001:4860:4860::8888"),
 			net.ParseIP("93.184.216.34"),
 		}, nil
 	}
 	firstCanceled := make(chan struct{})
 	policy.dial = func(ctx context.Context, _, address string) (net.Conn, error) {
-		if strings.HasPrefix(address, "[2001:db8::1]") {
+		if strings.HasPrefix(address, "[2001:4860:4860::8888]") {
 			<-ctx.Done()
 			close(firstCanceled)
 			return nil, ctx.Err()
@@ -126,7 +149,7 @@ func TestHTTPDestinationPolicyBoundsConcurrentDials(t *testing.T) {
 	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
 		addresses := make([]net.IP, 12)
 		for i := range addresses {
-			addresses[i] = net.IPv4(192, 0, 2, byte(i+1))
+			addresses[i] = net.IPv4(93, 184, 216, byte(i+1))
 		}
 		return addresses, nil
 	}
