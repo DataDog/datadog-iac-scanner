@@ -9,6 +9,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +22,93 @@ import (
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
+
+func TestGoGetterHTTPRejectsPrivateDestinationWithoutAllowlist(t *testing.T) {
+	cfg := NewGoGetterConfig()
+	cfg.TmpDir = t.TempDir()
+	r := NewGoGetterResolver(cfg)
+
+	_, err := r.fetchOnce(t.Context(), "http://169.254.169.254/module.zip")
+
+	if err == nil || !strings.Contains(err.Error(), "not a public unicast destination") {
+		t.Fatalf("expected metadata destination to be rejected, got %v", err)
+	}
+}
+
+func TestGoGetterConfigAppliesAllowlistToRegistryClient(t *testing.T) {
+	cfg := NewGoGetterConfig()
+	cfg.HostAllowlist = []string{"registry.terraform.io"}
+	r := NewGoGetterResolver(cfg)
+
+	_, err := discoverModulesEndpoint(
+		t.Context(),
+		r.cfg.RegistryCache.client,
+		"https://example.com",
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "not in --module-host-allowlist") {
+		t.Fatalf("expected registry client to use resolver allowlist, got %v", err)
+	}
+}
+
+func TestGoGetterHTTPValidatesXTerraformGetDestination(t *testing.T) {
+	var target string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Terraform-Get", target)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(_ context.Context, _, host string) ([]net.IP, error) {
+		switch host {
+		case "source.example":
+			return []net.IP{net.ParseIP("93.184.216.34")}, nil
+		case "metadata.internal":
+			return []net.IP{net.ParseIP("169.254.169.254")}, nil
+		default:
+			return nil, fmt.Errorf("unexpected host %q", host)
+		}
+	}
+	policy.dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}
+
+	cfg := NewGoGetterConfig()
+	cfg.TmpDir = t.TempDir()
+	cfg.httpClient = newPolicyHTTPClientWithPolicy(time.Second, policy)
+	r := NewGoGetterResolver(cfg)
+
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name:   "private HTTP destination",
+			source: "http://metadata.internal/latest",
+			want:   "not a public unicast destination",
+		},
+		{
+			name:   "protocol switch",
+			source: "git::http://169.254.169.254/repository.git",
+			want:   `no getter available for X-Terraform-Get source protocol: "git"`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			target = test.source
+			_, fetchErr := r.fetchOnce(t.Context(), "http://source.example:"+port+"/module")
+			if fetchErr == nil || !strings.Contains(fetchErr.Error(), test.want) {
+				t.Fatalf("expected X-Terraform-Get source to be rejected with %q, got %v", test.want, fetchErr)
+			}
+		})
+	}
+}
 
 func TestGetterSourceForPreservesHTTPSGit(t *testing.T) {
 	r := NewGoGetterResolver(NewGoGetterConfig())

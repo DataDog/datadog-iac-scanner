@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -479,12 +480,41 @@ func extractArchiveSubdir(
 		archiveArgs = append(archiveArgs, "--", filepath.ToSlash(subdir))
 	}
 	archive := gitInDir(ctx, gitDir, archiveArgs...)
-	output, err := archive.Output()
-	if err != nil {
-		return fmt.Errorf("git archive %s path %q: %w", archiveArg, subdir, err)
-	}
-	if err := extractRegularFilesWithBudget(bytes.NewReader(output), dest, extracted); err != nil {
+	if err := extractArchiveCommand(archive, dest, extracted); err != nil {
 		return fmt.Errorf("extracting git archive %s: %w", archiveArg, err)
+	}
+	return nil
+}
+
+func extractArchiveCommand(cmd *exec.Cmd, dest string, extracted *int64) error {
+	return extractArchiveCommandWithLimit(cmd, dest, extracted, maxArchiveExtractBytes)
+}
+
+func extractArchiveCommandWithLimit(cmd *exec.Cmd, dest string, extracted *int64, maxBytes int64) error {
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("opening git archive stream: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("starting git archive: %w", err)
+	}
+
+	stream := &io.LimitedReader{R: stdout, N: maxBytes + 1}
+	extractErr := extractRegularFilesWithBudget(stream, dest, extracted)
+	if extractErr == nil {
+		_, extractErr = io.Copy(io.Discard, stream)
+	}
+	if extractErr != nil || stream.N == 0 {
+		_ = stdout.Close()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		if stream.N == 0 {
+			return fmt.Errorf("git archive exceeds %d byte limit", maxBytes)
+		}
+		return extractErr
+	}
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("running git archive: %w", err)
 	}
 	return nil
 }

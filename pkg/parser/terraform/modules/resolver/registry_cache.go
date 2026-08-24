@@ -120,9 +120,9 @@ type registryCache struct {
 	dlSF     singleflight.Group
 }
 
-func NewRegistryCache(timeout time.Duration) *registryCache {
+func NewRegistryCache(timeout time.Duration, hostAllowlist ...string) *registryCache {
 	c := &registryCache{
-		client:     &http.Client{Timeout: timeout},
+		client:     newPolicyHTTPClient(timeout, hostAllowlist),
 		discMap:    make(map[string]string),
 		discErrMap: make(map[string]error),
 		verMap:     make(map[string]string),

@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"math/rand"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -77,6 +78,7 @@ type GoGetterConfig struct {
 	HostAllowlist []string
 	Cache         *moduleCache
 	RegistryCache *registryCache
+	httpClient    *http.Client
 
 	TmpDir string
 
@@ -89,16 +91,14 @@ type GoGetterConfig struct {
 	fetchCount atomic.Int64
 }
 
-// NewGoGetterConfig returns defaults with a fetch semaphore and a fresh registry cache.
+// NewGoGetterConfig returns default fetch limits and concurrency controls.
 func NewGoGetterConfig() *GoGetterConfig {
-	cfg := &GoGetterConfig{
+	return &GoGetterConfig{
 		FetchTimeout:   DefaultFetchTimeout,
 		MaxModuleBytes: DefaultMaxModuleBytes,
 		MaxTotalBytes:  DefaultMaxTotalBytes,
 		fetchSem:       make(chan struct{}, FetchConcurrency),
 	}
-	cfg.RegistryCache = NewRegistryCache(cfg.FetchTimeout)
-	return cfg
 }
 
 // GoGetterResolver downloads modules via hashicorp/go-getter (registry translation, caps, cache).
@@ -107,6 +107,12 @@ type GoGetterResolver struct {
 }
 
 func NewGoGetterResolver(cfg *GoGetterConfig) *GoGetterResolver {
+	if cfg.httpClient == nil {
+		cfg.httpClient = newPolicyHTTPClient(cfg.FetchTimeout, cfg.HostAllowlist)
+	}
+	if cfg.RegistryCache == nil {
+		cfg.RegistryCache = NewRegistryCache(cfg.FetchTimeout, cfg.HostAllowlist...)
+	}
 	return &GoGetterResolver{cfg: cfg}
 }
 
@@ -509,12 +515,43 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 		Dst:  tmpDir,
 		Pwd:  tmpDir,
 		Mode: getter.ClientModeDir,
+		Options: []getter.ClientOption{
+			getter.WithGetters(r.getters(getterSrc)),
+		},
 	}
 	if err := client.Get(); err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return "", &tfmodules.UnresolvedError{Reason: "fetch failed: " + err.Error()}
 	}
 	return tmpDir, nil
+}
+
+func (r *GoGetterResolver) getters(source string) map[string]getter.Getter {
+	getters := make(map[string]getter.Getter, len(getter.Getters))
+	if !isHTTPGetterSource(source) {
+		for scheme, protocolGetter := range getter.Getters {
+			getters[scheme] = protocolGetter
+		}
+	}
+	httpGetter := &getter.HttpGetter{
+		Netrc:              true,
+		Client:             r.cfg.httpClient,
+		XTerraformGetLimit: maxHTTPRedirects,
+	}
+	getters["http"] = httpGetter
+	getters["https"] = httpGetter
+	return getters
+}
+
+func isHTTPGetterSource(source string) bool {
+	if forced, rest, ok := strings.Cut(source, "::"); ok {
+		if forced != "" {
+			return forced == httpScheme || forced == httpsScheme
+		}
+		source = rest
+	}
+	parsed, err := url.Parse(source)
+	return err == nil && (parsed.Scheme == httpScheme || parsed.Scheme == httpsScheme)
 }
 
 func modifyGitURL(rawURL string, modify func(url.Values) bool) string {
